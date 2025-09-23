@@ -339,8 +339,13 @@ export class DatabaseStorage implements IStorage {
       return false;
     }
     
-    // Delete the worker (contact will be cascade deleted due to foreign key constraint)
+    // Delete the worker first
     const result = await db.delete(workers).where(eq(workers.id, id)).returning();
+    
+    // If worker was deleted, also delete the corresponding contact
+    if (result.length > 0) {
+      await db.delete(contacts).where(eq(contacts.id, worker.contactId));
+    }
     
     return result.length > 0;
   }
