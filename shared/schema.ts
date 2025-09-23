@@ -34,9 +34,15 @@ export const rolePermissions = pgTable("role_permissions", {
   pk: primaryKey({ columns: [table.roleId, table.permissionKey] }),
 }));
 
+export const contacts = pgTable("contacts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+});
+
 export const workers = pgTable("workers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
 });
 
 // Zod schemas for validation
@@ -59,8 +65,13 @@ export const insertRoleSchema = createInsertSchema(roles).omit({
   createdAt: true,
 });
 
+export const insertContactSchema = createInsertSchema(contacts).omit({
+  id: true,
+});
+
 export const insertWorkerSchema = createInsertSchema(workers).omit({
   id: true,
+  contactId: true, // Contact will be managed automatically
 });
 
 export const assignRoleSchema = z.object({
@@ -81,6 +92,9 @@ export type CreateUser = z.infer<typeof createUserSchema>;
 
 export type InsertRole = z.infer<typeof insertRoleSchema>;
 export type Role = typeof roles.$inferSelect;
+
+export type InsertContact = z.infer<typeof insertContactSchema>;
+export type Contact = typeof contacts.$inferSelect;
 
 export type InsertWorker = z.infer<typeof insertWorkerSchema>;
 export type Worker = typeof workers.$inferSelect;
