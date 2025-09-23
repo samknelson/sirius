@@ -252,6 +252,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Assignment routes
   
+  // GET /api/admin/users/:userId/roles - Get user roles (admin only)
+  app.get("/api/admin/users/:userId/roles", requireAuth, requirePermission("admin.manage"), async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const roles = await storage.getUserRoles(userId);
+      res.json(roles);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch user roles" });
+    }
+  });
+
   // POST /api/admin/users/:userId/roles - Assign role to user (admin only)
   app.post("/api/admin/users/:userId/roles", requireAuth, requirePermission("admin.manage"), async (req, res) => {
     try {

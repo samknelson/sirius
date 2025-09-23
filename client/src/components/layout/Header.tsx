@@ -1,9 +1,11 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { LogOut, User } from 'lucide-react';
+import { Link, useLocation } from 'wouter';
+import { LogOut, User, Settings, Users } from 'lucide-react';
 
 export default function Header() {
   const { user, logout, hasPermission } = useAuth();
+  const [location] = useLocation();
 
   const handleLogout = async () => {
     try {
@@ -16,13 +18,42 @@ export default function Header() {
   return (
     <header className="border-b bg-white dark:bg-gray-950 dark:border-gray-800">
       <div className="flex items-center justify-between h-16 px-6">
-        <div className="flex items-center space-x-4">
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-            Sirius
-          </h1>
-          <span className="text-sm text-muted-foreground">
-            Worker Management System
-          </span>
+        <div className="flex items-center space-x-6">
+          <div className="flex items-center space-x-4">
+            <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+              Sirius
+            </h1>
+            <span className="text-sm text-muted-foreground">
+              Worker Management System
+            </span>
+          </div>
+
+          {/* Navigation Links */}
+          <nav className="flex items-center space-x-4">
+            <Link href="/workers">
+              <Button 
+                variant={location === "/workers" ? "default" : "ghost"} 
+                size="sm"
+                data-testid="nav-workers"
+              >
+                <Users className="h-4 w-4 mr-2" />
+                Workers
+              </Button>
+            </Link>
+            
+            {hasPermission('admin.manage') && (
+              <Link href="/admin">
+                <Button 
+                  variant={location === "/admin" ? "default" : "ghost"} 
+                  size="sm"
+                  data-testid="nav-admin"
+                >
+                  <Settings className="h-4 w-4 mr-2" />
+                  Admin
+                </Button>
+              </Link>
+            )}
+          </nav>
         </div>
 
         <div className="flex items-center space-x-4">
