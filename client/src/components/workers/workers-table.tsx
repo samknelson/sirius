@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowUpDown, User, Edit, Trash2 } from "lucide-react";
+import { ArrowUpDown, User, Edit, Trash2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Worker } from "@shared/schema";
 import { DeleteWorkerModal } from "./delete-worker-modal";
+import { Link } from "wouter";
 
 interface WorkersTableProps {
   workers: Worker[];
@@ -221,6 +222,17 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <div className="flex items-center space-x-2">
+                      <Link href={`/workers/${worker.id}`}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="p-2 text-muted-foreground hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
+                          title="View worker"
+                          data-testid={`button-view-worker-${worker.id}`}
+                        >
+                          <Eye size={12} />
+                        </Button>
+                      </Link>
                       <Button
                         variant="ghost"
                         size="sm"
