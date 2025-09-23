@@ -313,6 +313,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/workers/:id - Get a specific worker (requires workers.view permission)
+  app.get("/api/workers/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const worker = await storage.getWorker(id);
+      
+      if (!worker) {
+        res.status(404).json({ message: "Worker not found" });
+        return;
+      }
+      
+      res.json(worker);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch worker" });
+    }
+  });
+
   // POST /api/workers - Create a new worker (requires workers.manage permission)
   app.post("/api/workers", requireAuth, requirePermission("workers.manage"), async (req, res) => {
     try {
