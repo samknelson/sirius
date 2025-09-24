@@ -10,6 +10,7 @@ import LoginPage from "@/pages/login";
 import Workers from "@/pages/workers";
 import WorkerView from "@/pages/worker-view";
 import AdminUsersPage from "@/pages/admin/users";
+import UserAccountPage from "@/pages/admin/user-account";
 import AdminRolesPage from "@/pages/admin/roles";
 import AdminPermissionsPage from "@/pages/admin/permissions";
 import AdminAssignmentsPage from "@/pages/admin/assignments";
@@ -51,6 +52,16 @@ function Router() {
       </Route>
       
       {/* Admin routes with nested navigation */}
+      <Route path="/admin/users/:id">
+        <ProtectedRoute permission="admin.manage">
+          <AuthenticatedLayout>
+            <AdminLayout>
+              <UserAccountPage />
+            </AdminLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
       <Route path="/admin/users">
         <ProtectedRoute permission="admin.manage">
           <AuthenticatedLayout>

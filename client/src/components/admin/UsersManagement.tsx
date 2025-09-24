@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, UserCheck, UserX, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search } from 'lucide-react';
+import { Plus, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, ExternalLink } from 'lucide-react';
+import { Link } from 'wouter';
 
 interface User {
   id: string;
@@ -118,26 +119,6 @@ export default function UsersManagement() {
     },
   });
 
-  const toggleUserStatusMutation = useMutation({
-    mutationFn: async ({ userId, isActive }: { userId: string; isActive: boolean }) => {
-      const response = await apiRequest('PUT', `/api/admin/users/${userId}/status`, { isActive });
-      return await response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
-      toast({
-        title: 'Success',
-        description: 'User status updated successfully',
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message.replace(/^\d+:\s*/, '') : 'Failed to update user status',
-        variant: 'destructive',
-      });
-    },
-  });
 
   const handleCreateUser = () => {
     if (!newUsername || !newPassword) {
@@ -151,9 +132,6 @@ export default function UsersManagement() {
     createUserMutation.mutate({ username: newUsername, password: newPassword });
   };
 
-  const handleToggleStatus = (userId: string, currentStatus: boolean) => {
-    toggleUserStatusMutation.mutate({ userId, isActive: !currentStatus });
-  };
 
   const getSortIcon = (field: SortField) => {
     if (sortField !== field) return <ArrowUpDown className="h-4 w-4" />;
@@ -311,25 +289,16 @@ export default function UsersManagement() {
                   {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never'}
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button
-                    variant={user.isActive ? 'outline' : 'default'}
-                    size="sm"
-                    onClick={() => handleToggleStatus(user.id, user.isActive)}
-                    disabled={toggleUserStatusMutation.isPending}
-                    data-testid={`button-toggle-${user.id}`}
-                  >
-                    {user.isActive ? (
-                      <>
-                        <UserX className="h-4 w-4 mr-2" />
-                        Deactivate
-                      </>
-                    ) : (
-                      <>
-                        <UserCheck className="h-4 w-4 mr-2" />
-                        Activate
-                      </>
-                    )}
-                  </Button>
+                  <Link to={`/admin/users/${user.id}`}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      data-testid={`button-view-account-${user.id}`}
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      View Account
+                    </Button>
+                  </Link>
                 </TableCell>
               </TableRow>
             ))}

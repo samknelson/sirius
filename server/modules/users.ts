@@ -151,6 +151,28 @@ export function registerUserRoutes(
     }
   });
 
+  // GET /api/admin/users/:id - Get user details (admin only)
+  app.get("/api/admin/users/:id", requireAuth, requirePermission("admin.manage"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const user = await storage.getUser(id);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.json({ 
+        id: user.id, 
+        username: user.username, 
+        isActive: user.isActive, 
+        createdAt: user.createdAt,
+        lastLogin: user.lastLogin
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch user details" });
+    }
+  });
+
   // PUT /api/admin/users/:id/status - Update user status (admin only)
   app.put("/api/admin/users/:id/status", requireAuth, requirePermission("admin.manage"), async (req, res) => {
     try {
@@ -166,10 +188,34 @@ export function registerUserRoutes(
         id: user.id, 
         username: user.username, 
         isActive: user.isActive, 
-        createdAt: user.createdAt 
+        createdAt: user.createdAt,
+        lastLogin: user.lastLogin
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to update user status" });
+    }
+  });
+
+  // PUT /api/admin/users/:id/password - Update user password (admin only)
+  app.put("/api/admin/users/:id/password", requireAuth, requirePermission("admin.manage"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { password } = req.body;
+
+      if (!password || password.trim().length === 0) {
+        return res.status(400).json({ message: "Password is required" });
+      }
+
+      const hashedPassword = await storage.hashPassword(password);
+      const user = await storage.updateUser(id, { password_hash: hashedPassword });
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.json({ message: "Password updated successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update password" });
     }
   });
 
