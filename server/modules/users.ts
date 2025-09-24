@@ -106,14 +106,19 @@ export function registerUserRoutes(
   // GET /api/admin/users - Get all users (admin only)
   app.get("/api/admin/users", requireAuth, requirePermission("admin.manage"), async (req, res) => {
     try {
-      const users = await storage.getAllUsers();
-      res.json(users.map(u => ({ 
-        id: u.id, 
-        username: u.username, 
-        isActive: u.isActive, 
-        createdAt: u.createdAt,
-        lastLogin: u.lastLogin
-      })));
+      const usersWithRoles = await storage.getAllUsersWithRoles();
+      
+      // Shape response to exclude sensitive fields
+      const safeUsersWithRoles = usersWithRoles.map(user => ({
+        id: user.id,
+        username: user.username,
+        isActive: user.isActive,
+        createdAt: user.createdAt,
+        lastLogin: user.lastLogin,
+        roles: user.roles
+      }));
+      
+      res.json(safeUsersWithRoles);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch users" });
     }

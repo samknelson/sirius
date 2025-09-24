@@ -13,12 +13,20 @@ import { useToast } from '@/hooks/use-toast';
 import { Plus, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, ExternalLink } from 'lucide-react';
 import { Link } from 'wouter';
 
+interface Role {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: string;
+}
+
 interface User {
   id: string;
   username: string;
   isActive: boolean;
   createdAt: string;
   lastLogin?: string;
+  roles: Role[];
 }
 
 type SortField = 'username' | 'createdAt' | 'lastLogin';
@@ -30,12 +38,17 @@ export default function UsersManagement() {
   const [newPassword, setNewPassword] = useState('');
   const [searchUsername, setSearchUsername] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
   const [sortField, setSortField] = useState<SortField>('username');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const { toast } = useToast();
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['/api/admin/users'],
+  });
+
+  const { data: allRoles = [] } = useQuery<Role[]>({
+    queryKey: ['/api/admin/roles'],
   });
 
   // Filter and sort users
@@ -49,7 +62,11 @@ export default function UsersManagement() {
         (statusFilter === 'active' && user.isActive) ||
         (statusFilter === 'inactive' && !user.isActive);
       
-      return matchesUsername && matchesStatus;
+      // Filter by role
+      const matchesRole = roleFilter === 'all' || 
+        user.roles.some(role => role.id === roleFilter);
+      
+      return matchesUsername && matchesStatus && matchesRole;
     });
 
     // Sort users
@@ -84,7 +101,7 @@ export default function UsersManagement() {
     });
 
     return filtered;
-  }, [users, searchUsername, statusFilter, sortField, sortDirection]);
+  }, [users, searchUsername, statusFilter, roleFilter, sortField, sortDirection]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -228,6 +245,19 @@ export default function UsersManagement() {
             <SelectItem value="inactive">Inactive Only</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={roleFilter} onValueChange={setRoleFilter}>
+          <SelectTrigger className="w-48" data-testid="select-role-filter">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Roles</SelectItem>
+            {allRoles.map((role) => (
+              <SelectItem key={role.id} value={role.id}>
+                {role.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="border rounded-md">
@@ -245,6 +275,7 @@ export default function UsersManagement() {
                 </div>
               </TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Roles</TableHead>
               <TableHead 
                 className="cursor-pointer hover:bg-muted/50 select-none"
                 onClick={() => handleSort('createdAt')}
@@ -281,6 +312,24 @@ export default function UsersManagement() {
                   >
                     {user.isActive ? 'Active' : 'Inactive'}
                   </Badge>
+                </TableCell>
+                <TableCell data-testid={`text-roles-${user.id}`}>
+                  <div className="flex flex-wrap gap-1">
+                    {user.roles && user.roles.length > 0 ? (
+                      user.roles.map((role) => (
+                        <Badge 
+                          key={role.id}
+                          variant="outline"
+                          className="text-xs"
+                          data-testid={`badge-role-${user.id}-${role.id}`}
+                        >
+                          {role.name}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-sm text-muted-foreground">No roles</span>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell data-testid={`text-created-${user.id}`}>
                   {new Date(user.createdAt).toLocaleDateString()}

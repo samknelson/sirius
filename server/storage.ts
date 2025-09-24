@@ -23,6 +23,7 @@ export interface IStorage {
   updateUserLastLogin(id: string): Promise<User | undefined>;
   deleteUser(id: string): Promise<boolean>;
   getAllUsers(): Promise<User[]>;
+  getAllUsersWithRoles(): Promise<(User & { roles: Role[] })[]>;
   
   // Password operations
   hashPassword(password: string): Promise<string>;
@@ -127,6 +128,43 @@ export class DatabaseStorage implements IStorage {
 
   async getAllUsers(): Promise<User[]> {
     return db.select().from(users);
+  }
+
+  async getAllUsersWithRoles(): Promise<(User & { roles: Role[] })[]> {
+    // Get all users
+    const allUsers = await db.select().from(users);
+    
+    // Get all user-role relationships with role details in one query
+    const userRoleData = await db
+      .select({
+        userId: userRoles.userId,
+        roleId: roles.id,
+        roleName: roles.name,
+        roleDescription: roles.description,
+        roleCreatedAt: roles.createdAt,
+      })
+      .from(userRoles)
+      .innerJoin(roles, eq(userRoles.roleId, roles.id));
+    
+    // Group roles by user ID
+    const rolesByUser = userRoleData.reduce((acc, row) => {
+      if (!acc[row.userId]) {
+        acc[row.userId] = [];
+      }
+      acc[row.userId].push({
+        id: row.roleId,
+        name: row.roleName,
+        description: row.roleDescription,
+        createdAt: row.roleCreatedAt,
+      });
+      return acc;
+    }, {} as Record<string, Role[]>);
+    
+    // Combine users with their roles
+    return allUsers.map(user => ({
+      ...user,
+      roles: rolesByUser[user.id] || []
+    }));
   }
 
   // Role operations
