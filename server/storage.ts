@@ -213,6 +213,7 @@ export class DatabaseStorage implements IStorage {
         password_hash: users.password_hash,
         isActive: users.isActive,
         createdAt: users.createdAt,
+        lastLogin: users.lastLogin,
       })
       .from(userRoles)
       .innerJoin(users, eq(userRoles.userId, users.id))

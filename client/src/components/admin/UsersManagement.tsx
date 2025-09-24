@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
@@ -8,8 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, UserCheck, UserX, Loader2 } from 'lucide-react';
+import { Plus, UserCheck, UserX, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search } from 'lucide-react';
 
 interface User {
   id: string;
@@ -19,15 +20,79 @@ interface User {
   lastLogin?: string;
 }
 
+type SortField = 'username' | 'createdAt' | 'lastLogin';
+type SortDirection = 'asc' | 'desc';
+
 export default function UsersManagement() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [searchUsername, setSearchUsername] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [sortField, setSortField] = useState<SortField>('username');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const { toast } = useToast();
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['/api/admin/users'],
   });
+
+  // Filter and sort users
+  const filteredAndSortedUsers = useMemo(() => {
+    let filtered = users.filter(user => {
+      // Filter by username search
+      const matchesUsername = user.username.toLowerCase().includes(searchUsername.toLowerCase());
+      
+      // Filter by status
+      const matchesStatus = statusFilter === 'all' || 
+        (statusFilter === 'active' && user.isActive) ||
+        (statusFilter === 'inactive' && !user.isActive);
+      
+      return matchesUsername && matchesStatus;
+    });
+
+    // Sort users
+    filtered.sort((a, b) => {
+      let aValue: string | Date;
+      let bValue: string | Date;
+      
+      switch (sortField) {
+        case 'username':
+          aValue = a.username;
+          bValue = b.username;
+          break;
+        case 'createdAt':
+          aValue = new Date(a.createdAt);
+          bValue = new Date(b.createdAt);
+          break;
+        case 'lastLogin':
+          // Handle null/undefined lastLogin values - put them at end when desc, beginning when asc
+          if (!a.lastLogin && !b.lastLogin) return 0;
+          if (!a.lastLogin) return sortDirection === 'asc' ? 1 : -1;
+          if (!b.lastLogin) return sortDirection === 'asc' ? -1 : 1;
+          aValue = new Date(a.lastLogin);
+          bValue = new Date(b.lastLogin);
+          break;
+        default:
+          return 0;
+      }
+      
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return filtered;
+  }, [users, searchUsername, statusFilter, sortField, sortDirection]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
 
   const createUserMutation = useMutation({
     mutationFn: async ({ username, password }: { username: string; password: string }) => {
@@ -88,6 +153,11 @@ export default function UsersManagement() {
 
   const handleToggleStatus = (userId: string, currentStatus: boolean) => {
     toggleUserStatusMutation.mutate({ userId, isActive: !currentStatus });
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) return <ArrowUpDown className="h-4 w-4" />;
+    return sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />;
   };
 
   if (isLoading) {
@@ -158,19 +228,70 @@ export default function UsersManagement() {
         </Dialog>
       </div>
 
+      {/* Search and Filter Controls */}
+      <div className="flex gap-4 items-center">
+        <div className="flex items-center gap-2">
+          <Search className="h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by username..."
+            value={searchUsername}
+            onChange={(e) => setSearchUsername(e.target.value)}
+            className="w-64"
+            data-testid="input-search-username"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={(value: 'all' | 'active' | 'inactive') => setStatusFilter(value)}>
+          <SelectTrigger className="w-40" data-testid="select-status-filter">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Users</SelectItem>
+            <SelectItem value="active">Active Only</SelectItem>
+            <SelectItem value="inactive">Inactive Only</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="border rounded-md">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Username</TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-muted/50 select-none"
+                onClick={() => handleSort('username')}
+                data-testid="header-username"
+              >
+                <div className="flex items-center gap-2">
+                  Username
+                  {getSortIcon('username')}
+                </div>
+              </TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Created At</TableHead>
-              <TableHead>Last Login</TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-muted/50 select-none"
+                onClick={() => handleSort('createdAt')}
+                data-testid="header-created"
+              >
+                <div className="flex items-center gap-2">
+                  Created At
+                  {getSortIcon('createdAt')}
+                </div>
+              </TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-muted/50 select-none"
+                onClick={() => handleSort('lastLogin')}
+                data-testid="header-lastlogin"
+              >
+                <div className="flex items-center gap-2">
+                  Last Login
+                  {getSortIcon('lastLogin')}
+                </div>
+              </TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {users.map((user: User) => (
+            {filteredAndSortedUsers.map((user: User) => (
               <TableRow key={user.id} data-testid={`row-user-${user.id}`}>
                 <TableCell className="font-medium" data-testid={`text-username-${user.id}`}>
                   {user.username}
