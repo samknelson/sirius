@@ -1,6 +1,7 @@
 import { Express, Request, Response, NextFunction } from "express";
 import { addressValidationService, AddressInput } from "../services/address-validation";
 import { z } from "zod";
+import { ParseAddressRequest } from "@shared/schema";
 
 // Middleware types
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void;
@@ -20,6 +21,28 @@ export function registerAddressValidationRoutes(
   requireAuth: AuthMiddleware, 
   requirePermission: PermissionMiddleware
 ) {
+  // POST /api/addresses/parse - Parse a raw address string
+  app.post("/api/addresses/parse", requireAuth, requirePermission("workers.view"), async (req, res) => {
+    try {
+      const parseRequest: ParseAddressRequest = req.body;
+      
+      // Basic validation
+      if (!parseRequest.rawAddress || typeof parseRequest.rawAddress !== 'string') {
+        return res.status(400).json({ 
+          message: "Invalid request", 
+          errors: ["rawAddress is required and must be a string"] 
+        });
+      }
+
+      const result = await addressValidationService.parseAndValidate(parseRequest);
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Address parsing error:", error);
+      res.status(500).json({ message: "Failed to parse address" });
+    }
+  });
+
   // POST /api/addresses/validate - Validate an address
   app.post("/api/addresses/validate", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
