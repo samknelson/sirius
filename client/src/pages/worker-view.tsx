@@ -304,11 +304,6 @@ export default function WorkerView() {
             {/* Actions */}
             <div className="pt-4 border-t border-border">
               <div className="flex items-center space-x-3">
-                <Link href={`/workers/${worker.id}/edit`}>
-                  <Button variant="default" data-testid={`button-edit-worker-${worker.id}`}>
-                    Edit Worker
-                  </Button>
-                </Link>
                 <Link href="/workers">
                   <Button variant="outline" data-testid="button-back-to-list">
                     Back to List
