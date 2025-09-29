@@ -471,6 +471,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPostalAddress(insertPostalAddress: InsertPostalAddress): Promise<PostalAddress> {
+    // Validation: Prevent creating an inactive primary address
+    if (insertPostalAddress.isPrimary && insertPostalAddress.isActive === false) {
+      throw new Error("Cannot create an inactive address as primary. Either activate the address or don't set it as primary.");
+    }
+
     // If creating a primary address, first unset any existing primary addresses for this contact
     if (insertPostalAddress.isPrimary) {
       await db
@@ -487,16 +492,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updatePostalAddress(id: string, addressUpdate: Partial<InsertPostalAddress>): Promise<PostalAddress | undefined> {
-    // If setting as primary, first get the current address to know the contactId
+    // Get the current address to perform validation checks
+    const currentAddress = await this.getPostalAddress(id);
+    if (!currentAddress) {
+      throw new Error("Address not found");
+    }
+
+    // Validation: Prevent making a primary address inactive
+    if (currentAddress.isPrimary && addressUpdate.isActive === false) {
+      throw new Error("Cannot deactivate a primary address. Set another address as primary first.");
+    }
+
+    // Validation: Prevent making an inactive address primary
+    if (!currentAddress.isActive && addressUpdate.isPrimary === true) {
+      throw new Error("Cannot set an inactive address as primary. Activate the address first.");
+    }
+
+    // If setting as primary, unset any existing primary addresses for this contact
     if (addressUpdate.isPrimary) {
-      const currentAddress = await this.getPostalAddress(id);
-      if (currentAddress) {
-        // Unset any existing primary addresses for this contact
-        await db
-          .update(postalAddresses)
-          .set({ isPrimary: false })
-          .where(eq(postalAddresses.contactId, currentAddress.contactId));
-      }
+      await db
+        .update(postalAddresses)
+        .set({ isPrimary: false })
+        .where(eq(postalAddresses.contactId, currentAddress.contactId));
     }
     
     const [address] = await db
@@ -514,6 +531,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async setAddressAsPrimary(addressId: string, contactId: string): Promise<PostalAddress | undefined> {
+    // Get the current address to validate it can be set as primary
+    const currentAddress = await this.getPostalAddress(addressId);
+    if (!currentAddress) {
+      throw new Error("Address not found");
+    }
+
+    // Validation: Prevent setting an inactive address as primary
+    if (!currentAddress.isActive) {
+      throw new Error("Cannot set an inactive address as primary. Activate the address first.");
+    }
+
     // First, unset all primary addresses for this contact
     await db
       .update(postalAddresses)
