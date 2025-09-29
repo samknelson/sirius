@@ -12,6 +12,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { ParseAddressRequest, ParseAddressResponse, StructuredAddress } from "@shared/schema";
 import { insertPostalAddressSchema } from "@shared/schema";
+import { useAddressValidationConfig } from "@/hooks/useAddressValidationConfig";
 
 interface AddressFormData {
   street: string;
@@ -39,6 +40,13 @@ export function UnifiedAddressInput({
   submitLabel = "Save Address"
 }: UnifiedAddressInputProps) {
   const { toast } = useToast();
+  const { data: addressConfig } = useAddressValidationConfig();
+  
+  // Helper to get default country
+  const getDefaultCountry = () => {
+    const defaultCountry = addressConfig?.local.countries?.[0] || "US";
+    return defaultCountry === "US" ? "United States" : defaultCountry;
+  };
   const [rawAddress, setRawAddress] = useState("");
   const [parsedAddress, setParsedAddress] = useState<StructuredAddress | null>(null);
   const [parseResult, setParseResult] = useState<ParseAddressResponse | null>(null);
@@ -56,12 +64,20 @@ export function UnifiedAddressInput({
       city: "",
       state: "",
       postalCode: "",
-      country: "United States",
+      country: "United States", // Will be updated by effect when config loads
       isPrimary: false,
       isActive: true,
       ...defaultValues,
     },
   });
+
+  // Update form country when configuration loads
+  useEffect(() => {
+    if (addressConfig && !defaultValues?.country) {
+      const defaultCountry = getDefaultCountry();
+      form.setValue("country", defaultCountry);
+    }
+  }, [addressConfig]);
 
   // Initialize from default values when provided
   useEffect(() => {
@@ -71,7 +87,7 @@ export function UnifiedAddressInput({
         defaultValues.city,
         defaultValues.state,
         defaultValues.postalCode,
-        defaultValues.country !== "United States" ? defaultValues.country : null
+        defaultValues.country !== getDefaultCountry() ? defaultValues.country : null
       ].filter(Boolean);
       
       if (parts.length > 0) {
@@ -82,7 +98,7 @@ export function UnifiedAddressInput({
           city: defaultValues.city || "",
           state: defaultValues.state || "",
           postalCode: defaultValues.postalCode || "",
-          country: defaultValues.country || "United States",
+          country: defaultValues.country || getDefaultCountry(),
         });
         
         // Set confirmed state snapshot for cancellation
@@ -91,7 +107,7 @@ export function UnifiedAddressInput({
           city: defaultValues.city || "",
           state: defaultValues.state || "",
           postalCode: defaultValues.postalCode || "",
-          country: defaultValues.country || "United States",
+          country: defaultValues.country || getDefaultCountry(),
           isPrimary: defaultValues.isPrimary || false,
           isActive: defaultValues.isActive !== undefined ? defaultValues.isActive : true,
         };
@@ -118,7 +134,10 @@ export function UnifiedAddressInput({
         form.setValue("city", response.structuredAddress.city || "");
         form.setValue("state", response.structuredAddress.state || "");
         form.setValue("postalCode", response.structuredAddress.postalCode || "");
-        form.setValue("country", response.structuredAddress.country || "United States");
+        // Get default country from configuration
+        const defaultCountry = addressConfig?.local.countries?.[0] || "US";
+        const countryDisplayName = defaultCountry === "US" ? "United States" : defaultCountry;
+        form.setValue("country", response.structuredAddress.country || countryDisplayName);
         
         // Update confirmed state snapshot
         const newConfirmedState = {
@@ -126,7 +145,7 @@ export function UnifiedAddressInput({
           city: response.structuredAddress.city || "",
           state: response.structuredAddress.state || "",
           postalCode: response.structuredAddress.postalCode || "",
-          country: response.structuredAddress.country || "United States",
+          country: response.structuredAddress.country || getDefaultCountry(),
           isPrimary: form.getValues("isPrimary"),
           isActive: form.getValues("isActive"),
         };
@@ -165,10 +184,14 @@ export function UnifiedAddressInput({
       return;
     }
 
+    // Get default country from configuration, fallback to US
+    const defaultCountry = addressConfig?.local.countries?.[0] || "US";
+    const countryDisplayName = defaultCountry === "US" ? "United States" : defaultCountry;
+    
     const parseRequest: ParseAddressRequest = {
       rawAddress: rawAddress.trim(),
       context: {
-        country: "United States", // Default context
+        country: countryDisplayName,
       },
     };
 
@@ -181,12 +204,17 @@ export function UnifiedAddressInput({
     setParseResult(null);
     setShowParsedView(false);
     setIsEditing(false);
+    
+    // Get default country from configuration
+    const defaultCountry = addressConfig?.local.countries?.[0] || "US";
+    const countryDisplayName = defaultCountry === "US" ? "United States" : defaultCountry;
+    
     form.reset({
       street: "",
       city: "",
       state: "",
       postalCode: "",
-      country: "United States",
+      country: countryDisplayName,
       isPrimary: false,
       isActive: true,
     });
@@ -220,13 +248,17 @@ export function UnifiedAddressInput({
   };
 
   const handleCancelEdit = () => {
+    // Get default country from configuration
+    const defaultCountry = addressConfig?.local.countries?.[0] || "US";
+    const countryDisplayName = defaultCountry === "US" ? "United States" : defaultCountry;
+    
     // Reset ALL form values to the persisted snapshot (not the potentially corrupted confirmed state)
     const stateToRestore = persistedSnapshot || {
       street: "",
       city: "",
       state: "",
       postalCode: "",
-      country: "United States",
+      country: countryDisplayName,
       isPrimary: false,
       isActive: true,
     };
@@ -343,7 +375,7 @@ export function UnifiedAddressInput({
                     city: "",
                     state: "",
                     postalCode: "",
-                    country: "United States",
+                    country: getDefaultCountry(),
                   });
                   
                   // Set up manual entry mode but preserve the persisted snapshot
@@ -356,7 +388,7 @@ export function UnifiedAddressInput({
                     city: "",
                     state: "",
                     postalCode: "",
-                    country: "United States",
+                    country: getDefaultCountry(),
                     isPrimary: currentPrimary,
                     isActive: currentActive,
                   });

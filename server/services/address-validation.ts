@@ -233,9 +233,104 @@ class AddressValidationService {
   }
 
   private async validateWithGoogle(address: AddressInput): Promise<AddressValidationResult> {
-    // TODO: Implement Google Maps validation
-    // For now, throw an error to trigger fallback
-    throw new Error("Google Maps validation not yet implemented");
+    const config = await this.getConfig();
+    const apiKey = process.env[config.google.apiKeyName];
+    
+    if (!apiKey) {
+      throw new Error(`Google Maps API key not found in environment variable: ${config.google.apiKeyName}`);
+    }
+
+    try {
+      // Construct address string for Google validation
+      const addressString = [
+        address.street,
+        address.city,
+        address.state,
+        address.postalCode,
+        address.country
+      ].filter(Boolean).join(", ");
+
+      // Use Google Places API to validate the address
+      const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addressString)}&key=${apiKey}`;
+      
+      const response = await fetch(geocodeUrl);
+      const data = await response.json();
+
+      if (data.status !== 'OK' || !data.results || data.results.length === 0) {
+        return {
+          isValid: false,
+          errors: [`Google validation failed: ${data.status} - ${data.error_message || 'No results found'}`],
+          warnings: [],
+          source: "google",
+        };
+      }
+
+      const result = data.results[0];
+      const addressComponents = result.address_components || [];
+      
+      // Parse Google's response and compare with input
+      const googleStructured = this.parseGoogleAddressComponents(addressComponents, result);
+      
+      // Compare input address with Google's normalized version
+      const errors: string[] = [];
+      const warnings: string[] = [];
+      const suggestions: any = {};
+
+      // Validate street number/name
+      if (address.street && googleStructured.street) {
+        const inputStreetNormalized = address.street.toLowerCase().replace(/\s+/g, ' ').trim();
+        const googleStreetNormalized = googleStructured.street.toLowerCase().replace(/\s+/g, ' ').trim();
+        
+        if (inputStreetNormalized !== googleStreetNormalized) {
+          warnings.push("Street address may not match Google's records");
+          suggestions.street = googleStructured.street;
+        }
+      }
+
+      // Validate city
+      if (address.city && googleStructured.city) {
+        const inputCityNormalized = address.city.toLowerCase().trim();
+        const googleCityNormalized = googleStructured.city.toLowerCase().trim();
+        
+        if (inputCityNormalized !== googleCityNormalized) {
+          warnings.push("City name may not match official records");
+          suggestions.city = googleStructured.city;
+        }
+      }
+
+      // Validate state
+      if (address.state && googleStructured.state) {
+        const inputStateNormalized = address.state.toLowerCase().trim();
+        const googleStateNormalized = googleStructured.state.toLowerCase().trim();
+        
+        if (inputStateNormalized !== googleStateNormalized) {
+          warnings.push("State may not match official records");
+          suggestions.state = googleStructured.state;
+        }
+      }
+
+      // Validate postal code
+      if (address.postalCode && googleStructured.postalCode) {
+        const inputZipNormalized = address.postalCode.replace(/\D/g, '');
+        const googleZipNormalized = googleStructured.postalCode.replace(/\D/g, '');
+        
+        if (inputZipNormalized !== googleZipNormalized) {
+          warnings.push("Postal code may not match for this address");
+          suggestions.postalCode = googleStructured.postalCode;
+        }
+      }
+
+      return {
+        isValid: errors.length === 0,
+        errors,
+        warnings,
+        suggestions: Object.keys(suggestions).length > 0 ? suggestions : undefined,
+        source: "google",
+      };
+
+    } catch (error) {
+      throw new Error(`Google validation failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   async parseAndValidate(request: ParseAddressRequest): Promise<ParseAddressResponse> {

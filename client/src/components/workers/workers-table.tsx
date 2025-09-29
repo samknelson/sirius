@@ -236,16 +236,6 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10"
-                        onClick={() => handleEdit(worker)}
-                        title="Edit worker"
-                        data-testid={`button-edit-worker-${worker.id}`}
-                      >
-                        <Edit size={12} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
                         className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                         onClick={() => handleDelete(worker)}
                         title="Delete worker"
