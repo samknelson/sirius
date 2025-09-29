@@ -44,6 +44,8 @@ export function UnifiedAddressInput({
   const [parseResult, setParseResult] = useState<ParseAddressResponse | null>(null);
   const [showParsedView, setShowParsedView] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [confirmedFormState, setConfirmedFormState] = useState<AddressFormData | null>(null);
+  const [persistedSnapshot, setPersistedSnapshot] = useState<AddressFormData | null>(null);
 
   const addressFormSchema = insertPostalAddressSchema.omit({ contactId: true });
   
@@ -82,6 +84,19 @@ export function UnifiedAddressInput({
           postalCode: defaultValues.postalCode || "",
           country: defaultValues.country || "United States",
         });
+        
+        // Set confirmed state snapshot for cancellation
+        const confirmedState: AddressFormData = {
+          street: defaultValues.street || "",
+          city: defaultValues.city || "",
+          state: defaultValues.state || "",
+          postalCode: defaultValues.postalCode || "",
+          country: defaultValues.country || "United States",
+          isPrimary: defaultValues.isPrimary || false,
+          isActive: defaultValues.isActive !== undefined ? defaultValues.isActive : true,
+        };
+        setConfirmedFormState(confirmedState);
+        setPersistedSnapshot(confirmedState);
       }
     }
   }, [defaultValues]);
@@ -104,6 +119,19 @@ export function UnifiedAddressInput({
         form.setValue("state", response.structuredAddress.state || "");
         form.setValue("postalCode", response.structuredAddress.postalCode || "");
         form.setValue("country", response.structuredAddress.country || "United States");
+        
+        // Update confirmed state snapshot
+        const newConfirmedState = {
+          street: response.structuredAddress.street || "",
+          city: response.structuredAddress.city || "",
+          state: response.structuredAddress.state || "",
+          postalCode: response.structuredAddress.postalCode || "",
+          country: response.structuredAddress.country || "United States",
+          isPrimary: form.getValues("isPrimary"),
+          isActive: form.getValues("isActive"),
+        };
+        setConfirmedFormState(newConfirmedState);
+        setPersistedSnapshot(newConfirmedState);
         
         toast({
           title: "Address Parsed",
@@ -170,6 +198,8 @@ export function UnifiedAddressInput({
 
   const handleSaveEdit = () => {
     const formValues = form.getValues();
+    
+    // Update parsed address
     setParsedAddress({
       street: formValues.street,
       city: formValues.city,
@@ -177,12 +207,47 @@ export function UnifiedAddressInput({
       postalCode: formValues.postalCode,
       country: formValues.country,
     });
+    
+    // Update confirmed state snapshot to include ALL form values
+    setConfirmedFormState(formValues);
+    setPersistedSnapshot(formValues);
     setIsEditing(false);
     
     toast({
       title: "Address Updated",
       description: "Address components have been updated.",
     });
+  };
+
+  const handleCancelEdit = () => {
+    // Reset ALL form values to the persisted snapshot (not the potentially corrupted confirmed state)
+    const stateToRestore = persistedSnapshot || {
+      street: "",
+      city: "",
+      state: "",
+      postalCode: "",
+      country: "United States",
+      isPrimary: false,
+      isActive: true,
+    };
+    
+    form.reset(stateToRestore);
+    
+    // Also restore the confirmed state to match the persisted snapshot
+    setConfirmedFormState(stateToRestore);
+    
+    // Sync parsed address if we have one in the snapshot
+    if (stateToRestore.street || stateToRestore.city) {
+      setParsedAddress({
+        street: stateToRestore.street,
+        city: stateToRestore.city,
+        state: stateToRestore.state,
+        postalCode: stateToRestore.postalCode,
+        country: stateToRestore.country,
+      });
+    }
+    
+    setIsEditing(false);
   };
 
   const handleFormSubmit = (data: AddressFormData) => {
@@ -261,12 +326,48 @@ export function UnifiedAddressInput({
                 {parseResult.message}
               </p>
               {parseResult.validation.errors && parseResult.validation.errors.length > 0 && (
-                <ul className="text-sm text-destructive space-y-1">
+                <ul className="text-sm text-destructive space-y-1 mb-3">
                   {parseResult.validation.errors.map((error, index) => (
                     <li key={index}>• {error}</li>
                   ))}
                 </ul>
               )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowParsedView(true);
+                  setParsedAddress({
+                    street: "",
+                    city: "",
+                    state: "",
+                    postalCode: "",
+                    country: "United States",
+                  });
+                  
+                  // Set up manual entry mode but preserve the persisted snapshot
+                  const currentPrimary = form.getValues("isPrimary");
+                  const currentActive = form.getValues("isActive");
+                  
+                  // Initialize form for manual entry
+                  form.reset({
+                    street: "",
+                    city: "",
+                    state: "",
+                    postalCode: "",
+                    country: "United States",
+                    isPrimary: currentPrimary,
+                    isActive: currentActive,
+                  });
+                  
+                  // Do NOT update persistedSnapshot - keep original values for cancellation
+                  setIsEditing(true);
+                }}
+                data-testid="button-enter-manually"
+              >
+                Enter Address Manually
+              </Button>
             </CardContent>
           </Card>
         )}
@@ -400,7 +501,7 @@ export function UnifiedAddressInput({
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setIsEditing(false)}
+                    onClick={handleCancelEdit}
                     data-testid="button-cancel-edit"
                   >
                     Cancel

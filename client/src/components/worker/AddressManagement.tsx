@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit, Trash2, MapPin, Star } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
-import { ConditionalAddressForm } from "@/components/ui/conditional-address-form";
+import { UnifiedAddressInput } from "@/components/ui/unified-address-input";
 
 interface AddressManagementProps {
   workerId: string;
@@ -186,7 +186,7 @@ export default function AddressManagement({ workerId, contactId }: AddressManage
             <DialogHeader>
               <DialogTitle>Add New Address</DialogTitle>
             </DialogHeader>
-            <ConditionalAddressForm
+            <UnifiedAddressInput
               defaultValues={{
                 street: "",
                 city: "",
@@ -287,7 +287,7 @@ export default function AddressManagement({ workerId, contactId }: AddressManage
             <DialogTitle>Edit Address</DialogTitle>
           </DialogHeader>
           {editingAddress && (
-            <ConditionalAddressForm
+            <UnifiedAddressInput
               defaultValues={{
                 street: editingAddress.street,
                 city: editingAddress.city,
