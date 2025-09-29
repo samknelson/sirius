@@ -131,6 +131,9 @@ export type Worker = typeof workers.$inferSelect;
 export type InsertVariable = z.infer<typeof insertVariableSchema>;
 export type Variable = typeof variables.$inferSelect;
 
+export type InsertPostalAddress = z.infer<typeof insertPostalAddressSchema>;
+export type PostalAddress = typeof postalAddresses.$inferSelect;
+
 export type UserRole = typeof userRoles.$inferSelect;
 export type RolePermission = typeof rolePermissions.$inferSelect;
 export type AssignRole = z.infer<typeof assignRoleSchema>;

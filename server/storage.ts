@@ -1,9 +1,10 @@
 // Database storage implementation based on blueprint:javascript_database
 import { 
-  users, workers, contacts, roles, userRoles, rolePermissions, variables,
+  users, workers, contacts, roles, userRoles, rolePermissions, variables, postalAddresses,
   type User, type InsertUser, type Worker, type InsertWorker,
   type Contact, type InsertContact,
   type Role, type InsertRole, type Variable, type InsertVariable,
+  type PostalAddress, type InsertPostalAddress,
   type UserRole, type RolePermission, type AssignRole, type AssignPermission
 } from "@shared/schema";
 import { permissionRegistry, type PermissionDefinition } from "@shared/permissions";
@@ -71,6 +72,14 @@ export interface IStorage {
   createVariable(variable: InsertVariable): Promise<Variable>;
   updateVariable(id: string, variable: Partial<InsertVariable>): Promise<Variable | undefined>;
   deleteVariable(id: string): Promise<boolean>;
+
+  // Postal Address CRUD operations
+  getAllPostalAddresses(): Promise<PostalAddress[]>;
+  getPostalAddress(id: string): Promise<PostalAddress | undefined>;
+  getPostalAddressesByContact(contactId: string): Promise<PostalAddress[]>;
+  createPostalAddress(address: InsertPostalAddress): Promise<PostalAddress>;
+  updatePostalAddress(id: string, address: Partial<InsertPostalAddress>): Promise<PostalAddress | undefined>;
+  deletePostalAddress(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -443,6 +452,43 @@ export class DatabaseStorage implements IStorage {
 
   async deleteVariable(id: string): Promise<boolean> {
     const result = await db.delete(variables).where(eq(variables.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // Postal Address operations
+  async getAllPostalAddresses(): Promise<PostalAddress[]> {
+    return await db.select().from(postalAddresses);
+  }
+
+  async getPostalAddress(id: string): Promise<PostalAddress | undefined> {
+    const [address] = await db.select().from(postalAddresses).where(eq(postalAddresses.id, id));
+    return address || undefined;
+  }
+
+  async getPostalAddressesByContact(contactId: string): Promise<PostalAddress[]> {
+    return await db.select().from(postalAddresses).where(eq(postalAddresses.contactId, contactId));
+  }
+
+  async createPostalAddress(insertPostalAddress: InsertPostalAddress): Promise<PostalAddress> {
+    const [address] = await db
+      .insert(postalAddresses)
+      .values(insertPostalAddress)
+      .returning();
+    return address;
+  }
+
+  async updatePostalAddress(id: string, addressUpdate: Partial<InsertPostalAddress>): Promise<PostalAddress | undefined> {
+    const [address] = await db
+      .update(postalAddresses)
+      .set(addressUpdate)
+      .where(eq(postalAddresses.id, id))
+      .returning();
+    
+    return address || undefined;
+  }
+
+  async deletePostalAddress(id: string): Promise<boolean> {
+    const result = await db.delete(postalAddresses).where(eq(postalAddresses.id, id)).returning();
     return result.length > 0;
   }
 }
