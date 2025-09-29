@@ -15,6 +15,9 @@ import UserAccountPage from "@/pages/admin/user-account";
 import AdminRolesPage from "@/pages/admin/roles";
 import AdminPermissionsPage from "@/pages/admin/permissions";
 import AdminLayout from "@/components/layouts/AdminLayout";
+import ConfigurationLayout from "@/components/layouts/ConfigurationLayout";
+import UserManagementConfigPage from "@/pages/config/users";
+import PostalAddressesConfigPage from "@/pages/config/addresses";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
@@ -59,25 +62,44 @@ function Router() {
         </ProtectedRoute>
       </Route>
       
-      {/* Admin routes with nested navigation */}
-      <Route path="/admin/users/:id">
+      {/* Configuration routes with nested navigation */}
+      <Route path="/config/users/:id">
         <ProtectedRoute permission="admin.manage">
           <AuthenticatedLayout>
-            <AdminLayout>
+            <ConfigurationLayout>
               <UserAccountPage />
-            </AdminLayout>
+            </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
       
-      <Route path="/admin/users">
+      <Route path="/config/users">
         <ProtectedRoute permission="admin.manage">
           <AuthenticatedLayout>
-            <AdminLayout>
-              <AdminUsersPage />
-            </AdminLayout>
+            <ConfigurationLayout>
+              <UserManagementConfigPage />
+            </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
+      </Route>
+      
+      <Route path="/config/addresses">
+        <ProtectedRoute permission="admin.manage">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <PostalAddressesConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
+      {/* Legacy admin routes - redirect to configuration */}
+      <Route path="/admin/users/:id">
+        <Redirect to="/config/users/:id" />
+      </Route>
+      
+      <Route path="/admin/users">
+        <Redirect to="/config/users" />
       </Route>
       
       <Route path="/admin/roles">
@@ -100,9 +122,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
       
-      {/* Legacy admin route - redirect to users page */}
+      {/* Legacy admin route - redirect to configuration */}
       <Route path="/admin">
-        <Redirect to="/admin/users" />
+        <Redirect to="/config/users" />
+      </Route>
+      
+      {/* Configuration route - redirect to users page */}
+      <Route path="/config">
+        <Redirect to="/config/users" />
       </Route>
       
       {/* Root route - redirect based on auth status */}

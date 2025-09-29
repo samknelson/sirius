@@ -146,6 +146,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // PUT /api/variables/address_validation_config - Update address validation configuration
+  app.put("/api/variables/address_validation_config", requireAuth, requirePermission("admin.manage"), async (req, res) => {
+    try {
+      // Basic validation for the configuration update
+      const { mode, local, google } = req.body;
+      
+      if (!mode || (mode !== "local" && mode !== "google")) {
+        return res.status(400).json({ message: "Invalid validation mode. Must be 'local' or 'google'." });
+      }
+      
+      if (!local || typeof local.enabled !== "boolean") {
+        return res.status(400).json({ message: "Invalid local configuration." });
+      }
+      
+      if (!google || typeof google.enabled !== "boolean") {
+        return res.status(400).json({ message: "Invalid google configuration." });
+      }
+      
+      await addressValidationService.updateConfig(req.body);
+      const updatedConfig = await addressValidationService.getConfig();
+      res.json(updatedConfig);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update address validation configuration" });
+    }
+  });
+
 
   const httpServer = createServer(app);
   return httpServer;

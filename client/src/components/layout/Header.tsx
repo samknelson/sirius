@@ -42,14 +42,14 @@ export default function Header() {
             </Link>
             
             {hasPermission('admin.manage') && (
-              <Link href="/admin">
+              <Link href="/config">
                 <Button 
-                  variant={location === "/admin" ? "default" : "ghost"} 
+                  variant={location.startsWith("/config") ? "default" : "ghost"} 
                   size="sm"
-                  data-testid="nav-admin"
+                  data-testid="nav-config"
                 >
                   <Settings className="h-4 w-4 mr-2" />
-                  Admin
+                  Configuration
                 </Button>
               </Link>
             )}
