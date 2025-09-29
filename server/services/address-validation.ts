@@ -1,4 +1,10 @@
 import { storage } from "../storage";
+import { 
+  ParseAddressRequest, 
+  ParseAddressResponse, 
+  StructuredAddress,
+  AddressParseValidation 
+} from "@shared/schema";
 
 // Address validation configuration interface
 export interface AddressValidationConfig {
@@ -230,6 +236,351 @@ class AddressValidationService {
     // TODO: Implement Google Maps validation
     // For now, throw an error to trigger fallback
     throw new Error("Google Maps validation not yet implemented");
+  }
+
+  async parseAndValidate(request: ParseAddressRequest): Promise<ParseAddressResponse> {
+    const config = await this.getConfig();
+    
+    try {
+      let structuredAddress: StructuredAddress;
+      let validation: AddressParseValidation;
+
+      if (config.mode === "google" && config.google.enabled) {
+        try {
+          const parseResult = await this.parseWithGoogle(request.rawAddress, request.context);
+          structuredAddress = parseResult.structuredAddress;
+          validation = parseResult.validation;
+        } catch (error) {
+          console.error("Google parsing failed:", error);
+          if (config.fallback.useLocalOnGoogleFailure) {
+            console.log("Falling back to local parsing");
+            const parseResult = await this.parseWithLocal(request.rawAddress, request.context);
+            structuredAddress = parseResult.structuredAddress;
+            validation = parseResult.validation;
+          } else {
+            return {
+              success: false,
+              validation: {
+                isValid: false,
+                errors: ["Address parsing service temporarily unavailable"],
+                warnings: [],
+                source: "google",
+              },
+              message: "Google parsing failed and fallback is disabled",
+            };
+          }
+        }
+      } else {
+        const parseResult = await this.parseWithLocal(request.rawAddress, request.context);
+        structuredAddress = parseResult.structuredAddress;
+        validation = parseResult.validation;
+      }
+
+      if (validation.isValid) {
+        return {
+          success: true,
+          structuredAddress,
+          validation,
+        };
+      } else {
+        return {
+          success: false,
+          validation,
+          message: "Address could not be parsed or validated",
+        };
+      }
+    } catch (error) {
+      console.error("Address parsing error:", error);
+      return {
+        success: false,
+        validation: {
+          isValid: false,
+          errors: ["Unexpected error during address parsing"],
+          warnings: [],
+          source: config.mode,
+        },
+        message: "Internal parsing error",
+      };
+    }
+  }
+
+  private async parseWithLocal(rawAddress: string, context?: ParseAddressRequest['context']): Promise<{
+    structuredAddress: StructuredAddress;
+    validation: AddressParseValidation;
+  }> {
+    // Parse the raw address string using local heuristics
+    const structuredAddress = this.parseAddressStringLocally(rawAddress, context);
+    
+    // Validate the parsed address using existing validation logic
+    const validationResult = await this.validateLocally({
+      street: structuredAddress.street || "",
+      city: structuredAddress.city || "",
+      state: structuredAddress.state || "",
+      postalCode: structuredAddress.postalCode || "",
+      country: structuredAddress.country || context?.country || "United States",
+    });
+
+    const validation: AddressParseValidation = {
+      isValid: validationResult.isValid,
+      errors: validationResult.errors,
+      warnings: validationResult.warnings,
+      source: "local",
+      confidence: this.calculateLocalConfidence(structuredAddress),
+      suggestions: validationResult.suggestions 
+        ? Object.entries(validationResult.suggestions).map(([field, value]) => ({
+            field,
+            value: String(value),
+          }))
+        : undefined,
+    };
+
+    return { structuredAddress, validation };
+  }
+
+  private async parseWithGoogle(rawAddress: string, context?: ParseAddressRequest['context']): Promise<{
+    structuredAddress: StructuredAddress;
+    validation: AddressParseValidation;
+  }> {
+    // TODO: Implement Google Places parsing
+    // For now, throw an error to trigger fallback
+    throw new Error("Google parsing not yet implemented");
+  }
+
+  private parseAddressStringLocally(rawAddress: string, context?: ParseAddressRequest['context']): StructuredAddress {
+    // Enhanced heuristic parsing for various address formats
+    const trimmed = rawAddress.trim();
+    const parts = trimmed.split(',').map(part => part.trim()).filter(part => part.length > 0);
+    
+    const result: StructuredAddress = {};
+
+    if (parts.length === 0) {
+      return result;
+    }
+
+    // Common country names to strip from the end
+    const commonCountries = ['USA', 'US', 'UNITED STATES', 'AMERICA'];
+    
+    // Work backwards from the last part to identify components
+    let workingParts = [...parts];
+    
+    // Check if last part is a country and strip it
+    const lastPart = workingParts[workingParts.length - 1]?.toUpperCase();
+    if (lastPart && commonCountries.includes(lastPart)) {
+      result.country = this.normalizeCountryName(lastPart);
+      workingParts.pop();
+    } else {
+      result.country = context?.country || "United States";
+    }
+
+    if (workingParts.length === 0) {
+      return result;
+    }
+
+    // Extract street address (always the first part)
+    result.street = workingParts[0];
+
+    if (workingParts.length === 1) {
+      // Only street provided, try to extract postal code from it
+      const zipMatch = workingParts[0].match(/(\d{5}(-\d{4})?)$/);
+      if (zipMatch) {
+        result.postalCode = zipMatch[1];
+        result.street = workingParts[0].replace(/\s*\d{5}(-\d{4})?$/, '').trim();
+      }
+      return result;
+    }
+
+    // For multiple parts, work backwards from the end
+    // Last part should contain state and/or postal code
+    const stateZipPart = workingParts[workingParts.length - 1];
+    const parsedStateZip = this.parseStateAndZip(stateZipPart);
+    
+    if (parsedStateZip.state) {
+      result.state = parsedStateZip.state;
+    }
+    if (parsedStateZip.postalCode) {
+      result.postalCode = parsedStateZip.postalCode;
+    }
+
+    // Handle city extraction based on number of parts
+    if (workingParts.length >= 3) {
+      // Everything between street and state/zip is city
+      const cityParts = workingParts.slice(1, -1);
+      result.city = cityParts.join(', ');
+    } else if (workingParts.length === 2) {
+      // Handle "Street, City State ZIP" format - need to extract city from combined string
+      const secondPart = workingParts[1];
+      const cityStateZip = this.extractCityFromCombinedString(secondPart);
+      
+      if (cityStateZip.city) {
+        result.city = cityStateZip.city;
+      }
+      
+      // Re-parse state and ZIP from the extracted remainder
+      if (cityStateZip.stateZipPart) {
+        const parsedStateZip = this.parseStateAndZip(cityStateZip.stateZipPart);
+        if (parsedStateZip.state) {
+          result.state = parsedStateZip.state;
+        }
+        if (parsedStateZip.postalCode) {
+          result.postalCode = parsedStateZip.postalCode;
+        }
+      }
+    }
+
+    return result;
+  }
+
+  private parseStateAndZip(stateZipString: string): { state?: string; postalCode?: string } {
+    const result: { state?: string; postalCode?: string } = {};
+    
+    // Try different patterns for state and ZIP
+    const patterns = [
+      // "CA 94105" or "CA 94105-1234"
+      /^([A-Z]{2})\s+(\d{5}(-\d{4})?)$/i,
+      // "California 94105"
+      /^([A-Za-z\s]+)\s+(\d{5}(-\d{4})?)$/,
+      // Just state "CA" or "California"
+      /^([A-Z]{2})$/i,
+      /^([A-Za-z\s]+)$/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = stateZipString.match(pattern);
+      if (match) {
+        const stateCandidate = match[1].trim().toUpperCase();
+        
+        // Check if it's a valid 2-letter state code
+        if (stateCandidate.length === 2 && US_STATES[stateCandidate as keyof typeof US_STATES]) {
+          result.state = stateCandidate;
+        } else {
+          // Check if it's a full state name
+          const stateCode = this.findStateCodeByName(stateCandidate);
+          if (stateCode) {
+            result.state = stateCode;
+          }
+        }
+        
+        if (match[2]) {
+          result.postalCode = match[2];
+        }
+        break;
+      }
+    }
+
+    // Also try to extract just ZIP if no state found
+    if (!result.postalCode) {
+      const zipMatch = stateZipString.match(/(\d{5}(-\d{4})?)/);
+      if (zipMatch) {
+        result.postalCode = zipMatch[1];
+      }
+    }
+
+    return result;
+  }
+
+  private extractCityFromCombinedString(cityStateZip: string): { city?: string; stateZipPart?: string } {
+    const trimmed = cityStateZip.trim();
+    
+    // Try to match patterns where state/zip are at the end
+    const patterns = [
+      // "San Francisco CA 94105" or "San Francisco CA 94105-1234"
+      /^(.+?)\s+([A-Z]{2})\s+(\d{5}(-\d{4})?)$/i,
+      // "San Francisco California 94105"
+      /^(.+?)\s+([A-Za-z\s]+)\s+(\d{5}(-\d{4})?)$/,
+      // "San Francisco CA" (no ZIP)
+      /^(.+?)\s+([A-Z]{2})$/i,
+      // "San Francisco California" (no ZIP)
+      /^(.+?)\s+([A-Za-z\s]+)$/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = trimmed.match(pattern);
+      if (match) {
+        const cityCandidate = match[1].trim();
+        const stateCandidate = match[2].trim().toUpperCase();
+        
+        // Verify the state candidate is actually a state
+        const isValidState = (stateCandidate.length === 2 && US_STATES[stateCandidate as keyof typeof US_STATES]) ||
+                           this.findStateCodeByName(stateCandidate);
+        
+        if (isValidState) {
+          const stateZipPart = match[3] ? `${match[2]} ${match[3]}` : match[2];
+          return {
+            city: cityCandidate,
+            stateZipPart: stateZipPart,
+          };
+        }
+      }
+    }
+
+    // If no state pattern found, try to extract just ZIP and treat rest as city
+    const zipOnlyMatch = trimmed.match(/^(.+?)\s+(\d{5}(-\d{4})?)$/);
+    if (zipOnlyMatch) {
+      return {
+        city: zipOnlyMatch[1].trim(),
+        stateZipPart: zipOnlyMatch[2],
+      };
+    }
+
+    // Fallback: treat entire string as city
+    return {
+      city: trimmed,
+    };
+  }
+
+  private findStateCodeByName(stateName: string): string | undefined {
+    const normalizedName = stateName.toUpperCase();
+    for (const [code, name] of Object.entries(US_STATES)) {
+      if (name.toUpperCase() === normalizedName) {
+        return code;
+      }
+    }
+    return undefined;
+  }
+
+  private normalizeCountryName(country: string): string {
+    const normalized = country.toUpperCase();
+    switch (normalized) {
+      case 'USA':
+      case 'US':
+      case 'UNITED STATES':
+      case 'AMERICA':
+        return 'United States';
+      default:
+        return country;
+    }
+  }
+
+  private calculateLocalConfidence(structured: StructuredAddress): number {
+    const requiredFields = ['street', 'city', 'state', 'postalCode'];
+    const optionalFields = ['country'];
+    
+    let score = 0;
+    let requiredFieldsPresent = 0;
+    
+    // Check required fields (80% of confidence)
+    for (const field of requiredFields) {
+      if (structured[field as keyof StructuredAddress]?.trim()) {
+        requiredFieldsPresent++;
+      }
+    }
+    
+    // Required fields contribute 80% of confidence
+    score += (requiredFieldsPresent / requiredFields.length) * 0.8;
+    
+    // Optional fields contribute 20% of confidence
+    for (const field of optionalFields) {
+      if (structured[field as keyof StructuredAddress]?.trim()) {
+        score += 0.2;
+      }
+    }
+    
+    // Heavily penalize missing critical fields
+    if (requiredFieldsPresent < 2) {
+      score *= 0.3; // Reduce confidence significantly if less than half required fields
+    }
+    
+    return Math.min(score, 1.0);
   }
 
   async updateConfig(newConfig: Partial<AddressValidationConfig>): Promise<void> {
