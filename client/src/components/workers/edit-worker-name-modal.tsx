@@ -30,9 +30,10 @@ export function EditWorkerNameModal({ open, onOpenChange, worker }: EditWorkerNa
     mutationFn: async ({ id, name }: { id: string; name: string }) => {
       return apiRequest("PUT", `/api/workers/${id}`, { name });
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
+      // Use the worker ID from mutation variables to ensure correct cache invalidation
       queryClient.invalidateQueries({ queryKey: ["/api/workers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/workers", worker?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/workers", variables.id] });
       onOpenChange(false);
       toast({
         title: "Success",

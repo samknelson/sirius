@@ -1,21 +1,16 @@
-import { Star, User, ArrowLeft, Mail, Phone, Edit, Check, X } from "lucide-react";
+import { Star, User, ArrowLeft, Mail, Phone, Edit } from "lucide-react";
 import { Link, useParams } from "wouter";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Worker } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { EditWorkerNameModal } from "@/components/workers/edit-worker-name-modal";
 import { useState } from "react";
 
 export default function WorkerView() {
   const { id } = useParams<{ id: string }>();
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [editedName, setEditedName] = useState("");
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
+  const [editModalOpen, setEditModalOpen] = useState(false);
   
   const { data: worker, isLoading, error } = useQuery<Worker>({
     queryKey: ["/api/workers", id],
@@ -28,45 +23,6 @@ export default function WorkerView() {
     },
   });
 
-  const updateWorkerNameMutation = useMutation({
-    mutationFn: async ({ id, name }: { id: string; name: string }) => {
-      return apiRequest("PUT", `/api/workers/${id}`, { name });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/workers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/workers", id] });
-      setIsEditingName(false);
-      toast({
-        title: "Success",
-        description: "Worker name updated successfully!",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to update worker name. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleEditClick = () => {
-    if (worker) {
-      setEditedName(worker.name);
-      setIsEditingName(true);
-    }
-  };
-
-  const handleSave = () => {
-    if (id && editedName.trim()) {
-      updateWorkerNameMutation.mutate({ id, name: editedName.trim() });
-    }
-  };
-
-  const handleCancel = () => {
-    setIsEditingName(false);
-    setEditedName("");
-  };
 
   if (isLoading) {
     return (
@@ -208,59 +164,18 @@ export default function WorkerView() {
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center space-x-3">
-                    {isEditingName ? (
-                      <div className="flex items-center space-x-2">
-                        <Input
-                          value={editedName}
-                          onChange={(e) => setEditedName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              handleSave();
-                            } else if (e.key === "Escape") {
-                              handleCancel();
-                            }
-                          }}
-                          className="text-xl font-bold"
-                          autoFocus
-                          data-testid={`input-edit-name-${worker.id}`}
-                        />
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
-                          onClick={handleSave}
-                          disabled={updateWorkerNameMutation.isPending}
-                          data-testid={`button-save-name-${worker.id}`}
-                        >
-                          <Check size={16} />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-                          onClick={handleCancel}
-                          disabled={updateWorkerNameMutation.isPending}
-                          data-testid={`button-cancel-name-${worker.id}`}
-                        >
-                          <X size={16} />
-                        </Button>
-                      </div>
-                    ) : (
-                      <>
-                        <CardTitle className="text-2xl font-bold text-foreground" data-testid={`text-worker-name-${worker.id}`}>
-                          {worker.name}
-                        </CardTitle>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-muted-foreground hover:text-foreground"
-                          onClick={handleEditClick}
-                          data-testid={`button-edit-name-${worker.id}`}
-                        >
-                          <Edit size={16} />
-                        </Button>
-                      </>
-                    )}
+                    <CardTitle className="text-2xl font-bold text-foreground" data-testid={`text-worker-name-${worker.id}`}>
+                      {worker.name}
+                    </CardTitle>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-muted-foreground hover:text-foreground"
+                      onClick={() => setEditModalOpen(true)}
+                      data-testid={`button-edit-name-${worker.id}`}
+                    >
+                      <Edit size={16} />
+                    </Button>
                   </div>
                   <p className="text-muted-foreground text-sm mt-1" data-testid={`text-worker-id-${worker.id}`}>
                     ID: {worker.id}
@@ -314,6 +229,12 @@ export default function WorkerView() {
           </CardContent>
         </Card>
       </main>
+
+      <EditWorkerNameModal
+        open={editModalOpen}
+        onOpenChange={setEditModalOpen}
+        worker={worker}
+      />
     </div>
   );
 }
