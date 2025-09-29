@@ -8,7 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { MapPin, Globe, AlertCircle, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -24,12 +24,12 @@ export default function PostalAddressesConfigPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: config, isLoading, error } = useAddressValidationConfig();
-  const [isLocalMode, setIsLocalMode] = useState<boolean>(true);
+  const [selectedMode, setSelectedMode] = useState<"local" | "google">("local");
 
   // Initialize local state when config loads
   useEffect(() => {
     if (config) {
-      setIsLocalMode(config.mode === "local");
+      setSelectedMode(config.mode);
     }
   }, [config]);
 
@@ -38,12 +38,22 @@ export default function PostalAddressesConfigPage() {
       const updatedConfig: AddressValidationConfig = {
         mode: newMode,
         local: {
-          ...config?.local,
           enabled: newMode === "local",
+          countries: config?.local?.countries || ["US"],
+          strictValidation: config?.local?.strictValidation ?? true,
         },
         google: {
-          ...config?.google,
           enabled: newMode === "google",
+          apiKeyName: config?.google?.apiKeyName || "GOOGLE_MAPS_API_KEY",
+          components: config?.google?.components || {
+            country: true,
+            administrative_area_level_1: true,
+            postal_code: true,
+          },
+        },
+        fallback: config?.fallback || {
+          useLocalOnGoogleFailure: true,
+          logValidationAttempts: true,
         },
       };
 
@@ -59,7 +69,7 @@ export default function PostalAddressesConfigPage() {
       });
       toast({
         title: "Configuration Updated",
-        description: `Address validation mode changed to ${isLocalMode ? "Local" : "Google Places"}.`,
+        description: `Address validation mode changed to ${selectedMode === "local" ? "Local" : "Google Places"}.`,
       });
     },
     onError: (error: any) => {
@@ -69,13 +79,12 @@ export default function PostalAddressesConfigPage() {
         variant: "destructive",
       });
       // Revert local state on error
-      setIsLocalMode(config?.mode === "local" ?? true);
+      setSelectedMode(config?.mode || "local");
     },
   });
 
-  const handleModeChange = (checked: boolean) => {
-    const newMode = checked ? "google" : "local";
-    setIsLocalMode(!checked);
+  const handleModeChange = (newMode: "local" | "google") => {
+    setSelectedMode(newMode);
     updateConfigMutation.mutate(newMode);
   };
 
@@ -141,27 +150,52 @@ export default function PostalAddressesConfigPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Mode Toggle */}
-          <div className="flex items-center justify-between p-4 border rounded-lg">
+          {/* Mode Selection */}
+          <div className="space-y-4 p-4 border rounded-lg">
             <div className="space-y-1">
               <Label
                 htmlFor="validation-mode"
                 className="text-base font-medium"
               >
-                Use Google Places Autocomplete
+                Validation Mode
               </Label>
               <p className="text-sm text-muted-foreground">
-                Enable Google Places for real-time address suggestions and
-                validation
+                Select the address validation method for your application
               </p>
             </div>
-            <Switch
-              id="validation-mode"
-              checked={isGoogleMode}
-              onCheckedChange={handleModeChange}
+            <Select
+              value={selectedMode}
+              onValueChange={handleModeChange}
               disabled={updateConfigMutation.isPending}
-              data-testid="switch-validation-mode"
-            />
+            >
+              <SelectTrigger 
+                id="validation-mode"
+                className="w-full"
+                data-testid="select-validation-mode"
+              >
+                <SelectValue placeholder="Select validation mode" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="local" data-testid="option-local">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4" />
+                    <div>
+                      <div className="font-medium">Local Validation</div>
+                      <div className="text-xs text-muted-foreground">Pattern-based validation using local rules</div>
+                    </div>
+                  </div>
+                </SelectItem>
+                <SelectItem value="google" data-testid="option-google">
+                  <div className="flex items-center gap-2">
+                    <Globe className="h-4 w-4" />
+                    <div>
+                      <div className="font-medium">Google Places</div>
+                      <div className="text-xs text-muted-foreground">Real-time address suggestions and validation</div>
+                    </div>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Save Status */}
