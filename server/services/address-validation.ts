@@ -341,9 +341,136 @@ class AddressValidationService {
     structuredAddress: StructuredAddress;
     validation: AddressParseValidation;
   }> {
-    // TODO: Implement Google Places parsing
-    // For now, throw an error to trigger fallback
-    throw new Error("Google parsing not yet implemented");
+    const config = await this.getConfig();
+    const apiKey = process.env[config.google.apiKeyName];
+    
+    if (!apiKey) {
+      throw new Error(`Google Maps API key not found in environment variable: ${config.google.apiKeyName}`);
+    }
+
+    try {
+      // Use Google Places API to geocode the address
+      const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(rawAddress)}&key=${apiKey}`;
+      
+      const response = await fetch(geocodeUrl);
+      const data = await response.json();
+
+      if (data.status !== 'OK' || !data.results || data.results.length === 0) {
+        throw new Error(`Google geocoding failed: ${data.status} - ${data.error_message || 'No results found'}`);
+      }
+
+      const result = data.results[0];
+      const addressComponents = result.address_components || [];
+      
+      // Parse address components into our structured format
+      const structuredAddress = this.parseGoogleAddressComponents(addressComponents, result);
+      
+      // Calculate confidence based on Google's result quality
+      const confidence = this.calculateGoogleConfidence(result, structuredAddress);
+      
+      // Validate the parsed address using our validation logic
+      const validationResult = await this.validateLocally({
+        street: structuredAddress.street || "",
+        city: structuredAddress.city || "",
+        state: structuredAddress.state || "",
+        postalCode: structuredAddress.postalCode || "",
+        country: structuredAddress.country || "United States",
+      });
+
+      const validation: AddressParseValidation = {
+        isValid: validationResult.isValid,
+        errors: validationResult.errors,
+        warnings: validationResult.warnings,
+        source: "google",
+        confidence,
+        suggestions: validationResult.suggestions 
+          ? Object.entries(validationResult.suggestions).map(([field, value]) => ({
+              field,
+              value: String(value),
+            }))
+          : undefined,
+        providerMetadata: {
+          formattedAddress: result.formatted_address,
+          placeId: result.place_id,
+          types: result.types,
+          geometry: {
+            location: result.geometry?.location,
+            locationType: result.geometry?.location_type,
+          },
+        },
+      };
+
+      return { structuredAddress, validation };
+    } catch (error) {
+      console.error("Google Places parsing error:", error);
+      throw error;
+    }
+  }
+
+  private parseGoogleAddressComponents(components: any[], result: any): StructuredAddress {
+    const getComponent = (types: string[]) => {
+      const component = components.find((comp: any) => 
+        types.some(type => comp.types.includes(type))
+      );
+      return component?.long_name || "";
+    };
+
+    const getShortComponent = (types: string[]) => {
+      const component = components.find((comp: any) => 
+        types.some(type => comp.types.includes(type))
+      );
+      return component?.short_name || "";
+    };
+
+    const streetNumber = getComponent(["street_number"]);
+    const streetName = getComponent(["route"]);
+    const street = streetNumber && streetName ? `${streetNumber} ${streetName}` : streetName || streetNumber;
+
+    return {
+      street: street || "",
+      city: getComponent(["locality", "sublocality", "administrative_area_level_3"]) || "",
+      state: getShortComponent(["administrative_area_level_1"]) || "",
+      postalCode: getComponent(["postal_code"]) || "",
+      country: getComponent(["country"]) || "",
+      sublocality: getComponent(["sublocality"]) || undefined,
+      province: getComponent(["administrative_area_level_1"]) || undefined,
+      locality: getComponent(["locality"]) || undefined,
+    };
+  }
+
+  private calculateGoogleConfidence(result: any, structured: StructuredAddress): number {
+    let confidence = 0.7; // Base confidence for Google results
+    
+    // Boost confidence based on location type
+    const locationType = result.geometry?.location_type;
+    switch (locationType) {
+      case 'ROOFTOP':
+        confidence += 0.3;
+        break;
+      case 'RANGE_INTERPOLATED':
+        confidence += 0.2;
+        break;
+      case 'GEOMETRIC_CENTER':
+        confidence += 0.1;
+        break;
+      case 'APPROXIMATE':
+        confidence += 0.05;
+        break;
+    }
+
+    // Adjust based on completeness of parsed components
+    const requiredFields = ['street', 'city', 'state', 'postalCode'];
+    const presentFields = requiredFields.filter(field => 
+      structured[field as keyof StructuredAddress]?.trim()
+    ).length;
+    
+    confidence *= (presentFields / requiredFields.length);
+    
+    // Boost if we have additional useful data
+    if (result.place_id) confidence += 0.05;
+    if (result.types?.includes('street_address')) confidence += 0.1;
+    
+    return Math.min(confidence, 1.0);
   }
 
   private parseAddressStringLocally(rawAddress: string, context?: ParseAddressRequest['context']): StructuredAddress {
