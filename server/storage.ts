@@ -9,7 +9,7 @@ import {
 } from "@shared/schema";
 import { permissionRegistry, type PermissionDefinition } from "@shared/permissions";
 import { db } from "./db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import bcrypt from "bcrypt";
 
 // modify the interface with any CRUD methods
@@ -467,7 +467,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPostalAddressesByContact(contactId: string): Promise<PostalAddress[]> {
-    return await db.select().from(postalAddresses).where(eq(postalAddresses.contactId, contactId));
+    return await db.select().from(postalAddresses).where(eq(postalAddresses.contactId, contactId)).orderBy(desc(postalAddresses.isPrimary));
   }
 
   async createPostalAddress(insertPostalAddress: InsertPostalAddress): Promise<PostalAddress> {
