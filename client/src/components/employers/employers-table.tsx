@@ -185,15 +185,17 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <div className="flex items-center space-x-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="p-2 text-muted-foreground hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
-                        title="View employer"
-                        data-testid={`button-view-employer-${employer.id}`}
-                      >
-                        <Eye size={12} />
-                      </Button>
+                      <Link href={`/employers/${employer.id}`}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="p-2 text-muted-foreground hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
+                          title="View employer"
+                          data-testid={`button-view-employer-${employer.id}`}
+                        >
+                          <Eye size={12} />
+                        </Button>
+                      </Link>
                     </div>
                   </td>
                 </tr>
