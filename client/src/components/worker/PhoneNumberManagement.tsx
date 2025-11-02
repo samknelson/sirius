@@ -150,7 +150,7 @@ export function PhoneNumberManagement({ contactId }: PhoneNumberManagementProps)
     setEditingPhoneNumber(phoneNumber);
     form.reset({
       friendlyName: phoneNumber.friendlyName || "",
-      phoneNumber: phoneNumber.phoneNumber,
+      phoneNumber: formatPhoneNumberForDisplay(phoneNumber.phoneNumber),
       isPrimary: phoneNumber.isPrimary,
       isActive: phoneNumber.isActive,
     });
