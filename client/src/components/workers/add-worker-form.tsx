@@ -16,17 +16,18 @@ export function AddWorkerForm() {
 
   const addWorkerMutation = useMutation({
     mutationFn: async (workerData: { name: string }) => {
-      return apiRequest("POST", "/api/workers", workerData);
+      const response = await apiRequest("POST", "/api/workers", workerData);
+      return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/workers"] });
       setName("");
       toast({
         title: "Success",
         description: "Worker added successfully!",
       });
-      // Redirect to workers list after successful add
-      setLocation("/workers");
+      // Redirect to worker detail page after successful add
+      setLocation(`/workers/${data.id}`);
     },
     onError: () => {
       toast({
