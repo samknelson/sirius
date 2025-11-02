@@ -55,6 +55,7 @@ export const variables = pgTable("variables", {
 export const postalAddresses = pgTable("postal_addresses", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
+  friendlyName: text("friendly_name"),
   street: text("street").notNull(),
   city: text("city").notNull(),
   state: text("state").notNull(),
