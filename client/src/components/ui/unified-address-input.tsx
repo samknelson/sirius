@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -56,6 +56,8 @@ export function UnifiedAddressInput({
   const [isEditing, setIsEditing] = useState(false);
   const [confirmedFormState, setConfirmedFormState] = useState<AddressFormData | null>(null);
   const [persistedSnapshot, setPersistedSnapshot] = useState<AddressFormData | null>(null);
+  const [isGeocoding, setIsGeocoding] = useState(false);
+  const geocodingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const addressFormSchema = insertPostalAddressSchema.omit({ contactId: true });
   
@@ -119,6 +121,62 @@ export function UnifiedAddressInput({
       }
     }
   }, [defaultValues]);
+
+  // Auto-geocode when address fields change
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const subscription = form.watch((value, { name }) => {
+      // Only geocode if an address field changed
+      if (!name || !['street', 'city', 'state', 'postalCode', 'country'].includes(name)) {
+        return;
+      }
+
+      // Clear any pending geocoding request
+      if (geocodingTimeoutRef.current) {
+        clearTimeout(geocodingTimeoutRef.current);
+      }
+
+      // Debounce geocoding by 1 second
+      geocodingTimeoutRef.current = setTimeout(async () => {
+        const { street, city, state, postalCode, country } = value;
+        
+        // Only geocode if we have at least some address components
+        if (!street && !city && !state && !postalCode) {
+          return;
+        }
+
+        setIsGeocoding(true);
+        try {
+          const response = await apiRequest("POST", "/api/geocode", {
+            street: street || "",
+            city: city || "",
+            state: state || "",
+            postalCode: postalCode || "",
+            country: country || "United States",
+          });
+          
+          const result = await response.json();
+          
+          if (result.success && result.validationResponse) {
+            // Update the form's validationResponse field
+            form.setValue("validationResponse", result.validationResponse);
+          }
+        } catch (error) {
+          console.error("Auto-geocoding failed:", error);
+        } finally {
+          setIsGeocoding(false);
+        }
+      }, 1000);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+      if (geocodingTimeoutRef.current) {
+        clearTimeout(geocodingTimeoutRef.current);
+      }
+    };
+  }, [isEditing, form]);
 
   const parseAddressMutation = useMutation({
     mutationFn: async (request: ParseAddressRequest): Promise<ParseAddressResponse> => {
@@ -552,6 +610,12 @@ export function UnifiedAddressInput({
                     )}
                   />
                 </div>
+                {isGeocoding && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Updating coordinates...</span>
+                  </div>
+                )}
                 <div className="flex justify-end gap-2">
                   <Button
                     type="button"
