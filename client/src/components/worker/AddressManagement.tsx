@@ -259,18 +259,25 @@ export default function AddressManagement({ workerId, contactId }: AddressManage
             <Card key={address.id} className="relative">
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-2 flex-wrap gap-2">
-                    <CardTitle className="text-base">{address.street}</CardTitle>
-                    {address.isPrimary && (
-                      <Badge variant="default" className="flex items-center space-x-1">
-                        <Star size={12} />
-                        <span>Primary</span>
-                      </Badge>
+                  <div className="space-y-1">
+                    <div className="flex items-center space-x-2 flex-wrap gap-2">
+                      <CardTitle className="text-base">
+                        {address.friendlyName || address.street}
+                      </CardTitle>
+                      {address.isPrimary && (
+                        <Badge variant="default" className="flex items-center space-x-1">
+                          <Star size={12} />
+                          <span>Primary</span>
+                        </Badge>
+                      )}
+                      {!address.isActive && (
+                        <Badge variant="secondary">Inactive</Badge>
+                      )}
+                      {getAccuracyBadge(address.accuracy)}
+                    </div>
+                    {address.friendlyName && (
+                      <p className="text-sm text-muted-foreground">{address.street}</p>
                     )}
-                    {!address.isActive && (
-                      <Badge variant="secondary">Inactive</Badge>
-                    )}
-                    {getAccuracyBadge(address.accuracy)}
                   </div>
                   <div className="flex items-center space-x-2">
                     <Button
@@ -332,6 +339,7 @@ export default function AddressManagement({ workerId, contactId }: AddressManage
           {editingAddress && (
             <UnifiedAddressInput
               defaultValues={{
+                friendlyName: editingAddress.friendlyName || undefined,
                 street: editingAddress.street,
                 city: editingAddress.city,
                 state: editingAddress.state,
