@@ -1,7 +1,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Link, useLocation } from 'wouter';
-import { LogOut, User, Settings, Users } from 'lucide-react';
+import { LogOut, User, Settings, Users, Building2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 
 interface SiteSettings {
@@ -44,6 +44,17 @@ export default function Header() {
               >
                 <Users className="h-4 w-4 mr-2" />
                 Workers
+              </Button>
+            </Link>
+            
+            <Link href="/employers">
+              <Button 
+                variant={location === "/employers" ? "default" : "ghost"} 
+                size="sm"
+                data-testid="nav-employers"
+              >
+                <Building2 className="h-4 w-4 mr-2" />
+                Employers
               </Button>
             </Link>
             
