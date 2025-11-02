@@ -1,11 +1,12 @@
 // Database storage implementation based on blueprint:javascript_database
 import { 
-  users, workers, contacts, roles, userRoles, rolePermissions, variables, postalAddresses, phoneNumbers,
+  users, workers, contacts, roles, userRoles, rolePermissions, variables, postalAddresses, phoneNumbers, employers,
   type User, type InsertUser, type Worker, type InsertWorker,
   type Contact, type InsertContact,
   type Role, type InsertRole, type Variable, type InsertVariable,
   type PostalAddress, type InsertPostalAddress,
   type PhoneNumber, type InsertPhoneNumber,
+  type Employer, type InsertEmployer,
   type UserRole, type RolePermission, type AssignRole, type AssignPermission
 } from "@shared/schema";
 import { permissionRegistry, type PermissionDefinition } from "@shared/permissions";
@@ -75,6 +76,13 @@ export interface IStorage {
   updateWorkerContactEmail(id: string, email: string): Promise<Worker | undefined>;
   updateWorkerSSN(id: string, ssn: string): Promise<Worker | undefined>;
   deleteWorker(id: string): Promise<boolean>;
+
+  // Employer CRUD operations
+  getAllEmployers(): Promise<Employer[]>;
+  getEmployer(id: string): Promise<Employer | undefined>;
+  createEmployer(employer: InsertEmployer): Promise<Employer>;
+  updateEmployer(id: string, employer: Partial<InsertEmployer>): Promise<Employer | undefined>;
+  deleteEmployer(id: string): Promise<boolean>;
 
   // Variable CRUD operations
   getAllVariables(): Promise<Variable[]>;
@@ -546,6 +554,54 @@ export class DatabaseStorage implements IStorage {
       await db.delete(contacts).where(eq(contacts.id, worker.contactId));
     }
     
+    return result.length > 0;
+  }
+
+  // Employer operations
+  async getAllEmployers(): Promise<Employer[]> {
+    return await db.select().from(employers);
+  }
+
+  async getEmployer(id: string): Promise<Employer | undefined> {
+    const [employer] = await db.select().from(employers).where(eq(employers.id, id));
+    return employer || undefined;
+  }
+
+  async createEmployer(employer: InsertEmployer): Promise<Employer> {
+    try {
+      const [newEmployer] = await db
+        .insert(employers)
+        .values(employer)
+        .returning();
+      return newEmployer;
+    } catch (error: any) {
+      // Check for unique constraint violation
+      if (error.code === '23505') {
+        throw new Error("An employer with this ID already exists");
+      }
+      throw error;
+    }
+  }
+
+  async updateEmployer(id: string, employer: Partial<InsertEmployer>): Promise<Employer | undefined> {
+    try {
+      const [updatedEmployer] = await db
+        .update(employers)
+        .set(employer)
+        .where(eq(employers.id, id))
+        .returning();
+      return updatedEmployer || undefined;
+    } catch (error: any) {
+      // Check for unique constraint violation
+      if (error.code === '23505') {
+        throw new Error("An employer with this ID already exists");
+      }
+      throw error;
+    }
+  }
+
+  async deleteEmployer(id: string): Promise<boolean> {
+    const result = await db.delete(employers).where(eq(employers.id, id)).returning();
     return result.length > 0;
   }
 
