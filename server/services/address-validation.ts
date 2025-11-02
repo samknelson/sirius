@@ -825,6 +825,72 @@ class AddressValidationService {
     
     this.config = updatedConfig;
   }
+
+  async geocodeAddress(address: AddressInput): Promise<{
+    success: boolean;
+    latitude?: number;
+    longitude?: number;
+    accuracy?: string;
+    validationResponse?: any;
+    error?: string;
+  }> {
+    const config = await this.getConfig();
+    const apiKey = process.env[config.google.apiKeyName];
+    
+    if (!apiKey) {
+      return {
+        success: false,
+        error: "Google Maps API key not configured",
+      };
+    }
+
+    try {
+      const addressString = [
+        address.street,
+        address.city,
+        address.state,
+        address.postalCode,
+        address.country
+      ].filter(Boolean).join(", ");
+
+      if (!addressString.trim()) {
+        return {
+          success: false,
+          error: "Address cannot be empty",
+        };
+      }
+
+      const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addressString)}&key=${apiKey}`;
+      
+      const response = await fetch(geocodeUrl);
+      const data = await response.json();
+
+      if (data.status !== 'OK' || !data.results || data.results.length === 0) {
+        return {
+          success: false,
+          error: `Geocoding failed: ${data.status}`,
+        };
+      }
+
+      const result = data.results[0];
+      const geometry = result.geometry;
+
+      return {
+        success: true,
+        latitude: geometry?.location?.lat,
+        longitude: geometry?.location?.lng,
+        accuracy: geometry?.location_type,
+        validationResponse: result,
+      };
+
+    } catch (error) {
+      console.error("Geocoding error:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
 }
 
 export const addressValidationService = new AddressValidationService();

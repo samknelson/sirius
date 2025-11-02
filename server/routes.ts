@@ -170,6 +170,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/geocode - Geocode an address
+  app.post("/api/geocode", requireAuth, async (req, res) => {
+    try {
+      const { street, city, state, postalCode, country } = req.body;
+      
+      const result = await addressValidationService.geocodeAddress({
+        street: street || "",
+        city: city || "",
+        state: state || "",
+        postalCode: postalCode || "",
+        country: country || "",
+      });
+      
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ 
+        success: false, 
+        error: "Failed to geocode address" 
+      });
+    }
+  });
+
   // Register generic variable management routes (MUST come after specific routes)
   registerVariableRoutes(app, requireAuth, requirePermission);
 
