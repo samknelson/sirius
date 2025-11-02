@@ -58,7 +58,7 @@ export const workers = pgTable("workers", {
 });
 
 export const employers = pgTable("employers", {
-  id: text("id").primaryKey(),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
 });
@@ -151,7 +151,9 @@ export const insertWorkerSchema = createInsertSchema(workers).omit({
   contactId: true, // Contact will be managed automatically
 });
 
-export const insertEmployerSchema = createInsertSchema(employers);
+export const insertEmployerSchema = createInsertSchema(employers).omit({
+  id: true,
+});
 
 export const insertVariableSchema = createInsertSchema(variables).omit({
   id: true,

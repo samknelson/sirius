@@ -73,6 +73,14 @@ Preferred communication style: Simple, everyday language.
 
 # Recent Changes
 
+## Employers Table Migration (November 2, 2025)
+- **ID Type Change**: Employers table migrated from manual text IDs to auto-generated UUIDs
+  - Old: `id: text("id").primaryKey()` - Required manual input
+  - New: `id: varchar("id").primaryKey().default(sql`gen_random_uuid()`)` - Auto-generated
+  - Existing employer data preserved (names and active status) with new UUID identifiers
+  - Frontend form updated to remove ID input field
+  - Backend API no longer requires or accepts ID in POST requests
+
 ## Worker ID Management (November 2, 2025)
 - **Worker ID Types Configuration**: New configuration page at `/config/worker-id-types`
   - Manages types of identification numbers that can be assigned to workers

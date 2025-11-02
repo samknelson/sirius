@@ -11,7 +11,6 @@ import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 
 export function AddEmployerForm() {
-  const [id, setId] = useState("");
   const [name, setName] = useState("");
   const [isActive, setIsActive] = useState(true);
   const { toast } = useToast();
@@ -19,13 +18,12 @@ export function AddEmployerForm() {
   const [, setLocation] = useLocation();
 
   const addEmployerMutation = useMutation({
-    mutationFn: async (employerData: { id: string; name: string; isActive: boolean }) => {
+    mutationFn: async (employerData: { name: string; isActive: boolean }) => {
       const response = await apiRequest("POST", "/api/employers", employerData);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employers"] });
-      setId("");
       setName("");
       setIsActive(true);
       toast({
@@ -47,8 +45,8 @@ export function AddEmployerForm() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (id.trim() && name.trim()) {
-      addEmployerMutation.mutate({ id: id.trim(), name: name.trim(), isActive });
+    if (name.trim()) {
+      addEmployerMutation.mutate({ name: name.trim(), isActive });
     }
   };
 
@@ -61,35 +59,19 @@ export function AddEmployerForm() {
             <Plus className="text-muted-foreground" size={20} />
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="employer-id" className="text-sm font-medium text-foreground mb-2 block">
-                  Employer ID
-                </Label>
-                <Input
-                  id="employer-id"
-                  type="text"
-                  placeholder="Enter unique employer ID..."
-                  value={id}
-                  onChange={(e) => setId(e.target.value)}
-                  className="w-full"
-                  data-testid="input-employer-id"
-                />
-              </div>
-              <div>
-                <Label htmlFor="employer-name" className="text-sm font-medium text-foreground mb-2 block">
-                  Employer Name
-                </Label>
-                <Input
-                  id="employer-name"
-                  type="text"
-                  placeholder="Enter employer name..."
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full"
-                  data-testid="input-employer-name"
-                />
-              </div>
+            <div>
+              <Label htmlFor="employer-name" className="text-sm font-medium text-foreground mb-2 block">
+                Employer Name
+              </Label>
+              <Input
+                id="employer-name"
+                type="text"
+                placeholder="Enter employer name..."
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full"
+                data-testid="input-employer-name"
+              />
             </div>
             <div className="flex items-center space-x-2">
               <Checkbox
@@ -107,7 +89,7 @@ export function AddEmployerForm() {
             </div>
             <Button
               type="submit"
-              disabled={addEmployerMutation.isPending || !id.trim() || !name.trim()}
+              disabled={addEmployerMutation.isPending || !name.trim()}
               className="w-full sm:w-auto"
               data-testid="button-add-employer"
             >

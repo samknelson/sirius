@@ -241,27 +241,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // POST /api/employers - Create a new employer (requires workers.manage permission)
   app.post("/api/employers", requireAuth, requirePermission("workers.manage"), async (req, res) => {
     try {
-      const { id, name, isActive = true } = req.body;
-      
-      if (!id || typeof id !== 'string' || !id.trim()) {
-        return res.status(400).json({ message: "Employer ID is required" });
-      }
+      const { name, isActive = true } = req.body;
       
       if (!name || typeof name !== 'string' || !name.trim()) {
         return res.status(400).json({ message: "Employer name is required" });
       }
       
       const employer = await storage.createEmployer({ 
-        id: id.trim(), 
         name: name.trim(),
         isActive: typeof isActive === 'boolean' ? isActive : true
       });
       
       res.status(201).json(employer);
     } catch (error: any) {
-      if (error.message === "An employer with this ID already exists") {
-        return res.status(409).json({ message: error.message });
-      }
       res.status(500).json({ message: "Failed to create employer" });
     }
   });
