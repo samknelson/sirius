@@ -1,12 +1,8 @@
 import { useState } from "react";
-import { ArrowUpDown, User, Edit, Eye } from "lucide-react";
+import { ArrowUpDown, User, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
 import { Worker } from "@shared/schema";
 import { Link } from "wouter";
 
@@ -24,34 +20,7 @@ const avatarColors = [
 ];
 
 export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-  
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-
-  const updateWorkerMutation = useMutation({
-    mutationFn: async ({ id, name }: { id: string; name: string }) => {
-      return apiRequest("PUT", `/api/workers/${id}`, { name });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/workers"] });
-      setEditingId(null);
-      toast({
-        title: "Success",
-        description: "Worker updated successfully!",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to update worker. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-
 
   const sortedWorkers = [...workers].sort((a, b) => {
     if (sortOrder === "asc") {
@@ -59,25 +28,6 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     }
     return b.name.localeCompare(a.name);
   });
-
-  const handleEdit = (worker: Worker) => {
-    setEditingId(worker.id);
-    setEditingName(worker.name);
-  };
-
-  const handleSave = (id: string) => {
-    if (editingName.trim()) {
-      updateWorkerMutation.mutate({ id, name: editingName.trim() });
-    } else {
-      setEditingId(null);
-    }
-  };
-
-  const handleCancel = () => {
-    setEditingId(null);
-    setEditingName("");
-  };
-
 
   const toggleSort = () => {
     setSortOrder(sortOrder === "asc" ? "desc" : "asc");
@@ -157,33 +107,12 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                       <div className={`w-8 h-8 ${avatarColors[index % avatarColors.length]} rounded-full flex items-center justify-center`}>
                         <User size={12} />
                       </div>
-                      <div>
-                        {editingId === worker.id ? (
-                          <Input
-                            value={editingName}
-                            onChange={(e) => setEditingName(e.target.value)}
-                            onBlur={() => handleSave(worker.id)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                handleSave(worker.id);
-                              } else if (e.key === "Escape") {
-                                handleCancel();
-                              }
-                            }}
-                            className="text-sm font-medium h-8 w-48"
-                            autoFocus
-                            data-testid={`input-edit-worker-${worker.id}`}
-                          />
-                        ) : (
-                          <span 
-                            className="text-sm font-medium text-foreground cursor-pointer hover:bg-background hover:border hover:border-input hover:rounded hover:px-2 hover:py-1 transition-all"
-                            onClick={() => handleEdit(worker)}
-                            data-testid={`text-worker-name-${worker.id}`}
-                          >
-                            {worker.name}
-                          </span>
-                        )}
-                      </div>
+                      <span 
+                        className="text-sm font-medium text-foreground"
+                        data-testid={`text-worker-name-${worker.id}`}
+                      >
+                        {worker.name}
+                      </span>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
