@@ -23,6 +23,7 @@ import ConfigurationLayout from "@/components/layouts/ConfigurationLayout";
 import UserManagementConfigPage from "@/pages/config/users";
 import PostalAddressesConfigPage from "@/pages/config/addresses";
 import PhoneNumbersConfigPage from "@/pages/config/phone-numbers";
+import SiteInformation from "@/pages/site-information";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
@@ -135,6 +136,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PhoneNumbersConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/config/site">
+        <ProtectedRoute permission="variables.manage">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <SiteInformation />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

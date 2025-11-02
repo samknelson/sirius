@@ -2,10 +2,19 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Link, useLocation } from 'wouter';
 import { LogOut, User, Settings, Users } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+
+interface SiteSettings {
+  siteName: string;
+}
 
 export default function Header() {
   const { user, logout, hasPermission } = useAuth();
   const [location] = useLocation();
+
+  const { data: settings } = useQuery<SiteSettings>({
+    queryKey: ["/api/site-settings"],
+  });
 
   const handleLogout = async () => {
     try {
@@ -20,12 +29,9 @@ export default function Header() {
       <div className="flex items-center justify-between h-16 px-6">
         <div className="flex items-center space-x-6">
           <div className="flex items-center space-x-4">
-            <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-              Sirius
+            <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100" data-testid="text-site-name">
+              {settings?.siteName || "Sirius"}
             </h1>
-            <span className="text-sm text-muted-foreground">
-              Worker Management System
-            </span>
           </div>
 
           {/* Navigation Links */}

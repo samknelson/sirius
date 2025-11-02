@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Users, MapPin, Phone } from "lucide-react";
+import { Users, MapPin, Phone, Globe } from "lucide-react";
 
 interface ConfigurationLayoutProps {
   children: React.ReactNode;
@@ -10,6 +10,12 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
   const [location] = useLocation();
 
   const navigationItems = [
+    {
+      path: "/config/site",
+      label: "Site Information",
+      icon: Globe,
+      testId: "nav-config-site",
+    },
     {
       path: "/config/users",
       label: "User Management",
