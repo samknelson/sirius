@@ -70,6 +70,17 @@ export const postalAddresses = pgTable("postal_addresses", {
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
+export const phoneNumbers = pgTable("phone_numbers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
+  friendlyName: text("friendly_name"),
+  phoneNumber: text("phone_number").notNull(),
+  isPrimary: boolean("is_primary").default(false).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  validationResponse: jsonb("validation_response"),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+});
+
 // Zod schemas for validation
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -108,6 +119,11 @@ export const insertPostalAddressSchema = createInsertSchema(postalAddresses).omi
   createdAt: true,
 });
 
+export const insertPhoneNumberSchema = createInsertSchema(phoneNumbers).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const assignRoleSchema = z.object({
   userId: z.string(),
   roleId: z.string(),
@@ -138,6 +154,9 @@ export type Variable = typeof variables.$inferSelect;
 
 export type InsertPostalAddress = z.infer<typeof insertPostalAddressSchema>;
 export type PostalAddress = typeof postalAddresses.$inferSelect;
+
+export type InsertPhoneNumber = z.infer<typeof insertPhoneNumberSchema>;
+export type PhoneNumber = typeof phoneNumbers.$inferSelect;
 
 export type UserRole = typeof userRoles.$inferSelect;
 export type RolePermission = typeof rolePermissions.$inferSelect;
