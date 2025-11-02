@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertPhoneNumberSchema } from "@shared/schema";
-import { Phone, Plus, Edit, Trash2, Star, Copy, FileJson } from "lucide-react";
+import { Phone, Plus, Edit, Trash2, Star, Copy, FileJson, Eye } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { z } from "zod";
@@ -35,6 +35,7 @@ export function PhoneNumberManagement({ contactId }: PhoneNumberManagementProps)
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingPhoneNumber, setEditingPhoneNumber] = useState<PhoneNumber | null>(null);
+  const [viewingPhoneNumber, setViewingPhoneNumber] = useState<PhoneNumber | null>(null);
   const [jsonViewPhoneNumber, setJsonViewPhoneNumber] = useState<PhoneNumber | null>(null);
 
   // Fetch phone numbers for this contact
@@ -364,9 +365,104 @@ export function PhoneNumberManagement({ contactId }: PhoneNumberManagementProps)
         </DialogContent>
       </Dialog>
 
+      {/* View Phone Details Dialog */}
+      <Dialog open={viewingPhoneNumber !== null} onOpenChange={() => setViewingPhoneNumber(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Phone Number Details</DialogTitle>
+          </DialogHeader>
+          {viewingPhoneNumber && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Left Column: Phone Number Context */}
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-2">Phone Number</h4>
+                    <p className="font-medium text-lg">{formatPhoneNumberForDisplay(viewingPhoneNumber.phoneNumber)}</p>
+                    {viewingPhoneNumber.friendlyName && (
+                      <p className="text-muted-foreground text-sm">{viewingPhoneNumber.friendlyName}</p>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    {viewingPhoneNumber.isPrimary && (
+                      <Badge variant="default">Primary</Badge>
+                    )}
+                    <Badge variant={viewingPhoneNumber.isActive ? "default" : "secondary"}>
+                      {viewingPhoneNumber.isActive ? "Active" : "Inactive"}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Right Column: Validation Data */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Validation Info</h4>
+                  
+                  {viewingPhoneNumber.validationResponse ? (
+                    <div className="space-y-3 divide-y">
+                      <div className="flex justify-between items-center py-2">
+                        <span className="text-sm text-muted-foreground font-medium">E.164 Format</span>
+                        <div className="flex items-center gap-2">
+                          <code className="font-mono text-sm">{viewingPhoneNumber.phoneNumber}</code>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyToClipboard(viewingPhoneNumber.phoneNumber, "Phone number")}
+                            data-testid="button-copy-phone"
+                          >
+                            <Copy size={14} />
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      {(viewingPhoneNumber.validationResponse as any)?.country && (
+                        <div className="flex justify-between items-center py-2">
+                          <span className="text-sm text-muted-foreground font-medium">Country</span>
+                          <code className="font-mono text-sm">{(viewingPhoneNumber.validationResponse as any).country}</code>
+                        </div>
+                      )}
+                      
+                      {(viewingPhoneNumber.validationResponse as any)?.type && (
+                        <div className="flex justify-between items-center py-2">
+                          <span className="text-sm text-muted-foreground font-medium">Type</span>
+                          <code className="font-mono text-sm">{(viewingPhoneNumber.validationResponse as any).type}</code>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No validation data available</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="flex justify-between items-center pt-4 border-t">
+                {viewingPhoneNumber.validationResponse ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setJsonViewPhoneNumber(viewingPhoneNumber);
+                      setViewingPhoneNumber(null);
+                    }}
+                    data-testid="button-view-json"
+                  >
+                    <FileJson size={16} className="mr-2" />
+                    View Full API Response
+                  </Button>
+                ) : (
+                  <div />
+                )}
+                <Button onClick={() => setViewingPhoneNumber(null)} data-testid="button-close-view">
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* View JSON Response Dialog */}
       <Dialog open={jsonViewPhoneNumber !== null} onOpenChange={() => setJsonViewPhoneNumber(null)}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>Validation API Response</DialogTitle>
           </DialogHeader>
@@ -449,6 +545,14 @@ export function PhoneNumberManagement({ contactId }: PhoneNumberManagementProps)
                     <Button
                       variant="ghost"
                       size="sm"
+                      onClick={() => setViewingPhoneNumber(phoneNumber)}
+                      data-testid={`button-view-phone-${phoneNumber.id}`}
+                    >
+                      <Eye size={14} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => handleEdit(phoneNumber)}
                       data-testid={`button-edit-phone-${phoneNumber.id}`}
                     >
@@ -466,19 +570,6 @@ export function PhoneNumberManagement({ contactId }: PhoneNumberManagementProps)
                   </div>
                 </div>
               </CardHeader>
-              {phoneNumber.validationResponse ? (
-                <CardContent className="pt-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setJsonViewPhoneNumber(phoneNumber)}
-                    data-testid={`button-view-api-response-${phoneNumber.id}`}
-                  >
-                    <FileJson size={14} className="mr-2" />
-                    View API Response
-                  </Button>
-                </CardContent>
-              ) : null}
             </Card>
           ))}
         </div>
