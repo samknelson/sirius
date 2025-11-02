@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, boolean, timestamp, primaryKey, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, boolean, timestamp, primaryKey, jsonb, doublePrecision } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -63,6 +63,9 @@ export const postalAddresses = pgTable("postal_addresses", {
   isPrimary: boolean("is_primary").default(false).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   validationResponse: jsonb("validation_response"),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+  accuracy: text("accuracy"),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
