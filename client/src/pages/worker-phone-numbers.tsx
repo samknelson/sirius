@@ -46,7 +46,7 @@ export default function WorkerPhoneNumbers() {
                   <Star className="text-primary-foreground" size={16} />
                 </div>
                 <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-                <span className="text-muted-foreground text-sm font-medium">Worker Phone Numbers</span>
+                <span className="text-muted-foreground text-sm font-medium">Loading...</span>
               </div>
               <div className="flex items-center space-x-4">
                 <Link href="/workers">
@@ -60,11 +60,8 @@ export default function WorkerPhoneNumbers() {
           </div>
         </header>
 
-        <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
-            <CardHeader>
-              <Skeleton className="h-8 w-48" />
-            </CardHeader>
             <CardContent className="space-y-4">
               <Skeleton className="h-32 w-full" />
               <Skeleton className="h-32 w-full" />
@@ -87,7 +84,7 @@ export default function WorkerPhoneNumbers() {
                   <Star className="text-primary-foreground" size={16} />
                 </div>
                 <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-                <span className="text-muted-foreground text-sm font-medium">Worker Phone Numbers</span>
+                <span className="text-muted-foreground text-sm font-medium">Worker Not Found</span>
               </div>
               <div className="flex items-center space-x-4">
                 <Link href="/workers">
@@ -101,7 +98,7 @@ export default function WorkerPhoneNumbers() {
           </div>
         </header>
 
-        <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
@@ -144,7 +141,7 @@ export default function WorkerPhoneNumbers() {
                 <Star className="text-primary-foreground" size={16} />
               </div>
               <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-              <span className="text-muted-foreground text-sm font-medium">Worker Phone Numbers</span>
+              <span className="text-muted-foreground text-sm font-medium" data-testid={`text-worker-name-${worker.id}`}>{contact?.displayName || 'Loading...'}</span>
             </div>
             <div className="flex items-center space-x-4">
               <Link href="/workers">
@@ -158,57 +155,43 @@ export default function WorkerPhoneNumbers() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="bg-card border-b border-border">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center space-x-2 py-3">
+            <Link href={`/workers/${worker.id}`}>
+              <Button variant="outline" size="sm" data-testid="button-worker-details">
+                Details
+              </Button>
+            </Link>
+            <Link href={`/workers/${worker.id}/name`}>
+              <Button variant="outline" size="sm" data-testid="button-worker-name">
+                Name
+              </Button>
+            </Link>
+            <Link href={`/workers/${worker.id}/email`}>
+              <Button variant="outline" size="sm" data-testid="button-worker-email">
+                Email
+              </Button>
+            </Link>
+            <Link href={`/workers/${worker.id}/ids`}>
+              <Button variant="outline" size="sm" data-testid="button-worker-ids">
+                IDs
+              </Button>
+            </Link>
+            <Link href={`/workers/${worker.id}/addresses`}>
+              <Button variant="outline" size="sm" data-testid="button-worker-addresses">
+                Addresses
+              </Button>
+            </Link>
+            <Button variant="default" size="sm" data-testid="button-worker-phone-numbers">
+              Phone Numbers
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Card>
-          <CardHeader className="pb-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <div className={`w-16 h-16 rounded-full flex items-center justify-center ${avatarColor}`}>
-                  <User size={24} />
-                </div>
-                <div>
-                  <CardTitle className="text-2xl font-bold text-foreground" data-testid={`text-worker-name-${worker.id}`}>
-                    {contact?.displayName || 'Loading...'}
-                  </CardTitle>
-                  <p className="text-muted-foreground text-sm mt-1" data-testid={`text-worker-id-${worker.id}`}>
-                    ID: {worker.id}
-                  </p>
-                </div>
-              </div>
-              
-              {/* Navigation Links */}
-              <div className="flex items-center space-x-2">
-                <Link href={`/workers/${worker.id}`}>
-                  <Button variant="outline" size="sm" data-testid="button-worker-details">
-                    Details
-                  </Button>
-                </Link>
-                <Link href={`/workers/${worker.id}/name`}>
-                  <Button variant="outline" size="sm" data-testid="button-worker-name">
-                    Name
-                  </Button>
-                </Link>
-                <Link href={`/workers/${worker.id}/email`}>
-                  <Button variant="outline" size="sm" data-testid="button-worker-email">
-                    Email
-                  </Button>
-                </Link>
-                <Link href={`/workers/${worker.id}/ids`}>
-                  <Button variant="outline" size="sm" data-testid="button-worker-ids">
-                    IDs
-                  </Button>
-                </Link>
-                <Link href={`/workers/${worker.id}/addresses`}>
-                  <Button variant="outline" size="sm" data-testid="button-worker-addresses">
-                    Addresses
-                  </Button>
-                </Link>
-                <Button variant="default" size="sm" data-testid="button-worker-phone-numbers">
-                  Phone Numbers
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
           <CardContent>
             <PhoneNumberManagement contactId={worker.contactId} />
           </CardContent>

@@ -190,7 +190,9 @@ export default function WorkerView() {
                 <Star className="text-primary-foreground" size={16} />
               </div>
               <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-              <span className="text-muted-foreground text-sm font-medium">Worker Details</span>
+              <span className="text-muted-foreground text-sm font-medium" data-testid={`text-worker-name-${worker.id}`}>
+                {contact?.displayName || 'Loading...'}
+              </span>
             </div>
             <div className="flex items-center space-x-4">
               <Link href="/workers">
@@ -204,68 +206,44 @@ export default function WorkerView() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Tab Navigation */}
+      <div className="bg-card border-b border-border">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center space-x-2 py-3">
+            <Button variant="default" size="sm" data-testid="button-worker-details">
+              Details
+            </Button>
+            <Link href={`/workers/${worker.id}/name`}>
+              <Button variant="outline" size="sm" data-testid="button-worker-name">
+                Name
+              </Button>
+            </Link>
+            <Link href={`/workers/${worker.id}/email`}>
+              <Button variant="outline" size="sm" data-testid="button-worker-email">
+                Email
+              </Button>
+            </Link>
+            <Link href={`/workers/${worker.id}/ids`}>
+              <Button variant="outline" size="sm" data-testid="button-worker-ids">
+                IDs
+              </Button>
+            </Link>
+            <Link href={`/workers/${worker.id}/addresses`}>
+              <Button variant="outline" size="sm" data-testid="button-worker-addresses">
+                Addresses
+              </Button>
+            </Link>
+            <Link href={`/workers/${worker.id}/phone-numbers`}>
+              <Button variant="outline" size="sm" data-testid="button-worker-phone-numbers">
+                Phone Numbers
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Card>
-          <CardHeader className="pb-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <div className={`w-16 h-16 rounded-full flex items-center justify-center ${avatarColor}`}>
-                  <User size={24} />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3">
-                    <CardTitle className="text-2xl font-bold text-foreground" data-testid={`text-worker-name-${worker.id}`}>
-                      {contact?.displayName || 'Loading...'}
-                    </CardTitle>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-muted-foreground hover:text-foreground"
-                      onClick={() => setEditModalOpen(true)}
-                      data-testid={`button-edit-name-${worker.id}`}
-                    >
-                      <Edit size={16} />
-                    </Button>
-                  </div>
-                  <p className="text-muted-foreground text-sm mt-1" data-testid={`text-worker-id-${worker.id}`}>
-                    ID: {worker.id}
-                  </p>
-                </div>
-              </div>
-              
-              {/* Navigation Links */}
-              <div className="flex items-center space-x-2">
-                <Button variant="default" size="sm" data-testid="button-worker-details">
-                  Details
-                </Button>
-                <Link href={`/workers/${worker.id}/name`}>
-                  <Button variant="outline" size="sm" data-testid="button-worker-name">
-                    Name
-                  </Button>
-                </Link>
-                <Link href={`/workers/${worker.id}/email`}>
-                  <Button variant="outline" size="sm" data-testid="button-worker-email">
-                    Email
-                  </Button>
-                </Link>
-                <Link href={`/workers/${worker.id}/ids`}>
-                  <Button variant="outline" size="sm" data-testid="button-worker-ids">
-                    IDs
-                  </Button>
-                </Link>
-                <Link href={`/workers/${worker.id}/addresses`}>
-                  <Button variant="outline" size="sm" data-testid="button-worker-addresses">
-                    Addresses
-                  </Button>
-                </Link>
-                <Link href={`/workers/${worker.id}/phone-numbers`}>
-                  <Button variant="outline" size="sm" data-testid="button-worker-phone-numbers">
-                    Phone Numbers
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </CardHeader>
           <CardContent className="space-y-6">
             {/* Basic Information */}
             <div>
