@@ -1,6 +1,12 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users } from 'lucide-react';
-import UsersManagement from '@/components/admin/UsersManagement';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Users } from "lucide-react";
+import UsersManagement from "@/components/admin/UsersManagement";
 
 export default function AdminUsersPage() {
   return (
@@ -13,7 +19,7 @@ export default function AdminUsersPage() {
           Create and manage user accounts, activate or deactivate users
         </p>
       </div>
-      
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
