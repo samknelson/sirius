@@ -315,6 +315,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Site Settings routes - Simple API for common site configuration
+  // GET /api/site-settings - Get site settings (no auth required for public settings)
+  app.get("/api/site-settings", async (req, res) => {
+    try {
+      const siteNameVar = await storage.getVariableByName("siteName");
+      const siteName = siteNameVar ? (siteNameVar.value as string) : "Sirius";
+      
+      res.json({ siteName });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch site settings" });
+    }
+  });
+
+  // PUT /api/site-settings - Update site settings (requires admin permissions)
+  app.put("/api/site-settings", requireAuth, requirePermission("variables.manage"), async (req, res) => {
+    try {
+      const { siteName } = req.body;
+      
+      if (!siteName || typeof siteName !== "string") {
+        res.status(400).json({ message: "Invalid site name" });
+        return;
+      }
+      
+      // Check if siteName variable exists
+      const existingVariable = await storage.getVariableByName("siteName");
+      
+      if (existingVariable) {
+        // Update existing variable
+        await storage.updateVariable(existingVariable.id, { value: siteName });
+      } else {
+        // Create new variable
+        await storage.createVariable({ name: "siteName", value: siteName });
+      }
+      
+      res.json({ siteName });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update site settings" });
+    }
+  });
+
   // Register generic variable management routes (MUST come after specific routes)
   registerVariableRoutes(app, requireAuth, requirePermission);
 
