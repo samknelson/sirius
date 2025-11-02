@@ -22,6 +22,7 @@ interface AddressFormData {
   country: string;
   isPrimary: boolean;
   isActive: boolean;
+  validationResponse?: any; // JSON field to store full Google API response
 }
 
 interface UnifiedAddressInputProps {
@@ -283,7 +284,14 @@ export function UnifiedAddressInput({
   };
 
   const handleFormSubmit = (data: AddressFormData) => {
-    onSubmit(data);
+    // Include the validation response if we have one from parsing
+    const dataWithValidation = {
+      ...data,
+      validationResponse: parseResult?.success && parseResult.validation?.providerMetadata?.rawGoogleResponse 
+        ? parseResult.validation.providerMetadata.rawGoogleResponse
+        : undefined,
+    };
+    onSubmit(dataWithValidation);
   };
 
   const getConfidenceBadgeVariant = (confidence?: number) => {
