@@ -19,6 +19,7 @@ import AdminLayout from "@/components/layouts/AdminLayout";
 import ConfigurationLayout from "@/components/layouts/ConfigurationLayout";
 import UserManagementConfigPage from "@/pages/config/users";
 import PostalAddressesConfigPage from "@/pages/config/addresses";
+import PhoneNumbersConfigPage from "@/pages/config/phone-numbers";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
@@ -97,6 +98,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PostalAddressesConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/config/phone-numbers">
+        <ProtectedRoute permission="admin.manage">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <PhoneNumbersConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

@@ -46,7 +46,7 @@ export function registerPhoneNumberRoutes(
       const { contactId } = req.params;
       
       // Validate and format the phone number
-      const validationResult = phoneValidationService.validateAndFormat(req.body.phoneNumber);
+      const validationResult = await phoneValidationService.validateAndFormat(req.body.phoneNumber);
       
       if (!validationResult.isValid) {
         return res.status(400).json({ 
@@ -83,7 +83,7 @@ export function registerPhoneNumberRoutes(
       // If phone number is being updated, validate and format it
       let updateData: any = { ...req.body };
       if (req.body.phoneNumber) {
-        const validationResult = phoneValidationService.validateAndFormat(req.body.phoneNumber);
+        const validationResult = await phoneValidationService.validateAndFormat(req.body.phoneNumber);
         
         if (!validationResult.isValid) {
           return res.status(400).json({ 

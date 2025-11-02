@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Users, MapPin } from "lucide-react";
+import { Users, MapPin, Phone } from "lucide-react";
 
 interface ConfigurationLayoutProps {
   children: React.ReactNode;
@@ -21,6 +21,12 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       label: "Postal Addresses",
       icon: MapPin,
       testId: "nav-config-addresses",
+    },
+    {
+      path: "/config/phone-numbers",
+      label: "Phone Numbers",
+      icon: Phone,
+      testId: "nav-config-phone-numbers",
     },
   ];
 

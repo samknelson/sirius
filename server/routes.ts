@@ -8,6 +8,7 @@ import { registerPostalAddressRoutes } from "./modules/postal-addresses";
 import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerAddressValidationRoutes } from "./modules/address-validation";
 import { addressValidationService } from "./services/address-validation";
+import { phoneValidationService } from "./services/phone-validation";
 
 // Session type extension
 declare module "express-session" {
@@ -171,6 +172,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(updatedConfig);
     } catch (error) {
       res.status(500).json({ message: "Failed to update address validation configuration" });
+    }
+  });
+
+  // GET /api/variables/phone_validation_config - Get phone validation configuration
+  app.get("/api/variables/phone_validation_config", requireAuth, async (req, res) => {
+    try {
+      const config = await phoneValidationService.loadConfig();
+      res.json(config);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch phone validation configuration" });
+    }
+  });
+
+  // PUT /api/variables/phone_validation_config - Update phone validation configuration
+  app.put("/api/variables/phone_validation_config", requireAuth, requirePermission("admin.manage"), async (req, res) => {
+    try {
+      const { mode, local, twilio } = req.body;
+      
+      if (!mode || (mode !== "local" && mode !== "twilio")) {
+        return res.status(400).json({ message: "Invalid validation mode. Must be 'local' or 'twilio'." });
+      }
+      
+      if (!local || typeof local.enabled !== "boolean") {
+        return res.status(400).json({ message: "Invalid local configuration." });
+      }
+      
+      if (!twilio || typeof twilio.enabled !== "boolean") {
+        return res.status(400).json({ message: "Invalid twilio configuration." });
+      }
+      
+      await storage.setVariable('phone_validation_config', req.body);
+      phoneValidationService['config'] = null;
+      const updatedConfig = await phoneValidationService.loadConfig();
+      res.json(updatedConfig);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update phone validation configuration" });
     }
   });
 

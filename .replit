@@ -15,7 +15,7 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 44895
+localPort = 42699
 externalPort = 3000
 
 [[ports]]
@@ -26,7 +26,7 @@ externalPort = 3001
 PORT = "5000"
 
 [agent]
-integrations = ["javascript_mem_db:1.0.0", "javascript_database:1.0.0"]
+integrations = ["javascript_mem_db:1.0.0", "javascript_database:1.0.0", "twilio:1.0.0"]
 
 [workflows]
 runButton = "Project"

@@ -1,4 +1,23 @@
 import { parsePhoneNumber, CountryCode, PhoneNumber } from 'libphonenumber-js';
+import { getTwilioClient } from '../lib/twilio-client';
+import { storage } from '../storage';
+
+export interface PhoneValidationConfig {
+  mode: "local" | "twilio";
+  local: {
+    enabled: boolean;
+    defaultCountry: string;
+    strictValidation: boolean;
+  };
+  twilio: {
+    enabled: boolean;
+    lookupType: string[];
+  };
+  fallback: {
+    useLocalOnTwilioFailure: boolean;
+    logValidationAttempts: boolean;
+  };
+}
 
 export interface PhoneValidationResult {
   isValid: boolean;
@@ -8,16 +27,97 @@ export interface PhoneValidationResult {
   country?: string;
   type?: string;
   error?: string;
+  twilioData?: any;
 }
 
 export class PhoneValidationService {
   private defaultCountry: CountryCode = 'US';
+  private config: PhoneValidationConfig | null = null;
 
   constructor(defaultCountry: CountryCode = 'US') {
     this.defaultCountry = defaultCountry;
   }
 
-  validateAndFormat(phoneNumberInput: string, country?: CountryCode): PhoneValidationResult {
+  async loadConfig(): Promise<PhoneValidationConfig> {
+    if (this.config) {
+      return this.config;
+    }
+
+    const configVar = await storage.getVariable('phone_validation_config');
+    if (configVar && configVar.value) {
+      this.config = configVar.value as PhoneValidationConfig;
+    } else {
+      this.config = {
+        mode: 'local',
+        local: {
+          enabled: true,
+          defaultCountry: 'US',
+          strictValidation: true
+        },
+        twilio: {
+          enabled: false,
+          lookupType: ['carrier', 'caller-name']
+        },
+        fallback: {
+          useLocalOnTwilioFailure: true,
+          logValidationAttempts: true
+        }
+      };
+    }
+    return this.config;
+  }
+
+  async validateAndFormat(phoneNumberInput: string, country?: CountryCode): Promise<PhoneValidationResult> {
+    const config = await this.loadConfig();
+
+    if (config.mode === 'twilio' && config.twilio.enabled) {
+      try {
+        return await this.validateWithTwilio(phoneNumberInput);
+      } catch (error) {
+        console.error('Twilio validation failed:', error);
+        if (config.fallback.useLocalOnTwilioFailure) {
+          console.log('Falling back to local validation');
+          return this.validateLocally(phoneNumberInput, country);
+        }
+        return {
+          isValid: false,
+          error: error instanceof Error ? error.message : 'Twilio validation failed'
+        };
+      }
+    }
+
+    return this.validateLocally(phoneNumberInput, country);
+  }
+
+  private async validateWithTwilio(phoneNumberInput: string): Promise<PhoneValidationResult> {
+    const twilioClient = await getTwilioClient();
+    
+    const parsed = parsePhoneNumber(phoneNumberInput, this.defaultCountry);
+    if (!parsed || !parsed.isValid()) {
+      return {
+        isValid: false,
+        error: 'Invalid phone number format'
+      };
+    }
+
+    const e164Number = parsed.format('E.164');
+
+    const phoneNumberLookup = await twilioClient.lookups.v2
+      .phoneNumbers(e164Number)
+      .fetch({ fields: 'line_type_intelligence,caller_name' });
+
+    return {
+      isValid: true,
+      e164Format: phoneNumberLookup.phoneNumber,
+      nationalFormat: parsed.formatNational(),
+      internationalFormat: parsed.formatInternational(),
+      country: phoneNumberLookup.countryCode,
+      type: phoneNumberLookup.lineTypeIntelligence?.type || parsed.getType(),
+      twilioData: phoneNumberLookup
+    };
+  }
+
+  private validateLocally(phoneNumberInput: string, country?: CountryCode): PhoneValidationResult {
     try {
       const countryCode = country || this.defaultCountry;
       
