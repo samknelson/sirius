@@ -5,6 +5,7 @@ import { insertWorkerSchema } from "@shared/schema";
 import { registerUserRoutes } from "./modules/users";
 import { registerVariableRoutes } from "./modules/variables";
 import { registerPostalAddressRoutes } from "./modules/postal-addresses";
+import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerAddressValidationRoutes } from "./modules/address-validation";
 import { addressValidationService } from "./services/address-validation";
 
@@ -46,6 +47,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register postal address management routes
   registerPostalAddressRoutes(app, requireAuth, requirePermission);
+  
+  // Register phone number management routes
+  registerPhoneNumberRoutes(app, requireAuth, requirePermission);
   
   // Register address validation routes
   registerAddressValidationRoutes(app, requireAuth, requirePermission);
