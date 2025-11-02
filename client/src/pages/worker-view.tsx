@@ -1,12 +1,13 @@
-import { Mail, Phone, MapPin, Calendar } from "lucide-react";
+import { Mail, Phone, MapPin, Calendar, IdCard } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { PostalAddress, PhoneNumber as PhoneNumberType } from "@shared/schema";
+import { PostalAddress, PhoneNumber as PhoneNumberType, WorkerId, WorkerIdType } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
 import { GoogleMap } from "@/components/ui/google-map";
+import { Badge } from "@/components/ui/badge";
 
 function WorkerDetailsContent() {
   const { worker, contact } = useWorkerLayout();
@@ -30,6 +31,30 @@ function WorkerDetailsContent() {
       const response = await fetch(`/api/contacts/${worker.contactId}/phone-numbers`);
       if (!response.ok) {
         throw new Error("Failed to fetch phone numbers");
+      }
+      return response.json();
+    },
+  });
+
+  // Fetch worker IDs
+  const { data: workerIds = [] } = useQuery<WorkerId[]>({
+    queryKey: ["/api/workers", worker.id, "ids"],
+    queryFn: async () => {
+      const response = await fetch(`/api/workers/${worker.id}/ids`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch worker IDs");
+      }
+      return response.json();
+    },
+  });
+
+  // Fetch worker ID types
+  const { data: workerIdTypes = [] } = useQuery<WorkerIdType[]>({
+    queryKey: ["/api/worker-id-types"],
+    queryFn: async () => {
+      const response = await fetch("/api/worker-id-types");
+      if (!response.ok) {
+        throw new Error("Failed to fetch worker ID types");
       }
       return response.json();
     },
@@ -84,6 +109,40 @@ function WorkerDetailsContent() {
                 </p>
               )}
             </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <IdCard size={14} />
+                SSN
+              </label>
+              {worker.ssn ? (
+                <p className="text-foreground font-mono" data-testid="text-worker-ssn">
+                  {worker.ssn.replace(/(\d{3})(\d{2})(\d{4})/, '$1-$2-$3')}
+                </p>
+              ) : (
+                <p className="text-muted-foreground text-sm" data-testid="text-no-ssn">
+                  No SSN set
+                </p>
+              )}
+            </div>
+            {workerIds.length > 0 && (
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <IdCard size={14} />
+                  Additional IDs
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {workerIds.map((workerId) => {
+                    const type = workerIdTypes.find(t => t.id === workerId.typeId);
+                    return (
+                      <Badge key={workerId.id} variant="secondary" data-testid={`badge-worker-id-${workerId.id}`}>
+                        <span className="font-medium">{type?.name || 'Unknown'}:</span>
+                        <span className="ml-1 font-mono">{workerId.value}</span>
+                      </Badge>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
