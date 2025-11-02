@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
+import { GoogleMap } from "@/components/ui/google-map";
 
 function WorkerDetailsContent() {
   const { worker, contact } = useWorkerLayout();
@@ -116,15 +117,27 @@ function WorkerDetailsContent() {
                 Primary Address
               </label>
               {primaryAddress ? (
-                <div className="text-foreground" data-testid="text-primary-address">
-                  {primaryAddress.friendlyName && (
-                    <p className="font-medium text-sm text-muted-foreground mb-1">
-                      {primaryAddress.friendlyName}
-                    </p>
+                <div className="space-y-4">
+                  <div className="text-foreground" data-testid="text-primary-address">
+                    {primaryAddress.friendlyName && (
+                      <p className="font-medium text-sm text-muted-foreground mb-1">
+                        {primaryAddress.friendlyName}
+                      </p>
+                    )}
+                    <p>{primaryAddress.street}</p>
+                    <p>{primaryAddress.city}, {primaryAddress.state} {primaryAddress.postalCode}</p>
+                    <p className="text-sm text-muted-foreground">{primaryAddress.country}</p>
+                  </div>
+                  {primaryAddress.latitude !== null && primaryAddress.latitude !== undefined && 
+                   primaryAddress.longitude !== null && primaryAddress.longitude !== undefined && (
+                    <GoogleMap
+                      latitude={primaryAddress.latitude}
+                      longitude={primaryAddress.longitude}
+                      height="400px"
+                      zoom={16}
+                      markerTitle={primaryAddress.friendlyName || "Primary Address"}
+                    />
                   )}
-                  <p>{primaryAddress.street}</p>
-                  <p>{primaryAddress.city}, {primaryAddress.state} {primaryAddress.postalCode}</p>
-                  <p className="text-sm text-muted-foreground">{primaryAddress.country}</p>
                 </div>
               ) : (
                 <p className="text-muted-foreground text-sm" data-testid="text-no-primary-address">
