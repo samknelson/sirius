@@ -1,11 +1,14 @@
-import { useState } from "react";
-import { ArrowUpDown, User, Eye } from "lucide-react";
+import { useState, useMemo } from "react";
+import { ArrowUpDown, User, Eye, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Worker, Contact } from "@shared/schema";
+import { Input } from "@/components/ui/input";
+import { Worker, Contact, PhoneNumber } from "@shared/schema";
+import { formatSSN } from "@shared/schema";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { parsePhoneNumber } from "libphonenumber-js";
 
 interface WorkersTableProps {
   workers: Worker[];
@@ -14,6 +17,8 @@ interface WorkersTableProps {
 
 interface WorkerWithContact extends Worker {
   contactName?: string;
+  email?: string;
+  phoneNumber?: string;
 }
 
 const avatarColors = [
@@ -26,6 +31,7 @@ const avatarColors = [
 
 export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Fetch contacts for all workers
   const contactIds = workers.map(w => w.contactId);
@@ -46,16 +52,83 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     enabled: contactIds.length > 0,
   });
 
-  // Create a map of contactId to contact display name
-  const contactMap = new Map(contacts.map(c => [c.id, c.displayName]));
+  // Fetch phone numbers for all contacts
+  const { data: phoneNumbers = [] } = useQuery<PhoneNumber[]>({
+    queryKey: ["/api/phone-numbers", contactIds],
+    queryFn: async () => {
+      const phonePromises = contactIds.map(async (contactId) => {
+        const res = await fetch(`/api/phone-numbers?contactId=${contactId}`);
+        if (res.ok) {
+          return res.json();
+        }
+        return [];
+      });
+      const results = await Promise.all(phonePromises);
+      return results.flat();
+    },
+    enabled: contactIds.length > 0,
+  });
 
-  // Add contact names to workers
-  const workersWithNames: WorkerWithContact[] = workers.map(worker => ({
-    ...worker,
-    contactName: contactMap.get(worker.contactId) || 'Unknown',
-  }));
+  // Create maps for contact data
+  const contactMap = new Map(contacts.map(c => [c.id, c]));
+  const phoneMap = new Map<string, PhoneNumber>();
+  
+  // Map primary phone numbers to contacts
+  phoneNumbers.forEach(phone => {
+    if (phone.isPrimary && !phoneMap.has(phone.contactId)) {
+      phoneMap.set(phone.contactId, phone);
+    }
+  });
+  
+  // If no primary, use first phone number
+  phoneNumbers.forEach(phone => {
+    if (!phoneMap.has(phone.contactId)) {
+      phoneMap.set(phone.contactId, phone);
+    }
+  });
 
-  const sortedWorkers = [...workersWithNames].sort((a, b) => {
+  // Add contact names and details to workers
+  const workersWithNames: WorkerWithContact[] = workers.map(worker => {
+    const contact = contactMap.get(worker.contactId);
+    const phone = phoneMap.get(worker.contactId);
+    
+    let formattedPhone = '';
+    if (phone?.phoneNumber) {
+      try {
+        const parsed = parsePhoneNumber(phone.phoneNumber, 'US');
+        formattedPhone = parsed ? parsed.formatNational() : phone.phoneNumber;
+      } catch {
+        formattedPhone = phone.phoneNumber;
+      }
+    }
+    
+    return {
+      ...worker,
+      contactName: contact?.displayName || 'Unknown',
+      email: contact?.email || '',
+      phoneNumber: formattedPhone,
+    };
+  });
+
+  // Filter workers based on search query
+  const filteredWorkers = useMemo(() => {
+    if (!searchQuery.trim()) return workersWithNames;
+    
+    const query = searchQuery.toLowerCase();
+    return workersWithNames.filter(worker => {
+      const name = (worker.contactName || '').toLowerCase();
+      const email = (worker.email || '').toLowerCase();
+      const phone = (worker.phoneNumber || '').toLowerCase();
+      const ssn = formatSSN(worker.ssn).toLowerCase();
+      
+      return name.includes(query) || 
+             email.includes(query) || 
+             phone.includes(query) || 
+             ssn.includes(query);
+    });
+  }, [workersWithNames, searchQuery]);
+
+  const sortedWorkers = [...filteredWorkers].sort((a, b) => {
     const nameA = a.contactName || '';
     const nameB = b.contactName || '';
     if (sortOrder === "asc") {
@@ -93,7 +166,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     <>
       <Card className="shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-border bg-muted/30">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-foreground">Workers Database</h2>
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
@@ -101,9 +174,22 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                 <span className="text-sm text-muted-foreground">Sort by Name</span>
               </div>
               <span className="text-sm font-medium text-primary" data-testid="text-total-workers">
-                {workers.length} Total
+                {filteredWorkers.length} of {workers.length}
               </span>
             </div>
+          </div>
+          
+          {/* Search Input */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={16} />
+            <Input
+              type="text"
+              placeholder="Search by name, email, phone, or SSN..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+              data-testid="input-search-workers"
+            />
           </div>
         </div>
 
@@ -125,6 +211,12 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                     <span>Worker Name</span>
                     <ArrowUpDown size={12} />
                   </div>
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <span>Email</span>
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <span>Phone</span>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Actions</span>
@@ -149,6 +241,22 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                         {worker.contactName}
                       </span>
                     </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span 
+                      className="text-sm text-foreground"
+                      data-testid={`text-worker-email-${worker.id}`}
+                    >
+                      {worker.email || <span className="text-muted-foreground italic">No email</span>}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span 
+                      className="text-sm text-foreground"
+                      data-testid={`text-worker-phone-${worker.id}`}
+                    >
+                      {worker.phoneNumber || <span className="text-muted-foreground italic">No phone</span>}
+                    </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <div className="flex items-center space-x-2">
