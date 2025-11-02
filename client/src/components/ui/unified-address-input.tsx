@@ -350,12 +350,13 @@ export function UnifiedAddressInput({
   };
 
   const handleFormSubmit = (data: AddressFormData) => {
-    // Include the validation response if we have one from parsing
+    // Include the validation response - either from the form (geocoding) or from parsing
     const dataWithValidation = {
       ...data,
-      validationResponse: parseResult?.success && parseResult.validation?.providerMetadata?.rawGoogleResponse 
-        ? parseResult.validation.providerMetadata.rawGoogleResponse
-        : undefined,
+      validationResponse: data.validationResponse || 
+        (parseResult?.success && parseResult.validation?.providerMetadata?.rawGoogleResponse 
+          ? parseResult.validation.providerMetadata.rawGoogleResponse
+          : undefined),
     };
     onSubmit(dataWithValidation);
   };
