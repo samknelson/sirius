@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Users, MapPin, Phone, Globe } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface ConfigurationLayoutProps {
   children: React.ReactNode;
@@ -8,6 +9,7 @@ interface ConfigurationLayoutProps {
 
 export default function ConfigurationLayout({ children }: ConfigurationLayoutProps) {
   const [location] = useLocation();
+  const { hasPermission } = useAuth();
 
   const navigationItems = [
     {
@@ -15,24 +17,28 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       label: "Site Information",
       icon: Globe,
       testId: "nav-config-site",
+      permission: "variables.manage",
     },
     {
       path: "/config/users",
       label: "User Management",
       icon: Users,
       testId: "nav-config-users",
+      permission: "admin.manage",
     },
     {
       path: "/config/addresses",
       label: "Postal Addresses",
       icon: MapPin,
       testId: "nav-config-addresses",
+      permission: "admin.manage",
     },
     {
       path: "/config/phone-numbers",
       label: "Phone Numbers",
       icon: Phone,
       testId: "nav-config-phone-numbers",
+      permission: "admin.manage",
     },
   ];
 
@@ -45,7 +51,7 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
             Configuration
           </h2>
           <nav className="space-y-2">
-            {navigationItems.map((item) => {
+            {navigationItems.filter((item) => hasPermission(item.permission)).map((item) => {
               const Icon = item.icon;
               const isActive = location === item.path || location.startsWith(item.path + "/");
               

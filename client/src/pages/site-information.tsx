@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -22,9 +22,11 @@ export default function SiteInformation() {
   });
 
   // Update local state when settings are loaded
-  if (settings && siteName === "" && !isEditing) {
-    setSiteName(settings.siteName);
-  }
+  useEffect(() => {
+    if (settings && !isEditing) {
+      setSiteName(settings.siteName);
+    }
+  }, [settings, isEditing]);
 
   const updateMutation = useMutation({
     mutationFn: async (newSiteName: string) => {
