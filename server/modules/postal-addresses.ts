@@ -6,6 +6,31 @@ import { insertPostalAddressSchema } from "@shared/schema";
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
+// Helper function to extract geographic coordinates from Google validation response
+function extractGeometryFromValidationResponse(validationResponse: any): {
+  latitude?: number;
+  longitude?: number;
+  accuracy?: string;
+} {
+  if (!validationResponse || typeof validationResponse !== 'object') {
+    return {};
+  }
+
+  const geometry = validationResponse.geometry;
+  if (!geometry || typeof geometry !== 'object') {
+    return {};
+  }
+
+  const location = geometry.location;
+  const locationType = geometry.location_type;
+
+  return {
+    latitude: location?.lat,
+    longitude: location?.lng,
+    accuracy: locationType,
+  };
+}
+
 export function registerPostalAddressRoutes(
   app: Express, 
   requireAuth: AuthMiddleware, 
@@ -43,8 +68,13 @@ export function registerPostalAddressRoutes(
   app.post("/api/contacts/:contactId/addresses", requireAuth, requirePermission("workers.manage"), async (req, res) => {
     try {
       const { contactId } = req.params;
+      
+      // Extract geometry data from validationResponse if present
+      const geometryData = extractGeometryFromValidationResponse(req.body.validationResponse);
+      
       const addressData = insertPostalAddressSchema.parse({ 
-        ...req.body, 
+        ...req.body,
+        ...geometryData,
         contactId 
       });
       
@@ -66,8 +96,14 @@ export function registerPostalAddressRoutes(
     try {
       const { id } = req.params;
       
+      // Extract geometry data from validationResponse if present
+      const geometryData = extractGeometryFromValidationResponse(req.body.validationResponse);
+      
       // Parse the update data, but don't require contactId since it shouldn't change
-      const updateData = insertPostalAddressSchema.partial().omit({ contactId: true }).parse(req.body);
+      const updateData = insertPostalAddressSchema.partial().omit({ contactId: true }).parse({
+        ...req.body,
+        ...geometryData,
+      });
       
       const updatedAddress = await storage.updatePostalAddress(id, updateData);
       
