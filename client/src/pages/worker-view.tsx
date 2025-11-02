@@ -40,12 +40,26 @@ export default function WorkerView() {
   // Fetch primary address
   const { data: addresses = [] } = useQuery<PostalAddress[]>({
     queryKey: ["/api/contacts", worker?.contactId, "addresses"],
+    queryFn: async () => {
+      const response = await fetch(`/api/contacts/${worker?.contactId}/addresses`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch addresses");
+      }
+      return response.json();
+    },
     enabled: !!worker?.contactId,
   });
 
   // Fetch primary phone number
   const { data: phoneNumbers = [] } = useQuery<PhoneNumberType[]>({
     queryKey: ["/api/contacts", worker?.contactId, "phone-numbers"],
+    queryFn: async () => {
+      const response = await fetch(`/api/contacts/${worker?.contactId}/phone-numbers`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch phone numbers");
+      }
+      return response.json();
+    },
     enabled: !!worker?.contactId,
   });
 
