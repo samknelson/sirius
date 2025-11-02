@@ -37,7 +37,13 @@ export const rolePermissions = pgTable("role_permissions", {
 
 export const contacts = pgTable("contacts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
+  title: text("title"),
+  given: text("given"),
+  middle: text("middle"),
+  family: text("family"),
+  generational: text("generational"),
+  credentials: text("credentials"),
+  displayName: text("display_name").notNull(),
 });
 
 export const workers = pgTable("workers", {
@@ -219,3 +225,29 @@ export type StructuredAddress = z.infer<typeof structuredAddressSchema>;
 export type AddressSuggestion = z.infer<typeof addressSuggestionSchema>;
 export type AddressParseValidation = z.infer<typeof addressParseValidationSchema>;
 export type ParseAddressResponse = z.infer<typeof parseAddressResponseSchema>;
+
+// Helper function to generate display name from name components
+export function generateDisplayName(components: {
+  title?: string | null;
+  given?: string | null;
+  middle?: string | null;
+  family?: string | null;
+  generational?: string | null;
+  credentials?: string | null;
+}): string {
+  const parts: string[] = [];
+  
+  if (components.title) parts.push(components.title);
+  if (components.given) parts.push(components.given);
+  if (components.middle) parts.push(components.middle);
+  if (components.family) parts.push(components.family);
+  if (components.generational) parts.push(components.generational);
+  
+  let name = parts.join(' ');
+  
+  if (components.credentials) {
+    name += `, ${components.credentials}`;
+  }
+  
+  return name || 'Unnamed Contact';
+}

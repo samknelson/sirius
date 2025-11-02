@@ -41,19 +41,19 @@ export function EditWorkerNameModal({ open, onOpenChange, worker, contactName }:
       onOpenChange(false);
       toast({
         title: "Success",
-        description: "Worker name updated successfully!",
+        description: "Name updated successfully!",
       });
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to update worker name. Please try again.",
+        description: "Failed to update name. Please try again.",
         variant: "destructive",
       });
     },
   });
 
-  // Initialize name when modal opens with contact name
+  // Initialize name when modal opens with contact display name
   useEffect(() => {
     if (contactName && open) {
       setName(contactName);

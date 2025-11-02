@@ -194,7 +194,7 @@ export default function WorkerView() {
                 <div className="flex-1">
                   <div className="flex items-center space-x-3">
                     <CardTitle className="text-2xl font-bold text-foreground" data-testid={`text-worker-name-${worker.id}`}>
-                      {contact?.name || 'Loading...'}
+                      {contact?.displayName || 'Loading...'}
                     </CardTitle>
                     <Button
                       size="sm"
@@ -243,7 +243,7 @@ export default function WorkerView() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-muted-foreground">Full Name</label>
                   <p className="text-foreground" data-testid={`text-worker-full-name-${worker.id}`}>
-                    {contact?.name || 'Loading...'}
+                    {contact?.displayName || 'Loading...'}
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -325,7 +325,7 @@ export default function WorkerView() {
         open={editModalOpen}
         onOpenChange={setEditModalOpen}
         worker={worker}
-        contactName={contact?.name || ''}
+        contactName={contact?.displayName || ''}
       />
     </div>
   );

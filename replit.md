@@ -71,6 +71,22 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### Contact Name Components (November 2, 2025)
+- **Name Structure**: Contact names now use structured components instead of a single field
+  - Components: title, given (first), middle, family (last), generational (Jr., Sr., III), credentials (MD, PhD)
+  - Display name is generated from components and used throughout the UX
+  - Backend automatically parses simple names into given/family components
+  - Helper function `generateDisplayName()` in shared schema formats names consistently
+- **Worker-Contact Relationship**: Workers reference contacts, contact names displayed via displayName field
+  - Workers table removed name field, now uses contact relationship exclusively
+  - All worker views fetch and display contact displayName
+  - "Name" tab added to worker detail pages for editing contact name
+  - Edit functionality updates contact name components and regenerates displayName
+- **Database Migration**: Existing contact names migrated to new structure
+  - Old "name" field split into given/family components
+  - displayName populated from original names
+  - All frontend code updated to use displayName
+
 ### Phone Number Management (November 2, 2025)
 - **Phone Number Validation**: All phone numbers are validated and stored in E.164 format
   - Backend validation service uses libphonenumber-js to parse and validate phone numbers

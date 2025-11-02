@@ -368,10 +368,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createWorker(name: string): Promise<Worker> {
-    // Create contact first with the provided name
+    // For simple name input, parse into given/family names
+    const nameParts = name.trim().split(' ');
+    const given = nameParts[0] || '';
+    const family = nameParts.slice(1).join(' ') || '';
+    
+    // Create contact first with name components
     const [contact] = await db
       .insert(contacts)
-      .values({ name })
+      .values({
+        given: given || null,
+        family: family || null,
+        displayName: name,
+      })
       .returning();
     
     // Create worker with the contact reference
@@ -390,10 +399,19 @@ export class DatabaseStorage implements IStorage {
       return undefined;
     }
     
-    // Update the contact's name
+    // For simple name input, parse into given/family names
+    const nameParts = name.trim().split(' ');
+    const given = nameParts[0] || '';
+    const family = nameParts.slice(1).join(' ') || '';
+    
+    // Update the contact's name components
     await db
       .update(contacts)
-      .set({ name })
+      .set({
+        given: given || null,
+        family: family || null,
+        displayName: name,
+      })
       .where(eq(contacts.id, currentWorker.contactId));
     
     return currentWorker;

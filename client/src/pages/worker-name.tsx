@@ -167,7 +167,7 @@ export default function WorkerName() {
                 </div>
                 <div>
                   <CardTitle className="text-2xl font-bold text-foreground" data-testid={`text-worker-name-${worker.id}`}>
-                    {contact?.name || 'Loading...'}
+                    {contact?.displayName || 'Loading...'}
                   </CardTitle>
                   <p className="text-muted-foreground text-sm mt-1" data-testid={`text-worker-id-${worker.id}`}>
                     ID: {worker.id}

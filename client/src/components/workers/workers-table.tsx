@@ -46,8 +46,8 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     enabled: contactIds.length > 0,
   });
 
-  // Create a map of contactId to contact name
-  const contactMap = new Map(contacts.map(c => [c.id, c.name]));
+  // Create a map of contactId to contact display name
+  const contactMap = new Map(contacts.map(c => [c.id, c.displayName]));
 
   // Add contact names to workers
   const workersWithNames: WorkerWithContact[] = workers.map(worker => ({

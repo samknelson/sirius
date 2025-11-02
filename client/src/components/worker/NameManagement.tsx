@@ -58,7 +58,7 @@ export default function NameManagement({ workerId, contactId }: NameManagementPr
   });
 
   const handleEdit = () => {
-    setEditedName(contact?.name || "");
+    setEditedName(contact?.displayName || "");
     setIsEditing(true);
   };
 
@@ -103,7 +103,7 @@ export default function NameManagement({ workerId, contactId }: NameManagementPr
               <div className="flex-1">
                 <Label className="text-sm text-muted-foreground">Full Name</Label>
                 <p className="text-lg font-semibold text-foreground" data-testid="text-contact-name">
-                  {contact?.name || "No name set"}
+                  {contact?.displayName || "No name set"}
                 </p>
               </div>
               <Button
