@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode } from "react";
-import { Star, User, ArrowLeft } from "lucide-react";
+import { User, ArrowLeft } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Worker, Contact } from "@shared/schema";
@@ -67,7 +67,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Star className="text-primary-foreground" size={16} />
+                  <User className="text-primary-foreground" size={16} />
                 </div>
                 <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
                 <span className="text-muted-foreground text-sm font-medium">Worker Not Found</span>
@@ -115,7 +115,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Star className="text-primary-foreground" size={16} />
+                  <User className="text-primary-foreground" size={16} />
                 </div>
                 <Skeleton className="h-6 w-48" />
               </div>
@@ -170,7 +170,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Star className="text-primary-foreground" size={16} />
+                  <User className="text-primary-foreground" size={16} />
                 </div>
                 <h1 className="text-xl font-semibold text-foreground" data-testid={`text-worker-name-${worker.id}`}>
                   {contact?.displayName || 'Loading...'}
