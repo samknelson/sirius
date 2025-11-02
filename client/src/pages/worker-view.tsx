@@ -1,12 +1,13 @@
-import { Star, User, ArrowLeft, Mail, Phone, Edit } from "lucide-react";
+import { Star, User, ArrowLeft, Mail, Phone, Edit, MapPin } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Worker } from "@shared/schema";
+import { Worker, PostalAddress, PhoneNumber as PhoneNumberType } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EditWorkerNameModal } from "@/components/workers/edit-worker-name-modal";
 import { useState } from "react";
+import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
 
 export default function WorkerView() {
   const { id } = useParams<{ id: string }>();
@@ -22,6 +23,21 @@ export default function WorkerView() {
       return response.json();
     },
   });
+
+  // Fetch primary address
+  const { data: addresses = [] } = useQuery<PostalAddress[]>({
+    queryKey: ["/api/contacts", worker?.contactId, "addresses"],
+    enabled: !!worker?.contactId,
+  });
+
+  // Fetch primary phone number
+  const { data: phoneNumbers = [] } = useQuery<PhoneNumberType[]>({
+    queryKey: ["/api/contacts", worker?.contactId, "phone-numbers"],
+    enabled: !!worker?.contactId,
+  });
+
+  const primaryAddress = addresses.find(addr => addr.isPrimary && addr.isActive);
+  const primaryPhone = phoneNumbers.find(phone => phone.isPrimary && phone.isActive);
 
 
   if (isLoading) {
@@ -217,6 +233,58 @@ export default function WorkerView() {
                   <p className="text-foreground font-mono text-sm" data-testid={`text-worker-uuid-${worker.id}`}>
                     {worker.id}
                   </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Contact Information */}
+            <div className="pt-4 border-t border-border">
+              <h3 className="text-lg font-semibold text-foreground mb-3">Contact Information</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Primary Address */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <MapPin size={14} />
+                    Primary Address
+                  </label>
+                  {primaryAddress ? (
+                    <div className="text-foreground" data-testid="text-primary-address">
+                      {primaryAddress.friendlyName && (
+                        <p className="font-medium text-sm text-muted-foreground mb-1">
+                          {primaryAddress.friendlyName}
+                        </p>
+                      )}
+                      <p>{primaryAddress.street}</p>
+                      <p>{primaryAddress.city}, {primaryAddress.state} {primaryAddress.postalCode}</p>
+                      <p className="text-sm text-muted-foreground">{primaryAddress.country}</p>
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground text-sm" data-testid="text-no-primary-address">
+                      No primary address set
+                    </p>
+                  )}
+                </div>
+
+                {/* Primary Phone Number */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Phone size={14} />
+                    Primary Phone Number
+                  </label>
+                  {primaryPhone ? (
+                    <div className="text-foreground" data-testid="text-primary-phone">
+                      {primaryPhone.friendlyName && (
+                        <p className="font-medium text-sm text-muted-foreground mb-1">
+                          {primaryPhone.friendlyName}
+                        </p>
+                      )}
+                      <p className="text-lg">{formatPhoneNumberForDisplay(primaryPhone.phoneNumber)}</p>
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground text-sm" data-testid="text-no-primary-phone">
+                      No primary phone number set
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
