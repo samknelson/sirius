@@ -10,6 +10,7 @@ import LoginPage from "@/pages/login";
 import Workers from "@/pages/workers";
 import WorkerView from "@/pages/worker-view";
 import WorkerName from "@/pages/worker-name";
+import WorkerIDs from "@/pages/worker-ids";
 import WorkerAddresses from "@/pages/worker-addresses";
 import WorkerPhoneNumbers from "@/pages/worker-phone-numbers";
 import AdminUsersPage from "@/pages/admin/users";
@@ -61,6 +62,14 @@ function Router() {
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
             <WorkerName />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/workers/:id/ids">
+        <ProtectedRoute permission="workers.view">
+          <AuthenticatedLayout>
+            <WorkerIDs />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

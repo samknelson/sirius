@@ -185,6 +185,11 @@ export default function WorkerName() {
                 <Button variant="default" size="sm" data-testid="button-worker-name">
                   Name
                 </Button>
+                <Link href={`/workers/${worker.id}/ids`}>
+                  <Button variant="outline" size="sm" data-testid="button-worker-ids">
+                    IDs
+                  </Button>
+                </Link>
                 <Link href={`/workers/${worker.id}/addresses`}>
                   <Button variant="outline" size="sm" data-testid="button-worker-addresses">
                     Addresses

@@ -188,6 +188,11 @@ export default function WorkerAddresses() {
                     Name
                   </Button>
                 </Link>
+                <Link href={`/workers/${worker.id}/ids`}>
+                  <Button variant="outline" size="sm" data-testid="button-worker-ids">
+                    IDs
+                  </Button>
+                </Link>
                 <Button variant="default" size="sm" data-testid="button-worker-addresses">
                   Addresses
                 </Button>

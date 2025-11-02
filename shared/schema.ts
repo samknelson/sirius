@@ -49,6 +49,7 @@ export const contacts = pgTable("contacts", {
 export const workers = pgTable("workers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
+  ssn: text("ssn"),
 });
 
 export const variables = pgTable("variables", {
@@ -250,4 +251,21 @@ export function generateDisplayName(components: {
   }
   
   return name || 'Unnamed Contact';
+}
+
+// Helper function to format SSN for display
+export function formatSSN(ssn: string | null | undefined): string {
+  if (!ssn) return '';
+  // Remove any non-digit characters
+  const digits = ssn.replace(/\D/g, '');
+  // Format as XXX-XX-XXXX
+  if (digits.length === 9) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`;
+  }
+  return ssn; // Return as-is if not 9 digits
+}
+
+// Helper function to unformat SSN (remove dashes)
+export function unformatSSN(ssn: string): string {
+  return ssn.replace(/\D/g, '');
 }

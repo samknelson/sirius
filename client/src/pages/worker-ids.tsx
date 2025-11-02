@@ -5,9 +5,9 @@ import { Worker, Contact } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PhoneNumberManagement } from "@/components/worker/PhoneNumberManagement";
+import IDsManagement from "@/components/worker/IDsManagement";
 
-export default function WorkerPhoneNumbers() {
+export default function WorkerIDs() {
   const { id } = useParams<{ id: string }>();
   
   const { data: worker, isLoading, error } = useQuery<Worker>({
@@ -37,7 +37,6 @@ export default function WorkerPhoneNumbers() {
   if (isLoading) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        {/* Header */}
         <header className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
@@ -46,7 +45,7 @@ export default function WorkerPhoneNumbers() {
                   <Star className="text-primary-foreground" size={16} />
                 </div>
                 <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-                <span className="text-muted-foreground text-sm font-medium">Worker Phone Numbers</span>
+                <span className="text-muted-foreground text-sm font-medium">Worker IDs</span>
               </div>
               <div className="flex items-center space-x-4">
                 <Link href="/workers">
@@ -67,7 +66,6 @@ export default function WorkerPhoneNumbers() {
             </CardHeader>
             <CardContent className="space-y-4">
               <Skeleton className="h-32 w-full" />
-              <Skeleton className="h-32 w-full" />
             </CardContent>
           </Card>
         </main>
@@ -78,7 +76,6 @@ export default function WorkerPhoneNumbers() {
   if (error || !worker) {
     return (
       <div className="bg-background text-foreground min-h-screen">
-        {/* Header */}
         <header className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
@@ -87,7 +84,7 @@ export default function WorkerPhoneNumbers() {
                   <Star className="text-primary-foreground" size={16} />
                 </div>
                 <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-                <span className="text-muted-foreground text-sm font-medium">Worker Phone Numbers</span>
+                <span className="text-muted-foreground text-sm font-medium">Worker IDs</span>
               </div>
               <div className="flex items-center space-x-4">
                 <Link href="/workers">
@@ -123,7 +120,6 @@ export default function WorkerPhoneNumbers() {
     );
   }
 
-  // Generate avatar background color based on worker ID
   const avatarColors = [
     "bg-primary/10 text-primary",
     "bg-accent/10 text-accent", 
@@ -135,7 +131,6 @@ export default function WorkerPhoneNumbers() {
 
   return (
     <div className="bg-background text-foreground min-h-screen">
-      {/* Header */}
       <header className="bg-card border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -144,7 +139,7 @@ export default function WorkerPhoneNumbers() {
                 <Star className="text-primary-foreground" size={16} />
               </div>
               <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-              <span className="text-muted-foreground text-sm font-medium">Worker Phone Numbers</span>
+              <span className="text-muted-foreground text-sm font-medium">Worker IDs</span>
             </div>
             <div className="flex items-center space-x-4">
               <Link href="/workers">
@@ -176,7 +171,6 @@ export default function WorkerPhoneNumbers() {
                 </div>
               </div>
               
-              {/* Navigation Links */}
               <div className="flex items-center space-x-2">
                 <Link href={`/workers/${worker.id}`}>
                   <Button variant="outline" size="sm" data-testid="button-worker-details">
@@ -188,24 +182,24 @@ export default function WorkerPhoneNumbers() {
                     Name
                   </Button>
                 </Link>
-                <Link href={`/workers/${worker.id}/ids`}>
-                  <Button variant="outline" size="sm" data-testid="button-worker-ids">
-                    IDs
-                  </Button>
-                </Link>
+                <Button variant="default" size="sm" data-testid="button-worker-ids">
+                  IDs
+                </Button>
                 <Link href={`/workers/${worker.id}/addresses`}>
                   <Button variant="outline" size="sm" data-testid="button-worker-addresses">
                     Addresses
                   </Button>
                 </Link>
-                <Button variant="default" size="sm" data-testid="button-worker-phone-numbers">
-                  Phone Numbers
-                </Button>
+                <Link href={`/workers/${worker.id}/phone-numbers`}>
+                  <Button variant="outline" size="sm" data-testid="button-worker-phone-numbers">
+                    Phone Numbers
+                  </Button>
+                </Link>
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            <PhoneNumberManagement contactId={worker.contactId} />
+            <IDsManagement workerId={worker.id} />
           </CardContent>
         </Card>
       </main>

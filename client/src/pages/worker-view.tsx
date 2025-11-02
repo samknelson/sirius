@@ -222,6 +222,11 @@ export default function WorkerView() {
                     Name
                   </Button>
                 </Link>
+                <Link href={`/workers/${worker.id}/ids`}>
+                  <Button variant="outline" size="sm" data-testid="button-worker-ids">
+                    IDs
+                  </Button>
+                </Link>
                 <Link href={`/workers/${worker.id}/addresses`}>
                   <Button variant="outline" size="sm" data-testid="button-worker-addresses">
                     Addresses

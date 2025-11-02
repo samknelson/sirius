@@ -72,6 +72,7 @@ export interface IStorage {
     generational?: string;
     credentials?: string;
   }): Promise<Worker | undefined>;
+  updateWorkerSSN(id: string, ssn: string): Promise<Worker | undefined>;
   deleteWorker(id: string): Promise<boolean>;
 
   // Variable CRUD operations
@@ -463,6 +464,23 @@ export class DatabaseStorage implements IStorage {
       .where(eq(contacts.id, currentWorker.contactId));
     
     return currentWorker;
+  }
+
+  async updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined> {
+    // Validate SSN format (9 digits, no formatting)
+    const cleanSSN = ssn.trim();
+    if (cleanSSN && !/^\d{9}$/.test(cleanSSN)) {
+      throw new Error("Invalid SSN format");
+    }
+    
+    // Update the worker's SSN
+    const [updatedWorker] = await db
+      .update(workers)
+      .set({ ssn: cleanSSN || null })
+      .where(eq(workers.id, workerId))
+      .returning();
+    
+    return updatedWorker || undefined;
   }
 
   async deleteWorker(id: string): Promise<boolean> {
