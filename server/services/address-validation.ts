@@ -492,6 +492,8 @@ class AddressValidationService {
             location: result.geometry?.location,
             locationType: result.geometry?.location_type,
           },
+          // Store the full Google API response for database persistence
+          rawGoogleResponse: result,
         },
       };
 
