@@ -180,6 +180,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Employer routes (protected with authentication and permissions)
+  
+  // GET /api/employers - Get all employers (requires workers.view permission)
+  app.get("/api/employers", requireAuth, requirePermission("workers.view"), async (req, res) => {
+    try {
+      const employers = await storage.getAllEmployers();
+      res.json(employers);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch employers" });
+    }
+  });
+
+  // GET /api/employers/:id - Get a specific employer (requires workers.view permission)
+  app.get("/api/employers/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const employer = await storage.getEmployer(id);
+      
+      if (!employer) {
+        res.status(404).json({ message: "Employer not found" });
+        return;
+      }
+      
+      res.json(employer);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch employer" });
+    }
+  });
+
+  // POST /api/employers - Create a new employer (requires workers.manage permission)
+  app.post("/api/employers", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+    try {
+      const { id, name } = req.body;
+      
+      if (!id || typeof id !== 'string' || !id.trim()) {
+        return res.status(400).json({ message: "Employer ID is required" });
+      }
+      
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ message: "Employer name is required" });
+      }
+      
+      const employer = await storage.createEmployer({ 
+        id: id.trim(), 
+        name: name.trim() 
+      });
+      
+      res.status(201).json(employer);
+    } catch (error: any) {
+      if (error.message === "An employer with this ID already exists") {
+        return res.status(409).json({ message: error.message });
+      }
+      res.status(500).json({ message: "Failed to create employer" });
+    }
+  });
+
+  // PUT /api/employers/:id - Update an employer (requires workers.manage permission)
+  app.put("/api/employers/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name } = req.body;
+      
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ message: "Employer name is required" });
+      }
+      
+      const employer = await storage.updateEmployer(id, { name: name.trim() });
+      
+      if (!employer) {
+        res.status(404).json({ message: "Employer not found" });
+        return;
+      }
+      
+      res.json(employer);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update employer" });
+    }
+  });
+
+  // DELETE /api/employers/:id - Delete an employer (requires workers.manage permission)
+  app.delete("/api/employers/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteEmployer(id);
+      
+      if (!deleted) {
+        res.status(404).json({ message: "Employer not found" });
+        return;
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete employer" });
+    }
+  });
+
   // GET /api/contacts/:id - Get a contact by ID (requires workers.view permission)
   app.get("/api/contacts/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
