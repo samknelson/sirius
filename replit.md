@@ -1,6 +1,6 @@
 # Overview
 
-Sirius is a full-stack web application built for worker management. It provides a clean, modern interface for managing workers with CRUD (Create, Read, Update, Delete) operations. The application features a React frontend with TypeScript, an Express.js backend, and uses PostgreSQL as the database with Drizzle ORM for type-safe database operations.
+Sirius is a full-stack web application for worker management, offering CRUD operations through a modern interface. It uses a React frontend with TypeScript, an Express.js backend, and PostgreSQL with Drizzle ORM for type-safe data handling. The project aims to provide a robust and user-friendly platform for efficient worker administration.
 
 # User Preferences
 
@@ -8,225 +8,65 @@ Preferred communication style: Simple, everyday language.
 
 # System Architecture
 
-## Frontend Architecture
-- **Framework**: React 18 with TypeScript and Vite as the build tool
-- **UI Components**: Shadcn/ui component library built on top of Radix UI primitives
-- **Styling**: Tailwind CSS with custom CSS variables for theming
-- **State Management**: TanStack Query (React Query) for server state management
-- **Routing**: Wouter for lightweight client-side routing
-- **Form Handling**: React Hook Form with Zod validation
-- **Design System**: Uses a "new-york" style variant with neutral base colors and comprehensive theming support
+## Frontend
+- **Framework**: React 18 with TypeScript and Vite.
+- **UI/UX**: Shadcn/ui (built on Radix UI) and Tailwind CSS with custom theming. Utilizes a "new-york" style variant.
+- **State Management**: TanStack Query for server state.
+- **Routing**: Wouter for client-side routing.
+- **Form Handling**: React Hook Form with Zod validation.
+- **Design System**: Neutral base colors and comprehensive theming support.
 
-## Backend Architecture
-- **Framework**: Express.js with TypeScript
-- **API Design**: RESTful API with proper HTTP status codes and error handling
-- **Middleware**: Custom logging middleware for API requests and responses
-- **Development Tools**: Vite integration for hot module replacement in development
-- **Error Handling**: Centralized error handling middleware with proper status codes
+## Backend
+- **Framework**: Express.js with TypeScript.
+- **API Design**: RESTful API with structured error handling.
+- **Middleware**: Custom logging middleware.
+- **Development**: Vite integration for hot module replacement.
+- **Authentication**: Basic session management using Connect-pg-simple for PostgreSQL session storage.
 
-## Data Storage Solutions
-- **Database**: PostgreSQL with Neon Database as the serverless provider
-- **ORM**: Drizzle ORM for type-safe database operations and migrations
-- **Schema Management**: Shared schema definitions between frontend and backend using Zod for validation
-- **Migrations**: Drizzle Kit for database schema migrations
-- **Development Storage**: In-memory storage implementation for development/testing
+## Data Storage
+- **Database**: PostgreSQL (Neon Database for serverless hosting).
+- **ORM**: Drizzle ORM for type-safe operations and migrations (Drizzle Kit).
+- **Schema Management**: Shared schema definitions between frontend and backend using Zod.
+- **Development**: In-memory storage for testing.
 
-## Authentication and Authorization
-- **Session Management**: Connect-pg-simple for PostgreSQL session storage
-- **Current Implementation**: Basic session setup (authentication logic not fully implemented)
+## Key Features
+- **Worker Management**: Full CRUD operations for workers, including detailed contact information (name components, birth date, email, phone numbers, SSN).
+- **Configurable Settings**:
+    - **Worker ID Types**: Management of identification number types with CRUD, sorting, and optional regex validation.
+    - **Site Information**: Configurable site name displayed in the application header.
+    - **Phone Number Validation**: Configurable validation modes (local via `libphonenumber-js` or real-time via Twilio Lookup API).
+- **Logging**: Winston logging with PostgreSQL database backend (`@innova2/winston-pg`), capturing API requests, responses, and errors with detailed metadata.
+- **Tabbed Navigation**: Workers page features tabbed navigation for list and add worker views.
+- **Data Validation**: Extensive use of Zod for schema validation across the application, `libphonenumber-js` for phone numbers, and custom logic for SSN and date validation.
 
-## External Dependencies
+# External Dependencies
 
-### Database Services
-- **Neon Database**: Serverless PostgreSQL hosting
-- **Environment**: Requires `DATABASE_URL` environment variable
+## Database Services
+- **Neon Database**: Serverless PostgreSQL hosting.
 
-### Development Tools
-- **Replit Integration**: Custom Vite plugins for Replit development environment
-- **Cartographer**: Code mapping and navigation
-- **Dev Banner**: Development environment indicators
-- **Runtime Error Modal**: Enhanced error reporting during development
+## Development Tools
+- **Replit Integration**: Custom Vite plugins for Replit environment.
+- **Cartographer**: Code mapping and navigation.
+- **Dev Banner**: Development environment indicators.
+- **Runtime Error Modal**: Enhanced error reporting.
 
-### UI and Styling
-- **Radix UI**: Comprehensive set of accessible UI primitives
-- **Tailwind CSS**: Utility-first CSS framework
-- **Lucide React**: Icon library
-- **Class Variance Authority**: Utility for managing component variants
+## UI and Styling
+- **Radix UI**: Accessible UI primitives.
+- **Tailwind CSS**: Utility-first CSS framework.
+- **Lucide React**: Icon library.
+- **Class Variance Authority**: Component variant management.
 
-### Validation and Type Safety
-- **Zod**: Runtime type validation and schema definition
-- **TypeScript**: Static type checking across the entire application
-- **Drizzle Zod**: Integration between Drizzle ORM and Zod validation
-- **libphonenumber-js**: Phone number parsing, validation, and formatting
+## Validation and Type Safety
+- **Zod**: Runtime type validation and schema definition.
+- **TypeScript**: Static type checking.
+- **Drizzle Zod**: Integration between Drizzle ORM and Zod.
+- **libphonenumber-js**: Phone number parsing, validation, and formatting.
 
-### Third-Party Integrations
-- **Twilio**: Phone number lookup and validation via Twilio Lookup API
-  - Managed through Replit connectors for secure credential management
-  - Provides carrier information, caller name, and line type intelligence
+## Third-Party Integrations
+- **Twilio**: Phone number lookup and validation (via Twilio Lookup API), managed through Replit connectors.
 
-### API and State Management
-- **TanStack Query**: Server state management with caching and synchronization
-- **Date-fns**: Date utility functions
-- **ESBuild**: Fast JavaScript bundler for production builds
-
-## Recent Changes
-
-### Winston Logging with Database Backend (November 2, 2025)
-- **Logging System**: Implemented Winston logging framework with PostgreSQL database backend
-  - Uses `@innova2/winston-pg` transport for database logging
-  - Console logging for development with formatted output
-  - Database logging at HTTP level and above (http, info, warn, error)
-  - Auto-creates `winston_logs` table with structured fields (id, level, message, timestamp, source, meta)
-- **Enhanced HTTP Logging**: Express middleware logs all API requests with detailed metadata
-  - Captures method, path, status code, duration, IP address
-  - Full response data stored in JSONB meta field for analysis
-  - Automatic log level assignment: error (5xx), warn (4xx), http (2xx/3xx)
-  - Response preview in log message (truncated to 100 chars for readability)
-- **Error Logging**: Centralized error handler logs all errors with stack traces and request context
-  - Includes error message, status code, URL, method, and full stack trace
-  - Stored in database for post-mortem analysis
-- **Startup Logging**: System initialization events logged with source tracking
-  - Permission system initialization
-  - Address validation service initialization
-  - Server startup with port information
-- **Configuration**: Logger module at `server/logger.ts` with customizable log levels and transports
-  - Development mode: debug level console, http level database
-  - Production mode: info level console, http level database
-  - JSONB metadata field for structured log queries
-  - Connection pooling (max 10) for efficient database writes
-
-### Workers Page Tab Navigation (November 2, 2025)
-- **Separate Routes**: Workers page now has two separate tabs with distinct routes
-  - `/workers` - List view showing all workers in a table
-  - `/workers/add` - Add worker form for creating new workers
-- **Tab Navigation**: Both pages have tab navigation that allows switching between List and Add views
-- **Full Page Refresh**: Clicking tabs triggers full page navigation (not client-side only)
-- **Redirect After Add**: Successfully adding a worker redirects to the list view
-- **Permission**: Add page requires `workers.manage` permission while list requires `workers.view`
-
-### Site Information Configuration (November 2, 2025)
-- **Site Name Setting**: New configuration page at `/config/site` for managing site name
-  - Replaces hardcoded "Sirius" in header with configurable site name
-  - Uses existing variables table to store site name
-  - API endpoints: GET and PUT `/api/site-settings`
-- **Header Update**: Main header now fetches and displays site name from settings
-  - Falls back to "Sirius" if no custom name is set
-- **Configuration Navigation**: Site Information added to configuration sidebar
-  - Requires `variables.manage` permission
-  - Each configuration section now has proper permission filtering in sidebar
-
-### Worker Page Icon Update (November 2, 2025)
-- **Person Icon**: Replaced star icon with person icon in worker detail page headers
-  - Applied to all worker pages (Details, Name, Email, IDs, Addresses, Phone Numbers)
-  - Provides better visual indication that these pages are for individual workers
-
-### Contact Birth Date Management (November 2, 2025)
-- **Birth Date Field**: Contacts table now includes a birth date field
-  - Stored as PostgreSQL `date` type (not timestamp) for calendar dates
-  - Birth date is optional and can be left empty
-  - Validated using YYYY-MM-DD format with proper calendar validation
-- **Birth Date Tab**: New "Birth Date" tab added under Identity section for managing birth dates
-  - Displays current birth date formatted as "Month Day, Year" (e.g., "January 15, 1990")
-  - Edit mode uses HTML5 date picker (input type="date")
-  - Backend and frontend both validate date format and calendar validity
-  - Clear error messages for invalid dates (e.g., February 30)
-- **Details Display**: Birth date now appears on the main worker Details page
-  - Shown in the Basic Information section alongside name and worker ID
-  - Displayed with calendar icon for visual clarity
-  - Shows "No birth date set" if not configured
-- **Timezone-Safe Display**: Birth dates are displayed without timezone conversion
-  - Uses string parsing instead of Date objects to avoid off-by-one day issues
-  - Ensures displayed date matches exactly what's stored in database
-- **Backend Validation**: Comprehensive server-side validation prevents invalid dates
-  - Regex validation for YYYY-MM-DD format
-  - Calendar-accurate validation including leap year calculation
-  - Month range validation (1-12)
-  - Day range validation based on month and leap years
-  - Rejects invalid dates like 2024-02-30 or 2024-13-01
-- **Navigation**: Identity section groups Name, IDs, and Birth Date tabs
-  - Route: `/workers/:id/birth-date`
-  - BirthDateManagement component handles viewing and editing
-  - Backend API: PUT `/api/workers/:id` with `birthDate` field updates contact birth date
-
-## Recent Changes (Prior)
-
-### Contact Name Components (November 2, 2025)
-- **Name Structure**: Contact names now use structured components instead of a single field
-  - Components: title, given (first), middle, family (last), generational (Jr., Sr., III), credentials (MD, PhD)
-  - Display name is generated from components and used throughout the UX
-  - Backend automatically parses simple names into given/family components
-  - Helper function `generateDisplayName()` in shared schema formats names consistently
-- **Worker-Contact Relationship**: Workers reference contacts, contact names displayed via displayName field
-  - Workers table removed name field, now uses contact relationship exclusively
-  - All worker views fetch and display contact displayName
-  - "Name" tab added to worker detail pages for editing contact name
-  - Edit functionality updates contact name components and regenerates displayName
-- **Database Migration**: Existing contact names migrated to new structure
-  - Old "name" field split into given/family components
-  - displayName populated from original names
-  - All frontend code updated to use displayName
-
-### Phone Number Management (November 2, 2025)
-- **Phone Number Validation**: All phone numbers are validated and stored in E.164 format
-  - Backend validation service uses libphonenumber-js to parse and validate phone numbers
-  - Invalid phone numbers are rejected with clear error messages
-  - Phone numbers are automatically canonicalized to E.164 format before storage
-- **Display Formatting**: Phone numbers are displayed in U.S. national format for better readability
-  - List view shows formatted phone numbers (e.g., (555) 123-4567)
-  - Edit dialog pre-fills with formatted phone numbers
-  - Internal storage remains in E.164 format for consistency and international compatibility
-- **Frontend Validation**: Client-side validation provides immediate feedback to users
-  - Zod schema validation prevents submission of invalid phone numbers
-  - Clear error messages guide users to correct format
-- **Validation Modes**: Configurable phone validation with local or Twilio options
-  - Configuration page at `/config/phone-numbers` allows switching between validation modes
-  - Local mode: Pattern-based validation using libphonenumber-js (no API calls)
-  - Twilio mode: Real-time validation using Twilio Lookup API with carrier and caller name data
-  - Fallback mechanism: Can fall back to local validation if Twilio API fails
-  - Lookup fields are configurable (carrier, caller-name, line type intelligence)
-  - Configuration changes take effect immediately without requiring server restart
-  - Full validation response data stored in JSONB field for auditing
-
-### Contact Email Management (November 2, 2025)
-- **Email Field**: Contacts table now includes an email address field
-  - Stored as text in the database
-  - Validated using standard email format regex (basic validation)
-  - Email field is optional and can be left empty
-- **Email Tab**: New "Email" tab added to worker detail pages for managing email addresses
-  - Displays current email address with Mail icon
-  - Edit mode provides validation before saving
-  - Backend and frontend both validate email format
-  - Clear error messages for invalid email formats
-- **Details Display**: Email address now appears on the main worker Details page
-  - Shown in the Contact Information section
-  - Displayed alongside phone number and address
-  - Shows "No email address set" if not configured
-- **Navigation**: All worker detail pages now include "Email" tab alongside Details, Name, IDs, Addresses, and Phone Numbers
-  - Route: `/workers/:id/email`
-  - EmailManagement component handles viewing and editing email
-  - Backend API: PUT `/api/workers/:id` with `email` field updates contact email
-
-### Worker SSN Management (November 2, 2025)
-- **SSN Field**: Workers table now includes an SSN (Social Security Number) field
-  - Stored as unformatted 9-digit string (e.g., "008621234")
-  - Displayed in formatted XXX-XX-XXXX format (e.g., "008-62-1234")
-  - Helper functions `formatSSN()`, `unformatSSN()`, and `validateSSN()` in shared schema handle formatting and validation
-  - SSN field has a unique constraint - no two workers can have the same SSN
-  - Duplicate SSN attempts return a 409 Conflict error with a clear message
-- **SSN Validation**: SSNs are validated against standard Social Security Administration rules
-  - Cannot begin with 000 (invalid area number)
-  - Cannot begin with 666 (never assigned)
-  - Cannot begin with 900-999 (reserved for specific purposes)
-  - Middle two digits cannot be 00 (invalid group number)
-  - Last four digits cannot be 0000 (invalid serial number)
-  - Both frontend and backend validate against these rules with clear error messages
-- **IDs Tab**: New "IDs" tab added to worker detail pages for managing identification numbers
-  - Displays current SSN with formatted display
-  - Edit mode provides validation and auto-formatting as user types
-  - Backend validation ensures SSN follows all standard rules
-  - SSN field is optional and can be cleared
-  - Shows error message if trying to use an SSN already assigned to another worker or if SSN violates standard rules
-- **Navigation**: All worker detail pages now include "IDs" tab alongside Details, Name, Addresses, and Phone Numbers
-  - Route: `/workers/:id/ids`
-  - IDsManagement component handles viewing and editing SSN
-  - Backend API: PUT `/api/workers/:id` with `ssn` field updates worker SSN
+## API and State Management
+- **TanStack Query**: Server state management.
+- **Date-fns**: Date utility functions.
+- **ESBuild**: JavaScript bundler.
+- **@innova2/winston-pg**: Winston transport for PostgreSQL logging.
