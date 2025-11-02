@@ -15,10 +15,15 @@ import { insertPhoneNumberSchema } from "@shared/schema";
 import { Phone, Plus, Edit, Trash2, Star } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { z } from "zod";
-import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
+import { formatPhoneNumberForDisplay, validatePhoneNumber } from "@/lib/phone-utils";
 
-// Form schema that omits contactId since it's provided as a prop
-const phoneNumberFormSchema = insertPhoneNumberSchema.omit({ contactId: true });
+// Form schema that omits contactId since it's provided as a prop and adds client-side validation
+const phoneNumberFormSchema = insertPhoneNumberSchema.omit({ contactId: true }).extend({
+  phoneNumber: z.string().min(1, "Phone number is required").refine(
+    (value) => validatePhoneNumber(value).isValid,
+    (value) => ({ message: validatePhoneNumber(value).error || "Invalid phone number" })
+  )
+});
 type PhoneNumberFormData = z.infer<typeof phoneNumberFormSchema>;
 
 interface PhoneNumberManagementProps {
