@@ -140,8 +140,7 @@ export default function WorkerAddresses() {
               <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
                 <Star className="text-primary-foreground" size={16} />
               </div>
-              <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
-              <span className="text-muted-foreground text-sm font-medium" data-testid={`text-worker-name-${worker.id}`}>{contact?.displayName || 'Loading...'}</span>
+              <h1 className="text-xl font-semibold text-foreground" data-testid={`text-worker-name-${worker.id}`}>{contact?.displayName || 'Loading...'}</h1>
             </div>
             <div className="flex items-center space-x-4">
               <Link href="/workers">
