@@ -380,7 +380,7 @@ export default function AddressManagement({ workerId, contactId }: AddressManage
                 <div className="space-y-3">
                   <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Coordinates</h4>
                   
-                  {viewingAddress.latitude != null ? (
+                  {viewingAddress.latitude != null && viewingAddress.longitude != null ? (
                     <div className="space-y-3 divide-y">
                       <div className="flex justify-between items-center py-2">
                         <span className="text-sm text-muted-foreground font-medium">Latitude</span>
