@@ -8,6 +8,24 @@ import { initializePermissions } from "@shared/permissions";
 import { addressValidationService } from "./services/address-validation";
 import { logger } from "./logger";
 
+// Helper function to redact sensitive data from responses before logging
+function redactSensitiveData(data: any): any {
+  if (!data || typeof data !== 'object') return data;
+  
+  const sensitiveFields = ['ssn', 'password', 'token', 'secret'];
+  const redacted = Array.isArray(data) ? [...data] : { ...data };
+  
+  for (const key in redacted) {
+    if (sensitiveFields.includes(key.toLowerCase())) {
+      redacted[key] = '[REDACTED]';
+    } else if (typeof redacted[key] === 'object' && redacted[key] !== null) {
+      redacted[key] = redactSensitiveData(redacted[key]);
+    }
+  }
+  
+  return redacted;
+}
+
 const PgSession = ConnectPgSimple(session);
 
 const app = express();
@@ -58,13 +76,20 @@ app.use((req, res, next) => {
       };
 
       if (capturedJsonResponse) {
-        // Truncate response for display but keep full response in meta
-        let responsePreview = JSON.stringify(capturedJsonResponse);
-        if (responsePreview.length > 100) {
-          responsePreview = responsePreview.slice(0, 99) + "…";
+        // Redact sensitive data and create a preview string
+        // Important: Only store the string, never the object, to prevent PII leaks
+        try {
+          const redactedResponse = redactSensitiveData(capturedJsonResponse);
+          const fullRedactedString = JSON.stringify(redactedResponse);
+          const preview = fullRedactedString.length > 100 
+            ? fullRedactedString.slice(0, 99) + "…" 
+            : fullRedactedString;
+          // Store only the string preview, not the object
+          meta.responsePreview = preview;
+        } catch (err) {
+          // If serialization fails, log minimal info
+          meta.responsePreview = "[Response serialization failed]";
         }
-        meta.response = capturedJsonResponse;
-        meta.responsePreview = responsePreview;
       }
 
       // Log at appropriate level based on status code
@@ -92,6 +117,7 @@ app.use((req, res, next) => {
 
   const server = await registerRoutes(app);
 
+  // Register error handling middleware AFTER routes to catch route errors
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
@@ -106,7 +132,6 @@ app.use((req, res, next) => {
     });
 
     res.status(status).json({ message });
-    throw err;
   });
 
   // importantly only setup vite in development and after

@@ -27,7 +27,7 @@ if (process.env.DATABASE_URL) {
     const pgTransport = new PostgresTransport({
       connectionString: process.env.DATABASE_URL,
       tableName: "winston_logs",
-      level: "info",
+      level: "http", // Capture HTTP logs and above (http, info, warn, error)
       maxPool: 10,
       tableColumns: [
         { name: "id", dataType: "SERIAL", primaryKey: true, unique: true },

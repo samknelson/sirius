@@ -71,6 +71,30 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### Winston Logging with Database Backend (November 2, 2025)
+- **Logging System**: Implemented Winston logging framework with PostgreSQL database backend
+  - Uses `@innova2/winston-pg` transport for database logging
+  - Console logging for development with formatted output
+  - Database logging at HTTP level and above (http, info, warn, error)
+  - Auto-creates `winston_logs` table with structured fields (id, level, message, timestamp, source, meta)
+- **Enhanced HTTP Logging**: Express middleware logs all API requests with detailed metadata
+  - Captures method, path, status code, duration, IP address
+  - Full response data stored in JSONB meta field for analysis
+  - Automatic log level assignment: error (5xx), warn (4xx), http (2xx/3xx)
+  - Response preview in log message (truncated to 100 chars for readability)
+- **Error Logging**: Centralized error handler logs all errors with stack traces and request context
+  - Includes error message, status code, URL, method, and full stack trace
+  - Stored in database for post-mortem analysis
+- **Startup Logging**: System initialization events logged with source tracking
+  - Permission system initialization
+  - Address validation service initialization
+  - Server startup with port information
+- **Configuration**: Logger module at `server/logger.ts` with customizable log levels and transports
+  - Development mode: debug level console, http level database
+  - Production mode: info level console, http level database
+  - JSONB metadata field for structured log queries
+  - Connection pooling (max 10) for efficient database writes
+
 ### Workers Page Tab Navigation (November 2, 2025)
 - **Separate Routes**: Workers page now has two separate tabs with distinct routes
   - `/workers` - List view showing all workers in a table
