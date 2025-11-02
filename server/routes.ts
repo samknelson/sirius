@@ -486,6 +486,132 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Gender Options routes
+  // GET /api/gender-options - Get all gender options (requires workers.view permission)
+  app.get("/api/gender-options", requireAuth, requirePermission("workers.view"), async (req, res) => {
+    try {
+      const genderOptions = await storage.getAllGenderOptions();
+      res.json(genderOptions);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch gender options" });
+    }
+  });
+
+  // GET /api/gender-options/:id - Get a specific gender option (requires workers.view permission)
+  app.get("/api/gender-options/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const genderOption = await storage.getGenderOption(id);
+      
+      if (!genderOption) {
+        res.status(404).json({ message: "Gender option not found" });
+        return;
+      }
+      
+      res.json(genderOption);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch gender option" });
+    }
+  });
+
+  // POST /api/gender-options - Create a new gender option (requires variables.manage permission)
+  app.post("/api/gender-options", requireAuth, requirePermission("variables.manage"), async (req, res) => {
+    try {
+      const { name, code, nota, sequence } = req.body;
+      
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ message: "Name is required" });
+      }
+      
+      if (!code || typeof code !== 'string' || !code.trim()) {
+        return res.status(400).json({ message: "Code is required" });
+      }
+      
+      const genderOption = await storage.createGenderOption({
+        name: name.trim(),
+        code: code.trim(),
+        nota: typeof nota === 'boolean' ? nota : false,
+        sequence: typeof sequence === 'number' ? sequence : 0,
+      });
+      
+      res.status(201).json(genderOption);
+    } catch (error: any) {
+      if (error.message?.includes('unique constraint') || error.code === '23505') {
+        return res.status(409).json({ message: "A gender option with this code already exists" });
+      }
+      res.status(500).json({ message: "Failed to create gender option" });
+    }
+  });
+
+  // PUT /api/gender-options/:id - Update a gender option (requires variables.manage permission)
+  app.put("/api/gender-options/:id", requireAuth, requirePermission("variables.manage"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, code, nota, sequence } = req.body;
+      
+      const updates: any = {};
+      
+      if (name !== undefined) {
+        if (typeof name !== 'string' || !name.trim()) {
+          return res.status(400).json({ message: "Name must be a non-empty string" });
+        }
+        updates.name = name.trim();
+      }
+      
+      if (code !== undefined) {
+        if (typeof code !== 'string' || !code.trim()) {
+          return res.status(400).json({ message: "Code must be a non-empty string" });
+        }
+        updates.code = code.trim();
+      }
+      
+      if (nota !== undefined) {
+        if (typeof nota !== 'boolean') {
+          return res.status(400).json({ message: "Nota must be a boolean" });
+        }
+        updates.nota = nota;
+      }
+      
+      if (sequence !== undefined) {
+        if (typeof sequence !== 'number') {
+          return res.status(400).json({ message: "Sequence must be a number" });
+        }
+        updates.sequence = sequence;
+      }
+      
+      const genderOption = await storage.updateGenderOption(id, updates);
+      
+      if (!genderOption) {
+        res.status(404).json({ message: "Gender option not found" });
+        return;
+      }
+      
+      res.json(genderOption);
+    } catch (error: any) {
+      if (error.message?.includes('unique constraint') || error.code === '23505') {
+        return res.status(409).json({ message: "A gender option with this code already exists" });
+      }
+      res.status(500).json({ message: "Failed to update gender option" });
+    }
+  });
+
+  // DELETE /api/gender-options/:id - Delete a gender option (requires variables.manage permission)
+  app.delete("/api/gender-options/:id", requireAuth, requirePermission("variables.manage"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteGenderOption(id);
+      
+      if (!deleted) {
+        res.status(404).json({ message: "Gender option not found" });
+        return;
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete gender option" });
+    }
+  });
+
   // Register generic variable management routes (MUST come after specific routes)
   registerVariableRoutes(app, requireAuth, requirePermission);
 
