@@ -8,6 +8,7 @@ import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/layout/Header";
 import LoginPage from "@/pages/login";
 import Workers from "@/pages/workers";
+import WorkersAdd from "@/pages/workers-add";
 import WorkerView from "@/pages/worker-view";
 import WorkerName from "@/pages/worker-name";
 import WorkerEmail from "@/pages/worker-email";
@@ -44,6 +45,14 @@ function Router() {
       <Route path="/login" component={LoginPage} />
       
       {/* Protected routes */}
+      <Route path="/workers/add">
+        <ProtectedRoute permission="workers.manage">
+          <AuthenticatedLayout>
+            <WorkersAdd />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
       <Route path="/workers/:id/phone-numbers">
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>

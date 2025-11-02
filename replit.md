@@ -71,6 +71,33 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### Workers Page Tab Navigation (November 2, 2025)
+- **Separate Routes**: Workers page now has two separate tabs with distinct routes
+  - `/workers` - List view showing all workers in a table
+  - `/workers/add` - Add worker form for creating new workers
+- **Tab Navigation**: Both pages have tab navigation that allows switching between List and Add views
+- **Full Page Refresh**: Clicking tabs triggers full page navigation (not client-side only)
+- **Redirect After Add**: Successfully adding a worker redirects to the list view
+- **Permission**: Add page requires `workers.manage` permission while list requires `workers.view`
+
+### Site Information Configuration (November 2, 2025)
+- **Site Name Setting**: New configuration page at `/config/site` for managing site name
+  - Replaces hardcoded "Sirius" in header with configurable site name
+  - Uses existing variables table to store site name
+  - API endpoints: GET and PUT `/api/site-settings`
+- **Header Update**: Main header now fetches and displays site name from settings
+  - Falls back to "Sirius" if no custom name is set
+- **Configuration Navigation**: Site Information added to configuration sidebar
+  - Requires `variables.manage` permission
+  - Each configuration section now has proper permission filtering in sidebar
+
+### Worker Page Icon Update (November 2, 2025)
+- **Person Icon**: Replaced star icon with person icon in worker detail page headers
+  - Applied to all worker pages (Details, Name, Email, IDs, Addresses, Phone Numbers)
+  - Provides better visual indication that these pages are for individual workers
+
+## Recent Changes (Prior)
+
 ### Contact Name Components (November 2, 2025)
 - **Name Structure**: Contact names now use structured components instead of a single field
   - Components: title, given (first), middle, family (last), generational (Jr., Sr., III), credentials (MD, PhD)

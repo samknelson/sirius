@@ -6,11 +6,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useLocation } from "wouter";
 
 export function AddWorkerForm() {
   const [name, setName] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
 
   const addWorkerMutation = useMutation({
     mutationFn: async (workerData: { name: string }) => {
@@ -23,6 +25,8 @@ export function AddWorkerForm() {
         title: "Success",
         description: "Worker added successfully!",
       });
+      // Redirect to workers list after successful add
+      setLocation("/workers");
     },
     onError: () => {
       toast({

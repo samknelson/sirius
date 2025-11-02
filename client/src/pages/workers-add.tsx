@@ -1,13 +1,13 @@
 import { Star, User } from "lucide-react";
-import { WorkersTable } from "@/components/workers/workers-table";
+import { AddWorkerForm } from "@/components/workers/add-worker-form";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { Worker } from "@shared/schema";
 
-export default function Workers() {
+export default function WorkersAdd() {
   const [location] = useLocation();
-  const { data: workers = [], isLoading } = useQuery<Worker[]>({
+  const { data: workers = [] } = useQuery<Worker[]>({
     queryKey: ["/api/workers"],
   });
 
@@ -61,7 +61,7 @@ export default function Workers() {
       </div>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <WorkersTable workers={workers} isLoading={isLoading} />
+        <AddWorkerForm />
       </main>
     </div>
   );
