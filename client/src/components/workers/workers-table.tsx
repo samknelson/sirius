@@ -54,10 +54,10 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
 
   // Fetch phone numbers for all contacts
   const { data: phoneNumbers = [] } = useQuery<PhoneNumber[]>({
-    queryKey: ["/api/phone-numbers", contactIds],
+    queryKey: ["/api/contacts/phone-numbers", contactIds],
     queryFn: async () => {
       const phonePromises = contactIds.map(async (contactId) => {
-        const res = await fetch(`/api/phone-numbers?contactId=${contactId}`);
+        const res = await fetch(`/api/contacts/${contactId}/phone-numbers`);
         if (res.ok) {
           return res.json();
         }
