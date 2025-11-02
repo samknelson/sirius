@@ -77,6 +77,13 @@ export const optionsGender = pgTable("options_gender", {
   sequence: integer("sequence").notNull().default(0),
 });
 
+export const optionsWorkerIdType = pgTable("options_worker_id_type", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  sequence: integer("sequence").notNull().default(0),
+  validator: text("validator"),
+});
+
 export const postalAddresses = pgTable("postal_addresses", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
