@@ -7,9 +7,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2, MapPin, Star } from "lucide-react";
+import { Plus, Edit, Trash2, MapPin, Star, Eye, Code, CheckCircle, AlertCircle, Copy } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { UnifiedAddressInput } from "@/components/ui/unified-address-input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface AddressManagementProps {
   workerId: string;
@@ -21,6 +22,8 @@ interface AddressFormData extends Omit<InsertPostalAddress, 'contactId'> {}
 export default function AddressManagement({ workerId, contactId }: AddressManagementProps) {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingAddress, setEditingAddress] = useState<PostalAddress | null>(null);
+  const [viewingAddress, setViewingAddress] = useState<PostalAddress | null>(null);
+  const [jsonViewAddress, setJsonViewAddress] = useState<PostalAddress | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -153,6 +156,37 @@ export default function AddressManagement({ workerId, contactId }: AddressManage
     setPrimaryMutation.mutate(addressId);
   };
 
+  const getAccuracyBadge = (accuracy?: string | null) => {
+    if (!accuracy) {
+      return null;
+    }
+
+    const accuracyMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: any }> = {
+      ROOFTOP: { label: "Rooftop", variant: "default", icon: CheckCircle },
+      RANGE_INTERPOLATED: { label: "Range Interpolated", variant: "secondary", icon: MapPin },
+      GEOMETRIC_CENTER: { label: "Geometric Center", variant: "outline", icon: MapPin },
+      APPROXIMATE: { label: "Approximate", variant: "destructive", icon: AlertCircle },
+    };
+
+    const config = accuracyMap[accuracy] || { label: accuracy, variant: "outline" as const, icon: MapPin };
+    const Icon = config.icon;
+
+    return (
+      <Badge variant={config.variant} className="flex items-center gap-1">
+        <Icon size={12} />
+        <span>{config.label}</span>
+      </Badge>
+    );
+  };
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast({
+      title: "Copied",
+      description: `${label} copied to clipboard`,
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -225,7 +259,7 @@ export default function AddressManagement({ workerId, contactId }: AddressManage
             <Card key={address.id} className="relative">
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 flex-wrap gap-2">
                     <CardTitle className="text-base">{address.street}</CardTitle>
                     {address.isPrimary && (
                       <Badge variant="default" className="flex items-center space-x-1">
@@ -236,8 +270,17 @@ export default function AddressManagement({ workerId, contactId }: AddressManage
                     {!address.isActive && (
                       <Badge variant="secondary">Inactive</Badge>
                     )}
+                    {getAccuracyBadge(address.accuracy)}
                   </div>
                   <div className="flex items-center space-x-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setViewingAddress(address)}
+                      data-testid={`button-view-address-${address.id}`}
+                    >
+                      <Eye size={14} />
+                    </Button>
                     {!address.isPrimary && (
                       <Button
                         variant="ghost"
@@ -302,6 +345,149 @@ export default function AddressManagement({ workerId, contactId }: AddressManage
               isSubmitting={updateAddressMutation.isPending}
               submitLabel="Update Address"
             />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* View Address Details Dialog */}
+      <Dialog open={viewingAddress !== null} onOpenChange={() => setViewingAddress(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Address Coordinates</DialogTitle>
+          </DialogHeader>
+          {viewingAddress && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Left Column: Address Context */}
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-2">Address</h4>
+                    <p className="font-medium">{viewingAddress.street}</p>
+                    <p className="text-muted-foreground">
+                      {viewingAddress.city}, {viewingAddress.state} {viewingAddress.postalCode}
+                    </p>
+                    <p className="text-muted-foreground text-sm">{viewingAddress.country}</p>
+                  </div>
+                  {viewingAddress.accuracy && (
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-2">Accuracy</h4>
+                      {getAccuracyBadge(viewingAddress.accuracy)}
+                    </div>
+                  )}
+                </div>
+
+                {/* Right Column: Coordinate Data */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Coordinates</h4>
+                  
+                  {viewingAddress.latitude != null ? (
+                    <div className="space-y-3 divide-y">
+                      <div className="flex justify-between items-center py-2">
+                        <span className="text-sm text-muted-foreground font-medium">Latitude</span>
+                        <div className="flex items-center gap-2">
+                          <code className="font-mono text-base">{viewingAddress.latitude.toFixed(7)}</code>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyToClipboard(viewingAddress.latitude!.toString(), "Latitude")}
+                            data-testid="button-copy-latitude"
+                          >
+                            <Copy size={14} />
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      <div className="flex justify-between items-center py-2">
+                        <span className="text-sm text-muted-foreground font-medium">Longitude</span>
+                        <div className="flex items-center gap-2">
+                          <code className="font-mono text-base">{viewingAddress.longitude!.toFixed(7)}</code>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyToClipboard(viewingAddress.longitude!.toString(), "Longitude")}
+                            data-testid="button-copy-longitude"
+                          >
+                            <Copy size={14} />
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      <div className="flex justify-between items-center py-2">
+                        <span className="text-sm text-muted-foreground font-medium">Accuracy Type</span>
+                        <code className="font-mono text-sm">{viewingAddress.accuracy}</code>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No coordinate data available</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="flex justify-between items-center pt-4 border-t">
+                {viewingAddress.validationResponse ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setJsonViewAddress(viewingAddress);
+                      setViewingAddress(null);
+                    }}
+                    data-testid="button-view-json"
+                  >
+                    <Code size={16} className="mr-2" />
+                    View Full API Response
+                  </Button>
+                ) : (
+                  <div />
+                )}
+                <Button onClick={() => setViewingAddress(null)} data-testid="button-close-view">
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* JSON Viewer Dialog */}
+      <Dialog open={jsonViewAddress !== null} onOpenChange={() => setJsonViewAddress(null)}>
+        <DialogContent className="sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Geocoding API Response</DialogTitle>
+          </DialogHeader>
+          {jsonViewAddress && (
+            <div className="space-y-4">
+              {jsonViewAddress.validationResponse ? (
+                <>
+                  <div className="flex justify-between items-center">
+                    <p className="text-sm text-muted-foreground">Full response from Google Geocoding API</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => copyToClipboard(JSON.stringify(jsonViewAddress.validationResponse, null, 2), "JSON response")}
+                      data-testid="button-copy-json"
+                    >
+                      <Copy size={14} className="mr-2" />
+                      Copy All
+                    </Button>
+                  </div>
+                  
+                  <ScrollArea className="h-[500px] w-full rounded-md border p-4 bg-muted/50">
+                    <pre className="text-xs font-mono">
+                      {JSON.stringify(jsonViewAddress.validationResponse, null, 2)}
+                    </pre>
+                  </ScrollArea>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground py-8 text-center">No API response data available</p>
+              )}
+              
+              <div className="flex justify-end pt-4 border-t">
+                <Button onClick={() => setJsonViewAddress(null)} data-testid="button-close-json">
+                  Close
+                </Button>
+              </div>
+            </div>
           )}
         </DialogContent>
       </Dialog>
