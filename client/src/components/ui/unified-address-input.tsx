@@ -15,6 +15,7 @@ import { insertPostalAddressSchema } from "@shared/schema";
 import { useAddressValidationConfig } from "@/hooks/useAddressValidationConfig";
 
 interface AddressFormData {
+  friendlyName?: string;
   street: string;
   city: string;
   state: string;
@@ -104,6 +105,7 @@ export function UnifiedAddressInput({
         
         // Set confirmed state snapshot for cancellation
         const confirmedState: AddressFormData = {
+          friendlyName: defaultValues.friendlyName,
           street: defaultValues.street || "",
           city: defaultValues.city || "",
           state: defaultValues.state || "",
@@ -255,6 +257,7 @@ export function UnifiedAddressInput({
     
     // Reset ALL form values to the persisted snapshot (not the potentially corrupted confirmed state)
     const stateToRestore = persistedSnapshot || {
+      friendlyName: undefined,
       street: "",
       city: "",
       state: "",
@@ -467,6 +470,19 @@ export function UnifiedAddressInput({
             {isEditing ? (
               // Editing mode
               <div className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="friendlyName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Friendly Name (Optional)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., Home, Office, Warehouse" data-testid="input-friendly-name" {...field} value={field.value || ''} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 <FormField
                   control={form.control}
                   name="street"
