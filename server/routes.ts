@@ -744,6 +744,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const workerIds = await storage.getWorkerIdsByWorkerId(workerId);
       res.json(workerIds);
     } catch (error) {
+      console.error("Error fetching worker IDs:", error);
       res.status(500).json({ message: "Failed to fetch worker IDs" });
     }
   });
@@ -814,6 +815,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.status(201).json(newWorkerId);
     } catch (error: any) {
+      console.error("Error creating worker ID:", error);
       res.status(500).json({ message: "Failed to create worker ID" });
     }
   });
