@@ -50,7 +50,7 @@ export default function PhoneNumbersConfigPage() {
         },
         twilio: {
           enabled: newMode === "twilio",
-          lookupType: config?.twilio?.lookupType || ["carrier", "caller-name"],
+          lookupType: config?.twilio?.lookupType || ["line_type_intelligence", "caller_name"],
         },
         fallback: config?.fallback || {
           useLocalOnTwilioFailure: true,

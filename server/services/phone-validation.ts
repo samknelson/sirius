@@ -52,7 +52,7 @@ export class PhoneValidationService {
       },
       twilio: {
         enabled: false,
-        lookupType: ['carrier', 'caller-name']
+        lookupType: ['line_type_intelligence', 'caller_name']
       },
       fallback: {
         useLocalOnTwilioFailure: true,
