@@ -53,6 +53,11 @@ export const workers = pgTable("workers", {
   ssn: text("ssn").unique(),
 });
 
+export const employers = pgTable("employers", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+});
+
 export const variables = pgTable("variables", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull().unique(),
@@ -117,6 +122,8 @@ export const insertWorkerSchema = createInsertSchema(workers).omit({
   contactId: true, // Contact will be managed automatically
 });
 
+export const insertEmployerSchema = createInsertSchema(employers);
+
 export const insertVariableSchema = createInsertSchema(variables).omit({
   id: true,
 });
@@ -155,6 +162,9 @@ export type Contact = typeof contacts.$inferSelect;
 
 export type InsertWorker = z.infer<typeof insertWorkerSchema>;
 export type Worker = typeof workers.$inferSelect;
+
+export type InsertEmployer = z.infer<typeof insertEmployerSchema>;
+export type Employer = typeof employers.$inferSelect;
 
 export type InsertVariable = z.infer<typeof insertVariableSchema>;
 export type Variable = typeof variables.$inferSelect;
