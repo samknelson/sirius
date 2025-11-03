@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -53,12 +53,14 @@ export const contacts = pgTable("contacts", {
 
 export const workers = pgTable("workers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  siriusId: serial("sirius_id").notNull().unique(),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
   ssn: text("ssn").unique(),
 });
 
 export const employers = pgTable("employers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  siriusId: serial("sirius_id").notNull().unique(),
   name: text("name").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
 });

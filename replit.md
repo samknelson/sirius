@@ -73,6 +73,14 @@ Preferred communication style: Simple, everyday language.
 
 # Recent Changes
 
+## Sequential ID Field Addition (November 3, 2025)
+- **New Field**: Added `sirius_id` to both Workers and Employers tables
+  - Data Type: Serial (auto-incrementing integer)
+  - Constraints: NOT NULL, UNIQUE
+  - Purpose: Provides sequential, human-readable IDs for both workers and employers
+  - Existing records automatically assigned sequential IDs (1, 2, 3, etc.)
+  - Database sequences created: `workers_sirius_id_seq`, `employers_sirius_id_seq`
+
 ## Employers Table Migration (November 2, 2025)
 - **ID Type Change**: Employers table migrated from manual text IDs to auto-generated UUIDs
   - Old: `id: text("id").primaryKey()` - Required manual input
