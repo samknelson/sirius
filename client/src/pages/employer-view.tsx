@@ -21,15 +21,9 @@ function EmployerDetailsContent() {
               </p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Sirius ID</label>
-              <p className="text-foreground font-mono text-sm" data-testid="text-employer-sirius-id">
-                {employer.siriusId}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Record ID</label>
-              <p className="text-foreground font-mono text-sm" data-testid="text-employer-id">
-                {employer.id}
+              <label className="text-sm font-medium text-muted-foreground">Sirius ID / Record ID</label>
+              <p className="text-foreground font-mono text-sm" data-testid="text-employer-ids">
+                {employer.siriusId} / {employer.id}
               </p>
             </div>
             <div className="space-y-2">

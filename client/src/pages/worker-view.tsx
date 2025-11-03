@@ -84,15 +84,9 @@ function WorkerDetailsContent() {
               </p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Sirius ID</label>
-              <p className="text-foreground font-mono text-sm" data-testid={`text-worker-sirius-id-${worker.id}`}>
-                {worker.siriusId}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Record ID</label>
-              <p className="text-foreground font-mono text-sm" data-testid={`text-worker-uuid-${worker.id}`}>
-                {worker.id}
+              <label className="text-sm font-medium text-muted-foreground">Sirius ID / Record ID</label>
+              <p className="text-foreground font-mono text-sm" data-testid={`text-worker-ids-${worker.id}`}>
+                {worker.siriusId} / {worker.id}
               </p>
             </div>
             <div className="space-y-2">
