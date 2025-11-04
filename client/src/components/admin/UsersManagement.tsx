@@ -415,7 +415,7 @@ export default function UsersManagement() {
                   {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never'}
                 </TableCell>
                 <TableCell className="text-right">
-                  <Link to={`/admin/users/${user.id}`}>
+                  <Link to={`/config/users/${user.id}`}>
                     <Button
                       variant="outline"
                       size="sm"

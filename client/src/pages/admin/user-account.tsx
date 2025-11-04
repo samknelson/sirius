@@ -31,7 +31,7 @@ interface Role {
 }
 
 export default function UserAccountPage() {
-  const [, params] = useRoute('/admin/users/:id');
+  const [, params] = useRoute('/config/users/:id');
   const userId = params?.id;
   const { toast } = useToast();
 
@@ -157,7 +157,7 @@ export default function UserAccountPage() {
         <div className="text-center">
           <h2 className="text-lg font-semibold text-red-600">Invalid User</h2>
           <p className="text-muted-foreground mt-2">No user ID provided</p>
-          <Link to="/admin/users">
+          <Link to="/config/users">
             <Button className="mt-4">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Users
@@ -183,7 +183,7 @@ export default function UserAccountPage() {
         <div className="text-center">
           <h2 className="text-lg font-semibold text-red-600">User Not Found</h2>
           <p className="text-muted-foreground mt-2">The requested user could not be found</p>
-          <Link to="/admin/users">
+          <Link to="/config/users">
             <Button className="mt-4">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Users
@@ -198,7 +198,7 @@ export default function UserAccountPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Link to="/admin/users">
+        <Link to="/config/users">
           <Button variant="outline" size="sm" data-testid="button-back">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Users
