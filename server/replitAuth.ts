@@ -64,44 +64,74 @@ function updateUserSession(
   user.expires_at = user.claims?.exp;
 }
 
-// MODIFIED: Check if user exists before allowing login
+// Email-based provisioning: Check if user exists or can be linked
 async function checkUserAccess(
   claims: any,
 ): Promise<{ allowed: boolean; user?: any }> {
   const replitUserId = claims["sub"];
+  const email = claims["email"];
   
   // Log the Replit user information for debugging
   console.log("Replit Auth attempt:", {
-    id: replitUserId,
-    email: claims["email"],
+    replitId: replitUserId,
+    email: email,
     firstName: claims["first_name"],
     lastName: claims["last_name"],
   });
   
-  // Check if this user exists in our database
-  const existingUser = await storage.getUser(replitUserId);
+  // First, try to find user by Replit ID (already linked account)
+  let user = await storage.getUserByReplitId(replitUserId);
   
-  if (!existingUser) {
-    console.log("User not found in database:", replitUserId);
+  if (user) {
+    console.log("Found existing linked account:", user.id);
+    
+    // Check if user is active
+    if (!user.isActive) {
+      console.log("User account is inactive:", user.id);
+      return { allowed: false };
+    }
+    
+    // Update user info from Replit (name, profile image may have changed)
+    const updatedUser = await storage.updateUser(user.id, {
+      email: email,
+      firstName: claims["first_name"],
+      lastName: claims["last_name"],
+      profileImageUrl: claims["profile_image_url"],
+    });
+    
+    // Update last login
+    await storage.updateUserLastLogin(user.id);
+    
+    return { allowed: true, user: updatedUser };
+  }
+  
+  // User not found by Replit ID - check if there's a pending account with this email
+  user = await storage.getUserByEmail(email);
+  
+  if (!user) {
+    console.log("No provisioned account found for email:", email);
     return { allowed: false };
   }
   
   // Check if user is active
-  if (!existingUser.isActive) {
-    console.log("User is inactive:", replitUserId);
+  if (!user.isActive) {
+    console.log("User account is inactive:", user.id);
     return { allowed: false };
   }
   
-  // Update user info from Replit (email, name, profile image may have changed)
-  const updatedUser = await storage.upsertUser({
-    id: replitUserId,
-    email: claims["email"],
+  // Link the Replit account to this provisioned user
+  console.log("Linking Replit account to provisioned user:", user.id);
+  const linkedUser = await storage.linkReplitAccount(user.id, replitUserId, {
+    email: email,
     firstName: claims["first_name"],
     lastName: claims["last_name"],
     profileImageUrl: claims["profile_image_url"],
   });
   
-  return { allowed: true, user: updatedUser };
+  // Update last login
+  await storage.updateUserLastLogin(user.id);
+  
+  return { allowed: true, user: linkedUser };
 }
 
 export async function setupAuth(app: Express) {
@@ -167,7 +197,7 @@ export async function setupAuth(app: Express) {
     passport.authenticate(`replitauth:${req.hostname}`, {
       successReturnToOrRedirect: "/",
       failureRedirect: "/unauthorized",
-    })(req, res, (err) => {
+    })(req, res, (err: any) => {
       if (err) {
         // Catch any OAuth or authentication errors and redirect to unauthorized page
         console.error("Authentication callback error:", err.message);

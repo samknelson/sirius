@@ -24,10 +24,13 @@ import { eq, and, desc, sql } from "drizzle-orm";
 export interface IStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
+  getUserByReplitId(replitUserId: string): Promise<User | undefined>; // Find user by Replit ID
+  getUserByEmail(email: string): Promise<User | undefined>; // Find user by email
   upsertUser(user: UpsertUser): Promise<User>; // For Replit Auth
   createUser(user: InsertUser): Promise<User>; // For admin user creation
   updateUser(id: string, user: Partial<InsertUser>): Promise<User | undefined>;
   updateUserLastLogin(id: string): Promise<User | undefined>;
+  linkReplitAccount(userId: string, replitUserId: string, userData: Partial<UpsertUser>): Promise<User | undefined>; // Link Replit account to provisioned user
   deleteUser(id: string): Promise<boolean>;
   getAllUsers(): Promise<User[]>;
   getAllUsersWithRoles(): Promise<(User & { roles: Role[] })[]>;
@@ -158,6 +161,16 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
+  async getUserByReplitId(replitUserId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.replitUserId, replitUserId));
+    return user || undefined;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user || undefined;
+  }
+
   // For Replit Auth - updates user info from Replit or creates if needed
   async upsertUser(userData: UpsertUser): Promise<User> {
     const [user] = await db
@@ -175,6 +188,23 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return user;
+  }
+
+  async linkReplitAccount(userId: string, replitUserId: string, userData: Partial<UpsertUser>): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set({
+        replitUserId,
+        email: userData.email,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        profileImageUrl: userData.profileImageUrl,
+        accountStatus: 'linked',
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    return user || undefined;
   }
 
   // For admin user creation - creates users with minimal info
@@ -330,10 +360,12 @@ export class DatabaseStorage implements IStorage {
     const result = await db
       .select({
         id: users.id,
+        replitUserId: users.replitUserId,
         email: users.email,
         firstName: users.firstName,
         lastName: users.lastName,
         profileImageUrl: users.profileImageUrl,
+        accountStatus: users.accountStatus,
         isActive: users.isActive,
         createdAt: users.createdAt,
         updatedAt: users.updatedAt,

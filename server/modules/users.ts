@@ -26,10 +26,12 @@ export function registerUserRoutes(
       // Shape response to exclude sensitive fields
       const safeUsersWithRoles = usersWithRoles.map(user => ({
         id: user.id,
+        replitUserId: user.replitUserId,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
         profileImageUrl: user.profileImageUrl,
+        accountStatus: user.accountStatus,
         isActive: user.isActive,
         createdAt: user.createdAt,
         lastLogin: user.lastLogin,
@@ -42,14 +44,15 @@ export function registerUserRoutes(
     }
   });
 
-  // POST /api/admin/users - Create user (admin only)
+  // POST /api/admin/users - Create user (admin only, email-based provisioning)
   app.post("/api/admin/users", requireAuth, requirePermission("admin.manage"), async (req, res) => {
     try {
       const userData = createUserSchema.parse(req.body);
       
-      const existingUser = await storage.getUser(userData.id);
+      // Check if user with this email already exists
+      const existingUser = await storage.getUserByEmail(userData.email);
       if (existingUser) {
-        return res.status(409).json({ message: "User already exists" });
+        return res.status(409).json({ message: "User with this email already exists" });
       }
 
       const user = await storage.createUser(userData);
@@ -59,6 +62,7 @@ export function registerUserRoutes(
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        accountStatus: user.accountStatus,
         isActive: user.isActive, 
         createdAt: user.createdAt 
       });
@@ -66,6 +70,7 @@ export function registerUserRoutes(
       if (error instanceof Error && error.name === "ZodError") {
         res.status(400).json({ message: "Invalid user data" });
       } else {
+        console.error("Failed to create user:", error);
         res.status(500).json({ message: "Failed to create user" });
       }
     }
@@ -82,11 +87,13 @@ export function registerUserRoutes(
       }
 
       res.json({ 
-        id: user.id, 
+        id: user.id,
+        replitUserId: user.replitUserId,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
         profileImageUrl: user.profileImageUrl,
+        accountStatus: user.accountStatus,
         isActive: user.isActive, 
         createdAt: user.createdAt,
         lastLogin: user.lastLogin
