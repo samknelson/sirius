@@ -32,6 +32,7 @@ export const roles = pgTable("roles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull().unique(),
   description: text("description"),
+  sequence: integer("sequence").notNull().default(0),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
