@@ -1,13 +1,18 @@
-import { Mail, Phone, MapPin, Calendar, IdCard } from "lucide-react";
+import { Mail, Phone, MapPin, Calendar, IdCard, Gift } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { PostalAddress, PhoneNumber as PhoneNumberType, WorkerId, WorkerIdType } from "@shared/schema";
+import { PostalAddress, PhoneNumber as PhoneNumberType, WorkerId, WorkerIdType, TrustWmb, TrustBenefit, Employer } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
 import { GoogleMap } from "@/components/ui/google-map";
 import { Badge } from "@/components/ui/badge";
+
+interface WorkerBenefit extends TrustWmb {
+  benefit: TrustBenefit;
+  employer: Employer;
+}
 
 function WorkerDetailsContent() {
   const { worker, contact } = useWorkerLayout();
@@ -59,6 +64,28 @@ function WorkerDetailsContent() {
       return response.json();
     },
   });
+
+  // Fetch worker benefits
+  const { data: allBenefits = [] } = useQuery<WorkerBenefit[]>({
+    queryKey: ["/api/workers", worker.id, "benefits"],
+    queryFn: async () => {
+      const response = await fetch(`/api/workers/${worker.id}/benefits`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch worker benefits");
+      }
+      return response.json();
+    },
+  });
+
+  // Get current month and year
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1; // JavaScript months are 0-indexed
+  const currentYear = now.getFullYear();
+
+  // Filter benefits for current month/year
+  const currentBenefits = allBenefits.filter(
+    (benefit) => benefit.month === currentMonth && benefit.year === currentYear
+  );
 
   // Find primary address (prefer primary+active, then just primary, then just active)
   const primaryAddress = addresses.find(addr => addr.isPrimary && addr.isActive) 
@@ -145,6 +172,34 @@ function WorkerDetailsContent() {
             )}
           </div>
         </div>
+
+        {/* Current Benefits */}
+        {currentBenefits.length > 0 && (
+          <div className="pt-4 border-t border-border">
+            <h3 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
+              <Gift size={18} />
+              Current Benefits
+            </h3>
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground mb-3">
+                Benefits received this month ({new Date(currentYear, currentMonth - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })})
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {currentBenefits.map((benefit) => (
+                  <Badge 
+                    key={benefit.id} 
+                    variant="default"
+                    className="text-sm py-1.5 px-3"
+                    data-testid={`badge-current-benefit-${benefit.id}`}
+                  >
+                    <Gift size={14} className="mr-1.5" />
+                    {benefit.benefit.name} - {benefit.employer.name}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Contact Information */}
         <div className="pt-4 border-t border-border">
