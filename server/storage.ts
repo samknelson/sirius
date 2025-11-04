@@ -1,12 +1,13 @@
 // Database storage implementation based on blueprint:javascript_database
 import { 
-  users, workers, contacts, roles, userRoles, rolePermissions, variables, postalAddresses, phoneNumbers, employers, optionsGender, optionsWorkerIdType, workerIds, optionsTrustBenefitType,
+  users, workers, contacts, roles, userRoles, rolePermissions, variables, postalAddresses, phoneNumbers, employers, trustBenefits, optionsGender, optionsWorkerIdType, workerIds, optionsTrustBenefitType,
   type User, type InsertUser, type Worker, type InsertWorker,
   type Contact, type InsertContact,
   type Role, type InsertRole, type Variable, type InsertVariable,
   type PostalAddress, type InsertPostalAddress,
   type PhoneNumber, type InsertPhoneNumber,
   type Employer, type InsertEmployer,
+  type TrustBenefit, type InsertTrustBenefit,
   type GenderOption, type InsertGenderOption,
   type WorkerIdType, type InsertWorkerIdType,
   type WorkerId, type InsertWorkerId,
@@ -89,6 +90,13 @@ export interface IStorage {
   createEmployer(employer: InsertEmployer): Promise<Employer>;
   updateEmployer(id: string, employer: Partial<InsertEmployer>): Promise<Employer | undefined>;
   deleteEmployer(id: string): Promise<boolean>;
+
+  // Trust Benefit CRUD operations
+  getAllTrustBenefits(): Promise<TrustBenefit[]>;
+  getTrustBenefit(id: string): Promise<TrustBenefit | undefined>;
+  createTrustBenefit(benefit: InsertTrustBenefit): Promise<TrustBenefit>;
+  updateTrustBenefit(id: string, benefit: Partial<InsertTrustBenefit>): Promise<TrustBenefit | undefined>;
+  deleteTrustBenefit(id: string): Promise<boolean>;
 
   // Variable CRUD operations
   getAllVariables(): Promise<Variable[]>;
@@ -737,6 +745,54 @@ export class DatabaseStorage implements IStorage {
 
   async deleteEmployer(id: string): Promise<boolean> {
     const result = await db.delete(employers).where(eq(employers.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // Trust Benefit operations
+  async getAllTrustBenefits(): Promise<TrustBenefit[]> {
+    return await db.select().from(trustBenefits);
+  }
+
+  async getTrustBenefit(id: string): Promise<TrustBenefit | undefined> {
+    const [benefit] = await db.select().from(trustBenefits).where(eq(trustBenefits.id, id));
+    return benefit || undefined;
+  }
+
+  async createTrustBenefit(benefit: InsertTrustBenefit): Promise<TrustBenefit> {
+    try {
+      const [newBenefit] = await db
+        .insert(trustBenefits)
+        .values(benefit)
+        .returning();
+      return newBenefit;
+    } catch (error: any) {
+      // Check for unique constraint violation
+      if (error.code === '23505') {
+        throw new Error("A trust benefit with this ID already exists");
+      }
+      throw error;
+    }
+  }
+
+  async updateTrustBenefit(id: string, benefit: Partial<InsertTrustBenefit>): Promise<TrustBenefit | undefined> {
+    try {
+      const [updatedBenefit] = await db
+        .update(trustBenefits)
+        .set(benefit)
+        .where(eq(trustBenefits.id, id))
+        .returning();
+      return updatedBenefit || undefined;
+    } catch (error: any) {
+      // Check for unique constraint violation
+      if (error.code === '23505') {
+        throw new Error("A trust benefit with this ID already exists");
+      }
+      throw error;
+    }
+  }
+
+  async deleteTrustBenefit(id: string): Promise<boolean> {
+    const result = await db.delete(trustBenefits).where(eq(trustBenefits.id, id)).returning();
     return result.length > 0;
   }
 

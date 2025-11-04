@@ -65,6 +65,14 @@ export const employers = pgTable("employers", {
   isActive: boolean("is_active").default(true).notNull(),
 });
 
+export const trustBenefits = pgTable("trust_benefits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  benefitType: varchar("benefit_type").references(() => optionsTrustBenefitType.id, { onDelete: 'set null' }),
+  isActive: boolean("is_active").default(true).notNull(),
+  description: text("description"),
+});
+
 export const variables = pgTable("variables", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull().unique(),
@@ -163,6 +171,10 @@ export const insertEmployerSchema = createInsertSchema(employers).omit({
   id: true,
 });
 
+export const insertTrustBenefitSchema = createInsertSchema(trustBenefits).omit({
+  id: true,
+});
+
 export const insertVariableSchema = createInsertSchema(variables).omit({
   id: true,
 });
@@ -220,6 +232,9 @@ export type Worker = typeof workers.$inferSelect;
 
 export type InsertEmployer = z.infer<typeof insertEmployerSchema>;
 export type Employer = typeof employers.$inferSelect;
+
+export type InsertTrustBenefit = z.infer<typeof insertTrustBenefitSchema>;
+export type TrustBenefit = typeof trustBenefits.$inferSelect;
 
 export type InsertVariable = z.infer<typeof insertVariableSchema>;
 export type Variable = typeof variables.$inferSelect;

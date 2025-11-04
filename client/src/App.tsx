@@ -21,6 +21,8 @@ import Employers from "@/pages/employers";
 import EmployersAdd from "@/pages/employers-add";
 import EmployerView from "@/pages/employer-view";
 import EmployerEdit from "@/pages/employer-edit";
+import TrustBenefits from "@/pages/trust-benefits";
+import TrustBenefitsAdd from "@/pages/trust-benefits-add";
 import AdminUsersPage from "@/pages/admin/users";
 import UserAccountPage from "@/pages/admin/user-account";
 import AdminRolesPage from "@/pages/admin/roles";
@@ -162,6 +164,22 @@ function Router() {
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
             <Employers />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/trust-benefits/add">
+        <ProtectedRoute permission="workers.manage">
+          <AuthenticatedLayout>
+            <TrustBenefitsAdd />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/trust-benefits">
+        <ProtectedRoute permission="workers.view">
+          <AuthenticatedLayout>
+            <TrustBenefits />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
