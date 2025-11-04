@@ -70,15 +70,25 @@ async function checkUserAccess(
 ): Promise<{ allowed: boolean; user?: any }> {
   const replitUserId = claims["sub"];
   
+  // Log the Replit user information for debugging
+  console.log("Replit Auth attempt:", {
+    id: replitUserId,
+    email: claims["email"],
+    firstName: claims["first_name"],
+    lastName: claims["last_name"],
+  });
+  
   // Check if this user exists in our database
   const existingUser = await storage.getUser(replitUserId);
   
   if (!existingUser) {
+    console.log("User not found in database:", replitUserId);
     return { allowed: false };
   }
   
   // Check if user is active
   if (!existingUser.isActive) {
+    console.log("User is inactive:", replitUserId);
     return { allowed: false };
   }
   
