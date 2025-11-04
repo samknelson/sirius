@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Users, MapPin, Phone, Globe, List } from "lucide-react";
+import { Users, MapPin, Phone, Globe, List, UserCog } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface ConfigurationLayoutProps {
@@ -24,6 +24,13 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       label: "User Management",
       icon: Users,
       testId: "nav-config-users",
+      permission: "admin.manage",
+    },
+    {
+      path: "/config/masquerade",
+      label: "Masquerade",
+      icon: UserCog,
+      testId: "nav-config-masquerade",
       permission: "admin.manage",
     },
     {

@@ -38,6 +38,7 @@ import PhoneNumbersConfigPage from "@/pages/config/phone-numbers";
 import GenderOptionsPage from "@/pages/config/gender-options";
 import WorkerIDTypesPage from "@/pages/config/worker-id-types";
 import TrustBenefitTypesPage from "@/pages/config/trust-benefit-types";
+import MasqueradePage from "@/pages/config/masquerade";
 import SiteInformation from "@/pages/site-information";
 import NotFound from "@/pages/not-found";
 
@@ -280,6 +281,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <SiteInformation />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/config/masquerade">
+        <ProtectedRoute permission="admin.manage">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <MasqueradePage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

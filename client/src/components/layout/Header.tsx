@@ -1,16 +1,18 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Link, useLocation } from 'wouter';
-import { LogOut, User, Settings, Users, Building2, Heart } from 'lucide-react';
+import { LogOut, User, Settings, Users, Building2, Heart, UserCog } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { useToast } from '@/hooks/use-toast';
 
 interface SiteSettings {
   siteName: string;
 }
 
 export default function Header() {
-  const { user, logout, hasPermission } = useAuth();
+  const { user, logout, hasPermission, masquerade, stopMasquerade } = useAuth();
   const [location] = useLocation();
+  const { toast } = useToast();
 
   const { data: settings } = useQuery<SiteSettings>({
     queryKey: ["/api/site-settings"],
@@ -24,8 +26,55 @@ export default function Header() {
     }
   };
 
+  const handleStopMasquerade = async () => {
+    try {
+      await stopMasquerade();
+      toast({
+        title: 'Masquerade Stopped',
+        description: 'You are now viewing as your original account.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to stop masquerade',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const getUserDisplayName = () => {
+    if (!user) return '';
+    const nameParts = [user.firstName, user.lastName].filter(Boolean);
+    if (nameParts.length > 0) {
+      return nameParts.join(' ');
+    }
+    return user.email || 'User';
+  };
+
   return (
     <header className="border-b bg-white dark:bg-gray-950 dark:border-gray-800">
+      {/* Masquerade indicator banner */}
+      {masquerade.isMasquerading && masquerade.originalUser && (
+        <div className="bg-orange-500 text-white px-6 py-2 flex items-center justify-between text-sm">
+          <div className="flex items-center gap-2">
+            <UserCog className="h-4 w-4" />
+            <span>
+              <strong>Masquerading as {getUserDisplayName()}</strong>
+              {' • '}
+              Original user: {[masquerade.originalUser.firstName, masquerade.originalUser.lastName].filter(Boolean).join(' ') || masquerade.originalUser.email}
+            </span>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleStopMasquerade}
+            data-testid="button-stop-masquerade"
+          >
+            Stop Masquerade
+          </Button>
+        </div>
+      )}
+      
       <div className="flex items-center justify-between h-16 px-6">
         <div className="flex items-center space-x-6">
           <div className="flex items-center space-x-4">
@@ -88,7 +137,7 @@ export default function Header() {
           {user && (
             <div className="flex items-center space-x-2 text-sm text-muted-foreground">
               <User className="h-4 w-4" />
-              <span data-testid="text-username">{user.username}</span>
+              <span data-testid="text-username">{getUserDisplayName()}</span>
               {hasPermission('admin.manage') && (
                 <span className="px-2 py-1 text-xs bg-primary/10 text-primary rounded-full">
                   Admin

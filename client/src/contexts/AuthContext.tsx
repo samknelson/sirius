@@ -11,11 +11,23 @@ interface User {
   isActive: boolean;
 }
 
+interface MasqueradeInfo {
+  isMasquerading: boolean;
+  originalUser?: {
+    id: string;
+    email: string | null;
+    firstName: string | null;
+    lastName: string | null;
+  };
+}
+
 interface AuthContextType {
   user: User | null;
   permissions: string[];
+  masquerade: MasqueradeInfo;
   login: () => void;
   logout: () => void;
+  stopMasquerade: () => Promise<void>;
   isLoading: boolean;
   isAuthenticated: boolean;
   hasPermission: (permission: string) => boolean;
@@ -34,6 +46,7 @@ export function useAuth() {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [permissions, setPermissions] = useState<string[]>([]);
+  const [masquerade, setMasquerade] = useState<MasqueradeInfo>({ isMasquerading: false });
 
   // Check if user is authenticated on app start
   const { data: authData, isLoading } = useQuery({
@@ -62,9 +75,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (authData && (authData as any).user) {
       setUser((authData as any).user);
       setPermissions((authData as any).permissions || []);
+      setMasquerade((authData as any).masquerade || { isMasquerading: false });
     } else {
       setUser(null);
       setPermissions([]);
+      setMasquerade({ isMasquerading: false });
     }
   }, [authData]);
 
@@ -76,6 +91,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = '/api/logout';
   };
 
+  const stopMasquerade = async () => {
+    try {
+      const response = await fetch('/api/auth/masquerade/stop', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        throw new Error('Failed to stop masquerade');
+      }
+      // Refresh auth data
+      queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
+    } catch (error) {
+      throw error;
+    }
+  };
+
   const hasPermission = (permission: string) => {
     return permissions.includes(permission);
   };
@@ -85,8 +116,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         permissions,
+        masquerade,
         login,
         logout,
+        stopMasquerade,
         isLoading,
         isAuthenticated: !!user,
         hasPermission,
