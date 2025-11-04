@@ -164,6 +164,26 @@ export function initializePermissions(): void {
       key: 'variables.manage',
       description: 'Create, update, and delete system variables',
       module: 'core'
+    },
+    {
+      key: 'staff',
+      description: 'Staff level access',
+      module: 'core'
+    },
+    {
+      key: 'provider',
+      description: 'Provider level access',
+      module: 'core'
+    },
+    {
+      key: 'employer',
+      description: 'Employer level access',
+      module: 'core'
+    },
+    {
+      key: 'admin',
+      description: 'Administrator level access',
+      module: 'core'
     }
   ];
 
