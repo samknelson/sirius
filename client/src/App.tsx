@@ -1,13 +1,15 @@
-import { Switch, Route, Redirect } from "wouter";
+import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/layout/Header";
+import { useEffect } from "react";
 import LoginPage from "@/pages/login";
 import UnauthorizedPage from "@/pages/unauthorized";
+import Bootstrap from "@/pages/bootstrap";
 import Dashboard from "@/pages/dashboard";
 import Workers from "@/pages/workers";
 import WorkersAdd from "@/pages/workers-add";
@@ -54,10 +56,41 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
+  const [location, setLocation] = useLocation();
+
+  // Check if bootstrap is needed
+  const { data: bootstrapData, isLoading: isBootstrapLoading } = useQuery<{ needed: boolean }>({
+    queryKey: ["/api/bootstrap/needed"],
+    retry: false,
+  });
+
+  // Redirect to bootstrap page if needed
+  useEffect(() => {
+    if (!isBootstrapLoading && bootstrapData) {
+      if (bootstrapData.needed && location !== "/bootstrap") {
+        setLocation("/bootstrap");
+      } else if (!bootstrapData.needed && location === "/bootstrap") {
+        setLocation("/login");
+      }
+    }
+  }, [bootstrapData, isBootstrapLoading, location, setLocation]);
+
+  // Show loading while checking bootstrap status
+  if (isBootstrapLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-gray-100 mx-auto"></div>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Switch>
       {/* Public routes */}
+      <Route path="/bootstrap" component={Bootstrap} />
       <Route path="/login" component={LoginPage} />
       <Route path="/unauthorized" component={UnauthorizedPage} />
       

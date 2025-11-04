@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -44,20 +44,17 @@ export default function Bootstrap() {
   const onSubmit = async (data: BootstrapFormData) => {
     setIsSubmitting(true);
     try {
-      await apiRequest("/api/bootstrap", {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
+      await apiRequest("POST", "/api/bootstrap", data);
+
+      // Invalidate the bootstrap check cache to trigger redirect
+      await queryClient.invalidateQueries({ queryKey: ["/api/bootstrap/needed"] });
 
       toast({
         title: "Bootstrap Complete!",
         description: "The admin account has been created. You can now log in with Replit using that email.",
       });
 
-      // Redirect to login page after a short delay
-      setTimeout(() => {
-        setLocation("/login");
-      }, 2000);
+      // The Router component will automatically redirect to /login when the cache updates
     } catch (error: any) {
       toast({
         title: "Bootstrap Failed",
