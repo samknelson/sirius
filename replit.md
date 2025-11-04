@@ -73,6 +73,40 @@ Preferred communication style: Simple, everyday language.
 
 # Recent Changes
 
+## Centralized Access Control System (November 4, 2025)
+- **Architecture Overhaul**: Replaced hardcoded `requireAuth`/`requirePermission` middleware with centralized access control module
+  - **Core Components**:
+    - **Access Control Module** (`server/accessControl.ts`): Core system with TypeScript interfaces and evaluators
+    - **Policy Registry** (`server/policies.ts`): Declarative access policies for all routes
+    - **Context Builder**: Extracts request information (user, route, params, body) for access decisions
+    - **Policy Evaluator**: Runs access checks with support for simple and complex requirements
+  - **Access Policy Types**:
+    - `authenticated`: Requires user to be logged in
+    - `permission`: Requires specific permission key
+    - `anyPermission`: Requires any one of multiple permissions
+    - `allPermissions`: Requires all specified permissions
+    - `ownership`: Resource ownership checks (for future implementation)
+    - `anyOf`/`allOf`: Logical composition of requirements
+    - `custom`: Custom async validation functions
+  - **Admin Bypass**: Users with "admin" permission automatically pass all access checks
+  - **Predefined Policies**: Common policies exported from `server/policies.ts`:
+    - `adminManage`: Admin management operations
+    - `workersView`/`workersManage`: Worker access levels
+    - `employersView`/`employersManage`: Employer access levels
+    - `variablesView`/`variablesManage`: Configuration access
+    - `benefitsView`/`benefitsManage`: Benefits management
+  - **Route Migration**: Example routes migrated to new system (marked with "MIGRATED" comments)
+    - User management: GET/POST/PUT `/api/admin/users`
+    - Role management: GET/POST `/api/admin/roles`
+  - **Usage Pattern**: Routes now use `requireAccess(policies.policyName)` instead of multiple middleware
+  - **Backward Compatibility**: Old `requireAuth` and `requirePermission` functions available as wrappers around new system
+  - **Benefits**: 
+    - Centralized access logic for easier maintenance
+    - Type-safe policy definitions
+    - Support for complex access rules with logical composition
+    - Easy to test policies independently
+    - Automatic admin override on all routes
+
 ## Email-Based User Provisioning (November 4, 2025)
 - **User Provisioning Workflow**: Users are now provisioned by email instead of Replit ID
   - **How it works**: 
