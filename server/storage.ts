@@ -1,6 +1,6 @@
 // Database storage implementation based on blueprint:javascript_database
 import { 
-  users, workers, contacts, roles, userRoles, rolePermissions, variables, postalAddresses, phoneNumbers, employers, trustBenefits, optionsGender, optionsWorkerIdType, workerIds, optionsTrustBenefitType,
+  users, workers, contacts, roles, userRoles, rolePermissions, variables, postalAddresses, phoneNumbers, employers, trustBenefits, trustWmb, optionsGender, optionsWorkerIdType, workerIds, optionsTrustBenefitType,
   type User, type InsertUser, type UpsertUser, type Worker, type InsertWorker,
   type Contact, type InsertContact,
   type Role, type InsertRole, type Variable, type InsertVariable,
@@ -8,6 +8,7 @@ import {
   type PhoneNumber, type InsertPhoneNumber,
   type Employer, type InsertEmployer,
   type TrustBenefit, type InsertTrustBenefit,
+  type TrustWmb, type InsertTrustWmb,
   type GenderOption, type InsertGenderOption,
   type WorkerIdType, type InsertWorkerIdType,
   type WorkerId, type InsertWorkerId,
@@ -1284,6 +1285,69 @@ export class DatabaseStorage implements IStorage {
 
   async updateTrustBenefitTypeSequence(id: string, sequence: number): Promise<TrustBenefitType | undefined> {
     return this.updateTrustBenefitType(id, { sequence });
+  }
+
+  // Trust WMB (Worker Month Benefit) methods
+  async getWorkerBenefits(workerId: string): Promise<(TrustWmb & { worker: Worker; employer: Employer; benefit: TrustBenefit })[]> {
+    const result = await db
+      .select({
+        id: trustWmb.id,
+        month: trustWmb.month,
+        year: trustWmb.year,
+        workerId: trustWmb.workerId,
+        employerId: trustWmb.employerId,
+        benefitId: trustWmb.benefitId,
+        worker: {
+          id: workers.id,
+          siriusId: workers.siriusId,
+          contactId: workers.contactId,
+          ssn: workers.ssn,
+        },
+        employer: {
+          id: employers.id,
+          siriusId: employers.siriusId,
+          name: employers.name,
+          isActive: employers.isActive,
+        },
+        benefit: {
+          id: trustBenefits.id,
+          name: trustBenefits.name,
+          benefitType: trustBenefits.benefitType,
+          isActive: trustBenefits.isActive,
+          description: trustBenefits.description,
+        }
+      })
+      .from(trustWmb)
+      .innerJoin(workers, eq(trustWmb.workerId, workers.id))
+      .innerJoin(employers, eq(trustWmb.employerId, employers.id))
+      .innerJoin(trustBenefits, eq(trustWmb.benefitId, trustBenefits.id))
+      .where(eq(trustWmb.workerId, workerId))
+      .orderBy(desc(trustWmb.year), desc(trustWmb.month));
+
+    return result.map(row => ({
+      id: row.id,
+      month: row.month,
+      year: row.year,
+      workerId: row.workerId,
+      employerId: row.employerId,
+      benefitId: row.benefitId,
+      worker: row.worker,
+      employer: row.employer,
+      benefit: row.benefit,
+    }));
+  }
+
+  async createWorkerBenefit(insertWmb: InsertTrustWmb): Promise<TrustWmb> {
+    const [wmb] = await db
+      .insert(trustWmb)
+      .values(insertWmb)
+      .returning();
+    return wmb;
+  }
+
+  async deleteWorkerBenefit(id: string): Promise<boolean> {
+    const result = await db.delete(trustWmb).where(eq(trustWmb.id, id)).returning();
+    return result.length > 0;
   }
 }
 

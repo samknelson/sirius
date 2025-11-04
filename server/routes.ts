@@ -1385,6 +1385,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Worker Benefits (WMB) routes
+
+  // GET /api/workers/:workerId/benefits - Get all benefits for a worker (requires workers.view permission)
+  app.get("/api/workers/:workerId/benefits", requireAuth, requirePermission("workers.view"), async (req, res) => {
+    try {
+      const { workerId } = req.params;
+      const benefits = await storage.getWorkerBenefits(workerId);
+      res.json(benefits);
+    } catch (error) {
+      console.error("Failed to fetch worker benefits:", error);
+      res.status(500).json({ message: "Failed to fetch worker benefits" });
+    }
+  });
+
+  // POST /api/workers/:workerId/benefits - Create a new benefit entry for a worker (requires workers.manage permission)
+  app.post("/api/workers/:workerId/benefits", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+    try {
+      const { workerId } = req.params;
+      const { month, year, employerId, benefitId } = req.body;
+
+      if (!month || !year || !employerId || !benefitId) {
+        return res.status(400).json({ message: "Month, year, employer ID, and benefit ID are required" });
+      }
+
+      const wmb = await storage.createWorkerBenefit({
+        workerId,
+        month,
+        year,
+        employerId,
+        benefitId,
+      });
+
+      res.status(201).json(wmb);
+    } catch (error: any) {
+      console.error("Failed to create worker benefit:", error);
+      if (error.message?.includes("duplicate key") || error.code === "23505") {
+        return res.status(409).json({ message: "This benefit entry already exists for this worker, employer, and month/year" });
+      }
+      res.status(500).json({ message: "Failed to create worker benefit" });
+    }
+  });
+
+  // DELETE /api/worker-benefits/:id - Delete a worker benefit entry (requires workers.manage permission)
+  app.delete("/api/worker-benefits/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteWorkerBenefit(id);
+
+      if (!deleted) {
+        return res.status(404).json({ message: "Worker benefit not found" });
+      }
+
+      res.status(204).send();
+    } catch (error) {
+      console.error("Failed to delete worker benefit:", error);
+      res.status(500).json({ message: "Failed to delete worker benefit" });
+    }
+  });
+
   // Register generic variable management routes (MUST come after specific routes)
   registerVariableRoutes(app, requireAuth, requirePermission);
 
