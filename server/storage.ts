@@ -764,8 +764,19 @@ export class DatabaseStorage implements IStorage {
     return results;
   }
 
-  async getTrustBenefit(id: string): Promise<TrustBenefit | undefined> {
-    const [benefit] = await db.select().from(trustBenefits).where(eq(trustBenefits.id, id));
+  async getTrustBenefit(id: string): Promise<any | undefined> {
+    const [benefit] = await db
+      .select({
+        id: trustBenefits.id,
+        name: trustBenefits.name,
+        benefitType: trustBenefits.benefitType,
+        benefitTypeName: optionsTrustBenefitType.name,
+        isActive: trustBenefits.isActive,
+        description: trustBenefits.description,
+      })
+      .from(trustBenefits)
+      .leftJoin(optionsTrustBenefitType, eq(trustBenefits.benefitType, optionsTrustBenefitType.id))
+      .where(eq(trustBenefits.id, id));
     return benefit || undefined;
   }
 
