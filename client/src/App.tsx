@@ -8,6 +8,7 @@ import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/layout/Header";
 import LoginPage from "@/pages/login";
 import UnauthorizedPage from "@/pages/unauthorized";
+import Dashboard from "@/pages/dashboard";
 import Workers from "@/pages/workers";
 import WorkersAdd from "@/pages/workers-add";
 import WorkerView from "@/pages/worker-view";
@@ -335,9 +336,13 @@ function Router() {
         <Redirect to="/config/users" />
       </Route>
       
-      {/* Root route - redirect based on auth status */}
+      {/* Root route - dashboard for authenticated users */}
       <Route path="/">
-        {!isLoading && (isAuthenticated ? <Redirect to="/workers" /> : <Redirect to="/login" />)}
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <Dashboard />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
       </Route>
       
       {/* 404 for unmatched routes */}
