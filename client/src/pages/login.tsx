@@ -1,17 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, LogIn } from 'lucide-react';
 
 export default function LoginPage() {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
   const [, setLocation] = useLocation();
   const { login, isAuthenticated, isLoading } = useAuth();
 
@@ -21,33 +15,6 @@ export default function LoginPage() {
       setLocation('/workers');
     }
   }, [isAuthenticated, isLoading, setLocation]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-
-    if (!username || !password) {
-      setError('Please enter both username and password');
-      return;
-    }
-
-    try {
-      await login(username, password);
-      setLocation('/workers'); // Navigate after successful login
-    } catch (err) {
-      if (err instanceof Error) {
-        // Parse error message from server response
-        const errorMessage = err.message;
-        if (errorMessage.includes('401:')) {
-          setError('Invalid username or password');
-        } else {
-          setError(errorMessage.replace(/^\d+:\s*/, ''));
-        }
-      } else {
-        setError('Login failed. Please try again.');
-      }
-    }
-  };
 
   if (isLoading) {
     return (
@@ -71,65 +38,24 @@ export default function LoginPage() {
           </div>
           <CardTitle className="text-2xl font-bold">Welcome to Sirius</CardTitle>
           <CardDescription>
-            Sign in to access the worker management system
+            Sign in with your Replit account to access the worker management system
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <Alert variant="destructive" data-testid="alert-login-error">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            
-            <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter your username"
-                disabled={isLoading}
-                data-testid="input-username"
-                required
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-                disabled={isLoading}
-                data-testid="input-password"
-                required
-              />
-            </div>
-            
-            <Button 
-              type="submit" 
-              className="w-full" 
-              disabled={isLoading}
-              data-testid="button-login"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
-                </>
-              ) : (
-                'Sign In'
-              )}
-            </Button>
-          </form>
+        <CardContent className="space-y-4">
+          <Button 
+            onClick={login} 
+            className="w-full" 
+            size="lg"
+            data-testid="button-login"
+          >
+            <LogIn className="mr-2 h-5 w-5" />
+            Sign in with Replit
+          </Button>
 
-          <div className="mt-4 text-center">
-            <p className="text-xs text-muted-foreground">
-              Demo credentials: admin / admin123
+          <div className="mt-4 p-4 bg-muted rounded-lg">
+            <p className="text-sm text-muted-foreground text-center">
+              Your account must be pre-authorized by an administrator. 
+              If you don't have access, please contact your system administrator.
             </p>
           </div>
         </CardContent>

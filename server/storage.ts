@@ -1,7 +1,7 @@
 // Database storage implementation based on blueprint:javascript_database
 import { 
   users, workers, contacts, roles, userRoles, rolePermissions, variables, postalAddresses, phoneNumbers, employers, trustBenefits, optionsGender, optionsWorkerIdType, workerIds, optionsTrustBenefitType,
-  type User, type InsertUser, type Worker, type InsertWorker,
+  type User, type InsertUser, type UpsertUser, type Worker, type InsertWorker,
   type Contact, type InsertContact,
   type Role, type InsertRole, type Variable, type InsertVariable,
   type PostalAddress, type InsertPostalAddress,
@@ -17,7 +17,6 @@ import {
 import { permissionRegistry, type PermissionDefinition } from "@shared/permissions";
 import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
-import bcrypt from "bcrypt";
 
 // modify the interface with any CRUD methods
 // you might need
@@ -25,17 +24,13 @@ import bcrypt from "bcrypt";
 export interface IStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  upsertUser(user: UpsertUser): Promise<User>; // For Replit Auth
+  createUser(user: InsertUser): Promise<User>; // For admin user creation
   updateUser(id: string, user: Partial<InsertUser>): Promise<User | undefined>;
   updateUserLastLogin(id: string): Promise<User | undefined>;
   deleteUser(id: string): Promise<boolean>;
   getAllUsers(): Promise<User[]>;
   getAllUsersWithRoles(): Promise<(User & { roles: Role[] })[]>;
-  
-  // Password operations
-  hashPassword(password: string): Promise<string>;
-  verifyPassword(password: string, hash: string): Promise<boolean>;
   
   // Role operations
   getAllRoles(): Promise<Role[]>;
@@ -157,27 +152,32 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  // Password operations
-  async hashPassword(password: string): Promise<string> {
-    const saltRounds = 12;
-    return bcrypt.hash(password, saltRounds);
-  }
-
-  async verifyPassword(password: string, hash: string): Promise<boolean> {
-    return bcrypt.compare(password, hash);
-  }
-
   // User operations
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user || undefined;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
-    return user || undefined;
+  // For Replit Auth - updates user info from Replit or creates if needed
+  async upsertUser(userData: UpsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(userData)
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
+          email: userData.email,
+          firstName: userData.firstName,
+          lastName: userData.lastName,
+          profileImageUrl: userData.profileImageUrl,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return user;
   }
 
+  // For admin user creation - creates users with minimal info
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db
       .insert(users)
@@ -330,10 +330,13 @@ export class DatabaseStorage implements IStorage {
     const result = await db
       .select({
         id: users.id,
-        username: users.username,
-        password_hash: users.password_hash,
+        email: users.email,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        profileImageUrl: users.profileImageUrl,
         isActive: users.isActive,
         createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
         lastLogin: users.lastLogin,
       })
       .from(userRoles)

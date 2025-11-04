@@ -9,12 +9,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Loader2, UserCheck, UserX, Key, Shield } from 'lucide-react';
+import { ArrowLeft, Loader2, UserCheck, UserX, Shield } from 'lucide-react';
 import { Link } from 'wouter';
 
 interface UserDetails {
   id: string;
-  username: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  profileImageUrl: string | null;
   isActive: boolean;
   createdAt: string;
   lastLogin?: string;
@@ -30,7 +33,6 @@ interface Role {
 export default function UserAccountPage() {
   const [, params] = useRoute('/admin/users/:id');
   const userId = params?.id;
-  const [newPassword, setNewPassword] = useState('');
   const { toast } = useToast();
 
   const { data: user, isLoading } = useQuery<UserDetails>({
@@ -63,27 +65,6 @@ export default function UserAccountPage() {
       return await response.json();
     },
     enabled: !!userId,
-  });
-
-  const updatePasswordMutation = useMutation({
-    mutationFn: async (password: string) => {
-      const response = await apiRequest('PUT', `/api/admin/users/${userId}/password`, { password });
-      return await response.json();
-    },
-    onSuccess: () => {
-      setNewPassword('');
-      toast({
-        title: 'Success',
-        description: 'Password updated successfully',
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message.replace(/^\d+:\s*/, '') : 'Failed to update password',
-        variant: 'destructive',
-      });
-    },
   });
 
   const toggleStatusMutation = useMutation({
@@ -151,18 +132,6 @@ export default function UserAccountPage() {
       });
     },
   });
-
-  const handlePasswordUpdate = () => {
-    if (!newPassword || newPassword.trim().length === 0) {
-      toast({
-        title: 'Error',
-        description: 'Please enter a new password',
-        variant: 'destructive',
-      });
-      return;
-    }
-    updatePasswordMutation.mutate(newPassword);
-  };
 
   const handleToggleStatus = () => {
     if (user) {
@@ -235,7 +204,9 @@ export default function UserAccountPage() {
             Back to Users
           </Button>
         </Link>
-        <h1 className="text-2xl font-bold">User Account: {user.username}</h1>
+        <h1 className="text-2xl font-bold">
+          User Account: {user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.email || user.id}
+        </h1>
       </div>
 
       {/* User Information Card */}
@@ -246,8 +217,8 @@ export default function UserAccountPage() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label className="text-sm font-medium text-muted-foreground">Username</Label>
-              <p className="font-medium" data-testid="text-username">{user.username}</p>
+              <Label className="text-sm font-medium text-muted-foreground">Replit User ID</Label>
+              <p className="font-mono text-sm" data-testid="text-userid">{user.id}</p>
             </div>
             <div>
               <Label className="text-sm font-medium text-muted-foreground">Status</Label>
@@ -259,6 +230,16 @@ export default function UserAccountPage() {
                   {user.isActive ? 'Active' : 'Inactive'}
                 </Badge>
               </div>
+            </div>
+            <div>
+              <Label className="text-sm font-medium text-muted-foreground">Email</Label>
+              <p className="font-medium" data-testid="text-email">{user.email || 'Not provided'}</p>
+            </div>
+            <div>
+              <Label className="text-sm font-medium text-muted-foreground">Name</Label>
+              <p data-testid="text-name">
+                {user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.firstName || user.lastName || 'Not provided'}
+              </p>
             </div>
             <div>
               <Label className="text-sm font-medium text-muted-foreground">Created At</Label>
@@ -308,43 +289,6 @@ export default function UserAccountPage() {
               {user.isActive ? 'Deactivate User' : 'Activate User'}
             </Button>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Password Change Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Change Password</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="password">New Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Enter new password"
-              data-testid="input-new-password"
-            />
-          </div>
-          <Button
-            onClick={handlePasswordUpdate}
-            disabled={updatePasswordMutation.isPending}
-            data-testid="button-update-password"
-          >
-            {updatePasswordMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Updating Password...
-              </>
-            ) : (
-              <>
-                <Key className="h-4 w-4 mr-2" />
-                Update Password
-              </>
-            )}
-          </Button>
         </CardContent>
       </Card>
 

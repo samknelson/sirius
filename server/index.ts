@@ -1,12 +1,10 @@
 import express, { type Request, Response, NextFunction } from "express";
-import session from "express-session";
-import ConnectPgSimple from "connect-pg-simple";
-import { pool } from "./db";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { initializePermissions } from "@shared/permissions";
 import { addressValidationService } from "./services/address-validation";
 import { logger } from "./logger";
+import { setupAuth } from "./replitAuth";
 
 // Helper function to redact sensitive data from responses before logging
 function redactSensitiveData(data: any): any {
@@ -26,30 +24,9 @@ function redactSensitiveData(data: any): any {
   return redacted;
 }
 
-const PgSession = ConnectPgSimple(session);
-
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-
-// Session configuration
-app.use(
-  session({
-    store: new PgSession({
-      pool: pool,
-      tableName: "session",
-      createTableIfMissing: true,
-    }),
-    secret: process.env.SESSION_SECRET || "dev-secret-change-in-production",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      secure: process.env.NODE_ENV === "production",
-      httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    },
-  })
-);
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -114,6 +91,10 @@ app.use((req, res, next) => {
   // Initialize address validation service (loads or creates config)
   await addressValidationService.getConfig();
   logger.info("Address validation service initialized", { source: "startup" });
+
+  // Setup Replit Auth
+  await setupAuth(app);
+  logger.info("Replit Auth initialized", { source: "startup" });
 
   const server = await registerRoutes(app);
 

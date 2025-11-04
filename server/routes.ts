@@ -9,31 +9,21 @@ import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerAddressValidationRoutes } from "./modules/address-validation";
 import { addressValidationService } from "./services/address-validation";
 import { phoneValidationService } from "./services/phone-validation";
-
-// Session type extension
-declare module "express-session" {
-  interface SessionData {
-    userId: string;
-    username: string;
-  }
-}
+import { isAuthenticated } from "./replitAuth";
 
 // Authentication middleware
-const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
-  if (!req.session.userId) {
-    return res.status(401).json({ message: "Authentication required" });
-  }
-  next();
-};
+const requireAuth = isAuthenticated;
 
 // Permission middleware
 const requirePermission = (permissionKey: string) => {
   return async (req: Request, res: Response, next: NextFunction) => {
-    if (!req.session.userId) {
+    const user = req.user as any;
+    if (!user || !user.claims) {
       return res.status(401).json({ message: "Authentication required" });
     }
     
-    const hasPermission = await storage.userHasPermission(req.session.userId, permissionKey);
+    const userId = user.claims.sub;
+    const hasPermission = await storage.userHasPermission(userId, permissionKey);
     if (!hasPermission) {
       return res.status(403).json({ message: "Insufficient permissions" });
     }
@@ -43,6 +33,75 @@ const requirePermission = (permissionKey: string) => {
 };
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Unauthorized route for failed logins
+  app.get("/unauthorized", (req, res) => {
+    res.status(401).send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Unauthorized</title>
+          <style>
+            body {
+              font-family: system-ui, -apple-system, sans-serif;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              min-height: 100vh;
+              margin: 0;
+              background: #f5f5f5;
+            }
+            .container {
+              text-align: center;
+              padding: 2rem;
+              background: white;
+              border-radius: 8px;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+              max-width: 500px;
+            }
+            h1 { color: #d32f2f; margin-bottom: 1rem; }
+            p { color: #666; line-height: 1.6; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>Access Denied</h1>
+            <p>You do not have permission to access this application.</p>
+            <p>Please contact an administrator to set up your account.</p>
+          </div>
+        </body>
+      </html>
+    `);
+  });
+
+  // GET /api/auth/user - Get current user from database
+  app.get("/api/auth/user", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const dbUser = await storage.getUser(userId);
+      if (!dbUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const userPermissions = await storage.getUserPermissions(dbUser.id);
+      
+      res.json({
+        user: { 
+          id: dbUser.id, 
+          email: dbUser.email,
+          firstName: dbUser.firstName,
+          lastName: dbUser.lastName,
+          profileImageUrl: dbUser.profileImageUrl,
+          isActive: dbUser.isActive 
+        },
+        permissions: userPermissions.map(p => p.key)
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch user info" });
+    }
+  });
+
   // Register user management routes
   registerUserRoutes(app, requireAuth, requirePermission);
   
