@@ -22,24 +22,26 @@ interface Role {
 
 interface User {
   id: string;
-  username: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  profileImageUrl: string | null;
   isActive: boolean;
   createdAt: string;
   lastLogin?: string;
   roles: Role[];
 }
 
-type SortField = 'username' | 'createdAt' | 'lastLogin';
+type SortField = 'email' | 'createdAt' | 'lastLogin';
 type SortDirection = 'asc' | 'desc';
 
 export default function UsersManagement() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [newUsername, setNewUsername] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [searchUsername, setSearchUsername] = useState('');
+  const [newReplitUserId, setNewReplitUserId] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
-  const [sortField, setSortField] = useState<SortField>('username');
+  const [sortField, setSortField] = useState<SortField>('email');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const { toast } = useToast();
 
@@ -54,8 +56,13 @@ export default function UsersManagement() {
   // Filter and sort users
   const filteredAndSortedUsers = useMemo(() => {
     let filtered = users.filter(user => {
-      // Filter by username search
-      const matchesUsername = user.username.toLowerCase().includes(searchUsername.toLowerCase());
+      // Filter by search query (email or name)
+      const searchLower = searchQuery.toLowerCase();
+      const matchesSearch = searchQuery === '' || 
+        (user.email && user.email.toLowerCase().includes(searchLower)) ||
+        (user.firstName && user.firstName.toLowerCase().includes(searchLower)) ||
+        (user.lastName && user.lastName.toLowerCase().includes(searchLower)) ||
+        user.id.toLowerCase().includes(searchLower);
       
       // Filter by status
       const matchesStatus = statusFilter === 'all' || 
@@ -66,7 +73,7 @@ export default function UsersManagement() {
       const matchesRole = roleFilter === 'all' || 
         user.roles.some(role => role.id === roleFilter);
       
-      return matchesUsername && matchesStatus && matchesRole;
+      return matchesSearch && matchesStatus && matchesRole;
     });
 
     // Sort users
@@ -75,9 +82,13 @@ export default function UsersManagement() {
       let bValue: string | Date;
       
       switch (sortField) {
-        case 'username':
-          aValue = a.username;
-          bValue = b.username;
+        case 'email':
+          // Handle null emails - put them at end when desc, beginning when asc
+          if (!a.email && !b.email) return 0;
+          if (!a.email) return sortDirection === 'asc' ? 1 : -1;
+          if (!b.email) return sortDirection === 'asc' ? -1 : 1;
+          aValue = a.email;
+          bValue = b.email;
           break;
         case 'createdAt':
           aValue = new Date(a.createdAt);
@@ -101,7 +112,7 @@ export default function UsersManagement() {
     });
 
     return filtered;
-  }, [users, searchUsername, statusFilter, roleFilter, sortField, sortDirection]);
+  }, [users, searchQuery, statusFilter, roleFilter, sortField, sortDirection]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -113,14 +124,13 @@ export default function UsersManagement() {
   };
 
   const createUserMutation = useMutation({
-    mutationFn: async ({ username, password }: { username: string; password: string }) => {
-      const response = await apiRequest('POST', '/api/admin/users', { username, password });
+    mutationFn: async ({ replitUserId }: { replitUserId: string }) => {
+      const response = await apiRequest('POST', '/api/admin/users', { replitUserId });
       return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
-      setNewUsername('');
-      setNewPassword('');
+      setNewReplitUserId('');
       setIsCreateOpen(false);
       toast({
         title: 'Success',
@@ -138,15 +148,15 @@ export default function UsersManagement() {
 
 
   const handleCreateUser = () => {
-    if (!newUsername || !newPassword) {
+    if (!newReplitUserId) {
       toast({
         title: 'Error',
-        description: 'Please enter both username and password',
+        description: 'Please enter a Replit user ID',
         variant: 'destructive',
       });
       return;
     }
-    createUserMutation.mutate({ username: newUsername, password: newPassword });
+    createUserMutation.mutate({ replitUserId: newReplitUserId });
   };
 
 
@@ -179,30 +189,22 @@ export default function UsersManagement() {
             <DialogHeader>
               <DialogTitle>Create New User</DialogTitle>
               <DialogDescription>
-                Create a new user account. The user will be active by default.
+                Create a new user account using their Replit user ID. The user will be able to log in with Replit Auth.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="replitUserId">Replit User ID</Label>
                 <Input
-                  id="username"
-                  value={newUsername}
-                  onChange={(e) => setNewUsername(e.target.value)}
-                  placeholder="Enter username"
-                  data-testid="input-new-username"
+                  id="replitUserId"
+                  value={newReplitUserId}
+                  onChange={(e) => setNewReplitUserId(e.target.value)}
+                  placeholder="Enter Replit user ID (e.g., 45808420)"
+                  data-testid="input-new-replit-user-id"
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Enter password"
-                  data-testid="input-new-password"
-                />
+                <p className="text-sm text-muted-foreground">
+                  Find the user's ID in their Replit profile URL
+                </p>
               </div>
               <Button 
                 onClick={handleCreateUser}
@@ -228,11 +230,11 @@ export default function UsersManagement() {
         <div className="flex items-center gap-2">
           <Search className="h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by username..."
-            value={searchUsername}
-            onChange={(e) => setSearchUsername(e.target.value)}
+            placeholder="Search by email, name, or ID..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="w-64"
-            data-testid="input-search-username"
+            data-testid="input-search-user"
           />
         </div>
         <Select value={statusFilter} onValueChange={(value: 'all' | 'active' | 'inactive') => setStatusFilter(value)}>
@@ -266,12 +268,12 @@ export default function UsersManagement() {
             <TableRow>
               <TableHead 
                 className="cursor-pointer hover:bg-muted/50 select-none"
-                onClick={() => handleSort('username')}
-                data-testid="header-username"
+                onClick={() => handleSort('email')}
+                data-testid="header-email"
               >
                 <div className="flex items-center gap-2">
-                  Username
-                  {getSortIcon('username')}
+                  Email / Name
+                  {getSortIcon('email')}
                 </div>
               </TableHead>
               <TableHead>Status</TableHead>
@@ -302,8 +304,20 @@ export default function UsersManagement() {
           <TableBody>
             {filteredAndSortedUsers.map((user: User) => (
               <TableRow key={user.id} data-testid={`row-user-${user.id}`}>
-                <TableCell className="font-medium" data-testid={`text-username-${user.id}`}>
-                  {user.username}
+                <TableCell data-testid={`text-user-info-${user.id}`}>
+                  <div className="flex flex-col">
+                    <span className="font-medium">
+                      {user.email || 'No email'}
+                    </span>
+                    {(user.firstName || user.lastName) && (
+                      <span className="text-sm text-muted-foreground">
+                        {[user.firstName, user.lastName].filter(Boolean).join(' ')}
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground font-mono">
+                      ID: {user.id}
+                    </span>
+                  </div>
                 </TableCell>
                 <TableCell>
                   <Badge 
