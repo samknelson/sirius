@@ -16,7 +16,7 @@ import {
 } from "@shared/schema";
 import { permissionRegistry, type PermissionDefinition } from "@shared/permissions";
 import { db } from "./db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import bcrypt from "bcrypt";
 
 // modify the interface with any CRUD methods
@@ -749,8 +749,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Trust Benefit operations
-  async getAllTrustBenefits(): Promise<TrustBenefit[]> {
-    return await db.select().from(trustBenefits);
+  async getAllTrustBenefits(): Promise<any[]> {
+    const results = await db
+      .select({
+        id: trustBenefits.id,
+        name: trustBenefits.name,
+        benefitType: trustBenefits.benefitType,
+        benefitTypeName: optionsTrustBenefitType.name,
+        isActive: trustBenefits.isActive,
+        description: trustBenefits.description,
+      })
+      .from(trustBenefits)
+      .leftJoin(optionsTrustBenefitType, eq(trustBenefits.benefitType, optionsTrustBenefitType.id));
+    return results;
   }
 
   async getTrustBenefit(id: string): Promise<TrustBenefit | undefined> {

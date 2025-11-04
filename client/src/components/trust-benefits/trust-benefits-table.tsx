@@ -166,7 +166,7 @@ export function TrustBenefitsTable({ benefits, isLoading, includeInactive, onTog
                       className="text-sm text-muted-foreground"
                       data-testid={`text-benefit-type-${benefit.id}`}
                     >
-                      {benefit.benefitType || 'N/A'}
+                      {(benefit as any).benefitTypeName || 'N/A'}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
