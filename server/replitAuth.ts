@@ -167,7 +167,14 @@ export async function setupAuth(app: Express) {
     passport.authenticate(`replitauth:${req.hostname}`, {
       successReturnToOrRedirect: "/",
       failureRedirect: "/unauthorized",
-    })(req, res, next);
+    })(req, res, (err) => {
+      if (err) {
+        // Catch any OAuth or authentication errors and redirect to unauthorized page
+        console.error("Authentication callback error:", err.message);
+        return res.redirect("/unauthorized");
+      }
+      next();
+    });
   });
 
   app.get("/api/logout", (req, res) => {
