@@ -6,7 +6,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { TrustBenefit } from "@shared/schema";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TrustBenefit, TrustBenefitType } from "@shared/schema";
 import { Link } from "wouter";
 
 interface TrustBenefitsTableProps {
@@ -14,6 +15,9 @@ interface TrustBenefitsTableProps {
   isLoading: boolean;
   includeInactive: boolean;
   onToggleInactive: () => void;
+  benefitTypes: TrustBenefitType[];
+  selectedTypeId: string;
+  onTypeChange: (typeId: string) => void;
 }
 
 const avatarColors = [
@@ -24,22 +28,32 @@ const avatarColors = [
   "bg-red-100 text-red-600",
 ];
 
-export function TrustBenefitsTable({ benefits, isLoading, includeInactive, onToggleInactive }: TrustBenefitsTableProps) {
+export function TrustBenefitsTable({ benefits, isLoading, includeInactive, onToggleInactive, benefitTypes, selectedTypeId, onTypeChange }: TrustBenefitsTableProps) {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Filter benefits based on search query
+  // Filter benefits based on search query and type
   const filteredBenefits = useMemo(() => {
-    if (!searchQuery.trim()) return benefits;
+    let result = benefits;
     
-    const query = searchQuery.toLowerCase();
-    return benefits.filter(benefit => {
-      const id = benefit.id.toLowerCase();
-      const name = benefit.name.toLowerCase();
-      
-      return id.includes(query) || name.includes(query);
-    });
-  }, [benefits, searchQuery]);
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(benefit => {
+        const id = benefit.id.toLowerCase();
+        const name = benefit.name.toLowerCase();
+        
+        return id.includes(query) || name.includes(query);
+      });
+    }
+    
+    // Filter by type
+    if (selectedTypeId) {
+      result = result.filter(benefit => benefit.benefitType === selectedTypeId);
+    }
+    
+    return result;
+  }, [benefits, searchQuery, selectedTypeId]);
 
   const sortedBenefits = [...filteredBenefits].sort((a, b) => {
     if (sortOrder === "asc") {
@@ -101,6 +115,28 @@ export function TrustBenefitsTable({ benefits, isLoading, includeInactive, onTog
               className="pl-10"
               data-testid="input-search-benefits"
             />
+          </div>
+          
+          {/* Filter by Type */}
+          <div className="mb-4">
+            <Label htmlFor="filter-type" className="text-sm text-muted-foreground mb-2 block">
+              Filter by Type
+            </Label>
+            <Select value={selectedTypeId} onValueChange={onTypeChange}>
+              <SelectTrigger id="filter-type" data-testid="select-filter-type">
+                <SelectValue placeholder="All types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="" data-testid="option-filter-type-all">
+                  All types
+                </SelectItem>
+                {benefitTypes.map((type) => (
+                  <SelectItem key={type.id} value={type.id} data-testid={`option-filter-type-${type.id}`}>
+                    {type.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           
           {/* Include Inactive Toggle */}

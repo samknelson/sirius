@@ -4,11 +4,12 @@ import { TrustBenefitsTable } from "@/components/trust-benefits/trust-benefits-t
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { TrustBenefit } from "@shared/schema";
+import { TrustBenefit, TrustBenefitType } from "@shared/schema";
 
 export default function TrustBenefits() {
   const [location] = useLocation();
   const [includeInactive, setIncludeInactive] = useState(false);
+  const [selectedTypeId, setSelectedTypeId] = useState<string>("");
   
   const { data: benefits = [], isLoading } = useQuery<TrustBenefit[]>({
     queryKey: ["/api/trust-benefits", includeInactive],
@@ -23,6 +24,10 @@ export default function TrustBenefits() {
       }
       return response.json();
     },
+  });
+
+  const { data: benefitTypes = [] } = useQuery<TrustBenefitType[]>({
+    queryKey: ["/api/trust-benefit-types"],
   });
 
   const tabs = [
@@ -80,6 +85,9 @@ export default function TrustBenefits() {
           isLoading={isLoading} 
           includeInactive={includeInactive}
           onToggleInactive={() => setIncludeInactive(!includeInactive)}
+          benefitTypes={benefitTypes}
+          selectedTypeId={selectedTypeId}
+          onTypeChange={setSelectedTypeId}
         />
       </main>
     </div>
