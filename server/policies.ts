@@ -112,6 +112,21 @@ export const benefitsManage: AccessPolicy = {
 };
 
 /**
+ * Masquerade policy
+ */
+export const masquerade: AccessPolicy = {
+  name: 'Masquerade',
+  description: 'Requires masquerade or admin permission',
+  requirements: [
+    { type: 'authenticated' },
+    {
+      type: 'anyPermission',
+      keys: ['masquerade', 'admin'],
+    },
+  ],
+};
+
+/**
  * Example: Complex policy with multiple permission options
  */
 export const workersViewOrManage: AccessPolicy = {
@@ -140,5 +155,6 @@ export const policies = {
   variablesManage,
   benefitsView,
   benefitsManage,
+  masquerade,
   workersViewOrManage,
 };

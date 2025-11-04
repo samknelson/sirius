@@ -87,6 +87,12 @@ Preferred communication style: Simple, everyday language.
     - Reusable helper function for masquerade logic
     - Easier to test masquerade functionality in isolation
     - Cleaner separation of concerns
+- **Permission System**: Added dedicated "masquerade" permission
+  - **New Permission**: `masquerade` - Grants ability to masquerade as other users
+  - **Access Policy**: Users with either "masquerade" or "admin" permission can masquerade
+  - **Policy Definition**: `policies.masquerade` uses `anyPermission` to allow both permission types
+  - **Admin Bypass**: Users with "admin" permission automatically have masquerade access via the centralized access control system
+  - **Security**: Restricts masquerading to authorized personnel only
 
 ## Centralized Access Control System (November 4, 2025)
 - **Architecture Overhaul**: Replaced hardcoded `requireAuth`/`requirePermission` middleware with centralized access control module

@@ -166,6 +166,11 @@ export function initializePermissions(): void {
       module: 'core'
     },
     {
+      key: 'masquerade',
+      description: 'Ability to masquerade as other users',
+      module: 'core'
+    },
+    {
       key: 'staff',
       description: 'Staff level access',
       module: 'core'

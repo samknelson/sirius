@@ -56,8 +56,8 @@ export function registerMasqueradeRoutes(
   requireAuth: AuthMiddleware,
   requirePermission: PermissionMiddleware
 ) {
-  // POST /api/auth/masquerade/start - Start masquerading as another user (admin only)
-  app.post("/api/auth/masquerade/start", requireAccess(policies.adminManage), async (req, res) => {
+  // POST /api/auth/masquerade/start - Start masquerading as another user
+  app.post("/api/auth/masquerade/start", requireAccess(policies.masquerade), async (req, res) => {
     try {
       const { userId } = req.body;
       const user = req.user as any;
