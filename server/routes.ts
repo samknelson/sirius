@@ -814,6 +814,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Dashboard Plugins routes - Manage dashboard plugin configurations
+  // GET /api/dashboard-plugins/config - Get all plugin configurations
+  app.get("/api/dashboard-plugins/config", requireAuth, async (req, res) => {
+    try {
+      const allVariables = await storage.getAllVariables();
+      const pluginConfigs = allVariables
+        .filter(v => v.name.startsWith('dashboard_plugin_'))
+        .map(v => ({
+          pluginId: v.name.replace('dashboard_plugin_', ''),
+          enabled: v.value as boolean,
+        }));
+      
+      res.json(pluginConfigs);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch plugin configurations" });
+    }
+  });
+
+  // PUT /api/dashboard-plugins/config/:pluginId - Update a plugin's configuration
+  app.put("/api/dashboard-plugins/config/:pluginId", requireAuth, requirePermission("variables.manage"), async (req, res) => {
+    try {
+      const { pluginId } = req.params;
+      const { enabled } = req.body;
+      
+      if (typeof enabled !== "boolean") {
+        res.status(400).json({ message: "Invalid enabled value" });
+        return;
+      }
+      
+      const variableName = `dashboard_plugin_${pluginId}`;
+      const existingVariable = await storage.getVariableByName(variableName);
+      
+      if (existingVariable) {
+        await storage.updateVariable(existingVariable.id, { value: enabled });
+      } else {
+        await storage.createVariable({ name: variableName, value: enabled });
+      }
+      
+      res.json({ pluginId, enabled });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update plugin configuration" });
+    }
+  });
+
   // Gender Options routes
   // GET /api/gender-options - Get all gender options (requires workers.view permission)
   app.get("/api/gender-options", requireAuth, requirePermission("workers.view"), async (req, res) => {

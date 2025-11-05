@@ -44,6 +44,7 @@ import WorkerIDTypesPage from "@/pages/config/worker-id-types";
 import TrustBenefitTypesPage from "@/pages/config/trust-benefit-types";
 import MasqueradePage from "@/pages/config/masquerade";
 import WelcomeMessagesConfigPage from "@/pages/config/welcome-messages";
+import DashboardPluginsConfigPage from "@/pages/config/dashboard-plugins";
 import SiteInformation from "@/pages/site-information";
 import NotFound from "@/pages/not-found";
 
@@ -335,6 +336,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <WelcomeMessagesConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/config/dashboard-plugins">
+        <ProtectedRoute permission="variables.manage">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DashboardPluginsConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
