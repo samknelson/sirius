@@ -6,6 +6,7 @@ import { Worker, Contact } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { BookmarkButton } from "@/components/ui/bookmark-button";
 
 interface WorkerLayoutContextValue {
   worker: Worker;
@@ -192,6 +193,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
                 <h1 className="text-xl font-semibold text-foreground" data-testid={`text-worker-name-${worker.id}`}>
                   {contact?.displayName || 'Loading...'}
                 </h1>
+                <BookmarkButton entityType="worker" entityId={worker.id} entityName={contact?.displayName} />
               </div>
               <div className="flex items-center space-x-4">
                 <Link href="/workers">

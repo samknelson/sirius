@@ -1,6 +1,6 @@
 // Database storage implementation based on blueprint:javascript_database
 import { 
-  users, workers, contacts, roles, userRoles, rolePermissions, variables, postalAddresses, phoneNumbers, employers, trustBenefits, trustWmb, optionsGender, optionsWorkerIdType, workerIds, optionsTrustBenefitType,
+  users, workers, contacts, roles, userRoles, rolePermissions, variables, postalAddresses, phoneNumbers, employers, trustBenefits, trustWmb, optionsGender, optionsWorkerIdType, workerIds, optionsTrustBenefitType, bookmarks,
   type User, type InsertUser, type UpsertUser, type Worker, type InsertWorker,
   type Contact, type InsertContact,
   type Role, type InsertRole, type Variable, type InsertVariable,
@@ -13,6 +13,7 @@ import {
   type WorkerIdType, type InsertWorkerIdType,
   type WorkerId, type InsertWorkerId,
   type TrustBenefitType, type InsertTrustBenefitType,
+  type Bookmark, type InsertBookmark,
   type UserRole, type RolePermission, type AssignRole, type AssignPermission
 } from "@shared/schema";
 import { permissionRegistry, type PermissionDefinition } from "@shared/permissions";
@@ -156,6 +157,13 @@ export interface IStorage {
   createWorkerId(workerId: InsertWorkerId): Promise<WorkerId>;
   updateWorkerId(id: string, workerId: Partial<InsertWorkerId>): Promise<WorkerId | undefined>;
   deleteWorkerId(id: string): Promise<boolean>;
+
+  // Bookmark CRUD operations
+  getUserBookmarks(userId: string): Promise<Bookmark[]>;
+  getBookmark(id: string): Promise<Bookmark | undefined>;
+  findBookmark(userId: string, entityType: string, entityId: string): Promise<Bookmark | undefined>;
+  createBookmark(bookmark: InsertBookmark): Promise<Bookmark>;
+  deleteBookmark(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1347,6 +1355,43 @@ export class DatabaseStorage implements IStorage {
 
   async deleteWorkerBenefit(id: string): Promise<boolean> {
     const result = await db.delete(trustWmb).where(eq(trustWmb.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // Bookmark CRUD operations
+  async getUserBookmarks(userId: string): Promise<Bookmark[]> {
+    return db.select().from(bookmarks).where(eq(bookmarks.userId, userId)).orderBy(desc(bookmarks.createdAt));
+  }
+
+  async getBookmark(id: string): Promise<Bookmark | undefined> {
+    const [bookmark] = await db.select().from(bookmarks).where(eq(bookmarks.id, id));
+    return bookmark || undefined;
+  }
+
+  async findBookmark(userId: string, entityType: string, entityId: string): Promise<Bookmark | undefined> {
+    const [bookmark] = await db
+      .select()
+      .from(bookmarks)
+      .where(
+        and(
+          eq(bookmarks.userId, userId),
+          eq(bookmarks.entityType, entityType),
+          eq(bookmarks.entityId, entityId)
+        )
+      );
+    return bookmark || undefined;
+  }
+
+  async createBookmark(insertBookmark: InsertBookmark): Promise<Bookmark> {
+    const [bookmark] = await db
+      .insert(bookmarks)
+      .values(insertBookmark)
+      .returning();
+    return bookmark;
+  }
+
+  async deleteBookmark(id: string): Promise<boolean> {
+    const result = await db.delete(bookmarks).where(eq(bookmarks.id, id)).returning();
     return result.length > 0;
   }
 }

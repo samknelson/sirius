@@ -6,6 +6,7 @@ import { Employer } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { BookmarkButton } from "@/components/ui/bookmark-button";
 
 interface EmployerLayoutContextValue {
   employer: Employer;
@@ -157,6 +158,7 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
                 <h1 className="text-xl font-semibold text-foreground" data-testid={`text-employer-name-${employer.id}`}>
                   {employer.name}
                 </h1>
+                <BookmarkButton entityType="employer" entityId={employer.id} entityName={employer.name} />
               </div>
               <div className="flex items-center space-x-4">
                 <Link href="/employers">
