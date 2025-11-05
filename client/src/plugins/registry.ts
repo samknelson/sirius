@@ -1,5 +1,6 @@
 import { DashboardPlugin } from "./types";
 import { WelcomeMessagesPlugin } from "./welcomeMessages/WelcomeMessagesPlugin";
+import { BookmarksPlugin } from "./bookmarks/BookmarksPlugin";
 
 export const pluginRegistry: DashboardPlugin[] = [
   {
@@ -8,6 +9,15 @@ export const pluginRegistry: DashboardPlugin[] = [
     description: "Display role-specific welcome messages for the user",
     order: 1,
     component: WelcomeMessagesPlugin,
+    enabledByDefault: true,
+  },
+  {
+    id: "bookmarks",
+    name: "Bookmarks",
+    description: "Display user's most recent bookmarks",
+    order: 2,
+    component: BookmarksPlugin,
+    requiredPermissions: ["bookmark"],
     enabledByDefault: true,
   },
 ];
