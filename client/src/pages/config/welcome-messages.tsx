@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
@@ -10,6 +9,7 @@ import { MessageSquare, Save, AlertCircle } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { Role } from "@shared/schema";
 import DOMPurify from "isomorphic-dompurify";
+import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
 
 export default function WelcomeMessagesConfigPage() {
   const { toast } = useToast();
@@ -101,8 +101,8 @@ export default function WelcomeMessagesConfigPage() {
       <Alert>
         <MessageSquare className="h-4 w-4" />
         <AlertDescription>
-          HTML tags are allowed. Use basic formatting like <code>&lt;b&gt;</code>, <code>&lt;i&gt;</code>, 
-          <code>&lt;p&gt;</code>, <code>&lt;br&gt;</code>, etc. Advanced JavaScript and style attributes may be filtered for security.
+          Use the formatting toolbar to add bold, italic, and lists to your welcome messages.
+          HTML is sanitized for security.
         </AlertDescription>
       </Alert>
 
@@ -128,33 +128,16 @@ export default function WelcomeMessagesConfigPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor={`message-${role.id}`}>Welcome Message (HTML)</Label>
-                <Textarea
-                  id={`message-${role.id}`}
-                  value={editedMessages[role.id] || ""}
-                  onChange={(e) => handleMessageChange(role.id, e.target.value)}
-                  placeholder="Enter a welcome message for users with this role..."
-                  rows={6}
-                  className="font-mono text-sm"
-                  data-testid={`textarea-message-${role.id}`}
-                />
-              </div>
-
-              {editedMessages[role.id] && (
-                <div>
-                  <Label>Preview</Label>
-                  <div 
-                    className="mt-2 p-4 border rounded-md bg-muted/50"
-                    dangerouslySetInnerHTML={{ 
-                      __html: DOMPurify.sanitize(editedMessages[role.id], {
-                        ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'u', 'p', 'br', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'span', 'div'],
-                        ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
-                      })
-                    }}
-                    data-testid={`preview-message-${role.id}`}
+                <Label htmlFor={`message-${role.id}`}>Welcome Message</Label>
+                <div className="mt-2">
+                  <SimpleHtmlEditor
+                    value={editedMessages[role.id] || ""}
+                    onChange={(value) => handleMessageChange(role.id, value)}
+                    placeholder="Enter a welcome message for users with this role..."
+                    data-testid={`editor-message-${role.id}`}
                   />
                 </div>
-              )}
+              </div>
             </CardContent>
           </Card>
         ))}
