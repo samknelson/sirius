@@ -17,7 +17,7 @@ export const pluginRegistry: DashboardPlugin[] = [
     description: "Display user's most recent bookmarks",
     order: 2,
     component: BookmarksPlugin,
-    requiredPermissions: ["bookmark"],
+    requiredPermissions: ["bookmark", "admin"],
     enabledByDefault: true,
   },
 ];
