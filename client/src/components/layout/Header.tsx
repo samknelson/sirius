@@ -10,9 +10,18 @@ import {
   Heart,
   UserCog,
   Home,
+  Bookmark,
+  ChevronDown,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface SiteSettings {
   siteName: string;
@@ -164,21 +173,35 @@ export default function Header() {
 
         <div className="flex items-center space-x-4">
           {user && (
-            <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-              <User className="h-4 w-4" />
-              <span data-testid="text-username">{getUserDisplayName()}</span>
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" data-testid="button-user-menu">
+                  <User className="h-4 w-4 mr-2" />
+                  <span data-testid="text-username">{getUserDisplayName()}</span>
+                  <ChevronDown className="h-4 w-4 ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {(hasPermission("bookmark") || hasPermission("admin")) && (
+                  <>
+                    <DropdownMenuItem asChild>
+                      <Link href="/bookmarks" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-bookmarks">
+                          <Bookmark className="h-4 w-4 mr-2" />
+                          Bookmarks
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
+                <DropdownMenuItem onClick={handleLogout} data-testid="menu-logout">
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleLogout}
-            data-testid="button-logout"
-          >
-            <LogOut className="h-4 w-4 mr-2" />
-            Logout
-          </Button>
         </div>
       </div>
     </header>

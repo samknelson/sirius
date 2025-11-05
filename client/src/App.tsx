@@ -11,6 +11,7 @@ import LoginPage from "@/pages/login";
 import UnauthorizedPage from "@/pages/unauthorized";
 import Bootstrap from "@/pages/bootstrap";
 import Dashboard from "@/pages/dashboard";
+import Bookmarks from "@/pages/bookmarks";
 import Workers from "@/pages/workers";
 import WorkersAdd from "@/pages/workers-add";
 import WorkerView from "@/pages/worker-view";
@@ -182,6 +183,14 @@ function Router() {
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
             <Workers />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/bookmarks">
+        <ProtectedRoute permission="bookmark">
+          <AuthenticatedLayout>
+            <Bookmarks />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
