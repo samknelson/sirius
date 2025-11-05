@@ -68,8 +68,8 @@ export default function MasqueradePage() {
     return `${user.email || 'No email'} (${name})`;
   };
 
-  // Filter to show only active users with linked accounts
-  const availableUsers = users.filter(u => u.isActive && u.accountStatus === 'linked');
+  // Filter to show only active users
+  const availableUsers = users.filter(u => u.isActive);
 
   if (isLoading) {
     return (
@@ -134,7 +134,7 @@ export default function MasqueradePage() {
                 </SelectContent>
               </Select>
               <p className="text-sm text-muted-foreground">
-                Only active users with linked Replit accounts are shown
+                Only active users are shown
               </p>
             </div>
 
