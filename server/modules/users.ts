@@ -20,6 +20,39 @@ export function registerUserRoutes(
 ) {
   // Admin routes for user management
   
+  // GET /api/admin/users/search - Search users by email (admin only)
+  // MIGRATED to new access control system
+  app.get("/api/admin/users/search", requireAccess(policies.adminManage), async (req, res) => {
+    try {
+      const query = (req.query.q as string || '').toLowerCase();
+      
+      if (!query || query.length < 2) {
+        return res.json([]);
+      }
+      
+      const usersWithRoles = await storage.getAllUsersWithRoles();
+      
+      // Filter users by email (case-insensitive partial match)
+      const matchedUsers = usersWithRoles.filter(user => 
+        user.email?.toLowerCase().includes(query)
+      ).slice(0, 20); // Limit to 20 results
+      
+      // Shape response to exclude sensitive fields
+      const safeUsers = matchedUsers.map(user => ({
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        accountStatus: user.accountStatus,
+        isActive: user.isActive,
+      }));
+      
+      res.json(safeUsers);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to search users" });
+    }
+  });
+  
   // GET /api/admin/users - Get all users (admin only)
   // MIGRATED to new access control system
   app.get("/api/admin/users", requireAccess(policies.adminManage), async (req, res) => {

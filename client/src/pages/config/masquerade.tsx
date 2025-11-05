@@ -1,13 +1,15 @@
-import { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { UserCog, Loader2, AlertTriangle } from 'lucide-react';
+import { UserCog, Loader2, AlertTriangle, Check } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
+import { cn } from '@/lib/utils';
 
 interface User {
   id: string;
@@ -19,13 +21,41 @@ interface User {
 }
 
 export default function MasqueradePage() {
-  const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [searchResults, setSearchResults] = useState<User[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const { toast } = useToast();
   const { masquerade } = useAuth();
 
-  const { data: users = [], isLoading } = useQuery<User[]>({
-    queryKey: ['/api/admin/users'],
-  });
+  // Debounced search effect
+  useEffect(() => {
+    const searchUsers = async () => {
+      if (searchQuery.length < 2) {
+        setSearchResults([]);
+        return;
+      }
+
+      setIsSearching(true);
+      try {
+        const response = await fetch(`/api/admin/users/search?q=${encodeURIComponent(searchQuery)}`);
+        if (response.ok) {
+          const data = await response.json();
+          setSearchResults(data.filter((u: User) => u.isActive));
+        } else {
+          setSearchResults([]);
+        }
+      } catch (error) {
+        console.error('Error searching users:', error);
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    const timeoutId = setTimeout(searchUsers, 300);
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
 
   const startMasqueradeMutation = useMutation({
     mutationFn: async (userId: string) => {
@@ -51,7 +81,7 @@ export default function MasqueradePage() {
   });
 
   const handleStartMasquerade = () => {
-    if (!selectedUserId) {
+    if (!selectedUser) {
       toast({
         title: 'Error',
         description: 'Please select a user to masquerade as',
@@ -59,7 +89,7 @@ export default function MasqueradePage() {
       });
       return;
     }
-    startMasqueradeMutation.mutate(selectedUserId);
+    startMasqueradeMutation.mutate(selectedUser.id);
   };
 
   const getDisplayName = (user: User) => {
@@ -67,18 +97,6 @@ export default function MasqueradePage() {
     const name = nameParts.length > 0 ? nameParts.join(' ') : 'No name';
     return `${user.email || 'No email'} (${name})`;
   };
-
-  // Filter to show only active users
-  const availableUsers = users.filter(u => u.isActive);
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-6 w-6 animate-spin mr-2" />
-        <span>Loading users...</span>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -114,27 +132,76 @@ export default function MasqueradePage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="user-select">Select User</Label>
-              <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-                <SelectTrigger id="user-select" data-testid="select-masquerade-user">
-                  <SelectValue placeholder="Choose a user to masquerade as..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableUsers.length === 0 ? (
-                    <div className="p-2 text-sm text-muted-foreground text-center">
-                      No active users available
+              <Label htmlFor="user-search">Search User by Email</Label>
+              <div className="relative">
+                <Input
+                  id="user-search"
+                  data-testid="input-user-search"
+                  type="text"
+                  placeholder="Type to search by email address..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full"
+                />
+                {selectedUser && (
+                  <div className="mt-2 p-3 bg-accent rounded-md flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-green-600" />
+                      <span className="text-sm font-medium">{getDisplayName(selectedUser)}</span>
                     </div>
-                  ) : (
-                    availableUsers.map((user) => (
-                      <SelectItem key={user.id} value={user.id}>
-                        {getDisplayName(user)}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedUser(null);
+                        setSearchQuery('');
+                      }}
+                      data-testid="button-clear-selection"
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                )}
+                {searchQuery.length >= 2 && !selectedUser && (
+                  <Command className="mt-2 border rounded-md">
+                    <CommandList>
+                      {isSearching ? (
+                        <div className="py-6 text-center text-sm">
+                          <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                        </div>
+                      ) : searchResults.length === 0 ? (
+                        <CommandEmpty>No users found matching "{searchQuery}"</CommandEmpty>
+                      ) : (
+                        <CommandGroup>
+                          {searchResults.map((user) => (
+                            <CommandItem
+                              key={user.id}
+                              value={user.id}
+                              onSelect={() => {
+                                setSelectedUser(user);
+                                setSearchQuery('');
+                              }}
+                              data-testid={`user-result-${user.id}`}
+                              className="cursor-pointer"
+                            >
+                              <div className="flex flex-col">
+                                <span className="font-medium">{user.email}</span>
+                                {(user.firstName || user.lastName) && (
+                                  <span className="text-sm text-muted-foreground">
+                                    {[user.firstName, user.lastName].filter(Boolean).join(' ')}
+                                  </span>
+                                )}
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      )}
+                    </CommandList>
+                  </Command>
+                )}
+              </div>
               <p className="text-sm text-muted-foreground">
-                Only active users are shown
+                Search by email address to find active users
               </p>
             </div>
 
@@ -150,7 +217,7 @@ export default function MasqueradePage() {
 
             <Button 
               onClick={handleStartMasquerade}
-              disabled={!selectedUserId || startMasqueradeMutation.isPending}
+              disabled={!selectedUser || startMasqueradeMutation.isPending}
               className="w-full"
               data-testid="button-start-masquerade"
             >
