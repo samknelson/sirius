@@ -122,10 +122,10 @@ export function registerBookmarkRoutes(
     }
   });
 
-  // DELETE /api/bookmarks/entity - Delete a bookmark by entity type and ID
-  app.delete("/api/bookmarks/entity", requireAccess(policies.bookmark), async (req, res) => {
+  // DELETE /api/bookmarks/entity/:entityType/:entityId - Delete a bookmark by entity type and ID
+  app.delete("/api/bookmarks/entity/:entityType/:entityId", requireAccess(policies.bookmark), async (req, res) => {
     try {
-      const { entityType, entityId } = req.body;
+      const { entityType, entityId } = req.params;
       
       if (!entityType || !entityId) {
         return res.status(400).json({ message: "entityType and entityId are required" });

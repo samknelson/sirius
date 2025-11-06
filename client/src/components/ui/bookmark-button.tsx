@@ -57,7 +57,7 @@ export function BookmarkButton({ entityType, entityId, entityName }: BookmarkBut
 
   const deleteBookmark = useMutation({
     mutationFn: async () => {
-      return apiRequest("DELETE", "/api/bookmarks/entity", { entityType, entityId });
+      return apiRequest("DELETE", `/api/bookmarks/entity/${entityType}/${entityId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bookmarks/check", entityType, entityId] });
