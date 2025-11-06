@@ -171,6 +171,7 @@ Access policies (`server/policies.ts`) define declarative access control require
 - `variablesManage`: Requires `variables.manage` permission
 - `benefitsView`: Requires `benefits.view` permission
 - `benefitsManage`: Requires `benefits.manage` permission
+- `components`: Requires `variables.manage` permission (for managing component feature flags)
 - `bookmark`: Requires `bookmark` permission
 - `masquerade`: Requires `masquerade` or `admin` permission
 

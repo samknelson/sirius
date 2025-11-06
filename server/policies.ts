@@ -112,6 +112,18 @@ export const benefitsManage: AccessPolicy = {
 };
 
 /**
+ * Component management policy
+ */
+export const components: AccessPolicy = {
+  name: 'Manage Components',
+  description: 'Requires variables.manage permission',
+  requirements: [
+    { type: 'authenticated' },
+    { type: 'permission', key: 'variables.manage' },
+  ],
+};
+
+/**
  * Bookmark policy
  */
 export const bookmark: AccessPolicy = {
@@ -167,6 +179,7 @@ export const policies = {
   variablesManage,
   benefitsView,
   benefitsManage,
+  components,
   bookmark,
   masquerade,
   workersViewOrManage,

@@ -52,7 +52,7 @@ export function registerComponentRoutes(
   requirePermission: PermissionMiddleware
 ) {
   // GET /api/components/config - Get component configuration states
-  app.get("/api/components/config", requireAccess(policies.variablesView), async (req, res) => {
+  app.get("/api/components/config", requireAccess(policies.components), async (req, res) => {
     try {
       const configs = await getComponentConfigs();
       res.json(configs);
@@ -62,7 +62,7 @@ export function registerComponentRoutes(
   });
 
   // PUT /api/components/config/:componentId - Update component enabled state
-  app.put("/api/components/config/:componentId", requireAccess(policies.variablesManage), async (req, res) => {
+  app.put("/api/components/config/:componentId", requireAccess(policies.components), async (req, res) => {
     try {
       const { componentId } = req.params;
       const { enabled } = req.body;

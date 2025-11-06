@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -20,16 +20,20 @@ export default function ComponentsConfigPage() {
   });
 
   const [localStates, setLocalStates] = useState<Record<string, boolean>>({});
+  const isInitialized = useRef(false);
 
   useEffect(() => {
-    // Initialize local states from configs or defaults
-    const states: Record<string, boolean> = {};
-    allComponents.forEach((component: ComponentDefinition) => {
-      const config = componentConfigs.find(c => c.componentId === component.id);
-      states[component.id] = config ? config.enabled : component.enabledByDefault;
-    });
-    setLocalStates(states);
-  }, [componentConfigs]);
+    // Initialize local states from configs or defaults only once
+    if (!isInitialized.current && componentConfigs.length > 0) {
+      const states: Record<string, boolean> = {};
+      allComponents.forEach((component: ComponentDefinition) => {
+        const config = componentConfigs.find(c => c.componentId === component.id);
+        states[component.id] = config ? config.enabled : component.enabledByDefault;
+      });
+      setLocalStates(states);
+      isInitialized.current = true;
+    }
+  }, [componentConfigs, allComponents]);
 
   const updateComponentMutation = useMutation({
     mutationFn: async ({ componentId, enabled }: { componentId: string; enabled: boolean }) => {
