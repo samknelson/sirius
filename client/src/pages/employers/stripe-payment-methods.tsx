@@ -25,7 +25,7 @@ function PaymentMethodsContent() {
 
 export default function StripePaymentMethodsPage() {
   return (
-    <EmployerLayout activeTab="accounting-payment-methods">
+    <EmployerLayout activeTab="payment-methods">
       <PaymentMethodsContent />
     </EmployerLayout>
   );

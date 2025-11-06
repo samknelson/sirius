@@ -26,7 +26,7 @@ export function useEmployerLayout() {
 }
 
 interface EmployerLayoutProps {
-  activeTab: "details" | "edit" | "accounting-customer" | "accounting-payment-methods";
+  activeTab: "details" | "edit" | "accounting" | "payment-methods" | "customer";
   children: ReactNode;
 }
 
@@ -135,19 +135,27 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
   }
 
   // Success state - render layout with tabs
-  const tabs = [
+  const mainTabs = [
     { id: "details", label: "Details", href: `/employers/${employer.id}` },
     { id: "edit", label: "Edit", href: `/employers/${employer.id}/edit` },
   ];
 
-  // Add accounting tabs if user has permission
+  // Add accounting tab if user has permission
   const hasAccountingAccess = hasPermission('admin') || hasPermission('ledger.staff') || hasPermission('ledger.employer');
   if (hasAccountingAccess) {
-    tabs.push(
-      { id: "accounting-customer", label: "Accounting: Customer", href: `/employers/${employer.id}/ledger/stripe/customer` },
-      { id: "accounting-payment-methods", label: "Accounting: Payment Methods", href: `/employers/${employer.id}/ledger/stripe/payment_methods` }
+    mainTabs.push(
+      { id: "accounting", label: "Accounting", href: `/employers/${employer.id}/ledger/stripe/payment_methods` }
     );
   }
+
+  const accountingSubTabs = [
+    { id: "payment-methods", label: "Payment Methods", href: `/employers/${employer.id}/ledger/stripe/payment_methods` },
+    { id: "customer", label: "Customer", href: `/employers/${employer.id}/ledger/stripe/customer` },
+  ];
+
+  // Determine if we're in a sub-tab
+  const isAccountingSubTab = ["payment-methods", "customer"].includes(activeTab);
+  const showAccountingSubTabs = isAccountingSubTab;
 
   const contextValue: EmployerLayoutContextValue = {
     employer,
@@ -183,12 +191,12 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
           </div>
         </header>
 
-        {/* Tab Navigation */}
+        {/* Main Tab Navigation */}
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center space-x-2 py-3">
-              {tabs.map((tab) => {
-                const isActive = tab.id === activeTab;
+              {mainTabs.map((tab) => {
+                const isActive = tab.id === activeTab || (tab.id === "accounting" && isAccountingSubTab);
                 return isActive ? (
                   <Button
                     key={tab.id}
@@ -213,6 +221,38 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
             </div>
           </div>
         </div>
+
+        {/* Accounting Sub-Tab Navigation */}
+        {showAccountingSubTabs && (
+          <div className="bg-muted/30 border-b border-border">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex items-center space-x-2 py-2 pl-4">
+                {accountingSubTabs.map((tab) => (
+                  tab.id === activeTab ? (
+                    <Button
+                      key={tab.id}
+                      variant="secondary"
+                      size="sm"
+                      data-testid={`button-employer-${tab.id}`}
+                    >
+                      {tab.label}
+                    </Button>
+                  ) : (
+                    <Link key={tab.id} href={tab.href}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid={`button-employer-${tab.id}`}
+                      >
+                        {tab.label}
+                      </Button>
+                    </Link>
+                  )
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

@@ -148,7 +148,7 @@ function StripeCustomerContent() {
 
 export default function StripeCustomerPage() {
   return (
-    <EmployerLayout activeTab="accounting-customer">
+    <EmployerLayout activeTab="customer">
       <StripeCustomerContent />
     </EmployerLayout>
   );
