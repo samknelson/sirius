@@ -175,6 +175,16 @@ export const bookmarks = pgTable("bookmarks", {
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
+export const ledgerStripePaymentMethods = pgTable("ledger_stripe_paymentmethods", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  entityType: text("entity_type").notNull(),
+  entityId: varchar("entity_id").notNull(),
+  paymentMethod: text("payment_method").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  isDefault: boolean("is_default").default(false).notNull(),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+});
+
 // Zod schemas for validation
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -243,6 +253,11 @@ export const insertBookmarkSchema = createInsertSchema(bookmarks).omit({
   createdAt: true,
 });
 
+export const insertLedgerStripePaymentMethodSchema = createInsertSchema(ledgerStripePaymentMethods).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertGenderOptionSchema = createInsertSchema(optionsGender).omit({
   id: true,
 });
@@ -304,6 +319,9 @@ export type PhoneNumber = typeof phoneNumbers.$inferSelect;
 
 export type InsertBookmark = z.infer<typeof insertBookmarkSchema>;
 export type Bookmark = typeof bookmarks.$inferSelect;
+
+export type InsertLedgerStripePaymentMethod = z.infer<typeof insertLedgerStripePaymentMethodSchema>;
+export type LedgerStripePaymentMethod = typeof ledgerStripePaymentMethods.$inferSelect;
 
 export type InsertGenderOption = z.infer<typeof insertGenderOptionSchema>;
 export type GenderOption = typeof optionsGender.$inferSelect;
