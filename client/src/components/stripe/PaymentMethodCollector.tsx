@@ -99,7 +99,7 @@ interface PaymentMethodCollectorProps {
 export default function PaymentMethodCollector({ 
   clientSecret, 
   onSuccess, 
-  onCancel 
+  onCancel
 }: PaymentMethodCollectorProps) {
   const options: StripeElementsOptions = {
     clientSecret,
@@ -110,7 +110,10 @@ export default function PaymentMethodCollector({
 
   return (
     <Elements stripe={stripePromise} options={options}>
-      <PaymentMethodForm onSuccess={onSuccess} onCancel={onCancel} />
+      <PaymentMethodForm 
+        onSuccess={onSuccess} 
+        onCancel={onCancel} 
+      />
     </Elements>
   );
 }

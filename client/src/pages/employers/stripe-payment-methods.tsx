@@ -59,6 +59,7 @@ function PaymentMethodsContent() {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [isLoadingSetupIntent, setIsLoadingSetupIntent] = useState(false);
+  const [confirmedPaymentMethodId, setConfirmedPaymentMethodId] = useState<string | null>(null);
 
   const { data: paymentMethods, isLoading, error } = useQuery<PaymentMethod[]>({
     queryKey: ['/api/employers', employer.id, 'ledger', 'stripe', 'payment-methods'],
@@ -139,11 +140,12 @@ function PaymentMethodsContent() {
       });
       setAddDialogOpen(false);
       setClientSecret(null);
+      setConfirmedPaymentMethodId(null);
     },
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to add payment method",
+        description: error.message || "Failed to save payment method. You can retry.",
         variant: "destructive",
       });
     },
@@ -181,12 +183,21 @@ function PaymentMethodsContent() {
   };
 
   const handlePaymentMethodSuccess = (paymentMethodId: string) => {
+    // Cache the payment method ID from Stripe so we can retry if backend fails
+    setConfirmedPaymentMethodId(paymentMethodId);
     addPaymentMethodMutation.mutate(paymentMethodId);
+  };
+
+  const handleRetryAttachment = () => {
+    if (confirmedPaymentMethodId) {
+      addPaymentMethodMutation.mutate(confirmedPaymentMethodId);
+    }
   };
 
   const handleCancelAddPaymentMethod = () => {
     setAddDialogOpen(false);
     setClientSecret(null);
+    setConfirmedPaymentMethodId(null);
   };
 
   const formatCardBrand = (brand: string) => {
@@ -390,12 +401,46 @@ function PaymentMethodsContent() {
           <DialogHeader>
             <DialogTitle>Add Payment Method</DialogTitle>
             <DialogDescription>
-              Enter your card details to add a new payment method.
+              {confirmedPaymentMethodId 
+                ? "Saving payment method..." 
+                : "Enter your card details to add a new payment method."
+              }
             </DialogDescription>
           </DialogHeader>
           {isLoadingSetupIntent || !clientSecret ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : confirmedPaymentMethodId ? (
+            <div className="space-y-4 py-4">
+              {addPaymentMethodMutation.isPending ? (
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
+                  <p className="text-sm text-muted-foreground">Saving payment method...</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Alert variant="destructive" className="mb-4">
+                    <AlertDescription>
+                      Failed to save payment method. You can retry or cancel.
+                    </AlertDescription>
+                  </Alert>
+                  <div className="flex space-x-2">
+                    <Button
+                      variant="outline"
+                      onClick={handleCancelAddPaymentMethod}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleRetryAttachment}
+                      data-testid="button-retry-payment-method"
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <PaymentMethodCollector
