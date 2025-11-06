@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Bookmark, User, Building } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Bookmark, User, Building, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
+import { Button } from "@/components/ui/button";
 import { DashboardPluginProps } from "../types";
 import type { Bookmark as BookmarkType, Worker, Employer, Contact } from "@shared/schema";
 
@@ -159,6 +160,18 @@ export function BookmarksPlugin({ userPermissions }: DashboardPluginProps) {
           })}
         </div>
       </CardContent>
+      <CardFooter className="pt-0">
+        <Link href="/bookmarks" className="w-full">
+          <Button 
+            variant="ghost" 
+            className="w-full justify-between" 
+            data-testid="button-view-all-bookmarks"
+          >
+            <span>View All Bookmarks</span>
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </Link>
+      </CardFooter>
     </Card>
   );
 }
