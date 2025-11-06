@@ -21,6 +21,7 @@ const POLICY_PERMISSIONS: Record<string, string[]> = {
   'benefits.manage': ['benefits.manage'],
   'admin.manage': ['admin.manage'],
   'masquerade': ['masquerade', 'admin'],
+  'ledgerStripeEmployer': ['ledger.staff', 'ledger.employer'],
 };
 
 export default function ProtectedRoute({ children, permission, policy }: ProtectedRouteProps) {

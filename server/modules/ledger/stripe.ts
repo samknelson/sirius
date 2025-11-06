@@ -58,7 +58,7 @@ export function registerLedgerStripeRoutes(app: Express) {
 
   app.get("/api/ledger/stripe/payment-types", requireAccess(policies.ledgerStripeAdmin), async (req: Request, res: Response) => {
     try {
-      const variable = await storage.getVariable('stripe_payment_types');
+      const variable = await storage.getVariableByName('stripe_payment_types');
       const paymentTypes = variable?.value || ['card'];
       
       res.json({ paymentTypes });
@@ -116,7 +116,7 @@ export function registerLedgerStripeRoutes(app: Express) {
         });
       }
 
-      const existingVariable = await storage.getVariable('stripe_payment_types');
+      const existingVariable = await storage.getVariableByName('stripe_payment_types');
       
       if (existingVariable) {
         await storage.updateVariable(existingVariable.id, {
@@ -136,6 +136,104 @@ export function registerLedgerStripeRoutes(app: Express) {
       });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to update payment types" });
+    }
+  });
+
+  app.get("/api/employers/:id/ledger/stripe/customer", requireAccess(policies.ledgerStripeAdmin), async (req: Request, res: Response) => {
+    try {
+      const { id: employerId } = req.params;
+      
+      const employer = await storage.getEmployer(employerId);
+      if (!employer) {
+        return res.status(404).json({ message: "Employer not found" });
+      }
+
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(503).json({ 
+          message: "Stripe is not configured",
+          error: "STRIPE_SECRET_KEY is not set",
+        });
+      }
+
+      const stripeClient = getStripeClient();
+      const variableName = `employer_${employerId}_stripe_customer_id`;
+      const customerVariable = await storage.getVariableByName(variableName);
+      
+      let customerId = customerVariable?.value as string | undefined;
+      let customer: Stripe.Customer | null = null;
+      let wasRecreated = false;
+      
+      if (customerId) {
+        try {
+          customer = await stripeClient.customers.retrieve(customerId) as Stripe.Customer;
+          if (customer.deleted) {
+            customerId = undefined;
+            customer = null;
+            wasRecreated = true;
+          }
+        } catch (error: any) {
+          if (error.code === 'resource_missing') {
+            customerId = undefined;
+            customer = null;
+            wasRecreated = true;
+          } else {
+            throw error;
+          }
+        }
+      }
+      
+      if (!customer) {
+        customer = await stripeClient.customers.create({
+          name: employer.name,
+          metadata: {
+            employer_id: employer.id,
+            sirius_id: employer.siriusId.toString(),
+          },
+        });
+        
+        customerId = customer.id;
+        
+        if (customerVariable) {
+          await storage.updateVariable(customerVariable.id, {
+            name: variableName,
+            value: customerId,
+          });
+        } else {
+          await storage.createVariable({
+            name: variableName,
+            value: customerId,
+          });
+        }
+      }
+      
+      const stripeBaseUrl = process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_') 
+        ? 'https://dashboard.stripe.com/test' 
+        : 'https://dashboard.stripe.com';
+
+      res.json({
+        customer: {
+          id: customer.id,
+          name: customer.name,
+          email: customer.email,
+          created: customer.created,
+          currency: customer.currency,
+          balance: customer.balance,
+          delinquent: customer.delinquent,
+        },
+        stripeUrl: `${stripeBaseUrl}/customers/${customer.id}`,
+        wasRecreated,
+      });
+    } catch (error: any) {
+      if (error.message?.includes('STRIPE_SECRET_KEY')) {
+        return res.status(503).json({ 
+          message: "Stripe is not configured",
+          error: error.message,
+        });
+      }
+      res.status(500).json({ 
+        message: "Failed to fetch Stripe customer",
+        error: error.message,
+      });
     }
   });
 }

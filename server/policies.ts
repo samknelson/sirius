@@ -137,6 +137,22 @@ export const ledgerStripeAdmin: AccessPolicy = {
 };
 
 /**
+ * Ledger Stripe employer access policy
+ */
+export const ledgerStripeEmployer: AccessPolicy = {
+  name: 'Ledger Stripe Employer Access',
+  description: 'Requires ledger.stripe component and either ledger.staff or ledger.employer permission',
+  requirements: [
+    { type: 'authenticated' },
+    { type: 'component', componentId: 'ledger.stripe' },
+    {
+      type: 'anyPermission',
+      keys: ['ledger.staff', 'ledger.employer'],
+    },
+  ],
+};
+
+/**
  * Bookmark policy
  */
 export const bookmark: AccessPolicy = {
@@ -194,6 +210,7 @@ export const policies = {
   benefitsManage,
   components,
   ledgerStripeAdmin,
+  ledgerStripeEmployer,
   bookmark,
   masquerade,
   workersViewOrManage,

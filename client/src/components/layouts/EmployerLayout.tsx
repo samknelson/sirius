@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BookmarkButton } from "@/components/ui/bookmark-button";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface EmployerLayoutContextValue {
   employer: Employer;
@@ -25,12 +26,13 @@ export function useEmployerLayout() {
 }
 
 interface EmployerLayoutProps {
-  activeTab: "details" | "edit";
+  activeTab: "details" | "edit" | "accounting-customer" | "accounting-payment-methods";
   children: ReactNode;
 }
 
 export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
   const { id } = useParams<{ id: string }>();
+  const { hasPermission } = useAuth();
 
   const { data: employer, isLoading: employerLoading, error: employerError } = useQuery<Employer>({
     queryKey: ["/api/employers", id],
@@ -137,6 +139,15 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
     { id: "details", label: "Details", href: `/employers/${employer.id}` },
     { id: "edit", label: "Edit", href: `/employers/${employer.id}/edit` },
   ];
+
+  // Add accounting tabs if user has permission
+  const hasAccountingAccess = hasPermission('admin') || hasPermission('ledger.staff') || hasPermission('ledger.employer');
+  if (hasAccountingAccess) {
+    tabs.push(
+      { id: "accounting-customer", label: "Accounting: Customer", href: `/employers/${employer.id}/ledger/stripe/customer` },
+      { id: "accounting-payment-methods", label: "Accounting: Payment Methods", href: `/employers/${employer.id}/ledger/stripe/payment_methods` }
+    );
+  }
 
   const contextValue: EmployerLayoutContextValue = {
     employer,
