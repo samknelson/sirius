@@ -80,6 +80,7 @@ export const employers = pgTable("employers", {
   siriusId: serial("sirius_id").notNull().unique(),
   name: text("name").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
+  stripeCustomerId: text("stripe_customer_id"),
 });
 
 export const trustBenefits = pgTable("trust_benefits", {

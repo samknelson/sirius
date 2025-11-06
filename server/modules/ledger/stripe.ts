@@ -156,10 +156,8 @@ export function registerLedgerStripeRoutes(app: Express) {
       }
 
       const stripeClient = getStripeClient();
-      const variableName = `employer_${employerId}_stripe_customer_id`;
-      const customerVariable = await storage.getVariableByName(variableName);
       
-      let customerId = customerVariable?.value as string | undefined;
+      let customerId = employer.stripeCustomerId;
       let customer: Stripe.Customer | null = null;
       let wasRecreated = false;
       
@@ -167,13 +165,13 @@ export function registerLedgerStripeRoutes(app: Express) {
         try {
           customer = await stripeClient.customers.retrieve(customerId) as Stripe.Customer;
           if (customer.deleted) {
-            customerId = undefined;
+            customerId = null;
             customer = null;
             wasRecreated = true;
           }
         } catch (error: any) {
           if (error.code === 'resource_missing') {
-            customerId = undefined;
+            customerId = null;
             customer = null;
             wasRecreated = true;
           } else {
@@ -193,17 +191,9 @@ export function registerLedgerStripeRoutes(app: Express) {
         
         customerId = customer.id;
         
-        if (customerVariable) {
-          await storage.updateVariable(customerVariable.id, {
-            name: variableName,
-            value: customerId,
-          });
-        } else {
-          await storage.createVariable({
-            name: variableName,
-            value: customerId,
-          });
-        }
+        await storage.updateEmployer(employer.id, {
+          stripeCustomerId: customerId,
+        });
       }
       
       const stripeBaseUrl = process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_') 
