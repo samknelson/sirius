@@ -22,12 +22,10 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import PaymentMethodCollector from "@/components/stripe/PaymentMethodCollector";
 
 interface PaymentMethod {
   id: string;
@@ -59,7 +57,8 @@ function PaymentMethodsContent() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [paymentMethodToDelete, setPaymentMethodToDelete] = useState<PaymentMethod | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [paymentMethodId, setPaymentMethodId] = useState("");
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [isLoadingSetupIntent, setIsLoadingSetupIntent] = useState(false);
 
   const { data: paymentMethods, isLoading, error } = useQuery<PaymentMethod[]>({
     queryKey: ['/api/employers', employer.id, 'ledger', 'stripe', 'payment-methods'],
@@ -139,7 +138,7 @@ function PaymentMethodsContent() {
         description: "Payment method added successfully",
       });
       setAddDialogOpen(false);
-      setPaymentMethodId("");
+      setClientSecret(null);
     },
     onError: (error: any) => {
       toast({
@@ -161,16 +160,33 @@ function PaymentMethodsContent() {
     }
   };
 
-  const handleAddPaymentMethod = () => {
-    if (!paymentMethodId.trim()) {
+  const handleOpenAddDialog = async () => {
+    setIsLoadingSetupIntent(true);
+    setAddDialogOpen(true);
+    
+    try {
+      const response = await apiRequest('POST', `/api/employers/${employer.id}/ledger/stripe/setup-intent`);
+      const data = await response.json();
+      setClientSecret(data.clientSecret);
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Please enter a payment method ID",
+        description: error.message || "Failed to initialize payment method setup",
         variant: "destructive",
       });
-      return;
+      setAddDialogOpen(false);
+    } finally {
+      setIsLoadingSetupIntent(false);
     }
-    addPaymentMethodMutation.mutate(paymentMethodId.trim());
+  };
+
+  const handlePaymentMethodSuccess = (paymentMethodId: string) => {
+    addPaymentMethodMutation.mutate(paymentMethodId);
+  };
+
+  const handleCancelAddPaymentMethod = () => {
+    setAddDialogOpen(false);
+    setClientSecret(null);
   };
 
   const formatCardBrand = (brand: string) => {
@@ -218,7 +234,7 @@ function PaymentMethodsContent() {
               <CardTitle>Payment Methods</CardTitle>
               <CardDescription>Manage saved payment methods for this employer</CardDescription>
             </div>
-            <Button data-testid="button-add-payment-method" onClick={() => setAddDialogOpen(true)}>
+            <Button data-testid="button-add-payment-method" onClick={handleOpenAddDialog}>
               <Plus className="mr-2 h-4 w-4" />
               Add Payment Method
             </Button>
@@ -227,9 +243,7 @@ function PaymentMethodsContent() {
         <CardContent>
           <Alert className="mb-6">
             <AlertDescription>
-              You can add a payment method by providing a Stripe payment method ID. 
-              For testing, use Stripe test payment methods like <code className="bg-muted px-1 rounded">pm_card_visa</code>.
-              In production, payment methods should be created using Stripe Elements.
+              Add payment methods securely using Stripe's payment form. Card details are handled directly by Stripe and never stored on our servers.
             </AlertDescription>
           </Alert>
 
@@ -371,53 +385,25 @@ function PaymentMethodsContent() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-        <DialogContent>
+      <Dialog open={addDialogOpen} onOpenChange={handleCancelAddPaymentMethod}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add Payment Method</DialogTitle>
             <DialogDescription>
-              Enter a Stripe payment method ID to attach it to this employer.
+              Enter your card details to add a new payment method.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="payment-method-id">Payment Method ID</Label>
-              <Input
-                id="payment-method-id"
-                placeholder="pm_..."
-                value={paymentMethodId}
-                onChange={(e) => setPaymentMethodId(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleAddPaymentMethod();
-                  }
-                }}
-                data-testid="input-payment-method-id"
-              />
-              <p className="text-sm text-muted-foreground">
-                For testing, use: <code className="bg-muted px-1 rounded">pm_card_visa</code>
-              </p>
+          {isLoadingSetupIntent || !clientSecret ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setAddDialogOpen(false);
-                setPaymentMethodId("");
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleAddPaymentMethod}
-              disabled={addPaymentMethodMutation.isPending}
-              data-testid="button-submit-payment-method"
-            >
-              {addPaymentMethodMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Add Payment Method
-            </Button>
-          </DialogFooter>
+          ) : (
+            <PaymentMethodCollector
+              clientSecret={clientSecret}
+              onSuccess={handlePaymentMethodSuccess}
+              onCancel={handleCancelAddPaymentMethod}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </>
