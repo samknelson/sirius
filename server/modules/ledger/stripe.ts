@@ -292,6 +292,62 @@ export function registerLedgerStripeRoutes(app: Express) {
     }
   });
 
+  // Create a SetupIntent for adding a payment method
+  app.post("/api/employers/:id/ledger/stripe/setup-intent", requireAccess(policies.ledgerStripeEmployer), async (req: Request, res: Response) => {
+    try {
+      const { id: employerId } = req.params;
+      
+      const employer = await storage.getEmployer(employerId);
+      if (!employer) {
+        return res.status(404).json({ message: "Employer not found" });
+      }
+
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(503).json({ 
+          message: "Stripe is not configured",
+          error: "STRIPE_SECRET_KEY is not set",
+        });
+      }
+
+      const stripeClient = getStripeClient();
+      
+      // Ensure customer exists
+      let customerId = employer.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripeClient.customers.create({
+          name: employer.name,
+          metadata: {
+            employer_id: employer.id,
+            sirius_id: employer.siriusId.toString(),
+          },
+        });
+        customerId = customer.id;
+        await storage.updateEmployer(employer.id, {
+          stripeCustomerId: customerId,
+        });
+      }
+
+      // Create SetupIntent for collecting payment method
+      const setupIntent = await stripeClient.setupIntents.create({
+        customer: customerId,
+        payment_method_types: ['card'],
+        metadata: {
+          employer_id: employer.id,
+        },
+      });
+
+      res.json({ 
+        clientSecret: setupIntent.client_secret,
+        setupIntentId: setupIntent.id,
+      });
+    } catch (error: any) {
+      res.status(500).json({ 
+        message: "Failed to create setup intent",
+        error: error.message,
+      });
+    }
+  });
+
   // Attach a payment method to an employer
   app.post("/api/employers/:id/ledger/stripe/payment-methods", requireAccess(policies.ledgerStripeEmployer), async (req: Request, res: Response) => {
     try {
