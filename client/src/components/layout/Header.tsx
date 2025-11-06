@@ -24,6 +24,7 @@ import {
 
 interface SiteSettings {
   siteName: string;
+  footer: string;
 }
 
 export default function Header() {

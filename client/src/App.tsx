@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/layout/Header";
+import Footer from "@/components/layout/Footer";
 import { useEffect } from "react";
 import LoginPage from "@/pages/login";
 import UnauthorizedPage from "@/pages/unauthorized";
@@ -57,9 +58,10 @@ import NotFound from "@/pages/not-found";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       <Header />
-      <main>{children}</main>
+      <main className="flex-1">{children}</main>
+      <Footer />
     </div>
   );
 }

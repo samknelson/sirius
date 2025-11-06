@@ -749,7 +749,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const siteNameVar = await storage.getVariableByName("siteName");
       const siteName = siteNameVar ? (siteNameVar.value as string) : "Sirius";
       
-      res.json({ siteName });
+      const siteFooterVar = await storage.getVariableByName("site_footer");
+      const footer = siteFooterVar ? (siteFooterVar.value as string) : "";
+      
+      res.json({ siteName, footer });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch site settings" });
     }
@@ -758,25 +761,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // PUT /api/site-settings - Update site settings (requires admin permissions)
   app.put("/api/site-settings", requireAuth, requirePermission("variables.manage"), async (req, res) => {
     try {
-      const { siteName } = req.body;
+      const { siteName, footer } = req.body;
       
-      if (!siteName || typeof siteName !== "string") {
-        res.status(400).json({ message: "Invalid site name" });
-        return;
+      // Update siteName if provided
+      if (siteName !== undefined) {
+        if (typeof siteName !== "string") {
+          res.status(400).json({ message: "Invalid site name" });
+          return;
+        }
+        
+        const existingVariable = await storage.getVariableByName("siteName");
+        if (existingVariable) {
+          await storage.updateVariable(existingVariable.id, { value: siteName });
+        } else {
+          await storage.createVariable({ name: "siteName", value: siteName });
+        }
       }
       
-      // Check if siteName variable exists
-      const existingVariable = await storage.getVariableByName("siteName");
-      
-      if (existingVariable) {
-        // Update existing variable
-        await storage.updateVariable(existingVariable.id, { value: siteName });
-      } else {
-        // Create new variable
-        await storage.createVariable({ name: "siteName", value: siteName });
+      // Update footer if provided
+      if (footer !== undefined) {
+        if (typeof footer !== "string") {
+          res.status(400).json({ message: "Invalid footer content" });
+          return;
+        }
+        
+        const existingFooter = await storage.getVariableByName("site_footer");
+        if (existingFooter) {
+          await storage.updateVariable(existingFooter.id, { value: footer });
+        } else {
+          await storage.createVariable({ name: "site_footer", value: footer });
+        }
       }
       
-      res.json({ siteName });
+      // Return updated values
+      const siteNameVar = await storage.getVariableByName("siteName");
+      const finalSiteName = siteNameVar ? (siteNameVar.value as string) : "Sirius";
+      
+      const siteFooterVar = await storage.getVariableByName("site_footer");
+      const finalFooter = siteFooterVar ? (siteFooterVar.value as string) : "";
+      
+      res.json({ siteName: finalSiteName, footer: finalFooter });
     } catch (error) {
       res.status(500).json({ message: "Failed to update site settings" });
     }
