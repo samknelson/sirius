@@ -327,10 +327,14 @@ export function registerLedgerStripeRoutes(app: Express) {
         });
       }
 
+      // Get configured payment types
+      const paymentTypesVariable = await storage.getVariableByName('stripe_payment_types');
+      const paymentTypes = (Array.isArray(paymentTypesVariable?.value) ? paymentTypesVariable.value : ['card']) as string[];
+
       // Create SetupIntent for collecting payment method
       const setupIntent = await stripeClient.setupIntents.create({
         customer: customerId,
-        payment_method_types: ['card'],
+        payment_method_types: paymentTypes,
         metadata: {
           employer_id: employer.id,
         },
