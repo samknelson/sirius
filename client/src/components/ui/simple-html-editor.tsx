@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bold, Italic, List, ListOrdered } from "lucide-react";
+import { Bold, Italic, List, ListOrdered, Link } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -11,7 +11,10 @@ interface SimpleHtmlEditorProps {
   "data-testid"?: string;
 }
 
-const ALLOWED_TAGS = ['strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'br', 'p'];
+const ALLOWED_TAGS = ['strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'br', 'p', 'a'];
+const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
+  'a': ['href', 'target', 'rel']
+};
 
 function sanitizeHtml(html: string): string {
   const temp = document.createElement('div');
@@ -30,8 +33,12 @@ function sanitizeHtml(html: string): string {
         return;
       }
       
+      // Remove all attributes except allowed ones
+      const allowedAttrs = ALLOWED_ATTRIBUTES[tagName] || [];
       Array.from(element.attributes).forEach(attr => {
-        element.removeAttribute(attr.name);
+        if (!allowedAttrs.includes(attr.name)) {
+          element.removeAttribute(attr.name);
+        }
       });
     }
     
@@ -66,6 +73,13 @@ export function SimpleHtmlEditor({ value, onChange, placeholder, className, "dat
     document.execCommand(command, false, value);
     editorRef.current?.focus();
     handleInput();
+  };
+
+  const handleCreateLink = () => {
+    const url = prompt('Enter URL:');
+    if (url) {
+      execCommand('createLink', url);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -125,6 +139,18 @@ export function SimpleHtmlEditor({ value, onChange, placeholder, className, "dat
         >
           <ListOrdered size={16} />
         </Button>
+        <div className="w-px h-6 bg-border mx-1" />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-8 w-8 p-0"
+          onClick={handleCreateLink}
+          title="Insert Link"
+          data-testid={testId ? `${testId}-link` : undefined}
+        >
+          <Link size={16} />
+        </Button>
       </div>
 
       {/* Editor */}
@@ -171,6 +197,13 @@ export function SimpleHtmlEditor({ value, onChange, placeholder, className, "dat
         }
         [contenteditable] li {
           margin: 0.25rem 0;
+        }
+        [contenteditable] a {
+          color: hsl(var(--primary));
+          text-decoration: underline;
+        }
+        [contenteditable] a:hover {
+          opacity: 0.8;
         }
       `}</style>
     </div>
