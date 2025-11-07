@@ -47,7 +47,8 @@ export default function ProtectedRoute({ children, permission, policy }: Protect
   }, [isAuthenticated, isLoading, setLocation]);
 
   // Show loading state while checking authentication or policy
-  if (isLoading || (policy && isPolicyLoading)) {
+  // Also show loading if not authenticated (while redirect happens) to prevent route from being treated as unmatched
+  if (isLoading || !isAuthenticated || (policy && isPolicyLoading)) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="flex items-center space-x-2">
@@ -56,11 +57,6 @@ export default function ProtectedRoute({ children, permission, policy }: Protect
         </div>
       </div>
     );
-  }
-
-  // If not authenticated, don't render anything (redirect will happen via useEffect)
-  if (!isAuthenticated) {
-    return null;
   }
 
   // Check policy-based access via API
