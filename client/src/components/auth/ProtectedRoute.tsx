@@ -1,8 +1,7 @@
-import { useEffect } from 'react';
-import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
+import { Redirect } from 'wouter';
 import AccessDenied from './AccessDenied';
 
 interface ProtectedRouteProps {
@@ -30,7 +29,6 @@ interface DetailedPolicyResult {
 
 export default function ProtectedRoute({ children, permission, policy }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading, authReady, hasPermission } = useAuth();
-  const [, setLocation] = useLocation();
 
   // Check policy via API if policy prop is provided
   const { data: policyResult, isLoading: isPolicyLoading, isError: isPolicyError } = useQuery<DetailedPolicyResult>({
@@ -40,22 +38,30 @@ export default function ProtectedRoute({ children, permission, policy }: Protect
     retry: 2,
   });
 
-  // Only redirect to login after auth state is definitively resolved
-  // Wait for authReady to prevent race conditions during auth hydration
-  useEffect(() => {
-    if (authReady && !isAuthenticated) {
-      setLocation('/login');
-    }
-  }, [authReady, isAuthenticated, setLocation]);
-
-  // Show loading state while checking authentication or policy
-  // Also show loading if not authenticated (while redirect happens) to prevent route from being treated as unmatched
-  if (isLoading || !isAuthenticated || (policy && isPolicyLoading)) {
+  // Show loading state while auth is not ready
+  if (!authReady || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="flex items-center space-x-2">
           <Loader2 className="h-4 w-4 animate-spin" />
           <span className="text-sm text-muted-foreground">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // If auth is ready and user is not authenticated, redirect to login
+  if (!isAuthenticated) {
+    return <Redirect to="/login" />;
+  }
+
+  // Show loading while checking policy
+  if (policy && isPolicyLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="flex items-center space-x-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-sm text-muted-foreground">Checking permissions...</span>
         </div>
       </div>
     );
