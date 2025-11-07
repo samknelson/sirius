@@ -28,6 +28,52 @@ Preferred communication style: Simple, everyday language.
 - **ORM**: Drizzle ORM for type-safe operations and migrations.
 - **Schema Management**: Shared Zod schema definitions between frontend and backend.
 
+### Storage Architecture
+The application uses a modular, namespace-based storage architecture organized by domain:
+
+**Structure:**
+- **server/storage/database.ts**: Thin composition layer that assembles domain modules into a single `storage` instance
+- **server/storage/variables.ts**: System configuration variables
+- **server/storage/users.ts**: User accounts, roles, permissions, and authorization
+- **server/storage/workers.ts**: Worker management operations
+- **server/storage/employers.ts**: Employer management operations
+- **server/storage/contacts.ts**: Contact information with nested `addresses` and `phoneNumbers` namespaces
+- **server/storage/options.ts**: Configuration options with nested namespaces:
+  - `gender` - Gender options
+  - `workerIdTypes` - Worker identification types
+  - `trustBenefitTypes` - Trust benefit types
+  - `ledgerPaymentTypes` - Ledger payment types
+- **server/storage/trust-benefits.ts**: Trust benefit management
+- **server/storage/worker-ids.ts**: Worker identification numbers
+- **server/storage/bookmarks.ts**: User bookmark management
+- **server/storage/ledger.ts**: Ledger operations with nested namespaces:
+  - `accounts` - Ledger account management
+  - `stripePaymentMethods` - Stripe payment method management
+
+**Usage Pattern:**
+```typescript
+// Namespace access instead of flat methods
+storage.variables.getByName('site_name')
+storage.users.getUser(userId)
+storage.workers.getWorker(workerId)
+storage.contacts.addresses.getPostalAddress(addressId)
+storage.contacts.phoneNumbers.getPhoneNumber(phoneId)
+storage.options.gender.getAllGenderOptions()
+storage.ledger.accounts.get(accountId)
+```
+
+**Module Pattern:**
+Each module exports:
+- Type-safe interface defining all operations
+- Factory function (`createXStorage()`) returning implementation
+- All business logic and validation encapsulated within the module
+
+This architecture provides:
+- Clear domain boundaries
+- Improved code discoverability
+- Better maintainability through separation of concerns
+- Type-safe operations with full TypeScript support
+
 ## Key Features
 - **Worker Management**: Full CRUD for workers, including detailed personal and contact information. Includes a sequential `sirius_id` for human-readable identifiers.
 - **Configurable Settings**:
