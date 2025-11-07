@@ -176,3 +176,16 @@ Access policies (`server/policies.ts`) define declarative access control require
 - `masquerade`: Requires `masquerade` or `admin` permission
 
 All policies automatically grant access to users with the `admin` permission.
+
+# Routing Architecture
+
+## User Management Routes
+- **Configuration Pages**: Located under `/config/users/` for management interfaces
+  - `/config/users/list`: User list and management
+  - `/config/users/roles`: Role management
+  - `/config/users/permissions`: Permission management
+  - `/config/users/policies`: Policy overview
+- **User Detail Pages**: Located at `/users/:id` for individual user accounts
+  - Not nested under `/config/` to provide cleaner URLs
+  - Includes UUID validation to prevent invalid route matches
+  - Legacy routes (`/config/users/:id`, `/admin/users/:id`) redirect to new location
