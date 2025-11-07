@@ -53,6 +53,8 @@ import ComponentsConfigPage from "@/pages/config/components";
 import StripeTestPage from "@/pages/config/ledger/stripe/test";
 import PaymentTypesPage from "@/pages/config/ledger/stripe/payment-types";
 import LedgerAccountsPage from "@/pages/config/ledger/accounts";
+import LedgerAccountView from "@/pages/config/ledger/account-view";
+import LedgerAccountEdit from "@/pages/config/ledger/account-edit";
 import SiteInformation from "@/pages/site-information";
 import NotFound from "@/pages/not-found";
 
@@ -420,6 +422,22 @@ function Router() {
             <ConfigurationLayout>
               <PaymentTypesPage />
             </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/config/ledger/accounts/:id/edit">
+        <ProtectedRoute policy="ledgerStaff">
+          <AuthenticatedLayout>
+            <LedgerAccountEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/config/ledger/accounts/:id">
+        <ProtectedRoute policy="ledgerStaff">
+          <AuthenticatedLayout>
+            <LedgerAccountView />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

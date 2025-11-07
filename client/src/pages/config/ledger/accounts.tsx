@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Loader2, Plus, Edit, Trash2, Save, X } from "lucide-react";
+import { Loader2, Plus, Eye } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -36,8 +38,6 @@ interface LedgerAccount {
 export default function LedgerAccountsPage() {
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
   
   // Form state
   const [formName, setFormName] = useState("");
@@ -70,86 +70,10 @@ export default function LedgerAccountsPage() {
     },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: async (data: { id: string; name: string; description?: string; isActive: boolean }) => {
-      return apiRequest("PUT", `/api/ledger/accounts/${data.id}`, {
-        name: data.name,
-        description: data.description,
-        isActive: data.isActive,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/ledger/accounts"] });
-      setEditingId(null);
-      resetForm();
-      toast({
-        title: "Success",
-        description: "Ledger account updated successfully.",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update ledger account.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/ledger/accounts/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/ledger/accounts"] });
-      setDeleteId(null);
-      toast({
-        title: "Success",
-        description: "Ledger account deleted successfully.",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete ledger account.",
-        variant: "destructive",
-      });
-    },
-  });
-
   const resetForm = () => {
     setFormName("");
     setFormDescription("");
     setFormIsActive(true);
-  };
-
-  const handleEdit = (account: LedgerAccount) => {
-    setEditingId(account.id);
-    setFormName(account.name);
-    setFormDescription(account.description || "");
-    setFormIsActive(account.isActive);
-  };
-
-  const handleCancelEdit = () => {
-    setEditingId(null);
-    resetForm();
-  };
-
-  const handleSaveEdit = () => {
-    if (!formName.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Name is required.",
-        variant: "destructive",
-      });
-      return;
-    }
-    updateMutation.mutate({
-      id: editingId!,
-      name: formName.trim(),
-      description: formDescription.trim() || undefined,
-      isActive: formIsActive,
-    });
   };
 
   const handleCreate = () => {
@@ -220,102 +144,30 @@ export default function LedgerAccountsPage() {
               ) : (
                 accounts.map((account) => (
                   <TableRow key={account.id} data-testid={`row-account-${account.id}`}>
-                    {editingId === account.id ? (
-                      <>
-                        <TableCell>
-                          <Input
-                            value={formName}
-                            onChange={(e) => setFormName(e.target.value)}
-                            placeholder="Account name"
-                            data-testid="input-edit-name"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Textarea
-                            value={formDescription}
-                            onChange={(e) => setFormDescription(e.target.value)}
-                            placeholder="Description (optional)"
-                            rows={2}
-                            data-testid="input-edit-description"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
-                            <Checkbox
-                              id="edit-isActive"
-                              checked={formIsActive}
-                              onCheckedChange={(checked) => setFormIsActive(checked as boolean)}
-                              data-testid="checkbox-edit-active"
-                            />
-                            <Label htmlFor="edit-isActive">Active</Label>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end space-x-2">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={handleSaveEdit}
-                              disabled={updateMutation.isPending}
-                              data-testid="button-save-edit"
-                            >
-                              {updateMutation.isPending ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Save className="h-4 w-4" />
-                              )}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={handleCancelEdit}
-                              disabled={updateMutation.isPending}
-                              data-testid="button-cancel-edit"
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </>
-                    ) : (
-                      <>
-                        <TableCell className="font-medium">{account.name}</TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {account.description || <span className="italic">No description</span>}
-                        </TableCell>
-                        <TableCell>
-                          <span
-                            className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                              account.isActive
-                                ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400"
-                                : "bg-gray-50 text-gray-700 dark:bg-gray-900/20 dark:text-gray-400"
-                            }`}
-                          >
-                            {account.isActive ? "Active" : "Inactive"}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end space-x-2">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleEdit(account)}
-                              data-testid={`button-edit-${account.id}`}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setDeleteId(account.id)}
-                              data-testid={`button-delete-${account.id}`}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </>
-                    )}
+                    <TableCell className="font-medium">{account.name}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {account.description || <span className="italic">No description</span>}
+                    </TableCell>
+                    <TableCell>
+                      <Badge 
+                        variant={account.isActive ? "default" : "secondary"}
+                        data-testid={`badge-account-status-${account.id}`}
+                      >
+                        {account.isActive ? "Active" : "Inactive"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Link href={`/config/ledger/accounts/${account.id}`}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          data-testid={`button-view-${account.id}`}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          View
+                        </Button>
+                      </Link>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -387,35 +239,6 @@ export default function LedgerAccountsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
-        <DialogContent data-testid="dialog-delete-account">
-          <DialogHeader>
-            <DialogTitle>Delete Ledger Account</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this ledger account? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteId(null)}
-              disabled={deleteMutation.isPending}
-              data-testid="button-cancel-delete"
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
-              disabled={deleteMutation.isPending}
-              data-testid="button-confirm-delete"
-            >
-              {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
