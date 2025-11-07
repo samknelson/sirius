@@ -65,7 +65,7 @@ export function LedgerAccountLayout({ activeTab, children }: LedgerAccountLayout
                 <h1 className="text-xl font-semibold text-foreground">Ledger Account Not Found</h1>
               </div>
               <div className="flex items-center space-x-4">
-                <Link href="/config/ledger/accounts">
+                <Link href="/ledger/accounts">
                   <Button variant="ghost" size="sm" data-testid="button-back-to-accounts">
                     <ArrowLeft size={16} className="mr-2" />
                     Back to Accounts
@@ -112,7 +112,7 @@ export function LedgerAccountLayout({ activeTab, children }: LedgerAccountLayout
                 <Skeleton className="h-6 w-48" />
               </div>
               <div className="flex items-center space-x-4">
-                <Link href="/config/ledger/accounts">
+                <Link href="/ledger/accounts">
                   <Button variant="ghost" size="sm" data-testid="button-back-to-accounts">
                     <ArrowLeft size={16} className="mr-2" />
                     Back to Accounts
@@ -138,8 +138,8 @@ export function LedgerAccountLayout({ activeTab, children }: LedgerAccountLayout
 
   // Success state - render layout with tabs
   const tabs = [
-    { id: "view", label: "View", href: `/config/ledger/accounts/${account.id}` },
-    { id: "edit", label: "Edit", href: `/config/ledger/accounts/${account.id}/edit` },
+    { id: "view", label: "View", href: `/ledger/accounts/${account.id}` },
+    { id: "edit", label: "Edit", href: `/ledger/accounts/${account.id}/edit` },
   ];
 
   const contextValue: LedgerAccountLayoutContextValue = {
@@ -164,7 +164,7 @@ export function LedgerAccountLayout({ activeTab, children }: LedgerAccountLayout
                 </h1>
               </div>
               <div className="flex items-center space-x-4">
-                <Link href="/config/ledger/accounts">
+                <Link href="/ledger/accounts">
                   <Button variant="ghost" size="sm" data-testid="button-back-to-accounts">
                     <ArrowLeft size={16} className="mr-2" />
                     Back to Accounts
