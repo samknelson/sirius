@@ -1,6 +1,6 @@
 // Database storage implementation based on blueprint:javascript_database
 import { 
-  users, workers, contacts, roles, userRoles, rolePermissions, variables, postalAddresses, phoneNumbers, employers, trustBenefits, trustWmb, optionsGender, optionsWorkerIdType, workerIds, optionsTrustBenefitType, bookmarks, ledgerStripePaymentMethods, ledgerAccounts,
+  users, workers, contacts, roles, userRoles, rolePermissions, variables, postalAddresses, phoneNumbers, employers, trustBenefits, trustWmb, optionsGender, optionsWorkerIdType, workerIds, optionsTrustBenefitType, optionsLedgerPaymentType, bookmarks, ledgerStripePaymentMethods, ledgerAccounts,
   type User, type InsertUser, type UpsertUser, type Worker, type InsertWorker,
   type Contact, type InsertContact,
   type Role, type InsertRole, type Variable, type InsertVariable,
@@ -13,6 +13,7 @@ import {
   type WorkerIdType, type InsertWorkerIdType,
   type WorkerId, type InsertWorkerId,
   type TrustBenefitType, type InsertTrustBenefitType,
+  type LedgerPaymentType, type InsertLedgerPaymentType,
   type Bookmark, type InsertBookmark,
   type LedgerStripePaymentMethod, type InsertLedgerStripePaymentMethod,
   type LedgerAccount, type InsertLedgerAccount,
@@ -152,6 +153,14 @@ export interface IStorage {
   updateWorkerIdType(id: string, workerIdType: Partial<InsertWorkerIdType>): Promise<WorkerIdType | undefined>;
   deleteWorkerIdType(id: string): Promise<boolean>;
   updateWorkerIdTypeSequence(id: string, sequence: number): Promise<WorkerIdType | undefined>;
+
+  // Ledger Payment Type CRUD operations
+  getAllLedgerPaymentTypes(): Promise<LedgerPaymentType[]>;
+  getLedgerPaymentType(id: string): Promise<LedgerPaymentType | undefined>;
+  createLedgerPaymentType(paymentType: InsertLedgerPaymentType): Promise<LedgerPaymentType>;
+  updateLedgerPaymentType(id: string, paymentType: Partial<InsertLedgerPaymentType>): Promise<LedgerPaymentType | undefined>;
+  deleteLedgerPaymentType(id: string): Promise<boolean>;
+  updateLedgerPaymentTypeSequence(id: string, sequence: number): Promise<LedgerPaymentType | undefined>;
 
   // Worker ID CRUD operations
   getWorkerIdsByWorkerId(workerId: string): Promise<WorkerId[]>;
@@ -1242,6 +1251,42 @@ export class DatabaseStorage implements IStorage {
 
   async updateWorkerIdTypeSequence(id: string, sequence: number): Promise<WorkerIdType | undefined> {
     return this.updateWorkerIdType(id, { sequence });
+  }
+
+  // Ledger Payment Type CRUD operations
+  async getAllLedgerPaymentTypes(): Promise<LedgerPaymentType[]> {
+    return db.select().from(optionsLedgerPaymentType).orderBy(optionsLedgerPaymentType.sequence);
+  }
+
+  async getLedgerPaymentType(id: string): Promise<LedgerPaymentType | undefined> {
+    const [paymentType] = await db.select().from(optionsLedgerPaymentType).where(eq(optionsLedgerPaymentType.id, id));
+    return paymentType || undefined;
+  }
+
+  async createLedgerPaymentType(insertPaymentType: InsertLedgerPaymentType): Promise<LedgerPaymentType> {
+    const [paymentType] = await db
+      .insert(optionsLedgerPaymentType)
+      .values(insertPaymentType)
+      .returning();
+    return paymentType;
+  }
+
+  async updateLedgerPaymentType(id: string, paymentTypeUpdate: Partial<InsertLedgerPaymentType>): Promise<LedgerPaymentType | undefined> {
+    const [paymentType] = await db
+      .update(optionsLedgerPaymentType)
+      .set(paymentTypeUpdate)
+      .where(eq(optionsLedgerPaymentType.id, id))
+      .returning();
+    return paymentType || undefined;
+  }
+
+  async deleteLedgerPaymentType(id: string): Promise<boolean> {
+    const result = await db.delete(optionsLedgerPaymentType).where(eq(optionsLedgerPaymentType.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async updateLedgerPaymentTypeSequence(id: string, sequence: number): Promise<LedgerPaymentType | undefined> {
+    return this.updateLedgerPaymentType(id, { sequence });
   }
 
   // Worker ID CRUD operations

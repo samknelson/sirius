@@ -129,6 +129,13 @@ export const optionsTrustBenefitType = pgTable("options_trust_benefit_type", {
   sequence: integer("sequence").notNull().default(0),
 });
 
+export const optionsLedgerPaymentType = pgTable("options_ledger_payment_type", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  sequence: integer("sequence").notNull().default(0),
+});
+
 export const workerIds = pgTable("worker_ids", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
@@ -285,6 +292,10 @@ export const insertTrustBenefitTypeSchema = createInsertSchema(optionsTrustBenef
   id: true,
 });
 
+export const insertLedgerPaymentTypeSchema = createInsertSchema(optionsLedgerPaymentType).omit({
+  id: true,
+});
+
 export const assignRoleSchema = z.object({
   userId: z.string(),
   roleId: z.string(),
@@ -348,6 +359,9 @@ export type WorkerId = typeof workerIds.$inferSelect;
 
 export type InsertTrustBenefitType = z.infer<typeof insertTrustBenefitTypeSchema>;
 export type TrustBenefitType = typeof optionsTrustBenefitType.$inferSelect;
+
+export type InsertLedgerPaymentType = z.infer<typeof insertLedgerPaymentTypeSchema>;
+export type LedgerPaymentType = typeof optionsLedgerPaymentType.$inferSelect;
 
 export type UserRole = typeof userRoles.$inferSelect;
 export type RolePermission = typeof rolePermissions.$inferSelect;
