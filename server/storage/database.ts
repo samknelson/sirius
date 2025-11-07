@@ -1,6 +1,6 @@
 // Database storage implementation based on blueprint:javascript_database
 import { 
-  users, workers, contacts, roles, userRoles, rolePermissions, variables, postalAddresses, phoneNumbers, employers, trustBenefits, trustWmb, optionsGender, optionsWorkerIdType, workerIds, optionsTrustBenefitType, optionsLedgerPaymentType, bookmarks, ledgerStripePaymentMethods, ledgerAccounts,
+  workers, contacts, postalAddresses, phoneNumbers, employers, trustBenefits, trustWmb, optionsGender, optionsWorkerIdType, workerIds, optionsTrustBenefitType, optionsLedgerPaymentType, bookmarks, ledgerStripePaymentMethods, ledgerAccounts,
   type User, type InsertUser, type UpsertUser, type Worker, type InsertWorker,
   type Contact, type InsertContact,
   type Role, type InsertRole, type Variable, type InsertVariable,
@@ -19,58 +19,17 @@ import {
   type LedgerAccount, type InsertLedgerAccount,
   type UserRole, type RolePermission, type AssignRole, type AssignPermission
 } from "@shared/schema";
-import { permissionRegistry, type PermissionDefinition } from "@shared/permissions";
+import { type PermissionDefinition } from "@shared/permissions";
 import { db } from "../db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { type VariableStorage, createVariableStorage } from "./variables";
+import { type UserStorage, createUserStorage } from "./users";
 
 // modify the interface with any CRUD methods
 // you might need
 
-export interface IStorage extends VariableStorage {
-  // User operations
-  getUser(id: string): Promise<User | undefined>;
-  getUserByReplitId(replitUserId: string): Promise<User | undefined>; // Find user by Replit ID
-  getUserByEmail(email: string): Promise<User | undefined>; // Find user by email
-  upsertUser(user: UpsertUser): Promise<User>; // For Replit Auth
-  createUser(user: InsertUser): Promise<User>; // For admin user creation
-  updateUser(id: string, user: Partial<InsertUser>): Promise<User | undefined>;
-  updateUserLastLogin(id: string): Promise<User | undefined>;
-  linkReplitAccount(userId: string, replitUserId: string, userData: Partial<UpsertUser>): Promise<User | undefined>; // Link Replit account to provisioned user
-  deleteUser(id: string): Promise<boolean>;
-  getAllUsers(): Promise<User[]>;
-  getAllUsersWithRoles(): Promise<(User & { roles: Role[] })[]>;
-  hasAnyUsers(): Promise<boolean>; // Check if any users exist (for bootstrap)
-  
-  // Role operations
-  getAllRoles(): Promise<Role[]>;
-  getRole(id: string): Promise<Role | undefined>;
-  createRole(role: InsertRole): Promise<Role>;
-  updateRole(id: string, role: Partial<InsertRole>): Promise<Role | undefined>;
-  deleteRole(id: string): Promise<boolean>;
-  updateRoleSequence(id: string, sequence: number): Promise<Role | undefined>;
-  
-  // Permission operations (now using registry)
-  getAllPermissions(): Promise<PermissionDefinition[]>;
-  getPermissionByKey(key: string): Promise<PermissionDefinition | undefined>;
-  permissionExists(key: string): boolean;
-  
-  // User-Role assignment operations
-  assignRoleToUser(assignment: AssignRole): Promise<UserRole>;
-  unassignRoleFromUser(userId: string, roleId: string): Promise<boolean>;
-  getUserRoles(userId: string): Promise<Role[]>;
-  getUsersWithRole(roleId: string): Promise<User[]>;
-  
-  // Role-Permission assignment operations  
-  assignPermissionToRole(assignment: AssignPermission): Promise<RolePermission>;
-  unassignPermissionFromRole(roleId: string, permissionKey: string): Promise<boolean>;
-  getRolePermissions(roleId: string): Promise<PermissionDefinition[]>;
-  getRolesWithPermission(permissionKey: string): Promise<Role[]>;
-  getAllRolePermissions(): Promise<(RolePermission & { role: Role })[]>;
-  
-  // Authorization helpers
-  getUserPermissions(userId: string): Promise<PermissionDefinition[]>;
-  userHasPermission(userId: string, permissionKey: string): Promise<boolean>;
+export interface IStorage extends VariableStorage, UserStorage {
+  // User/Role/Permission operations - inherited from UserStorage
   
   // Worker CRUD operations
   getAllWorkers(): Promise<Worker[]>;
@@ -189,350 +148,145 @@ export interface IStorage extends VariableStorage {
 
 export class DatabaseStorage implements IStorage {
   private variableStorage: VariableStorage;
+  private userStorage: UserStorage;
 
   constructor() {
     this.variableStorage = createVariableStorage();
+    this.userStorage = createUserStorage();
   }
 
-  // User operations
+  // User operations - delegated to userStorage module
   async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user || undefined;
+    return this.userStorage.getUser(id);
   }
 
   async getUserByReplitId(replitUserId: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.replitUserId, replitUserId));
-    return user || undefined;
+    return this.userStorage.getUserByReplitId(replitUserId);
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
-    return user || undefined;
+    return this.userStorage.getUserByEmail(email);
   }
 
-  // For Replit Auth - updates user info from Replit or creates if needed
   async upsertUser(userData: UpsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values(userData)
-      .onConflictDoUpdate({
-        target: users.id,
-        set: {
-          email: userData.email,
-          firstName: userData.firstName,
-          lastName: userData.lastName,
-          profileImageUrl: userData.profileImageUrl,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    return user;
+    return this.userStorage.upsertUser(userData);
   }
 
   async linkReplitAccount(userId: string, replitUserId: string, userData: Partial<UpsertUser>): Promise<User | undefined> {
-    const [user] = await db
-      .update(users)
-      .set({
-        replitUserId,
-        email: userData.email,
-        firstName: userData.firstName,
-        lastName: userData.lastName,
-        profileImageUrl: userData.profileImageUrl,
-        accountStatus: 'linked',
-        updatedAt: new Date(),
-      })
-      .where(eq(users.id, userId))
-      .returning();
-    return user || undefined;
+    return this.userStorage.linkReplitAccount(userId, replitUserId, userData);
   }
 
-  // For admin user creation - creates users with minimal info
   async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values(insertUser)
-      .returning();
-    return user;
+    return this.userStorage.createUser(insertUser);
   }
 
   async updateUser(id: string, userUpdate: Partial<InsertUser>): Promise<User | undefined> {
-    const [user] = await db
-      .update(users)
-      .set(userUpdate)
-      .where(eq(users.id, id))
-      .returning();
-    return user || undefined;
+    return this.userStorage.updateUser(id, userUpdate);
   }
 
   async updateUserLastLogin(id: string): Promise<User | undefined> {
-    const [user] = await db
-      .update(users)
-      .set({ lastLogin: new Date() })
-      .where(eq(users.id, id))
-      .returning();
-    return user || undefined;
+    return this.userStorage.updateUserLastLogin(id);
   }
 
   async deleteUser(id: string): Promise<boolean> {
-    const result = await db.delete(users).where(eq(users.id, id)).returning();
-    return result.length > 0;
+    return this.userStorage.deleteUser(id);
   }
 
   async getAllUsers(): Promise<User[]> {
-    return db.select().from(users);
+    return this.userStorage.getAllUsers();
   }
 
   async getAllUsersWithRoles(): Promise<(User & { roles: Role[] })[]> {
-    // Get all users
-    const allUsers = await db.select().from(users);
-    
-    // Get all user-role relationships with role details in one query
-    const userRoleData = await db
-      .select({
-        userId: userRoles.userId,
-        roleId: roles.id,
-        roleName: roles.name,
-        roleDescription: roles.description,
-        roleSequence: roles.sequence,
-        roleCreatedAt: roles.createdAt,
-      })
-      .from(userRoles)
-      .innerJoin(roles, eq(userRoles.roleId, roles.id));
-    
-    // Group roles by user ID
-    const rolesByUser = userRoleData.reduce((acc, row) => {
-      if (!acc[row.userId]) {
-        acc[row.userId] = [];
-      }
-      acc[row.userId].push({
-        id: row.roleId,
-        name: row.roleName,
-        description: row.roleDescription,
-        sequence: row.roleSequence,
-        createdAt: row.roleCreatedAt,
-      });
-      return acc;
-    }, {} as Record<string, Role[]>);
-    
-    // Combine users with their roles
-    return allUsers.map(user => ({
-      ...user,
-      roles: rolesByUser[user.id] || []
-    }));
+    return this.userStorage.getAllUsersWithRoles();
   }
 
   async hasAnyUsers(): Promise<boolean> {
-    const [result] = await db.select({ count: sql<number>`count(*)` }).from(users);
-    return (result?.count ?? 0) > 0;
+    return this.userStorage.hasAnyUsers();
   }
 
-  // Role operations
+  // Role operations - delegated to userStorage module
   async getAllRoles(): Promise<Role[]> {
-    return db.select().from(roles).orderBy(roles.sequence, roles.name);
+    return this.userStorage.getAllRoles();
   }
 
   async getRole(id: string): Promise<Role | undefined> {
-    const [role] = await db.select().from(roles).where(eq(roles.id, id));
-    return role || undefined;
+    return this.userStorage.getRole(id);
   }
 
   async createRole(insertRole: InsertRole): Promise<Role> {
-    const [role] = await db
-      .insert(roles)
-      .values(insertRole)
-      .returning();
-    return role;
+    return this.userStorage.createRole(insertRole);
   }
 
   async updateRole(id: string, roleUpdate: Partial<InsertRole>): Promise<Role | undefined> {
-    const [role] = await db
-      .update(roles)
-      .set(roleUpdate)
-      .where(eq(roles.id, id))
-      .returning();
-    return role || undefined;
+    return this.userStorage.updateRole(id, roleUpdate);
   }
 
   async deleteRole(id: string): Promise<boolean> {
-    const result = await db.delete(roles).where(eq(roles.id, id)).returning();
-    return result.length > 0;
+    return this.userStorage.deleteRole(id);
   }
 
   async updateRoleSequence(id: string, sequence: number): Promise<Role | undefined> {
-    return this.updateRole(id, { sequence });
+    return this.userStorage.updateRoleSequence(id, sequence);
   }
 
-  // Permission operations (now using registry)
+  // Permission operations - delegated to userStorage module
   async getAllPermissions(): Promise<PermissionDefinition[]> {
-    return permissionRegistry.getAll();
+    return this.userStorage.getAllPermissions();
   }
 
   async getPermissionByKey(key: string): Promise<PermissionDefinition | undefined> {
-    return permissionRegistry.getByKey(key);
+    return this.userStorage.getPermissionByKey(key);
   }
 
   permissionExists(key: string): boolean {
-    return permissionRegistry.exists(key);
+    return this.userStorage.permissionExists(key);
   }
 
-  // User-Role assignment operations
+  // User-Role assignment operations - delegated to userStorage module
   async assignRoleToUser(assignment: AssignRole): Promise<UserRole> {
-    const [userRole] = await db
-      .insert(userRoles)
-      .values(assignment)
-      .returning();
-    return userRole;
+    return this.userStorage.assignRoleToUser(assignment);
   }
 
   async unassignRoleFromUser(userId: string, roleId: string): Promise<boolean> {
-    const result = await db
-      .delete(userRoles)
-      .where(and(eq(userRoles.userId, userId), eq(userRoles.roleId, roleId)))
-      .returning();
-    return result.length > 0;
+    return this.userStorage.unassignRoleFromUser(userId, roleId);
   }
 
   async getUserRoles(userId: string): Promise<Role[]> {
-    const result = await db
-      .select({
-        id: roles.id,
-        name: roles.name,
-        description: roles.description,
-        sequence: roles.sequence,
-        createdAt: roles.createdAt,
-      })
-      .from(userRoles)
-      .innerJoin(roles, eq(userRoles.roleId, roles.id))
-      .where(eq(userRoles.userId, userId))
-      .orderBy(roles.sequence, roles.name);
-    return result;
+    return this.userStorage.getUserRoles(userId);
   }
 
   async getUsersWithRole(roleId: string): Promise<User[]> {
-    const result = await db
-      .select({
-        id: users.id,
-        replitUserId: users.replitUserId,
-        email: users.email,
-        firstName: users.firstName,
-        lastName: users.lastName,
-        profileImageUrl: users.profileImageUrl,
-        accountStatus: users.accountStatus,
-        isActive: users.isActive,
-        createdAt: users.createdAt,
-        updatedAt: users.updatedAt,
-        lastLogin: users.lastLogin,
-      })
-      .from(userRoles)
-      .innerJoin(users, eq(userRoles.userId, users.id))
-      .where(eq(userRoles.roleId, roleId));
-    return result;
+    return this.userStorage.getUsersWithRole(roleId);
   }
 
-  // Role-Permission assignment operations
+  // Role-Permission assignment operations - delegated to userStorage module
   async assignPermissionToRole(assignment: AssignPermission): Promise<RolePermission> {
-    // Validate that the permission key exists in the registry
-    if (!permissionRegistry.exists(assignment.permissionKey)) {
-      throw new Error(`Permission '${assignment.permissionKey}' does not exist in the registry`);
-    }
-    
-    const [rolePermission] = await db
-      .insert(rolePermissions)
-      .values(assignment)
-      .returning();
-    return rolePermission;
+    return this.userStorage.assignPermissionToRole(assignment);
   }
 
   async unassignPermissionFromRole(roleId: string, permissionKey: string): Promise<boolean> {
-    const result = await db
-      .delete(rolePermissions)
-      .where(and(eq(rolePermissions.roleId, roleId), eq(rolePermissions.permissionKey, permissionKey)))
-      .returning();
-    return result.length > 0;
+    return this.userStorage.unassignPermissionFromRole(roleId, permissionKey);
   }
 
   async getRolePermissions(roleId: string): Promise<PermissionDefinition[]> {
-    const result = await db
-      .select({
-        permissionKey: rolePermissions.permissionKey,
-      })
-      .from(rolePermissions)
-      .where(eq(rolePermissions.roleId, roleId));
-    
-    // Map permission keys to PermissionDefinitions from registry
-    return result
-      .map(row => permissionRegistry.getByKey(row.permissionKey))
-      .filter((permission): permission is PermissionDefinition => permission !== undefined);
+    return this.userStorage.getRolePermissions(roleId);
   }
 
   async getRolesWithPermission(permissionKey: string): Promise<Role[]> {
-    const result = await db
-      .select({
-        id: roles.id,
-        name: roles.name,
-        description: roles.description,
-        sequence: roles.sequence,
-        createdAt: roles.createdAt,
-      })
-      .from(rolePermissions)
-      .innerJoin(roles, eq(rolePermissions.roleId, roles.id))
-      .where(eq(rolePermissions.permissionKey, permissionKey))
-      .orderBy(roles.sequence, roles.name);
-    return result;
+    return this.userStorage.getRolesWithPermission(permissionKey);
   }
 
   async getAllRolePermissions(): Promise<(RolePermission & { role: Role })[]> {
-    const result = await db
-      .select({
-        roleId: rolePermissions.roleId,
-        permissionKey: rolePermissions.permissionKey,
-        assignedAt: rolePermissions.assignedAt,
-        role: {
-          id: roles.id,
-          name: roles.name,
-          description: roles.description,
-          sequence: roles.sequence,
-          createdAt: roles.createdAt,
-        }
-      })
-      .from(rolePermissions)
-      .innerJoin(roles, eq(rolePermissions.roleId, roles.id))
-      .orderBy(roles.sequence, roles.name);
-    
-    return result.map(row => ({
-      roleId: row.roleId,
-      permissionKey: row.permissionKey,
-      assignedAt: row.assignedAt,
-      role: row.role
-    }));
+    return this.userStorage.getAllRolePermissions();
   }
 
-  // Authorization helpers
+  // Authorization helpers - delegated to userStorage module
   async getUserPermissions(userId: string): Promise<PermissionDefinition[]> {
-    const result = await db
-      .select({
-        permissionKey: rolePermissions.permissionKey,
-      })
-      .from(userRoles)
-      .innerJoin(roles, eq(userRoles.roleId, roles.id))
-      .innerJoin(rolePermissions, eq(roles.id, rolePermissions.roleId))
-      .where(eq(userRoles.userId, userId));
-    
-    // Map permission keys to PermissionDefinitions from registry and remove duplicates
-    const uniqueKeys = Array.from(new Set(result.map(row => row.permissionKey)));
-    return uniqueKeys
-      .map(key => permissionRegistry.getByKey(key))
-      .filter((permission): permission is PermissionDefinition => permission !== undefined);
+    return this.userStorage.getUserPermissions(userId);
   }
 
   async userHasPermission(userId: string, permissionKey: string): Promise<boolean> {
-    const result = await db
-      .select({ permissionKey: rolePermissions.permissionKey })
-      .from(userRoles)
-      .innerJoin(roles, eq(userRoles.roleId, roles.id))
-      .innerJoin(rolePermissions, eq(roles.id, rolePermissions.roleId))
-      .where(and(eq(userRoles.userId, userId), eq(rolePermissions.permissionKey, permissionKey)));
-    return result.length > 0;
+    return this.userStorage.userHasPermission(userId, permissionKey);
   }
 
   // Worker operations
