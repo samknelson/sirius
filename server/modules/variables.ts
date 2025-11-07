@@ -16,7 +16,7 @@ export function registerVariableRoutes(
   // GET /api/variables - Get all variables (requires variables.manage permission)
   app.get("/api/variables", requireAuth, requirePermission("variables.manage"), async (req, res) => {
     try {
-      const variables = await storage.getAllVariables();
+      const variables = await storage.variables.getAllVariables();
       res.json(variables);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch variables" });
@@ -27,7 +27,7 @@ export function registerVariableRoutes(
   app.get("/api/variables/:id", requireAuth, requirePermission("variables.manage"), async (req, res) => {
     try {
       const { id } = req.params;
-      const variable = await storage.getVariable(id);
+      const variable = await storage.variables.getVariable(id);
       
       if (!variable) {
         res.status(404).json({ message: "Variable not found" });
@@ -44,7 +44,7 @@ export function registerVariableRoutes(
   app.get("/api/variables/by-name/:name", requireAuth, requirePermission("variables.manage"), async (req, res) => {
     try {
       const { name } = req.params;
-      const variable = await storage.getVariableByName(name);
+      const variable = await storage.variables.getVariableByName(name);
       
       if (!variable) {
         res.status(404).json({ message: "Variable not found" });
@@ -63,13 +63,13 @@ export function registerVariableRoutes(
       const validatedData = insertVariableSchema.parse(req.body);
       
       // Check if variable name already exists
-      const existingVariable = await storage.getVariableByName(validatedData.name);
+      const existingVariable = await storage.variables.getVariableByName(validatedData.name);
       if (existingVariable) {
         res.status(409).json({ message: "Variable name already exists" });
         return;
       }
       
-      const variable = await storage.createVariable(validatedData);
+      const variable = await storage.variables.createVariable(validatedData);
       res.status(201).json(variable);
     } catch (error) {
       if (error instanceof Error && error.name === "ZodError") {
@@ -91,14 +91,14 @@ export function registerVariableRoutes(
       
       // If updating name, check for conflicts
       if (validatedData.name) {
-        const existingVariable = await storage.getVariableByName(validatedData.name);
+        const existingVariable = await storage.variables.getVariableByName(validatedData.name);
         if (existingVariable && existingVariable.id !== id) {
           res.status(409).json({ message: "Variable name already exists" });
           return;
         }
       }
       
-      const variable = await storage.updateVariable(id, validatedData);
+      const variable = await storage.variables.updateVariable(id, validatedData);
       
       if (!variable) {
         res.status(404).json({ message: "Variable not found" });
@@ -122,7 +122,7 @@ export function registerVariableRoutes(
   app.delete("/api/variables/:id", requireAuth, requirePermission("variables.manage"), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.deleteVariable(id);
+      const deleted = await storage.variables.deleteVariable(id);
       
       if (!deleted) {
         res.status(404).json({ message: "Variable not found" });

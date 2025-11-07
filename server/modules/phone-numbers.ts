@@ -17,7 +17,7 @@ export function registerPhoneNumberRoutes(
   app.get("/api/contacts/:contactId/phone-numbers", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
       const { contactId } = req.params;
-      const phoneNumbers = await storage.getPhoneNumbersByContact(contactId);
+      const phoneNumbers = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(contactId);
       res.json(phoneNumbers);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch phone numbers" });
@@ -28,7 +28,7 @@ export function registerPhoneNumberRoutes(
   app.get("/api/phone-numbers/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
       const { id } = req.params;
-      const phoneNumber = await storage.getPhoneNumber(id);
+      const phoneNumber = await storage.contacts.phoneNumbers.getPhoneNumber(id);
       
       if (!phoneNumber) {
         return res.status(404).json({ message: "Phone number not found" });
@@ -62,7 +62,7 @@ export function registerPhoneNumberRoutes(
         validationResponse: validationResult
       });
       
-      const newPhoneNumber = await storage.createPhoneNumber(phoneNumberData);
+      const newPhoneNumber = await storage.contacts.phoneNumbers.createPhoneNumber(phoneNumberData);
       res.status(201).json(newPhoneNumber);
     } catch (error) {
       if (error instanceof Error && error.name === 'ZodError') {
@@ -99,7 +99,7 @@ export function registerPhoneNumberRoutes(
       // Parse the update data, but don't require contactId since it shouldn't change
       const parsedUpdateData = insertPhoneNumberSchema.partial().omit({ contactId: true }).parse(updateData);
       
-      const updatedPhoneNumber = await storage.updatePhoneNumber(id, parsedUpdateData);
+      const updatedPhoneNumber = await storage.contacts.phoneNumbers.updatePhoneNumber(id, parsedUpdateData);
       
       if (!updatedPhoneNumber) {
         return res.status(404).json({ message: "Phone number not found" });
@@ -123,12 +123,12 @@ export function registerPhoneNumberRoutes(
       const { id } = req.params;
       
       // First get the phone number to know the contactId
-      const currentPhoneNumber = await storage.getPhoneNumber(id);
+      const currentPhoneNumber = await storage.contacts.phoneNumbers.getPhoneNumber(id);
       if (!currentPhoneNumber) {
         return res.status(404).json({ message: "Phone number not found" });
       }
       
-      const updatedPhoneNumber = await storage.setPhoneNumberAsPrimary(id, currentPhoneNumber.contactId);
+      const updatedPhoneNumber = await storage.contacts.phoneNumbers.setPhoneNumberAsPrimary(id, currentPhoneNumber.contactId);
       
       if (!updatedPhoneNumber) {
         return res.status(404).json({ message: "Failed to set phone number as primary" });
@@ -147,7 +147,7 @@ export function registerPhoneNumberRoutes(
   app.delete("/api/phone-numbers/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.deletePhoneNumber(id);
+      const deleted = await storage.contacts.phoneNumbers.deletePhoneNumber(id);
       
       if (!deleted) {
         return res.status(404).json({ message: "Phone number not found" });

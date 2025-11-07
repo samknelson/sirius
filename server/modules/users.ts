@@ -30,7 +30,7 @@ export function registerUserRoutes(
         return res.json([]);
       }
       
-      const usersWithRoles = await storage.getAllUsersWithRoles();
+      const usersWithRoles = await storage.users.getAllUsersWithRoles();
       
       // Filter users by email (case-insensitive partial match)
       const matchedUsers = usersWithRoles.filter(user => 
@@ -57,7 +57,7 @@ export function registerUserRoutes(
   // MIGRATED to new access control system
   app.get("/api/admin/users", requireAccess(policies.adminManage), async (req, res) => {
     try {
-      const usersWithRoles = await storage.getAllUsersWithRoles();
+      const usersWithRoles = await storage.users.getAllUsersWithRoles();
       
       // Shape response to exclude sensitive fields
       const safeUsersWithRoles = usersWithRoles.map(user => ({
@@ -87,12 +87,12 @@ export function registerUserRoutes(
       const userData = createUserSchema.parse(req.body);
       
       // Check if user with this email already exists
-      const existingUser = await storage.getUserByEmail(userData.email);
+      const existingUser = await storage.users.getUserByEmail(userData.email);
       if (existingUser) {
         return res.status(409).json({ message: "User with this email already exists" });
       }
 
-      const user = await storage.createUser(userData);
+      const user = await storage.users.createUser(userData);
 
       res.status(201).json({ 
         id: user.id, 
@@ -118,7 +118,7 @@ export function registerUserRoutes(
   app.get("/api/admin/users/:id", requireAccess(policies.adminManage), async (req, res) => {
     try {
       const { id } = req.params;
-      const user = await storage.getUser(id);
+      const user = await storage.users.getUser(id);
       
       if (!user) {
         return res.status(404).json({ message: "User not found" });
@@ -148,7 +148,7 @@ export function registerUserRoutes(
       const { id } = req.params;
       const { isActive } = req.body;
 
-      const user = await storage.updateUser(id, { isActive });
+      const user = await storage.users.updateUser(id, { isActive });
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -173,7 +173,7 @@ export function registerUserRoutes(
   // MIGRATED to new access control system
   app.get("/api/admin/roles", requireAccess(policies.adminManage), async (req, res) => {
     try {
-      const roles = await storage.getAllRoles();
+      const roles = await storage.users.getAllRoles();
       res.json(roles);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch roles" });
@@ -185,7 +185,7 @@ export function registerUserRoutes(
   app.post("/api/admin/roles", requireAccess(policies.adminManage), async (req, res) => {
     try {
       const validatedData = insertRoleSchema.parse(req.body);
-      const role = await storage.createRole(validatedData);
+      const role = await storage.users.createRole(validatedData);
       res.status(201).json(role);
     } catch (error) {
       if (error instanceof Error && error.name === "ZodError") {
@@ -202,7 +202,7 @@ export function registerUserRoutes(
       const { id } = req.params;
       const validatedData = insertRoleSchema.partial().parse(req.body);
       
-      const role = await storage.updateRole(id, validatedData);
+      const role = await storage.users.updateRole(id, validatedData);
       if (!role) {
         return res.status(404).json({ message: "Role not found" });
       }
@@ -221,7 +221,7 @@ export function registerUserRoutes(
   app.delete("/api/admin/roles/:id", requireAuth, requirePermission("admin.manage"), async (req, res) => {
     try {
       const { id } = req.params;
-      const success = await storage.deleteRole(id);
+      const success = await storage.users.deleteRole(id);
       
       if (!success) {
         return res.status(404).json({ message: "Role not found" });
@@ -238,7 +238,7 @@ export function registerUserRoutes(
   // GET /api/admin/permissions - Get all permissions (admin only)
   app.get("/api/admin/permissions", requireAuth, requirePermission("admin.manage"), async (req, res) => {
     try {
-      const permissions = await storage.getAllPermissions();
+      const permissions = await storage.users.getAllPermissions();
       res.json(permissions);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch permissions" });
@@ -252,7 +252,7 @@ export function registerUserRoutes(
   app.get("/api/users/:userId/roles", requireAuth, async (req, res) => {
     try {
       const { userId } = req.params;
-      const roles = await storage.getUserRoles(userId);
+      const roles = await storage.users.getUserRoles(userId);
       res.json(roles);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch user roles" });
@@ -263,7 +263,7 @@ export function registerUserRoutes(
   app.get("/api/admin/users/:userId/roles", requireAuth, requirePermission("admin.manage"), async (req, res) => {
     try {
       const { userId } = req.params;
-      const roles = await storage.getUserRoles(userId);
+      const roles = await storage.users.getUserRoles(userId);
       res.json(roles);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch user roles" });
@@ -276,7 +276,7 @@ export function registerUserRoutes(
       const { userId } = req.params;
       const { roleId } = assignRoleSchema.parse({ userId, ...req.body });
       
-      const assignment = await storage.assignRoleToUser({ userId, roleId });
+      const assignment = await storage.users.assignRoleToUser({ userId, roleId });
       res.status(201).json(assignment);
     } catch (error) {
       if (error instanceof Error && error.name === "ZodError") {
@@ -291,7 +291,7 @@ export function registerUserRoutes(
   app.delete("/api/admin/users/:userId/roles/:roleId", requireAuth, requirePermission("admin.manage"), async (req, res) => {
     try {
       const { userId, roleId } = req.params;
-      const success = await storage.unassignRoleFromUser(userId, roleId);
+      const success = await storage.users.unassignRoleFromUser(userId, roleId);
       
       if (!success) {
         return res.status(404).json({ message: "Assignment not found" });
@@ -306,7 +306,7 @@ export function registerUserRoutes(
   // GET /api/admin/role-permissions - Get all role-permission assignments (admin only)
   app.get("/api/admin/role-permissions", requireAuth, requirePermission("admin.manage"), async (req, res) => {
     try {
-      const rolePermissions = await storage.getAllRolePermissions();
+      const rolePermissions = await storage.users.getAllRolePermissions();
       res.json(rolePermissions);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch role-permission assignments" });
@@ -319,7 +319,7 @@ export function registerUserRoutes(
       const { roleId } = req.params;
       const { permissionKey } = assignPermissionSchema.parse({ roleId, ...req.body });
       
-      const assignment = await storage.assignPermissionToRole({ roleId, permissionKey });
+      const assignment = await storage.users.assignPermissionToRole({ roleId, permissionKey });
       res.status(201).json(assignment);
     } catch (error) {
       if (error instanceof Error && error.name === "ZodError") {
@@ -336,7 +336,7 @@ export function registerUserRoutes(
   app.delete("/api/admin/roles/:roleId/permissions/:permissionKey", requireAuth, requirePermission("admin.manage"), async (req, res) => {
     try {
       const { roleId, permissionKey } = req.params;
-      const success = await storage.unassignPermissionFromRole(roleId, permissionKey);
+      const success = await storage.users.unassignPermissionFromRole(roleId, permissionKey);
       
       if (!success) {
         return res.status(404).json({ message: "Permission assignment not found" });

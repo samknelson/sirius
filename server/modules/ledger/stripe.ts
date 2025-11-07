@@ -58,7 +58,7 @@ export function registerLedgerStripeRoutes(app: Express) {
 
   app.get("/api/ledger/stripe/payment-types", requireAccess(policies.ledgerStripeAdmin), async (req: Request, res: Response) => {
     try {
-      const variable = await storage.getVariableByName('stripe_payment_methods');
+      const variable = await storage.variables.getVariableByName('stripe_payment_methods');
       const paymentTypes = variable?.value || ['card'];
       
       res.json({ paymentTypes });
@@ -116,15 +116,15 @@ export function registerLedgerStripeRoutes(app: Express) {
         });
       }
 
-      const existingVariable = await storage.getVariableByName('stripe_payment_methods');
+      const existingVariable = await storage.variables.getVariableByName('stripe_payment_methods');
       
       if (existingVariable) {
-        await storage.updateVariable(existingVariable.id, {
+        await storage.variables.updateVariable(existingVariable.id, {
           name: 'stripe_payment_methods',
           value: paymentTypes,
         });
       } else {
-        await storage.createVariable({
+        await storage.variables.createVariable({
           name: 'stripe_payment_methods',
           value: paymentTypes,
         });
@@ -143,7 +143,7 @@ export function registerLedgerStripeRoutes(app: Express) {
     try {
       const { id: employerId } = req.params;
       
-      const employer = await storage.getEmployer(employerId);
+      const employer = await storage.employers.getEmployer(employerId);
       if (!employer) {
         return res.status(404).json({ message: "Employer not found" });
       }
@@ -191,7 +191,7 @@ export function registerLedgerStripeRoutes(app: Express) {
         
         customerId = customer.id;
         
-        await storage.updateEmployer(employer.id, {
+        await storage.employers.updateEmployer(employer.id, {
           stripeCustomerId: customerId,
         });
       }
@@ -232,7 +232,7 @@ export function registerLedgerStripeRoutes(app: Express) {
     try {
       const { id: employerId } = req.params;
       
-      const employer = await storage.getEmployer(employerId);
+      const employer = await storage.employers.getEmployer(employerId);
       if (!employer) {
         return res.status(404).json({ message: "Employer not found" });
       }
@@ -245,7 +245,7 @@ export function registerLedgerStripeRoutes(app: Express) {
       }
 
       // Get payment methods from database
-      const paymentMethods = await storage.getPaymentMethodsByEntity('employer', employerId);
+      const paymentMethods = await storage.ledger.stripePaymentMethods.getByEntity('employer', employerId);
       
       // Get Stripe customer ID
       const customerId = employer.stripeCustomerId;
@@ -303,7 +303,7 @@ export function registerLedgerStripeRoutes(app: Express) {
     try {
       const { id: employerId } = req.params;
       
-      const employer = await storage.getEmployer(employerId);
+      const employer = await storage.employers.getEmployer(employerId);
       if (!employer) {
         return res.status(404).json({ message: "Employer not found" });
       }
@@ -328,13 +328,13 @@ export function registerLedgerStripeRoutes(app: Express) {
           },
         });
         customerId = customer.id;
-        await storage.updateEmployer(employer.id, {
+        await storage.employers.updateEmployer(employer.id, {
           stripeCustomerId: customerId,
         });
       }
 
       // Get configured payment types
-      const paymentTypesVariable = await storage.getVariableByName('stripe_payment_methods');
+      const paymentTypesVariable = await storage.variables.getVariableByName('stripe_payment_methods');
       const paymentTypes = (Array.isArray(paymentTypesVariable?.value) ? paymentTypesVariable.value : ['card']) as string[];
 
       // Create SetupIntent for collecting payment method
@@ -368,7 +368,7 @@ export function registerLedgerStripeRoutes(app: Express) {
         return res.status(400).json({ message: "paymentMethodId is required" });
       }
 
-      const employer = await storage.getEmployer(employerId);
+      const employer = await storage.employers.getEmployer(employerId);
       if (!employer) {
         return res.status(404).json({ message: "Employer not found" });
       }
@@ -393,7 +393,7 @@ export function registerLedgerStripeRoutes(app: Express) {
           },
         });
         customerId = customer.id;
-        await storage.updateEmployer(employer.id, {
+        await storage.employers.updateEmployer(employer.id, {
           stripeCustomerId: customerId,
         });
       }
@@ -404,11 +404,11 @@ export function registerLedgerStripeRoutes(app: Express) {
       });
 
       // Check if this is the first payment method for this entity
-      const existingMethods = await storage.getPaymentMethodsByEntity('employer', employerId);
+      const existingMethods = await storage.ledger.stripePaymentMethods.getByEntity('employer', employerId);
       const isFirst = existingMethods.length === 0;
 
       // Save to database
-      const paymentMethod = await storage.createPaymentMethod({
+      const paymentMethod = await storage.ledger.stripePaymentMethods.create({
         entityType: 'employer',
         entityId: employerId,
         paymentMethod: paymentMethodId,
@@ -435,7 +435,7 @@ export function registerLedgerStripeRoutes(app: Express) {
         return res.status(400).json({ message: "isActive must be a boolean" });
       }
 
-      const paymentMethod = await storage.getPaymentMethod(pmId);
+      const paymentMethod = await storage.ledger.stripePaymentMethods.get(pmId);
       if (!paymentMethod) {
         return res.status(404).json({ message: "Payment method not found" });
       }
@@ -444,7 +444,7 @@ export function registerLedgerStripeRoutes(app: Express) {
         return res.status(403).json({ message: "Payment method does not belong to this employer" });
       }
 
-      const updated = await storage.updatePaymentMethod(pmId, { isActive });
+      const updated = await storage.ledger.stripePaymentMethods.update(pmId, { isActive });
       res.json(updated);
     } catch (error: any) {
       res.status(500).json({ 
@@ -459,7 +459,7 @@ export function registerLedgerStripeRoutes(app: Express) {
     try {
       const { id: employerId, pmId } = req.params;
 
-      const paymentMethod = await storage.getPaymentMethod(pmId);
+      const paymentMethod = await storage.ledger.stripePaymentMethods.get(pmId);
       if (!paymentMethod) {
         return res.status(404).json({ message: "Payment method not found" });
       }
@@ -468,7 +468,7 @@ export function registerLedgerStripeRoutes(app: Express) {
         return res.status(403).json({ message: "Payment method does not belong to this employer" });
       }
 
-      const updated = await storage.setPaymentMethodAsDefault(pmId, 'employer', employerId);
+      const updated = await storage.ledger.stripePaymentMethods.setAsDefault(pmId, 'employer', employerId);
       res.json(updated);
     } catch (error: any) {
       res.status(500).json({ 
@@ -483,7 +483,7 @@ export function registerLedgerStripeRoutes(app: Express) {
     try {
       const { id: employerId, pmId } = req.params;
 
-      const paymentMethod = await storage.getPaymentMethod(pmId);
+      const paymentMethod = await storage.ledger.stripePaymentMethods.get(pmId);
       if (!paymentMethod) {
         return res.status(404).json({ message: "Payment method not found" });
       }
@@ -510,7 +510,7 @@ export function registerLedgerStripeRoutes(app: Express) {
       }
 
       // Delete from database
-      await storage.deletePaymentMethod(pmId);
+      await storage.ledger.stripePaymentMethods.delete(pmId);
       
       res.json({ success: true });
     } catch (error: any) {

@@ -17,7 +17,7 @@ export async function getEffectiveUser(session: any, replitUserId: string) {
   
   if (session.masqueradeUserId) {
     // Get masqueraded user
-    dbUser = await storage.getUser(session.masqueradeUserId);
+    dbUser = await storage.users.getUser(session.masqueradeUserId);
     if (!dbUser) {
       // Clear invalid masquerade session and fall back to original user
       delete session.masqueradeUserId;
@@ -27,19 +27,19 @@ export async function getEffectiveUser(session: any, replitUserId: string) {
       });
       
       // Fall back to the original user
-      dbUser = await storage.getUserByReplitId(replitUserId);
+      dbUser = await storage.users.getUserByReplitId(replitUserId);
       if (!dbUser) {
         return { dbUser: null, originalUser: null };
       }
     } else {
       // Get the original user info
       if (session.originalUserId) {
-        originalUser = await storage.getUser(session.originalUserId);
+        originalUser = await storage.users.getUser(session.originalUserId);
       }
     }
   } else {
     // Not masquerading - get user by Replit ID
-    dbUser = await storage.getUserByReplitId(replitUserId);
+    dbUser = await storage.users.getUserByReplitId(replitUserId);
     if (!dbUser) {
       return { dbUser: null, originalUser: null };
     }
@@ -69,13 +69,13 @@ export function registerMasqueradeRoutes(
       }
       
       // Get the original user
-      const originalUser = await storage.getUserByReplitId(replitUserId);
+      const originalUser = await storage.users.getUserByReplitId(replitUserId);
       if (!originalUser) {
         return res.status(404).json({ message: "Original user not found" });
       }
       
       // Verify the target user exists
-      const targetUser = await storage.getUser(userId);
+      const targetUser = await storage.users.getUser(userId);
       if (!targetUser) {
         return res.status(404).json({ message: "Target user not found" });
       }

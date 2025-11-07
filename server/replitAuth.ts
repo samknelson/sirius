@@ -80,7 +80,7 @@ async function checkUserAccess(
   });
   
   // First, try to find user by Replit ID (already linked account)
-  let user = await storage.getUserByReplitId(replitUserId);
+  let user = await storage.users.getUserByReplitId(replitUserId);
   
   if (user) {
     console.log("Found existing linked account:", user.id);
@@ -92,7 +92,7 @@ async function checkUserAccess(
     }
     
     // Update user info from Replit (name, profile image may have changed)
-    const updatedUser = await storage.updateUser(user.id, {
+    const updatedUser = await storage.users.updateUser(user.id, {
       email: email,
       firstName: claims["first_name"],
       lastName: claims["last_name"],
@@ -100,13 +100,13 @@ async function checkUserAccess(
     });
     
     // Update last login
-    await storage.updateUserLastLogin(user.id);
+    await storage.users.updateUserLastLogin(user.id);
     
     return { allowed: true, user: updatedUser };
   }
   
   // User not found by Replit ID - check if there's a pending account with this email
-  user = await storage.getUserByEmail(email);
+  user = await storage.users.getUserByEmail(email);
   
   if (!user) {
     console.log("No provisioned account found for email:", email);
@@ -121,7 +121,7 @@ async function checkUserAccess(
   
   // Link the Replit account to this provisioned user
   console.log("Linking Replit account to provisioned user:", user.id);
-  const linkedUser = await storage.linkReplitAccount(user.id, replitUserId, {
+  const linkedUser = await storage.users.linkReplitAccount(user.id, replitUserId, {
     email: email,
     firstName: claims["first_name"],
     lastName: claims["last_name"],
@@ -129,7 +129,7 @@ async function checkUserAccess(
   });
   
   // Update last login
-  await storage.updateUserLastLogin(user.id);
+  await storage.users.updateUserLastLogin(user.id);
   
   return { allowed: true, user: linkedUser };
 }

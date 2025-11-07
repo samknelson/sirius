@@ -47,3 +47,5 @@ export class DatabaseStorage implements IStorage {
     this.ledger = createLedgerStorage();
   }
 }
+
+export const storage = new DatabaseStorage();

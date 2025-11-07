@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { postalAddresses, phoneNumbers, type PostalAddress, type InsertPostalAddress, type PhoneNumber, type InsertPhoneNumber } from "@shared/schema";
+import { contacts, postalAddresses, phoneNumbers, type Contact, type PostalAddress, type InsertPostalAddress, type PhoneNumber, type InsertPhoneNumber } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 
 // Address Storage Interface
@@ -24,8 +24,14 @@ export interface PhoneNumberStorage {
   setPhoneNumberAsPrimary(phoneNumberId: string, contactId: string): Promise<PhoneNumber | undefined>;
 }
 
+// Contact Storage Interface
+export interface ContactStorage {
+  getContact(id: string): Promise<Contact | undefined>;
+}
+
 // Combined Contacts Storage Interface
 export interface ContactsStorage {
+  getContact(id: string): Promise<Contact | undefined>;
   addresses: AddressStorage;
   phoneNumbers: PhoneNumberStorage;
 }
@@ -242,9 +248,21 @@ export function createPhoneNumberStorage(): PhoneNumberStorage {
   };
 }
 
-// Create Contacts Storage with both sub-namespaces
-export function createContactsStorage(): ContactsStorage {
+// Create Contact Storage implementation
+export function createContactStorage(): ContactStorage {
   return {
+    async getContact(id: string): Promise<Contact | undefined> {
+      const [contact] = await db.select().from(contacts).where(eq(contacts.id, id));
+      return contact || undefined;
+    }
+  };
+}
+
+// Create Contacts Storage with all sub-namespaces
+export function createContactsStorage(): ContactsStorage {
+  const contactStorage = createContactStorage();
+  return {
+    getContact: contactStorage.getContact,
     addresses: createAddressStorage(),
     phoneNumbers: createPhoneNumberStorage()
   };

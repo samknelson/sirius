@@ -103,7 +103,7 @@ class AddressValidationService {
 
   private async loadConfig(): Promise<void> {
     try {
-      const configVar = await storage.getVariableByName("address_validation_config");
+      const configVar = await storage.variables.getVariableByName("address_validation_config");
       if (configVar) {
         this.config = configVar.value as AddressValidationConfig;
       } else {
@@ -118,7 +118,7 @@ class AddressValidationService {
 
   private async initializeConfig(): Promise<void> {
     try {
-      await storage.createVariable({
+      await storage.variables.createVariable({
         name: "address_validation_config",
         value: DEFAULT_CONFIG,
       });
@@ -811,13 +811,13 @@ class AddressValidationService {
     const currentConfig = await this.getConfig();
     const updatedConfig = { ...currentConfig, ...newConfig };
     
-    const configVar = await storage.getVariableByName("address_validation_config");
+    const configVar = await storage.variables.getVariableByName("address_validation_config");
     if (configVar) {
-      await storage.updateVariable(configVar.id, {
+      await storage.variables.updateVariable(configVar.id, {
         value: updatedConfig,
       });
     } else {
-      await storage.createVariable({
+      await storage.variables.createVariable({
         name: "address_validation_config",
         value: updatedConfig,
       });

@@ -17,13 +17,13 @@ export function registerBookmarkRoutes(
     try {
       const user = req.user as any;
       const replitUserId = user.claims.sub;
-      const dbUser = await storage.getUserByReplitId(replitUserId);
+      const dbUser = await storage.users.getUserByReplitId(replitUserId);
       
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
       }
 
-      const bookmarks = await storage.getUserBookmarks(dbUser.id);
+      const bookmarks = await storage.bookmarks.getUserBookmarks(dbUser.id);
       res.json(bookmarks);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch bookmarks" });
@@ -41,13 +41,13 @@ export function registerBookmarkRoutes(
 
       const user = req.user as any;
       const replitUserId = user.claims.sub;
-      const dbUser = await storage.getUserByReplitId(replitUserId);
+      const dbUser = await storage.users.getUserByReplitId(replitUserId);
       
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
       }
 
-      const bookmark = await storage.findBookmark(dbUser.id, entityType as string, entityId as string);
+      const bookmark = await storage.bookmarks.findBookmark(dbUser.id, entityType as string, entityId as string);
       res.json({ bookmarked: !!bookmark, bookmark });
     } catch (error) {
       res.status(500).json({ message: "Failed to check bookmark" });
@@ -59,7 +59,7 @@ export function registerBookmarkRoutes(
     try {
       const user = req.user as any;
       const replitUserId = user.claims.sub;
-      const dbUser = await storage.getUserByReplitId(replitUserId);
+      const dbUser = await storage.users.getUserByReplitId(replitUserId);
       
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
@@ -73,12 +73,12 @@ export function registerBookmarkRoutes(
       });
 
       // Check if bookmark already exists
-      const existing = await storage.findBookmark(dbUser.id, entityType, entityId);
+      const existing = await storage.bookmarks.findBookmark(dbUser.id, entityType, entityId);
       if (existing) {
         return res.status(409).json({ message: "Bookmark already exists" });
       }
 
-      const bookmark = await storage.createBookmark(validatedData);
+      const bookmark = await storage.bookmarks.createBookmark(validatedData);
       res.status(201).json(bookmark);
     } catch (error) {
       if (error instanceof Error && error.name === "ZodError") {
@@ -95,14 +95,14 @@ export function registerBookmarkRoutes(
       const { id } = req.params;
       const user = req.user as any;
       const replitUserId = user.claims.sub;
-      const dbUser = await storage.getUserByReplitId(replitUserId);
+      const dbUser = await storage.users.getUserByReplitId(replitUserId);
       
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
       }
 
       // Verify the bookmark belongs to the user
-      const bookmark = await storage.getBookmark(id);
+      const bookmark = await storage.bookmarks.getBookmark(id);
       if (!bookmark) {
         return res.status(404).json({ message: "Bookmark not found" });
       }
@@ -111,7 +111,7 @@ export function registerBookmarkRoutes(
         return res.status(403).json({ message: "Unauthorized to delete this bookmark" });
       }
 
-      const success = await storage.deleteBookmark(id);
+      const success = await storage.bookmarks.deleteBookmark(id);
       if (!success) {
         return res.status(404).json({ message: "Bookmark not found" });
       }
@@ -133,18 +133,18 @@ export function registerBookmarkRoutes(
 
       const user = req.user as any;
       const replitUserId = user.claims.sub;
-      const dbUser = await storage.getUserByReplitId(replitUserId);
+      const dbUser = await storage.users.getUserByReplitId(replitUserId);
       
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
       }
 
-      const bookmark = await storage.findBookmark(dbUser.id, entityType, entityId);
+      const bookmark = await storage.bookmarks.findBookmark(dbUser.id, entityType, entityId);
       if (!bookmark) {
         return res.status(404).json({ message: "Bookmark not found" });
       }
 
-      const success = await storage.deleteBookmark(bookmark.id);
+      const success = await storage.bookmarks.deleteBookmark(bookmark.id);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete bookmark" });

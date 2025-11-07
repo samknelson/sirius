@@ -41,7 +41,7 @@ export function registerPostalAddressRoutes(
   app.get("/api/contacts/:contactId/addresses", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
       const { contactId } = req.params;
-      const addresses = await storage.getPostalAddressesByContact(contactId);
+      const addresses = await storage.contacts.addresses.getPostalAddressesByContact(contactId);
       res.json(addresses);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch addresses" });
@@ -52,7 +52,7 @@ export function registerPostalAddressRoutes(
   app.get("/api/addresses/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
       const { id } = req.params;
-      const address = await storage.getPostalAddress(id);
+      const address = await storage.contacts.addresses.getPostalAddress(id);
       
       if (!address) {
         return res.status(404).json({ message: "Address not found" });
@@ -78,7 +78,7 @@ export function registerPostalAddressRoutes(
         contactId 
       });
       
-      const newAddress = await storage.createPostalAddress(addressData);
+      const newAddress = await storage.contacts.addresses.createPostalAddress(addressData);
       res.status(201).json(newAddress);
     } catch (error) {
       if (error instanceof Error && error.name === 'ZodError') {
@@ -105,7 +105,7 @@ export function registerPostalAddressRoutes(
         ...geometryData,
       });
       
-      const updatedAddress = await storage.updatePostalAddress(id, updateData);
+      const updatedAddress = await storage.contacts.addresses.updatePostalAddress(id, updateData);
       
       if (!updatedAddress) {
         return res.status(404).json({ message: "Address not found" });
@@ -129,12 +129,12 @@ export function registerPostalAddressRoutes(
       const { id } = req.params;
       
       // First get the address to know the contactId
-      const currentAddress = await storage.getPostalAddress(id);
+      const currentAddress = await storage.contacts.addresses.getPostalAddress(id);
       if (!currentAddress) {
         return res.status(404).json({ message: "Address not found" });
       }
       
-      const updatedAddress = await storage.setAddressAsPrimary(id, currentAddress.contactId);
+      const updatedAddress = await storage.contacts.addresses.setAddressAsPrimary(id, currentAddress.contactId);
       
       if (!updatedAddress) {
         return res.status(404).json({ message: "Failed to set address as primary" });
@@ -153,7 +153,7 @@ export function registerPostalAddressRoutes(
   app.delete("/api/addresses/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.deletePostalAddress(id);
+      const deleted = await storage.contacts.addresses.deletePostalAddress(id);
       
       if (!deleted) {
         return res.status(404).json({ message: "Address not found" });

@@ -93,17 +93,17 @@ app.use((req, res, next) => {
   // Initialize access control system
   initAccessControl({
     getUserPermissions: async (userId: string) => {
-      const permissions = await storage.getUserPermissions(userId);
+      const permissions = await storage.users.getUserPermissions(userId);
       return permissions.map(p => p.key);
     },
     hasPermission: async (userId: string, permissionKey: string) => {
-      return storage.userHasPermission(userId, permissionKey);
+      return storage.users.userHasPermission(userId, permissionKey);
     },
     getUserByReplitId: async (replitUserId: string) => {
-      return storage.getUserByReplitId(replitUserId);
+      return storage.users.getUserByReplitId(replitUserId);
     },
     getUser: async (userId: string) => {
-      return storage.getUser(userId);
+      return storage.users.getUser(userId);
     },
   });
   logger.info("Access control system initialized", { source: "startup" });

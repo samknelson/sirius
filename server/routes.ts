@@ -33,12 +33,12 @@ const requirePermission = (permissionKey: string) => {
     
     // Get database user ID from Replit user ID
     const replitUserId = user.claims.sub;
-    const dbUser = await storage.getUserByReplitId(replitUserId);
+    const dbUser = await storage.users.getUserByReplitId(replitUserId);
     if (!dbUser) {
       return res.status(401).json({ message: "User not found" });
     }
     
-    const hasPermission = await storage.userHasPermission(dbUser.id, permissionKey);
+    const hasPermission = await storage.users.userHasPermission(dbUser.id, permissionKey);
     if (!hasPermission) {
       return res.status(403).json({ message: "Insufficient permissions" });
     }
@@ -91,7 +91,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/bootstrap/needed - Check if bootstrap is needed (no users in database)
   app.get("/api/bootstrap/needed", async (req, res) => {
     try {
-      const hasUsers = await storage.hasAnyUsers();
+      const hasUsers = await storage.users.hasAnyUsers();
       res.json({ needed: !hasUsers });
     } catch (error) {
       res.status(500).json({ message: "Failed to check bootstrap status" });
@@ -108,30 +108,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if any users already exist
-      const hasUsers = await storage.hasAnyUsers();
+      const hasUsers = await storage.users.hasAnyUsers();
       if (hasUsers) {
         return res.status(403).json({ message: "Bootstrap is only allowed when no users exist" });
       }
 
       // Get all permissions from the registry
-      const allPermissions = await storage.getAllPermissions();
+      const allPermissions = await storage.users.getAllPermissions();
 
       // Create admin role
-      const adminRole = await storage.createRole({
+      const adminRole = await storage.users.createRole({
         name: "admin",
         description: "Administrator role with all permissions"
       });
 
       // Assign all permissions to admin role
       for (const permission of allPermissions) {
-        await storage.assignPermissionToRole({
+        await storage.users.assignPermissionToRole({
           roleId: adminRole.id,
           permissionKey: permission.key
         });
       }
 
       // Create first user
-      const newUser = await storage.createUser({
+      const newUser = await storage.users.createUser({
         email,
         firstName: firstName || null,
         lastName: lastName || null,
@@ -141,7 +141,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Assign admin role to user
-      await storage.assignRoleToUser({
+      await storage.users.assignRoleToUser({
         userId: newUser.id,
         roleId: adminRole.id
       });
@@ -179,7 +179,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
 
-      const userPermissions = await storage.getUserPermissions(dbUser.id);
+      const userPermissions = await storage.users.getUserPermissions(dbUser.id);
       
       res.json({
         user: { 
@@ -246,7 +246,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/workers - Get all workers (requires workers.view permission)
   app.get("/api/workers", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
-      const workers = await storage.getAllWorkers();
+      const workers = await storage.workers.getAllWorkers();
       res.json(workers);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch workers" });
@@ -257,7 +257,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/workers/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
       const { id } = req.params;
-      const worker = await storage.getWorker(id);
+      const worker = await storage.workers.getWorker(id);
       
       if (!worker) {
         res.status(404).json({ message: "Worker not found" });
@@ -277,7 +277,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!name || typeof name !== 'string' || !name.trim()) {
         return res.status(400).json({ message: "Worker name is required" });
       }
-      const worker = await storage.createWorker(name.trim());
+      const worker = await storage.workers.createWorker(name.trim());
       res.status(201).json(worker);
     } catch (error) {
       res.status(500).json({ message: "Failed to create worker" });
@@ -292,7 +292,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Handle email updates
       if (email !== undefined) {
-        const worker = await storage.updateWorkerContactEmail(id, email);
+        const worker = await storage.workers.updateWorkerContactEmail(id, email);
         
         if (!worker) {
           res.status(404).json({ message: "Worker not found" });
@@ -303,7 +303,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       // Handle birth date updates
       else if (birthDate !== undefined) {
-        const worker = await storage.updateWorkerContactBirthDate(id, birthDate);
+        const worker = await storage.workers.updateWorkerContactBirthDate(id, birthDate);
         
         if (!worker) {
           res.status(404).json({ message: "Worker not found" });
@@ -315,7 +315,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Handle SSN updates
       else if (ssn !== undefined) {
         try {
-          const worker = await storage.updateWorkerSSN(id, ssn);
+          const worker = await storage.workers.updateWorkerSSN(id, ssn);
           
           if (!worker) {
             res.status(404).json({ message: "Worker not found" });
@@ -333,7 +333,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       // Handle gender updates
       else if (gender !== undefined || genderNota !== undefined) {
-        const worker = await storage.updateWorkerContactGender(id, gender, genderNota);
+        const worker = await storage.workers.updateWorkerContactGender(id, gender, genderNota);
         
         if (!worker) {
           res.status(404).json({ message: "Worker not found" });
@@ -345,7 +345,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Support both old format (name) and new format (nameComponents)
       else if (nameComponents) {
         // New format: name components
-        const worker = await storage.updateWorkerContactNameComponents(id, nameComponents);
+        const worker = await storage.workers.updateWorkerContactNameComponents(id, nameComponents);
         
         if (!worker) {
           res.status(404).json({ message: "Worker not found" });
@@ -355,7 +355,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json(worker);
       } else if (name && typeof name === 'string' && name.trim()) {
         // Old format: simple name string (for backwards compatibility)
-        const worker = await storage.updateWorkerContactName(id, name.trim());
+        const worker = await storage.workers.updateWorkerContactName(id, name.trim());
         
         if (!worker) {
           res.status(404).json({ message: "Worker not found" });
@@ -375,7 +375,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/workers/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.deleteWorker(id);
+      const deleted = await storage.workers.deleteWorker(id);
       
       if (!deleted) {
         res.status(404).json({ message: "Worker not found" });
@@ -394,7 +394,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/employers", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
       const includeInactive = req.query.includeInactive === 'true';
-      const allEmployers = await storage.getAllEmployers();
+      const allEmployers = await storage.employers.getAllEmployers();
       
       // Filter to active only by default
       const employers = includeInactive 
@@ -411,7 +411,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/employers/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
       const { id } = req.params;
-      const employer = await storage.getEmployer(id);
+      const employer = await storage.employers.getEmployer(id);
       
       if (!employer) {
         res.status(404).json({ message: "Employer not found" });
@@ -433,7 +433,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Employer name is required" });
       }
       
-      const employer = await storage.createEmployer({ 
+      const employer = await storage.employers.createEmployer({ 
         name: name.trim(),
         isActive: typeof isActive === 'boolean' ? isActive : true
       });
@@ -470,7 +470,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "No fields to update" });
       }
       
-      const employer = await storage.updateEmployer(id, updates);
+      const employer = await storage.employers.updateEmployer(id, updates);
       
       if (!employer) {
         res.status(404).json({ message: "Employer not found" });
@@ -487,7 +487,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/employers/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.deleteEmployer(id);
+      const deleted = await storage.employers.deleteEmployer(id);
       
       if (!deleted) {
         res.status(404).json({ message: "Employer not found" });
@@ -504,7 +504,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/trust-benefits", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
       const includeInactive = req.query.includeInactive === 'true';
-      const allBenefits = await storage.getAllTrustBenefits();
+      const allBenefits = await storage.trustBenefits.getAllTrustBenefits();
       
       const benefits = includeInactive 
         ? allBenefits 
@@ -520,7 +520,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/trust-benefits/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
       const { id } = req.params;
-      const benefit = await storage.getTrustBenefit(id);
+      const benefit = await storage.trustBenefits.getTrustBenefit(id);
       
       if (!benefit) {
         res.status(404).json({ message: "Trust benefit not found" });
@@ -542,7 +542,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid trust benefit data", errors: parsed.error.errors });
       }
       
-      const benefit = await storage.createTrustBenefit(parsed.data);
+      const benefit = await storage.trustBenefits.createTrustBenefit(parsed.data);
       res.status(201).json(benefit);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to create trust benefit" });
@@ -583,7 +583,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "No fields to update" });
       }
       
-      const benefit = await storage.updateTrustBenefit(id, updates);
+      const benefit = await storage.trustBenefits.updateTrustBenefit(id, updates);
       
       if (!benefit) {
         res.status(404).json({ message: "Trust benefit not found" });
@@ -600,7 +600,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/trust-benefits/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.deleteTrustBenefit(id);
+      const deleted = await storage.trustBenefits.deleteTrustBenefit(id);
       
       if (!deleted) {
         res.status(404).json({ message: "Trust benefit not found" });
@@ -617,7 +617,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/contacts/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
       const { id } = req.params;
-      const contact = await storage.getContact(id);
+      const contact = await storage.contacts.getContact(id);
       
       if (!contact) {
         res.status(404).json({ message: "Contact not found" });
@@ -700,15 +700,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid fallback configuration." });
       }
       
-      const configVar = await storage.getVariableByName('phone_validation_config');
+      const configVar = await storage.variables.getVariableByName('phone_validation_config');
       if (configVar) {
         console.log('Updating existing config variable:', configVar.id);
-        await storage.updateVariable(configVar.id, {
+        await storage.variables.updateVariable(configVar.id, {
           value: req.body,
         });
       } else {
         console.log('Creating new config variable');
-        await storage.createVariable({
+        await storage.variables.createVariable({
           name: 'phone_validation_config',
           value: req.body,
         });
@@ -752,10 +752,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/site-settings - Get site settings (no auth required for public settings)
   app.get("/api/site-settings", async (req, res) => {
     try {
-      const siteNameVar = await storage.getVariableByName("site_name");
+      const siteNameVar = await storage.variables.getVariableByName("site_name");
       const siteName = siteNameVar ? (siteNameVar.value as string) : "Sirius";
       
-      const siteFooterVar = await storage.getVariableByName("site_footer");
+      const siteFooterVar = await storage.variables.getVariableByName("site_footer");
       const footer = siteFooterVar ? (siteFooterVar.value as string) : "";
       
       res.json({ siteName, footer });
@@ -776,11 +776,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return;
         }
         
-        const existingVariable = await storage.getVariableByName("site_name");
+        const existingVariable = await storage.variables.getVariableByName("site_name");
         if (existingVariable) {
-          await storage.updateVariable(existingVariable.id, { value: siteName });
+          await storage.variables.updateVariable(existingVariable.id, { value: siteName });
         } else {
-          await storage.createVariable({ name: "site_name", value: siteName });
+          await storage.variables.createVariable({ name: "site_name", value: siteName });
         }
       }
       
@@ -791,19 +791,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return;
         }
         
-        const existingFooter = await storage.getVariableByName("site_footer");
+        const existingFooter = await storage.variables.getVariableByName("site_footer");
         if (existingFooter) {
-          await storage.updateVariable(existingFooter.id, { value: footer });
+          await storage.variables.updateVariable(existingFooter.id, { value: footer });
         } else {
-          await storage.createVariable({ name: "site_footer", value: footer });
+          await storage.variables.createVariable({ name: "site_footer", value: footer });
         }
       }
       
       // Return updated values
-      const siteNameVar = await storage.getVariableByName("site_name");
+      const siteNameVar = await storage.variables.getVariableByName("site_name");
       const finalSiteName = siteNameVar ? (siteNameVar.value as string) : "Sirius";
       
-      const siteFooterVar = await storage.getVariableByName("site_footer");
+      const siteFooterVar = await storage.variables.getVariableByName("site_footer");
       const finalFooter = siteFooterVar ? (siteFooterVar.value as string) : "";
       
       res.json({ siteName: finalSiteName, footer: finalFooter });
@@ -816,7 +816,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/gender-options - Get all gender options (requires workers.view permission)
   app.get("/api/gender-options", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
-      const genderOptions = await storage.getAllGenderOptions();
+      const genderOptions = await storage.options.gender.getAllGenderOptions();
       res.json(genderOptions);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch gender options" });
@@ -827,7 +827,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/gender-options/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
       const { id } = req.params;
-      const genderOption = await storage.getGenderOption(id);
+      const genderOption = await storage.options.gender.getGenderOption(id);
       
       if (!genderOption) {
         res.status(404).json({ message: "Gender option not found" });
@@ -853,7 +853,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Code is required" });
       }
       
-      const genderOption = await storage.createGenderOption({
+      const genderOption = await storage.options.gender.createGenderOption({
         name: name.trim(),
         code: code.trim(),
         nota: typeof nota === 'boolean' ? nota : false,
@@ -905,7 +905,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.sequence = sequence;
       }
       
-      const genderOption = await storage.updateGenderOption(id, updates);
+      const genderOption = await storage.options.gender.updateGenderOption(id, updates);
       
       if (!genderOption) {
         res.status(404).json({ message: "Gender option not found" });
@@ -925,7 +925,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/gender-options/:id", requireAuth, requirePermission("variables.manage"), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.deleteGenderOption(id);
+      const deleted = await storage.options.gender.deleteGenderOption(id);
       
       if (!deleted) {
         res.status(404).json({ message: "Gender option not found" });
@@ -943,7 +943,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/trust-benefit-types - Get all trust benefit types (requires workers.view permission)
   app.get("/api/trust-benefit-types", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
-      const trustBenefitTypes = await storage.getAllTrustBenefitTypes();
+      const trustBenefitTypes = await storage.options.trustBenefitTypes.getAllTrustBenefitTypes();
       res.json(trustBenefitTypes);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch trust benefit types" });
@@ -954,7 +954,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/trust-benefit-types/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
       const { id } = req.params;
-      const trustBenefitType = await storage.getTrustBenefitType(id);
+      const trustBenefitType = await storage.options.trustBenefitTypes.getTrustBenefitType(id);
       
       if (!trustBenefitType) {
         res.status(404).json({ message: "Trust benefit type not found" });
@@ -980,7 +980,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
       
-      const trustBenefitType = await storage.createTrustBenefitType(parsedData.data);
+      const trustBenefitType = await storage.options.trustBenefitTypes.createTrustBenefitType(parsedData.data);
       res.status(201).json(trustBenefitType);
     } catch (error: any) {
       if (error.code === "23505") {
@@ -1005,7 +1005,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
       
-      const trustBenefitType = await storage.updateTrustBenefitType(id, parsedData.data);
+      const trustBenefitType = await storage.options.trustBenefitTypes.updateTrustBenefitType(id, parsedData.data);
       
       if (!trustBenefitType) {
         res.status(404).json({ message: "Trust benefit type not found" });
@@ -1026,7 +1026,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/trust-benefit-types/:id", requireAuth, requirePermission("variables.manage"), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.deleteTrustBenefitType(id);
+      const deleted = await storage.options.trustBenefitTypes.deleteTrustBenefitType(id);
       
       if (!deleted) {
         res.status(404).json({ message: "Trust benefit type not found" });
@@ -1044,7 +1044,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/worker-id-types - Get all worker ID types (requires workers.view permission)
   app.get("/api/worker-id-types", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
-      const workerIdTypes = await storage.getAllWorkerIdTypes();
+      const workerIdTypes = await storage.options.workerIdTypes.getAllWorkerIdTypes();
       res.json(workerIdTypes);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch worker ID types" });
@@ -1055,7 +1055,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/worker-id-types/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
       const { id } = req.params;
-      const workerIdType = await storage.getWorkerIdType(id);
+      const workerIdType = await storage.options.workerIdTypes.getWorkerIdType(id);
       
       if (!workerIdType) {
         res.status(404).json({ message: "Worker ID type not found" });
@@ -1077,7 +1077,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Name is required" });
       }
       
-      const workerIdType = await storage.createWorkerIdType({
+      const workerIdType = await storage.workers.createWorkerIdType({
         name: name.trim(),
         sequence: typeof sequence === 'number' ? sequence : 0,
         validator: validator && typeof validator === 'string' ? validator.trim() : null,
@@ -1121,7 +1121,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      const workerIdType = await storage.updateWorkerIdType(id, updates);
+      const workerIdType = await storage.options.workerIdTypes.updateWorkerIdType(id, updates);
       
       if (!workerIdType) {
         res.status(404).json({ message: "Worker ID type not found" });
@@ -1138,7 +1138,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/worker-id-types/:id", requireAuth, requirePermission("variables.manage"), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.deleteWorkerIdType(id);
+      const deleted = await storage.workers.deleteWorkerIdType(id);
       
       if (!deleted) {
         res.status(404).json({ message: "Worker ID type not found" });
@@ -1156,7 +1156,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/ledger-payment-types - Get all ledger payment types (requires ledgerStaff policy)
   app.get("/api/ledger-payment-types", requireAccess(policies.ledgerStaff), async (req, res) => {
     try {
-      const paymentTypes = await storage.getAllLedgerPaymentTypes();
+      const paymentTypes = await storage.options.ledgerPaymentTypes.getAllLedgerPaymentTypes();
       res.json(paymentTypes);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch ledger payment types" });
@@ -1167,7 +1167,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/ledger-payment-types/:id", requireAccess(policies.ledgerStaff), async (req, res) => {
     try {
       const { id } = req.params;
-      const paymentType = await storage.getLedgerPaymentType(id);
+      const paymentType = await storage.options.ledgerPaymentTypes.getLedgerPaymentType(id);
       
       if (!paymentType) {
         res.status(404).json({ message: "Ledger payment type not found" });
@@ -1189,7 +1189,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Name is required" });
       }
       
-      const paymentType = await storage.createLedgerPaymentType({
+      const paymentType = await storage.options.ledgerPaymentTypes.createLedgerPaymentType({
         name: name.trim(),
         description: description && typeof description === 'string' ? description.trim() : null,
         sequence: typeof sequence === 'number' ? sequence : 0,
@@ -1233,7 +1233,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.sequence = sequence;
       }
       
-      const paymentType = await storage.updateLedgerPaymentType(id, updates);
+      const paymentType = await storage.options.ledgerPaymentTypes.updateLedgerPaymentType(id, updates);
       
       if (!paymentType) {
         res.status(404).json({ message: "Ledger payment type not found" });
@@ -1250,7 +1250,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/ledger-payment-types/:id", requireAccess(policies.ledgerStaff), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.deleteLedgerPaymentType(id);
+      const deleted = await storage.options.ledgerPaymentTypes.deleteLedgerPaymentType(id);
       
       if (!deleted) {
         res.status(404).json({ message: "Ledger payment type not found" });
@@ -1269,7 +1269,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/workers/:workerId/ids", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
       const { workerId } = req.params;
-      const workerIds = await storage.getWorkerIdsByWorkerId(workerId);
+      const workerIds = await storage.workerIds.getWorkerIdsByWorkerId(workerId);
       res.json(workerIds);
     } catch (error) {
       console.error("Error fetching worker IDs:", error);
@@ -1281,7 +1281,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/worker-ids/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
       const { id } = req.params;
-      const workerId = await storage.getWorkerId(id);
+      const workerId = await storage.workerIds.getWorkerId(id);
       
       if (!workerId) {
         res.status(404).json({ message: "Worker ID not found" });
@@ -1309,13 +1309,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Verify the worker exists
-      const worker = await storage.getWorker(workerId);
+      const worker = await storage.workers.getWorker(workerId);
       if (!worker) {
         return res.status(404).json({ message: "Worker not found" });
       }
       
       // Verify the type exists
-      const type = await storage.getWorkerIdType(typeId);
+      const type = await storage.options.workerIdTypes.getWorkerIdType(typeId);
       if (!type) {
         return res.status(404).json({ message: "Worker ID type not found" });
       }
@@ -1335,7 +1335,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      const newWorkerId = await storage.createWorkerId({
+      const newWorkerId = await storage.workers.createWorkerId({
         workerId,
         typeId: typeId.trim(),
         value: value.trim(),
@@ -1370,7 +1370,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         // Verify the type exists
-        const type = await storage.getWorkerIdType(typeId);
+        const type = await storage.options.workerIdTypes.getWorkerIdType(typeId);
         if (!type) {
           return res.status(404).json({ message: "Worker ID type not found" });
         }
@@ -1384,14 +1384,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         // Get the worker ID to check its type
-        const existingWorkerId = await storage.getWorkerId(id);
+        const existingWorkerId = await storage.workerIds.getWorkerId(id);
         if (!existingWorkerId) {
           return res.status(404).json({ message: "Worker ID not found" });
         }
         
         // Determine which type to validate against
         const typeToValidate = typeId ? typeId.trim() : existingWorkerId.typeId;
-        const type = await storage.getWorkerIdType(typeToValidate);
+        const type = await storage.options.workerIdTypes.getWorkerIdType(typeToValidate);
         
         // Validate against regex if type has a validator
         if (type && type.validator) {
@@ -1410,7 +1410,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.value = value.trim();
       }
       
-      const updatedWorkerId = await storage.updateWorkerId(id, updates);
+      const updatedWorkerId = await storage.workerIds.updateWorkerId(id, updates);
       
       if (!updatedWorkerId) {
         res.status(404).json({ message: "Worker ID not found" });
@@ -1436,7 +1436,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/worker-ids/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.deleteWorkerId(id);
+      const deleted = await storage.workers.deleteWorkerId(id);
       
       if (!deleted) {
         res.status(404).json({ message: "Worker ID not found" });
@@ -1455,7 +1455,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/workers/:workerId/benefits", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
       const { workerId } = req.params;
-      const benefits = await storage.getWorkerBenefits(workerId);
+      const benefits = await storage.workers.getWorkerBenefits(workerId);
       res.json(benefits);
     } catch (error) {
       console.error("Failed to fetch worker benefits:", error);
@@ -1473,7 +1473,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Month, year, employer ID, and benefit ID are required" });
       }
 
-      const wmb = await storage.createWorkerBenefit({
+      const wmb = await storage.workers.createWorkerBenefit({
         workerId,
         month,
         year,
@@ -1495,7 +1495,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/worker-benefits/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.deleteWorkerBenefit(id);
+      const deleted = await storage.workers.deleteWorkerBenefit(id);
 
       if (!deleted) {
         return res.status(404).json({ message: "Worker benefit not found" });

@@ -38,7 +38,7 @@ export class PhoneValidationService {
   }
 
   async loadConfig(): Promise<PhoneValidationConfig> {
-    const configVar = await storage.getVariableByName('phone_validation_config');
+    const configVar = await storage.variables.getVariableByName('phone_validation_config');
     if (configVar && configVar.value) {
       return configVar.value as PhoneValidationConfig;
     }
