@@ -173,14 +173,6 @@ async function evaluateRequirement(
   requirement: AccessRequirement,
   context: AccessContext
 ): Promise<AccessResult> {
-  // Admin bypass: users with "admin" permission have access to everything
-  if (context.user) {
-    const isAdmin = await hasAdminPermission(context.user.id);
-    if (isAdmin) {
-      return { granted: true };
-    }
-  }
-
   switch (requirement.type) {
     case 'authenticated':
       return context.user
@@ -194,6 +186,11 @@ async function evaluateRequirement(
       if (!storage) {
         throw new Error('Access control storage not initialized');
       }
+      // Admin bypass for permission checks
+      const isAdmin = await hasAdminPermission(context.user.id);
+      if (isAdmin) {
+        return { granted: true };
+      }
       const hasPermission = await storage.hasPermission(context.user.id, requirement.key);
       return hasPermission
         ? { granted: true }
@@ -206,6 +203,11 @@ async function evaluateRequirement(
       }
       if (!storage) {
         throw new Error('Access control storage not initialized');
+      }
+      // Admin bypass for permission checks
+      const isAdmin = await hasAdminPermission(context.user.id);
+      if (isAdmin) {
+        return { granted: true };
       }
       for (const key of requirement.keys) {
         const hasPermission = await storage.hasPermission(context.user.id, key);
@@ -222,6 +224,11 @@ async function evaluateRequirement(
       }
       if (!storage) {
         throw new Error('Access control storage not initialized');
+      }
+      // Admin bypass for permission checks
+      const isAdmin = await hasAdminPermission(context.user.id);
+      if (isAdmin) {
+        return { granted: true };
       }
       for (const key of requirement.keys) {
         const hasPermission = await storage.hasPermission(context.user.id, key);
