@@ -32,7 +32,7 @@ export default function StripeSettingsPage() {
 
   // Fetch current setting
   const { data: currentSetting, isLoading: isLoadingSettings } = useQuery<{ id: string; value: { paymentTypeId: string } | null } | null>({
-    queryKey: ["/api/variables/ledger_stripe_payment_type"],
+    queryKey: ["/api/variables/by-name/ledger_stripe_payment_type"],
   });
 
   // Update selected value when currentSetting loads
@@ -60,7 +60,7 @@ export default function StripeSettingsPage() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/variables/ledger_stripe_payment_type"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/variables/by-name/ledger_stripe_payment_type"] });
       toast({
         title: "Success",
         description: "Default payment type saved successfully.",

@@ -40,6 +40,23 @@ export function registerVariableRoutes(
     }
   });
 
+  // GET /api/variables/by-name/:name - Get a variable by name (requires variables.manage permission)
+  app.get("/api/variables/by-name/:name", requireAuth, requirePermission("variables.manage"), async (req, res) => {
+    try {
+      const { name } = req.params;
+      const variable = await storage.getVariableByName(name);
+      
+      if (!variable) {
+        res.status(404).json({ message: "Variable not found" });
+        return;
+      }
+      
+      res.json(variable);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch variable" });
+    }
+  });
+
   // POST /api/variables - Create a new variable (requires variables.manage permission)
   app.post("/api/variables", requireAuth, requirePermission("variables.manage"), async (req, res) => {
     try {
