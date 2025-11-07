@@ -20,13 +20,14 @@ import {
   type UserRole, type RolePermission, type AssignRole, type AssignPermission
 } from "@shared/schema";
 import { permissionRegistry, type PermissionDefinition } from "@shared/permissions";
-import { db } from "./db";
+import { db } from "../db";
 import { eq, and, desc, sql } from "drizzle-orm";
+import { type VariableStorage, createVariableStorage } from "./variables";
 
 // modify the interface with any CRUD methods
 // you might need
 
-export interface IStorage {
+export interface IStorage extends VariableStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
   getUserByReplitId(replitUserId: string): Promise<User | undefined>; // Find user by Replit ID
@@ -104,13 +105,7 @@ export interface IStorage {
   updateTrustBenefit(id: string, benefit: Partial<InsertTrustBenefit>): Promise<TrustBenefit | undefined>;
   deleteTrustBenefit(id: string): Promise<boolean>;
 
-  // Variable CRUD operations
-  getAllVariables(): Promise<Variable[]>;
-  getVariable(id: string): Promise<Variable | undefined>;
-  getVariableByName(name: string): Promise<Variable | undefined>;
-  createVariable(variable: InsertVariable): Promise<Variable>;
-  updateVariable(id: string, variable: Partial<InsertVariable>): Promise<Variable | undefined>;
-  deleteVariable(id: string): Promise<boolean>;
+  // Variable CRUD operations - inherited from VariableStorage
 
   // Postal Address CRUD operations
   getAllPostalAddresses(): Promise<PostalAddress[]>;
@@ -193,6 +188,12 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  private variableStorage: VariableStorage;
+
+  constructor() {
+    this.variableStorage = createVariableStorage();
+  }
+
   // User operations
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -938,43 +939,29 @@ export class DatabaseStorage implements IStorage {
     return contact || undefined;
   }
 
-  // Variable operations
+  // Variable operations - delegated to variableStorage module
   async getAllVariables(): Promise<Variable[]> {
-    const allVariables = await db.select().from(variables);
-    return allVariables.sort((a, b) => a.name.localeCompare(b.name));
+    return this.variableStorage.getAllVariables();
   }
 
   async getVariable(id: string): Promise<Variable | undefined> {
-    const [variable] = await db.select().from(variables).where(eq(variables.id, id));
-    return variable || undefined;
+    return this.variableStorage.getVariable(id);
   }
 
   async getVariableByName(name: string): Promise<Variable | undefined> {
-    const [variable] = await db.select().from(variables).where(eq(variables.name, name));
-    return variable || undefined;
+    return this.variableStorage.getVariableByName(name);
   }
 
-  async createVariable(insertVariable: InsertVariable): Promise<Variable> {
-    const [variable] = await db
-      .insert(variables)
-      .values(insertVariable)
-      .returning();
-    return variable;
+  async createVariable(variable: InsertVariable): Promise<Variable> {
+    return this.variableStorage.createVariable(variable);
   }
 
-  async updateVariable(id: string, variableUpdate: Partial<InsertVariable>): Promise<Variable | undefined> {
-    const [variable] = await db
-      .update(variables)
-      .set(variableUpdate)
-      .where(eq(variables.id, id))
-      .returning();
-    
-    return variable || undefined;
+  async updateVariable(id: string, variable: Partial<InsertVariable>): Promise<Variable | undefined> {
+    return this.variableStorage.updateVariable(id, variable);
   }
 
   async deleteVariable(id: string): Promise<boolean> {
-    const result = await db.delete(variables).where(eq(variables.id, id)).returning();
-    return result.length > 0;
+    return this.variableStorage.deleteVariable(id);
   }
 
   // Postal Address operations
