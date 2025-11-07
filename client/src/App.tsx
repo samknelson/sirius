@@ -40,7 +40,9 @@ import AdminRolesPage from "@/pages/admin/roles";
 import AdminPermissionsPage from "@/pages/admin/permissions";
 import AdminLayout from "@/components/layouts/AdminLayout";
 import ConfigurationLayout from "@/components/layouts/ConfigurationLayout";
-import UserManagementConfigPage from "@/pages/config/users";
+import UsersListPage from "@/pages/config/users/list";
+import RolesPage from "@/pages/config/users/roles";
+import PermissionsPage from "@/pages/config/users/permissions";
 import PostalAddressesConfigPage from "@/pages/config/addresses";
 import PhoneNumbersConfigPage from "@/pages/config/phone-numbers";
 import GenderOptionsPage from "@/pages/config/gender-options";
@@ -298,14 +300,39 @@ function Router() {
         </ProtectedRoute>
       </Route>
       
-      <Route path="/config/users">
+      <Route path="/config/users/list">
         <ProtectedRoute permission="admin.manage">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <UserManagementConfigPage />
+              <UsersListPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
+      </Route>
+      
+      <Route path="/config/users/roles">
+        <ProtectedRoute permission="admin.manage">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <RolesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/config/users/permissions">
+        <ProtectedRoute permission="admin.manage">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <PermissionsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
+      {/* Redirect old /config/users to new structure */}
+      <Route path="/config/users">
+        <Redirect to="/config/users/list" />
       </Route>
       
       <Route path="/config/addresses">
@@ -480,7 +507,7 @@ function Router() {
       </Route>
       
       <Route path="/admin/users">
-        <Redirect to="/config/users" />
+        <Redirect to="/config/users/list" />
       </Route>
       
       <Route path="/admin/roles">
@@ -505,7 +532,7 @@ function Router() {
       
       {/* Legacy admin route - redirect to configuration */}
       <Route path="/admin">
-        <Redirect to="/config/users" />
+        <Redirect to="/config/users/list" />
       </Route>
       
       {/* Dashboard route */}
@@ -524,7 +551,7 @@ function Router() {
       
       {/* Configuration fallback - redirect to users page */}
       <Route path="/config">
-        <Redirect to="/config/users" />
+        <Redirect to="/config/users/list" />
       </Route>
       
       {/* 404 for unmatched routes */}
