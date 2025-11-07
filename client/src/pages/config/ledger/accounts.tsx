@@ -34,8 +34,6 @@ interface LedgerAccount {
 }
 
 export default function LedgerAccountsPage() {
-  console.log("[LedgerAccountsPage] Component rendering");
-  
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
