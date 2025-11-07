@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
@@ -31,6 +31,15 @@ interface DetailedPolicyResult {
 export default function ProtectedRoute({ children, permission, policy }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading, hasPermission } = useAuth();
   const [, setLocation] = useLocation();
+  const authResolvedRef = useRef(false);
+
+  // Track when auth has fully resolved (loading finished at least once)
+  // This prevents redirecting during the brief window between query completion and user state update
+  useEffect(() => {
+    if (!isLoading) {
+      authResolvedRef.current = true;
+    }
+  }, [isLoading]);
 
   // Check policy via API if policy prop is provided
   const { data: policyResult, isLoading: isPolicyLoading, isError: isPolicyError } = useQuery<DetailedPolicyResult>({
@@ -40,8 +49,10 @@ export default function ProtectedRoute({ children, permission, policy }: Protect
     retry: 2,
   });
 
+  // Only redirect to login after auth has fully resolved and user is definitely not authenticated
+  // We wait for authResolvedRef to prevent race conditions during auth hydration
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    if (authResolvedRef.current && !isLoading && !isAuthenticated) {
       setLocation('/login');
     }
   }, [isAuthenticated, isLoading, setLocation]);
