@@ -23,7 +23,8 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
   const [location] = useLocation();
   const { hasPermission } = useAuth();
   const [isDropDownListsOpen, setIsDropDownListsOpen] = useState(false);
-  const [isLedgerStripeOpen, setIsLedgerStripeOpen] = useState(false);
+  const [isLedgerOpen, setIsLedgerOpen] = useState(false);
+  const [isStripeOpen, setIsStripeOpen] = useState(false);
 
   // Fetch component configuration
   const { data: componentConfig = [] } = useQuery<ComponentConfig[]>({
@@ -127,7 +128,7 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
     },
   ];
 
-  const ledgerStripeItems = [
+  const ledgerItems = [
     {
       path: "/config/ledger/accounts",
       label: "Accounts",
@@ -142,6 +143,9 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       testId: "nav-ledger-payment-types",
       policy: "ledgerStaff" as const,
     },
+  ];
+
+  const stripeItems = [
     {
       path: "/config/ledger/stripe/test",
       label: "Test Connection",
@@ -158,9 +162,12 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
     },
   ];
 
+  // Combine for policy checks
+  const allLedgerItems = [...ledgerItems, ...stripeItems];
+
   // Fetch policy checks for navigation items that use policies
-  const policiesNeeded = ledgerStripeItems
-    .filter((item): item is typeof ledgerStripeItems[number] & { policy: string } => 'policy' in item && typeof item.policy === 'string')
+  const policiesNeeded = allLedgerItems
+    .filter((item): item is typeof allLedgerItems[number] & { policy: string } => 'policy' in item && typeof item.policy === 'string')
     .map(item => item.policy);
 
   const { data: policyResults = {} } = useQuery<Record<string, { allowed: boolean }>>({
@@ -212,8 +219,13 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
     (item) => location === item.path || location.startsWith(item.path + "/")
   );
 
-  // Check if any ledger/stripe item is active
-  const isLedgerStripeActive = ledgerStripeItems.some(
+  // Check if any ledger item is active
+  const isLedgerActive = allLedgerItems.some(
+    (item) => location === item.path || location.startsWith(item.path + "/")
+  );
+
+  // Check if any stripe item is active
+  const isStripeActive = stripeItems.some(
     (item) => location === item.path || location.startsWith(item.path + "/")
   );
 
@@ -285,27 +297,28 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
               </Collapsible>
             )}
 
-            {/* Ledger/Stripe Group */}
-            {ledgerStripeItems.some(hasAccessToItem) && (
+            {/* Ledger Group */}
+            {allLedgerItems.some(hasAccessToItem) && (
               <Collapsible
-                open={isLedgerStripeOpen || isLedgerStripeActive}
-                onOpenChange={setIsLedgerStripeOpen}
+                open={isLedgerOpen || isLedgerActive}
+                onOpenChange={setIsLedgerOpen}
               >
                 <CollapsibleTrigger asChild>
                   <Button
-                    variant={isLedgerStripeActive ? "default" : "ghost"}
+                    variant={isLedgerActive ? "default" : "ghost"}
                     className="w-full justify-start"
-                    data-testid="nav-config-ledger-stripe"
+                    data-testid="nav-config-ledger"
                   >
-                    <CreditCard className="mr-2 h-4 w-4" />
-                    Ledger / Stripe
+                    <BookOpen className="mr-2 h-4 w-4" />
+                    Ledger
                     <ChevronDown className="ml-auto h-4 w-4 transition-transform duration-200" 
-                      style={{ transform: (isLedgerStripeOpen || isLedgerStripeActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
+                      style={{ transform: (isLedgerOpen || isLedgerActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
                     />
                   </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="ml-4 mt-2 space-y-2">
-                  {ledgerStripeItems.filter(hasAccessToItem).map((item) => {
+                  {/* Ledger items */}
+                  {ledgerItems.filter(hasAccessToItem).map((item) => {
                     const Icon = item.icon;
                     const isActive = location === item.path || location.startsWith(item.path + "/");
                     
@@ -322,6 +335,47 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
                       </Link>
                     );
                   })}
+
+                  {/* Stripe Sub-group */}
+                  {stripeItems.some(hasAccessToItem) && (
+                    <Collapsible
+                      open={isStripeOpen || isStripeActive}
+                      onOpenChange={setIsStripeOpen}
+                    >
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          variant={isStripeActive ? "secondary" : "ghost"}
+                          className="w-full justify-start text-sm"
+                          data-testid="nav-config-stripe"
+                        >
+                          <CreditCard className="mr-2 h-4 w-4" />
+                          Stripe
+                          <ChevronDown className="ml-auto h-4 w-4 transition-transform duration-200" 
+                            style={{ transform: (isStripeOpen || isStripeActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
+                          />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="ml-4 mt-2 space-y-2">
+                        {stripeItems.filter(hasAccessToItem).map((item) => {
+                          const Icon = item.icon;
+                          const isActive = location === item.path || location.startsWith(item.path + "/");
+                          
+                          return (
+                            <Link key={item.path} href={item.path}>
+                              <Button
+                                variant={isActive ? "secondary" : "ghost"}
+                                className="w-full justify-start text-xs"
+                                data-testid={item.testId}
+                              >
+                                <Icon className="mr-2 h-4 w-4" />
+                                {item.label}
+                              </Button>
+                            </Link>
+                          );
+                        })}
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
                 </CollapsibleContent>
               </Collapsible>
             )}
