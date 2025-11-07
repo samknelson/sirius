@@ -476,7 +476,8 @@ function Router() {
         </ProtectedRoute>
       </Route>
       
-      <Route path="/config/ledger/accounts/:id/edit">
+      {/* Ledger account detail pages */}
+      <Route path="/ledger/accounts/:id/edit">
         <ProtectedRoute policy="ledgerStaff">
           <AuthenticatedLayout>
             <LedgerAccountEdit />
@@ -484,7 +485,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
       
-      <Route path="/config/ledger/accounts/:id">
+      <Route path="/ledger/accounts/:id">
         <ProtectedRoute policy="ledgerStaff">
           <AuthenticatedLayout>
             <LedgerAccountView />
@@ -522,6 +523,15 @@ function Router() {
       
       <Route path="/config/users/:id">
         <Redirect to="/users/:id" />
+      </Route>
+      
+      {/* Legacy ledger account routes - redirect to new location */}
+      <Route path="/config/ledger/accounts/:id/edit">
+        <Redirect to="/ledger/accounts/:id/edit" />
+      </Route>
+      
+      <Route path="/config/ledger/accounts/:id">
+        <Redirect to="/ledger/accounts/:id" />
       </Route>
       
       <Route path="/admin/roles">
