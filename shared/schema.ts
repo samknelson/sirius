@@ -219,6 +219,7 @@ export const winstonLogs = pgTable("winston_logs", {
   module: varchar("module", { length: 100 }),
   operation: varchar("operation", { length: 100 }),
   entityId: varchar("entity_id", { length: 255 }),
+  description: text("description"),
 }, (table) => [
   index("idx_winston_logs_entity_id").on(table.entityId),
   index("idx_winston_logs_module").on(table.module),

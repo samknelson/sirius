@@ -45,28 +45,28 @@ export interface IStorage {
 const variableLoggingConfig: StorageLoggingConfig<VariableStorage> = {
   module: 'variables',
   methods: {
-    createVariable: {
+    create: {
       enabled: true,
       getEntityId: (args) => args[0]?.name, // Variable name
       after: async (args, result, storage) => {
         return result; // Capture created variable
       }
     },
-    updateVariable: {
+    update: {
       enabled: true,
       getEntityId: (args) => args[0], // Variable ID
       before: async (args, storage) => {
-        return await storage.getVariable(args[0]); // Current state
+        return await storage.get(args[0]); // Current state
       },
       after: async (args, result, storage) => {
         return result; // New state (diff auto-calculated)
       }
     },
-    deleteVariable: {
+    delete: {
       enabled: true,
       getEntityId: (args) => args[0], // Variable ID
       before: async (args, storage) => {
-        return await storage.getVariable(args[0]); // Capture what's being deleted
+        return await storage.get(args[0]); // Capture what's being deleted
       }
     }
   }

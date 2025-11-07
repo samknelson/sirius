@@ -133,15 +133,29 @@ export function withStorageLogging<T extends Record<string, any>>(
           details.after = afterState;
         }
 
-        if (beforeState !== undefined && afterState !== undefined) {
-          details.changes = calculateChanges(beforeState, afterState);
+        const changes = (beforeState !== undefined && afterState !== undefined)
+          ? calculateChanges(beforeState, afterState)
+          : {};
+
+        if (Object.keys(changes).length > 0) {
+          details.changes = changes;
         }
+
+        const description = generateDescription(
+          config.module,
+          String(key),
+          entityId,
+          beforeState,
+          afterState,
+          changes
+        );
 
         setImmediate(() => {
           storageLogger.info(`Storage operation: ${config.module}.${String(key)}`, {
             module: config.module,
             operation: String(key),
             entity_id: entityId,
+            description,
             meta: details, // Nest details under 'meta' to match JSONB column
           });
         });
@@ -164,11 +178,14 @@ export function withStorageLogging<T extends Record<string, any>>(
           details.before = beforeState;
         }
 
+        const description = `Failed to ${String(key)} on ${config.module} "${entityId || 'unknown'}"`;
+
         setImmediate(() => {
           storageLogger.error(`Storage operation failed: ${config.module}.${String(key)}`, {
             module: config.module,
             operation: String(key),
             entity_id: entityId,
+            description,
             meta: details, // Nest details under 'meta' to match JSONB column
           });
         });
@@ -203,4 +220,99 @@ function calculateChanges(before: any, after: any): Record<string, { from: any; 
   }
 
   return changes;
+}
+
+/**
+ * Convert module name to a human-readable entity type
+ * Handles both simple and dot-qualified module names
+ */
+function getEntityType(module: string): string {
+  // Extract the last part after any dots (e.g., "contacts.addresses" -> "addresses")
+  const parts = module.split('.');
+  const lastPart = parts[parts.length - 1];
+  
+  // Simple mapping for common plural forms
+  const singularMap: Record<string, string> = {
+    'variables': 'variable',
+    'users': 'user',
+    'workers': 'worker',
+    'employers': 'employer',
+    'addresses': 'address',
+    'phoneNumbers': 'phone number',
+    'contacts': 'contact',
+    'options': 'option',
+    'benefits': 'benefit',
+    'accounts': 'account',
+  };
+  
+  // Return mapped singular form or the original if no mapping exists
+  return singularMap[lastPart] || lastPart;
+}
+
+/**
+ * Generate a human-readable description of the storage operation
+ */
+function generateDescription(
+  module: string,
+  operation: string,
+  entityId: string | undefined,
+  beforeState: any,
+  afterState: any,
+  changes: Record<string, { from: any; to: any }>
+): string {
+  const entityName = beforeState?.name || afterState?.name || entityId || 'unknown';
+  const entityType = getEntityType(module);
+  
+  // Extract operation type (create, update, delete, etc.)
+  const operationType = operation.toLowerCase();
+  
+  if (operationType.includes('create')) {
+    return `Created ${entityType} "${entityName}"`;
+  }
+  
+  if (operationType.includes('delete')) {
+    return `Deleted ${entityType} "${entityName}"`;
+  }
+  
+  if (operationType.includes('update')) {
+    const changedFields = Object.keys(changes);
+    
+    if (changedFields.length === 0) {
+      return `Updated ${entityType} "${entityName}" (no changes detected)`;
+    }
+    
+    if (changedFields.length === 1 && changedFields[0] === 'value') {
+      // Special case for simple value updates (like variables)
+      const change = changes.value;
+      const fromValue = formatValue(change.from);
+      const toValue = formatValue(change.to);
+      return `Updated ${entityType} "${entityName}" from ${fromValue} to ${toValue}`;
+    }
+    
+    // Multiple fields changed
+    const fieldList = changedFields.join(', ');
+    return `Updated ${entityType} "${entityName}" (changed: ${fieldList})`;
+  }
+  
+  // Default description
+  return `${operation} on ${entityType} "${entityName}"`;
+}
+
+/**
+ * Format a value for display in descriptions
+ */
+function formatValue(value: any): string {
+  if (value === null || value === undefined) {
+    return 'null';
+  }
+  
+  if (typeof value === 'string') {
+    return `"${value}"`;
+  }
+  
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+  
+  return String(value);
 }

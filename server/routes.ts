@@ -700,15 +700,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid fallback configuration." });
       }
       
-      const configVar = await storage.variables.getVariableByName('phone_validation_config');
+      const configVar = await storage.variables.getByName('phone_validation_config');
       if (configVar) {
         console.log('Updating existing config variable:', configVar.id);
-        await storage.variables.updateVariable(configVar.id, {
+        await storage.variables.update(configVar.id, {
           value: req.body,
         });
       } else {
         console.log('Creating new config variable');
-        await storage.variables.createVariable({
+        await storage.variables.create({
           name: 'phone_validation_config',
           value: req.body,
         });
@@ -752,10 +752,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/site-settings - Get site settings (no auth required for public settings)
   app.get("/api/site-settings", async (req, res) => {
     try {
-      const siteNameVar = await storage.variables.getVariableByName("site_name");
+      const siteNameVar = await storage.variables.getByName("site_name");
       const siteName = siteNameVar ? (siteNameVar.value as string) : "Sirius";
       
-      const siteFooterVar = await storage.variables.getVariableByName("site_footer");
+      const siteFooterVar = await storage.variables.getByName("site_footer");
       const footer = siteFooterVar ? (siteFooterVar.value as string) : "";
       
       res.json({ siteName, footer });
@@ -776,11 +776,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return;
         }
         
-        const existingVariable = await storage.variables.getVariableByName("site_name");
+        const existingVariable = await storage.variables.getByName("site_name");
         if (existingVariable) {
-          await storage.variables.updateVariable(existingVariable.id, { value: siteName });
+          await storage.variables.update(existingVariable.id, { value: siteName });
         } else {
-          await storage.variables.createVariable({ name: "site_name", value: siteName });
+          await storage.variables.create({ name: "site_name", value: siteName });
         }
       }
       
@@ -791,19 +791,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return;
         }
         
-        const existingFooter = await storage.variables.getVariableByName("site_footer");
+        const existingFooter = await storage.variables.getByName("site_footer");
         if (existingFooter) {
-          await storage.variables.updateVariable(existingFooter.id, { value: footer });
+          await storage.variables.update(existingFooter.id, { value: footer });
         } else {
-          await storage.variables.createVariable({ name: "site_footer", value: footer });
+          await storage.variables.create({ name: "site_footer", value: footer });
         }
       }
       
       // Return updated values
-      const siteNameVar = await storage.variables.getVariableByName("site_name");
+      const siteNameVar = await storage.variables.getByName("site_name");
       const finalSiteName = siteNameVar ? (siteNameVar.value as string) : "Sirius";
       
-      const siteFooterVar = await storage.variables.getVariableByName("site_footer");
+      const siteFooterVar = await storage.variables.getByName("site_footer");
       const finalFooter = siteFooterVar ? (siteFooterVar.value as string) : "";
       
       res.json({ siteName: finalSiteName, footer: finalFooter });

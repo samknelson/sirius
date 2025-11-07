@@ -60,8 +60,14 @@ if (process.env.DATABASE_URL) {
         { name: "module", dataType: "VARCHAR(100)" },
         { name: "operation", dataType: "VARCHAR(100)" },
         { name: "entity_id", dataType: "VARCHAR(255)" },
+        { name: "description", dataType: "TEXT" },
       ],
     });
+    
+    pgTransport.on('error', (error) => {
+      console.error('[PostgresTransport] Error:', error);
+    });
+    
     storageTransports.push(pgTransport);
   } catch (error) {
     console.error("Failed to initialize PostgreSQL transport for storage logger:", error);

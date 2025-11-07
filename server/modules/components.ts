@@ -17,7 +17,7 @@ async function getComponentConfigs(): Promise<ComponentConfig[]> {
 
   for (const component of allComponents) {
     const variableName = `component_${component.id}`;
-    const variable = await storage.variables.getVariableByName(variableName);
+    const variable = await storage.variables.getByName(variableName);
     
     configs.push({
       componentId: component.id,
@@ -38,7 +38,7 @@ export async function isComponentEnabled(componentId: string): Promise<boolean> 
   }
 
   const variableName = `component_${componentId}`;
-  const variable = await storage.variables.getVariableByName(variableName);
+  const variable = await storage.variables.getByName(variableName);
   
   return variable ? variable.value === true : component.enabledByDefault;
 }
@@ -80,17 +80,17 @@ export function registerComponentRoutes(
       const variableName = `component_${componentId}`;
       
       // Check if variable exists
-      const existingVariable = await storage.variables.getVariableByName(variableName);
+      const existingVariable = await storage.variables.getByName(variableName);
       
       if (existingVariable) {
         // Update existing variable
-        await storage.variables.updateVariable(existingVariable.id, {
+        await storage.variables.update(existingVariable.id, {
           name: variableName,
           value: enabled
         });
       } else {
         // Create new variable
-        await storage.variables.createVariable({
+        await storage.variables.create({
           name: variableName,
           value: enabled
         });

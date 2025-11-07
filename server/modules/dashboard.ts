@@ -19,7 +19,7 @@ export function registerDashboardRoutes(
       
       for (const role of roles) {
         const variableName = `welcome_message_${role.id}`;
-        const variable = await storage.variables.getVariableByName(variableName);
+        const variable = await storage.variables.getByName(variableName);
         welcomeMessages[role.id] = variable ? (variable.value as string) : "";
       }
       
@@ -48,12 +48,12 @@ export function registerDashboardRoutes(
       }
       
       const variableName = `welcome_message_${roleId}`;
-      const existingVariable = await storage.variables.getVariableByName(variableName);
+      const existingVariable = await storage.variables.getByName(variableName);
       
       if (existingVariable) {
-        await storage.variables.updateVariable(existingVariable.id, { value: message });
+        await storage.variables.update(existingVariable.id, { value: message });
       } else {
-        await storage.variables.createVariable({ name: variableName, value: message });
+        await storage.variables.create({ name: variableName, value: message });
       }
       
       res.json({ message });
@@ -67,7 +67,7 @@ export function registerDashboardRoutes(
   // GET /api/dashboard-plugins/config - Get all plugin configurations
   app.get("/api/dashboard-plugins/config", requireAuth, async (req, res) => {
     try {
-      const allVariables = await storage.variables.getAllVariables();
+      const allVariables = await storage.variables.getAll();
       const pluginConfigs = allVariables
         .filter(v => v.name.startsWith('dashboard_plugin_'))
         .map(v => ({
@@ -93,12 +93,12 @@ export function registerDashboardRoutes(
       }
       
       const variableName = `dashboard_plugin_${pluginId}`;
-      const existingVariable = await storage.variables.getVariableByName(variableName);
+      const existingVariable = await storage.variables.getByName(variableName);
       
       if (existingVariable) {
-        await storage.variables.updateVariable(existingVariable.id, { value: enabled });
+        await storage.variables.update(existingVariable.id, { value: enabled });
       } else {
-        await storage.variables.createVariable({ name: variableName, value: enabled });
+        await storage.variables.create({ name: variableName, value: enabled });
       }
       
       res.json({ pluginId, enabled });
