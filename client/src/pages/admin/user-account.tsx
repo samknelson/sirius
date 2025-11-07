@@ -35,10 +35,19 @@ export default function UserAccountPage() {
   const userId = params?.id;
   const { toast } = useToast();
 
+  // UUID validation regex
+  const isValidUUID = (id: string | undefined): boolean => {
+    if (!id) return false;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(id);
+  };
+
+  const validUserId = isValidUUID(userId) ? userId : null;
+
   const { data: user, isLoading } = useQuery<UserDetails>({
-    queryKey: ['/api/admin/users', userId],
+    queryKey: ['/api/admin/users', validUserId],
     queryFn: async () => {
-      const response = await fetch(`/api/admin/users/${userId}`, {
+      const response = await fetch(`/api/admin/users/${validUserId}`, {
         credentials: 'include'
       });
       if (!response.ok) {
@@ -46,7 +55,7 @@ export default function UserAccountPage() {
       }
       return await response.json();
     },
-    enabled: !!userId,
+    enabled: !!validUserId,
   });
 
   const { data: allRoles = [], isLoading: rolesLoading } = useQuery<Role[]>({
@@ -54,9 +63,9 @@ export default function UserAccountPage() {
   });
 
   const { data: userRoles = [], isLoading: userRolesLoading } = useQuery<Role[]>({
-    queryKey: ['/api/admin/users', userId, 'roles'],
+    queryKey: ['/api/admin/users', validUserId, 'roles'],
     queryFn: async () => {
-      const response = await fetch(`/api/admin/users/${userId}/roles`, {
+      const response = await fetch(`/api/admin/users/${validUserId}/roles`, {
         credentials: 'include'
       });
       if (!response.ok) {
@@ -64,16 +73,16 @@ export default function UserAccountPage() {
       }
       return await response.json();
     },
-    enabled: !!userId,
+    enabled: !!validUserId,
   });
 
   const toggleStatusMutation = useMutation({
     mutationFn: async (isActive: boolean) => {
-      const response = await apiRequest('PUT', `/api/admin/users/${userId}/status`, { isActive });
+      const response = await apiRequest('PUT', `/api/admin/users/${validUserId}/status`, { isActive });
       return await response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/users', userId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/users', validUserId] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
       toast({
         title: 'Success',
@@ -91,11 +100,11 @@ export default function UserAccountPage() {
 
   const assignRoleMutation = useMutation({
     mutationFn: async (roleId: string) => {
-      const response = await apiRequest('POST', `/api/admin/users/${userId}/roles`, { roleId });
+      const response = await apiRequest('POST', `/api/admin/users/${validUserId}/roles`, { roleId });
       return await response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/users', userId, 'roles'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/users', validUserId, 'roles'] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
       toast({
         title: 'Success',
@@ -113,11 +122,11 @@ export default function UserAccountPage() {
 
   const unassignRoleMutation = useMutation({
     mutationFn: async (roleId: string) => {
-      const response = await apiRequest('DELETE', `/api/admin/users/${userId}/roles/${roleId}`);
+      const response = await apiRequest('DELETE', `/api/admin/users/${validUserId}/roles/${roleId}`);
       return response;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/users', userId, 'roles'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/users', validUserId, 'roles'] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
       toast({
         title: 'Success',
@@ -151,13 +160,13 @@ export default function UserAccountPage() {
     return userRoles.some(role => role.id === roleId);
   };
 
-  if (!userId) {
+  if (!validUserId) {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="text-center">
           <h2 className="text-lg font-semibold text-red-600">Invalid User</h2>
-          <p className="text-muted-foreground mt-2">No user ID provided</p>
-          <Link to="/config/users">
+          <p className="text-muted-foreground mt-2">No valid user ID provided</p>
+          <Link to="/config/users/list">
             <Button className="mt-4">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Users
@@ -183,7 +192,7 @@ export default function UserAccountPage() {
         <div className="text-center">
           <h2 className="text-lg font-semibold text-red-600">User Not Found</h2>
           <p className="text-muted-foreground mt-2">The requested user could not be found</p>
-          <Link to="/config/users">
+          <Link to="/config/users/list">
             <Button className="mt-4">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Users
@@ -198,7 +207,7 @@ export default function UserAccountPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Link to="/config/users">
+        <Link to="/config/users/list">
           <Button variant="outline" size="sm" data-testid="button-back">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Users
