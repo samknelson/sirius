@@ -30,6 +30,9 @@ interface DetailedPolicyResult {
 export default function ProtectedRoute({ children, permission, policy }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading, authReady, hasPermission } = useAuth();
 
+  // Debug logging
+  console.log('[ProtectedRoute] Rendered with:', { permission, policy, isAuthenticated, authReady });
+
   // Check policy via API if policy prop is provided
   const { data: policyResult, isLoading: isPolicyLoading, isError: isPolicyError } = useQuery<DetailedPolicyResult>({
     queryKey: ['/api/access/policies', policy],
@@ -37,6 +40,8 @@ export default function ProtectedRoute({ children, permission, policy }: Protect
     staleTime: 30000, // 30 seconds
     retry: 2,
   });
+
+  console.log('[ProtectedRoute] Policy check:', { policy, policyResult, isPolicyLoading, isPolicyError });
 
   // Show loading state while auth is not ready
   if (!authReady || isLoading) {
