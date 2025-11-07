@@ -157,7 +157,7 @@ export default function LedgerAccountsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Link href={`/config/ledger/accounts/${account.id}`}>
+                      <Link href={`/ledger/accounts/${account.id}`}>
                         <Button
                           size="sm"
                           variant="ghost"

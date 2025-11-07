@@ -115,7 +115,7 @@ function AccountEditContent() {
               <Save className="mr-2" size={16} />
               {updateAccountMutation.isPending ? "Saving..." : "Save Changes"}
             </Button>
-            <Link href="/config/ledger/accounts">
+            <Link href="/ledger/accounts">
               <Button variant="outline" data-testid="button-back-to-list">
                 Back to List
               </Button>

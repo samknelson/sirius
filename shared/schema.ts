@@ -199,6 +199,16 @@ export const ledgerAccounts = pgTable("ledger_accounts", {
   isActive: boolean("is_active").default(true).notNull(),
 });
 
+export const ledgerPayments = pgTable("ledger_payments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  status: text("status").notNull().$type<'draft' | 'canceled' | 'cleared' | 'error'>(),
+  allocated: boolean("allocated").notNull().default(false),
+  payerType: text("payer_type").notNull().$type<'worker' | 'employer'>(),
+  payerId: varchar("payer_id").notNull(),
+  account: varchar("account").notNull().references(() => ledgerAccounts.id),
+  details: jsonb("details"),
+});
+
 // Zod schemas for validation
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -276,6 +286,10 @@ export const insertLedgerAccountSchema = createInsertSchema(ledgerAccounts).omit
   id: true,
 });
 
+export const insertLedgerPaymentSchema = createInsertSchema(ledgerPayments).omit({
+  id: true,
+});
+
 export const insertGenderOptionSchema = createInsertSchema(optionsGender).omit({
   id: true,
 });
@@ -347,6 +361,9 @@ export type LedgerStripePaymentMethod = typeof ledgerStripePaymentMethods.$infer
 
 export type InsertLedgerAccount = z.infer<typeof insertLedgerAccountSchema>;
 export type LedgerAccount = typeof ledgerAccounts.$inferSelect;
+
+export type InsertLedgerPayment = z.infer<typeof insertLedgerPaymentSchema>;
+export type LedgerPayment = typeof ledgerPayments.$inferSelect;
 
 export type InsertGenderOption = z.infer<typeof insertGenderOptionSchema>;
 export type GenderOption = typeof optionsGender.$inferSelect;

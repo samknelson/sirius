@@ -33,7 +33,7 @@ function AccountDetailsContent() {
         title: "Success",
         description: "Ledger account deleted successfully.",
       });
-      setLocation("/config/ledger/accounts");
+      setLocation("/ledger/accounts");
     },
     onError: (error: any) => {
       toast({
@@ -89,7 +89,7 @@ function AccountDetailsContent() {
         {/* Actions */}
         <div className="pt-4 border-t border-border">
           <div className="flex items-center justify-between">
-            <Link href="/config/ledger/accounts">
+            <Link href="/ledger/accounts">
               <Button variant="outline" data-testid="button-back-to-list">
                 Back to List
               </Button>
