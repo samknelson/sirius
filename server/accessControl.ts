@@ -289,16 +289,20 @@ export async function evaluatePolicy(
   policy: AccessPolicy,
   context: AccessContext
 ): Promise<AccessResult> {
-  // Short-circuit: admin permission bypasses all checks
+  // Check if user has admin permission
+  let isAdmin = false;
   if (context.user) {
-    const isAdmin = await hasAdminPermission(context.user.id);
-    if (isAdmin) {
-      return { granted: true };
-    }
+    isAdmin = await hasAdminPermission(context.user.id);
   }
 
   // Evaluate all requirements (implicit AND)
   for (const requirement of policy.requirements) {
+    // Component requirements apply to everyone, including admins
+    // All other requirements are bypassed by admin permission
+    if (isAdmin && requirement.type !== 'component') {
+      continue; // Skip this requirement for admins
+    }
+    
     const result = await evaluateRequirement(requirement, context);
     if (!result.granted) {
       return result;
@@ -319,37 +323,29 @@ export async function evaluatePolicyDetailed(
   let allowed = true;
   let adminBypass = false;
 
-  // Check for admin bypass
+  // Check if user has admin permission
+  let isAdmin = false;
   if (context.user) {
-    const isAdmin = await hasAdminPermission(context.user.id);
+    isAdmin = await hasAdminPermission(context.user.id);
     if (isAdmin) {
       adminBypass = true;
-      allowed = true;
-      // Mark all requirements as skipped due to admin bypass
-      for (const requirement of policy.requirements) {
-        requirements.push({
-          type: requirement.type,
-          description: getRequirementDescription(requirement),
-          status: 'skipped',
-          reason: 'Admin bypass - user has admin permission',
-        });
-      }
-      
-      return {
-        policy: {
-          name: policy.name,
-          description: policy.description,
-        },
-        allowed,
-        evaluatedAt: new Date().toISOString(),
-        adminBypass,
-        requirements,
-      };
     }
   }
 
   // Evaluate each requirement
   for (const requirement of policy.requirements) {
+    // Component requirements apply to everyone, including admins
+    // All other requirements are bypassed by admin permission
+    if (isAdmin && requirement.type !== 'component') {
+      requirements.push({
+        type: requirement.type,
+        description: getRequirementDescription(requirement),
+        status: 'skipped',
+        reason: 'Admin bypass - user has admin permission',
+      });
+      continue;
+    }
+
     const result = await evaluateRequirement(requirement, context);
     const evaluation: RequirementEvaluation = {
       type: requirement.type,
