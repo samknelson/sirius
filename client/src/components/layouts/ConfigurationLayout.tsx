@@ -133,21 +133,21 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       label: "Accounts",
       icon: BookOpen,
       testId: "nav-ledger-accounts",
-      policy: "ledgerStaff" as const, // Use policy-based check instead of permission
+      policy: "ledgerStaff" as const,
     },
     {
       path: "/config/ledger/stripe/test",
       label: "Test Connection",
       icon: Activity,
       testId: "nav-ledger-stripe-test",
-      permission: "admin",
+      policy: "ledgerStripeAdmin" as const,
     },
     {
       path: "/config/ledger/stripe/payment-types",
       label: "Payment Types",
       icon: CreditCard,
       testId: "nav-ledger-stripe-payment-types",
-      permission: "admin",
+      policy: "ledgerStripeAdmin" as const,
     },
   ];
 

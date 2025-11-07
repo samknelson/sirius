@@ -407,7 +407,7 @@ function Router() {
       </Route>
       
       <Route path="/config/ledger/stripe/test">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute policy="ledgerStripeAdmin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <StripeTestPage />
@@ -417,7 +417,7 @@ function Router() {
       </Route>
       
       <Route path="/config/ledger/stripe/payment-types">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute policy="ledgerStripeAdmin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PaymentTypesPage />
