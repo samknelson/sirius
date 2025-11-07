@@ -468,11 +468,6 @@ function Router() {
         <Redirect to="/config/users" />
       </Route>
       
-      {/* Configuration route - redirect to users page */}
-      <Route path="/config">
-        <Redirect to="/config/users" />
-      </Route>
-      
       {/* Dashboard route */}
       <Route path="/dashboard">
         <ProtectedRoute>
@@ -485,6 +480,11 @@ function Router() {
       {/* Root route - redirect to dashboard */}
       <Route path="/">
         <Redirect to="/dashboard" />
+      </Route>
+      
+      {/* Configuration fallback - redirect to users page */}
+      <Route path="/config">
+        <Redirect to="/config/users" />
       </Route>
       
       {/* 404 for unmatched routes */}
