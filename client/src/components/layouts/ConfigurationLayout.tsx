@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Users, MapPin, Phone, Globe, List, UserCog, ChevronDown, MessageSquare, Puzzle, Package, Heart, CreditCard, Activity, BookOpen } from "lucide-react";
+import { Users, MapPin, Phone, Globe, List, UserCog, ChevronDown, MessageSquare, Puzzle, Package, Heart, CreditCard, Activity, BookOpen, Wallet } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -133,6 +133,13 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       label: "Accounts",
       icon: BookOpen,
       testId: "nav-ledger-accounts",
+      policy: "ledgerStaff" as const,
+    },
+    {
+      path: "/config/ledger/payment-types",
+      label: "Payment Types",
+      icon: Wallet,
+      testId: "nav-ledger-payment-types",
       policy: "ledgerStaff" as const,
     },
     {
