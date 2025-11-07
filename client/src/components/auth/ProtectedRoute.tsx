@@ -32,6 +32,8 @@ export default function ProtectedRoute({ children, permission, policy }: Protect
   const { isAuthenticated, isLoading, hasPermission } = useAuth();
   const [, setLocation] = useLocation();
 
+  console.log("[ProtectedRoute] Rendering with policy:", policy, "authenticated:", isAuthenticated, "loading:", isLoading);
+
   // Check policy via API if policy prop is provided
   const { data: policyResult, isLoading: isPolicyLoading, isError: isPolicyError } = useQuery<DetailedPolicyResult>({
     queryKey: ['/api/access/policies', policy],
@@ -39,6 +41,8 @@ export default function ProtectedRoute({ children, permission, policy }: Protect
     staleTime: 30000, // 30 seconds
     retry: 2,
   });
+
+  console.log("[ProtectedRoute] Policy query state:", { policyResult, isPolicyLoading, isPolicyError });
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
