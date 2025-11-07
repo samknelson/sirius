@@ -133,8 +133,7 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       label: "Accounts",
       icon: BookOpen,
       testId: "nav-ledger-accounts",
-      permission: "ledger.staff",
-      requiresComponent: "ledger", // Matches ledgerStaff policy requirement
+      policy: "ledgerStaff" as const, // Use policy-based check instead of permission
     },
     {
       path: "/config/ledger/stripe/test",
@@ -151,6 +150,55 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       permission: "admin",
     },
   ];
+
+  // Fetch policy checks for navigation items that use policies
+  const policiesNeeded = ledgerStripeItems
+    .filter((item): item is typeof ledgerStripeItems[number] & { policy: string } => 'policy' in item && typeof item.policy === 'string')
+    .map(item => item.policy);
+
+  const { data: policyResults = {} } = useQuery<Record<string, { allowed: boolean }>>({
+    queryKey: ["/api/access/policies/batch", ...policiesNeeded],
+    queryFn: async () => {
+      if (policiesNeeded.length === 0) return {};
+      
+      const results: Record<string, { allowed: boolean }> = {};
+      await Promise.all(
+        policiesNeeded.map(async (policy) => {
+          try {
+            const response = await fetch(`/api/access/policies/${policy}`);
+            if (response.ok) {
+              const data = await response.json();
+              results[policy] = { allowed: data.allowed };
+            } else {
+              results[policy] = { allowed: false };
+            }
+          } catch {
+            results[policy] = { allowed: false };
+          }
+        })
+      );
+      return results;
+    },
+    staleTime: 30000, // 30 seconds
+    enabled: policiesNeeded.length > 0,
+  });
+
+  // Helper to check if user has access to a navigation item
+  const hasAccessToItem = (item: any) => {
+    // If item uses policy-based check, use the policy result
+    if (item.policy && typeof item.policy === 'string') {
+      return policyResults[item.policy]?.allowed ?? false;
+    }
+    
+    // Otherwise use permission-based check
+    if (item.permission) {
+      const hasPermissionCheck = hasPermission(item.permission);
+      const hasComponentCheck = !item.requiresComponent || isComponentEnabled(item.requiresComponent);
+      return hasPermissionCheck && hasComponentCheck;
+    }
+    
+    return false;
+  };
 
   // Check if any dropdown list item is active
   const isDropDownListActive = dropDownListItems.some(
@@ -231,11 +279,7 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
             )}
 
             {/* Ledger/Stripe Group */}
-            {ledgerStripeItems.some((item) => {
-              const hasPermissionCheck = hasPermission(item.permission);
-              const hasComponentCheck = !item.requiresComponent || isComponentEnabled(item.requiresComponent);
-              return hasPermissionCheck && hasComponentCheck;
-            }) && (
+            {ledgerStripeItems.some(hasAccessToItem) && (
               <Collapsible
                 open={isLedgerStripeOpen || isLedgerStripeActive}
                 onOpenChange={setIsLedgerStripeOpen}
@@ -254,11 +298,7 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
                   </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="ml-4 mt-2 space-y-2">
-                  {ledgerStripeItems.filter((item) => {
-                    const hasPermissionCheck = hasPermission(item.permission);
-                    const hasComponentCheck = !item.requiresComponent || isComponentEnabled(item.requiresComponent);
-                    return hasPermissionCheck && hasComponentCheck;
-                  }).map((item) => {
+                  {ledgerStripeItems.filter(hasAccessToItem).map((item) => {
                     const Icon = item.icon;
                     const isActive = location === item.path || location.startsWith(item.path + "/");
                     
