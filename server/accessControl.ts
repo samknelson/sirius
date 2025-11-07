@@ -236,6 +236,7 @@ async function evaluateRequirement(
       // Import dynamically to avoid circular dependency
       const { isComponentEnabled } = await import('./modules/components');
       const enabled = await isComponentEnabled(requirement.componentId);
+      console.log(`[ACCESS CONTROL] Component check for '${requirement.componentId}': enabled=${enabled}`);
       return enabled
         ? { granted: true }
         : { granted: false, reason: `Component '${requirement.componentId}' is not enabled` };
