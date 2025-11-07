@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Users, MapPin, Phone, Globe, List, UserCog, ChevronDown, MessageSquare, Puzzle, Package, Heart, CreditCard, Activity, BookOpen, Wallet, Settings, Shield, Key } from "lucide-react";
+import { Users, MapPin, Phone, Globe, List, UserCog, ChevronDown, MessageSquare, Puzzle, Package, Heart, CreditCard, Activity, BookOpen, Wallet, Settings, Shield, Key, FileText } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -118,6 +118,13 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       label: "Permissions",
       icon: Key,
       testId: "nav-config-users-permissions",
+      permission: "admin.manage",
+    },
+    {
+      path: "/config/users/policies",
+      label: "Policies",
+      icon: FileText,
+      testId: "nav-config-users-policies",
       permission: "admin.manage",
     },
   ];
