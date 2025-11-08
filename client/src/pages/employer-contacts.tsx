@@ -279,15 +279,14 @@ function EmployerContactsContent() {
                       name="contactTypeId"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Contact Type</FormLabel>
+                          <FormLabel>Contact Type (Optional)</FormLabel>
                           <Select onValueChange={field.onChange} defaultValue={field.value}>
                             <FormControl>
                               <SelectTrigger data-testid="select-contact-type">
-                                <SelectValue placeholder="Select contact type" />
+                                <SelectValue placeholder="Select contact type (optional)" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="">None</SelectItem>
                               {contactTypes?.map((type) => (
                                 <SelectItem key={type.id} value={type.id}>
                                   {type.name}
