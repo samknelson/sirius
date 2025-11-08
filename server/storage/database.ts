@@ -72,6 +72,81 @@ const variableLoggingConfig: StorageLoggingConfig<VariableStorage> = {
   }
 };
 
+/**
+ * Logging configuration for contact storage operations
+ * 
+ * Logs all contact mutations with full argument capture and change tracking.
+ */
+const contactLoggingConfig: StorageLoggingConfig<ContactsStorage> = {
+  module: 'contacts',
+  methods: {
+    createContact: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.displayName || args[0]?.given || args[0]?.family || 'new contact',
+      after: async (args, result, storage) => {
+        return result; // Capture created contact
+      }
+    },
+    updateName: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Contact ID
+      before: async (args, storage) => {
+        return await storage.getContact(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    updateNameComponents: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Contact ID
+      before: async (args, storage) => {
+        return await storage.getContact(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    updateEmail: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Contact ID
+      before: async (args, storage) => {
+        return await storage.getContact(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    updateBirthDate: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Contact ID
+      before: async (args, storage) => {
+        return await storage.getContact(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    updateGender: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Contact ID
+      before: async (args, storage) => {
+        return await storage.getContact(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    deleteContact: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Contact ID
+      before: async (args, storage) => {
+        return await storage.getContact(args[0]); // Capture what's being deleted
+      }
+    }
+  }
+};
+
 export class DatabaseStorage implements IStorage {
   variables: VariableStorage;
   users: UserStorage;
@@ -87,9 +162,9 @@ export class DatabaseStorage implements IStorage {
   constructor() {
     this.variables = withStorageLogging(createVariableStorage(), variableLoggingConfig);
     this.users = createUserStorage();
-    this.workers = createWorkerStorage();
+    this.contacts = withStorageLogging(createContactsStorage(), contactLoggingConfig);
+    this.workers = createWorkerStorage(this.contacts);
     this.employers = createEmployerStorage();
-    this.contacts = createContactsStorage();
     this.options = createOptionsStorage();
     this.trustBenefits = createTrustBenefitStorage();
     this.workerIds = createWorkerIdStorage();
