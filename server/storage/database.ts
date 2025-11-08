@@ -2,7 +2,7 @@ import { type VariableStorage, createVariableStorage } from "./variables";
 import { type UserStorage, createUserStorage } from "./users";
 import { type WorkerStorage, createWorkerStorage } from "./workers";
 import { type EmployerStorage, createEmployerStorage } from "./employers";
-import { type ContactsStorage, createContactsStorage } from "./contacts";
+import { type ContactsStorage, createContactsStorage, type AddressStorage, type PhoneNumberStorage } from "./contacts";
 import { type OptionsStorage, createOptionsStorage } from "./options";
 import { type TrustBenefitStorage, createTrustBenefitStorage } from "./trust-benefits";
 import { type WorkerIdStorage, createWorkerIdStorage } from "./worker-ids";
@@ -147,6 +147,96 @@ const contactLoggingConfig: StorageLoggingConfig<ContactsStorage> = {
   }
 };
 
+/**
+ * Logging configuration for address storage operations
+ * 
+ * Logs all postal address mutations with full argument capture and change tracking.
+ */
+export const addressLoggingConfig: StorageLoggingConfig<AddressStorage> = {
+  module: 'contacts.addresses',
+  methods: {
+    createPostalAddress: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.contactId || 'new address',
+      after: async (args, result, storage) => {
+        return result; // Capture created address
+      }
+    },
+    updatePostalAddress: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Address ID
+      before: async (args, storage) => {
+        return await storage.getPostalAddress(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    deletePostalAddress: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Address ID
+      before: async (args, storage) => {
+        return await storage.getPostalAddress(args[0]); // Capture what's being deleted
+      }
+    },
+    setAddressAsPrimary: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Address ID
+      before: async (args, storage) => {
+        return await storage.getPostalAddress(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    }
+  }
+};
+
+/**
+ * Logging configuration for phone number storage operations
+ * 
+ * Logs all phone number mutations with full argument capture and change tracking.
+ */
+export const phoneNumberLoggingConfig: StorageLoggingConfig<PhoneNumberStorage> = {
+  module: 'contacts.phoneNumbers',
+  methods: {
+    createPhoneNumber: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.contactId || 'new phone',
+      after: async (args, result, storage) => {
+        return result; // Capture created phone number
+      }
+    },
+    updatePhoneNumber: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Phone number ID
+      before: async (args, storage) => {
+        return await storage.getPhoneNumber(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    deletePhoneNumber: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Phone number ID
+      before: async (args, storage) => {
+        return await storage.getPhoneNumber(args[0]); // Capture what's being deleted
+      }
+    },
+    setPhoneNumberAsPrimary: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Phone number ID
+      before: async (args, storage) => {
+        return await storage.getPhoneNumber(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    }
+  }
+};
+
 export class DatabaseStorage implements IStorage {
   variables: VariableStorage;
   users: UserStorage;
@@ -162,7 +252,10 @@ export class DatabaseStorage implements IStorage {
   constructor() {
     this.variables = withStorageLogging(createVariableStorage(), variableLoggingConfig);
     this.users = createUserStorage();
-    this.contacts = withStorageLogging(createContactsStorage(), contactLoggingConfig);
+    this.contacts = withStorageLogging(
+      createContactsStorage(addressLoggingConfig, phoneNumberLoggingConfig), 
+      contactLoggingConfig
+    );
     this.workers = createWorkerStorage(this.contacts);
     this.employers = createEmployerStorage();
     this.options = createOptionsStorage();

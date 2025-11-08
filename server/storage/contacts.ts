@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { contacts, postalAddresses, phoneNumbers, optionsGender, type Contact, type InsertContact, type PostalAddress, type InsertPostalAddress, type PhoneNumber, type InsertPhoneNumber } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
+import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 
 // Address Storage Interface
 export interface AddressStorage {
@@ -462,8 +463,21 @@ export function createContactStorage(): ContactStorage {
 }
 
 // Create Contacts Storage with all sub-namespaces
-export function createContactsStorage(): ContactsStorage {
+export function createContactsStorage(
+  addressLoggingConfig?: StorageLoggingConfig<AddressStorage>,
+  phoneNumberLoggingConfig?: StorageLoggingConfig<PhoneNumberStorage>
+): ContactsStorage {
   const contactStorage = createContactStorage();
+  
+  // Create nested storage instances with optional logging
+  const addressStorage = addressLoggingConfig 
+    ? withStorageLogging(createAddressStorage(), addressLoggingConfig)
+    : createAddressStorage();
+    
+  const phoneNumberStorage = phoneNumberLoggingConfig
+    ? withStorageLogging(createPhoneNumberStorage(), phoneNumberLoggingConfig)
+    : createPhoneNumberStorage();
+  
   return {
     getContact: contactStorage.getContact,
     createContact: contactStorage.createContact,
@@ -473,7 +487,7 @@ export function createContactsStorage(): ContactsStorage {
     updateBirthDate: contactStorage.updateBirthDate,
     updateGender: contactStorage.updateGender,
     deleteContact: contactStorage.deleteContact,
-    addresses: createAddressStorage(),
-    phoneNumbers: createPhoneNumberStorage()
+    addresses: addressStorage,
+    phoneNumbers: phoneNumberStorage
   };
 }
