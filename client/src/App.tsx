@@ -446,7 +446,7 @@ function Router() {
       </Route>
       
       <Route path="/config/masquerade">
-        <ProtectedRoute permission="admin.manage">
+        <ProtectedRoute policy="masquerade">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <MasqueradePage />
