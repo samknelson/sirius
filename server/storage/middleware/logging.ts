@@ -250,6 +250,24 @@ function getEntityType(module: string): string {
 }
 
 /**
+ * Build a display name from contact name components
+ */
+function buildContactDisplayName(contact: any): string | null {
+  if (!contact) return null;
+  
+  const parts: string[] = [];
+  
+  if (contact.title) parts.push(contact.title);
+  if (contact.given) parts.push(contact.given);
+  if (contact.middle) parts.push(contact.middle);
+  if (contact.family) parts.push(contact.family);
+  if (contact.generational) parts.push(contact.generational);
+  if (contact.credentials) parts.push(contact.credentials);
+  
+  return parts.length > 0 ? parts.join(' ') : null;
+}
+
+/**
  * Generate a human-readable description of the storage operation
  */
 function generateDescription(
@@ -260,7 +278,17 @@ function generateDescription(
   afterState: any,
   changes: Record<string, { from: any; to: any }>
 ): string {
-  const entityName = beforeState?.name || afterState?.name || entityId || 'unknown';
+  let entityName: string;
+  
+  // Special handling for contacts - build display name from components
+  if (module === 'contacts' || module.startsWith('contacts.')) {
+    const state = afterState || beforeState;
+    const displayName = buildContactDisplayName(state);
+    entityName = displayName || state?.name || entityId || 'unknown';
+  } else {
+    entityName = beforeState?.name || afterState?.name || entityId || 'unknown';
+  }
+  
   const entityType = getEntityType(module);
   
   // Extract operation type (create, update, delete, etc.)
