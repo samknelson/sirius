@@ -259,20 +259,31 @@ async function evaluateRequirement(
     }
 
     case 'anyOf': {
+      const failedReasons: string[] = [];
       for (const option of requirement.options) {
         const result = await evaluateRequirement(option, context);
         if (result.granted) {
           return { granted: true };
         }
+        // Collect failure reasons
+        const optionDesc = getRequirementDescription(option);
+        failedReasons.push(`${optionDesc}${result.reason ? ': ' + result.reason : ''}`);
       }
-      return { granted: false, reason: 'None of the required conditions met' };
+      return { 
+        granted: false, 
+        reason: `None of the required conditions met. Failed: ${failedReasons.join('; ')}`
+      };
     }
 
     case 'allOf': {
       for (const option of requirement.options) {
         const result = await evaluateRequirement(option, context);
         if (!result.granted) {
-          return result;
+          const optionDesc = getRequirementDescription(option);
+          return {
+            granted: false,
+            reason: `${optionDesc}${result.reason ? ': ' + result.reason : ''}`
+          };
         }
       }
       return { granted: true };
