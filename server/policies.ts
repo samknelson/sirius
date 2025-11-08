@@ -193,6 +193,18 @@ export const masquerade: AccessPolicy = {
 };
 
 /**
+ * Staff access policy
+ */
+export const staff: AccessPolicy = {
+  name: 'Staff Access',
+  description: 'Requires staff permission',
+  requirements: [
+    { type: 'authenticated' },
+    { type: 'permission', key: 'staff' },
+  ],
+};
+
+/**
  * Example: Complex policy with multiple permission options
  */
 export const workersViewOrManage: AccessPolicy = {
@@ -227,5 +239,6 @@ export const policies = {
   ledgerStaff,
   bookmark,
   masquerade,
+  staff,
   workersViewOrManage,
 };

@@ -1510,8 +1510,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/workers/:workerId/logs - Get all logs related to a worker (requires workers.view permission)
-  app.get("/api/workers/:workerId/logs", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  // GET /api/workers/:workerId/logs - Get all logs related to a worker (requires staff permission)
+  app.get("/api/workers/:workerId/logs", requireAuth, requireAccess(policies.staff), async (req, res) => {
     try {
       const { workerId } = req.params;
       const { module, operation, startDate, endDate } = req.query;
@@ -1572,8 +1572,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/employers/:employerId/logs - Get all logs related to an employer (requires workers.view permission)
-  app.get("/api/employers/:employerId/logs", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  // GET /api/employers/:employerId/logs - Get all logs related to an employer (requires staff permission)
+  app.get("/api/employers/:employerId/logs", requireAuth, requireAccess(policies.staff), async (req, res) => {
     try {
       const { employerId } = req.params;
       const { module, operation, startDate, endDate } = req.query;
@@ -1586,6 +1586,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Collect all entity IDs related to this employer
       const entityIds: string[] = [employerId];
+
+      // Get all Stripe payment methods for this employer
+      const paymentMethods = await storage.ledger.stripePaymentMethods.getByEntity('employer', employerId);
+      entityIds.push(...paymentMethods.map(pm => pm.id));
 
       // Build all conditions including the entity ID filter
       const conditions = [inArray(winstonLogs.entityId, entityIds)];
