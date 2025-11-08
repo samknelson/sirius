@@ -352,6 +352,117 @@ const stripePaymentMethodLoggingConfig: StorageLoggingConfig<import('./ledger').
   }
 };
 
+/**
+ * Logging configuration for user storage operations
+ * 
+ * Logs all user, role, and permission management operations with full argument capture and change tracking.
+ */
+const userLoggingConfig: StorageLoggingConfig<UserStorage> = {
+  module: 'users',
+  methods: {
+    createUser: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.email || 'new user',
+      after: async (args, result, storage) => {
+        return result; // Capture created user
+      }
+    },
+    updateUser: {
+      enabled: true,
+      getEntityId: (args) => args[0], // User ID
+      before: async (args, storage) => {
+        return await storage.getUser(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    deleteUser: {
+      enabled: true,
+      getEntityId: (args) => args[0], // User ID
+      before: async (args, storage) => {
+        return await storage.getUser(args[0]); // Capture what's being deleted
+      }
+    },
+    linkReplitAccount: {
+      enabled: true,
+      getEntityId: (args) => args[0], // User ID
+      before: async (args, storage) => {
+        return await storage.getUser(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    createRole: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.name || 'new role',
+      after: async (args, result, storage) => {
+        return result; // Capture created role
+      }
+    },
+    updateRole: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Role ID
+      before: async (args, storage) => {
+        return await storage.getRole(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    deleteRole: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Role ID
+      before: async (args, storage) => {
+        return await storage.getRole(args[0]); // Capture what's being deleted
+      }
+    },
+    updateRoleSequence: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Role ID
+      before: async (args, storage) => {
+        return await storage.getRole(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    assignRoleToUser: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.userId || 'user',
+      after: async (args, result, storage) => {
+        return result; // Capture role assignment
+      }
+    },
+    unassignRoleFromUser: {
+      enabled: true,
+      getEntityId: (args) => args[0], // User ID
+      before: async (args, storage) => {
+        // Capture the roles before removal
+        const roles = await storage.getUserRoles(args[0]);
+        return { userId: args[0], roleId: args[1], roles };
+      }
+    },
+    assignPermissionToRole: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.roleId || 'role',
+      after: async (args, result, storage) => {
+        return result; // Capture permission assignment
+      }
+    },
+    unassignPermissionFromRole: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Role ID
+      before: async (args, storage) => {
+        // Capture the permissions before removal
+        const permissions = await storage.getRolePermissions(args[0]);
+        return { roleId: args[0], permissionKey: args[1], permissions };
+      }
+    }
+  }
+};
+
 export class DatabaseStorage implements IStorage {
   variables: VariableStorage;
   users: UserStorage;
@@ -366,7 +477,7 @@ export class DatabaseStorage implements IStorage {
 
   constructor() {
     this.variables = withStorageLogging(createVariableStorage(), variableLoggingConfig);
-    this.users = createUserStorage();
+    this.users = withStorageLogging(createUserStorage(), userLoggingConfig);
     this.contacts = withStorageLogging(
       createContactsStorage(addressLoggingConfig, phoneNumberLoggingConfig), 
       contactLoggingConfig

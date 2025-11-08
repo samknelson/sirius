@@ -1,27 +1,14 @@
 import { useState } from 'react';
-import { useRoute } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Loader2, UserCheck, UserX, Shield } from 'lucide-react';
-import { Link } from 'wouter';
-
-interface UserDetails {
-  id: string;
-  email: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  profileImageUrl: string | null;
-  isActive: boolean;
-  createdAt: string;
-  lastLogin?: string;
-}
+import { Loader2, UserCheck, UserX, Shield } from 'lucide-react';
+import { UserLayout, useUserLayout } from '@/components/layouts/UserLayout';
 
 interface Role {
   id: string;
@@ -30,42 +17,18 @@ interface Role {
   createdAt: string;
 }
 
-export default function UserAccountPage() {
-  const [, params] = useRoute('/users/:id');
-  const userId = params?.id;
+function UserAccountContent() {
+  const { user } = useUserLayout();
   const { toast } = useToast();
-
-  // UUID validation regex
-  const isValidUUID = (id: string | undefined): boolean => {
-    if (!id) return false;
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    return uuidRegex.test(id);
-  };
-
-  const validUserId = isValidUUID(userId) ? userId : null;
-
-  const { data: user, isLoading } = useQuery<UserDetails>({
-    queryKey: ['/api/admin/users', validUserId],
-    queryFn: async () => {
-      const response = await fetch(`/api/admin/users/${validUserId}`, {
-        credentials: 'include'
-      });
-      if (!response.ok) {
-        throw new Error('Failed to fetch user details');
-      }
-      return await response.json();
-    },
-    enabled: !!validUserId,
-  });
 
   const { data: allRoles = [], isLoading: rolesLoading } = useQuery<Role[]>({
     queryKey: ['/api/admin/roles'],
   });
 
   const { data: userRoles = [], isLoading: userRolesLoading } = useQuery<Role[]>({
-    queryKey: ['/api/admin/users', validUserId, 'roles'],
+    queryKey: ['/api/admin/users', user.id, 'roles'],
     queryFn: async () => {
-      const response = await fetch(`/api/admin/users/${validUserId}/roles`, {
+      const response = await fetch(`/api/admin/users/${user.id}/roles`, {
         credentials: 'include'
       });
       if (!response.ok) {
@@ -73,16 +36,15 @@ export default function UserAccountPage() {
       }
       return await response.json();
     },
-    enabled: !!validUserId,
   });
 
   const toggleStatusMutation = useMutation({
     mutationFn: async (isActive: boolean) => {
-      const response = await apiRequest('PUT', `/api/admin/users/${validUserId}/status`, { isActive });
+      const response = await apiRequest('PUT', `/api/admin/users/${user.id}/status`, { isActive });
       return await response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/users', validUserId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/users', user.id] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
       toast({
         title: 'Success',
@@ -100,11 +62,11 @@ export default function UserAccountPage() {
 
   const assignRoleMutation = useMutation({
     mutationFn: async (roleId: string) => {
-      const response = await apiRequest('POST', `/api/admin/users/${validUserId}/roles`, { roleId });
+      const response = await apiRequest('POST', `/api/admin/users/${user.id}/roles`, { roleId });
       return await response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/users', validUserId, 'roles'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/users', user.id, 'roles'] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
       toast({
         title: 'Success',
@@ -122,11 +84,11 @@ export default function UserAccountPage() {
 
   const unassignRoleMutation = useMutation({
     mutationFn: async (roleId: string) => {
-      const response = await apiRequest('DELETE', `/api/admin/users/${validUserId}/roles/${roleId}`);
+      const response = await apiRequest('DELETE', `/api/admin/users/${user.id}/roles/${roleId}`);
       return response;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/users', validUserId, 'roles'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/users', user.id, 'roles'] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
       toast({
         title: 'Success',
@@ -160,24 +122,7 @@ export default function UserAccountPage() {
     return userRoles.some(role => role.id === roleId);
   };
 
-  if (!validUserId) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <div className="text-center">
-          <h2 className="text-lg font-semibold text-red-600">Invalid User</h2>
-          <p className="text-muted-foreground mt-2">No valid user ID provided</p>
-          <Link to="/config/users/list">
-            <Button className="mt-4">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Users
-            </Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (isLoading || rolesLoading || userRolesLoading) {
+  if (rolesLoading || userRolesLoading) {
     return (
       <div className="flex items-center justify-center p-8">
         <Loader2 className="h-6 w-6 animate-spin mr-2" />
@@ -186,38 +131,8 @@ export default function UserAccountPage() {
     );
   }
 
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <div className="text-center">
-          <h2 className="text-lg font-semibold text-red-600">User Not Found</h2>
-          <p className="text-muted-foreground mt-2">The requested user could not be found</p>
-          <Link to="/config/users/list">
-            <Button className="mt-4">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Users
-            </Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Link to="/config/users/list">
-          <Button variant="outline" size="sm" data-testid="button-back">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Users
-          </Button>
-        </Link>
-        <h1 className="text-2xl font-bold">
-          User Account: {user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.email || user.id}
-        </h1>
-      </div>
-
       {/* User Information Card */}
       <Card>
         <CardHeader>
@@ -359,5 +274,13 @@ export default function UserAccountPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function UserAccountPage() {
+  return (
+    <UserLayout activeTab="details">
+      <UserAccountContent />
+    </UserLayout>
   );
 }

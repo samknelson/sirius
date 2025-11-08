@@ -1572,6 +1572,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/users/:userId/logs - Get all logs related to a user (requires staff permission)
+  app.get("/api/users/:userId/logs", requireAuth, requireAccess(policies.staff), async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { module, operation, startDate, endDate } = req.query;
+
+      // Build all conditions including the entity ID filter
+      const conditions = [eq(winstonLogs.entityId, userId)];
+      
+      if (module && typeof module === 'string') {
+        conditions.push(eq(winstonLogs.module, module));
+      }
+      if (operation && typeof operation === 'string') {
+        conditions.push(eq(winstonLogs.operation, operation));
+      }
+      if (startDate && typeof startDate === 'string') {
+        conditions.push(gte(winstonLogs.timestamp, new Date(startDate)));
+      }
+      if (endDate && typeof endDate === 'string') {
+        conditions.push(lte(winstonLogs.timestamp, new Date(endDate)));
+      }
+
+      // Query logs with filters
+      const logs = await db
+        .select()
+        .from(winstonLogs)
+        .where(and(...conditions))
+        .orderBy(desc(winstonLogs.timestamp))
+        .limit(500);
+
+      res.json(logs);
+    } catch (error) {
+      console.error("Failed to fetch user logs:", error);
+      res.status(500).json({ message: "Failed to fetch user logs" });
+    }
+  });
+
   // GET /api/employers/:employerId/logs - Get all logs related to an employer (requires staff permission)
   app.get("/api/employers/:employerId/logs", requireAuth, requireAccess(policies.staff), async (req, res) => {
     try {

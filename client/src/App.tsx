@@ -38,6 +38,7 @@ import TrustBenefitView from "@/pages/trust-benefit-view";
 import TrustBenefitEdit from "@/pages/trust-benefit-edit";
 import AdminUsersPage from "@/pages/admin/users";
 import UserAccountPage from "@/pages/admin/user-account";
+import UserLogs from "@/pages/admin/user-logs";
 import AdminRolesPage from "@/pages/admin/roles";
 import AdminPermissionsPage from "@/pages/admin/permissions";
 import AdminLayout from "@/components/layouts/AdminLayout";
@@ -189,7 +190,7 @@ function Router() {
       </Route>
       
       <Route path="/workers/:id/logs">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute policy="staff">
           <AuthenticatedLayout>
             <WorkerLogs />
           </AuthenticatedLayout>
@@ -253,7 +254,7 @@ function Router() {
       </Route>
       
       <Route path="/employers/:id/logs">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute policy="staff">
           <AuthenticatedLayout>
             <EmployerLogs />
           </AuthenticatedLayout>
@@ -526,6 +527,14 @@ function Router() {
         <ProtectedRoute permission="admin.manage">
           <AuthenticatedLayout>
             <UserAccountPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/users/:id/logs">
+        <ProtectedRoute policy="staff">
+          <AuthenticatedLayout>
+            <UserLogs />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
