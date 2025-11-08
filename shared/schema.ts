@@ -83,6 +83,13 @@ export const employers = pgTable("employers", {
   stripeCustomerId: text("stripe_customer_id"),
 });
 
+export const employerContacts = pgTable("employer_contacts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
+  contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
+  contactTypeId: varchar("contact_type_id").references(() => optionsEmployerContactType.id, { onDelete: 'set null' }),
+});
+
 export const trustBenefits = pgTable("trust_benefits", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -273,6 +280,10 @@ export const insertEmployerSchema = createInsertSchema(employers).omit({
   id: true,
 });
 
+export const insertEmployerContactSchema = createInsertSchema(employerContacts).omit({
+  id: true,
+});
+
 export const insertTrustBenefitSchema = createInsertSchema(trustBenefits).omit({
   id: true,
 });
@@ -364,6 +375,9 @@ export type Worker = typeof workers.$inferSelect;
 
 export type InsertEmployer = z.infer<typeof insertEmployerSchema>;
 export type Employer = typeof employers.$inferSelect;
+
+export type InsertEmployerContact = z.infer<typeof insertEmployerContactSchema>;
+export type EmployerContact = typeof employerContacts.$inferSelect;
 
 export type InsertTrustBenefit = z.infer<typeof insertTrustBenefitSchema>;
 export type TrustBenefit = typeof trustBenefits.$inferSelect;
