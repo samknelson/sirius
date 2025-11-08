@@ -52,6 +52,7 @@ import PhoneNumbersConfigPage from "@/pages/config/phone-numbers";
 import GenderOptionsPage from "@/pages/config/gender-options";
 import WorkerIDTypesPage from "@/pages/config/worker-id-types";
 import TrustBenefitTypesPage from "@/pages/config/trust-benefit-types";
+import EmployerContactTypesPage from "@/pages/config/employer-contact-types";
 import MasqueradePage from "@/pages/config/masquerade";
 import WelcomeMessagesConfigPage from "@/pages/config/welcome-messages";
 import DashboardPluginsConfigPage from "@/pages/config/dashboard-plugins";
@@ -400,6 +401,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <TrustBenefitTypesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/config/employer-contact-types">
+        <ProtectedRoute permission="variables.manage">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <EmployerContactTypesPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

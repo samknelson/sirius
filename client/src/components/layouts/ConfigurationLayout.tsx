@@ -151,6 +151,13 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       testId: "nav-config-trust-benefit-types",
       permission: "variables.manage",
     },
+    {
+      path: "/config/employer-contact-types",
+      label: "Employer Contact Types",
+      icon: List,
+      testId: "nav-config-employer-contact-types",
+      permission: "variables.manage",
+    },
   ];
 
   const ledgerItems = [
