@@ -1,7 +1,9 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertWorkerSchema, insertTrustBenefitTypeSchema, insertTrustBenefitSchema, type InsertEmployer, type InsertTrustBenefit } from "@shared/schema";
+import { db } from "./db";
+import { insertWorkerSchema, insertTrustBenefitTypeSchema, insertTrustBenefitSchema, type InsertEmployer, type InsertTrustBenefit, winstonLogs, type WorkerId, type PostalAddress, type PhoneNumber } from "@shared/schema";
+import { eq, and, inArray, gte, lte, desc } from "drizzle-orm";
 import { registerUserRoutes } from "./modules/users";
 import { registerVariableRoutes } from "./modules/variables";
 import { registerPostalAddressRoutes } from "./modules/postal-addresses";
@@ -1505,6 +1507,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Failed to delete worker benefit:", error);
       res.status(500).json({ message: "Failed to delete worker benefit" });
+    }
+  });
+
+  // GET /api/workers/:workerId/logs - Get all logs related to a worker (requires workers.view permission)
+  app.get("/api/workers/:workerId/logs", requireAuth, requirePermission("workers.view"), async (req, res) => {
+    try {
+      const { workerId } = req.params;
+      const { module, operation, startDate, endDate } = req.query;
+
+      // Get the worker to ensure it exists and get the contactId
+      const worker = await storage.workers.getWorker(workerId);
+      if (!worker) {
+        return res.status(404).json({ message: "Worker not found" });
+      }
+
+      // Collect all entity IDs related to this worker
+      const entityIds: string[] = [workerId];
+
+      // Add contact ID
+      if (worker.contactId) {
+        entityIds.push(worker.contactId);
+
+        // Get all addresses for this contact
+        const addresses = await storage.contacts.addresses.getPostalAddressesByContact(worker.contactId);
+        entityIds.push(...addresses.map((addr: PostalAddress) => addr.id));
+
+        // Get all phone numbers for this contact
+        const phoneNumbers = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(worker.contactId);
+        entityIds.push(...phoneNumbers.map((phone: PhoneNumber) => phone.id));
+      }
+
+      // Get all worker IDs for this worker
+      const workerIds = await storage.workerIds.getWorkerIdsByWorkerId(workerId);
+      entityIds.push(...workerIds.map((wid: WorkerId) => wid.id));
+
+      // Build all conditions including the entity ID filter
+      const conditions = [inArray(winstonLogs.entityId, entityIds)];
+      
+      if (module && typeof module === 'string') {
+        conditions.push(eq(winstonLogs.module, module));
+      }
+      if (operation && typeof operation === 'string') {
+        conditions.push(eq(winstonLogs.operation, operation));
+      }
+      if (startDate && typeof startDate === 'string') {
+        conditions.push(gte(winstonLogs.timestamp, new Date(startDate)));
+      }
+      if (endDate && typeof endDate === 'string') {
+        conditions.push(lte(winstonLogs.timestamp, new Date(endDate)));
+      }
+
+      // Execute query with all conditions and order by timestamp descending (newest first)
+      const logs = await db
+        .select()
+        .from(winstonLogs)
+        .where(and(...conditions))
+        .orderBy(desc(winstonLogs.timestamp));
+
+      res.json(logs);
+    } catch (error) {
+      console.error("Failed to fetch worker logs:", error);
+      res.status(500).json({ message: "Failed to fetch worker logs" });
     }
   });
 

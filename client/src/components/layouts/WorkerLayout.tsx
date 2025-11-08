@@ -26,7 +26,7 @@ export function useWorkerLayout() {
 }
 
 interface WorkerLayoutProps {
-  activeTab: "details" | "identity" | "name" | "email" | "ids" | "addresses" | "phone-numbers" | "birth-date" | "gender" | "benefits";
+  activeTab: "details" | "identity" | "name" | "email" | "ids" | "addresses" | "phone-numbers" | "birth-date" | "gender" | "benefits" | "logs";
   children: ReactNode;
 }
 
@@ -151,6 +151,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     { id: "identity", label: "Identity", href: `/workers/${worker.id}/name` },
     { id: "contact", label: "Contact", href: `/workers/${worker.id}/email` },
     { id: "benefits", label: "Benefits", href: `/workers/${worker.id}/benefits` },
+    { id: "logs", label: "Logs", href: `/workers/${worker.id}/logs` },
   ];
 
   const identitySubTabs = [
