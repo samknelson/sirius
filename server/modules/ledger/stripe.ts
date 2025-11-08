@@ -478,6 +478,57 @@ export function registerLedgerStripeRoutes(app: Express) {
     }
   });
 
+  // Get full payment method details from Stripe
+  app.get("/api/employers/:id/ledger/stripe/payment-methods/:pmId/details", requireAccess(policies.ledgerStripeEmployer), async (req: Request, res: Response) => {
+    try {
+      const { id: employerId, pmId } = req.params;
+
+      const paymentMethod = await storage.ledger.stripePaymentMethods.get(pmId);
+      if (!paymentMethod) {
+        return res.status(404).json({ message: "Payment method not found" });
+      }
+
+      if (paymentMethod.entityId !== employerId) {
+        return res.status(403).json({ message: "Payment method does not belong to this employer" });
+      }
+
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(503).json({ 
+          message: "Stripe is not configured",
+          error: "STRIPE_SECRET_KEY is not set",
+        });
+      }
+
+      const stripeClient = getStripeClient();
+      
+      try {
+        const stripePaymentMethod = await stripeClient.paymentMethods.retrieve(paymentMethod.paymentMethod);
+        
+        const stripeBaseUrl = process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_') 
+          ? 'https://dashboard.stripe.com/test' 
+          : 'https://dashboard.stripe.com';
+        
+        res.json({
+          paymentMethod: stripePaymentMethod,
+          stripeUrl: `${stripeBaseUrl}/payment_methods/${stripePaymentMethod.id}`,
+        });
+      } catch (error: any) {
+        if (error.code === 'resource_missing') {
+          return res.status(404).json({ 
+            message: "Payment method not found in Stripe",
+            error: "This payment method no longer exists in Stripe",
+          });
+        }
+        throw error;
+      }
+    } catch (error: any) {
+      res.status(500).json({ 
+        message: "Failed to fetch payment method details",
+        error: error.message,
+      });
+    }
+  });
+
   // Delete payment method
   app.delete("/api/employers/:id/ledger/stripe/payment-methods/:pmId", requireAccess(policies.ledgerStripeEmployer), async (req: Request, res: Response) => {
     try {

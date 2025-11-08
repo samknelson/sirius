@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { CreditCard, Plus, Trash2, Check, X, Star, Loader2, Building2 } from "lucide-react";
+import { CreditCard, Plus, Trash2, Check, X, Star, Loader2, Building2, ExternalLink, Eye } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -66,6 +66,10 @@ function PaymentMethodsContent() {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [isLoadingSetupIntent, setIsLoadingSetupIntent] = useState(false);
   const [confirmedPaymentMethodId, setConfirmedPaymentMethodId] = useState<string | null>(null);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [selectedPaymentMethodForDetails, setSelectedPaymentMethodForDetails] = useState<PaymentMethod | null>(null);
+  const [stripePaymentMethodDetails, setStripePaymentMethodDetails] = useState<any>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
 
   const { data: paymentMethods, isLoading, error } = useQuery<PaymentMethod[]>({
     queryKey: ['/api/employers', employer.id, 'ledger', 'stripe', 'payment-methods'],
@@ -208,6 +212,28 @@ function PaymentMethodsContent() {
 
   const formatCardBrand = (brand: string) => {
     return brand.charAt(0).toUpperCase() + brand.slice(1);
+  };
+
+  const handleViewDetails = async (pm: PaymentMethod) => {
+    setSelectedPaymentMethodForDetails(pm);
+    setDetailsDialogOpen(true);
+    setLoadingDetails(true);
+    setStripePaymentMethodDetails(null);
+    
+    try {
+      const response = await apiRequest('GET', `/api/employers/${employer.id}/ledger/stripe/payment-methods/${pm.id}/details`);
+      const data = await response.json();
+      setStripePaymentMethodDetails(data);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to load payment method details",
+        variant: "destructive",
+      });
+      setDetailsDialogOpen(false);
+    } finally {
+      setLoadingDetails(false);
+    }
   };
 
   if (isLoading) {
@@ -392,6 +418,16 @@ function PaymentMethodsContent() {
                           Set Default
                         </Button>
                       )}
+                      {!pm.stripeError && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleViewDetails(pm)}
+                          data-testid={`button-view-details-${pm.id}`}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button
                         variant="outline"
                         size="sm"
@@ -431,6 +467,221 @@ function PaymentMethodsContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={detailsDialogOpen} onOpenChange={setDetailsDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Payment Method Details</DialogTitle>
+            <DialogDescription>
+              Complete information from Stripe
+            </DialogDescription>
+          </DialogHeader>
+          
+          {loadingDetails ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : stripePaymentMethodDetails ? (
+            <div className="space-y-4">
+              {stripePaymentMethodDetails.stripeUrl && (
+                <div className="flex justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(stripePaymentMethodDetails.stripeUrl, '_blank')}
+                    data-testid="button-view-in-stripe"
+                  >
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    View in Stripe Dashboard
+                  </Button>
+                </div>
+              )}
+              
+              <div className="space-y-3">
+                <div>
+                  <h4 className="text-sm font-semibold mb-2">Basic Information</h4>
+                  <div className="bg-muted/50 rounded-lg p-3 space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">ID:</span>
+                      <span className="font-mono">{stripePaymentMethodDetails.paymentMethod.id}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Type:</span>
+                      <span className="capitalize">{stripePaymentMethodDetails.paymentMethod.type}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Created:</span>
+                      <span>{new Date(stripePaymentMethodDetails.paymentMethod.created * 1000).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Live Mode:</span>
+                      <span>{stripePaymentMethodDetails.paymentMethod.livemode ? 'Yes' : 'No (Test Mode)'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {stripePaymentMethodDetails.paymentMethod.card && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">Card Details</h4>
+                    <div className="bg-muted/50 rounded-lg p-3 space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Brand:</span>
+                        <span className="capitalize">{stripePaymentMethodDetails.paymentMethod.card.brand}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Last 4 Digits:</span>
+                        <span>{stripePaymentMethodDetails.paymentMethod.card.last4}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Expiration:</span>
+                        <span>{stripePaymentMethodDetails.paymentMethod.card.exp_month}/{stripePaymentMethodDetails.paymentMethod.card.exp_year}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Funding:</span>
+                        <span className="capitalize">{stripePaymentMethodDetails.paymentMethod.card.funding}</span>
+                      </div>
+                      {stripePaymentMethodDetails.paymentMethod.card.country && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Country:</span>
+                          <span>{stripePaymentMethodDetails.paymentMethod.card.country}</span>
+                        </div>
+                      )}
+                      {stripePaymentMethodDetails.paymentMethod.card.fingerprint && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Fingerprint:</span>
+                          <span className="font-mono text-xs">{stripePaymentMethodDetails.paymentMethod.card.fingerprint}</span>
+                        </div>
+                      )}
+                      {stripePaymentMethodDetails.paymentMethod.card.checks && (
+                        <div>
+                          <span className="text-muted-foreground block mb-1">Checks:</span>
+                          <div className="pl-4 space-y-1">
+                            {stripePaymentMethodDetails.paymentMethod.card.checks.cvc_check && (
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground text-xs">CVC:</span>
+                                <span className="text-xs">{stripePaymentMethodDetails.paymentMethod.card.checks.cvc_check}</span>
+                              </div>
+                            )}
+                            {stripePaymentMethodDetails.paymentMethod.card.checks.address_line1_check && (
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground text-xs">Address Line 1:</span>
+                                <span className="text-xs">{stripePaymentMethodDetails.paymentMethod.card.checks.address_line1_check}</span>
+                              </div>
+                            )}
+                            {stripePaymentMethodDetails.paymentMethod.card.checks.address_postal_code_check && (
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground text-xs">Postal Code:</span>
+                                <span className="text-xs">{stripePaymentMethodDetails.paymentMethod.card.checks.address_postal_code_check}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {stripePaymentMethodDetails.paymentMethod.us_bank_account && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">Bank Account Details</h4>
+                    <div className="bg-muted/50 rounded-lg p-3 space-y-2 text-sm">
+                      {stripePaymentMethodDetails.paymentMethod.us_bank_account.bank_name && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Bank:</span>
+                          <span>{stripePaymentMethodDetails.paymentMethod.us_bank_account.bank_name}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Last 4 Digits:</span>
+                        <span>{stripePaymentMethodDetails.paymentMethod.us_bank_account.last4}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Account Type:</span>
+                        <span className="capitalize">{stripePaymentMethodDetails.paymentMethod.us_bank_account.account_type}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Account Holder:</span>
+                        <span className="capitalize">{stripePaymentMethodDetails.paymentMethod.us_bank_account.account_holder_type}</span>
+                      </div>
+                      {stripePaymentMethodDetails.paymentMethod.us_bank_account.routing_number && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Routing Number:</span>
+                          <span>{stripePaymentMethodDetails.paymentMethod.us_bank_account.routing_number}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {stripePaymentMethodDetails.paymentMethod.billing_details && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">Billing Details</h4>
+                    <div className="bg-muted/50 rounded-lg p-3 space-y-2 text-sm">
+                      {stripePaymentMethodDetails.paymentMethod.billing_details.name && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Name:</span>
+                          <span>{stripePaymentMethodDetails.paymentMethod.billing_details.name}</span>
+                        </div>
+                      )}
+                      {stripePaymentMethodDetails.paymentMethod.billing_details.email && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Email:</span>
+                          <span>{stripePaymentMethodDetails.paymentMethod.billing_details.email}</span>
+                        </div>
+                      )}
+                      {stripePaymentMethodDetails.paymentMethod.billing_details.phone && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Phone:</span>
+                          <span>{stripePaymentMethodDetails.paymentMethod.billing_details.phone}</span>
+                        </div>
+                      )}
+                      {stripePaymentMethodDetails.paymentMethod.billing_details.address && (
+                        <div>
+                          <span className="text-muted-foreground block mb-1">Address:</span>
+                          <div className="pl-4 text-sm">
+                            {stripePaymentMethodDetails.paymentMethod.billing_details.address.line1 && (
+                              <div>{stripePaymentMethodDetails.paymentMethod.billing_details.address.line1}</div>
+                            )}
+                            {stripePaymentMethodDetails.paymentMethod.billing_details.address.line2 && (
+                              <div>{stripePaymentMethodDetails.paymentMethod.billing_details.address.line2}</div>
+                            )}
+                            {(stripePaymentMethodDetails.paymentMethod.billing_details.address.city || 
+                              stripePaymentMethodDetails.paymentMethod.billing_details.address.state || 
+                              stripePaymentMethodDetails.paymentMethod.billing_details.address.postal_code) && (
+                              <div>
+                                {stripePaymentMethodDetails.paymentMethod.billing_details.address.city}
+                                {stripePaymentMethodDetails.paymentMethod.billing_details.address.city && stripePaymentMethodDetails.paymentMethod.billing_details.address.state && ', '}
+                                {stripePaymentMethodDetails.paymentMethod.billing_details.address.state} {stripePaymentMethodDetails.paymentMethod.billing_details.address.postal_code}
+                              </div>
+                            )}
+                            {stripePaymentMethodDetails.paymentMethod.billing_details.address.country && (
+                              <div>{stripePaymentMethodDetails.paymentMethod.billing_details.address.country}</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {stripePaymentMethodDetails.paymentMethod.metadata && Object.keys(stripePaymentMethodDetails.paymentMethod.metadata).length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">Metadata</h4>
+                    <div className="bg-muted/50 rounded-lg p-3 space-y-2 text-sm">
+                      {Object.entries(stripePaymentMethodDetails.paymentMethod.metadata).map(([key, value]) => (
+                        <div key={key} className="flex justify-between">
+                          <span className="text-muted-foreground">{key}:</span>
+                          <span>{String(value)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={addDialogOpen} onOpenChange={handleCancelAddPaymentMethod}>
         <DialogContent className="max-w-md">
