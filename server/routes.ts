@@ -2,8 +2,9 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { insertWorkerSchema, insertTrustBenefitTypeSchema, insertTrustBenefitSchema, type InsertEmployer, type InsertTrustBenefit, winstonLogs, type WorkerId, type PostalAddress, type PhoneNumber } from "@shared/schema";
+import { insertWorkerSchema, insertTrustBenefitTypeSchema, insertTrustBenefitSchema, insertContactSchema, type InsertEmployer, type InsertTrustBenefit, type InsertContact, winstonLogs, type WorkerId, type PostalAddress, type PhoneNumber } from "@shared/schema";
 import { eq, and, inArray, gte, lte, desc } from "drizzle-orm";
+import { z } from "zod";
 import { registerUserRoutes } from "./modules/users";
 import { registerVariableRoutes } from "./modules/variables";
 import { registerPostalAddressRoutes } from "./modules/postal-addresses";
@@ -499,6 +500,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete employer" });
+    }
+  });
+
+  // Employer Contacts routes
+  
+  // GET /api/employers/:employerId/contacts - Get all contacts for an employer (requires workers.view permission)
+  app.get("/api/employers/:employerId/contacts", requireAuth, requirePermission("workers.view"), async (req, res) => {
+    try {
+      const { employerId } = req.params;
+      const contacts = await storage.employerContacts.listByEmployer(employerId);
+      res.json(contacts);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch employer contacts" });
+    }
+  });
+
+  // POST /api/employers/:employerId/contacts - Create a new contact for an employer (requires workers.manage permission)
+  app.post("/api/employers/:employerId/contacts", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+    try {
+      const { employerId } = req.params;
+      const parsed = insertContactSchema.extend({ 
+        email: z.string().email("Valid email is required"),
+        contactTypeId: z.string().optional().nullable()
+      }).safeParse(req.body);
+      
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid contact data", errors: parsed.error.errors });
+      }
+
+      const { contactTypeId, ...contactData } = parsed.data;
+      
+      const result = await storage.employerContacts.create({
+        employerId,
+        contactData: contactData as InsertContact & { email: string },
+        contactTypeId: contactTypeId || null,
+      });
+      
+      res.status(201).json(result);
+    } catch (error: any) {
+      if (error.message === "Email is required for employer contacts") {
+        return res.status(400).json({ message: error.message });
+      }
+      // Handle duplicate email constraint violation
+      if (error.code === '23505' && error.constraint === 'contacts_email_unique') {
+        return res.status(409).json({ message: "A contact with this email already exists. Employers cannot add existing contacts, only create new ones." });
+      }
+      res.status(500).json({ message: "Failed to create employer contact" });
+    }
+  });
+
+  // DELETE /api/employer-contacts/:id - Delete an employer contact (requires workers.manage permission)
+  app.delete("/api/employer-contacts/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.employerContacts.delete(id);
+      
+      if (!deleted) {
+        res.status(404).json({ message: "Employer contact not found" });
+        return;
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete employer contact" });
     }
   });
 

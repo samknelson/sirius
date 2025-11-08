@@ -26,7 +26,7 @@ export function useEmployerLayout() {
 }
 
 interface EmployerLayoutProps {
-  activeTab: "details" | "edit" | "accounting" | "payment-methods" | "customer" | "logs";
+  activeTab: "details" | "edit" | "contacts" | "accounting" | "payment-methods" | "customer" | "logs";
   children: ReactNode;
 }
 
@@ -138,6 +138,7 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
   const mainTabs = [
     { id: "details", label: "Details", href: `/employers/${employer.id}` },
     { id: "edit", label: "Edit", href: `/employers/${employer.id}/edit` },
+    { id: "contacts", label: "Contacts", href: `/employers/${employer.id}/contacts` },
     { id: "logs", label: "Logs", href: `/employers/${employer.id}/logs` },
   ];
 
