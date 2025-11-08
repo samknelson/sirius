@@ -288,6 +288,22 @@ const workerIdLoggingConfig: StorageLoggingConfig<WorkerIdStorage> = {
       getEntityId: (args) => args[0]?.workerId || 'new worker ID',
       after: async (args, result, storage) => {
         return result; // Capture created worker ID
+      },
+      getDescription: async (args, result, beforeState, afterState, storage) => {
+        const workerId = result;
+        
+        // Get the type name directly from the database
+        const typeId = workerId?.typeId;
+        let typeName = 'Unknown type';
+        if (typeId) {
+          const [type] = await db.select().from(optionsWorkerIdType).where(eq(optionsWorkerIdType.id, typeId));
+          typeName = type?.name || 'Unknown type';
+        }
+        
+        // Get the value
+        const value = workerId?.value || 'unknown';
+        
+        return `Created ${typeName} with value "${value}"`;
       }
     },
     updateWorkerId: {
@@ -322,6 +338,22 @@ const workerIdLoggingConfig: StorageLoggingConfig<WorkerIdStorage> = {
       getEntityId: (args) => args[0], // Worker ID record ID
       before: async (args, storage) => {
         return await storage.getWorkerId(args[0]); // Capture what's being deleted
+      },
+      getDescription: async (args, result, beforeState, afterState, storage) => {
+        const workerId = beforeState;
+        
+        // Get the type name directly from the database
+        const typeId = workerId?.typeId;
+        let typeName = 'Unknown type';
+        if (typeId) {
+          const [type] = await db.select().from(optionsWorkerIdType).where(eq(optionsWorkerIdType.id, typeId));
+          typeName = type?.name || 'Unknown type';
+        }
+        
+        // Get the value
+        const value = workerId?.value || 'unknown';
+        
+        return `Deleted ${typeName} with value "${value}"`;
       }
     }
   }
