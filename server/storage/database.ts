@@ -9,6 +9,9 @@ import { type WorkerIdStorage, createWorkerIdStorage } from "./worker-ids";
 import { type BookmarkStorage, createBookmarkStorage } from "./bookmarks";
 import { type LedgerStorage, createLedgerStorage } from "./ledger";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
+import { db } from "../db";
+import { optionsWorkerIdType } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 export interface IStorage {
   variables: VariableStorage;
@@ -295,6 +298,23 @@ const workerIdLoggingConfig: StorageLoggingConfig<WorkerIdStorage> = {
       },
       after: async (args, result, storage) => {
         return result; // New state (diff auto-calculated)
+      },
+      getDescription: async (args, result, beforeState, afterState, storage) => {
+        const updates = args[1];
+        const workerId = result;
+        
+        // Get the type name directly from the database
+        const typeId = workerId?.typeId;
+        let typeName = 'Unknown type';
+        if (typeId) {
+          const [type] = await db.select().from(optionsWorkerIdType).where(eq(optionsWorkerIdType.id, typeId));
+          typeName = type?.name || 'Unknown type';
+        }
+        
+        // Get the new value
+        const newValue = updates?.value || workerId?.value || 'unknown';
+        
+        return `Updated ${typeName} to "${newValue}"`;
       }
     },
     deleteWorkerId: {
