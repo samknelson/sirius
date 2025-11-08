@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -24,12 +25,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-
-interface EmployerContactType {
-  id: string;
-  name: string;
-  description: string | null;
-}
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { insertEmployerContactTypeSchema, type EmployerContactType, type InsertEmployerContactType } from "@shared/schema";
 
 export default function EmployerContactTypesPage() {
   const { toast } = useToast();
@@ -37,22 +41,34 @@ export default function EmployerContactTypesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   
-  // Form state
-  const [formName, setFormName] = useState("");
-  const [formDescription, setFormDescription] = useState("");
-  
   const { data: contactTypes = [], isLoading } = useQuery<EmployerContactType[]>({
     queryKey: ["/api/employer-contact-types"],
   });
 
+  const addForm = useForm<InsertEmployerContactType>({
+    resolver: zodResolver(insertEmployerContactTypeSchema),
+    defaultValues: {
+      name: "",
+      description: "",
+    },
+  });
+
+  const editForm = useForm<InsertEmployerContactType>({
+    resolver: zodResolver(insertEmployerContactTypeSchema),
+    defaultValues: {
+      name: "",
+      description: "",
+    },
+  });
+
   const createMutation = useMutation({
-    mutationFn: async (data: { name: string; description: string | null }) => {
+    mutationFn: async (data: InsertEmployerContactType) => {
       return apiRequest("POST", "/api/employer-contact-types", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employer-contact-types"] });
       setIsAddDialogOpen(false);
-      resetForm();
+      addForm.reset();
       toast({
         title: "Success",
         description: "Employer contact type created successfully.",
@@ -68,16 +84,13 @@ export default function EmployerContactTypesPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { id: string; name: string; description: string | null }) => {
-      return apiRequest("PUT", `/api/employer-contact-types/${data.id}`, {
-        name: data.name,
-        description: data.description,
-      });
+    mutationFn: async (data: { id: string; updates: InsertEmployerContactType }) => {
+      return apiRequest("PUT", `/api/employer-contact-types/${data.id}`, data.updates);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employer-contact-types"] });
       setEditingId(null);
-      resetForm();
+      editForm.reset();
       toast({
         title: "Success",
         description: "Employer contact type updated successfully.",
@@ -113,57 +126,33 @@ export default function EmployerContactTypesPage() {
     },
   });
 
-  const resetForm = () => {
-    setFormName("");
-    setFormDescription("");
-  };
-
   const handleEdit = (type: EmployerContactType) => {
     setEditingId(type.id);
-    setFormName(type.name);
-    setFormDescription(type.description || "");
+    editForm.reset({
+      name: type.name,
+      description: type.description || "",
+    });
   };
 
   const handleCancelEdit = () => {
     setEditingId(null);
-    resetForm();
+    editForm.reset();
   };
 
-  const handleSaveEdit = () => {
-    if (!formName.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Name is required.",
-        variant: "destructive",
-      });
-      return;
-    }
-    updateMutation.mutate({
-      id: editingId!,
-      name: formName.trim(),
-      description: formDescription.trim() || null,
-    });
+  const onAddSubmit = (data: InsertEmployerContactType) => {
+    createMutation.mutate(data);
   };
 
-  const handleCreate = () => {
-    if (!formName.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Name is required.",
-        variant: "destructive",
-      });
-      return;
+  const onEditSubmit = (data: InsertEmployerContactType) => {
+    if (editingId) {
+      updateMutation.mutate({ id: editingId, updates: data });
     }
-    createMutation.mutate({
-      name: formName.trim(),
-      description: formDescription.trim() || null,
-    });
   };
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin" />
+        <Loader2 className="h-8 w-8 animate-spin" data-testid="loading-spinner" />
       </div>
     );
   }
@@ -187,7 +176,7 @@ export default function EmployerContactTypesPage() {
         </CardHeader>
         <CardContent>
           {contactTypes.length === 0 ? (
-            <div className="text-center text-muted-foreground py-8">
+            <div className="text-center text-muted-foreground py-8" data-testid="text-empty-state">
               No employer contact types configured yet. Click "Add Type" to get started.
             </div>
           ) : (
@@ -204,44 +193,74 @@ export default function EmployerContactTypesPage() {
                   <TableRow key={type.id} data-testid={`row-type-${type.id}`}>
                     {editingId === type.id ? (
                       <>
-                        <TableCell>
-                          <Input
-                            data-testid="input-name"
-                            value={formName}
-                            onChange={(e) => setFormName(e.target.value)}
-                            placeholder="Name"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Textarea
-                            data-testid="input-description"
-                            value={formDescription}
-                            onChange={(e) => setFormDescription(e.target.value)}
-                            placeholder="Description (optional)"
-                            rows={2}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right space-x-2">
-                          <Button
-                            data-testid="button-save"
-                            size="sm"
-                            onClick={handleSaveEdit}
-                            disabled={updateMutation.isPending}
-                          >
-                            {updateMutation.isPending ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Save className="h-4 w-4" />
-                            )}
-                          </Button>
-                          <Button
-                            data-testid="button-cancel"
-                            size="sm"
-                            variant="outline"
-                            onClick={handleCancelEdit}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
+                        <TableCell colSpan={3}>
+                          <Form {...editForm}>
+                            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
+                              <FormField
+                                control={editForm.control}
+                                name="name"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Name *</FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        placeholder="e.g., Primary Contact"
+                                        data-testid="input-edit-name"
+                                        {...field}
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={editForm.control}
+                                name="description"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Description</FormLabel>
+                                    <FormControl>
+                                      <Textarea
+                                        placeholder="Optional description"
+                                        rows={2}
+                                        data-testid="input-edit-description"
+                                        {...field}
+                                        value={field.value || ""}
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <div className="flex gap-2">
+                                <Button
+                                  type="submit"
+                                  size="sm"
+                                  data-testid="button-save"
+                                  disabled={updateMutation.isPending}
+                                >
+                                  {updateMutation.isPending ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <>
+                                      <Save className="h-4 w-4 mr-2" />
+                                      Save
+                                    </>
+                                  )}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={handleCancelEdit}
+                                  data-testid="button-cancel"
+                                >
+                                  <X className="h-4 w-4 mr-2" />
+                                  Cancel
+                                </Button>
+                              </div>
+                            </form>
+                          </Form>
                         </TableCell>
                       </>
                     ) : (
@@ -280,52 +299,69 @@ export default function EmployerContactTypesPage() {
 
       {/* Add Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-        <DialogContent>
+        <DialogContent data-testid="dialog-add">
           <DialogHeader>
             <DialogTitle>Add Employer Contact Type</DialogTitle>
             <DialogDescription>
               Create a new employer contact type to categorize employer relationships.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="add-name">Name *</Label>
-              <Input
-                id="add-name"
-                data-testid="input-add-name"
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-                placeholder="e.g., Primary Contact, Billing Contact"
+          <Form {...addForm}>
+            <form onSubmit={addForm.handleSubmit(onAddSubmit)} className="space-y-4">
+              <FormField
+                control={addForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name *</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="e.g., Primary Contact, Billing Contact"
+                        data-testid="input-add-name"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-            <div>
-              <Label htmlFor="add-description">Description</Label>
-              <Textarea
-                id="add-description"
-                data-testid="input-add-description"
-                value={formDescription}
-                onChange={(e) => setFormDescription(e.target.value)}
-                placeholder="Optional description"
-                rows={3}
+              <FormField
+                control={addForm.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Description</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Optional description"
+                        rows={3}
+                        data-testid="input-add-description"
+                        {...field}
+                        value={field.value || ""}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              data-testid="button-create"
-              onClick={handleCreate}
-              disabled={createMutation.isPending}
-            >
-              {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Create Type
-            </Button>
-          </DialogFooter>
+              <DialogFooter>
+                <Button
+                  type="submit"
+                  data-testid="button-create"
+                  disabled={createMutation.isPending}
+                >
+                  {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Create Type
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
-        <DialogContent>
+        <DialogContent data-testid="dialog-delete">
           <DialogHeader>
             <DialogTitle>Delete Employer Contact Type</DialogTitle>
             <DialogDescription>
