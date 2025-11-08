@@ -61,7 +61,7 @@ export const contacts = pgTable("contacts", {
   generational: text("generational"),
   credentials: text("credentials"),
   displayName: text("display_name").notNull(),
-  email: text("email"),
+  email: text("email").unique(),
   birthDate: date("birth_date"),
   gender: varchar("gender").references(() => optionsGender.id, { onDelete: 'set null' }),
   genderNota: text("gender_nota"),
