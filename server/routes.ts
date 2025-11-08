@@ -255,8 +255,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/workers/:id - Get a specific worker (requires workers.view permission)
-  app.get("/api/workers/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  // GET /api/workers/:id - Get a specific worker (requires worker policy: staff or worker with matching email)
+  app.get("/api/workers/:id", requireAccess(policies.worker), async (req, res) => {
     try {
       const { id } = req.params;
       const worker = await storage.workers.getWorker(id);
@@ -1267,8 +1267,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Worker ID routes
   
-  // GET /api/workers/:workerId/ids - Get all IDs for a worker (requires workers.view permission)
-  app.get("/api/workers/:workerId/ids", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  // GET /api/workers/:workerId/ids - Get all IDs for a worker (requires worker policy: staff or worker with matching email)
+  app.get("/api/workers/:workerId/ids", requireAccess(policies.worker), async (req, res) => {
     try {
       const { workerId } = req.params;
       const workerIds = await storage.workerIds.getWorkerIdsByWorkerId(workerId);
@@ -1453,8 +1453,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Worker Benefits (WMB) routes
 
-  // GET /api/workers/:workerId/benefits - Get all benefits for a worker (requires workers.view permission)
-  app.get("/api/workers/:workerId/benefits", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  // GET /api/workers/:workerId/benefits - Get all benefits for a worker (requires worker policy: staff or worker with matching email)
+  app.get("/api/workers/:workerId/benefits", requireAccess(policies.worker), async (req, res) => {
     try {
       const { workerId } = req.params;
       const benefits = await storage.workers.getWorkerBenefits(workerId);
