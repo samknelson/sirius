@@ -14,6 +14,7 @@ import { Trash2, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { EmployerContactType } from "@shared/schema";
+import { generateDisplayName } from "@shared/schema";
 
 interface EmployerContactResponse {
   id: string;
@@ -43,7 +44,6 @@ interface EmployerContactResponse {
 }
 
 const createContactSchema = z.object({
-  displayName: z.string().min(1, "Display name is required"),
   email: z.string().email("Valid email is required"),
   title: z.string().optional(),
   given: z.string().optional(),
@@ -72,7 +72,6 @@ function EmployerContactsContent() {
   const form = useForm<CreateContactFormData>({
     resolver: zodResolver(createContactSchema),
     defaultValues: {
-      displayName: "",
       email: "",
       title: "",
       given: "",
@@ -85,7 +84,7 @@ function EmployerContactsContent() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: CreateContactFormData) => {
+    mutationFn: async (data: CreateContactFormData & { displayName: string }) => {
       return await apiRequest("POST", `/api/employers/${employer.id}/contacts`, data);
     },
     onSuccess: () => {
@@ -127,7 +126,18 @@ function EmployerContactsContent() {
   });
 
   const onSubmit = (data: CreateContactFormData) => {
-    createMutation.mutate(data);
+    // Generate display name from name components
+    const displayName = generateDisplayName({
+      title: data.title || null,
+      given: data.given || null,
+      middle: data.middle || null,
+      family: data.family || null,
+      generational: data.generational || null,
+      credentials: data.credentials || null,
+    });
+    
+    // Add display name to the data before submitting
+    createMutation.mutate({ ...data, displayName });
   };
 
   if (contactsLoading) {
@@ -170,19 +180,6 @@ function EmployerContactsContent() {
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="displayName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Display Name *</FormLabel>
-                          <FormControl>
-                            <Input {...field} data-testid="input-display-name" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
                     <FormField
                       control={form.control}
                       name="email"
