@@ -127,6 +127,13 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       testId: "nav-config-users-policies",
       permission: "admin.manage",
     },
+    {
+      path: "/config/users/employer-settings",
+      label: "Employer User Settings",
+      icon: Settings,
+      testId: "nav-config-users-employer-settings",
+      permission: "variables.manage",
+    },
   ];
 
   const dropDownListItems = [

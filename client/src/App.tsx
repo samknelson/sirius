@@ -48,6 +48,7 @@ import UsersListPage from "@/pages/config/users/list";
 import RolesPage from "@/pages/config/users/roles";
 import PermissionsPage from "@/pages/config/users/permissions";
 import PoliciesPage from "@/pages/config/users/policies";
+import EmployerUserSettingsPage from "@/pages/config/users/employer-settings";
 import PostalAddressesConfigPage from "@/pages/config/addresses";
 import PhoneNumbersConfigPage from "@/pages/config/phone-numbers";
 import GenderOptionsPage from "@/pages/config/gender-options";
@@ -355,6 +356,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PoliciesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/config/users/employer-settings">
+        <ProtectedRoute permission="variables.manage">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <EmployerUserSettingsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

@@ -14,6 +14,7 @@ import { registerMasqueradeRoutes, getEffectiveUser } from "./modules/masquerade
 import { registerDashboardRoutes } from "./modules/dashboard";
 import { registerBookmarkRoutes } from "./modules/bookmarks";
 import { registerComponentRoutes } from "./modules/components";
+import { registerEmployerUserSettingsRoutes } from "./modules/employer-user-settings";
 import { registerLedgerStripeRoutes } from "./modules/ledger/stripe";
 import { registerLedgerAccountRoutes } from "./modules/ledger/accounts";
 import { registerAccessPolicyRoutes } from "./modules/access-policies";
@@ -219,6 +220,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register user management routes
   registerUserRoutes(app, requireAuth, requirePermission);
+  
+  // Register employer user settings routes
+  registerEmployerUserSettingsRoutes(app, requireAuth, requirePermission);
   
   // Register postal address management routes
   registerPostalAddressRoutes(app, requireAuth, requirePermission);
