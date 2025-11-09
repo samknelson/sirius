@@ -233,11 +233,17 @@ export const winstonLogs = pgTable("winston_logs", {
   operation: varchar("operation", { length: 100 }),
   entityId: varchar("entity_id", { length: 255 }),
   description: text("description"),
+  userId: varchar("user_id", { length: 255 }),
+  userEmail: varchar("user_email", { length: 255 }),
+  ipAddress: varchar("ip_address", { length: 45 }),
 }, (table) => [
   index("idx_winston_logs_entity_id").on(table.entityId),
   index("idx_winston_logs_module").on(table.module),
   index("idx_winston_logs_operation").on(table.operation),
+  index("idx_winston_logs_user_id").on(table.userId),
 ]);
+
+export type WinstonLog = typeof winstonLogs.$inferSelect;
 
 // Zod schemas for validation
 export const insertUserSchema = createInsertSchema(users).omit({
