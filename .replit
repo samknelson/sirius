@@ -42,5 +42,5 @@ author = "agent"
 mode = "sequential"
 
 [[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Start application"
+task = "shell.exec"
+args = "npm run dev"
