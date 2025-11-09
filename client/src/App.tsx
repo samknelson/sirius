@@ -85,7 +85,9 @@ function Router() {
   const [location, setLocation] = useLocation();
 
   // Check if bootstrap is needed
-  const { data: bootstrapData, isLoading: isBootstrapLoading } = useQuery<{ needed: boolean }>({
+  const { data: bootstrapData, isLoading: isBootstrapLoading } = useQuery<{
+    needed: boolean;
+  }>({
     queryKey: ["/api/bootstrap/needed"],
     retry: false,
   });
@@ -119,7 +121,7 @@ function Router() {
       <Route path="/bootstrap" component={Bootstrap} />
       <Route path="/login" component={LoginPage} />
       <Route path="/unauthorized" component={UnauthorizedPage} />
-      
+
       {/* Protected routes */}
       <Route path="/workers/add">
         <ProtectedRoute permission="workers.manage">
@@ -128,7 +130,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/workers/:id/phone-numbers">
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
@@ -136,7 +138,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/workers/:id/addresses">
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
@@ -144,7 +146,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/workers/:id/name">
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
@@ -152,7 +154,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/workers/:id/email">
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
@@ -160,7 +162,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/workers/:id/ids">
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
@@ -168,7 +170,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/workers/:id/birth-date">
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
@@ -176,7 +178,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/workers/:id/gender">
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
@@ -184,7 +186,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/workers/:id/benefits">
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
@@ -192,7 +194,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/workers/:id/logs">
         <ProtectedRoute policy="staff">
           <AuthenticatedLayout>
@@ -200,7 +202,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/workers/:id">
         <ProtectedRoute policy="worker">
           <AuthenticatedLayout>
@@ -208,7 +210,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/workers">
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
@@ -216,7 +218,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/bookmarks">
         <ProtectedRoute policy="bookmark">
           <AuthenticatedLayout>
@@ -224,7 +226,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/employers/add">
         <ProtectedRoute permission="workers.manage">
           <AuthenticatedLayout>
@@ -232,7 +234,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/employers/:id/edit">
         <ProtectedRoute permission="workers.manage">
           <AuthenticatedLayout>
@@ -240,7 +242,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/employers/:id/contacts">
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
@@ -248,7 +250,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/employers/:id/ledger/stripe/customer">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
@@ -256,7 +258,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/employers/:id/ledger/stripe/payment_methods">
         <ProtectedRoute policy="ledgerStripeEmployer">
           <AuthenticatedLayout>
@@ -264,7 +266,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/employers/:id/logs">
         <ProtectedRoute policy="staff">
           <AuthenticatedLayout>
@@ -272,7 +274,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/employers/:id">
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
@@ -280,7 +282,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/employers">
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
@@ -288,7 +290,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/trust-benefits/add">
         <ProtectedRoute permission="workers.manage">
           <AuthenticatedLayout>
@@ -296,7 +298,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/trust-benefits/:id/edit">
         <ProtectedRoute permission="workers.manage">
           <AuthenticatedLayout>
@@ -304,7 +306,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/trust-benefits/:id">
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
@@ -312,7 +314,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/trust-benefits">
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
@@ -320,7 +322,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       {/* Configuration routes with nested navigation */}
       <Route path="/config/users/list">
         <ProtectedRoute policy="admin">
@@ -331,7 +333,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/users/roles">
         <ProtectedRoute policy="admin">
           <AuthenticatedLayout>
@@ -341,7 +343,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/users/permissions">
         <ProtectedRoute policy="admin">
           <AuthenticatedLayout>
@@ -351,7 +353,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/users/policies">
         <ProtectedRoute policy="admin">
           <AuthenticatedLayout>
@@ -361,7 +363,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/users/employer-settings">
         <ProtectedRoute permission="variables.manage">
           <AuthenticatedLayout>
@@ -371,12 +373,12 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       {/* Redirect old /config/users to new structure */}
       <Route path="/config/users">
         <Redirect to="/config/users/list" />
       </Route>
-      
+
       <Route path="/config/addresses">
         <ProtectedRoute policy="admin">
           <AuthenticatedLayout>
@@ -386,7 +388,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/phone-numbers">
         <ProtectedRoute policy="admin">
           <AuthenticatedLayout>
@@ -396,7 +398,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/gender-options">
         <ProtectedRoute permission="variables.manage">
           <AuthenticatedLayout>
@@ -406,7 +408,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/worker-id-types">
         <ProtectedRoute permission="variables.manage">
           <AuthenticatedLayout>
@@ -416,7 +418,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/trust-benefit-types">
         <ProtectedRoute permission="variables.manage">
           <AuthenticatedLayout>
@@ -426,7 +428,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/employer-contact-types">
         <ProtectedRoute permission="variables.manage">
           <AuthenticatedLayout>
@@ -436,7 +438,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/site">
         <ProtectedRoute permission="variables.manage">
           <AuthenticatedLayout>
@@ -446,7 +448,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/welcome-messages">
         <ProtectedRoute permission="variables.manage">
           <AuthenticatedLayout>
@@ -456,7 +458,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/dashboard-plugins">
         <ProtectedRoute permission="variables.manage">
           <AuthenticatedLayout>
@@ -466,7 +468,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/components">
         <ProtectedRoute permission="variables.manage">
           <AuthenticatedLayout>
@@ -476,7 +478,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/masquerade">
         <ProtectedRoute policy="masquerade">
           <AuthenticatedLayout>
@@ -486,9 +488,9 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/logs">
-        <ProtectedRoute permission="logs.view">
+        <ProtectedRoute policy="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <LogsPage />
@@ -496,7 +498,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/ledger/stripe/settings">
         <ProtectedRoute policy="ledgerStripeAdmin">
           <AuthenticatedLayout>
@@ -506,7 +508,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/ledger/stripe/test">
         <ProtectedRoute policy="ledgerStripeAdmin">
           <AuthenticatedLayout>
@@ -516,7 +518,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/ledger/stripe/payment-types">
         <ProtectedRoute policy="ledgerStripeAdmin">
           <AuthenticatedLayout>
@@ -526,7 +528,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/ledger/payment-types">
         <ProtectedRoute policy="ledgerStaff">
           <AuthenticatedLayout>
@@ -536,7 +538,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       {/* Ledger account detail pages */}
       <Route path="/ledger/accounts/:id/edit">
         <ProtectedRoute policy="ledgerStaff">
@@ -545,7 +547,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/ledger/accounts/:id">
         <ProtectedRoute policy="ledgerStaff">
           <AuthenticatedLayout>
@@ -553,7 +555,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/config/ledger/accounts">
         <ProtectedRoute policy="ledgerStaff">
           <AuthenticatedLayout>
@@ -563,7 +565,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       {/* User detail page */}
       <Route path="/users/:id">
         <ProtectedRoute policy="admin">
@@ -572,7 +574,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/users/:id/logs">
         <ProtectedRoute policy="staff">
           <AuthenticatedLayout>
@@ -580,29 +582,29 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       {/* Legacy admin routes - redirect to configuration */}
       <Route path="/admin/users/:id">
         <Redirect to="/users/:id" />
       </Route>
-      
+
       <Route path="/admin/users">
         <Redirect to="/config/users/list" />
       </Route>
-      
+
       <Route path="/config/users/:id">
         <Redirect to="/users/:id" />
       </Route>
-      
+
       {/* Legacy ledger account routes - redirect to new location */}
       <Route path="/config/ledger/accounts/:id/edit">
         <Redirect to="/ledger/accounts/:id/edit" />
       </Route>
-      
+
       <Route path="/config/ledger/accounts/:id">
         <Redirect to="/ledger/accounts/:id" />
       </Route>
-      
+
       <Route path="/admin/roles">
         <ProtectedRoute policy="admin">
           <AuthenticatedLayout>
@@ -612,7 +614,7 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/admin/permissions">
         <ProtectedRoute policy="admin">
           <AuthenticatedLayout>
@@ -622,12 +624,12 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       {/* Legacy admin route - redirect to configuration */}
       <Route path="/admin">
         <Redirect to="/config/users/list" />
       </Route>
-      
+
       {/* Dashboard route */}
       <Route path="/dashboard">
         <ProtectedRoute>
@@ -636,17 +638,17 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      
+
       {/* Root route - redirect to dashboard */}
       <Route path="/">
         <Redirect to="/dashboard" />
       </Route>
-      
+
       {/* Configuration fallback - redirect to users page */}
       <Route path="/config">
         <Redirect to="/config/users/list" />
       </Route>
-      
+
       {/* 404 for unmatched routes */}
       <Route component={NotFound} />
     </Switch>
