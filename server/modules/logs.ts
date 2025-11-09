@@ -3,6 +3,8 @@ import { db } from "../db";
 import { winstonLogs } from "@shared/schema";
 import { desc, eq, and, sql, or, like } from "drizzle-orm";
 import { z } from "zod";
+import { requireAccess } from '../accessControl';
+import * as policies from '../policies';
 
 const logsQuerySchema = z.object({
   page: z.string().regex(/^\d+$/).transform(Number).optional().default("1"),
@@ -12,12 +14,8 @@ const logsQuerySchema = z.object({
   search: z.string().optional(),
 });
 
-export function registerLogRoutes(
-  app: Express,
-  requireAuth: any,
-  requirePermission: any
-) {
-  app.get("/api/logs", requireAuth, requirePermission("logs.view"), async (req, res) => {
+export function registerLogRoutes(app: Express) {
+  app.get("/api/logs", requireAccess(policies.logsView), async (req, res) => {
     try {
       const params = logsQuerySchema.parse(req.query);
       const page = Math.max(1, params.page);
@@ -78,7 +76,7 @@ export function registerLogRoutes(
   });
 
   // Get unique modules and operations for filter dropdowns
-  app.get("/api/logs/filters", requireAuth, requirePermission("logs.view"), async (req, res) => {
+  app.get("/api/logs/filters", requireAccess(policies.logsView), async (req, res) => {
     try {
       const [modules, operations] = await Promise.all([
         db.selectDistinct({ module: winstonLogs.module })
@@ -105,7 +103,7 @@ export function registerLogRoutes(
   });
 
   // Get a single log by ID
-  app.get("/api/logs/:id", requireAuth, requirePermission("logs.view"), async (req, res) => {
+  app.get("/api/logs/:id", requireAccess(policies.logsView), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {

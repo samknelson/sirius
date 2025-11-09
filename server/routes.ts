@@ -250,7 +250,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerLedgerAccountRoutes(app);
 
   // Register log management routes
-  registerLogRoutes(app, requireAuth, requirePermission);
+  registerLogRoutes(app);
 
   // Worker routes (protected with authentication and permissions)
   
