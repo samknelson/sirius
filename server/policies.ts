@@ -282,6 +282,62 @@ export const worker: AccessPolicy = {
 };
 
 /**
+ * Worker user access policy
+ * Grants access if user has worker permission and either:
+ * - staff permission, OR
+ * - their email matches the contact email of the specific worker being accessed
+ */
+export const workerUser: AccessPolicy = {
+  name: 'Worker User Access',
+  description: 'Requires worker permission and either staff permission or matching worker contact email',
+  requirements: [
+    { type: 'authenticated' },
+    { type: 'permission', key: 'worker' },
+    {
+      type: 'anyOf',
+      options: [
+        // Option 1: Has staff permission
+        { type: 'permission', key: 'staff' },
+        // Option 2: User's email matches the worker's contact email
+        {
+          type: 'custom',
+          reason: 'User email must match worker contact email',
+          check: async (ctx) => {
+            // Get worker ID from route params
+            const workerId = ctx.params?.id || ctx.params?.workerId;
+            if (!workerId) {
+              return false;
+            }
+
+            // Get user email
+            if (!ctx.user?.email) {
+              return false;
+            }
+
+            // Import storage dynamically to avoid circular dependency
+            const { storage } = await import('./storage/database');
+            
+            // Get the worker and their contact
+            const worker = await storage.workers.getWorker(workerId);
+            if (!worker) {
+              return false;
+            }
+
+            const contact = await storage.contacts.getContact(worker.contactId);
+            if (!contact || !contact.email) {
+              return false;
+            }
+
+            // Check if user's email matches worker's contact email (case-insensitive)
+            return ctx.user.email.toLowerCase() === contact.email.toLowerCase();
+          },
+        },
+      ],
+    },
+  ],
+};
+
+/**
  * Employer user access policy
  * Grants access if user has employer permission and either:
  * - staff permission, OR
@@ -373,6 +429,7 @@ export const policies = {
   masquerade,
   staff,
   worker,
+  workerUser,
   employerUser,
   workersViewOrManage,
   employerUserManage,

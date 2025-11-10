@@ -43,7 +43,7 @@ Preferred communication style: Simple, everyday language.
 -   **Bookmarks**: User-specific, entity-agnostic bookmarking for workers and employers.
 -   **Dashboard Plugin System**: Extensible architecture for customizable dashboard widgets, managed by admins.
 -   **Components Feature Flag System**: Manages enablement of application features (components) via a centralized registry, with dependency management and integration with access control policies.
--   **Access Control**: Centralized permission registry and declarative policies for fine-grained control over features and data. The `employerUser` policy grants employer users access to their associated employer records by requiring the "employer" permission and either "staff" permission or verified association via an employer-contact record matching the user's email.
+-   **Access Control**: Centralized permission registry and declarative policies for fine-grained control over features and data. The `employerUser` policy grants employer users access to their associated employer records by requiring the "employer" permission and either "staff" permission or verified association via an employer-contact record matching the user's email. The `workerUser` policy grants worker users access to their associated worker records by requiring the "worker" permission and either "staff" permission or verified association via matching contact email.
 -   **Routing Architecture**: Consistent routing patterns for configuration pages (under `/config/`) and detail pages, with UUID validation and legacy redirects.
 -   **Ledger System**: Manages financial transactions with a `ledger_payments` table, including status, allocation, payer details, and account references.
 
