@@ -10,7 +10,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Trash2, Plus, Eye, Phone, MapPin } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Trash2, Plus, Eye, Phone, MapPin, User } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -60,6 +61,7 @@ type CreateContactFormData = z.infer<typeof createContactSchema>;
 interface ContactWithDetails extends EmployerContactResponse {
   primaryPhone?: PhoneNumber;
   primaryAddress?: PostalAddress;
+  hasUser?: boolean;
 }
 
 function EmployerContactsContent() {
@@ -109,10 +111,35 @@ function EmployerContactsContent() {
     enabled: contactIds.length > 0,
   });
 
-  // Combine contacts with their phone and address data
+  // Fetch user status for all employer contacts in batch
+  const employerContactIds = contacts?.map(c => c.id) || [];
+  const userStatusQueries = useQuery({
+    queryKey: ["/api/employer-contacts", "user-status", employerContactIds],
+    queryFn: async () => {
+      const response = await fetch("/api/employer-contacts/user-status", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ employerContactIds }),
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to fetch user statuses");
+      }
+      
+      const data = await response.json();
+      return data.statuses as Array<{ employerContactId: string; userId: string | null; hasUser: boolean; accountStatus: string | null }>;
+    },
+    enabled: employerContactIds.length > 0,
+  });
+
+  // Combine contacts with their phone, address, and user status data
   const contactsWithDetails: ContactWithDetails[] = contacts?.map(contact => {
     const phoneData = phoneQueries.data?.find(p => p.contactId === contact.contactId);
     const addressData = addressQueries.data?.find(a => a.contactId === contact.contactId);
+    const userStatusData = userStatusQueries.data?.find(u => u.employerContactId === contact.id);
     
     const primaryPhone = phoneData?.phones?.find((p: PhoneNumber) => p.isPrimary && p.isActive);
     const primaryAddress = addressData?.addresses?.find((a: PostalAddress) => a.isPrimary && a.isActive);
@@ -121,6 +148,7 @@ function EmployerContactsContent() {
       ...contact,
       primaryPhone,
       primaryAddress,
+      hasUser: userStatusData?.hasUser || false,
     };
   }) || [];
 
@@ -386,8 +414,16 @@ function EmployerContactsContent() {
                   data-testid={`card-contact-${contact.id}`}
                 >
                   <div className="flex-1 space-y-2">
-                    <div className="font-medium text-foreground" data-testid={`text-contact-name-${contact.id}`}>
-                      {contact.contact.displayName}
+                    <div className="flex items-center gap-2">
+                      <div className="font-medium text-foreground" data-testid={`text-contact-name-${contact.id}`}>
+                        {contact.contact.displayName}
+                      </div>
+                      {contact.hasUser && (
+                        <Badge variant="secondary" className="flex items-center gap-1" data-testid={`badge-user-account-${contact.id}`}>
+                          <User size={12} />
+                          User Account
+                        </Badge>
+                      )}
                     </div>
                     <div className="text-sm text-muted-foreground" data-testid={`text-contact-email-${contact.id}`}>
                       {contact.contact.email}

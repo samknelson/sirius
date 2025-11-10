@@ -890,6 +890,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/employer-contacts/user-status - Batch fetch user account status for multiple employer contacts
+  app.post("/api/employer-contacts/user-status", requireAuth, requireAccess(policies.employerUserManage), async (req, res) => {
+    try {
+      // Validate request body with Zod
+      const requestSchema = z.object({
+        employerContactIds: z.array(z.string().uuid()).max(200, "Maximum 200 employer contact IDs allowed"),
+      });
+      
+      const validationResult = requestSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid request body", 
+          errors: validationResult.error.errors 
+        });
+      }
+      
+      const { employerContactIds } = validationResult.data;
+      
+      // Fetch user account statuses for all employer contacts in one query
+      const statuses = await storage.employerContacts.getUserAccountStatuses(employerContactIds);
+      
+      res.json({ statuses });
+    } catch (error) {
+      console.error("Error fetching employer contact user statuses:", error);
+      res.status(500).json({ message: "Failed to fetch user statuses" });
+    }
+  });
+
   // GET /api/trust-benefits - Get all trust benefits (requires workers.view permission)
   app.get("/api/trust-benefits", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {

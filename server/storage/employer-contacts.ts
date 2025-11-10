@@ -1,6 +1,6 @@
 import { db } from "../db";
-import { employerContacts, contacts, optionsEmployerContactType, employers, type EmployerContact, type InsertEmployerContact, type Contact, type InsertContact, type Employer } from "@shared/schema";
-import { eq, and, or, like, ilike, sql } from "drizzle-orm";
+import { employerContacts, contacts, optionsEmployerContactType, employers, users, type EmployerContact, type InsertEmployerContact, type Contact, type InsertContact, type Employer } from "@shared/schema";
+import { eq, and, or, like, ilike, sql, inArray } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import type { ContactsStorage } from "./contacts";
 
@@ -20,6 +20,7 @@ export interface EmployerContactStorage {
     credentials?: string;
   }): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
   delete(id: string): Promise<boolean>;
+  getUserAccountStatuses(employerContactIds: string[]): Promise<Array<{ employerContactId: string; userId: string | null; hasUser: boolean; accountStatus: string | null }>>;
 }
 
 export function createEmployerContactStorage(contactsStorage: ContactsStorage): EmployerContactStorage {
@@ -201,6 +202,46 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
     async delete(id: string): Promise<boolean> {
       const result = await db.delete(employerContacts).where(eq(employerContacts.id, id)).returning();
       return result.length > 0;
+    },
+
+    async getUserAccountStatuses(employerContactIds: string[]): Promise<Array<{ employerContactId: string; userId: string | null; hasUser: boolean; accountStatus: string | null }>> {
+      if (employerContactIds.length === 0) {
+        return [];
+      }
+
+      const results = await db
+        .select({
+          employerContactId: employerContacts.id,
+          userId: users.id,
+          accountStatus: users.accountStatus,
+        })
+        .from(employerContacts)
+        .innerJoin(contacts, eq(employerContacts.contactId, contacts.id))
+        .leftJoin(users, sql`lower(${contacts.email}) = lower(${users.email})`)
+        .where(inArray(employerContacts.id, employerContactIds));
+
+      // Map results and maintain input order
+      const resultMap = new Map(
+        results.map(row => [
+          row.employerContactId,
+          {
+            employerContactId: row.employerContactId,
+            userId: row.userId,
+            hasUser: row.userId !== null,
+            accountStatus: row.accountStatus,
+          },
+        ])
+      );
+
+      // Return results in the same order as input IDs
+      return employerContactIds.map(id => 
+        resultMap.get(id) || {
+          employerContactId: id,
+          userId: null,
+          hasUser: false,
+          accountStatus: null,
+        }
+      );
     },
   };
 }
