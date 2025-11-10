@@ -156,6 +156,13 @@ export const optionsWorkerWs = pgTable("options_worker_ws", {
   sequence: integer("sequence").notNull().default(0),
 });
 
+export const optionsEmploymentStatus = pgTable("options_employment_status", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  sequence: integer("sequence").notNull().default(0),
+});
+
 export const workerIds = pgTable("worker_ids", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
@@ -375,6 +382,20 @@ export const updateWorkerWsSchema = z.object({
   sequence: z.number().optional(),
 }).strict();
 
+export const insertEmploymentStatusSchema = createInsertSchema(optionsEmploymentStatus).omit({
+  id: true,
+}).extend({
+  name: z.string().trim().min(1, "Name is required"),
+  description: z.string().trim().nullable().or(z.literal("")).transform(val => val === "" ? null : val).optional(),
+  sequence: z.number().optional().default(0),
+});
+
+export const updateEmploymentStatusSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").optional(),
+  description: z.string().trim().nullable().or(z.literal("")).transform(val => val === "" ? null : val).optional(),
+  sequence: z.number().optional(),
+}).strict();
+
 export const assignRoleSchema = z.object({
   userId: z.string(),
   roleId: z.string(),
@@ -453,6 +474,9 @@ export type EmployerContactType = typeof optionsEmployerContactType.$inferSelect
 
 export type InsertWorkerWs = z.infer<typeof insertWorkerWsSchema>;
 export type WorkerWs = typeof optionsWorkerWs.$inferSelect;
+
+export type InsertEmploymentStatus = z.infer<typeof insertEmploymentStatusSchema>;
+export type EmploymentStatus = typeof optionsEmploymentStatus.$inferSelect;
 
 export type UserRole = typeof userRoles.$inferSelect;
 export type RolePermission = typeof rolePermissions.$inferSelect;
