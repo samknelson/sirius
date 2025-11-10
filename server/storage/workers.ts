@@ -217,6 +217,7 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
     createWorker: {
       enabled: true,
       getEntityId: (args, result) => result?.id || 'new worker',
+      getHostEntityId: (args, result) => result?.id, // Worker ID is the host
       after: async (args, result, storage) => {
         // Fetch the associated contact for enriched logging
         const [contact] = await db.select().from(contacts).where(eq(contacts.id, result.contactId));
@@ -236,6 +237,7 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
     deleteWorker: {
       enabled: true,
       getEntityId: (args) => args[0], // Worker ID
+      getHostEntityId: (args, result, beforeState) => beforeState?.worker?.id || args[0], // Worker ID is the host
       before: async (args, storage) => {
         const worker = await storage.getWorker(args[0]);
         if (!worker) {

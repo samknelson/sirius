@@ -90,6 +90,7 @@ const contactLoggingConfig: StorageLoggingConfig<ContactsStorage> = {
     createContact: {
       enabled: true,
       getEntityId: (args) => args[0]?.displayName || args[0]?.given || args[0]?.family || 'new contact',
+      getHostEntityId: (args, result) => result?.id,
       after: async (args, result, storage) => {
         return result; // Capture created contact
       }
@@ -97,6 +98,7 @@ const contactLoggingConfig: StorageLoggingConfig<ContactsStorage> = {
     updateName: {
       enabled: true,
       getEntityId: (args) => args[0], // Contact ID
+      getHostEntityId: (args) => args[0], // Contact ID
       before: async (args, storage) => {
         return await storage.getContact(args[0]); // Current state
       },
@@ -107,6 +109,7 @@ const contactLoggingConfig: StorageLoggingConfig<ContactsStorage> = {
     updateNameComponents: {
       enabled: true,
       getEntityId: (args) => args[0], // Contact ID
+      getHostEntityId: (args) => args[0], // Contact ID
       before: async (args, storage) => {
         return await storage.getContact(args[0]); // Current state
       },
@@ -117,6 +120,7 @@ const contactLoggingConfig: StorageLoggingConfig<ContactsStorage> = {
     updateEmail: {
       enabled: true,
       getEntityId: (args) => args[0], // Contact ID
+      getHostEntityId: (args) => args[0], // Contact ID
       before: async (args, storage) => {
         return await storage.getContact(args[0]); // Current state
       },
@@ -127,6 +131,7 @@ const contactLoggingConfig: StorageLoggingConfig<ContactsStorage> = {
     updateBirthDate: {
       enabled: true,
       getEntityId: (args) => args[0], // Contact ID
+      getHostEntityId: (args) => args[0], // Contact ID
       before: async (args, storage) => {
         return await storage.getContact(args[0]); // Current state
       },
@@ -137,6 +142,7 @@ const contactLoggingConfig: StorageLoggingConfig<ContactsStorage> = {
     updateGender: {
       enabled: true,
       getEntityId: (args) => args[0], // Contact ID
+      getHostEntityId: (args) => args[0], // Contact ID
       before: async (args, storage) => {
         return await storage.getContact(args[0]); // Current state
       },
@@ -147,6 +153,7 @@ const contactLoggingConfig: StorageLoggingConfig<ContactsStorage> = {
     deleteContact: {
       enabled: true,
       getEntityId: (args) => args[0], // Contact ID
+      getHostEntityId: (args) => args[0], // Contact ID
       before: async (args, storage) => {
         return await storage.getContact(args[0]); // Capture what's being deleted
       }
@@ -441,6 +448,7 @@ const workerIdLoggingConfig: StorageLoggingConfig<WorkerIdStorage> = {
     createWorkerId: {
       enabled: true,
       getEntityId: (args) => args[0]?.workerId || 'new worker ID',
+      getHostEntityId: (args, result) => result?.workerId || args[0]?.workerId, // Worker ID is the host
       after: async (args, result, storage) => {
         return result; // Capture created worker ID
       },
@@ -464,6 +472,7 @@ const workerIdLoggingConfig: StorageLoggingConfig<WorkerIdStorage> = {
     updateWorkerId: {
       enabled: true,
       getEntityId: (args) => args[0], // Worker ID record ID
+      getHostEntityId: (args, result, beforeState) => result?.workerId || beforeState?.workerId, // Worker ID is the host
       before: async (args, storage) => {
         return await storage.getWorkerId(args[0]); // Current state
       },
@@ -491,6 +500,7 @@ const workerIdLoggingConfig: StorageLoggingConfig<WorkerIdStorage> = {
     deleteWorkerId: {
       enabled: true,
       getEntityId: (args) => args[0], // Worker ID record ID
+      getHostEntityId: (args, result, beforeState) => beforeState?.workerId, // Worker ID is the host
       before: async (args, storage) => {
         return await storage.getWorkerId(args[0]); // Capture what's being deleted
       },
@@ -554,6 +564,7 @@ const workerEmphistLoggingConfig: StorageLoggingConfig<WorkerEmphistStorage> = {
         
         return `${workerName} :: ${employerName} :: ${statusName}`;
       },
+      getHostEntityId: (args, result) => result?.workerId || args[0]?.workerId, // Worker ID is the host
       after: async (args, result, storage) => {
         return result; // Capture created employment history record
       },
@@ -612,6 +623,7 @@ const workerEmphistLoggingConfig: StorageLoggingConfig<WorkerEmphistStorage> = {
         
         return `${workerName} :: ${employerName} :: ${statusName}`;
       },
+      getHostEntityId: (args, result, beforeState) => result?.workerId || beforeState?.workerId, // Worker ID is the host
       before: async (args, storage) => {
         return await storage.getWorkerEmphist(args[0]); // Current state
       },
@@ -670,6 +682,7 @@ const workerEmphistLoggingConfig: StorageLoggingConfig<WorkerEmphistStorage> = {
         
         return `${workerName} :: ${employerName} :: ${statusName}`;
       },
+      getHostEntityId: (args, result, beforeState) => beforeState?.workerId, // Worker ID is the host
       before: async (args, storage) => {
         return await storage.getWorkerEmphist(args[0]); // Capture what's being deleted
       },

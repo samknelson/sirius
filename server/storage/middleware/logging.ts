@@ -53,6 +53,9 @@ export interface MethodLoggingConfig<T = any> {
   /** Function to extract a human-readable entity ID from arguments, result, or beforeState */
   getEntityId?: (args: any[], result?: any, beforeState?: any) => string | undefined | Promise<string | undefined>;
   
+  /** Function to extract the host entity ID (parent entity: user, worker, contact, employer) */
+  getHostEntityId?: (args: any[], result?: any, beforeState?: any) => string | undefined | Promise<string | undefined>;
+  
   /** Custom function to generate a human-readable description of the operation */
   getDescription?: (args: any[], result: any, beforeState: any, afterState: any, storage: T) => Promise<string> | string;
   
@@ -153,6 +156,11 @@ export function withStorageLogging<T extends Record<string, any>>(
               ? await methodConfig.getEntityId(args, result, beforeState)
               : undefined;
 
+            // Resolve host entity ID asynchronously
+            const hostEntityId = methodConfig.getHostEntityId
+              ? await methodConfig.getHostEntityId(args, result, beforeState)
+              : undefined;
+
             // Resolve description asynchronously
             let description: string;
             if (methodConfig.getDescription) {
@@ -172,6 +180,7 @@ export function withStorageLogging<T extends Record<string, any>>(
               module: config.module,
               operation: String(key),
               entity_id: entityId,
+              host_entity_id: hostEntityId,
               description,
               user_id: context?.userId,
               user_email: context?.userEmail,
@@ -211,12 +220,18 @@ export function withStorageLogging<T extends Record<string, any>>(
               ? await methodConfig.getEntityId(args, undefined, beforeState)
               : undefined;
 
+            // Resolve host entity ID asynchronously
+            const hostEntityId = methodConfig.getHostEntityId
+              ? await methodConfig.getHostEntityId(args, undefined, beforeState)
+              : undefined;
+
             const description = `Failed to ${String(key)} on ${config.module} "${entityId || 'unknown'}"`;
 
             storageLogger.error(`Storage operation failed: ${config.module}.${String(key)}`, {
               module: config.module,
               operation: String(key),
               entity_id: entityId,
+              host_entity_id: hostEntityId,
               description,
               user_id: context?.userId,
               user_email: context?.userEmail,
