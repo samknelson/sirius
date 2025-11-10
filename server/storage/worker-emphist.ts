@@ -28,16 +28,21 @@ async function updateWorkerDenormalizedFieldsInTransaction(tx: any, workerId: st
 
   let denormHomeEmployerId: string | null = null;
   const denormEmployerIds: string[] = [];
-  const employerIdSet = new Set<string>();
+  const processedEmployers = new Set<string>();
 
   for (const record of emphist) {
     if (record.home && !denormHomeEmployerId) {
       denormHomeEmployerId = record.employerId;
     }
 
-    if (record.employed && record.employerId && !employerIdSet.has(record.employerId)) {
-      employerIdSet.add(record.employerId);
-      denormEmployerIds.push(record.employerId);
+    // Only process the most recent record for each employer
+    if (record.employerId && !processedEmployers.has(record.employerId)) {
+      processedEmployers.add(record.employerId);
+      
+      // Add to denormEmployerIds only if this most recent record shows employed=true
+      if (record.employed) {
+        denormEmployerIds.push(record.employerId);
+      }
     }
   }
 
