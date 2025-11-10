@@ -91,6 +91,7 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
   const mainTabs = [
     { id: "details", label: "Details", href: `/employers/${employer.id}` },
     { id: "edit", label: "Edit", href: `/employers/${employer.id}/edit` },
+    { id: "workers", label: "Workers", href: `/employers/${employer.id}/workers` },
     { id: "contacts", label: "Contacts", href: `/employers/${employer.id}/contacts` },
     { id: "logs", label: "Logs", href: `/employers/${employer.id}/logs` },
   ];

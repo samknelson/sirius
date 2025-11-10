@@ -4,6 +4,7 @@ import { eq, and, desc, isNotNull, inArray } from "drizzle-orm";
 
 export interface WorkerEmphistStorage {
   getWorkerEmphistByWorkerId(workerId: string): Promise<WorkerEmphist[]>;
+  getByEmployerId(employerId: string): Promise<WorkerEmphist[]>;
   getWorkerEmphist(id: string): Promise<WorkerEmphist | undefined>;
   createWorkerEmphist(emphist: InsertWorkerEmphist): Promise<WorkerEmphist>;
   updateWorkerEmphist(id: string, emphist: Partial<InsertWorkerEmphist>): Promise<WorkerEmphist | undefined>;
@@ -56,6 +57,25 @@ export function createWorkerEmphistStorage(): WorkerEmphistStorage {
         .select()
         .from(workerEmphist)
         .where(eq(workerEmphist.workerId, workerId))
+        .orderBy(desc(workerEmphist.date));
+    },
+
+    async getByEmployerId(employerId: string): Promise<WorkerEmphist[]> {
+      return db
+        .select({
+          id: workerEmphist.id,
+          workerId: workerEmphist.workerId,
+          employerId: workerEmphist.employerId,
+          date: workerEmphist.date,
+          employmentStatus: workerEmphist.employmentStatus,
+          employmentStatusName: optionsEmploymentStatus.name,
+          position: workerEmphist.position,
+          home: workerEmphist.home,
+          note: workerEmphist.note,
+        })
+        .from(workerEmphist)
+        .leftJoin(optionsEmploymentStatus, eq(workerEmphist.employmentStatus, optionsEmploymentStatus.id))
+        .where(eq(workerEmphist.employerId, employerId))
         .orderBy(desc(workerEmphist.date));
     },
 

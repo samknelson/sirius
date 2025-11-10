@@ -455,6 +455,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/employers/:employerId/workers - Get workers for an employer with their most recent employment history (requires employerUser policy)
+  app.get("/api/employers/:employerId/workers", requireAuth, requireAccess(policies.employerUser), async (req, res) => {
+    try {
+      const { employerId } = req.params;
+      const { employmentStatusId: rawStatusId } = req.query;
+      
+      // Normalize employmentStatusId to single string (handle string arrays from Express)
+      const employmentStatusId = Array.isArray(rawStatusId) ? rawStatusId[0] : rawStatusId;
+      
+      // Verify employer exists
+      const employer = await storage.employers.getEmployer(employerId);
+      if (!employer) {
+        res.status(404).json({ message: "Employer not found" });
+        return;
+      }
+      
+      // Get all employment history records for this employer, ordered by date descending
+      const allEmphist = await storage.workerEmphist.getByEmployerId(employerId);
+      
+      // Group by worker and get the most recent record for each
+      const workerMap = new Map();
+      for (const record of allEmphist) {
+        if (!workerMap.has(record.workerId) || 
+            new Date(record.date!) > new Date(workerMap.get(record.workerId).date!)) {
+          workerMap.set(record.workerId, record);
+        }
+      }
+      
+      // Get worker and contact details for each
+      const results = [];
+      for (const [workerId, emphist] of workerMap) {
+        // Apply employment status filter if provided
+        if (employmentStatusId && emphist.employmentStatus !== employmentStatusId) {
+          continue;
+        }
+        
+        const worker = await storage.workers.getWorker(workerId);
+        if (!worker) continue;
+        
+        results.push({
+          workerId: worker.id,
+          workerSiriusId: worker.siriusId,
+          contactName: worker.contactName,
+          employmentHistoryId: emphist.id,
+          employmentStatusId: emphist.employmentStatus,
+          employmentStatusName: emphist.employmentStatusName,
+          position: emphist.position,
+          date: emphist.date,
+          home: emphist.home,
+        });
+      }
+      
+      // Sort by worker name
+      results.sort((a, b) => (a.contactName || '').localeCompare(b.contactName || ''));
+      
+      res.json(results);
+    } catch (error) {
+      console.error("Failed to fetch employer workers:", error);
+      res.status(500).json({ message: "Failed to fetch employer workers" });
+    }
+  });
+
   // POST /api/employers - Create a new employer (requires workers.manage permission)
   app.post("/api/employers", requireAuth, requirePermission("workers.manage"), async (req, res) => {
     try {
