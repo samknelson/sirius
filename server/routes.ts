@@ -2375,28 +2375,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Worker not found" });
       }
 
-      // Collect all entity IDs related to this worker
-      const entityIds: string[] = [workerId];
-
-      // Add contact ID
+      // Query by host entity IDs: worker ID and contact ID
+      // This will capture all logs for:
+      // - Worker (hostEntityId = workerId)
+      // - Worker IDs (hostEntityId = workerId)
+      // - Worker employment history (hostEntityId = workerId)
+      // - Contact (hostEntityId = contactId)
+      // - Addresses (hostEntityId = contactId)
+      // - Phone numbers (hostEntityId = contactId)
+      const hostEntityIds: string[] = [workerId];
       if (worker.contactId) {
-        entityIds.push(worker.contactId);
-
-        // Get all addresses for this contact
-        const addresses = await storage.contacts.addresses.getPostalAddressesByContact(worker.contactId);
-        entityIds.push(...addresses.map((addr: PostalAddress) => addr.id));
-
-        // Get all phone numbers for this contact
-        const phoneNumbers = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(worker.contactId);
-        entityIds.push(...phoneNumbers.map((phone: PhoneNumber) => phone.id));
+        hostEntityIds.push(worker.contactId);
       }
 
-      // Get all worker IDs for this worker
-      const workerIds = await storage.workerIds.getWorkerIdsByWorkerId(workerId);
-      entityIds.push(...workerIds.map((wid: WorkerId) => wid.id));
-
-      // Build all conditions including the entity ID filter
-      const conditions = [inArray(winstonLogs.entityId, entityIds)];
+      // Build all conditions including the host entity ID filter
+      const conditions = [inArray(winstonLogs.hostEntityId, hostEntityIds)];
       
       if (module && typeof module === 'string') {
         conditions.push(eq(winstonLogs.module, module));
@@ -2474,32 +2467,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Employer not found" });
       }
 
-      // Collect all entity IDs related to this employer
-      const entityIds: string[] = [employerId];
+      // Query by host entity IDs: employer ID and all contact IDs from employer contacts
+      // This will capture all logs for:
+      // - Employer (hostEntityId = employerId)
+      // - Employer contacts (hostEntityId = employerId)
+      // - Contacts (hostEntityId = contactId for each employer contact)
+      // - Addresses (hostEntityId = contactId)
+      // - Phone numbers (hostEntityId = contactId)
+      const hostEntityIds: string[] = [employerId];
 
       // Get all employer contacts for this employer
       const employerContacts = await storage.employerContacts.listByEmployer(employerId);
-      entityIds.push(...employerContacts.map(ec => ec.id));
-
-      // Get all contact IDs from employer contacts
+      
+      // Add all contact IDs from employer contacts
       const contactIds = employerContacts.map(ec => ec.contactId);
-      entityIds.push(...contactIds);
+      hostEntityIds.push(...contactIds);
 
-      // For each contact, get their addresses and phone numbers
-      for (const contactId of contactIds) {
-        const addresses = await storage.contacts.addresses.getPostalAddressesByContact(contactId);
-        entityIds.push(...addresses.map(addr => addr.id));
-
-        const phoneNumbers = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(contactId);
-        entityIds.push(...phoneNumbers.map(pn => pn.id));
-      }
-
-      // Get all Stripe payment methods for this employer
-      const paymentMethods = await storage.ledger.stripePaymentMethods.getByEntity('employer', employerId);
-      entityIds.push(...paymentMethods.map(pm => pm.id));
-
-      // Build all conditions including the entity ID filter
-      const conditions = [inArray(winstonLogs.entityId, entityIds)];
+      // Build all conditions including the host entity ID filter
+      const conditions = [inArray(winstonLogs.hostEntityId, hostEntityIds)];
       
       if (module && typeof module === 'string') {
         conditions.push(eq(winstonLogs.module, module));
