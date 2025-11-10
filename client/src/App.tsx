@@ -268,37 +268,49 @@ function Router() {
 
       <Route path="/employer-contacts/:id">
         <ProtectedRoute permission="workers.view">
-          <EmployerContactView />
+          <AuthenticatedLayout>
+            <EmployerContactView />
+          </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
       <Route path="/employer-contacts/:id/edit">
         <ProtectedRoute permission="workers.manage">
-          <EmployerContactEdit />
+          <AuthenticatedLayout>
+            <EmployerContactEdit />
+          </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
       <Route path="/employer-contacts/:id/name">
         <ProtectedRoute permission="workers.manage">
-          <EmployerContactName />
+          <AuthenticatedLayout>
+            <EmployerContactName />
+          </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
       <Route path="/employer-contacts/:id/email">
         <ProtectedRoute permission="workers.manage">
-          <EmployerContactEmail />
+          <AuthenticatedLayout>
+            <EmployerContactEmail />
+          </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
       <Route path="/employer-contacts/:id/phone-numbers">
         <ProtectedRoute permission="workers.manage">
-          <EmployerContactPhoneNumbers />
+          <AuthenticatedLayout>
+            <EmployerContactPhoneNumbers />
+          </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
       <Route path="/employer-contacts/:id/addresses">
         <ProtectedRoute permission="workers.manage">
-          <EmployerContactAddresses />
+          <AuthenticatedLayout>
+            <EmployerContactAddresses />
+          </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
