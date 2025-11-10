@@ -96,7 +96,9 @@ export const workerEmphist = pgTable("worker_emphist", {
   employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
   date: date("date"),
   employmentStatus: varchar("employment_status").references(() => optionsEmploymentStatus.id, { onDelete: 'set null' }),
+  position: text("position"),
   home: boolean("home").default(false).notNull(),
+  note: text("note"),
 });
 
 export const trustBenefits = pgTable("trust_benefits", {
