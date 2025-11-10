@@ -22,6 +22,7 @@ interface ComponentConfig {
 export default function ConfigurationLayout({ children }: ConfigurationLayoutProps) {
   const [location] = useLocation();
   const { hasPermission } = useAuth();
+  const [isSystemOpen, setIsSystemOpen] = useState(false);
   const [isTrustOpen, setIsTrustOpen] = useState(false);
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const [isContactOpen, setIsContactOpen] = useState(false);
@@ -43,7 +44,9 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
     return config?.enabled ?? false;
   };
 
-  const regularNavItems = [
+  const regularNavItems: any[] = [];
+
+  const systemItems = [
     {
       path: "/config/components",
       label: "Components",
@@ -233,7 +236,7 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
 
   // Combine for policy checks
   const allLedgerItems = [...ledgerItems, ...stripeItems];
-  const allNavItems = [...regularNavItems, ...trustItems, ...themeItems, ...contactItems, ...employersItems, ...userManagementItems, ...dropDownListItems, ...allLedgerItems];
+  const allNavItems = [...regularNavItems, ...systemItems, ...trustItems, ...themeItems, ...contactItems, ...employersItems, ...userManagementItems, ...dropDownListItems, ...allLedgerItems];
 
   // Fetch policy checks for navigation items that use policies
   const policiesNeeded = allNavItems
@@ -283,6 +286,11 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
     
     return false;
   };
+
+  // Check if any system item is active
+  const isSystemActive = systemItems.some(
+    (item) => location === item.path || location.startsWith(item.path + "/")
+  );
 
   // Check if any trust item is active
   const isTrustActive = trustItems.some(
@@ -350,6 +358,47 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
                 </Link>
               );
             })}
+
+            {/* System Group */}
+            {systemItems.some(hasAccessToItem) && (
+              <Collapsible
+                open={isSystemOpen || isSystemActive}
+                onOpenChange={setIsSystemOpen}
+              >
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant={isSystemActive ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    data-testid="nav-config-system"
+                  >
+                    <Settings className="mr-2 h-4 w-4" />
+                    System
+                    <ChevronDown className="ml-auto h-4 w-4 transition-transform duration-200" 
+                      style={{ transform: (isSystemOpen || isSystemActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
+                    />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="ml-4 mt-2 space-y-2">
+                  {systemItems.filter(hasAccessToItem).map((item) => {
+                    const Icon = item.icon;
+                    const isActive = location === item.path || location.startsWith(item.path + "/");
+                    
+                    return (
+                      <Link key={item.path} href={item.path}>
+                        <Button
+                          variant={isActive ? "secondary" : "ghost"}
+                          className="w-full justify-start text-sm"
+                          data-testid={item.testId}
+                        >
+                          <Icon className="mr-2 h-4 w-4" />
+                          {item.label}
+                        </Button>
+                      </Link>
+                    );
+                  })}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
 
             {/* Trust Group */}
             {trustItems.some(hasAccessToItem) && (
