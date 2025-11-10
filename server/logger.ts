@@ -60,6 +60,7 @@ if (process.env.DATABASE_URL) {
         { name: "module", dataType: "VARCHAR(100)" },
         { name: "operation", dataType: "VARCHAR(100)" },
         { name: "entity_id", dataType: "VARCHAR(255)" },
+        { name: "host_entity_id", dataType: "VARCHAR(255)" },
         { name: "description", dataType: "TEXT" },
         { name: "user_id", dataType: "VARCHAR(255)" },
         { name: "user_email", dataType: "VARCHAR(255)" },
