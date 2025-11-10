@@ -689,7 +689,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GET /api/employer-contacts/:contactId/user - Get user linked to employer contact
-  app.get("/api/employer-contacts/:contactId/user", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/employer-contacts/:contactId/user", requireAccess(policies.employerUserManage), async (req, res) => {
     try {
       const { contactId } = req.params;
       
@@ -755,7 +755,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // POST /api/employer-contacts/:contactId/user - Create or update user linked to employer contact
-  app.post("/api/employer-contacts/:contactId/user", requireAuth, requirePermission("users.manage"), async (req, res) => {
+  app.post("/api/employer-contacts/:contactId/user", requireAccess(policies.employerUserManage), async (req, res) => {
     try {
       const { contactId } = req.params;
       

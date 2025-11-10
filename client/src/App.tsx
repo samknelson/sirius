@@ -316,7 +316,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/user">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute policy="employerUserManage">
           <AuthenticatedLayout>
             <EmployerContactUser />
           </AuthenticatedLayout>

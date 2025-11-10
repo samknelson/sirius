@@ -214,6 +214,19 @@ export const staff: AccessPolicy = {
 };
 
 /**
+ * Employer user management policy
+ */
+export const employerUserManage: AccessPolicy = {
+  name: 'Employer User Management',
+  description: 'Requires employer.login component and employer.usermanage permission',
+  requirements: [
+    { type: 'authenticated' },
+    { type: 'component', componentId: 'employer.login' },
+    { type: 'permission', key: 'employer.usermanage' },
+  ],
+};
+
+/**
  * Worker access policy
  * Grants access if user has staff permission, or if they have worker permission
  * and their email matches the worker's contact email
@@ -307,4 +320,5 @@ export const policies = {
   staff,
   worker,
   workersViewOrManage,
+  employerUserManage,
 };

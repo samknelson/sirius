@@ -214,6 +214,11 @@ export function initializePermissions(): void {
       key: 'logs.view',
       description: 'View system logs and audit trail',
       module: 'core'
+    },
+    {
+      key: 'employer.usermanage',
+      description: 'Manage user accounts for employer contacts',
+      module: 'core'
     }
   ];
 
