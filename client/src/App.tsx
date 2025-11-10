@@ -30,6 +30,7 @@ import EmployersAdd from "@/pages/employers-add";
 import EmployerView from "@/pages/employer-view";
 import EmployerEdit from "@/pages/employer-edit";
 import EmployerContacts from "@/pages/employer-contacts";
+import EmployerContactView from "@/pages/employer-contact-view";
 import EmployerContactEdit from "@/pages/employer-contact-edit";
 import EmployerLogs from "@/pages/employer-logs";
 import StripeCustomerPage from "@/pages/employers/stripe-customer";
@@ -252,11 +253,15 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/employer-contacts/:id">
+        <ProtectedRoute permission="workers.view">
+          <EmployerContactView />
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/employer-contacts/:id/edit">
         <ProtectedRoute permission="workers.manage">
-          <AuthenticatedLayout>
-            <EmployerContactEdit />
-          </AuthenticatedLayout>
+          <EmployerContactEdit />
         </ProtectedRoute>
       </Route>
 

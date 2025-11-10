@@ -1,35 +1,17 @@
-import { useParams, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useEffect } from "react";
+import { EmployerContactLayout, useEmployerContactLayout } from "@/components/layouts/EmployerContactLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { EmployerContactType } from "@shared/schema";
-
-interface EmployerContactDetail {
-  id: string;
-  employerId: string;
-  contactId: string;
-  contactTypeId: string | null;
-  contact: {
-    id: string;
-    displayName: string;
-    email: string | null;
-  };
-  contactType?: {
-    id: string;
-    name: string;
-    description: string | null;
-  } | null;
-}
 
 const updateContactTypeSchema = z.object({
   contactTypeId: z.string().nullable(),
@@ -37,14 +19,10 @@ const updateContactTypeSchema = z.object({
 
 type UpdateContactTypeFormData = z.infer<typeof updateContactTypeSchema>;
 
-export default function EmployerContactEditPage() {
-  const { id } = useParams<{ id: string }>();
+function EmployerContactEditContent() {
+  const { employerContact } = useEmployerContactLayout();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-
-  const { data: employerContact, isLoading: contactLoading } = useQuery<EmployerContactDetail>({
-    queryKey: [`/api/employer-contacts/${id}`],
-  });
 
   const { data: contactTypes } = useQuery<EmployerContactType[]>({
     queryKey: ["/api/employer-contact-types"],
@@ -72,19 +50,17 @@ export default function EmployerContactEditPage() {
       const normalizedData = {
         contactTypeId: data.contactTypeId === "null" ? null : data.contactTypeId,
       };
-      return await apiRequest("PATCH", `/api/employer-contacts/${id}`, normalizedData);
+      return await apiRequest("PATCH", `/api/employer-contacts/${employerContact.id}`, normalizedData);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/employer-contacts/${id}`] });
-      if (employerContact?.employerId) {
-        queryClient.invalidateQueries({ queryKey: ["/api/employers", employerContact.employerId, "contacts"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/employers", employerContact.employerId] });
-      }
+      queryClient.invalidateQueries({ queryKey: ["/api/employer-contacts", employerContact.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/employers", employerContact.employerId, "contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/employers", employerContact.employerId] });
       toast({
         title: "Success",
         description: "Contact type updated successfully",
       });
-      navigate(`/employers/${employerContact?.employerId}`);
+      navigate(`/employer-contacts/${employerContact.id}`);
     },
     onError: (error: any) => {
       toast({
@@ -99,52 +75,11 @@ export default function EmployerContactEditPage() {
     updateMutation.mutate(data);
   };
 
-  if (contactLoading) {
-    return (
-      <div className="max-w-4xl mx-auto p-6">
-        <Skeleton className="h-10 w-64 mb-6" />
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-8 w-48" />
-            <Skeleton className="h-4 w-96 mt-2" />
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-64 w-full" />
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (!employerContact) {
-    return (
-      <div className="max-w-4xl mx-auto p-6">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center text-muted-foreground">
-              Employer contact not found
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <Button
-        variant="ghost"
-        onClick={() => navigate(`/employers/${employerContact.employerId}`)}
-        className="mb-6"
-        data-testid="button-back"
-      >
-        <ArrowLeft size={16} className="mr-2" />
-        Back to Employer
-      </Button>
-
+    <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Edit Employer Contact</CardTitle>
+          <CardTitle>Edit Contact Type</CardTitle>
           <CardDescription>
             Update the contact type for {employerContact.contact.displayName}
           </CardDescription>
@@ -202,7 +137,7 @@ export default function EmployerContactEditPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => navigate(`/employers/${employerContact.employerId}`)}
+                  onClick={() => navigate(`/employer-contacts/${employerContact.id}`)}
                   disabled={updateMutation.isPending}
                   data-testid="button-cancel"
                 >
@@ -214,5 +149,13 @@ export default function EmployerContactEditPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function EmployerContactEditPage() {
+  return (
+    <EmployerContactLayout activeTab="edit">
+      <EmployerContactEditContent />
+    </EmployerContactLayout>
   );
 }

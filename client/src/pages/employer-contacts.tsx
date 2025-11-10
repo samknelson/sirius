@@ -10,7 +10,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Trash2, Plus, Edit } from "lucide-react";
+import { Trash2, Plus, Eye } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -345,13 +345,13 @@ function EmployerContactsContent() {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <Link href={`/employer-contacts/${contact.id}/edit`}>
+                    <Link href={`/employer-contacts/${contact.id}`}>
                       <Button
                         variant="ghost"
                         size="sm"
-                        data-testid={`button-edit-contact-${contact.id}`}
+                        data-testid={`button-view-contact-${contact.id}`}
                       >
-                        <Edit size={16} />
+                        <Eye size={16} />
                       </Button>
                     </Link>
                     <Button
