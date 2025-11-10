@@ -1918,6 +1918,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const employerContacts = await storage.employerContacts.listByEmployer(employerId);
       entityIds.push(...employerContacts.map(ec => ec.id));
 
+      // Get all contact IDs from employer contacts
+      const contactIds = employerContacts.map(ec => ec.contactId);
+      entityIds.push(...contactIds);
+
+      // For each contact, get their addresses and phone numbers
+      for (const contactId of contactIds) {
+        const addresses = await storage.contacts.addresses.getPostalAddressesByContact(contactId);
+        entityIds.push(...addresses.map(addr => addr.id));
+
+        const phoneNumbers = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(contactId);
+        entityIds.push(...phoneNumbers.map(pn => pn.id));
+      }
+
       // Get all Stripe payment methods for this employer
       const paymentMethods = await storage.ledger.stripePaymentMethods.getByEntity('employer', employerId);
       entityIds.push(...paymentMethods.map(pm => pm.id));
