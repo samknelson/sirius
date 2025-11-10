@@ -1,14 +1,13 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Loader2, Plus, Edit, Trash2, Save, X, MoveUp, MoveDown } from "lucide-react";
+import { Loader2, Plus, Edit, Trash2, Save, X, ArrowUp, ArrowDown } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -25,15 +24,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { insertWorkerWsSchema, type WorkerWs, type InsertWorkerWs } from "@shared/schema";
+
+interface WorkerWs {
+  id: string;
+  name: string;
+  description: string | null;
+  sequence: number;
+}
 
 export default function WorkerWorkStatusesPage() {
   const { toast } = useToast();
@@ -41,36 +38,27 @@ export default function WorkerWorkStatusesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   
+  // Form state
+  const [formName, setFormName] = useState("");
+  const [formDescription, setFormDescription] = useState("");
+  
   const { data: statuses = [], isLoading } = useQuery<WorkerWs[]>({
     queryKey: ["/api/worker-work-statuses"],
   });
 
-  const addForm = useForm<InsertWorkerWs>({
-    resolver: zodResolver(insertWorkerWsSchema),
-    defaultValues: {
-      name: "",
-      description: "",
-      sequence: 0,
-    },
-  });
-
-  const editForm = useForm<InsertWorkerWs>({
-    resolver: zodResolver(insertWorkerWsSchema),
-    defaultValues: {
-      name: "",
-      description: "",
-      sequence: 0,
-    },
-  });
-
   const createMutation = useMutation({
-    mutationFn: async (data: InsertWorkerWs) => {
-      return apiRequest("POST", "/api/worker-work-statuses", data);
+    mutationFn: async (data: { name: string; description: string | null }) => {
+      // Find the highest sequence number
+      const maxSequence = statuses.reduce((max, status) => Math.max(max, status.sequence), -1);
+      return apiRequest("POST", "/api/worker-work-statuses", { 
+        ...data, 
+        sequence: maxSequence + 1 
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/worker-work-statuses"] });
       setIsAddDialogOpen(false);
-      addForm.reset();
+      resetForm();
       toast({
         title: "Success",
         description: "Worker work status created successfully.",
@@ -86,13 +74,16 @@ export default function WorkerWorkStatusesPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { id: string; updates: Partial<InsertWorkerWs> }) => {
-      return apiRequest("PUT", `/api/worker-work-statuses/${data.id}`, data.updates);
+    mutationFn: async (data: { id: string; name: string; description: string | null }) => {
+      return apiRequest("PUT", `/api/worker-work-statuses/${data.id}`, {
+        name: data.name,
+        description: data.description,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/worker-work-statuses"] });
       setEditingId(null);
-      editForm.reset();
+      resetForm();
       toast({
         title: "Success",
         description: "Worker work status updated successfully.",
@@ -128,229 +119,223 @@ export default function WorkerWorkStatusesPage() {
     },
   });
 
+  const updateSequenceMutation = useMutation({
+    mutationFn: async (data: { id: string; sequence: number }) => {
+      return apiRequest("PUT", `/api/worker-work-statuses/${data.id}`, {
+        sequence: data.sequence,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/worker-work-statuses"] });
+    },
+  });
+
+  const resetForm = () => {
+    setFormName("");
+    setFormDescription("");
+  };
+
   const handleEdit = (status: WorkerWs) => {
     setEditingId(status.id);
-    editForm.reset({
-      name: status.name,
-      description: status.description || "",
-      sequence: status.sequence,
-    });
+    setFormName(status.name);
+    setFormDescription(status.description || "");
   };
 
   const handleCancelEdit = () => {
     setEditingId(null);
-    editForm.reset();
+    resetForm();
   };
 
-  const onAddSubmit = (data: InsertWorkerWs) => {
-    createMutation.mutate(data);
+  const handleSaveEdit = () => {
+    if (!formName.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Name is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+    updateMutation.mutate({
+      id: editingId!,
+      name: formName.trim(),
+      description: formDescription.trim() || null,
+    });
   };
 
-  const onEditSubmit = (data: InsertWorkerWs) => {
-    if (editingId) {
-      updateMutation.mutate({ id: editingId, updates: data });
+  const handleCreate = () => {
+    if (!formName.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Name is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+    createMutation.mutate({
+      name: formName.trim(),
+      description: formDescription.trim() || null,
+    });
+  };
+
+  const moveUp = (status: WorkerWs) => {
+    const currentIndex = statuses.findIndex(s => s.id === status.id);
+    if (currentIndex > 0) {
+      const prevStatus = statuses[currentIndex - 1];
+      updateSequenceMutation.mutate({ id: status.id, sequence: prevStatus.sequence });
+      updateSequenceMutation.mutate({ id: prevStatus.id, sequence: status.sequence });
     }
   };
 
-  const moveUp = (index: number) => {
-    if (index > 0) {
-      const current = statuses[index];
-      const previous = statuses[index - 1];
-      
-      updateMutation.mutate({ id: current.id, updates: { sequence: previous.sequence } });
-      updateMutation.mutate({ id: previous.id, updates: { sequence: current.sequence } });
-    }
-  };
-
-  const moveDown = (index: number) => {
-    if (index < statuses.length - 1) {
-      const current = statuses[index];
-      const next = statuses[index + 1];
-      
-      updateMutation.mutate({ id: current.id, updates: { sequence: next.sequence } });
-      updateMutation.mutate({ id: next.id, updates: { sequence: current.sequence } });
+  const moveDown = (status: WorkerWs) => {
+    const currentIndex = statuses.findIndex(s => s.id === status.id);
+    if (currentIndex < statuses.length - 1) {
+      const nextStatus = statuses[currentIndex + 1];
+      updateSequenceMutation.mutate({ id: status.id, sequence: nextStatus.sequence });
+      updateSequenceMutation.mutate({ id: nextStatus.id, sequence: status.sequence });
     }
   };
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin" data-testid="loading-spinner" />
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="container mx-auto py-8 max-w-6xl">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold" data-testid="heading-worker-work-statuses">
+          Worker Work Statuses
+        </h1>
+        <Button onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-status">
+          <Plus className="mr-2 h-4 w-4" />
+          Add Work Status
+        </Button>
+      </div>
+
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle data-testid="title-page">Worker Work Statuses</CardTitle>
-              <CardDescription>
-                Manage worker work status options for categorizing employment status
-              </CardDescription>
-            </div>
-            <Button data-testid="button-add" onClick={() => setIsAddDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Status
-            </Button>
-          </div>
+          <CardTitle>Worker Work Status Management</CardTitle>
+          <CardDescription>
+            Manage worker work status options for categorizing employment status. Use the arrows to reorder statuses.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {statuses.length === 0 ? (
-            <div className="text-center text-muted-foreground py-8" data-testid="text-empty-state">
-              No worker work statuses configured yet. Click "Add Status" to get started.
+            <div className="text-center py-8 text-muted-foreground" data-testid="text-no-statuses">
+              No worker work statuses configured yet. Click "Add Work Status" to create one.
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Order</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Description</TableHead>
-                  <TableHead className="w-24">Sequence</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {statuses.map((status, index) => (
                   <TableRow key={status.id} data-testid={`row-status-${status.id}`}>
-                    {editingId === status.id ? (
-                      <>
-                        <TableCell colSpan={4}>
-                          <Form {...editForm}>
-                            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
-                              <FormField
-                                control={editForm.control}
-                                name="name"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Name *</FormLabel>
-                                    <FormControl>
-                                      <Input
-                                        placeholder="e.g., Active"
-                                        data-testid="input-edit-name"
-                                        {...field}
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                              <FormField
-                                control={editForm.control}
-                                name="description"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Description</FormLabel>
-                                    <FormControl>
-                                      <Textarea
-                                        placeholder="Optional description"
-                                        rows={2}
-                                        data-testid="input-edit-description"
-                                        {...field}
-                                        value={field.value || ""}
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                              <FormField
-                                control={editForm.control}
-                                name="sequence"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Sequence</FormLabel>
-                                    <FormControl>
-                                      <Input
-                                        type="number"
-                                        placeholder="0"
-                                        data-testid="input-edit-sequence"
-                                        {...field}
-                                        onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                              <div className="flex gap-2">
-                                <Button
-                                  type="submit"
-                                  disabled={updateMutation.isPending}
-                                  data-testid="button-save-edit"
-                                >
-                                  {updateMutation.isPending ? (
-                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                  ) : (
-                                    <Save className="h-4 w-4 mr-2" />
-                                  )}
-                                  Save
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  onClick={handleCancelEdit}
-                                  data-testid="button-cancel-edit"
-                                >
-                                  <X className="h-4 w-4 mr-2" />
-                                  Cancel
-                                </Button>
-                              </div>
-                            </form>
-                          </Form>
-                        </TableCell>
-                      </>
-                    ) : (
-                      <>
-                        <TableCell data-testid={`text-name-${status.id}`}>{status.name}</TableCell>
-                        <TableCell data-testid={`text-description-${status.id}`}>
-                          {status.description || <span className="text-muted-foreground">—</span>}
-                        </TableCell>
-                        <TableCell data-testid={`text-sequence-${status.id}`}>{status.sequence}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => moveUp(index)}
-                              disabled={index === 0}
-                              data-testid={`button-move-up-${status.id}`}
-                              title="Move up"
-                            >
-                              <MoveUp className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => moveDown(index)}
-                              disabled={index === statuses.length - 1}
-                              data-testid={`button-move-down-${status.id}`}
-                              title="Move down"
-                            >
-                              <MoveDown className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleEdit(status)}
-                              data-testid={`button-edit-${status.id}`}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setDeleteId(status.id)}
-                              data-testid={`button-delete-${status.id}`}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </>
-                    )}
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => moveUp(status)}
+                          disabled={index === 0}
+                          data-testid={`button-move-up-${status.id}`}
+                        >
+                          <ArrowUp className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => moveDown(status)}
+                          disabled={index === statuses.length - 1}
+                          data-testid={`button-move-down-${status.id}`}
+                        >
+                          <ArrowDown className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell data-testid={`text-name-${status.id}`}>
+                      {editingId === status.id ? (
+                        <Input
+                          value={formName}
+                          onChange={(e) => setFormName(e.target.value)}
+                          placeholder="Name"
+                          data-testid={`input-edit-name-${status.id}`}
+                        />
+                      ) : (
+                        status.name
+                      )}
+                    </TableCell>
+                    <TableCell data-testid={`text-description-${status.id}`}>
+                      {editingId === status.id ? (
+                        <Textarea
+                          value={formDescription}
+                          onChange={(e) => setFormDescription(e.target.value)}
+                          placeholder="Description (optional)"
+                          rows={2}
+                          data-testid={`input-edit-description-${status.id}`}
+                        />
+                      ) : (
+                        status.description ? (
+                          <span className="text-sm">{status.description}</span>
+                        ) : (
+                          <span className="text-muted-foreground italic">None</span>
+                        )
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {editingId === status.id ? (
+                        <div className="flex gap-2 justify-end">
+                          <Button
+                            size="sm"
+                            onClick={handleSaveEdit}
+                            disabled={updateMutation.isPending}
+                            data-testid={`button-save-${status.id}`}
+                          >
+                            {updateMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Save className="h-4 w-4" />
+                            )}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={handleCancelEdit}
+                            data-testid={`button-cancel-edit-${status.id}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2 justify-end">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEdit(status)}
+                            data-testid={`button-edit-${status.id}`}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => setDeleteId(status.id)}
+                            data-testid={`button-delete-${status.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -361,92 +346,65 @@ export default function WorkerWorkStatusesPage() {
 
       {/* Add Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-        <DialogContent data-testid="dialog-add">
+        <DialogContent data-testid="dialog-add-status">
           <DialogHeader>
             <DialogTitle>Add Worker Work Status</DialogTitle>
             <DialogDescription>
-              Create a new worker work status option
+              Create a new worker work status option.
             </DialogDescription>
           </DialogHeader>
-          <Form {...addForm}>
-            <form onSubmit={addForm.handleSubmit(onAddSubmit)} className="space-y-4">
-              <FormField
-                control={addForm.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Name *</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="e.g., Active"
-                        data-testid="input-add-name"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="add-name">Name</Label>
+              <Input
+                id="add-name"
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="e.g., Active, Inactive"
+                data-testid="input-add-name"
               />
-              <FormField
-                control={addForm.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Description</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder="Optional description"
-                        rows={2}
-                        data-testid="input-add-description"
-                        {...field}
-                        value={field.value || ""}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-description">Description</Label>
+              <Textarea
+                id="add-description"
+                value={formDescription}
+                onChange={(e) => setFormDescription(e.target.value)}
+                placeholder="Optional description"
+                rows={3}
+                data-testid="input-add-description"
               />
-              <FormField
-                control={addForm.control}
-                name="sequence"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Sequence</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        placeholder="0"
-                        data-testid="input-add-sequence"
-                        {...field}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button
-                  type="submit"
-                  disabled={createMutation.isPending}
-                  data-testid="button-submit-add"
-                >
-                  {createMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <Plus className="h-4 w-4 mr-2" />
-                  )}
-                  Create Status
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
+              <p className="text-xs text-muted-foreground">
+                Optional: Provide additional details about this work status.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsAddDialogOpen(false);
+                resetForm();
+              }}
+              data-testid="button-cancel-add"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={createMutation.isPending}
+              data-testid="button-submit-add"
+            >
+              {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Add Status
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <DialogContent data-testid="dialog-delete">
+      <Dialog open={deleteId !== null} onOpenChange={(open) => !open && setDeleteId(null)}>
+        <DialogContent data-testid="dialog-delete-confirm">
           <DialogHeader>
             <DialogTitle>Delete Worker Work Status</DialogTitle>
             <DialogDescription>
@@ -467,11 +425,7 @@ export default function WorkerWorkStatusesPage() {
               disabled={deleteMutation.isPending}
               data-testid="button-confirm-delete"
             >
-              {deleteMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Trash2 className="h-4 w-4 mr-2" />
-              )}
+              {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Delete
             </Button>
           </DialogFooter>
