@@ -33,7 +33,7 @@ Preferred communication style: Simple, everyday language.
 
 ## Key Features
 -   **Worker Management**: Full CRUD for workers, including personal and contact information, with sequential `sirius_id`.
--   **Configurable Settings**: Manages worker ID types, employer contact types, site information, phone number validation, welcome messages, and dashboard plugins.
+-   **Configurable Settings**: Manages worker ID types, worker work statuses, employer contact types, site information, phone number validation, welcome messages, and dashboard plugins.
 -   **User Provisioning**: Email-based user provisioning integrated with Replit accounts.
 -   **Employer User Settings**: Configurable required/optional role assignments for employer users via `/config/users/employer-settings`.
 -   **Data Validation**: Extensive Zod schema validation, `libphonenumber-js` for phone numbers, and custom SSN/date validation.
