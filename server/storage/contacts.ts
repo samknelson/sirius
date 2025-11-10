@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { contacts, postalAddresses, phoneNumbers, optionsGender, type Contact, type InsertContact, type PostalAddress, type InsertPostalAddress, type PhoneNumber, type InsertPhoneNumber } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 
 // Address Storage Interface
@@ -28,6 +28,7 @@ export interface PhoneNumberStorage {
 // Contact Storage Interface
 export interface ContactStorage {
   getContact(id: string): Promise<Contact | undefined>;
+  getContactByEmail(email: string): Promise<Contact | undefined>;
   createContact(contact: InsertContact): Promise<Contact>;
   updateName(contactId: string, name: string): Promise<Contact | undefined>;
   updateNameComponents(contactId: string, components: {
@@ -47,6 +48,7 @@ export interface ContactStorage {
 // Combined Contacts Storage Interface
 export interface ContactsStorage {
   getContact(id: string): Promise<Contact | undefined>;
+  getContactByEmail(email: string): Promise<Contact | undefined>;
   createContact(contact: InsertContact): Promise<Contact>;
   updateName(contactId: string, name: string): Promise<Contact | undefined>;
   updateNameComponents(contactId: string, components: {
@@ -307,6 +309,19 @@ export function createContactStorage(): ContactStorage {
       return contact || undefined;
     },
 
+    async getContactByEmail(email: string): Promise<Contact | undefined> {
+      const [contact] = await db
+        .select()
+        .from(contacts)
+        .where(
+          and(
+            sql`${contacts.email} IS NOT NULL`,
+            sql`LOWER(${contacts.email}) = LOWER(${email})`
+          )
+        );
+      return contact || undefined;
+    },
+
     async createContact(insertContact: InsertContact): Promise<Contact> {
       const [contact] = await db
         .insert(contacts)
@@ -513,6 +528,7 @@ export function createContactsStorage(
   
   return {
     getContact: contactStorage.getContact,
+    getContactByEmail: contactStorage.getContactByEmail,
     createContact: contactStorage.createContact,
     updateName: contactStorage.updateName,
     updateNameComponents: contactStorage.updateNameComponents,

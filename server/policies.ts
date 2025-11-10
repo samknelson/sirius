@@ -282,6 +282,60 @@ export const worker: AccessPolicy = {
 };
 
 /**
+ * Employer user access policy
+ * Grants access if user has employer permission and either:
+ * - staff permission, OR
+ * - their email is associated with a contact that has an employer-contact record for the given employer
+ */
+export const employerUser: AccessPolicy = {
+  name: 'Employer User Access',
+  description: 'Requires employer permission and either staff permission or associated employer contact',
+  requirements: [
+    { type: 'authenticated' },
+    { type: 'permission', key: 'employer' },
+    {
+      type: 'anyOf',
+      options: [
+        // Option 1: Has staff permission
+        { type: 'permission', key: 'staff' },
+        // Option 2: User is associated with a contact that has an employer-contact record for the employer
+        {
+          type: 'custom',
+          reason: 'User email must match an employer contact for this employer',
+          check: async (ctx) => {
+            // Get employer ID from route params
+            const employerId = ctx.params?.id || ctx.params?.employerId;
+            if (!employerId) {
+              return false;
+            }
+
+            // Get user email
+            if (!ctx.user?.email) {
+              return false;
+            }
+
+            // Import storage dynamically to avoid circular dependency
+            const { storage } = await import('./storage/database');
+            
+            // Find contact with this email
+            const contact = await storage.contacts.getContactByEmail(ctx.user.email);
+            if (!contact) {
+              return false;
+            }
+
+            // Check if this contact has an employer-contact record for this employer
+            const employerContacts = await storage.employerContacts.listByEmployer(employerId);
+            const hasContact = employerContacts.some(ec => ec.contactId === contact.id);
+            
+            return hasContact;
+          },
+        },
+      ],
+    },
+  ],
+};
+
+/**
  * Example: Complex policy with multiple permission options
  */
 export const workersViewOrManage: AccessPolicy = {
@@ -319,6 +373,7 @@ export const policies = {
   masquerade,
   staff,
   worker,
+  employerUser,
   workersViewOrManage,
   employerUserManage,
 };

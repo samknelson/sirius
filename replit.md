@@ -29,7 +29,7 @@ Preferred communication style: Simple, everyday language.
 -   **Database**: PostgreSQL (Neon Database).
 -   **ORM**: Drizzle ORM for type-safe operations and migrations.
 -   **Schema Management**: Shared Zod schema definitions between frontend and backend.
--   **Storage Architecture**: Modular, namespace-based storage organized by domain (e.g., `variables`, `users`, `workers`, `employers`, `contacts`, `options`, `ledger`). Storage methods use simplified names (e.g., `create`, `update`, `getByName`) within their namespaces. The employerContacts storage includes a batch method `getUserAccountStatuses` for efficiently fetching user linkage status for multiple employer contacts in a single query.
+-   **Storage Architecture**: Modular, namespace-based storage organized by domain (e.g., `variables`, `users`, `workers`, `employers`, `contacts`, `options`, `ledger`). Storage methods use simplified names (e.g., `create`, `update`, `getByName`) within their namespaces. The employerContacts storage includes a batch method `getUserAccountStatuses` for efficiently fetching user linkage status for multiple employer contacts in a single query. The contacts storage includes `getContactByEmail` for case-insensitive email lookups used in policy enforcement.
 
 ## Key Features
 -   **Worker Management**: Full CRUD for workers, including personal and contact information, with sequential `sirius_id`.
@@ -43,7 +43,7 @@ Preferred communication style: Simple, everyday language.
 -   **Bookmarks**: User-specific, entity-agnostic bookmarking for workers and employers.
 -   **Dashboard Plugin System**: Extensible architecture for customizable dashboard widgets, managed by admins.
 -   **Components Feature Flag System**: Manages enablement of application features (components) via a centralized registry, with dependency management and integration with access control policies.
--   **Access Control**: Centralized permission registry and declarative policies for fine-grained control over features and data.
+-   **Access Control**: Centralized permission registry and declarative policies for fine-grained control over features and data. The `employerUser` policy grants employer users access to their associated employer records by requiring the "employer" permission and either "staff" permission or verified association via an employer-contact record matching the user's email.
 -   **Routing Architecture**: Consistent routing patterns for configuration pages (under `/config/`) and detail pages, with UUID validation and legacy redirects.
 -   **Ledger System**: Manages financial transactions with a `ledger_payments` table, including status, allocation, payer details, and account references.
 
