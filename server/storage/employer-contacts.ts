@@ -9,7 +9,7 @@ export interface EmployerContactStorage {
   listByEmployer(employerId: string): Promise<Array<EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>>;
   getAll(filters?: { employerId?: string; contactName?: string; contactTypeId?: string }): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null } | null }>>;
   get(id: string): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
-  update(id: string, data: { contactTypeId?: string | null }): Promise<EmployerContact | null>;
+  update(id: string, data: { contactTypeId?: string | null }): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
   updateContactEmail(id: string, email: string | null): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
   updateContactName(id: string, components: {
     title?: string;
@@ -141,14 +141,18 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
       };
     },
 
-    async update(id: string, data: { contactTypeId?: string | null }): Promise<EmployerContact | null> {
+    async update(id: string, data: { contactTypeId?: string | null }): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null> {
       const [updated] = await db
         .update(employerContacts)
         .set({ contactTypeId: data.contactTypeId })
         .where(eq(employerContacts.id, id))
         .returning();
 
-      return updated || null;
+      if (!updated) {
+        return null;
+      }
+
+      return this.get(id);
     },
 
     async updateContactEmail(id: string, email: string | null): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null> {
