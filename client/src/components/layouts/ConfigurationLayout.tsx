@@ -25,6 +25,7 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
   const [isTrustOpen, setIsTrustOpen] = useState(false);
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const [isContactOpen, setIsContactOpen] = useState(false);
+  const [isEmployersOpen, setIsEmployersOpen] = useState(false);
   const [isDropDownListsOpen, setIsDropDownListsOpen] = useState(false);
   const [isLedgerOpen, setIsLedgerOpen] = useState(false);
   const [isStripeOpen, setIsStripeOpen] = useState(false);
@@ -124,6 +125,23 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
     },
   ];
 
+  const employersItems = [
+    {
+      path: "/config/employer-contact-types",
+      label: "Employer Contact Types",
+      icon: List,
+      testId: "nav-config-employer-contact-types",
+      permission: "variables.manage",
+    },
+    {
+      path: "/config/users/employer-settings",
+      label: "Employer User Settings",
+      icon: Settings,
+      testId: "nav-config-users-employer-settings",
+      permission: "variables.manage",
+    },
+  ];
+
   const userManagementItems = [
     {
       path: "/config/users/list",
@@ -154,13 +172,6 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       permission: "admin.manage",
     },
     {
-      path: "/config/users/employer-settings",
-      label: "Employer User Settings",
-      icon: Settings,
-      testId: "nav-config-users-employer-settings",
-      permission: "variables.manage",
-    },
-    {
       path: "/config/masquerade",
       label: "Masquerade",
       icon: UserCog,
@@ -175,13 +186,6 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       label: "Worker ID Types",
       icon: List,
       testId: "nav-config-worker-id-types",
-      permission: "variables.manage",
-    },
-    {
-      path: "/config/employer-contact-types",
-      label: "Employer Contact Types",
-      icon: List,
-      testId: "nav-config-employer-contact-types",
       permission: "variables.manage",
     },
   ];
@@ -229,7 +233,7 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
 
   // Combine for policy checks
   const allLedgerItems = [...ledgerItems, ...stripeItems];
-  const allNavItems = [...regularNavItems, ...trustItems, ...themeItems, ...contactItems, ...userManagementItems, ...dropDownListItems, ...allLedgerItems];
+  const allNavItems = [...regularNavItems, ...trustItems, ...themeItems, ...contactItems, ...employersItems, ...userManagementItems, ...dropDownListItems, ...allLedgerItems];
 
   // Fetch policy checks for navigation items that use policies
   const policiesNeeded = allNavItems
@@ -292,6 +296,11 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
 
   // Check if any contact item is active
   const isContactActive = contactItems.some(
+    (item) => location === item.path || location.startsWith(item.path + "/")
+  );
+
+  // Check if any employers item is active
+  const isEmployersActive = employersItems.some(
     (item) => location === item.path || location.startsWith(item.path + "/")
   );
 
@@ -445,6 +454,47 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
                 </CollapsibleTrigger>
                 <CollapsibleContent className="ml-4 mt-2 space-y-2">
                   {contactItems.filter(hasAccessToItem).map((item) => {
+                    const Icon = item.icon;
+                    const isActive = location === item.path || location.startsWith(item.path + "/");
+                    
+                    return (
+                      <Link key={item.path} href={item.path}>
+                        <Button
+                          variant={isActive ? "secondary" : "ghost"}
+                          className="w-full justify-start text-sm"
+                          data-testid={item.testId}
+                        >
+                          <Icon className="mr-2 h-4 w-4" />
+                          {item.label}
+                        </Button>
+                      </Link>
+                    );
+                  })}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+
+            {/* Employers Group */}
+            {employersItems.some((item) => hasPermission(item.permission)) && (
+              <Collapsible
+                open={isEmployersOpen || isEmployersActive}
+                onOpenChange={setIsEmployersOpen}
+              >
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant={isEmployersActive ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    data-testid="nav-config-employers"
+                  >
+                    <CreditCard className="mr-2 h-4 w-4" />
+                    Employers
+                    <ChevronDown className="ml-auto h-4 w-4 transition-transform duration-200" 
+                      style={{ transform: (isEmployersOpen || isEmployersActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
+                    />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="ml-4 mt-2 space-y-2">
+                  {employersItems.filter((item) => hasPermission(item.permission)).map((item) => {
                     const Icon = item.icon;
                     const isActive = location === item.path || location.startsWith(item.path + "/");
                     
