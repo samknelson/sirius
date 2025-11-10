@@ -359,27 +359,27 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
               );
             })}
 
-            {/* System Group */}
-            {systemItems.some(hasAccessToItem) && (
+            {/* User Management Group */}
+            {userManagementItems.some((item) => hasPermission(item.permission)) && (
               <Collapsible
-                open={isSystemOpen || isSystemActive}
-                onOpenChange={setIsSystemOpen}
+                open={isUserManagementOpen || isUserManagementActive}
+                onOpenChange={setIsUserManagementOpen}
               >
                 <CollapsibleTrigger asChild>
                   <Button
-                    variant={isSystemActive ? "default" : "ghost"}
+                    variant={isUserManagementActive ? "default" : "ghost"}
                     className="w-full justify-start"
-                    data-testid="nav-config-system"
+                    data-testid="nav-config-user-management"
                   >
-                    <Settings className="mr-2 h-4 w-4" />
-                    System
+                    <Users className="mr-2 h-4 w-4" />
+                    User Management
                     <ChevronDown className="ml-auto h-4 w-4 transition-transform duration-200" 
-                      style={{ transform: (isSystemOpen || isSystemActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
+                      style={{ transform: (isUserManagementOpen || isUserManagementActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
                     />
                   </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="ml-4 mt-2 space-y-2">
-                  {systemItems.filter(hasAccessToItem).map((item) => {
+                  {userManagementItems.filter((item) => hasPermission(item.permission)).map((item) => {
                     const Icon = item.icon;
                     const isActive = location === item.path || location.startsWith(item.path + "/");
                     
@@ -396,6 +396,171 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
                       </Link>
                     );
                   })}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+
+            {/* Workers Group */}
+            {dropDownListItems.some((item) => hasPermission(item.permission)) && (
+              <Collapsible
+                open={isDropDownListsOpen || isDropDownListActive}
+                onOpenChange={setIsDropDownListsOpen}
+              >
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant={isDropDownListActive ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    data-testid="nav-config-workers"
+                  >
+                    <List className="mr-2 h-4 w-4" />
+                    Workers
+                    <ChevronDown className="ml-auto h-4 w-4 transition-transform duration-200" 
+                      style={{ transform: (isDropDownListsOpen || isDropDownListActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
+                    />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="ml-4 mt-2 space-y-2">
+                  {dropDownListItems.filter((item) => hasPermission(item.permission)).map((item) => {
+                    const Icon = item.icon;
+                    const isActive = location === item.path || location.startsWith(item.path + "/");
+                    
+                    return (
+                      <Link key={item.path} href={item.path}>
+                        <Button
+                          variant={isActive ? "secondary" : "ghost"}
+                          className="w-full justify-start text-sm"
+                          data-testid={item.testId}
+                        >
+                          <Icon className="mr-2 h-4 w-4" />
+                          {item.label}
+                        </Button>
+                      </Link>
+                    );
+                  })}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+
+            {/* Employers Group */}
+            {employersItems.some((item) => hasPermission(item.permission)) && (
+              <Collapsible
+                open={isEmployersOpen || isEmployersActive}
+                onOpenChange={setIsEmployersOpen}
+              >
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant={isEmployersActive ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    data-testid="nav-config-employers"
+                  >
+                    <CreditCard className="mr-2 h-4 w-4" />
+                    Employers
+                    <ChevronDown className="ml-auto h-4 w-4 transition-transform duration-200" 
+                      style={{ transform: (isEmployersOpen || isEmployersActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
+                    />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="ml-4 mt-2 space-y-2">
+                  {employersItems.filter((item) => hasPermission(item.permission)).map((item) => {
+                    const Icon = item.icon;
+                    const isActive = location === item.path || location.startsWith(item.path + "/");
+                    
+                    return (
+                      <Link key={item.path} href={item.path}>
+                        <Button
+                          variant={isActive ? "secondary" : "ghost"}
+                          className="w-full justify-start text-sm"
+                          data-testid={item.testId}
+                        >
+                          <Icon className="mr-2 h-4 w-4" />
+                          {item.label}
+                        </Button>
+                      </Link>
+                    );
+                  })}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+
+            {/* Ledger Group */}
+            {allLedgerItems.some(hasAccessToItem) && (
+              <Collapsible
+                open={isLedgerOpen || isLedgerActive}
+                onOpenChange={setIsLedgerOpen}
+              >
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant={isLedgerActive ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    data-testid="nav-config-ledger"
+                  >
+                    <BookOpen className="mr-2 h-4 w-4" />
+                    Ledger
+                    <ChevronDown className="ml-auto h-4 w-4 transition-transform duration-200" 
+                      style={{ transform: (isLedgerOpen || isLedgerActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
+                    />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="ml-4 mt-2 space-y-2">
+                  {/* Ledger items */}
+                  {ledgerItems.filter(hasAccessToItem).map((item) => {
+                    const Icon = item.icon;
+                    const isActive = location === item.path || location.startsWith(item.path + "/");
+                    
+                    return (
+                      <Link key={item.path} href={item.path}>
+                        <Button
+                          variant={isActive ? "secondary" : "ghost"}
+                          className="w-full justify-start text-sm"
+                          data-testid={item.testId}
+                        >
+                          <Icon className="mr-2 h-4 w-4" />
+                          {item.label}
+                        </Button>
+                      </Link>
+                    );
+                  })}
+
+                  {/* Stripe Sub-group */}
+                  {stripeItems.some(hasAccessToItem) && (
+                    <Collapsible
+                      open={isStripeOpen || isStripeActive}
+                      onOpenChange={setIsStripeOpen}
+                    >
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          variant={isStripeActive ? "secondary" : "ghost"}
+                          className="w-full justify-start text-sm"
+                          data-testid="nav-config-stripe"
+                        >
+                          <CreditCard className="mr-2 h-4 w-4" />
+                          Stripe
+                          <ChevronDown className="ml-auto h-4 w-4 transition-transform duration-200" 
+                            style={{ transform: (isStripeOpen || isStripeActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
+                          />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="ml-4 mt-2 space-y-2">
+                        {stripeItems.filter(hasAccessToItem).map((item) => {
+                          const Icon = item.icon;
+                          const isActive = location === item.path || location.startsWith(item.path + "/");
+                          
+                          return (
+                            <Link key={item.path} href={item.path}>
+                              <Button
+                                variant={isActive ? "secondary" : "ghost"}
+                                className="w-full justify-start text-xs"
+                                data-testid={item.testId}
+                              >
+                                <Icon className="mr-2 h-4 w-4" />
+                                {item.label}
+                              </Button>
+                            </Link>
+                          );
+                        })}
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
                 </CollapsibleContent>
               </Collapsible>
             )}
@@ -523,27 +688,27 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
               </Collapsible>
             )}
 
-            {/* Employers Group */}
-            {employersItems.some((item) => hasPermission(item.permission)) && (
+            {/* System Group */}
+            {systemItems.some(hasAccessToItem) && (
               <Collapsible
-                open={isEmployersOpen || isEmployersActive}
-                onOpenChange={setIsEmployersOpen}
+                open={isSystemOpen || isSystemActive}
+                onOpenChange={setIsSystemOpen}
               >
                 <CollapsibleTrigger asChild>
                   <Button
-                    variant={isEmployersActive ? "default" : "ghost"}
+                    variant={isSystemActive ? "default" : "ghost"}
                     className="w-full justify-start"
-                    data-testid="nav-config-employers"
+                    data-testid="nav-config-system"
                   >
-                    <CreditCard className="mr-2 h-4 w-4" />
-                    Employers
+                    <Settings className="mr-2 h-4 w-4" />
+                    System
                     <ChevronDown className="ml-auto h-4 w-4 transition-transform duration-200" 
-                      style={{ transform: (isEmployersOpen || isEmployersActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
+                      style={{ transform: (isSystemOpen || isSystemActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
                     />
                   </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="ml-4 mt-2 space-y-2">
-                  {employersItems.filter((item) => hasPermission(item.permission)).map((item) => {
+                  {systemItems.filter(hasAccessToItem).map((item) => {
                     const Icon = item.icon;
                     const isActive = location === item.path || location.startsWith(item.path + "/");
                     
@@ -560,171 +725,6 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
                       </Link>
                     );
                   })}
-                </CollapsibleContent>
-              </Collapsible>
-            )}
-
-            {/* User Management Group */}
-            {userManagementItems.some((item) => hasPermission(item.permission)) && (
-              <Collapsible
-                open={isUserManagementOpen || isUserManagementActive}
-                onOpenChange={setIsUserManagementOpen}
-              >
-                <CollapsibleTrigger asChild>
-                  <Button
-                    variant={isUserManagementActive ? "default" : "ghost"}
-                    className="w-full justify-start"
-                    data-testid="nav-config-user-management"
-                  >
-                    <Users className="mr-2 h-4 w-4" />
-                    User Management
-                    <ChevronDown className="ml-auto h-4 w-4 transition-transform duration-200" 
-                      style={{ transform: (isUserManagementOpen || isUserManagementActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
-                    />
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="ml-4 mt-2 space-y-2">
-                  {userManagementItems.filter((item) => hasPermission(item.permission)).map((item) => {
-                    const Icon = item.icon;
-                    const isActive = location === item.path || location.startsWith(item.path + "/");
-                    
-                    return (
-                      <Link key={item.path} href={item.path}>
-                        <Button
-                          variant={isActive ? "secondary" : "ghost"}
-                          className="w-full justify-start text-sm"
-                          data-testid={item.testId}
-                        >
-                          <Icon className="mr-2 h-4 w-4" />
-                          {item.label}
-                        </Button>
-                      </Link>
-                    );
-                  })}
-                </CollapsibleContent>
-              </Collapsible>
-            )}
-
-            {/* Workers Group */}
-            {dropDownListItems.some((item) => hasPermission(item.permission)) && (
-              <Collapsible
-                open={isDropDownListsOpen || isDropDownListActive}
-                onOpenChange={setIsDropDownListsOpen}
-              >
-                <CollapsibleTrigger asChild>
-                  <Button
-                    variant={isDropDownListActive ? "default" : "ghost"}
-                    className="w-full justify-start"
-                    data-testid="nav-config-workers"
-                  >
-                    <List className="mr-2 h-4 w-4" />
-                    Workers
-                    <ChevronDown className="ml-auto h-4 w-4 transition-transform duration-200" 
-                      style={{ transform: (isDropDownListsOpen || isDropDownListActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
-                    />
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="ml-4 mt-2 space-y-2">
-                  {dropDownListItems.filter((item) => hasPermission(item.permission)).map((item) => {
-                    const Icon = item.icon;
-                    const isActive = location === item.path || location.startsWith(item.path + "/");
-                    
-                    return (
-                      <Link key={item.path} href={item.path}>
-                        <Button
-                          variant={isActive ? "secondary" : "ghost"}
-                          className="w-full justify-start text-sm"
-                          data-testid={item.testId}
-                        >
-                          <Icon className="mr-2 h-4 w-4" />
-                          {item.label}
-                        </Button>
-                      </Link>
-                    );
-                  })}
-                </CollapsibleContent>
-              </Collapsible>
-            )}
-
-            {/* Ledger Group */}
-            {allLedgerItems.some(hasAccessToItem) && (
-              <Collapsible
-                open={isLedgerOpen || isLedgerActive}
-                onOpenChange={setIsLedgerOpen}
-              >
-                <CollapsibleTrigger asChild>
-                  <Button
-                    variant={isLedgerActive ? "default" : "ghost"}
-                    className="w-full justify-start"
-                    data-testid="nav-config-ledger"
-                  >
-                    <BookOpen className="mr-2 h-4 w-4" />
-                    Ledger
-                    <ChevronDown className="ml-auto h-4 w-4 transition-transform duration-200" 
-                      style={{ transform: (isLedgerOpen || isLedgerActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
-                    />
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="ml-4 mt-2 space-y-2">
-                  {/* Ledger items */}
-                  {ledgerItems.filter(hasAccessToItem).map((item) => {
-                    const Icon = item.icon;
-                    const isActive = location === item.path || location.startsWith(item.path + "/");
-                    
-                    return (
-                      <Link key={item.path} href={item.path}>
-                        <Button
-                          variant={isActive ? "secondary" : "ghost"}
-                          className="w-full justify-start text-sm"
-                          data-testid={item.testId}
-                        >
-                          <Icon className="mr-2 h-4 w-4" />
-                          {item.label}
-                        </Button>
-                      </Link>
-                    );
-                  })}
-
-                  {/* Stripe Sub-group */}
-                  {stripeItems.some(hasAccessToItem) && (
-                    <Collapsible
-                      open={isStripeOpen || isStripeActive}
-                      onOpenChange={setIsStripeOpen}
-                    >
-                      <CollapsibleTrigger asChild>
-                        <Button
-                          variant={isStripeActive ? "secondary" : "ghost"}
-                          className="w-full justify-start text-sm"
-                          data-testid="nav-config-stripe"
-                        >
-                          <CreditCard className="mr-2 h-4 w-4" />
-                          Stripe
-                          <ChevronDown className="ml-auto h-4 w-4 transition-transform duration-200" 
-                            style={{ transform: (isStripeOpen || isStripeActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
-                          />
-                        </Button>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="ml-4 mt-2 space-y-2">
-                        {stripeItems.filter(hasAccessToItem).map((item) => {
-                          const Icon = item.icon;
-                          const isActive = location === item.path || location.startsWith(item.path + "/");
-                          
-                          return (
-                            <Link key={item.path} href={item.path}>
-                              <Button
-                                variant={isActive ? "secondary" : "ghost"}
-                                className="w-full justify-start text-xs"
-                                data-testid={item.testId}
-                              >
-                                <Icon className="mr-2 h-4 w-4" />
-                                {item.label}
-                              </Button>
-                            </Link>
-                          );
-                        })}
-                      </CollapsibleContent>
-                    </Collapsible>
-                  )}
                 </CollapsibleContent>
               </Collapsible>
             )}
