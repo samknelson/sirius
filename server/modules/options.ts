@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { storage } from "../storage";
-import { insertWorkerWsSchema, updateWorkerWsSchema, insertEmploymentStatusSchema, updateEmploymentStatusSchema } from "@shared/schema";
+import { insertWorkerWsSchema, updateWorkerWsSchema, insertEmploymentStatusSchema, updateEmploymentStatusSchema, insertTrustBenefitTypeSchema } from "@shared/schema";
 import { requireAccess } from "../accessControl";
 import { policies } from "../policies";
 
@@ -644,6 +644,107 @@ export function registerOptionsRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete gender option" });
+    }
+  });
+
+  // Trust Benefit Types routes
+
+  // GET /api/trust-benefit-types - Get all trust benefit types (requires workers.view permission)
+  app.get("/api/trust-benefit-types", requireAuth, requirePermission("workers.view"), async (req, res) => {
+    try {
+      const trustBenefitTypes = await storage.options.trustBenefitTypes.getAllTrustBenefitTypes();
+      res.json(trustBenefitTypes);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch trust benefit types" });
+    }
+  });
+
+  // GET /api/trust-benefit-types/:id - Get a specific trust benefit type (requires workers.view permission)
+  app.get("/api/trust-benefit-types/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const trustBenefitType = await storage.options.trustBenefitTypes.getTrustBenefitType(id);
+      
+      if (!trustBenefitType) {
+        res.status(404).json({ message: "Trust benefit type not found" });
+        return;
+      }
+      
+      res.json(trustBenefitType);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch trust benefit type" });
+    }
+  });
+
+  // POST /api/trust-benefit-types - Create a new trust benefit type (requires admin permission)
+  app.post("/api/trust-benefit-types", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const parsedData = insertTrustBenefitTypeSchema.safeParse(req.body);
+      
+      if (!parsedData.success) {
+        res.status(400).json({ 
+          message: "Invalid request data", 
+          errors: parsedData.error.errors 
+        });
+        return;
+      }
+      
+      const trustBenefitType = await storage.options.trustBenefitTypes.createTrustBenefitType(parsedData.data);
+      res.status(201).json(trustBenefitType);
+    } catch (error: any) {
+      if (error.code === "23505") {
+        res.status(409).json({ message: "Trust benefit type with this name already exists" });
+        return;
+      }
+      res.status(500).json({ message: "Failed to create trust benefit type" });
+    }
+  });
+
+  // PUT /api/trust-benefit-types/:id - Update a trust benefit type (requires admin permission)
+  app.put("/api/trust-benefit-types/:id", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const parsedData = insertTrustBenefitTypeSchema.partial().safeParse(req.body);
+      
+      if (!parsedData.success) {
+        res.status(400).json({ 
+          message: "Invalid request data", 
+          errors: parsedData.error.errors 
+        });
+        return;
+      }
+      
+      const trustBenefitType = await storage.options.trustBenefitTypes.updateTrustBenefitType(id, parsedData.data);
+      
+      if (!trustBenefitType) {
+        res.status(404).json({ message: "Trust benefit type not found" });
+        return;
+      }
+      
+      res.json(trustBenefitType);
+    } catch (error: any) {
+      if (error.code === "23505") {
+        res.status(409).json({ message: "Trust benefit type with this name already exists" });
+        return;
+      }
+      res.status(500).json({ message: "Failed to update trust benefit type" });
+    }
+  });
+
+  // DELETE /api/trust-benefit-types/:id - Delete a trust benefit type (requires admin permission)
+  app.delete("/api/trust-benefit-types/:id", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.options.trustBenefitTypes.deleteTrustBenefitType(id);
+      
+      if (!deleted) {
+        res.status(404).json({ message: "Trust benefit type not found" });
+        return;
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete trust benefit type" });
     }
   });
 }
