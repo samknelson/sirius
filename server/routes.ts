@@ -401,8 +401,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Employer routes (protected with authentication and permissions)
   
-  // GET /api/employers - Get all employers (requires workers.view permission)
-  app.get("/api/employers", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  // GET /api/employers - Get all employers (requires employersView policy)
+  app.get("/api/employers", requireAuth, requireAccess(policies.employersView), async (req, res) => {
     try {
       const includeInactive = req.query.includeInactive === 'true';
       const allEmployers = await storage.employers.getAllEmployers();
@@ -418,8 +418,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/employers/:id - Get a specific employer (requires workers.view permission)
-  app.get("/api/employers/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  // GET /api/employers/:id - Get a specific employer (requires employersView policy)
+  app.get("/api/employers/:id", requireAuth, requireAccess(policies.employersView), async (req, res) => {
     try {
       const { id } = req.params;
       const employer = await storage.employers.getEmployer(id);
@@ -539,8 +539,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // GET /api/employers/:employerId/contacts - Get all contacts for an employer (requires workers.view permission)
-  app.get("/api/employers/:employerId/contacts", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  // GET /api/employers/:employerId/contacts - Get all contacts for an employer (requires employersView policy)
+  app.get("/api/employers/:employerId/contacts", requireAuth, requireAccess(policies.employersView), async (req, res) => {
     try {
       const { employerId } = req.params;
       const contacts = await storage.employerContacts.listByEmployer(employerId);

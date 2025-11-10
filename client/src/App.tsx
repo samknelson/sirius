@@ -252,7 +252,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/contacts">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute policy="employersView">
           <AuthenticatedLayout>
             <EmployerContacts />
           </AuthenticatedLayout>
@@ -348,7 +348,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute policy="employersView">
           <AuthenticatedLayout>
             <EmployerView />
           </AuthenticatedLayout>
@@ -356,7 +356,7 @@ function Router() {
       </Route>
 
       <Route path="/employers">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute policy="employersView">
           <AuthenticatedLayout>
             <Employers />
           </AuthenticatedLayout>
