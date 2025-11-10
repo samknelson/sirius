@@ -205,6 +205,33 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
   };
 }
 
+/**
+ * Helper function to calculate changes between before and after states
+ */
+function calculateChanges(before: any, after: any): Record<string, { from: any; to: any }> {
+  if (before === null || before === undefined || after === null || after === undefined) {
+    return {};
+  }
+
+  if (typeof before !== 'object' || typeof after !== 'object') {
+    return before !== after ? { value: { from: before, to: after } } : {};
+  }
+
+  const changes: Record<string, { from: any; to: any }> = {};
+  const allKeys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]));
+
+  for (const key of allKeys) {
+    const beforeValue = before[key];
+    const afterValue = after[key];
+
+    if (JSON.stringify(beforeValue) !== JSON.stringify(afterValue)) {
+      changes[key] = { from: beforeValue, to: afterValue };
+    }
+  }
+
+  return changes;
+}
+
 export const employerContactLoggingConfig: StorageLoggingConfig<EmployerContactStorage> = {
   module: 'employerContacts',
   methods: {
@@ -213,6 +240,10 @@ export const employerContactLoggingConfig: StorageLoggingConfig<EmployerContactS
       getEntityId: (args) => args[0]?.employerId || 'new employer contact',
       after: async (args, result, storage) => {
         return result;
+      },
+      getDescription: (args, result, beforeState, afterState) => {
+        const contactName = afterState?.contact?.displayName || 'Unknown Contact';
+        return `Created employer contact "${contactName}"`;
       }
     },
     update: {
@@ -223,6 +254,18 @@ export const employerContactLoggingConfig: StorageLoggingConfig<EmployerContactS
       },
       after: async (args, result, storage) => {
         return result;
+      },
+      getDescription: (args, result, beforeState, afterState) => {
+        const contactName = afterState?.contact?.displayName || beforeState?.contact?.displayName || 'Unknown Contact';
+        const changes = calculateChanges(beforeState, afterState);
+        const changedFields = Object.keys(changes);
+        
+        if (changedFields.length === 0) {
+          return `Updated employer contact "${contactName}" (no changes detected)`;
+        }
+        
+        const fieldList = changedFields.join(', ');
+        return `Updated employer contact "${contactName}" (changed: ${fieldList})`;
       }
     },
     updateContactEmail: {
@@ -233,6 +276,18 @@ export const employerContactLoggingConfig: StorageLoggingConfig<EmployerContactS
       },
       after: async (args, result, storage) => {
         return await storage.get(args[0]);
+      },
+      getDescription: (args, result, beforeState, afterState) => {
+        const contactName = afterState?.contact?.displayName || beforeState?.contact?.displayName || 'Unknown Contact';
+        const changes = calculateChanges(beforeState, afterState);
+        const changedFields = Object.keys(changes);
+        
+        if (changedFields.length === 0) {
+          return `Updated employer contact "${contactName}" (no changes detected)`;
+        }
+        
+        const fieldList = changedFields.join(', ');
+        return `Updated employer contact "${contactName}" (changed: ${fieldList})`;
       }
     },
     updateContactName: {
@@ -243,14 +298,29 @@ export const employerContactLoggingConfig: StorageLoggingConfig<EmployerContactS
       },
       after: async (args, result, storage) => {
         return await storage.get(args[0]);
+      },
+      getDescription: (args, result, beforeState, afterState) => {
+        const contactName = afterState?.contact?.displayName || beforeState?.contact?.displayName || 'Unknown Contact';
+        const changes = calculateChanges(beforeState, afterState);
+        const changedFields = Object.keys(changes);
+        
+        if (changedFields.length === 0) {
+          return `Updated employer contact "${contactName}" (no changes detected)`;
+        }
+        
+        const fieldList = changedFields.join(', ');
+        return `Updated employer contact "${contactName}" (changed: ${fieldList})`;
       }
     },
     delete: {
       enabled: true,
       getEntityId: (args) => args[0],
       before: async (args, storage) => {
-        const results = await db.select().from(employerContacts).where(eq(employerContacts.id, args[0]));
-        return results[0];
+        return await storage.get(args[0]);
+      },
+      getDescription: (args, result, beforeState, afterState) => {
+        const contactName = beforeState?.contact?.displayName || 'Unknown Contact';
+        return `Deleted employer contact "${contactName}"`;
       }
     }
   }
