@@ -58,6 +58,12 @@ export function EmployerContactLayout({ activeTab, children }: EmployerContactLa
     enabled: !!id,
   });
 
+  // Fetch employer data to show employer name in title
+  const { data: employer } = useQuery<{ id: string; name: string }>({
+    queryKey: ["/api/employers", employerContact?.employerId],
+    enabled: !!employerContact?.employerId,
+  });
+
   // Error/Not found state
   if (error) {
     return (
@@ -164,7 +170,7 @@ export function EmployerContactLayout({ activeTab, children }: EmployerContactLa
                   <Users className="text-primary-foreground" size={16} />
                 </div>
                 <h1 className="text-xl font-semibold text-foreground" data-testid={`text-contact-name-${employerContact.id}`}>
-                  {employerContact.contact.displayName}
+                  {employer?.name ? `${employer.name} :: ${employerContact.contact.displayName}` : employerContact.contact.displayName}
                 </h1>
               </div>
               <div className="flex items-center space-x-4">
