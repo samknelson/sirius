@@ -407,4 +407,116 @@ export function registerOptionsRoutes(
       res.status(500).json({ message: "Failed to delete employment status" });
     }
   });
+
+  // Ledger Payment Type routes
+
+  // GET /api/ledger-payment-types - Get all ledger payment types (requires ledgerStaff policy)
+  app.get("/api/ledger-payment-types", requireAccess(policies.ledgerStaff), async (req, res) => {
+    try {
+      const paymentTypes = await storage.options.ledgerPaymentTypes.getAllLedgerPaymentTypes();
+      res.json(paymentTypes);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch ledger payment types" });
+    }
+  });
+
+  // GET /api/ledger-payment-types/:id - Get a specific ledger payment type (requires ledgerStaff policy)
+  app.get("/api/ledger-payment-types/:id", requireAccess(policies.ledgerStaff), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const paymentType = await storage.options.ledgerPaymentTypes.getLedgerPaymentType(id);
+      
+      if (!paymentType) {
+        res.status(404).json({ message: "Ledger payment type not found" });
+        return;
+      }
+      
+      res.json(paymentType);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch ledger payment type" });
+    }
+  });
+
+  // POST /api/ledger-payment-types - Create a new ledger payment type (requires ledgerStaff policy)
+  app.post("/api/ledger-payment-types", requireAccess(policies.ledgerStaff), async (req, res) => {
+    try {
+      const { name, description, sequence } = req.body;
+      
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ message: "Name is required" });
+      }
+      
+      const paymentType = await storage.options.ledgerPaymentTypes.createLedgerPaymentType({
+        name: name.trim(),
+        description: description && typeof description === 'string' ? description.trim() : null,
+        sequence: typeof sequence === 'number' ? sequence : 0,
+      });
+      
+      res.status(201).json(paymentType);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to create ledger payment type" });
+    }
+  });
+
+  // PUT /api/ledger-payment-types/:id - Update a ledger payment type (requires ledgerStaff policy)
+  app.put("/api/ledger-payment-types/:id", requireAccess(policies.ledgerStaff), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, description, sequence } = req.body;
+      
+      const updates: any = {};
+      
+      if (name !== undefined) {
+        if (typeof name !== 'string' || !name.trim()) {
+          return res.status(400).json({ message: "Name must be a non-empty string" });
+        }
+        updates.name = name.trim();
+      }
+      
+      if (description !== undefined) {
+        if (description === null || description === '') {
+          updates.description = null;
+        } else if (typeof description === 'string') {
+          updates.description = description.trim();
+        } else {
+          return res.status(400).json({ message: "Description must be a string or null" });
+        }
+      }
+      
+      if (sequence !== undefined) {
+        if (typeof sequence !== 'number') {
+          return res.status(400).json({ message: "Sequence must be a number" });
+        }
+        updates.sequence = sequence;
+      }
+      
+      const paymentType = await storage.options.ledgerPaymentTypes.updateLedgerPaymentType(id, updates);
+      
+      if (!paymentType) {
+        res.status(404).json({ message: "Ledger payment type not found" });
+        return;
+      }
+      
+      res.json(paymentType);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to update ledger payment type" });
+    }
+  });
+
+  // DELETE /api/ledger-payment-types/:id - Delete a ledger payment type (requires ledgerStaff policy)
+  app.delete("/api/ledger-payment-types/:id", requireAccess(policies.ledgerStaff), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.options.ledgerPaymentTypes.deleteLedgerPaymentType(id);
+      
+      if (!deleted) {
+        res.status(404).json({ message: "Ledger payment type not found" });
+        return;
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete ledger payment type" });
+    }
+  });
 }
