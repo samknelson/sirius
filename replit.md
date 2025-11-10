@@ -29,7 +29,7 @@ Preferred communication style: Simple, everyday language.
 -   **Database**: PostgreSQL (Neon Database).
 -   **ORM**: Drizzle ORM for type-safe operations and migrations.
 -   **Schema Management**: Shared Zod schema definitions between frontend and backend.
--   **Storage Architecture**: Modular, namespace-based storage organized by domain (e.g., `variables`, `users`, `workers`, `employers`, `contacts`, `options`, `ledger`). Storage methods use simplified names (e.g., `create`, `update`, `getByName`) within their namespaces.
+-   **Storage Architecture**: Modular, namespace-based storage organized by domain (e.g., `variables`, `users`, `workers`, `employers`, `contacts`, `options`, `ledger`). Storage methods use simplified names (e.g., `create`, `update`, `getByName`) within their namespaces. The employerContacts storage includes a batch method `getUserAccountStatuses` for efficiently fetching user linkage status for multiple employer contacts in a single query.
 
 ## Key Features
 -   **Worker Management**: Full CRUD for workers, including personal and contact information, with sequential `sirius_id`.
@@ -39,7 +39,7 @@ Preferred communication style: Simple, everyday language.
 -   **Data Validation**: Extensive Zod schema validation, `libphonenumber-js` for phone numbers, and custom SSN/date validation.
 -   **Contact Name Handling**: Name components (title, given, middle, family) are canonicalized with capitalized first letter and lowercase remainder. Generational suffix and credentials preserve original capitalization (e.g., "III" stays "III", not "Iii").
 -   **Employers**: Management of employer records with UUIDs.
--   **Employer Contacts**: Join table linking employers to contacts with optional contact type categorization (employer_contacts table).
+-   **Employer Contacts**: Join table linking employers to contacts with optional contact type categorization (employer_contacts table). The employer contacts list displays visual indicators (badges) showing which contacts have associated user accounts.
 -   **Bookmarks**: User-specific, entity-agnostic bookmarking for workers and employers.
 -   **Dashboard Plugin System**: Extensible architecture for customizable dashboard widgets, managed by admins.
 -   **Components Feature Flag System**: Manages enablement of application features (components) via a centralized registry, with dependency management and integration with access control policies.
