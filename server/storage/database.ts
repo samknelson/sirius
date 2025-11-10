@@ -12,7 +12,7 @@ import { type LedgerStorage, createLedgerStorage } from "./ledger";
 import { type EmployerContactStorage, createEmployerContactStorage, employerContactLoggingConfig } from "./employer-contacts";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "../db";
-import { optionsWorkerIdType, optionsEmploymentStatus, employers } from "@shared/schema";
+import { optionsWorkerIdType, optionsEmploymentStatus, employers, workers, contacts } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 export interface IStorage {
@@ -524,7 +524,36 @@ const workerEmphistLoggingConfig: StorageLoggingConfig<WorkerEmphistStorage> = {
   methods: {
     createWorkerEmphist: {
       enabled: true,
-      getEntityId: (args) => args[0]?.workerId || 'new employment history',
+      getEntityId: async (args, result) => {
+        const emphist = result;
+        if (!emphist) return 'unknown';
+        
+        // Get worker and contact names
+        let workerName = 'Unknown worker';
+        if (emphist.workerId) {
+          const [worker] = await db.select().from(workers).where(eq(workers.id, emphist.workerId));
+          if (worker?.contactId) {
+            const [contact] = await db.select().from(contacts).where(eq(contacts.id, worker.contactId));
+            workerName = contact?.displayName || 'Unknown worker';
+          }
+        }
+        
+        // Get employer name
+        let employerName = 'Unknown employer';
+        if (emphist.employerId) {
+          const [employer] = await db.select().from(employers).where(eq(employers.id, emphist.employerId));
+          employerName = employer?.name || 'Unknown employer';
+        }
+        
+        // Get employment status name
+        let statusName = 'Unknown status';
+        if (emphist.employmentStatus) {
+          const [status] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, emphist.employmentStatus));
+          statusName = status?.name || 'Unknown status';
+        }
+        
+        return `${workerName} :: ${employerName} :: ${statusName}`;
+      },
       after: async (args, result, storage) => {
         return result; // Capture created employment history record
       },
@@ -553,7 +582,36 @@ const workerEmphistLoggingConfig: StorageLoggingConfig<WorkerEmphistStorage> = {
     },
     updateWorkerEmphist: {
       enabled: true,
-      getEntityId: (args) => args[0], // Employment history record ID
+      getEntityId: async (args, result) => {
+        const emphist = result;
+        if (!emphist) return 'unknown';
+        
+        // Get worker and contact names
+        let workerName = 'Unknown worker';
+        if (emphist.workerId) {
+          const [worker] = await db.select().from(workers).where(eq(workers.id, emphist.workerId));
+          if (worker?.contactId) {
+            const [contact] = await db.select().from(contacts).where(eq(contacts.id, worker.contactId));
+            workerName = contact?.displayName || 'Unknown worker';
+          }
+        }
+        
+        // Get employer name
+        let employerName = 'Unknown employer';
+        if (emphist.employerId) {
+          const [employer] = await db.select().from(employers).where(eq(employers.id, emphist.employerId));
+          employerName = employer?.name || 'Unknown employer';
+        }
+        
+        // Get employment status name
+        let statusName = 'Unknown status';
+        if (emphist.employmentStatus) {
+          const [status] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, emphist.employmentStatus));
+          statusName = status?.name || 'Unknown status';
+        }
+        
+        return `${workerName} :: ${employerName} :: ${statusName}`;
+      },
       before: async (args, storage) => {
         return await storage.getWorkerEmphist(args[0]); // Current state
       },
@@ -582,7 +640,36 @@ const workerEmphistLoggingConfig: StorageLoggingConfig<WorkerEmphistStorage> = {
     },
     deleteWorkerEmphist: {
       enabled: true,
-      getEntityId: (args) => args[0], // Employment history record ID
+      getEntityId: async (args, result, beforeState) => {
+        const emphist = beforeState;
+        if (!emphist) return 'unknown';
+        
+        // Get worker and contact names
+        let workerName = 'Unknown worker';
+        if (emphist.workerId) {
+          const [worker] = await db.select().from(workers).where(eq(workers.id, emphist.workerId));
+          if (worker?.contactId) {
+            const [contact] = await db.select().from(contacts).where(eq(contacts.id, worker.contactId));
+            workerName = contact?.displayName || 'Unknown worker';
+          }
+        }
+        
+        // Get employer name
+        let employerName = 'Unknown employer';
+        if (emphist.employerId) {
+          const [employer] = await db.select().from(employers).where(eq(employers.id, emphist.employerId));
+          employerName = employer?.name || 'Unknown employer';
+        }
+        
+        // Get employment status name
+        let statusName = 'Unknown status';
+        if (emphist.employmentStatus) {
+          const [status] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, emphist.employmentStatus));
+          statusName = status?.name || 'Unknown status';
+        }
+        
+        return `${workerName} :: ${employerName} :: ${statusName}`;
+      },
       before: async (args, storage) => {
         return await storage.getWorkerEmphist(args[0]); // Capture what's being deleted
       },

@@ -50,8 +50,8 @@ export interface MethodLoggingConfig<T = any> {
   /** Function to capture state after the operation (e.g., return the result) */
   after?: (args: any[], result: any, storage: T) => Promise<any>;
   
-  /** Function to extract a human-readable entity ID from arguments or result */
-  getEntityId?: (args: any[], result?: any) => string | undefined;
+  /** Function to extract a human-readable entity ID from arguments, result, or beforeState */
+  getEntityId?: (args: any[], result?: any, beforeState?: any) => string | undefined | Promise<string | undefined>;
   
   /** Custom function to generate a human-readable description of the operation */
   getDescription?: (args: any[], result: any, beforeState: any, afterState: any, storage: T) => Promise<string> | string;
@@ -123,8 +123,6 @@ export function withStorageLogging<T extends Record<string, any>>(
           afterState = await methodConfig.after(args, result, storage);
         }
 
-        const entityId = methodConfig.getEntityId?.(args, result);
-
         const details: Record<string, any> = {
           args,
         };
@@ -145,39 +143,51 @@ export function withStorageLogging<T extends Record<string, any>>(
           details.changes = changes;
         }
 
-        let description: string;
-        if (methodConfig.getDescription) {
-          description = await methodConfig.getDescription(args, result, beforeState, afterState, storage);
-        } else {
-          description = generateDescription(
-            config.module,
-            String(key),
-            entityId,
-            beforeState,
-            afterState,
-            changes
-          );
-        }
+        // Defer all logging work (including potentially expensive async lookups) to avoid blocking the main operation
+        setImmediate(async () => {
+          try {
+            const context = getRequestContext();
+            
+            // Resolve entity ID asynchronously after the main operation has returned
+            const entityId = methodConfig.getEntityId 
+              ? await methodConfig.getEntityId(args, result, beforeState)
+              : undefined;
 
-        setImmediate(() => {
-          const context = getRequestContext();
-          storageLogger.info(`Storage operation: ${config.module}.${String(key)}`, {
-            module: config.module,
-            operation: String(key),
-            entity_id: entityId,
-            description,
-            user_id: context?.userId,
-            user_email: context?.userEmail,
-            ip_address: context?.ipAddress,
-            meta: details, // Nest details under 'meta' to match JSONB column
-          });
+            // Resolve description asynchronously
+            let description: string;
+            if (methodConfig.getDescription) {
+              description = await methodConfig.getDescription(args, result, beforeState, afterState, storage);
+            } else {
+              description = generateDescription(
+                config.module,
+                String(key),
+                entityId,
+                beforeState,
+                afterState,
+                changes
+              );
+            }
+
+            storageLogger.info(`Storage operation: ${config.module}.${String(key)}`, {
+              module: config.module,
+              operation: String(key),
+              entity_id: entityId,
+              description,
+              user_id: context?.userId,
+              user_email: context?.userEmail,
+              ip_address: context?.ipAddress,
+              meta: details, // Nest details under 'meta' to match JSONB column
+            });
+          } catch (loggingError) {
+            // Don't let logging errors affect the main operation - just log the error
+            console.error('Error in deferred logging:', loggingError);
+          }
         });
 
         return result;
       } catch (err) {
         error = err;
 
-        const entityId = methodConfig.getEntityId?.(args);
         const details: Record<string, any> = {
           args,
           error: error instanceof Error ? {
@@ -191,20 +201,32 @@ export function withStorageLogging<T extends Record<string, any>>(
           details.before = beforeState;
         }
 
-        const description = `Failed to ${String(key)} on ${config.module} "${entityId || 'unknown'}"`;
+        // Defer error logging to avoid blocking the error throw
+        setImmediate(async () => {
+          try {
+            const context = getRequestContext();
+            
+            // Resolve entity ID asynchronously
+            const entityId = methodConfig.getEntityId
+              ? await methodConfig.getEntityId(args, undefined, beforeState)
+              : undefined;
 
-        setImmediate(() => {
-          const context = getRequestContext();
-          storageLogger.error(`Storage operation failed: ${config.module}.${String(key)}`, {
-            module: config.module,
-            operation: String(key),
-            entity_id: entityId,
-            description,
-            user_id: context?.userId,
-            user_email: context?.userEmail,
-            ip_address: context?.ipAddress,
-            meta: details, // Nest details under 'meta' to match JSONB column
-          });
+            const description = `Failed to ${String(key)} on ${config.module} "${entityId || 'unknown'}"`;
+
+            storageLogger.error(`Storage operation failed: ${config.module}.${String(key)}`, {
+              module: config.module,
+              operation: String(key),
+              entity_id: entityId,
+              description,
+              user_id: context?.userId,
+              user_email: context?.userEmail,
+              ip_address: context?.ipAddress,
+              meta: details, // Nest details under 'meta' to match JSONB column
+            });
+          } catch (loggingError) {
+            // Don't let logging errors affect error handling - just log it
+            console.error('Error in deferred error logging:', loggingError);
+          }
         });
 
         throw err;

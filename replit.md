@@ -22,7 +22,8 @@ Preferred communication style: Simple, everyday language.
 -   **Authentication**: Replit Auth (OAuth via OpenID Connect) with restricted, pre-provisioned user access and PostgreSQL-based session management.
 -   **Access Control**: Centralized, declarative role-based access control system.
 -   **Logging**: Winston logging with a PostgreSQL database backend for storage operations and authentication events.
-    -   **Storage Logging**: Comprehensive audit trail for all CRUD operations (variables, users, workers, contacts, employers, etc.) with before/after snapshots and automatic change detection.
+    -   **Storage Logging**: Comprehensive audit trail for all CRUD operations (variables, users, workers, contacts, employers, employment history, etc.) with before/after snapshots and automatic change detection. The logging middleware supports async `getEntityId` functions for generating meaningful record names.
+    -   **Employment History Logging**: Worker employment history changes are logged with meaningful record names in the format "worker name :: employer name :: employment status" rather than UUIDs.
     -   **Authentication Logging**: Tracks login, logout, masquerade start/stop events with user details and context.
 
 ## Data Storage
