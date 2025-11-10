@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Plus, Edit, Trash2, Save, X, ArrowUp, ArrowDown } from "lucide-react";
@@ -28,6 +29,8 @@ import {
 interface EmploymentStatus {
   id: string;
   name: string;
+  code: string;
+  employed: boolean;
   description: string | null;
   sequence: number;
 }
@@ -40,6 +43,8 @@ export default function EmploymentStatusesPage() {
   
   // Form state
   const [formName, setFormName] = useState("");
+  const [formCode, setFormCode] = useState("");
+  const [formEmployed, setFormEmployed] = useState(false);
   const [formDescription, setFormDescription] = useState("");
   
   const { data: statuses = [], isLoading } = useQuery<EmploymentStatus[]>({
@@ -47,7 +52,7 @@ export default function EmploymentStatusesPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: { name: string; description: string | null }) => {
+    mutationFn: async (data: { name: string; code: string; employed: boolean; description: string | null }) => {
       // Find the highest sequence number
       const maxSequence = statuses.reduce((max, status) => Math.max(max, status.sequence), -1);
       return apiRequest("POST", "/api/employment-statuses", { 
@@ -74,9 +79,11 @@ export default function EmploymentStatusesPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { id: string; name: string; description: string | null }) => {
+    mutationFn: async (data: { id: string; name: string; code: string; employed: boolean; description: string | null }) => {
       return apiRequest("PUT", `/api/employment-statuses/${data.id}`, {
         name: data.name,
+        code: data.code,
+        employed: data.employed,
         description: data.description,
       });
     },
@@ -132,12 +139,16 @@ export default function EmploymentStatusesPage() {
 
   const resetForm = () => {
     setFormName("");
+    setFormCode("");
+    setFormEmployed(false);
     setFormDescription("");
   };
 
   const handleEdit = (status: EmploymentStatus) => {
     setEditingId(status.id);
     setFormName(status.name);
+    setFormCode(status.code);
+    setFormEmployed(status.employed);
     setFormDescription(status.description || "");
   };
 
@@ -155,9 +166,19 @@ export default function EmploymentStatusesPage() {
       });
       return;
     }
+    if (!formCode.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Code is required.",
+        variant: "destructive",
+      });
+      return;
+    }
     updateMutation.mutate({
       id: editingId!,
       name: formName.trim(),
+      code: formCode.trim(),
+      employed: formEmployed,
       description: formDescription.trim() || null,
     });
   };
@@ -171,8 +192,18 @@ export default function EmploymentStatusesPage() {
       });
       return;
     }
+    if (!formCode.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Code is required.",
+        variant: "destructive",
+      });
+      return;
+    }
     createMutation.mutate({
       name: formName.trim(),
+      code: formCode.trim(),
+      employed: formEmployed,
       description: formDescription.trim() || null,
     });
   };
@@ -233,6 +264,8 @@ export default function EmploymentStatusesPage() {
                 <TableRow>
                   <TableHead>Order</TableHead>
                   <TableHead>Name</TableHead>
+                  <TableHead>Code</TableHead>
+                  <TableHead>Employed</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -272,6 +305,31 @@ export default function EmploymentStatusesPage() {
                         />
                       ) : (
                         status.name
+                      )}
+                    </TableCell>
+                    <TableCell data-testid={`text-code-${status.id}`}>
+                      {editingId === status.id ? (
+                        <Input
+                          value={formCode}
+                          onChange={(e) => setFormCode(e.target.value)}
+                          placeholder="Code"
+                          data-testid={`input-edit-code-${status.id}`}
+                        />
+                      ) : (
+                        status.code
+                      )}
+                    </TableCell>
+                    <TableCell data-testid={`text-employed-${status.id}`}>
+                      {editingId === status.id ? (
+                        <Checkbox
+                          checked={formEmployed}
+                          onCheckedChange={(checked) => setFormEmployed(checked as boolean)}
+                          data-testid={`checkbox-edit-employed-${status.id}`}
+                        />
+                      ) : (
+                        <span className={status.employed ? "text-green-600 font-medium" : "text-muted-foreground"}>
+                          {status.employed ? "Yes" : "No"}
+                        </span>
                       )}
                     </TableCell>
                     <TableCell data-testid={`text-description-${status.id}`}>
@@ -363,6 +421,27 @@ export default function EmploymentStatusesPage() {
                 placeholder="e.g., Full-time, Part-time"
                 data-testid="input-add-name"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-code">Code</Label>
+              <Input
+                id="add-code"
+                value={formCode}
+                onChange={(e) => setFormCode(e.target.value)}
+                placeholder="e.g., FT, PT"
+                data-testid="input-add-code"
+              />
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="add-employed"
+                checked={formEmployed}
+                onCheckedChange={(checked) => setFormEmployed(checked as boolean)}
+                data-testid="checkbox-add-employed"
+              />
+              <Label htmlFor="add-employed" className="cursor-pointer">
+                Employed (indicates active employment)
+              </Label>
             </div>
             <div className="space-y-2">
               <Label htmlFor="add-description">Description</Label>
