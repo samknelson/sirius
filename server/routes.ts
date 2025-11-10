@@ -471,35 +471,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
       
-      // Get most recent employment history records for this employer (filtering done in SQL)
-      const emphists = await storage.workerEmphist.getByEmployerId(
+      // Get most recent employment history records for this employer (filtering done in SQL, includes worker and contact data)
+      const results = await storage.workerEmphist.getByEmployerId(
         employerId, 
         employmentStatusId || undefined
       );
       
-      // Get worker details for each employment history record
-      const results = [];
-      for (const emphist of emphists) {
-        const worker = await storage.workers.getWorker(emphist.workerId);
-        if (!worker) continue;
-        
-        results.push({
-          workerId: worker.id,
-          workerSiriusId: worker.siriusId,
-          contactName: worker.contactName,
-          employmentHistoryId: emphist.id,
-          employmentStatusId: emphist.employmentStatus,
-          employmentStatusName: emphist.employmentStatusName,
-          position: emphist.position,
-          date: emphist.date,
-          home: emphist.home,
-        });
-      }
-      
       // Sort by worker name
       results.sort((a, b) => (a.contactName || '').localeCompare(b.contactName || ''));
       
-      res.json(results);
+      // Map to response format
+      const response = results.map(record => ({
+        workerId: record.workerId,
+        workerSiriusId: record.workerSiriusId,
+        contactName: record.contactName,
+        employmentHistoryId: record.id,
+        employmentStatusId: record.employmentStatus,
+        employmentStatusName: record.employmentStatusName,
+        position: record.position,
+        date: record.date,
+        home: record.home,
+      }));
+      
+      res.json(response);
     } catch (error) {
       console.error("Failed to fetch employer workers:", error);
       res.status(500).json({ message: "Failed to fetch employer workers" });

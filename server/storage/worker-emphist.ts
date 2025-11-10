@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { workerEmphist, workers, optionsEmploymentStatus, type WorkerEmphist, type InsertWorkerEmphist } from "@shared/schema";
+import { workerEmphist, workers, contacts, optionsEmploymentStatus, type WorkerEmphist, type InsertWorkerEmphist } from "@shared/schema";
 import { eq, and, desc, isNotNull, inArray, sql } from "drizzle-orm";
 
 export interface WorkerEmphistStorage {
@@ -60,7 +60,7 @@ export function createWorkerEmphistStorage(): WorkerEmphistStorage {
         .orderBy(desc(workerEmphist.date));
     },
 
-    async getByEmployerId(employerId: string, employmentStatusId?: string): Promise<WorkerEmphist[]> {
+    async getByEmployerId(employerId: string, employmentStatusId?: string): Promise<any[]> {
       const mostRecentSubquery = db
         .select({
           workerId: workerEmphist.workerId,
@@ -75,6 +75,9 @@ export function createWorkerEmphistStorage(): WorkerEmphistStorage {
         .select({
           id: workerEmphist.id,
           workerId: workerEmphist.workerId,
+          workerSiriusId: workers.siriusId,
+          contactId: workers.contactId,
+          contactName: contacts.displayName,
           employerId: workerEmphist.employerId,
           date: workerEmphist.date,
           employmentStatus: workerEmphist.employmentStatus,
@@ -85,6 +88,8 @@ export function createWorkerEmphistStorage(): WorkerEmphistStorage {
         })
         .from(workerEmphist)
         .leftJoin(optionsEmploymentStatus, eq(workerEmphist.employmentStatus, optionsEmploymentStatus.id))
+        .leftJoin(workers, eq(workerEmphist.workerId, workers.id))
+        .leftJoin(contacts, eq(workers.contactId, contacts.id))
         .innerJoin(
           mostRecentSubquery,
           and(
