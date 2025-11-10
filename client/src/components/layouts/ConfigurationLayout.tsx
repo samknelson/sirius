@@ -22,6 +22,7 @@ interface ComponentConfig {
 export default function ConfigurationLayout({ children }: ConfigurationLayoutProps) {
   const [location] = useLocation();
   const { hasPermission } = useAuth();
+  const [isTrustOpen, setIsTrustOpen] = useState(false);
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const [isDropDownListsOpen, setIsDropDownListsOpen] = useState(false);
   const [isLedgerOpen, setIsLedgerOpen] = useState(false);
@@ -41,13 +42,6 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
   };
 
   const regularNavItems = [
-    {
-      path: "/trust-benefits",
-      label: "Trust Benefits",
-      icon: Heart,
-      testId: "nav-trust-benefits",
-      permission: "workers.view",
-    },
     {
       path: "/config/components",
       label: "Components",
@@ -82,6 +76,23 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       icon: FileText,
       testId: "nav-config-logs",
       policy: "admin" as const,
+    },
+  ];
+
+  const trustItems = [
+    {
+      path: "/trust-benefits",
+      label: "Trust Benefits",
+      icon: Heart,
+      testId: "nav-trust-benefits",
+      permission: "workers.view",
+    },
+    {
+      path: "/config/trust-benefit-types",
+      label: "Trust Benefit Types",
+      icon: List,
+      testId: "nav-config-trust-benefit-types",
+      permission: "variables.manage",
     },
   ];
 
@@ -163,13 +174,6 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       permission: "variables.manage",
     },
     {
-      path: "/config/trust-benefit-types",
-      label: "Trust Benefit Types",
-      icon: List,
-      testId: "nav-config-trust-benefit-types",
-      permission: "variables.manage",
-    },
-    {
       path: "/config/employer-contact-types",
       label: "Employer Contact Types",
       icon: List,
@@ -221,7 +225,7 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
 
   // Combine for policy checks
   const allLedgerItems = [...ledgerItems, ...stripeItems];
-  const allNavItems = [...regularNavItems, ...themeItems, ...userManagementItems, ...dropDownListItems, ...allLedgerItems];
+  const allNavItems = [...regularNavItems, ...trustItems, ...themeItems, ...userManagementItems, ...dropDownListItems, ...allLedgerItems];
 
   // Fetch policy checks for navigation items that use policies
   const policiesNeeded = allNavItems
@@ -271,6 +275,11 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
     
     return false;
   };
+
+  // Check if any trust item is active
+  const isTrustActive = trustItems.some(
+    (item) => location === item.path || location.startsWith(item.path + "/")
+  );
 
   // Check if any theme item is active
   const isThemeActive = themeItems.some(
@@ -323,6 +332,47 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
                 </Link>
               );
             })}
+
+            {/* Trust Group */}
+            {trustItems.some(hasAccessToItem) && (
+              <Collapsible
+                open={isTrustOpen || isTrustActive}
+                onOpenChange={setIsTrustOpen}
+              >
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant={isTrustActive ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    data-testid="nav-config-trust"
+                  >
+                    <Heart className="mr-2 h-4 w-4" />
+                    Trust
+                    <ChevronDown className="ml-auto h-4 w-4 transition-transform duration-200" 
+                      style={{ transform: (isTrustOpen || isTrustActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
+                    />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="ml-4 mt-2 space-y-2">
+                  {trustItems.filter(hasAccessToItem).map((item) => {
+                    const Icon = item.icon;
+                    const isActive = location === item.path || location.startsWith(item.path + "/");
+                    
+                    return (
+                      <Link key={item.path} href={item.path}>
+                        <Button
+                          variant={isActive ? "secondary" : "ghost"}
+                          className="w-full justify-start text-sm"
+                          data-testid={item.testId}
+                        >
+                          <Icon className="mr-2 h-4 w-4" />
+                          {item.label}
+                        </Button>
+                      </Link>
+                    );
+                  })}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
 
             {/* Theme Group */}
             {themeItems.some((item) => hasPermission(item.permission)) && (
