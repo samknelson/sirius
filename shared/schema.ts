@@ -159,6 +159,8 @@ export const optionsWorkerWs = pgTable("options_worker_ws", {
 export const optionsEmploymentStatus = pgTable("options_employment_status", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  code: varchar("code").notNull(),
+  employed: boolean("employed").default(false).notNull(),
   description: text("description"),
   sequence: integer("sequence").notNull().default(0),
 });
@@ -386,12 +388,16 @@ export const insertEmploymentStatusSchema = createInsertSchema(optionsEmployment
   id: true,
 }).extend({
   name: z.string().trim().min(1, "Name is required"),
+  code: z.string().trim().min(1, "Code is required"),
+  employed: z.boolean().optional().default(false),
   description: z.string().trim().nullable().or(z.literal("")).transform(val => val === "" ? null : val).optional(),
   sequence: z.number().optional().default(0),
 });
 
 export const updateEmploymentStatusSchema = z.object({
   name: z.string().trim().min(1, "Name is required").optional(),
+  code: z.string().trim().min(1, "Code is required").optional(),
+  employed: z.boolean().optional(),
   description: z.string().trim().nullable().or(z.literal("")).transform(val => val === "" ? null : val).optional(),
   sequence: z.number().optional(),
 }).strict();
