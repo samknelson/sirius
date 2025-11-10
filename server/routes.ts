@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { insertWorkerSchema, insertTrustBenefitTypeSchema, insertTrustBenefitSchema, insertContactSchema, insertWorkerWsSchema, updateWorkerWsSchema, insertEmploymentStatusSchema, updateEmploymentStatusSchema, type InsertEmployer, type InsertTrustBenefit, type InsertContact, winstonLogs, type WorkerId, type PostalAddress, type PhoneNumber } from "@shared/schema";
+import { insertWorkerSchema, insertTrustBenefitTypeSchema, insertTrustBenefitSchema, insertContactSchema, insertWorkerWsSchema, updateWorkerWsSchema, insertEmploymentStatusSchema, updateEmploymentStatusSchema, insertWorkerEmphistSchema, type InsertEmployer, type InsertTrustBenefit, type InsertContact, winstonLogs, type WorkerId, type PostalAddress, type PhoneNumber } from "@shared/schema";
 import { eq, and, inArray, gte, lte, desc } from "drizzle-orm";
 import { z } from "zod";
 import { registerUserRoutes } from "./modules/users";
