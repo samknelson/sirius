@@ -1,7 +1,17 @@
 import { FeedWizard } from '../feed.js';
-import { WizardStatus } from '../base.js';
+import { WizardStatus, WizardStep } from '../base.js';
 
 export abstract class GbhetLegalWorkersWizard extends FeedWizard {
+  getSteps(): WizardStep[] {
+    return [
+      { id: 'upload', name: 'Upload', description: 'Upload data file' },
+      { id: 'map', name: 'Map', description: 'Map fields to schema' },
+      { id: 'validate', name: 'Validate', description: 'Validate data integrity' },
+      { id: 'process', name: 'Process', description: 'Process and transform data' },
+      { id: 'review', name: 'Review', description: 'Review results' }
+    ];
+  }
+
   getStatuses(): WizardStatus[] {
     return [
       { id: 'draft', name: 'Draft', description: 'Initial draft state' },
