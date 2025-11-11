@@ -165,13 +165,18 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
     }
     
     if (suggestedMappingData?.mapping && !data?.columnMapping) {
-      form.setValue("columnMapping", suggestedMappingData.mapping);
+      // Reset the form with the suggested mapping to ensure proper rendering
+      form.reset({
+        mode: form.getValues("mode"),
+        hasHeaders: form.getValues("hasHeaders"),
+        columnMapping: suggestedMappingData.mapping
+      });
       toast({
         title: "Suggested Mapping Applied",
         description: "We've applied a previously saved mapping for this file structure.",
       });
     }
-  }, [suggestedMappingData, data?.columnMapping, form, toast]);
+  }, [suggestedMappingData, data?.columnMapping, form]);
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
     updateMutation.mutate(values);
