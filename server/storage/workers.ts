@@ -12,6 +12,7 @@ import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logg
 export interface WorkerStorage {
   getAllWorkers(): Promise<Worker[]>;
   getWorker(id: string): Promise<Worker | undefined>;
+  getWorkerBySSN(ssn: string): Promise<Worker | undefined>;
   createWorker(name: string): Promise<Worker>;
   // Update methods that delegate to contact storage (contact storage already has logging)
   updateWorkerContactName(workerId: string, name: string): Promise<Worker | undefined>;
@@ -38,6 +39,11 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
     async getWorker(id: string): Promise<Worker | undefined> {
       const [worker] = await db.select().from(workers).where(eq(workers.id, id));
+      return worker || undefined;
+    },
+
+    async getWorkerBySSN(ssn: string): Promise<Worker | undefined> {
+      const [worker] = await db.select().from(workers).where(eq(workers.ssn, ssn));
       return worker || undefined;
     },
 

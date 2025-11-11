@@ -1,5 +1,6 @@
-import { FeedWizard, FeedField } from '../feed.js';
+import { FeedWizard, FeedField, ValidationError } from '../feed.js';
 import { WizardStatus, WizardStep } from '../base.js';
+import { storage } from '../../storage/index.js';
 
 export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   entityType = 'employer';
@@ -117,5 +118,34 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
       valid: errors.length === 0,
       errors: errors.length > 0 ? errors : undefined
     };
+  }
+
+  /**
+   * Override validateRow to add worker existence check for update mode
+   */
+  async validateRow(row: Record<string, any>, rowIndex: number, mode: 'create' | 'update'): Promise<ValidationError[]> {
+    // Call parent validation first to get standard field validation errors
+    const errors = await super.validateRow(row, rowIndex, mode);
+    
+    // For update mode, verify that a worker with the given SSN exists
+    if (mode === 'update') {
+      const ssn = row.ssn;
+      
+      // Only check if SSN is present and passed format validation
+      if (ssn && !errors.some(e => e.field === 'ssn')) {
+        const existingWorker = await storage.workers.getWorkerBySSN(ssn);
+        
+        if (!existingWorker) {
+          errors.push({
+            rowIndex,
+            field: 'ssn',
+            message: 'Worker with this SSN does not exist',
+            value: ssn
+          });
+        }
+      }
+    }
+    
+    return errors;
   }
 }
