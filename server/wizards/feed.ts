@@ -19,13 +19,16 @@ export interface FeedData {
   uploadedFileId?: string;
   columnMapping?: Record<string, string>; // Maps source columns to field IDs
   hasHeaders?: boolean; // Whether the first row contains headers
+  mode?: 'create' | 'update'; // Whether this feed creates new records or updates existing ones
 }
 
 export interface FeedField {
   id: string;
   name: string;
   type: 'string' | 'number' | 'date';
-  required: boolean;
+  required: boolean; // Required in all cases
+  requiredForCreate?: boolean; // Required only when creating new records
+  requiredForUpdate?: boolean; // Required only when updating existing records
   description?: string;
   format?: 'ssn' | 'date' | 'currency' | 'phone' | 'email';
   options?: string[];

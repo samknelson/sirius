@@ -13,7 +13,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         id: 'ssn', 
         name: 'SSN', 
         type: 'string', 
-        required: true,
+        required: true, // Always required
         description: 'Social Security Number',
         format: 'ssn',
         pattern: '^\\d{3}-\\d{2}-\\d{4}$',
@@ -23,7 +23,8 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         id: 'firstName', 
         name: 'First Name', 
         type: 'string', 
-        required: true,
+        required: false, // Not always required
+        requiredForCreate: true, // Required only when creating new records
         description: 'Worker first name',
         maxLength: 100,
         displayOrder: 2
@@ -33,7 +34,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         name: 'Middle Name', 
         type: 'string', 
         required: false,
-        description: 'Worker middle name',
+        description: 'Worker middle name (optional)',
         maxLength: 100,
         displayOrder: 3
       },
@@ -41,7 +42,8 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         id: 'lastName', 
         name: 'Last Name', 
         type: 'string', 
-        required: true,
+        required: false, // Not always required
+        requiredForCreate: true, // Required only when creating new records
         description: 'Worker last name',
         maxLength: 100,
         displayOrder: 4
@@ -50,7 +52,8 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         id: 'dateOfBirth', 
         name: 'Date of Birth', 
         type: 'date', 
-        required: true,
+        required: false, // Not always required
+        requiredForCreate: true, // Required only when creating new records
         description: 'Worker date of birth',
         format: 'date',
         displayOrder: 5
@@ -59,7 +62,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         id: 'employmentStatus', 
         name: 'Employment Status', 
         type: 'string', 
-        required: true,
+        required: true, // Always required
         description: 'Current employment status',
         displayOrder: 6
       },
@@ -67,7 +70,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         id: 'numberOfHours', 
         name: 'Number of Hours', 
         type: 'number', 
-        required: true,
+        required: true, // Always required
         description: 'Number of hours worked',
         displayOrder: 7
       }
