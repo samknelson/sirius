@@ -2,6 +2,38 @@ import { FeedWizard, FeedField, ValidationError } from '../feed.js';
 import { WizardStatus, WizardStep } from '../base.js';
 import { storage } from '../../storage/index.js';
 
+/**
+ * Preprocess SSN value to normalize format
+ * - Removes all non-digit characters
+ * - Prepends zeros if needed to make it 9 digits
+ * - Formats as XXX-XX-XXXX
+ * - Returns null if the result doesn't look like a valid SSN
+ */
+function preprocessSSN(value: any): string | null {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  // Convert to string and remove all non-digit characters
+  const digitsOnly = String(value).replace(/\D/g, '');
+  
+  // If empty after removing non-digits, return null
+  if (digitsOnly.length === 0) {
+    return null;
+  }
+  
+  // If more than 9 digits, it's invalid
+  if (digitsOnly.length > 9) {
+    return null;
+  }
+  
+  // Prepend zeros to make it 9 digits
+  const paddedSSN = digitsOnly.padStart(9, '0');
+  
+  // Format as XXX-XX-XXXX
+  return `${paddedSSN.substring(0, 3)}-${paddedSSN.substring(3, 5)}-${paddedSSN.substring(5, 9)}`;
+}
+
 export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   entityType = 'employer';
 
@@ -121,10 +153,20 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   }
 
   /**
-   * Override validateRow to add worker existence check for update mode
+   * Override validateRow to preprocess SSN and add worker existence check for update mode
    */
   async validateRow(row: Record<string, any>, rowIndex: number, mode: 'create' | 'update'): Promise<ValidationError[]> {
-    // Call parent validation first to get standard field validation errors
+    // Preprocess SSN if present
+    if (row.ssn !== undefined && row.ssn !== null) {
+      const preprocessed = preprocessSSN(row.ssn);
+      
+      // If preprocessing fails (returns null), keep original value so parent validation catches it
+      if (preprocessed !== null) {
+        row.ssn = preprocessed;
+      }
+    }
+    
+    // Call parent validation to get standard field validation errors
     const errors = await super.validateRow(row, rowIndex, mode);
     
     // For update mode, verify that a worker with the given SSN exists
