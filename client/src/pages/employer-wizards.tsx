@@ -189,9 +189,19 @@ function EmployerWizardsContent() {
                         {wizard.status}
                       </span>
                     </div>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Created: {format(new Date(wizard.date), 'PPP')}
-                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-sm text-muted-foreground">
+                        Created: {format(new Date(wizard.date), 'PPP')}
+                      </p>
+                      {wizard.currentStep && (
+                        <>
+                          <span className="text-muted-foreground">•</span>
+                          <p className="text-sm text-muted-foreground">
+                            Step: {wizard.currentStep}
+                          </p>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

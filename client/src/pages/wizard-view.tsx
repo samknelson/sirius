@@ -209,6 +209,16 @@ export default function WizardView() {
                     </Badge>
                   </div>
                 </div>
+                {wizard.currentStep && (
+                  <div className="space-y-2 col-span-2">
+                    <label className="text-sm font-medium text-muted-foreground">Current Step</label>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" data-testid="badge-current-step">
+                        {wizardSteps?.find(s => s.id === wizard.currentStep)?.name || wizard.currentStep}
+                      </Badge>
+                    </div>
+                  </div>
+                )}
                 {employer && (
                   <div className="space-y-2 col-span-2">
                     <label className="text-sm font-medium text-muted-foreground">Associated Employer</label>
@@ -232,23 +242,39 @@ export default function WizardView() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {wizardSteps.map((step, index) => (
-                    <div
-                      key={step.id}
-                      className="flex items-start gap-3 p-3 rounded-lg border border-border"
-                      data-testid={`step-${step.id}`}
-                    >
-                      <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-sm font-medium">
-                        {index + 1}
+                  {wizardSteps.map((step, index) => {
+                    const isCurrentStep = wizard.currentStep === step.id;
+                    return (
+                      <div
+                        key={step.id}
+                        className={`flex items-start gap-3 p-3 rounded-lg border ${
+                          isCurrentStep 
+                            ? 'border-primary bg-primary/5' 
+                            : 'border-border'
+                        }`}
+                        data-testid={`step-${step.id}`}
+                      >
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-medium ${
+                          isCurrentStep 
+                            ? 'bg-primary text-primary-foreground' 
+                            : 'bg-muted'
+                        }`}>
+                          {index + 1}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-medium text-foreground">{step.name}</h4>
+                            {isCurrentStep && (
+                              <Badge variant="default" className="text-xs">Current</Badge>
+                            )}
+                          </div>
+                          {step.description && (
+                            <p className="text-sm text-muted-foreground mt-1">{step.description}</p>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <h4 className="font-medium text-foreground">{step.name}</h4>
-                        {step.description && (
-                          <p className="text-sm text-muted-foreground mt-1">{step.description}</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>

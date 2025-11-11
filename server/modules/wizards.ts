@@ -91,7 +91,7 @@ export function registerWizardRoutes(
       if (!validatedData.currentStep) {
         const steps = await wizardRegistry.getStepsForType(validatedData.type);
         if (steps && steps.length > 0) {
-          validatedData.currentStep = steps[0].name;
+          validatedData.currentStep = steps[0].id;
         }
       }
       
