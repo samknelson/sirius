@@ -248,169 +248,28 @@ export default function WizardView() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Active Step Content */}
-          {StepComponent && wizard && (
-            <div>
-              <StepComponent wizardId={wizard.id} data={wizardData} />
-            </div>
-          )}
+      <div className="space-y-6">
+        {/* Active Step Content */}
+        {StepComponent && wizard && (
+          <div>
+            <StepComponent wizardId={wizard.id} data={wizardData} />
+          </div>
+        )}
 
-          {/* Navigator */}
-          {wizardSteps && wizardSteps.length > 0 && (
-            <Card>
-              <CardContent className="pt-6">
-                <WizardNavigator
-                  currentStep={wizard.currentStep || wizardSteps[0].id}
-                  steps={wizardSteps}
-                  onNext={() => nextStepMutation.mutate(undefined)}
-                  onPrevious={() => previousStepMutation.mutate(undefined)}
-                  isLoading={nextStepMutation.isPending || previousStepMutation.isPending}
-                />
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Details Card */}
+        {/* Navigator */}
+        {wizardSteps && wizardSteps.length > 0 && (
           <Card>
-            <CardHeader>
-              <CardTitle>Wizard Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-muted-foreground">Type</label>
-                  <p className="text-foreground" data-testid="text-wizard-type">
-                    {wizardType?.displayName || wizard.type}
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-muted-foreground">Status</label>
-                  <div>
-                    <Badge variant="secondary" data-testid="badge-wizard-status">
-                      {wizard.status}
-                    </Badge>
-                  </div>
-                </div>
-                {employer && (
-                  <div className="space-y-2 col-span-2">
-                    <label className="text-sm font-medium text-muted-foreground">Associated Employer</label>
-                    <Link href={`/employers/${employer.id}`}>
-                      <div className="flex items-center gap-2 text-foreground hover:text-primary cursor-pointer">
-                        <Building2 className="h-4 w-4" />
-                        <span data-testid="link-employer-name">{employer.name}</span>
-                      </div>
-                    </Link>
-                  </div>
-                )}
-              </div>
+            <CardContent className="pt-6">
+              <WizardNavigator
+                currentStep={wizard.currentStep || wizardSteps[0].id}
+                steps={wizardSteps}
+                onNext={() => nextStepMutation.mutate(undefined)}
+                onPrevious={() => previousStepMutation.mutate(undefined)}
+                isLoading={nextStepMutation.isPending || previousStepMutation.isPending}
+              />
             </CardContent>
           </Card>
-
-          {/* Steps Card */}
-          {wizardSteps && wizardSteps.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Steps</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {wizardSteps.map((step, index) => {
-                    const isCurrentStep = wizard.currentStep === step.id;
-                    return (
-                      <div
-                        key={step.id}
-                        className={`flex items-start gap-3 p-3 rounded-lg border ${
-                          isCurrentStep 
-                            ? 'border-primary bg-primary/5' 
-                            : 'border-border'
-                        }`}
-                        data-testid={`step-${step.id}`}
-                      >
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-medium ${
-                          isCurrentStep 
-                            ? 'bg-primary text-primary-foreground' 
-                            : 'bg-muted'
-                        }`}>
-                          {index + 1}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-medium text-foreground">{step.name}</h4>
-                            {isCurrentStep && (
-                              <Badge variant="default" className="text-xs">Current</Badge>
-                            )}
-                          </div>
-                          {step.description && (
-                            <p className="text-sm text-muted-foreground mt-1">{step.description}</p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Status Management */}
-          {wizardStatuses && wizardStatuses.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Update Status</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-muted-foreground">Change Status</label>
-                  <Select
-                    value={wizard.status}
-                    onValueChange={(value) => updateStatusMutation.mutate(value)}
-                    disabled={updateStatusMutation.isPending}
-                  >
-                    <SelectTrigger data-testid="select-update-status">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {wizardStatuses.map((status) => (
-                        <SelectItem key={status.id} value={status.id}>
-                          {status.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Info Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div>
-                <span className="text-muted-foreground">Wizard ID:</span>
-                <p className="font-mono text-xs mt-1" data-testid="text-wizard-id">{wizard.id}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Created:</span>
-                <p className="mt-1">{format(new Date(wizard.date), 'PPpp')}</p>
-              </div>
-              {wizardType?.description && (
-                <div>
-                  <span className="text-muted-foreground">Description:</span>
-                  <p className="mt-1">{wizardType.description}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        )}
       </div>
     </div>
   );
