@@ -15,6 +15,7 @@ import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logg
 import { db } from "../db";
 import { optionsWorkerIdType, optionsEmploymentStatus, employers, workers, contacts } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { wizardRegistry } from "../wizards";
 
 export interface IStorage {
   variables: VariableStorage;
@@ -1048,6 +1049,16 @@ const wizardLoggingConfig: StorageLoggingConfig<WizardStorage> = {
     create: {
       enabled: true,
       getEntityId: (args) => args[0]?.type || 'new wizard',
+      getHostEntityId: (args, result) => {
+        return result?.entityId || null;
+      },
+      getDescription: async (args, result) => {
+        const wizard = result;
+        const wizardType = wizardRegistry.get(wizard?.type);
+        const displayName = wizardType?.displayName || wizard?.type || 'Unknown wizard';
+        const date = wizard?.date ? new Date(wizard.date).toISOString() : 'unknown date';
+        return `${displayName}, ${date}`;
+      },
       after: async (args, result, storage) => {
         return result;
       }
@@ -1055,6 +1066,16 @@ const wizardLoggingConfig: StorageLoggingConfig<WizardStorage> = {
     update: {
       enabled: true,
       getEntityId: (args) => args[0],
+      getHostEntityId: (args, result, beforeState) => {
+        return result?.entityId ?? beforeState?.entityId ?? null;
+      },
+      getDescription: async (args, result, beforeState) => {
+        const wizard = result ?? beforeState;
+        const wizardType = wizardRegistry.get(wizard?.type);
+        const displayName = wizardType?.displayName || wizard?.type || 'Unknown wizard';
+        const date = wizard?.date ? new Date(wizard.date).toISOString() : 'unknown date';
+        return `${displayName}, ${date}`;
+      },
       before: async (args, storage) => {
         return await storage.getById(args[0]);
       },
@@ -1065,6 +1086,16 @@ const wizardLoggingConfig: StorageLoggingConfig<WizardStorage> = {
     delete: {
       enabled: true,
       getEntityId: (args) => args[0],
+      getHostEntityId: (args, result, beforeState) => {
+        return beforeState?.entityId ?? null;
+      },
+      getDescription: async (args, result, beforeState) => {
+        const wizard = beforeState;
+        const wizardType = wizardRegistry.get(wizard?.type);
+        const displayName = wizardType?.displayName || wizard?.type || 'Unknown wizard';
+        const date = wizard?.date ? new Date(wizard.date).toISOString() : 'unknown date';
+        return `${displayName}, ${date}`;
+      },
       before: async (args, storage) => {
         return await storage.getById(args[0]);
       }
