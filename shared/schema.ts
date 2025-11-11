@@ -261,6 +261,20 @@ export const wizards = pgTable("wizards", {
   data: jsonb("data"),
 });
 
+export const files = pgTable("files", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fileName: varchar("file_name").notNull(),
+  storagePath: varchar("storage_path").notNull(),
+  mimeType: varchar("mime_type"),
+  size: integer("size").notNull(),
+  uploadedBy: varchar("uploaded_by").notNull(),
+  uploadedAt: timestamp("uploaded_at").default(sql`now()`).notNull(),
+  entityType: varchar("entity_type"),
+  entityId: varchar("entity_id"),
+  accessLevel: varchar("access_level").notNull().default('private'),
+  metadata: jsonb("metadata"),
+});
+
 export const winstonLogs = pgTable("winston_logs", {
   id: serial("id").primaryKey(),
   level: varchar("level", { length: 20 }),
@@ -516,6 +530,14 @@ export const wizardDataSchema = z.object({
 
 export type WizardStepProgress = z.infer<typeof wizardStepProgressSchema>;
 export type WizardData = z.infer<typeof wizardDataSchema>;
+
+export const insertFileSchema = createInsertSchema(files).omit({
+  id: true,
+  uploadedAt: true,
+});
+
+export type InsertFile = z.infer<typeof insertFileSchema>;
+export type File = typeof files.$inferSelect;
 
 export type InsertGenderOption = z.infer<typeof insertGenderOptionSchema>;
 export type GenderOption = typeof optionsGender.$inferSelect;
