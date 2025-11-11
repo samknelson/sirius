@@ -1,6 +1,9 @@
 import { BaseWizard, WizardStep, WizardStatus, createStandardStatuses } from './base.js';
 import { storage } from '../storage/index.js';
 import type { InsertFile, File } from '@shared/schema';
+import { parse as parseCSV } from 'csv-parse/sync';
+import * as XLSX from 'xlsx';
+import { objectStorageService } from '../services/objectStorage.js';
 
 export interface FeedConfig {
   outputFormat?: 'csv' | 'json' | 'excel';
@@ -20,6 +23,23 @@ export interface FeedData {
   columnMapping?: Record<string, string>; // Maps source columns to field IDs
   hasHeaders?: boolean; // Whether the first row contains headers
   mode?: 'create' | 'update'; // Whether this feed creates new records or updates existing ones
+  validationResults?: ValidationResults;
+}
+
+export interface ValidationError {
+  rowIndex: number;
+  field: string;
+  message: string;
+  value?: any;
+}
+
+export interface ValidationResults {
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  errors: ValidationError[];
+  errorSummary: Record<string, number>; // Count of each error type
+  completedAt?: Date;
 }
 
 export interface FeedField {
@@ -45,6 +65,230 @@ export abstract class FeedWizard extends BaseWizard {
    * Override in subclasses that support field mapping
    */
   getFields?(): FeedField[];
+
+  /**
+   * Validate a single row of data
+   * Override in subclasses to implement specific validation logic
+   * @param row The data row as a key-value object (after column mapping)
+   * @param rowIndex The row number (0-based, excluding headers if present)
+   * @param mode The feed mode ('create' or 'update')
+   * @returns Array of validation errors for this row
+   */
+  async validateRow(row: Record<string, any>, rowIndex: number, mode: 'create' | 'update'): Promise<ValidationError[]> {
+    const errors: ValidationError[] = [];
+    const fields = this.getFields?.() || [];
+
+    for (const field of fields) {
+      const value = row[field.id];
+      const isEmpty = value === null || value === undefined || value === '';
+
+      // Check required fields
+      const isRequired = field.required || 
+        (mode === 'create' && field.requiredForCreate) || 
+        (mode === 'update' && field.requiredForUpdate);
+
+      if (isRequired && isEmpty) {
+        errors.push({
+          rowIndex,
+          field: field.id,
+          message: `${field.name} is required`,
+          value
+        });
+        continue;
+      }
+
+      if (isEmpty) continue;
+
+      // Type validation
+      if (field.type === 'number' && isNaN(Number(value))) {
+        errors.push({
+          rowIndex,
+          field: field.id,
+          message: `${field.name} must be a number`,
+          value
+        });
+        continue;
+      }
+
+      // Format validation
+      if (field.format === 'ssn' && field.pattern) {
+        const regex = new RegExp(field.pattern);
+        if (!regex.test(String(value))) {
+          errors.push({
+            rowIndex,
+            field: field.id,
+            message: `${field.name} must match format XXX-XX-XXXX`,
+            value
+          });
+        }
+      }
+
+      // Max length validation
+      if (field.maxLength && String(value).length > field.maxLength) {
+        errors.push({
+          rowIndex,
+          field: field.id,
+          message: `${field.name} exceeds maximum length of ${field.maxLength}`,
+          value: String(value).substring(0, 20) + '...'
+        });
+      }
+
+      // Pattern validation
+      if (field.pattern && !field.format) {
+        const regex = new RegExp(field.pattern);
+        if (!regex.test(String(value))) {
+          errors.push({
+            rowIndex,
+            field: field.id,
+            message: `${field.name} does not match required pattern`,
+            value
+          });
+        }
+      }
+    }
+
+    return errors;
+  }
+
+  /**
+   * Process validation in batches with progress tracking
+   * @param wizardId The wizard instance ID
+   * @param batchSize Number of rows to process per batch (default: 100)
+   * @param onProgress Callback for progress updates
+   * @returns Validation results
+   */
+  async validateFeedData(
+    wizardId: string,
+    batchSize: number = 100,
+    onProgress?: (progress: { processed: number; total: number; validRows: number; invalidRows: number }) => void
+  ): Promise<ValidationResults> {
+    const wizard = await storage.wizards.getById(wizardId);
+    if (!wizard) {
+      throw new Error('Wizard not found');
+    }
+
+    const wizardData = wizard.data as any;
+    const fileId = wizardData?.uploadedFileId;
+    const columnMapping: Record<string, string> = wizardData?.columnMapping || {};
+    const hasHeaders = wizardData?.hasHeaders ?? true;
+    const mode = wizardData?.mode || 'create';
+
+    if (!fileId) {
+      throw new Error('No uploaded file found');
+    }
+
+    // Load file from object storage
+    const file = await storage.files.getById(fileId);
+    if (!file) {
+      throw new Error('File not found');
+    }
+
+    // Download file content
+    const buffer = await objectStorageService.downloadFile(file.storagePath);
+
+    // Parse file based on type
+    let rawRows: any[] = [];
+    if (file.mimeType === 'text/csv') {
+      rawRows = parseCSV(buffer, {
+        columns: false,
+        skip_empty_lines: true,
+        relax_column_count: true
+      });
+    } else if (file.mimeType?.includes('spreadsheet') || file.mimeType?.includes('excel')) {
+      const workbook = XLSX.read(buffer, { type: 'buffer' });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      rawRows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+    } else {
+      throw new Error('Unsupported file type');
+    }
+
+    // Skip header row if present
+    const dataRows = hasHeaders ? rawRows.slice(1) : rawRows;
+
+    // Map columns to fields
+    const mappedRows = dataRows.map((row: any[]) => {
+      const mapped: Record<string, any> = {};
+      Object.entries(columnMapping).forEach(([sourceCol, fieldId]) => {
+        if (fieldId && fieldId !== '_unmapped') {
+          const colIndex = parseInt(sourceCol);
+          mapped[fieldId] = row[colIndex];
+        }
+      });
+      return mapped;
+    });
+
+    // Process in batches
+    const totalRows = mappedRows.length;
+    let validRows = 0;
+    let invalidRows = 0;
+    const allErrors: ValidationError[] = [];
+    const errorCounts: Record<string, number> = {};
+    const errorLimitPerType = 12;
+
+    for (let i = 0; i < totalRows; i += batchSize) {
+      const batch = mappedRows.slice(i, Math.min(i + batchSize, totalRows));
+      
+      // Validate each row in the batch
+      for (let j = 0; j < batch.length; j++) {
+        const rowIndex = i + j;
+        const row = batch[j];
+        const rowErrors = await this.validateRow(row, rowIndex, mode);
+
+        if (rowErrors.length === 0) {
+          validRows++;
+        } else {
+          invalidRows++;
+          
+          // Add errors with limiting per type
+          for (const error of rowErrors) {
+            const errorKey = `${error.field}:${error.message}`;
+            errorCounts[errorKey] = (errorCounts[errorKey] || 0) + 1;
+            
+            // Only store first 12 of each error type
+            if (errorCounts[errorKey] <= errorLimitPerType) {
+              allErrors.push(error);
+            }
+          }
+        }
+      }
+
+      // Report progress
+      if (onProgress) {
+        onProgress({
+          processed: Math.min(i + batchSize, totalRows),
+          total: totalRows,
+          validRows,
+          invalidRows
+        });
+      }
+    }
+
+    // Build error summary
+    const errorSummary: Record<string, number> = {};
+    for (const error of allErrors) {
+      const key = `${error.field}: ${error.message}`;
+      errorSummary[key] = (errorSummary[key] || 0) + 1;
+    }
+
+    const results: ValidationResults = {
+      totalRows,
+      validRows,
+      invalidRows,
+      errors: allErrors,
+      errorSummary,
+      completedAt: new Date()
+    };
+
+    // Save validation results to wizard data
+    await storage.wizards.update(wizardId, {
+      data: {
+        ...wizardData,
+        validationResults: results
+      }
+    });
+
+    return results;
+  }
 
   getSteps(): WizardStep[] {
     return [

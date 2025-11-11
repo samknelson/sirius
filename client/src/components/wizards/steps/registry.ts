@@ -57,20 +57,30 @@ const evaluateMapComplete: StepCompletionEvaluator = ({ wizard, fields }) => {
   return requiredFields.length === mappedRequiredFields.length;
 };
 
+const evaluateValidateComplete: StepCompletionEvaluator = ({ wizard }) => {
+  const validationResults = wizard?.data?.validationResults;
+  
+  // Validation must have been run
+  if (!validationResults) return false;
+  
+  // All rows must be valid (no invalid rows)
+  return validationResults.invalidRows === 0;
+};
+
 const alwaysComplete: StepCompletionEvaluator = () => true;
 
 export const stepControllerRegistry: StepControllerRegistry = {
   'gbhet_legal_workers_monthly': {
     'upload': { Component: UploadStep, evaluateCompletion: evaluateUploadComplete },
     'map': { Component: MapStep, evaluateCompletion: evaluateMapComplete },
-    'validate': { Component: ValidateStep, evaluateCompletion: alwaysComplete },
+    'validate': { Component: ValidateStep, evaluateCompletion: evaluateValidateComplete },
     'process': { Component: ProcessStep, evaluateCompletion: alwaysComplete },
     'review': { Component: ReviewStep, evaluateCompletion: alwaysComplete },
   },
   'gbhet_legal_workers_corrections': {
     'upload': { Component: UploadStep, evaluateCompletion: evaluateUploadComplete },
     'map': { Component: MapStep, evaluateCompletion: evaluateMapComplete },
-    'validate': { Component: ValidateStep, evaluateCompletion: alwaysComplete },
+    'validate': { Component: ValidateStep, evaluateCompletion: evaluateValidateComplete },
     'process': { Component: ProcessStep, evaluateCompletion: alwaysComplete },
     'review': { Component: ReviewStep, evaluateCompletion: alwaysComplete },
   },

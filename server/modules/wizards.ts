@@ -226,6 +226,17 @@ export function registerWizardRoutes(
       }
     }
     
+    // Validate step validation
+    if (stepId === 'validate') {
+      const validationResults = wizardData.validationResults;
+      
+      // Validation must have been run
+      if (!validationResults) return false;
+      
+      // All rows must be valid (no invalid rows)
+      return validationResults.invalidRows === 0;
+    }
+    
     // Other steps are always considered complete
     return true;
   }
@@ -573,6 +584,72 @@ export function registerWizardRoutes(
       } catch (error) {
         console.error("File parse error:", error);
         res.status(500).json({ message: error instanceof Error ? error.message : "Failed to parse file" });
+      }
+    }
+  );
+
+  // Validate wizard data with SSE for progress tracking
+  app.get("/api/wizards/:id/validate",
+    checkWizardAccess,
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const wizard = (req as any).wizard;
+
+        // Get wizard type instance
+        const wizardType = wizardRegistry.get(wizard.type);
+        if (!wizardType || !(wizardType instanceof FeedWizard)) {
+          return res.status(400).json({ message: "This wizard type does not support validation" });
+        }
+
+        // Set up SSE headers
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders();
+
+        // Send initial event
+        res.write(`data: ${JSON.stringify({ type: 'start', message: 'Starting validation...' })}\n\n`);
+
+        // Run validation with progress callback
+        try {
+          const results = await wizardType.validateFeedData(
+            id,
+            100, // batch size
+            (progress) => {
+              // Send progress event
+              res.write(`data: ${JSON.stringify({ 
+                type: 'progress', 
+                ...progress 
+              })}\n\n`);
+            }
+          );
+
+          // Send completion event
+          res.write(`data: ${JSON.stringify({ 
+            type: 'complete', 
+            results 
+          })}\n\n`);
+          res.end();
+        } catch (validationError) {
+          // Send error event
+          res.write(`data: ${JSON.stringify({ 
+            type: 'error', 
+            message: validationError instanceof Error ? validationError.message : 'Validation failed' 
+          })}\n\n`);
+          res.end();
+        }
+      } catch (error) {
+        console.error("Validation error:", error);
+        if (!res.headersSent) {
+          res.status(500).json({ message: error instanceof Error ? error.message : "Failed to start validation" });
+        } else {
+          res.write(`data: ${JSON.stringify({ 
+            type: 'error', 
+            message: error instanceof Error ? error.message : 'Validation failed' 
+          })}\n\n`);
+          res.end();
+        }
       }
     }
   );
