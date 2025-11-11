@@ -1,6 +1,14 @@
 import { FeedWizard } from '../feed.js';
+import { WizardStatus } from '../base.js';
 
 export abstract class GbhetLegalWorkersWizard extends FeedWizard {
+  getStatuses(): WizardStatus[] {
+    return [
+      { id: 'draft', name: 'Draft', description: 'Initial draft state' },
+      { id: 'complete', name: 'Complete', description: 'Feed generation complete' }
+    ];
+  }
+
   async getRecordCount(filters?: Record<string, any>): Promise<number> {
     return 0;
   }
