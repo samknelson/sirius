@@ -34,8 +34,18 @@ function preprocessSSN(value: any): string | null {
   return `${paddedSSN.substring(0, 3)}-${paddedSSN.substring(3, 5)}-${paddedSSN.substring(5, 9)}`;
 }
 
+/**
+ * Normalize a string for comparison (case-insensitive, whitespace removed)
+ */
+function normalizeForComparison(value: string): string {
+  return String(value).toLowerCase().replace(/\s+/g, '');
+}
+
 export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   entityType = 'employer';
+  
+  // Cache for employment status options to avoid repeated DB queries
+  private employmentStatusCache: Array<{ name: string; code: string }> | null = null;
 
   /**
    * Get the field definitions for the GBHET Legal Workers feed
@@ -153,6 +163,17 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   }
 
   /**
+   * Get employment status options (cached to avoid repeated DB queries)
+   */
+  private async getEmploymentStatusOptions(): Promise<Array<{ name: string; code: string }>> {
+    if (!this.employmentStatusCache) {
+      const statuses = await storage.options.employmentStatus.getAll();
+      this.employmentStatusCache = statuses.map(s => ({ name: s.name, code: s.code }));
+    }
+    return this.employmentStatusCache;
+  }
+
+  /**
    * Override validateRow to preprocess SSN and add worker existence check for update mode
    */
   async validateRow(row: Record<string, any>, rowIndex: number, mode: 'create' | 'update'): Promise<ValidationError[]> {
@@ -168,6 +189,48 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     
     // Call parent validation to get standard field validation errors
     const errors = await super.validateRow(row, rowIndex, mode);
+    
+    // Validate employment status against options table
+    if (row.employmentStatus !== undefined && row.employmentStatus !== null && row.employmentStatus !== '') {
+      const employmentStatusOptions = await this.getEmploymentStatusOptions();
+      const normalizedInput = normalizeForComparison(String(row.employmentStatus));
+      
+      // Check if input matches any option (by name or code)
+      const matchFound = employmentStatusOptions.some(option => {
+        // Always check name
+        if (normalizeForComparison(option.name) === normalizedInput) {
+          return true;
+        }
+        // Only check code if it exists (avoid matching "null" or "undefined" literals)
+        if (option.code && normalizeForComparison(option.code) === normalizedInput) {
+          return true;
+        }
+        return false;
+      });
+      
+      if (!matchFound) {
+        errors.push({
+          rowIndex,
+          field: 'employmentStatus',
+          message: 'Employment status must match one of the configured options',
+          value: row.employmentStatus
+        });
+      } else {
+        // Replace with the canonical name from the options table
+        const matchingOption = employmentStatusOptions.find(option => {
+          if (normalizeForComparison(option.name) === normalizedInput) {
+            return true;
+          }
+          if (option.code && normalizeForComparison(option.code) === normalizedInput) {
+            return true;
+          }
+          return false;
+        });
+        if (matchingOption) {
+          row.employmentStatus = matchingOption.name;
+        }
+      }
+    }
     
     // For update mode, verify that a worker with the given SSN exists
     if (mode === 'update') {
