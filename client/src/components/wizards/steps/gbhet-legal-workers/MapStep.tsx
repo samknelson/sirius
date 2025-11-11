@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -33,6 +35,8 @@ interface FeedField {
   name: string;
   type: string;
   required: boolean;
+  requiredForCreate?: boolean;
+  requiredForUpdate?: boolean;
   description?: string;
   format?: string;
   displayOrder?: number;
@@ -66,6 +70,7 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
 
   const columnCount = parsedData?.columnCount || 0;
   const formSchema = z.object({
+    mode: z.enum(['create', 'update']),
     hasHeaders: z.boolean(),
     columnMapping: z.record(z.string(), z.string().optional())
   });
@@ -73,19 +78,38 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      mode: data?.mode || 'create',
       hasHeaders: data?.hasHeaders ?? true,
       columnMapping: data?.columnMapping || {}
     },
   });
 
+  const mode = form.watch("mode");
   const hasHeaders = form.watch("hasHeaders");
   const columnMapping = form.watch("columnMapping");
+
+  const getRequiredFields = (currentMode: 'create' | 'update'): FeedField[] => {
+    return fields.filter(f => {
+      if (f.required) return true;
+      if (currentMode === 'create' && f.requiredForCreate) return true;
+      if (currentMode === 'update' && f.requiredForUpdate) return true;
+      return false;
+    });
+  };
+
+  const isFieldRequired = (field: FeedField, currentMode: 'create' | 'update'): boolean => {
+    if (field.required) return true;
+    if (currentMode === 'create' && field.requiredForCreate) return true;
+    if (currentMode === 'update' && field.requiredForUpdate) return true;
+    return false;
+  };
 
   const updateMutation = useMutation({
     mutationFn: async (values: z.infer<typeof formSchema>) => {
       const response = await apiRequest("PATCH", `/api/wizards/${wizardId}`, {
         data: {
           ...data,
+          mode: values.mode,
           hasHeaders: values.hasHeaders,
           columnMapping: values.columnMapping
         }
@@ -124,9 +148,10 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
 
   const previewData = parsedData?.previewRows?.slice(hasHeaders ? 1 : 0, 6) || [];
 
-  const requiredFields = fields.filter(f => f.required);
+  const requiredFields = getRequiredFields(mode);
   const mappedRequiredFields = requiredFields.filter(f => {
-    return Object.values(columnMapping).includes(f.id);
+    const mappedValues = Object.values(columnMapping).filter(v => v && v !== '_unmapped');
+    return mappedValues.includes(f.id);
   });
   const isMappingComplete = requiredFields.length === mappedRequiredFields.length;
 
@@ -185,26 +210,64 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
           </div>
         </div>
 
-        <div className="flex items-center justify-between p-3 border rounded-lg">
-          <div className="flex items-center gap-2">
-            {isMappingComplete ? (
-              <CheckCircle2 size={20} className="text-green-600 dark:text-green-400" />
-            ) : (
-              <AlertCircle size={20} className="text-amber-600 dark:text-amber-400" />
-            )}
-            <span className="text-sm font-medium">
-              {mappedRequiredFields.length} of {requiredFields.length} required fields mapped
-            </span>
-          </div>
-          {isMappingComplete && (
-            <Badge variant="default" className="bg-green-600 dark:bg-green-700" data-testid="badge-mapping-complete">
-              Complete
-            </Badge>
-          )}
-        </div>
-
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <FormField
+              control={form.control}
+              name="mode"
+              render={({ field }) => (
+                <FormItem className="space-y-3 p-4 border rounded-lg">
+                  <FormLabel className="text-base">Feed Mode</FormLabel>
+                  <FormDescription>
+                    Select whether this feed will create new worker records or update existing ones
+                  </FormDescription>
+                  <FormControl>
+                    <RadioGroup
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                      className="flex flex-col space-y-2"
+                    >
+                      <div className="flex items-center space-x-3 space-y-0">
+                        <RadioGroupItem value="create" id="mode-create" data-testid="radio-mode-create" />
+                        <Label htmlFor="mode-create" className="font-normal cursor-pointer">
+                          <div className="font-medium">Create New Records</div>
+                          <div className="text-xs text-muted-foreground">
+                            All demographic fields (name, DOB) are required
+                          </div>
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-3 space-y-0">
+                        <RadioGroupItem value="update" id="mode-update" data-testid="radio-mode-update" />
+                        <Label htmlFor="mode-update" className="font-normal cursor-pointer">
+                          <div className="font-medium">Update Existing Records</div>
+                          <div className="text-xs text-muted-foreground">
+                            Only SSN, employment status, and hours are required
+                          </div>
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+
+            <div className="flex items-center justify-between p-3 border rounded-lg">
+              <div className="flex items-center gap-2">
+                {isMappingComplete ? (
+                  <CheckCircle2 size={20} className="text-green-600 dark:text-green-400" />
+                ) : (
+                  <AlertCircle size={20} className="text-amber-600 dark:text-amber-400" />
+                )}
+                <span className="text-sm font-medium">
+                  {mappedRequiredFields.length} of {requiredFields.length} required fields mapped
+                </span>
+              </div>
+              {isMappingComplete && (
+                <Badge variant="default" className="bg-green-600 dark:bg-green-700" data-testid="badge-mapping-complete">
+                  Complete
+                </Badge>
+              )}
+            </div>
             <FormField
               control={form.control}
               name="hasHeaders"
@@ -276,11 +339,14 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
                                       <SelectItem value="_unmapped" data-testid="option-unmapped">
                                         (Do not map)
                                       </SelectItem>
-                                      {sortedFields.map(field => (
-                                        <SelectItem key={field.id} value={field.id} data-testid={`option-field-${field.id}`}>
-                                          {field.name} {field.required && <span className="text-destructive">*</span>}
-                                        </SelectItem>
-                                      ))}
+                                      {sortedFields.map(field => {
+                                        const isRequired = isFieldRequired(field, mode);
+                                        return (
+                                          <SelectItem key={field.id} value={field.id} data-testid={`option-field-${field.id}`}>
+                                            {field.name} {isRequired && <span className="text-destructive">*</span>}
+                                          </SelectItem>
+                                        );
+                                      })}
                                     </SelectContent>
                                   </Select>
                                   <FormMessage />
@@ -307,9 +373,9 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
             </div>
 
             <div className="text-xs text-muted-foreground p-3 bg-muted/50 rounded-lg">
-              <strong>Required fields:</strong>{' '}
+              <strong>Required fields for {mode} mode:</strong>{' '}
               {sortedFields
-                .filter(f => f.required)
+                .filter(f => isFieldRequired(f, mode))
                 .map(f => f.name)
                 .join(', ')}
             </div>
