@@ -85,12 +85,17 @@ export function UploadStep({ wizardId, wizardType, data, onDataChange }: UploadS
       return response.json();
     },
     onSuccess: async () => {
-      // Mark upload step as completed
+      // First invalidate to get fresh wizard data
+      queryClient.invalidateQueries({ queryKey: ["/api/wizards", wizardId, "files"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wizards", wizardId] });
+      
+      // Wait a bit for queries to refetch
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Mark upload step as completed with only progress update (don't pass full data)
       await apiRequest("PATCH", `/api/wizards/${wizardId}`, {
         data: {
-          ...data,
           progress: {
-            ...data?.progress,
             upload: {
               status: "completed",
               completedAt: new Date().toISOString(),
@@ -99,8 +104,9 @@ export function UploadStep({ wizardId, wizardType, data, onDataChange }: UploadS
         },
       });
 
-      queryClient.invalidateQueries({ queryKey: ["/api/wizards", wizardId, "files"] });
+      // Invalidate again to refresh with the updated progress
       queryClient.invalidateQueries({ queryKey: ["/api/wizards", wizardId] });
+      
       form.reset();
       toast({
         title: "File Uploaded",
