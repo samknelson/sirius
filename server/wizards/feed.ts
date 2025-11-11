@@ -210,7 +210,8 @@ export abstract class FeedWizard extends BaseWizard {
       const mapped: Record<string, any> = {};
       Object.entries(columnMapping).forEach(([sourceCol, fieldId]) => {
         if (fieldId && fieldId !== '_unmapped') {
-          const colIndex = parseInt(sourceCol);
+          // Extract numeric index from "col_0", "col_1", etc.
+          const colIndex = parseInt(sourceCol.replace('col_', ''));
           mapped[fieldId] = row[colIndex];
         }
       });
