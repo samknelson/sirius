@@ -500,6 +500,23 @@ export type LedgerPayment = typeof ledgerPayments.$inferSelect;
 export type InsertWizard = z.infer<typeof insertWizardSchema>;
 export type Wizard = typeof wizards.$inferSelect;
 
+export const wizardStepProgressSchema = z.object({
+  status: z.enum(['pending', 'in_progress', 'completed']),
+  completedAt: z.string().optional(),
+  payload: z.any().optional(),
+});
+
+export const wizardDataSchema = z.object({
+  progress: z.record(z.string(), wizardStepProgressSchema).optional(),
+  metadata: z.object({
+    lastUpdatedBy: z.string().optional(),
+    lastUpdatedAt: z.string().optional(),
+  }).optional(),
+}).passthrough();
+
+export type WizardStepProgress = z.infer<typeof wizardStepProgressSchema>;
+export type WizardData = z.infer<typeof wizardDataSchema>;
+
 export type InsertGenderOption = z.infer<typeof insertGenderOptionSchema>;
 export type GenderOption = typeof optionsGender.$inferSelect;
 

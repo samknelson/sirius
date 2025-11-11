@@ -9,12 +9,17 @@ import { Wand2, ArrowLeft, Building2 } from "lucide-react";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { WizardStepper } from "@/components/wizards/WizardStepper";
+import { WizardNavigator } from "@/components/wizards/WizardNavigator";
+import { getStepComponent } from "@/components/wizards/steps/registry";
+import type { WizardData } from "@shared/schema";
 
 interface Wizard {
   id: string;
   date: string;
   type: string;
   status: string;
+  currentStep: string | null;
   entityId: string | null;
   data: any;
 }
@@ -117,6 +122,51 @@ export default function WizardView() {
     },
   });
 
+  const nextStepMutation = useMutation({
+    mutationFn: async (payload?: any) => {
+      const response = await apiRequest("POST", `/api/wizards/${id}/steps/next`, { payload });
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/wizards", id] });
+      toast({
+        title: "Step Advanced",
+        description: "Moved to next step successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to advance to next step",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const previousStepMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", `/api/wizards/${id}/steps/previous`, {});
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/wizards", id] });
+      toast({
+        title: "Step Returned",
+        description: "Moved to previous step successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to return to previous step",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const wizardData = wizard?.data as WizardData | undefined;
+  const StepComponent = wizard && wizardSteps ? getStepComponent(wizard.type, wizard.currentStep || wizardSteps[0]?.id || '') : null;
+
   if (wizardError) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -185,9 +235,44 @@ export default function WizardView() {
         </div>
       </div>
 
+      {/* Stepper */}
+      {wizardSteps && wizardSteps.length > 0 && (
+        <Card className="mb-6">
+          <CardContent className="pt-6">
+            <WizardStepper
+              steps={wizardSteps}
+              currentStep={wizard.currentStep || wizardSteps[0].id}
+              progress={wizardData?.progress}
+            />
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Active Step Content */}
+          {StepComponent && wizard && (
+            <div>
+              <StepComponent wizardId={wizard.id} data={wizardData} />
+            </div>
+          )}
+
+          {/* Navigator */}
+          {wizardSteps && wizardSteps.length > 0 && (
+            <Card>
+              <CardContent className="pt-6">
+                <WizardNavigator
+                  currentStep={wizard.currentStep || wizardSteps[0].id}
+                  steps={wizardSteps}
+                  onNext={() => nextStepMutation.mutate(undefined)}
+                  onPrevious={() => previousStepMutation.mutate(undefined)}
+                  isLoading={nextStepMutation.isPending || previousStepMutation.isPending}
+                />
+              </CardContent>
+            </Card>
+          )}
+
           {/* Details Card */}
           <Card>
             <CardHeader>
@@ -209,16 +294,6 @@ export default function WizardView() {
                     </Badge>
                   </div>
                 </div>
-                {wizard.currentStep && (
-                  <div className="space-y-2 col-span-2">
-                    <label className="text-sm font-medium text-muted-foreground">Current Step</label>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" data-testid="badge-current-step">
-                        {wizardSteps?.find(s => s.id === wizard.currentStep)?.name || wizard.currentStep}
-                      </Badge>
-                    </div>
-                  </div>
-                )}
                 {employer && (
                   <div className="space-y-2 col-span-2">
                     <label className="text-sm font-medium text-muted-foreground">Associated Employer</label>

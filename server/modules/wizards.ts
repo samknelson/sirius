@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
-import { insertWizardSchema } from "@shared/schema";
+import { insertWizardSchema, wizardDataSchema, type WizardData } from "@shared/schema";
 import { requireAccess } from "../accessControl";
 import { policies } from "../policies";
 import { wizardRegistry } from "../wizards/index.js";
@@ -92,6 +92,13 @@ export function registerWizardRoutes(
         const steps = await wizardRegistry.getStepsForType(validatedData.type);
         if (steps && steps.length > 0) {
           validatedData.currentStep = steps[0].id;
+          
+          const wizardData: WizardData = (validatedData.data as WizardData) || {};
+          wizardData.progress = wizardData.progress || {};
+          wizardData.progress[steps[0].id] = {
+            status: 'in_progress',
+          };
+          validatedData.data = wizardData;
         }
       }
       
@@ -152,6 +159,113 @@ export function registerWizardRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete wizard" });
+    }
+  });
+
+  app.post("/api/wizards/:id/steps/next", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { payload } = req.body;
+      
+      const wizard = await storage.wizards.getById(id);
+      if (!wizard) {
+        return res.status(404).json({ message: "Wizard not found" });
+      }
+
+      const steps = await wizardRegistry.getStepsForType(wizard.type);
+      
+      const currentStepId = wizard.currentStep || steps[0]?.id;
+      if (!currentStepId) {
+        return res.status(400).json({ message: "No steps available for this wizard type" });
+      }
+      
+      const currentIndex = steps.findIndex(s => s.id === currentStepId);
+      
+      if (currentIndex === -1) {
+        return res.status(400).json({ message: "Current step not found in wizard type" });
+      }
+      
+      if (currentIndex >= steps.length - 1) {
+        return res.status(400).json({ message: "Already on last step" });
+      }
+
+      const nextStep = steps[currentIndex + 1];
+      
+      const wizardData: WizardData = (wizard.data as WizardData) || {};
+      const progress = wizardData.progress || {};
+      
+      progress[currentStepId] = {
+        status: 'completed',
+        completedAt: new Date().toISOString(),
+        payload: payload || progress[currentStepId]?.payload,
+      };
+      
+      progress[nextStep.id] = {
+        status: 'in_progress',
+      };
+
+      const updatedWizard = await storage.wizards.update(id, {
+        currentStep: nextStep.id,
+        data: { ...wizardData, progress },
+      });
+
+      res.json(updatedWizard);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to navigate to next step" });
+    }
+  });
+
+  app.post("/api/wizards/:id/steps/previous", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const wizard = await storage.wizards.getById(id);
+      if (!wizard) {
+        return res.status(404).json({ message: "Wizard not found" });
+      }
+
+      const steps = await wizardRegistry.getStepsForType(wizard.type);
+      
+      const currentStepId = wizard.currentStep || steps[0]?.id;
+      if (!currentStepId) {
+        return res.status(400).json({ message: "No steps available for this wizard type" });
+      }
+      
+      const currentIndex = steps.findIndex(s => s.id === currentStepId);
+      
+      if (currentIndex === -1) {
+        return res.status(400).json({ message: "Current step not found in wizard type" });
+      }
+      
+      if (currentIndex <= 0) {
+        return res.status(400).json({ message: "Already on first step" });
+      }
+
+      const previousStep = steps[currentIndex - 1];
+      
+      const wizardData: WizardData = (wizard.data as WizardData) || {};
+      const progress = wizardData.progress || {};
+      
+      if (progress[currentStepId]) {
+        progress[currentStepId] = {
+          status: 'pending',
+        };
+      }
+      
+      progress[previousStep.id] = {
+        ...progress[previousStep.id],
+        status: 'in_progress',
+        completedAt: undefined,
+      };
+
+      const updatedWizard = await storage.wizards.update(id, {
+        currentStep: previousStep.id,
+        data: { ...wizardData, progress },
+      });
+
+      res.json(updatedWizard);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to navigate to previous step" });
     }
   });
 }
