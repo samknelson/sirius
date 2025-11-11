@@ -160,23 +160,17 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
 
   // Apply suggested mapping when available and set header hash
   useEffect(() => {
-    console.log("MapStep effect - suggestedMappingData:", suggestedMappingData);
-    console.log("MapStep effect - data?.columnMapping:", data?.columnMapping);
-    console.log("MapStep effect - current form columnMapping:", form.getValues("columnMapping"));
-    
     if (suggestedMappingData?.headerHash) {
       setHeaderHash(suggestedMappingData.headerHash);
     }
     
     if (suggestedMappingData?.mapping && !data?.columnMapping) {
-      console.log("Applying suggested mapping:", suggestedMappingData.mapping);
       // Reset the form with the suggested mapping to ensure proper rendering
       form.reset({
         mode: form.getValues("mode"),
         hasHeaders: form.getValues("hasHeaders"),
         columnMapping: suggestedMappingData.mapping
       });
-      console.log("Form reset complete. New columnMapping:", form.getValues("columnMapping"));
       toast({
         title: "Suggested Mapping Applied",
         description: "We've applied a previously saved mapping for this file structure.",
@@ -377,7 +371,7 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
                                 <FormItem>
                                   <Select
                                     onValueChange={field.onChange}
-                                    defaultValue={field.value}
+                                    value={field.value}
                                   >
                                     <FormControl>
                                       <SelectTrigger data-testid={`select-field-${i}`}>
