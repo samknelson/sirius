@@ -404,7 +404,11 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
                           </TableCell>
                           <TableCell>
                             <div className="text-xs text-muted-foreground font-mono max-w-xs truncate">
-                              {previewData[0]?.[i] || '-'}
+                              {previewData
+                                .slice(0, 3)
+                                .map(row => row?.[i])
+                                .filter(val => val !== undefined && val !== '')
+                                .join(', ') || '-'}
                             </div>
                           </TableCell>
                         </TableRow>
