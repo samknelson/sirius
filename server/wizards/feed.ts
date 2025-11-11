@@ -1,4 +1,6 @@
 import { BaseWizard, WizardStep, WizardStatus, createStandardStatuses } from './base.js';
+import { storage } from '../storage/index.js';
+import type { InsertFile, File } from '@shared/schema';
 
 export interface FeedConfig {
   outputFormat?: 'csv' | 'json' | 'excel';
@@ -14,6 +16,7 @@ export interface FeedData {
   generatedAt?: Date;
   filters?: Record<string, any>;
   outputPath?: string;
+  uploadedFileId?: string;
 }
 
 export abstract class FeedWizard extends BaseWizard {
@@ -86,6 +89,118 @@ export abstract class FeedWizard extends BaseWizard {
 
   serializeToJSON(records: any[]): string {
     return JSON.stringify(records, null, 2);
+  }
+
+  /**
+   * Associate an uploaded file with this wizard instance
+   * @param wizardId The wizard instance ID
+   * @param fileData File metadata to create
+   * @returns The created file record
+   */
+  async associateFile(wizardId: string, fileData: InsertFile): Promise<File> {
+    // Validate file type for spreadsheets
+    const allowedMimeTypes = [
+      'text/csv',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    ];
+    
+    if (fileData.mimeType && !allowedMimeTypes.includes(fileData.mimeType)) {
+      throw new Error('Invalid file type. Only CSV and XLSX files are supported.');
+    }
+
+    // Normalize metadata to handle null/string cases
+    const existingMetadata = typeof fileData.metadata === 'object' && fileData.metadata !== null 
+      ? fileData.metadata 
+      : {};
+
+    // Create the file record with wizard association
+    const file = await storage.files.create({
+      fileName: fileData.fileName,
+      storagePath: fileData.storagePath,
+      mimeType: fileData.mimeType,
+      size: fileData.size,
+      uploadedBy: fileData.uploadedBy,
+      entityType: fileData.entityType,
+      entityId: fileData.entityId,
+      accessLevel: fileData.accessLevel,
+      metadata: {
+        ...existingMetadata,
+        wizardId
+      }
+    });
+
+    // Update wizard data to store the file ID
+    const wizard = await storage.wizards.getById(wizardId);
+    if (wizard) {
+      const wizardData = typeof wizard.data === 'object' && wizard.data !== null 
+        ? wizard.data as any
+        : {};
+      
+      await storage.wizards.update(wizardId, {
+        data: {
+          ...wizardData,
+          uploadedFileId: file.id
+        }
+      });
+    }
+
+    return file;
+  }
+
+  /**
+   * Get all files associated with a wizard instance
+   * @param wizardId The wizard instance ID
+   * @returns Array of file records
+   */
+  async getAssociatedFiles(wizardId: string): Promise<File[]> {
+    const allFiles = await storage.files.list();
+    return allFiles.filter((file) => {
+      const metadata = file.metadata as any;
+      return metadata?.wizardId === wizardId;
+    });
+  }
+
+  /**
+   * Delete a file associated with a wizard instance
+   * @param fileId The file ID to delete
+   * @param wizardId The wizard instance ID for verification
+   */
+  async deleteAssociatedFile(fileId: string, wizardId: string): Promise<boolean> {
+    const file = await storage.files.getById(fileId);
+    
+    if (!file) {
+      return false;
+    }
+
+    const metadata = file.metadata as any;
+    if (metadata?.wizardId !== wizardId) {
+      throw new Error('File is not associated with this wizard');
+    }
+
+    // Delete from database (storage middleware handles object storage cleanup)
+    const deleted = await storage.files.delete(fileId);
+    
+    if (deleted) {
+      // Update wizard data to remove the file ID
+      const wizard = await storage.wizards.getById(wizardId);
+      if (wizard) {
+        const wizardData = typeof wizard.data === 'object' && wizard.data !== null 
+          ? wizard.data as any
+          : {};
+        
+        if (wizardData.uploadedFileId === fileId) {
+          await storage.wizards.update(wizardId, {
+            data: {
+              ...wizardData,
+              uploadedFileId: undefined
+            }
+          });
+        }
+      }
+    }
+
+    return deleted;
   }
 }
 

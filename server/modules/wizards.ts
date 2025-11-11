@@ -1,9 +1,19 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import multer from "multer";
 import { storage } from "../storage";
 import { insertWizardSchema, wizardDataSchema, type WizardData } from "@shared/schema";
 import { requireAccess } from "../accessControl";
 import { policies } from "../policies";
 import { wizardRegistry } from "../wizards/index.js";
+import { FeedWizard } from "../wizards/feed.js";
+import { objectStorageService } from "../services/objectStorage.js";
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 50MB limit
+  }
+});
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -268,4 +278,153 @@ export function registerWizardRoutes(
       res.status(500).json({ message: "Failed to navigate to previous step" });
     }
   });
+
+  // File upload for wizards
+  app.post("/api/wizards/:id/files",
+    upload.single('file'),
+    requireAccess(policies.admin),
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        
+        if (!req.file) {
+          return res.status(400).json({ message: "No file provided" });
+        }
+
+        const wizard = await storage.wizards.getById(id);
+        if (!wizard) {
+          return res.status(404).json({ message: "Wizard not found" });
+        }
+
+        // Get wizard type instance to validate file and associate
+        const wizardType = wizardRegistry.get(wizard.type);
+        if (!wizardType || !(wizardType instanceof FeedWizard)) {
+          return res.status(400).json({ message: "This wizard type does not support file uploads" });
+        }
+
+        // Validate file type
+        const allowedMimeTypes = [
+          'text/csv',
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        ];
+
+        if (req.file.mimetype && !allowedMimeTypes.includes(req.file.mimetype)) {
+          return res.status(400).json({ message: "Invalid file type. Only CSV and XLSX files are supported." });
+        }
+
+        // Upload file to object storage
+        const storagePath = `wizards/${id}/${Date.now()}_${req.file.originalname}`;
+        const uploadResult = await objectStorageService.uploadFile(
+          req.file.buffer,
+          storagePath,
+          {
+            contentType: req.file.mimetype,
+            metadata: {
+              originalName: req.file.originalname,
+              wizardId: id
+            }
+          }
+        );
+
+        // Get current user for uploadedBy
+        const user = (req as any).user;
+        const session = req.session as any;
+        const replitUserId = user?.claims?.sub;
+        const dbUser = await storage.users.getUserByReplitId(replitUserId);
+
+        if (!dbUser) {
+          return res.status(401).json({ message: "User not found" });
+        }
+
+        // Associate file with wizard using FeedWizard method
+        const file = await wizardType.associateFile(id, {
+          fileName: req.file.originalname,
+          storagePath: uploadResult.path,
+          mimeType: req.file.mimetype,
+          size: req.file.size,
+          uploadedBy: dbUser.id,
+          entityType: wizard.entityType || 'wizard',
+          entityId: wizard.entityId || id,
+          accessLevel: 'private'
+        });
+
+        res.status(201).json(file);
+      } catch (error) {
+        console.error("File upload error:", error);
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to upload file" });
+      }
+    }
+  );
+
+  // List files for a wizard
+  app.get("/api/wizards/:id/files",
+    requireAccess(policies.admin),
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        const wizard = await storage.wizards.getById(id);
+        if (!wizard) {
+          return res.status(404).json({ message: "Wizard not found" });
+        }
+
+        // Get wizard type instance
+        const wizardType = wizardRegistry.get(wizard.type);
+        if (!wizardType || !(wizardType instanceof FeedWizard)) {
+          return res.status(400).json({ message: "This wizard type does not support file uploads" });
+        }
+
+        const files = await wizardType.getAssociatedFiles(id);
+        res.json(files);
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch files" });
+      }
+    }
+  );
+
+  // Delete a file from a wizard
+  app.delete("/api/wizards/:id/files/:fileId",
+    requireAccess(policies.admin),
+    async (req, res) => {
+      try {
+        const { id, fileId } = req.params;
+
+        const wizard = await storage.wizards.getById(id);
+        if (!wizard) {
+          return res.status(404).json({ message: "Wizard not found" });
+        }
+
+        // Get wizard type instance
+        const wizardType = wizardRegistry.get(wizard.type);
+        if (!wizardType || !(wizardType instanceof FeedWizard)) {
+          return res.status(400).json({ message: "This wizard type does not support file uploads" });
+        }
+
+        // Verify file association BEFORE deleting from object storage
+        const file = await storage.files.getById(fileId);
+        if (!file) {
+          return res.status(404).json({ message: "File not found" });
+        }
+
+        const metadata = file.metadata as any;
+        if (metadata?.wizardId !== id) {
+          return res.status(403).json({ message: "File is not associated with this wizard" });
+        }
+
+        // Now safe to delete from object storage
+        await objectStorageService.deleteFile(file.storagePath);
+
+        // Delete from database and update wizard data
+        const success = await wizardType.deleteAssociatedFile(fileId, id);
+        if (!success) {
+          return res.status(404).json({ message: "Failed to delete file record" });
+        }
+
+        res.status(204).send();
+      } catch (error) {
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to delete file" });
+      }
+    }
+  );
 }
