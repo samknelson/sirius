@@ -50,6 +50,9 @@ Preferred communication style: Simple, everyday language.
 -   **Routing Architecture**: Consistent routing patterns for configuration pages (under `/config/`) and detail pages, with UUID validation and legacy redirects.
 -   **Ledger System**: Manages financial transactions with a `ledger_payments` table, including status, allocation, payer details, and account references.
 -   **Wizards**: Flexible workflow state management system for tracking multi-step processes (imports, bulk operations, etc.) with JSON data storage, type/status filtering, and full audit logging via Winston.
+    -   **Wizard Type System**: Modular architecture in `server/wizards/` with BaseWizard abstraction providing shared utilities (step navigation, status transitions, data validation). FeedWizard extends base for data generation workflows with CSV/JSON serialization, date range handling, and output formatting.
+    -   **Wizard Registry**: Centralized registry manages wizard type registration and discovery. Routes expose `/api/wizard-types` for listing types, `/api/wizard-types/:type/steps` for type-specific steps, and `/api/wizard-types/:type/statuses` for available statuses. Create/update operations validate wizard type against registry.
+    -   **Feed Wizards**: Two GBHET feed implementations - `gbhet_legal_workers_monthly` for monthly worker data exports and `gbhet_legal_workers_corrections` for generating correction feeds with custom step definitions.
 
 # External Dependencies
 
