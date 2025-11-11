@@ -239,8 +239,10 @@ export function registerWizardRoutes(
     // Upload step validation
     if (stepId === 'upload') {
       if (!wizardData.uploadedFileId) return false;
-      const files = await storage.files.list({ entityType: 'wizard', entityId: wizard.id });
-      return files.length > 0;
+      
+      // Check if the uploaded file exists
+      const file = await storage.files.getById(wizardData.uploadedFileId);
+      return !!file;
     }
     
     // Map step validation
