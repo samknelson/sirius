@@ -2,6 +2,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +52,7 @@ interface ParsedFileData {
 
 export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepProps) {
   const { toast } = useToast();
+  const [headerHash, setHeaderHash] = useState<string | undefined>();
 
   const { data: files = [], isLoading: filesLoading } = useQuery<FileRecord[]>({
     queryKey: ["/api/wizards", wizardId, "files"],
@@ -66,6 +68,11 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
   const { data: parsedData, isLoading: parseLoading } = useQuery<ParsedFileData>({
     queryKey: ["/api/wizards", wizardId, "files", uploadedFileId, "parse"],
     enabled: !!uploadedFileId,
+  });
+
+  const { data: suggestedMappingData } = useQuery<{ mapping: any; headerHash?: string; savedAt?: string }>({
+    queryKey: ["/api/wizards", wizardId, "suggested-mapping"],
+    enabled: !!uploadedFileId && !data?.columnMapping,
   });
 
   const columnCount = parsedData?.columnCount || 0;
@@ -106,6 +113,7 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
 
   const updateMutation = useMutation({
     mutationFn: async (values: z.infer<typeof formSchema>) => {
+      // Save wizard data
       const response = await apiRequest("PATCH", `/api/wizards/${wizardId}`, {
         data: {
           ...data,
@@ -114,7 +122,22 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
           columnMapping: values.columnMapping
         }
       });
-      return await response.json();
+      const updatedWizard = await response.json();
+
+      // Also save the mapping for future use if we have a headerHash
+      if (headerHash && values.columnMapping && Object.keys(values.columnMapping).length > 0) {
+        try {
+          await apiRequest("POST", `/api/wizards/${wizardId}/save-mapping`, {
+            headerHash,
+            mapping: values.columnMapping
+          });
+        } catch (mappingError) {
+          console.error("Failed to save mapping for future use:", mappingError);
+          // Don't fail the whole operation if mapping save fails
+        }
+      }
+
+      return updatedWizard;
     },
     onSuccess: (updatedWizard) => {
       queryClient.invalidateQueries({ queryKey: ["/api/wizards", wizardId] });
@@ -134,6 +157,22 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
       });
     },
   });
+
+  // Apply suggested mapping when available
+  useEffect(() => {
+    if (suggestedMappingData?.mapping && !data?.columnMapping) {
+      form.setValue("columnMapping", suggestedMappingData.mapping);
+      if (suggestedMappingData.headerHash) {
+        setHeaderHash(suggestedMappingData.headerHash);
+      }
+      toast({
+        title: "Suggested Mapping Applied",
+        description: "We've applied a previously saved mapping for this file structure.",
+      });
+    } else if (suggestedMappingData?.headerHash) {
+      setHeaderHash(suggestedMappingData.headerHash);
+    }
+  }, [suggestedMappingData, data?.columnMapping, form, toast]);
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
     updateMutation.mutate(values);

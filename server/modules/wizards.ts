@@ -7,6 +7,7 @@ import { policies } from "../policies";
 import { wizardRegistry } from "../wizards/index.js";
 import { FeedWizard } from "../wizards/feed.js";
 import { objectStorageService } from "../services/objectStorage.js";
+import { hashHeaderRow } from "../utils/hash.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -633,6 +634,144 @@ export function registerWizardRoutes(
       } catch (error) {
         console.error("File parse error:", error);
         res.status(500).json({ message: error instanceof Error ? error.message : "Failed to parse file" });
+      }
+    }
+  );
+
+  // Get suggested mapping based on header row hash
+  app.get("/api/wizards/:id/suggested-mapping",
+    checkWizardAccess,
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const wizard = (req as any).wizard;
+        const user = (req as any).user;
+
+        if (!user) {
+          return res.status(401).json({ message: "User not authenticated" });
+        }
+
+        // Get wizard type instance
+        const wizardType = wizardRegistry.get(wizard.type);
+        if (!wizardType || !(wizardType instanceof FeedWizard)) {
+          return res.status(400).json({ message: "This wizard type does not support mappings" });
+        }
+
+        // Get wizard data
+        const wizardData = wizard.data as any;
+        const fileId = wizardData?.uploadedFileId;
+
+        if (!fileId) {
+          return res.json({ mapping: null });
+        }
+
+        // Get file and parse header row
+        const file = await storage.files.getById(fileId);
+        if (!file) {
+          return res.status(404).json({ message: "File not found" });
+        }
+
+        // Download and parse file to get header row
+        const fileBuffer = await objectStorageService.downloadFile(file.storagePath);
+        let headerRow: any[] = [];
+
+        if (file.mimeType === 'text/csv') {
+          const { parse } = await import('csv-parse/sync');
+          const rows = parse(fileBuffer, {
+            relax_column_count: true,
+            skip_empty_lines: true,
+            to: 1 // Just get first row
+          });
+          headerRow = rows[0] || [];
+        } else if (
+          file.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+          file.mimeType === 'application/vnd.ms-excel'
+        ) {
+          const XLSX = await import('xlsx');
+          const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          const jsonData = XLSX.utils.sheet_to_json(firstSheet, { 
+            header: 1,
+            defval: '',
+            range: 'A1:ZZ1' // Just first row
+          });
+          headerRow = (jsonData as any[][])[0] || [];
+        }
+
+        if (headerRow.length === 0) {
+          return res.json({ mapping: null });
+        }
+
+        // Hash the header row
+        const headerHash = hashHeaderRow(headerRow);
+
+        // Look for existing mapping
+        const existingMapping = await storage.wizardFeedMappings.findByUserTypeAndHash(
+          user.id,
+          wizard.type,
+          headerHash
+        );
+
+        if (existingMapping) {
+          res.json({ 
+            mapping: existingMapping.mapping,
+            headerHash,
+            savedAt: existingMapping.updatedAt
+          });
+        } else {
+          res.json({ mapping: null, headerHash });
+        }
+      } catch (error) {
+        console.error("Error fetching suggested mapping:", error);
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to fetch suggested mapping" });
+      }
+    }
+  );
+
+  // Save column mapping for future use
+  app.post("/api/wizards/:id/save-mapping",
+    checkWizardAccess,
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { headerHash, mapping } = req.body;
+        const wizard = (req as any).wizard;
+        const user = (req as any).user;
+
+        if (!user) {
+          return res.status(401).json({ message: "User not authenticated" });
+        }
+
+        if (!headerHash || !mapping) {
+          return res.status(400).json({ message: "Header hash and mapping are required" });
+        }
+
+        // Check if mapping already exists
+        const existingMapping = await storage.wizardFeedMappings.findByUserTypeAndHash(
+          user.id,
+          wizard.type,
+          headerHash
+        );
+
+        if (existingMapping) {
+          // Update existing mapping
+          const updated = await storage.wizardFeedMappings.update(existingMapping.id, {
+            mapping,
+          });
+          res.json(updated);
+        } else {
+          // Create new mapping
+          const created = await storage.wizardFeedMappings.create({
+            userId: user.id,
+            type: wizard.type,
+            firstRowHash: headerHash,
+            mapping,
+          });
+          res.json(created);
+        }
+      } catch (error) {
+        console.error("Error saving mapping:", error);
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to save mapping" });
       }
     }
   );

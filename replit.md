@@ -34,6 +34,7 @@ The frontend utilizes React 18 with TypeScript and Vite, employing Shadcn/ui (bu
 -   **Wizards**: A flexible workflow state management system for multi-step processes (e.g., imports, bulk operations). It supports type-specific steps, status transitions, data validation, and full audit logging.
     -   **Feed Wizards**: Specialized wizards for data generation workflows with CSV/JSON serialization, file upload/parsing, and configurable field definitions. They include advanced features like batch processing with real-time validation progress via Server-Sent Events (SSE) and dynamic field requirements based on 'create' or 'update' modes.
     -   **Step Completion Validation**: Robust validation ensures that each wizard step is completed and valid before allowing progression, enforced both on the frontend and backend.
+    -   **Mapping Preferences**: User-specific column mapping preferences are saved to the `wizard_feed_mappings` table, indexed by user, wizard type, and a hash of the header row. When a user uploads a file with a similar structure, the previously saved mapping is automatically suggested, streamlining the workflow for repeat operations.
 -   **File Storage System**: Comprehensive file management with metadata tracking, access control policies (entity-based and permission-based), and RESTful API endpoints for upload, download, and management, utilizing Replit's object storage service for signed URL generation and operations.
 
 # External Dependencies
