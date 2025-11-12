@@ -222,6 +222,21 @@ export function registerWizardRoutes(
         return res.status(404).json({ message: "Wizard not found" });
       }
 
+      // Delete all associated files from object storage
+      const files = await storage.files.list({ entityType: 'wizard', entityId: id });
+      for (const file of files) {
+        try {
+          // Delete from object storage
+          await objectStorageService.deleteFile(file.storagePath);
+          // Delete from database
+          await storage.files.delete(file.id);
+        } catch (error) {
+          console.error(`Failed to delete file ${file.id}:`, error);
+          // Continue with deletion even if file deletion fails
+        }
+      }
+
+      // Delete the wizard record
       const success = await storage.wizards.delete(id);
       if (!success) {
         return res.status(404).json({ message: "Wizard not found" });
