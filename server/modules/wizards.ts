@@ -187,15 +187,47 @@ export function registerWizardRoutes(
           });
         }
         
-        // Validate year and month from launch arguments
+        // Ensure data and launchArguments structure exists
         const wizardData = validatedData.data as any;
-        const launchArgs = wizardData?.launchArguments || {};
+        if (!wizardData || typeof wizardData !== 'object') {
+          return res.status(400).json({ 
+            message: "Wizard data is required for monthly employer wizards" 
+          });
+        }
+        
+        if (!wizardData.launchArguments || typeof wizardData.launchArguments !== 'object') {
+          return res.status(400).json({ 
+            message: "Launch arguments are required for monthly employer wizards" 
+          });
+        }
+        
+        // Validate year and month from launch arguments
+        const launchArgs = wizardData.launchArguments;
+        
+        if (launchArgs.year === undefined || launchArgs.year === null) {
+          return res.status(400).json({ 
+            message: "Year is required in launch arguments for monthly employer wizards" 
+          });
+        }
+        
+        if (launchArgs.month === undefined || launchArgs.month === null) {
+          return res.status(400).json({ 
+            message: "Month is required in launch arguments for monthly employer wizards" 
+          });
+        }
+        
         const year = Number(launchArgs.year);
         const month = Number(launchArgs.month);
         
-        if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+        if (!Number.isInteger(year) || year < 1900 || year > 2100) {
           return res.status(400).json({ 
-            message: "Valid year (integer) and month (1-12) are required for monthly employer wizards" 
+            message: "Year must be a valid integer between 1900 and 2100" 
+          });
+        }
+        
+        if (!Number.isInteger(month) || month < 1 || month > 12) {
+          return res.status(400).json({ 
+            message: "Month must be an integer between 1 and 12" 
           });
         }
       }
