@@ -1,13 +1,14 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import multer from "multer";
 import { storage } from "../storage";
-import { insertWizardSchema, wizardDataSchema, type WizardData } from "@shared/schema";
+import { insertWizardSchema, wizardDataSchema, type WizardData, wizards, wizardEmployerMonthly } from "@shared/schema";
 import { requireAccess, buildContext, evaluatePolicy } from "../accessControl";
 import { policies } from "../policies";
 import { wizardRegistry } from "../wizards/index.js";
 import { FeedWizard } from "../wizards/feed.js";
 import { objectStorageService } from "../services/objectStorage.js";
 import { hashHeaderRow } from "../utils/hash.js";
+import { db } from "../db";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -98,6 +99,25 @@ export function registerWizardRoutes(
     }
   });
 
+  app.get("/api/wizards/employer-monthly/by-period", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { year, month } = req.query;
+      
+      // Validate year and month parameters
+      const yearNum = Number(year);
+      const monthNum = Number(month);
+      
+      if (!year || !month || !Number.isInteger(yearNum) || !Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12) {
+        return res.status(400).json({ message: "Valid year and month parameters are required" });
+      }
+      
+      const monthlyWizards = await storage.wizardEmployerMonthly.listByPeriod(yearNum, monthNum);
+      res.json(monthlyWizards);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch employer monthly wizards" });
+    }
+  });
+
   app.get("/api/wizards/:id", requireAccess(policies.admin), async (req, res) => {
     try {
       const { id } = req.params;
@@ -154,28 +174,40 @@ export function registerWizardRoutes(
         }
       }
       
-      const wizard = await storage.wizards.create(validatedData);
+      // Create wizard and wizard_employer_monthly record in a transaction if needed
+      // TODO: Replace hardcoded type check with wizard type metadata (e.g., wizardRegistry.isMonthlyWizard)
+      const isMonthlyWizard = validatedData.type === 'gbhet_legal_workers_monthly';
       
-      // Create wizard_employer_monthly record if this is a monthly employer wizard
-      if (validatedData.type === 'gbhet_legal_workers_monthly' && validatedData.entityId) {
-        const wizardData = validatedData.data as any;
-        const launchArgs = wizardData?.launchArguments || {};
+      const wizard = await db.transaction(async (tx) => {
+        // Create the wizard
+        const [createdWizard] = await tx
+          .insert(wizards)
+          .values(validatedData)
+          .returning();
         
-        if (launchArgs.year && launchArgs.month) {
-          try {
-            await storage.wizardEmployerMonthly.create({
-              wizardId: wizard.id,
-              employerId: validatedData.entityId,
-              year: launchArgs.year,
-              month: launchArgs.month,
-            });
-          } catch (monthlyError) {
-            // If creating the monthly record fails, log but don't fail the entire request
-            // The wizard was already created successfully
-            console.error('Failed to create wizard_employer_monthly record:', monthlyError);
+        // If this is a monthly employer wizard, also create the wizard_employer_monthly record
+        if (isMonthlyWizard && validatedData.entityId) {
+          const wizardData = validatedData.data as any;
+          const launchArgs = wizardData?.launchArguments || {};
+          
+          // Validate and parse year and month to ensure they're numbers
+          const year = Number(launchArgs.year);
+          const month = Number(launchArgs.month);
+          
+          if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+            throw new Error('Invalid year or month in launch arguments');
           }
+          
+          await tx.insert(wizardEmployerMonthly).values({
+            wizardId: createdWizard.id,
+            employerId: validatedData.entityId,
+            year,
+            month,
+          });
         }
-      }
+        
+        return createdWizard;
+      });
       
       res.status(201).json(wizard);
     } catch (error) {
