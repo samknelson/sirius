@@ -58,10 +58,13 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
         conditions.push(eq(wizardEmployerMonthly.month, month));
       }
 
+      // Use and() only if we have multiple conditions, otherwise use the single condition
+      const whereClause = conditions.length > 1 ? and(...conditions) : conditions[0];
+
       return db
         .select()
         .from(wizardEmployerMonthly)
-        .where(and(...conditions));
+        .where(whereClause);
     },
 
     async delete(wizardId: string): Promise<boolean> {

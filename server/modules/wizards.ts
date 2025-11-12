@@ -155,6 +155,28 @@ export function registerWizardRoutes(
       }
       
       const wizard = await storage.wizards.create(validatedData);
+      
+      // Create wizard_employer_monthly record if this is a monthly employer wizard
+      if (validatedData.type === 'gbhet_legal_workers_monthly' && validatedData.entityId) {
+        const wizardData = validatedData.data as any;
+        const launchArgs = wizardData?.launchArguments || {};
+        
+        if (launchArgs.year && launchArgs.month) {
+          try {
+            await storage.wizardEmployerMonthly.create({
+              wizardId: wizard.id,
+              employerId: validatedData.entityId,
+              year: launchArgs.year,
+              month: launchArgs.month,
+            });
+          } catch (monthlyError) {
+            // If creating the monthly record fails, log but don't fail the entire request
+            // The wizard was already created successfully
+            console.error('Failed to create wizard_employer_monthly record:', monthlyError);
+          }
+        }
+      }
+      
       res.status(201).json(wizard);
     } catch (error) {
       if (error instanceof Error && error.name === "ZodError") {
