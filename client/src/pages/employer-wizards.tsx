@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { EmployerLayout, useEmployerLayout } from "@/components/layouts/EmployerLayout";
@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Wand2, Plus } from "lucide-react";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -30,16 +31,52 @@ interface WizardType {
   entityType?: string;
 }
 
+interface LaunchArgument {
+  id: string;
+  name: string;
+  type: 'text' | 'number' | 'select' | 'month' | 'year';
+  required: boolean;
+  description?: string;
+  options?: Array<{ value: string | number; label: string }>;
+  defaultValue?: any;
+}
+
 function EmployerWizardsContent() {
   const { employer } = useEmployerLayout();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedWizardType, setSelectedWizardType] = useState<string>("");
+  const [launchArgValues, setLaunchArgValues] = useState<Record<string, any>>({});
 
   const { data: wizardTypes } = useQuery<WizardType[]>({
     queryKey: ["/api/wizard-types"],
   });
+
+  const { data: launchArguments } = useQuery<LaunchArgument[]>({
+    queryKey: ["/api/wizard-types", selectedWizardType, "launch-arguments"],
+    queryFn: async () => {
+      if (!selectedWizardType) return [];
+      const response = await fetch(`/api/wizard-types/${selectedWizardType}/launch-arguments`, { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch launch arguments");
+      return response.json();
+    },
+    enabled: !!selectedWizardType,
+  });
+
+  useEffect(() => {
+    if (launchArguments && launchArguments.length > 0) {
+      const defaultValues: Record<string, any> = {};
+      launchArguments.forEach(arg => {
+        if (arg.defaultValue !== undefined) {
+          defaultValues[arg.id] = arg.defaultValue;
+        }
+      });
+      setLaunchArgValues(defaultValues);
+    } else {
+      setLaunchArgValues({});
+    }
+  }, [launchArguments]);
 
   const { data: wizards, isLoading } = useQuery<Wizard[]>({
     queryKey: ["/api/wizards", { entityId: employer.id }],
@@ -51,12 +88,12 @@ function EmployerWizardsContent() {
   });
 
   const createWizardMutation = useMutation({
-    mutationFn: async (wizardType: string) => {
+    mutationFn: async () => {
       const response = await apiRequest("POST", `/api/wizards`, {
-        type: wizardType,
+        type: selectedWizardType,
         status: "draft",
         entityId: employer.id,
-        data: {}
+        data: { launchArguments: launchArgValues }
       });
       return await response.json();
     },
@@ -64,6 +101,7 @@ function EmployerWizardsContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/wizards"] });
       setIsCreateDialogOpen(false);
       setSelectedWizardType("");
+      setLaunchArgValues({});
       toast({
         title: "Wizard Created",
         description: "The wizard has been created successfully.",
@@ -138,19 +176,102 @@ function EmployerWizardsContent() {
                     </p>
                   )}
                 </div>
+
+                {launchArguments && launchArguments.length > 0 && (
+                  <div className="space-y-4 pt-2 border-t">
+                    <h3 className="text-sm font-medium">Configuration</h3>
+                    {launchArguments.map((arg) => (
+                      <div key={arg.id} className="space-y-2">
+                        <Label htmlFor={`arg-${arg.id}`}>
+                          {arg.name}
+                          {arg.required && <span className="text-destructive ml-1">*</span>}
+                        </Label>
+                        {arg.type === 'year' && (
+                          <Input
+                            id={`arg-${arg.id}`}
+                            type="number"
+                            placeholder="Enter year"
+                            value={launchArgValues[arg.id] || ''}
+                            onChange={(e) => setLaunchArgValues({ ...launchArgValues, [arg.id]: parseInt(e.target.value) || 0 })}
+                            data-testid={`input-arg-${arg.id}`}
+                          />
+                        )}
+                        {arg.type === 'month' && (
+                          <Select
+                            value={launchArgValues[arg.id]?.toString() || ''}
+                            onValueChange={(value) => setLaunchArgValues({ ...launchArgValues, [arg.id]: parseInt(value) })}
+                          >
+                            <SelectTrigger id={`arg-${arg.id}`} data-testid={`select-arg-${arg.id}`}>
+                              <SelectValue placeholder="Select month..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+                                <SelectItem key={month} value={month.toString()}>
+                                  {new Date(2000, month - 1).toLocaleString('default', { month: 'long' })}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                        {arg.type === 'number' && (
+                          <Input
+                            id={`arg-${arg.id}`}
+                            type="number"
+                            placeholder={`Enter ${arg.name.toLowerCase()}`}
+                            value={launchArgValues[arg.id] || ''}
+                            onChange={(e) => setLaunchArgValues({ ...launchArgValues, [arg.id]: parseFloat(e.target.value) || 0 })}
+                            data-testid={`input-arg-${arg.id}`}
+                          />
+                        )}
+                        {arg.type === 'text' && (
+                          <Input
+                            id={`arg-${arg.id}`}
+                            type="text"
+                            placeholder={`Enter ${arg.name.toLowerCase()}`}
+                            value={launchArgValues[arg.id] || ''}
+                            onChange={(e) => setLaunchArgValues({ ...launchArgValues, [arg.id]: e.target.value })}
+                            data-testid={`input-arg-${arg.id}`}
+                          />
+                        )}
+                        {arg.type === 'select' && arg.options && (
+                          <Select
+                            value={launchArgValues[arg.id]?.toString() || ''}
+                            onValueChange={(value) => setLaunchArgValues({ ...launchArgValues, [arg.id]: value })}
+                          >
+                            <SelectTrigger id={`arg-${arg.id}`} data-testid={`select-arg-${arg.id}`}>
+                              <SelectValue placeholder={`Select ${arg.name.toLowerCase()}...`} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {arg.options.map((option) => (
+                                <SelectItem key={option.value} value={option.value.toString()}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                        {arg.description && (
+                          <p className="text-xs text-muted-foreground">{arg.description}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div className="flex justify-end gap-2">
                   <Button
                     variant="outline"
                     onClick={() => {
                       setIsCreateDialogOpen(false);
                       setSelectedWizardType("");
+                      setLaunchArgValues({});
                     }}
                     data-testid="button-cancel-create"
                   >
                     Cancel
                   </Button>
                   <Button
-                    onClick={() => createWizardMutation.mutate(selectedWizardType)}
+                    onClick={() => createWizardMutation.mutate()}
                     disabled={!selectedWizardType || createWizardMutation.isPending}
                     data-testid="button-confirm-create"
                   >
