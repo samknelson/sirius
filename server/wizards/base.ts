@@ -25,6 +25,7 @@ export interface WizardTypeDefinition {
   displayName: string;
   description?: string;
   isFeed?: boolean;
+  isMonthly?: boolean;
   entityType?: string;
   getSteps: () => WizardStep[] | Promise<WizardStep[]>;
   getStatuses: () => WizardStatus[] | Promise<WizardStatus[]>;
@@ -36,6 +37,7 @@ export abstract class BaseWizard implements WizardTypeDefinition {
   abstract displayName: string;
   abstract description?: string;
   isFeed: boolean = false;
+  isMonthly: boolean = false;
   entityType?: string;
 
   abstract getSteps(): WizardStep[] | Promise<WizardStep[]>;

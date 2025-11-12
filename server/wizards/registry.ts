@@ -42,6 +42,11 @@ class WizardTypeRegistry {
     return this.getAll().filter(type => !type.isFeed);
   }
 
+  isMonthlyWizard(name: string): boolean {
+    const wizardType = this.get(name);
+    return wizardType?.isMonthly === true;
+  }
+
   async validateType(name: string): Promise<{ valid: boolean; error?: string }> {
     if (!this.has(name)) {
       return {

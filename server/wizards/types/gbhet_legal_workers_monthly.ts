@@ -6,6 +6,7 @@ export class GbhetLegalWorkersMonthlyWizard extends GbhetLegalWorkersWizard {
   name = 'gbhet_legal_workers_monthly';
   displayName = 'GBHET Legal Workers - Monthly Feed';
   description = 'Generate monthly feed of legal workers for GBHET';
+  isMonthly = true;
 
   getLaunchArguments(): LaunchArgument[] {
     const currentDate = new Date();

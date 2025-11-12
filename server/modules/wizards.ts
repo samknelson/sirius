@@ -175,8 +175,7 @@ export function registerWizardRoutes(
       }
       
       // Create wizard and wizard_employer_monthly record in a transaction if needed
-      // TODO: Replace hardcoded type check with wizard type metadata (e.g., wizardRegistry.isMonthlyWizard)
-      const isMonthlyWizard = validatedData.type === 'gbhet_legal_workers_monthly';
+      const isMonthlyWizard = wizardRegistry.isMonthlyWizard(validatedData.type);
       
       // Pre-validate monthly wizard requirements before starting transaction
       if (isMonthlyWizard) {
