@@ -12,6 +12,7 @@ import { type LedgerStorage, createLedgerStorage } from "./ledger";
 import { type EmployerContactStorage, createEmployerContactStorage, employerContactLoggingConfig } from "./employer-contacts";
 import { type WizardStorage, createWizardStorage } from "./wizards";
 import { type WizardFeedMappingStorage, createWizardFeedMappingStorage } from "./wizard_feed_mappings";
+import { type WizardEmployerMonthlyStorage, createWizardEmployerMonthlyStorage } from "./wizard_employer_monthly";
 import { type FileStorage, createFileStorage, fileLoggingConfig } from "./files";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "../db";
@@ -34,6 +35,7 @@ export interface IStorage {
   employerContacts: EmployerContactStorage;
   wizards: WizardStorage;
   wizardFeedMappings: WizardFeedMappingStorage;
+  wizardEmployerMonthly: WizardEmployerMonthlyStorage;
   files: FileStorage;
 }
 
@@ -1122,6 +1124,7 @@ export class DatabaseStorage implements IStorage {
   employerContacts: EmployerContactStorage;
   wizards: WizardStorage;
   wizardFeedMappings: WizardFeedMappingStorage;
+  wizardEmployerMonthly: WizardEmployerMonthlyStorage;
   files: FileStorage;
 
   constructor() {
@@ -1156,6 +1159,7 @@ export class DatabaseStorage implements IStorage {
     this.employerContacts = withStorageLogging(createEmployerContactStorage(this.contacts), employerContactLoggingConfig);
     this.wizards = withStorageLogging(createWizardStorage(), wizardLoggingConfig);
     this.wizardFeedMappings = createWizardFeedMappingStorage();
+    this.wizardEmployerMonthly = createWizardEmployerMonthlyStorage();
     this.files = withStorageLogging(createFileStorage(), fileLoggingConfig);
   }
 }
