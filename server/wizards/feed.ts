@@ -125,14 +125,30 @@ export abstract class FeedWizard extends BaseWizard {
         continue;
       }
 
-      // Format validation
-      if (field.format === 'ssn' && field.pattern) {
-        const regex = new RegExp(field.pattern);
-        if (!regex.test(String(value))) {
+      // SSN validation using centralized utility
+      if (field.format === 'ssn') {
+        const { parseSSN, validateSSN } = await import('@shared/utils/ssn');
+        try {
+          // Parse SSN to normalize format
+          const parsed = parseSSN(String(value));
+          // Validate SSN according to SSA rules
+          const validation = validateSSN(parsed);
+          if (!validation.valid) {
+            errors.push({
+              rowIndex,
+              field: field.id,
+              message: validation.error || 'Invalid SSN',
+              value
+            });
+          } else {
+            // Store the normalized SSN back into the row for downstream processing
+            row[field.id] = parsed;
+          }
+        } catch (error) {
           errors.push({
             rowIndex,
             field: field.id,
-            message: `${field.name} must match format XXX-XX-XXXX`,
+            message: error instanceof Error ? error.message : 'Invalid SSN format',
             value
           });
         }
@@ -451,10 +467,21 @@ export abstract class FeedWizard extends BaseWizard {
         
         try {
           // Extract worker data from row
-          const ssn = row.ssn?.toString().trim();
+          const rawSSN = row.ssn?.toString().trim();
           const firstName = row.firstName?.toString().trim();
           const lastName = row.lastName?.toString().trim();
           const rawBirthDate = row.dateOfBirth?.toString().trim();
+
+          // Parse SSN early to normalize format (strips non-digits, pads with zeros)
+          const { parseSSN } = await import('@shared/utils/ssn');
+          let ssn: string | undefined;
+          if (rawSSN) {
+            try {
+              ssn = parseSSN(rawSSN);
+            } catch (error) {
+              throw new Error(`Invalid SSN format: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+          }
 
           // Parse birth date to YYYY-MM-DD format if provided
           const birthDate = rawBirthDate ? this.parseDate(rawBirthDate) : null;
