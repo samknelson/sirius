@@ -47,10 +47,10 @@ export interface WorkerStorage {
   getWorkerHoursCurrent(workerId: string): Promise<any[]>;
   getWorkerHoursHistory(workerId: string): Promise<any[]>;
   getWorkerHoursMonthly(workerId: string): Promise<any[]>;
-  createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null }): Promise<WorkerHours>;
-  updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null }): Promise<WorkerHours | undefined>;
+  createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHours>;
+  updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean }): Promise<WorkerHours | undefined>;
   deleteWorkerHours(id: string): Promise<boolean>;
-  upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null }): Promise<WorkerHours>;
+  upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHours>;
 }
 
 export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerStorage {
@@ -299,6 +299,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           employerId: workerHours.employerId,
           employmentStatusId: workerHours.employmentStatusId,
           hours: workerHours.hours,
+          home: workerHours.home,
           employer: employers,
           employmentStatus: optionsEmploymentStatus,
         })
@@ -321,6 +322,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           wh.worker_id,
           wh.employer_id,
           wh.employment_status_id,
+          wh.home,
           e.id AS "employer.id",
           e.sirius_id AS "employer.siriusId",
           e.name AS "employer.name",
@@ -346,6 +348,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         workerId: row.worker_id,
         employerId: row.employer_id,
         employmentStatusId: row.employment_status_id,
+        home: row.home,
         employer: {
           id: row['employer.id'],
           siriusId: row['employer.siriusId'],
@@ -374,6 +377,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
             wh.worker_id,
             wh.employer_id,
             wh.employment_status_id,
+            wh.home,
             LAG(wh.employment_status_id) OVER (
               PARTITION BY wh.employer_id 
               ORDER BY wh.year, wh.month, wh.day
@@ -389,6 +393,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           sc.worker_id,
           sc.employer_id,
           sc.employment_status_id,
+          sc.home,
           e.id AS "employer.id",
           e.sirius_id AS "employer.siriusId",
           e.name AS "employer.name",
@@ -414,6 +419,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         workerId: row.worker_id,
         employerId: row.employer_id,
         employmentStatusId: row.employment_status_id,
+        home: row.home,
         employer: {
           id: row['employer.id'],
           siriusId: row['employer.siriusId'],
@@ -439,6 +445,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           wh.month,
           SUM(wh.hours) AS total_hours,
           wh.employment_status_id,
+          BOOL_AND(wh.home) AS all_home,
+          BOOL_OR(wh.home) AS some_home,
           e.id AS "employer.id",
           e.sirius_id AS "employer.siriusId",
           e.name AS "employer.name",
@@ -459,27 +467,39 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         ORDER BY wh.year DESC, wh.month DESC, wh.employer_id
       `);
 
-      return results.rows.map((row: any) => ({
-        employerId: row.employer_id,
-        year: row.year,
-        month: row.month,
-        totalHours: row.total_hours,
-        employmentStatusId: row.employment_status_id,
-        employer: {
-          id: row['employer.id'],
-          siriusId: row['employer.siriusId'],
-          name: row['employer.name'],
-          isActive: row['employer.isActive'],
-          stripeCustomerId: row['employer.stripeCustomerId'],
-        },
-        employmentStatus: {
-          id: row['employmentStatus.id'],
-          name: row['employmentStatus.name'],
-          code: row['employmentStatus.code'],
-          employed: row['employmentStatus.employed'],
-          description: row['employmentStatus.description'],
-        },
-      }));
+      return results.rows.map((row: any) => {
+        let homeStatus: 'all' | 'some' | 'none';
+        if (row.all_home) {
+          homeStatus = 'all';
+        } else if (row.some_home) {
+          homeStatus = 'some';
+        } else {
+          homeStatus = 'none';
+        }
+
+        return {
+          employerId: row.employer_id,
+          year: row.year,
+          month: row.month,
+          totalHours: row.total_hours,
+          employmentStatusId: row.employment_status_id,
+          homeStatus,
+          employer: {
+            id: row['employer.id'],
+            siriusId: row['employer.siriusId'],
+            name: row['employer.name'],
+            isActive: row['employer.isActive'],
+            stripeCustomerId: row['employer.stripeCustomerId'],
+          },
+          employmentStatus: {
+            id: row['employmentStatus.id'],
+            name: row['employmentStatus.name'],
+            code: row['employmentStatus.code'],
+            employed: row['employmentStatus.employed'],
+            description: row['employmentStatus.description'],
+          },
+        };
+      });
     },
 
     async createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null }): Promise<WorkerHours> {
