@@ -2,6 +2,7 @@ import { BaseWizard, WizardStep, WizardStatus, createStandardStatuses } from './
 import { storage } from '../storage/index.js';
 import type { InsertFile, File } from '@shared/schema';
 import { parse as parseCSV } from 'csv-parse/sync';
+import { stringify as stringifyCSV } from 'csv-stringify/sync';
 import * as XLSX from 'xlsx';
 import { objectStorageService } from '../services/objectStorage.js';
 
@@ -49,13 +50,21 @@ export interface ProcessError {
   data?: Record<string, any>;
 }
 
+export interface RowResult {
+  rowIndex: number;
+  status: 'success' | 'error';
+  message: string;
+}
+
 export interface ProcessResults {
   totalRows: number;
   createdCount: number;
   updatedCount: number;
   successCount: number;
   failureCount: number;
-  errors: ProcessError[];
+  errors: ProcessError[]; // Legacy - derived from rowResults for backward compatibility
+  rowResults: RowResult[]; // Detailed results for each row
+  resultsFileId?: string; // ID of the generated results CSV file
   completedAt?: Date;
 }
 
@@ -461,6 +470,7 @@ export abstract class FeedWizard extends BaseWizard {
     let updatedCount = 0;
     let failureCount = 0;
     const allErrors: ProcessError[] = [];
+    const rowResults: RowResult[] = [];
 
     for (let i = 0; i < totalRows; i += batchSize) {
       const batch = mappedRows.slice(i, Math.min(i + batchSize, totalRows));
@@ -516,6 +526,12 @@ export abstract class FeedWizard extends BaseWizard {
             }
 
             updatedCount++;
+            rowResults.push({
+              rowIndex,
+              status: 'success',
+              message: 'Worker updated'
+            });
+            
             if (onProgress) {
               onProgress({
                 processed: rowIndex + 1,
@@ -570,11 +586,21 @@ export abstract class FeedWizard extends BaseWizard {
               await storage.workers.updateWorkerContactBirthDate(workerId, birthDate);
             }
 
-            // Increment appropriate counter
+            // Increment appropriate counter and add row result
             if (isNewWorker) {
               createdCount++;
+              rowResults.push({
+                rowIndex,
+                status: 'success',
+                message: 'Worker created'
+              });
             } else {
               updatedCount++;
+              rowResults.push({
+                rowIndex,
+                status: 'success',
+                message: 'Worker updated'
+              });
             }
 
             if (onProgress) {
@@ -592,10 +618,18 @@ export abstract class FeedWizard extends BaseWizard {
 
         } catch (error: any) {
           failureCount++;
+          const errorMessage = error.message || 'Unknown error';
+          
           allErrors.push({
             rowIndex,
-            message: error.message || 'Unknown error',
+            message: errorMessage,
             data: row
+          });
+          
+          rowResults.push({
+            rowIndex,
+            status: 'error',
+            message: errorMessage
           });
 
           if (onProgress) {
@@ -609,12 +643,21 @@ export abstract class FeedWizard extends BaseWizard {
               currentRow: { 
                 index: rowIndex, 
                 status: 'error',
-                error: error.message || 'Unknown error'
+                error: errorMessage
               }
             });
           }
         }
       }
+    }
+
+    // Generate results CSV file
+    let resultsFileId: string | undefined;
+    try {
+      resultsFileId = await this.generateResultsCsv(wizardId, file, rawRows, hasHeaders, rowResults);
+    } catch (csvError) {
+      console.error('Failed to generate results CSV:', csvError);
+      // Continue without results file - don't fail the whole process
     }
 
     const results: ProcessResults = {
@@ -624,6 +667,8 @@ export abstract class FeedWizard extends BaseWizard {
       successCount: createdCount + updatedCount,
       failureCount,
       errors: allErrors,
+      rowResults,
+      resultsFileId,
       completedAt: new Date()
     };
 
@@ -636,6 +681,102 @@ export abstract class FeedWizard extends BaseWizard {
     });
 
     return results;
+  }
+
+  /**
+   * Generate a results CSV file with Status and Message columns
+   * @param wizardId The wizard instance ID
+   * @param originalFile The original uploaded file
+   * @param rawRows The raw rows from the original file
+   * @param hasHeaders Whether the file has headers
+   * @param rowResults The processing results for each row
+   * @returns The file ID of the generated results CSV
+   */
+  private async generateResultsCsv(
+    wizardId: string,
+    originalFile: File,
+    rawRows: any[],
+    hasHeaders: boolean,
+    rowResults: RowResult[]
+  ): Promise<string> {
+    // Create lookup map for row results (data rows are 0-indexed)
+    const resultsMap = new Map<number, RowResult>();
+    rowResults.forEach(result => {
+      resultsMap.set(result.rowIndex, result);
+    });
+
+    // Prepare output rows
+    const outputRows: any[][] = [];
+
+    // Add header row with Status and Message columns
+    if (hasHeaders && rawRows.length > 0) {
+      const headerRow = rawRows[0];
+      outputRows.push([...headerRow, 'Status', 'Message']);
+    } else {
+      // No headers - just add Status and Message column labels
+      if (rawRows.length > 0) {
+        const firstRow = rawRows[0];
+        const headers = firstRow.map((_: any, i: number) => `Column ${i + 1}`);
+        outputRows.push([...headers, 'Status', 'Message']);
+      }
+    }
+
+    // Add data rows with status and message
+    const dataStartIndex = hasHeaders ? 1 : 0;
+    for (let i = dataStartIndex; i < rawRows.length; i++) {
+      const dataRowIndex = i - dataStartIndex; // 0-indexed data row
+      const originalRow = rawRows[i];
+      const result = resultsMap.get(dataRowIndex);
+      
+      if (result) {
+        outputRows.push([
+          ...originalRow,
+          result.status === 'success' ? 'success' : 'error',
+          result.message
+        ]);
+      } else {
+        // Row wasn't processed (shouldn't happen, but handle gracefully)
+        outputRows.push([
+          ...originalRow,
+          'unknown',
+          'Not processed'
+        ]);
+      }
+    }
+
+    // Convert to CSV
+    const csvContent = stringifyCSV(outputRows);
+    const csvBuffer = Buffer.from(csvContent, 'utf-8');
+
+    // Generate filename
+    const baseName = originalFile.fileName.replace(/\.[^.]+$/, ''); // Remove extension
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+    const resultsFileName = `${baseName}-results-${timestamp}.csv`;
+
+    // Upload to object storage
+    const uploadResult = await objectStorageService.uploadFile({
+      fileName: resultsFileName,
+      fileContent: csvBuffer,
+      mimeType: 'text/csv',
+      accessLevel: 'private'
+    });
+
+    // Use the same uploadedBy as the original file
+    const uploadedBy = originalFile.uploadedBy;
+
+    // Create file record attached to wizard
+    const resultsFile = await storage.files.create({
+      fileName: resultsFileName,
+      mimeType: 'text/csv',
+      size: uploadResult.size,
+      storagePath: uploadResult.storagePath,
+      uploadedBy,
+      entityType: 'wizard',
+      entityId: wizardId,
+      accessLevel: 'private'
+    });
+
+    return resultsFile.id;
   }
 
   getSteps(): WizardStep[] {
