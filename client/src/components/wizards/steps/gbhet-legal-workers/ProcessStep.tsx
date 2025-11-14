@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CheckCircle2, XCircle, AlertCircle, Play, Loader2, Database, Download } from "lucide-react";
+import { CheckCircle2, XCircle, AlertCircle, Play, Loader2, Database } from "lucide-react";
 
 interface ProcessStepProps {
   wizardId: string;
@@ -185,19 +185,15 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">Processing Results</h3>
                 <div className="flex items-center gap-2">
-                  {results.resultsFileId && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      asChild
-                      data-testid="button-download-results"
-                    >
-                      <a href={`/api/files/${results.resultsFileId}/download`} download>
-                        <Download className="h-4 w-4 mr-2" />
-                        Download Results
-                      </a>
-                    </Button>
-                  )}
+                  <Button 
+                    onClick={startProcessing} 
+                    variant="outline"
+                    size="sm"
+                    data-testid="button-reprocess"
+                  >
+                    <Play className="mr-2 h-3 w-3" />
+                    Re-process
+                  </Button>
                   {wizardStatus && (
                     <Badge variant={wizardStatus === 'complete' ? 'default' : 'secondary'}>
                       {wizardStatus === 'complete' ? 'Complete' : 'Needs Review'}
