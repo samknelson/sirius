@@ -14,6 +14,13 @@ export interface ReportData {
   recordCount?: number;
   generatedAt?: Date;
   reportDataId?: string; // Reference to wizard_report_data entry
+  progress?: {
+    [key: string]: {
+      status: string;
+      completedAt?: string;
+      percentComplete?: number;
+    };
+  };
 }
 
 export interface ReportRecord {
@@ -159,14 +166,35 @@ export abstract class WizardReport extends BaseWizard {
 
   /**
    * Get the latest report results for a wizard
+   * Reconstructs the full report from individual worker rows
    * @param wizardId The wizard instance ID
    * @returns Report results or null if no report has been generated
    */
   async getReportResults(wizardId: string): Promise<ReportResults | null> {
-    const reportData = await storage.wizards.getLatestReportData(wizardId);
-    if (!reportData) {
+    // Fetch all report data rows for this wizard
+    const reportDataRows = await storage.wizards.getReportData(wizardId);
+    if (!reportDataRows || reportDataRows.length === 0) {
       return null;
     }
-    return reportData.data as ReportResults;
+
+    // Extract records from each row's data field
+    const records: ReportRecord[] = reportDataRows.map(row => row.data as ReportRecord);
+
+    // Get column definitions from the wizard type
+    const columns = this.getColumns();
+
+    // Use the creation timestamp from the first (most recent) row
+    const generatedAt = reportDataRows[0].createdAt;
+
+    // Build the full report results
+    const results: ReportResults = {
+      totalRecords: records.length,
+      recordCount: records.length,
+      records,
+      generatedAt,
+      columns
+    };
+
+    return results;
   }
 }
