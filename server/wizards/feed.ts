@@ -523,6 +523,11 @@ export abstract class FeedWizard extends BaseWizard {
 
           } else {
             // Create mode: upsert behavior (update if SSN exists, create if not)
+            // SSN is REQUIRED for all workers in feed
+            if (!ssn) {
+              throw new Error('SSN is required for all workers in the feed');
+            }
+
             if (!firstName && !lastName) {
               throw new Error('First name or last name is required');
             }
@@ -530,24 +535,17 @@ export abstract class FeedWizard extends BaseWizard {
             let workerId: string;
             
             // Check if worker with this SSN already exists
-            if (ssn) {
-              const existingWorker = await storage.workers.getWorkerBySSN(ssn);
-              if (existingWorker) {
-                // Worker exists, update it
-                workerId = existingWorker.id;
-              } else {
-                // Worker doesn't exist, create new one
-                const fullName = [firstName, lastName].filter(Boolean).join(' ');
-                const newWorker = await storage.workers.createWorker(fullName);
-                workerId = newWorker.id;
-                // Set SSN for the new worker
-                await storage.workers.updateWorkerSSN(workerId, ssn);
-              }
+            const existingWorker = await storage.workers.getWorkerBySSN(ssn);
+            if (existingWorker) {
+              // Worker exists, update it
+              workerId = existingWorker.id;
             } else {
-              // No SSN provided, always create new worker
+              // Worker doesn't exist, create new one
               const fullName = [firstName, lastName].filter(Boolean).join(' ');
               const newWorker = await storage.workers.createWorker(fullName);
               workerId = newWorker.id;
+              // Set SSN for the new worker
+              await storage.workers.updateWorkerSSN(workerId, ssn);
             }
 
             // Update name components if provided

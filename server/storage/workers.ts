@@ -5,7 +5,7 @@ import {
   type Worker,
   type InsertWorker,
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 
@@ -53,7 +53,13 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         return undefined;
       }
       
-      const [worker] = await db.select().from(workers).where(eq(workers.ssn, normalizedSSN));
+      // Use SQL to strip non-digits from database column for comparison
+      // This allows matching both normalized SSNs (123456789) and legacy dashed SSNs (123-45-6789)
+      const [worker] = await db
+        .select()
+        .from(workers)
+        .where(sql`regexp_replace(${workers.ssn}, '[^0-9]', '', 'g') = ${normalizedSSN}`);
+      
       return worker || undefined;
     },
 
