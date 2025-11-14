@@ -103,6 +103,19 @@ export const workerEmphist = pgTable("worker_emphist", {
   note: text("note"),
 });
 
+export const workerHours = pgTable("worker_hours", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  year: integer("year").notNull(),
+  month: integer("month").notNull(),
+  day: integer("day").notNull(),
+  workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
+  employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
+  employmentStatusId: varchar("employment_status_id").notNull().references(() => optionsEmploymentStatus.id, { onDelete: 'cascade' }),
+  hours: doublePrecision("hours"),
+}, (table) => ({
+  uniqueWorkerEmployerYearMonthDay: unique().on(table.workerId, table.employerId, table.year, table.month, table.day),
+}));
+
 export const trustBenefits = pgTable("trust_benefits", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -371,6 +384,10 @@ export const insertWorkerEmphistSchema = createInsertSchema(workerEmphist).omit(
   id: true,
 });
 
+export const insertWorkerHoursSchema = createInsertSchema(workerHours).omit({
+  id: true,
+});
+
 export const insertTrustBenefitSchema = createInsertSchema(trustBenefits).omit({
   id: true,
 });
@@ -513,6 +530,9 @@ export type EmployerContact = typeof employerContacts.$inferSelect;
 
 export type InsertWorkerEmphist = z.infer<typeof insertWorkerEmphistSchema>;
 export type WorkerEmphist = typeof workerEmphist.$inferSelect;
+
+export type InsertWorkerHours = z.infer<typeof insertWorkerHoursSchema>;
+export type WorkerHours = typeof workerHours.$inferSelect;
 
 export type InsertTrustBenefit = z.infer<typeof insertTrustBenefitSchema>;
 export type TrustBenefit = typeof trustBenefits.$inferSelect;
