@@ -43,7 +43,17 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async getWorkerBySSN(ssn: string): Promise<Worker | undefined> {
-      const [worker] = await db.select().from(workers).where(eq(workers.ssn, ssn));
+      // Parse SSN to normalize format before lookup
+      const { parseSSN } = await import('@shared/utils/ssn');
+      let normalizedSSN: string;
+      try {
+        normalizedSSN = parseSSN(ssn);
+      } catch (error) {
+        // If SSN can't be parsed, it won't match anything in the database
+        return undefined;
+      }
+      
+      const [worker] = await db.select().from(workers).where(eq(workers.ssn, normalizedSSN));
       return worker || undefined;
     },
 
