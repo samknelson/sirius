@@ -65,7 +65,7 @@ function WorkerHoursContent() {
 
   // Fetch employment statuses
   const { data: employmentStatuses = [] } = useQuery<EmploymentStatus[]>({
-    queryKey: ["/api/options/employment-status"],
+    queryKey: ["/api/employment-statuses"],
   });
 
   // Create mutation
