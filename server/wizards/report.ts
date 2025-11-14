@@ -121,6 +121,9 @@ export abstract class WizardReport extends BaseWizard {
     // Get column definitions
     const columns = this.getColumns();
 
+    // Delete any existing report data for this wizard to allow re-runs
+    await storage.wizards.deleteReportData(wizardId);
+
     // Save each record as a separate row in wizard_report_data
     // Using workerId as the pk for each row
     for (const record of records) {
@@ -128,6 +131,16 @@ export abstract class WizardReport extends BaseWizard {
         throw new Error('Record missing workerId - cannot save to report data');
       }
       await storage.wizards.saveReportData(wizardId, record.workerId, record);
+    }
+
+    // For zero-record scenarios, save a metadata row with empty pk
+    // This ensures getReportResults() can return an empty report structure
+    if (records.length === 0) {
+      await storage.wizards.saveReportData(wizardId, '', {
+        _metadata: true,
+        columns,
+        generatedAt: new Date()
+      });
     }
 
     // Update wizard with completion status
@@ -177,14 +190,30 @@ export abstract class WizardReport extends BaseWizard {
       return null;
     }
 
-    // Extract records from each row's data field
-    const records: ReportRecord[] = reportDataRows.map(row => row.data as ReportRecord);
+    // Check if this is a zero-record report (only has metadata row)
+    const isMetadataOnly = reportDataRows.length === 1 && 
+                          reportDataRows[0].data && 
+                          (reportDataRows[0].data as any)._metadata;
 
-    // Get column definitions from the wizard type
-    const columns = this.getColumns();
+    let records: ReportRecord[];
+    let columns: ReportColumn[];
+    let generatedAt: Date;
 
-    // Use the creation timestamp from the first (most recent) row
-    const generatedAt = reportDataRows[0].createdAt;
+    if (isMetadataOnly) {
+      // Zero-record report: extract metadata
+      const metadata = reportDataRows[0].data as any;
+      records = [];
+      columns = metadata.columns || this.getColumns();
+      generatedAt = metadata.generatedAt || reportDataRows[0].createdAt;
+    } else {
+      // Normal report: extract records from each row's data field
+      // Filter out any metadata rows (pk is empty string)
+      records = reportDataRows
+        .filter(row => row.pk !== '')
+        .map(row => row.data as ReportRecord);
+      columns = this.getColumns();
+      generatedAt = reportDataRows[0].createdAt;
+    }
 
     // Build the full report results
     const results: ReportResults = {

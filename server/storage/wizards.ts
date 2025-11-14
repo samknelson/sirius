@@ -11,6 +11,7 @@ export interface WizardStorage {
   saveReportData(wizardId: string, pk: string, data: any): Promise<WizardReportData>;
   getReportData(wizardId: string): Promise<WizardReportData[]>;
   getLatestReportData(wizardId: string): Promise<WizardReportData | undefined>;
+  deleteReportData(wizardId: string): Promise<number>;
 }
 
 export function createWizardStorage(): WizardStorage {
@@ -97,6 +98,14 @@ export function createWizardStorage(): WizardStorage {
         .orderBy(desc(wizardReportData.createdAt))
         .limit(1);
       return reportData || undefined;
+    },
+
+    async deleteReportData(wizardId: string): Promise<number> {
+      const result = await db
+        .delete(wizardReportData)
+        .where(eq(wizardReportData.wizardId, wizardId))
+        .returning();
+      return result.length;
     }
   };
 }
