@@ -27,6 +27,8 @@ interface MonthlyHoursEntry {
   month: number;
   totalHours: number | null;
   employmentStatusId: string;
+  allHome: boolean;
+  anyHome: boolean;
   employer: Employer;
   employmentStatus: EmploymentStatus;
 }
@@ -46,6 +48,12 @@ function WorkerHoursMonthlyContent() {
   const getMonthName = (month: number) => {
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     return monthNames[month - 1];
+  };
+
+  const getHomeStatus = (allHome: boolean, anyHome: boolean) => {
+    if (allHome) return { label: "All Home", variant: "default" as const };
+    if (anyHome) return { label: "Some Home", variant: "outline" as const };
+    return { label: "All On-site", variant: "secondary" as const };
   };
 
   return (
@@ -71,31 +79,43 @@ function WorkerHoursMonthlyContent() {
                 <TableHead>Month</TableHead>
                 <TableHead>Employer</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Home</TableHead>
                 <TableHead className="text-right">Total Hours</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {monthlyEntries.map((entry, index) => (
-                <TableRow key={`${entry.employerId}-${entry.year}-${entry.month}`} data-testid={`row-monthly-${index}`}>
-                  <TableCell data-testid={`text-date-${index}`}>
-                    {getMonthName(entry.month)} {entry.year}
-                  </TableCell>
-                  <TableCell data-testid={`text-employer-${index}`}>
-                    {entry.employer.name}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={entry.employmentStatus.employed ? "default" : "secondary"}
-                      data-testid={`badge-status-${index}`}
-                    >
-                      {entry.employmentStatus.name}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right" data-testid={`text-hours-${index}`}>
-                    {entry.totalHours !== null ? entry.totalHours.toFixed(2) : "—"}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {monthlyEntries.map((entry, index) => {
+                const homeStatus = getHomeStatus(entry.allHome, entry.anyHome);
+                return (
+                  <TableRow key={`${entry.employerId}-${entry.year}-${entry.month}`} data-testid={`row-monthly-${index}`}>
+                    <TableCell data-testid={`text-date-${index}`}>
+                      {getMonthName(entry.month)} {entry.year}
+                    </TableCell>
+                    <TableCell data-testid={`text-employer-${index}`}>
+                      {entry.employer.name}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={entry.employmentStatus.employed ? "default" : "secondary"}
+                        data-testid={`badge-status-${index}`}
+                      >
+                        {entry.employmentStatus.name}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={homeStatus.variant}
+                        data-testid={`badge-home-${index}`}
+                      >
+                        {homeStatus.label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right" data-testid={`text-hours-${index}`}>
+                      {entry.totalHours !== null ? entry.totalHours.toFixed(2) : "—"}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}
