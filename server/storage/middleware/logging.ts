@@ -47,8 +47,10 @@ export interface MethodLoggingConfig<T = any> {
   /** Function to capture state before the operation (e.g., read current record) */
   before?: (args: any[], storage: T) => Promise<any>;
   
-  /** Function to capture state after the operation (e.g., return the result) */
-  after?: (args: any[], result: any, storage: T) => Promise<any>;
+  /** Function to capture state after the operation (e.g., return the result) 
+   * @param beforeState - The state captured by the before() callback (if any), useful for determining create vs update
+   */
+  after?: (args: any[], result: any, storage: T, beforeState?: any) => Promise<any>;
   
   /** Function to extract a human-readable entity ID from arguments, result, or beforeState */
   getEntityId?: (args: any[], result?: any, beforeState?: any) => string | undefined | Promise<string | undefined>;
@@ -123,7 +125,7 @@ export function withStorageLogging<T extends Record<string, any>>(
         result = await method.apply(storage, args);
 
         if (methodConfig.after) {
-          afterState = await methodConfig.after(args, result, storage);
+          afterState = await methodConfig.after(args, result, storage, beforeState);
         }
 
         const details: Record<string, any> = {

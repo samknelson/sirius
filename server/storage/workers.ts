@@ -573,11 +573,14 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
           }
         };
       },
-      after: async (args, result, storage) => {
+      after: async (args, result, storage, beforeState) => {
         if (!result) return null;
         
         const [employer] = await db.select().from(employers).where(eq(employers.id, result.employerId));
         const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, result.employmentStatusId));
+        
+        // Determine if this was a create or update based on beforeState
+        const operation = beforeState && beforeState.hours ? 'update' : 'create';
         
         return {
           hours: result,
@@ -587,7 +590,8 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
             workerId: result.workerId,
             year: result.year,
             month: result.month,
-            hours: result.hours
+            hours: result.hours,
+            operation
           }
         };
       }

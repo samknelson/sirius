@@ -6,10 +6,12 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 
 ## Worker Hours Feature
 -   **New Table**: Added `worker_hours` table with fields for year, month, day (always 1), worker_id, employer_id, employment_status_id, and hours. Includes unique constraint on (worker, employer, year, month, day) and cascade deletes for worker and employer foreign keys.
--   **Storage Methods**: Extended WorkerStorage interface with complete CRUD operations for both worker benefits and worker hours.
+-   **Storage Methods**: Extended WorkerStorage interface with complete CRUD operations including `upsertWorkerHours` using atomic upsert with full audit logging that distinguishes create vs update operations.
 -   **API Endpoints**: Added RESTful endpoints for worker hours management (GET, POST, PATCH, DELETE) with proper authentication and authorization.
 -   **Frontend**: New "Hours" tab in worker detail pages with table display, add/edit dialogs, and delete functionality. UI shows only year and month (day field is hidden and automatically set to 1).
 -   **Security**: All endpoints require authentication; GET endpoint requires worker policy access, mutations require workers.manage permission.
+-   **Wizard Integration**: GbhetLegalWorkersWizard (monthly and corrections) now processes worker hours during the Process step. Hours are upserted atomically with employment status validation, year/month coercion, and row-level error handling for partial successes.
+-   **Logging Middleware Enhancement**: Updated logging middleware to pass `beforeState` to `after()` callbacks, enabling all storage methods to properly distinguish create vs update operations in audit metadata.
 
 # User Preferences
 
