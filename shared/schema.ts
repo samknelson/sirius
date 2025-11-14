@@ -751,3 +751,11 @@ export function validateSSN(ssn: string): { valid: boolean; error?: string } {
   
   return { valid: true };
 }
+
+// Employer Monthly Plugin Configuration Schema
+export const employerMonthlyPluginConfigSchema = z.record(
+  z.string(), // roleId
+  z.array(z.string()) // array of wizard type names
+);
+
+export type EmployerMonthlyPluginConfig = z.infer<typeof employerMonthlyPluginConfigSchema>;

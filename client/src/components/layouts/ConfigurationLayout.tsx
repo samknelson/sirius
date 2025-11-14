@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Users, MapPin, Phone, Globe, List, UserCog, ChevronDown, MessageSquare, Puzzle, Package, Heart, CreditCard, Activity, BookOpen, Wallet, Settings, Shield, Key, FileText, Palette } from "lucide-react";
+import { Users, MapPin, Phone, Globe, List, UserCog, ChevronDown, MessageSquare, Puzzle, Package, Heart, CreditCard, Activity, BookOpen, Wallet, Settings, Shield, Key, FileText, Palette, Building2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -93,6 +93,13 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       label: "Dashboard Plugins",
       icon: Puzzle,
       testId: "nav-config-dashboard-plugins",
+      permission: "admin",
+    },
+    {
+      path: "/config/employer-monthly-plugin",
+      label: "Employer Monthly",
+      icon: Building2,
+      testId: "nav-config-employer-monthly-plugin",
       permission: "admin",
     },
     {

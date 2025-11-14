@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../accessControl";
 import { policies } from "../policies";
+import { employerMonthlyPluginConfigSchema } from "@shared/schema";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -106,6 +107,128 @@ export function registerDashboardRoutes(
       res.json({ pluginId, enabled });
     } catch (error) {
       res.status(500).json({ message: "Failed to update plugin configuration" });
+    }
+  });
+
+  // Employer Monthly Plugin routes - Manage employer monthly upload statistics and configuration
+  
+  // GET /api/dashboard-plugins/employer-monthly/stats - Get employer upload statistics for a specific month
+  app.get("/api/dashboard-plugins/employer-monthly/stats", requireAuth, async (req, res) => {
+    try {
+      const { year, month, wizardType } = req.query;
+      const user = req.user as any;
+      
+      if (!user || !user.id) {
+        res.status(401).json({ message: "User not authenticated" });
+        return;
+      }
+      
+      // Default to current month if not provided
+      const now = new Date();
+      const yearNum = year ? Number(year) : now.getFullYear();
+      const monthNum = month ? Number(month) : now.getMonth() + 1;
+      
+      if (!wizardType || typeof wizardType !== 'string') {
+        res.status(400).json({ message: "Wizard type is required" });
+        return;
+      }
+      
+      if (!Number.isInteger(yearNum) || yearNum < 1900 || yearNum > 2100) {
+        res.status(400).json({ message: "Year must be a valid integer between 1900 and 2100" });
+        return;
+      }
+      
+      if (!Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12) {
+        res.status(400).json({ message: "Month must be a valid integer between 1 and 12" });
+        return;
+      }
+      
+      // Verify user has access to this wizard type
+      const userRoles = await storage.users.getUserRoles(user.id);
+      const variable = await storage.variables.getByName('employer_monthly_plugin_config');
+      const config = variable ? (variable.value as Record<string, string[]>) : {};
+      
+      const allowedWizardTypes = new Set<string>();
+      for (const role of userRoles) {
+        const roleTypes = config[role.id] || [];
+        roleTypes.forEach(type => allowedWizardTypes.add(type));
+      }
+      
+      if (!allowedWizardTypes.has(wizardType)) {
+        res.status(403).json({ message: "Access denied: You do not have permission to view statistics for this wizard type" });
+        return;
+      }
+      
+      const stats = await storage.wizardEmployerMonthly.getMonthlyStats(
+        yearNum,
+        monthNum,
+        wizardType
+      );
+      
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch employer monthly stats" });
+    }
+  });
+
+  // GET /api/dashboard-plugins/employer-monthly/my-wizard-types - Get wizard types for current user's roles
+  app.get("/api/dashboard-plugins/employer-monthly/my-wizard-types", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || !user.id) {
+        res.status(401).json({ message: "User not authenticated" });
+        return;
+      }
+
+      const userRoles = await storage.users.getUserRoles(user.id);
+      const variable = await storage.variables.getByName('employer_monthly_plugin_config');
+      const config = variable ? (variable.value as Record<string, string[]>) : {};
+      
+      const wizardTypesSet = new Set<string>();
+      for (const role of userRoles) {
+        const roleTypes = config[role.id] || [];
+        roleTypes.forEach(type => wizardTypesSet.add(type));
+      }
+      
+      res.json(Array.from(wizardTypesSet));
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch wizard types for user" });
+    }
+  });
+
+  // GET /api/dashboard-plugins/employer-monthly/config - Get role-to-wizard-type configuration (admin only)
+  app.get("/api/dashboard-plugins/employer-monthly/config", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const variable = await storage.variables.getByName('employer_monthly_plugin_config');
+      const config = variable ? (variable.value as Record<string, string[]>) : {};
+      res.json(config);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch employer monthly plugin configuration" });
+    }
+  });
+
+  // PUT /api/dashboard-plugins/employer-monthly/config - Update role-to-wizard-type configuration
+  app.put("/api/dashboard-plugins/employer-monthly/config", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const parseResult = employerMonthlyPluginConfigSchema.safeParse(req.body);
+      
+      if (!parseResult.success) {
+        res.status(400).json({ message: "Invalid configuration format", errors: parseResult.error.errors });
+        return;
+      }
+      
+      const config = parseResult.data;
+      const existingVariable = await storage.variables.getByName('employer_monthly_plugin_config');
+      
+      if (existingVariable) {
+        await storage.variables.update(existingVariable.id, { value: config });
+      } else {
+        await storage.variables.create({ name: 'employer_monthly_plugin_config', value: config });
+      }
+      
+      res.json(config);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update employer monthly plugin configuration" });
     }
   });
 }

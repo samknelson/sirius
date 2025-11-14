@@ -23,6 +23,11 @@ export interface EmployerWithUploads {
   }>;
 }
 
+export interface EmployerMonthlyStats {
+  totalActiveEmployers: number;
+  byStatus: Record<string, number>;
+}
+
 export interface WizardEmployerMonthlyStorage {
   create(data: InsertWizardEmployerMonthly): Promise<WizardEmployerMonthly>;
   getByWizardId(wizardId: string): Promise<WizardEmployerMonthly | undefined>;
@@ -30,6 +35,7 @@ export interface WizardEmployerMonthlyStorage {
   listByEmployer(employerId: string, year?: number, month?: number): Promise<WizardEmployerMonthly[]>;
   listAllEmployersWithUploads(year: number, month: number, wizardType: string): Promise<EmployerWithUploads[]>;
   listAllEmployersWithUploadsForRange(year: number, month: number, wizardType: string): Promise<EmployerWithUploads[]>;
+  getMonthlyStats(year: number, month: number, wizardType: string): Promise<EmployerMonthlyStats>;
   delete(wizardId: string): Promise<boolean>;
 }
 
@@ -182,6 +188,54 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
         employer,
         uploads: uploadsForPeriod.filter(upload => upload.employerId === employer.id)
       }));
+    },
+
+    async getMonthlyStats(year: number, month: number, wizardType: string): Promise<EmployerMonthlyStats> {
+      const allActiveEmployers = await db
+        .select()
+        .from(employers)
+        .where(eq(employers.isActive, true));
+      
+      const totalActiveEmployers = allActiveEmployers.length;
+      
+      const uploadsForPeriod = await db
+        .select({
+          employerId: wizardEmployerMonthly.employerId,
+          status: wizards.status,
+        })
+        .from(wizardEmployerMonthly)
+        .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
+        .where(
+          and(
+            eq(wizardEmployerMonthly.year, year),
+            eq(wizardEmployerMonthly.month, month),
+            eq(wizards.type, wizardType)
+          )
+        );
+      
+      const byStatus: Record<string, number> = {
+        draft: 0,
+        in_progress: 0,
+        completed: 0,
+        cancelled: 0,
+        error: 0,
+      };
+      
+      const employersWithUploads = new Set<string>();
+      
+      for (const upload of uploadsForPeriod) {
+        employersWithUploads.add(upload.employerId);
+        if (byStatus[upload.status] !== undefined) {
+          byStatus[upload.status]++;
+        }
+      }
+      
+      byStatus['no_upload'] = totalActiveEmployers - employersWithUploads.size;
+      
+      return {
+        totalActiveEmployers,
+        byStatus,
+      };
     },
 
     async delete(wizardId: string): Promise<boolean> {

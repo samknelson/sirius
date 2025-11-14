@@ -74,6 +74,7 @@ import MasqueradePage from "@/pages/config/masquerade";
 import LogsPage from "@/pages/config/logs";
 import WelcomeMessagesConfigPage from "@/pages/config/welcome-messages";
 import DashboardPluginsConfigPage from "@/pages/config/dashboard-plugins";
+import EmployerMonthlyPluginConfigPage from "@/pages/config/employer-monthly-plugin";
 import ComponentsConfigPage from "@/pages/config/components";
 import StripeTestPage from "@/pages/config/ledger/stripe/test";
 import StripeSettingsPage from "@/pages/config/ledger/stripe/settings";
@@ -603,6 +604,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <DashboardPluginsConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/employer-monthly-plugin">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <EmployerMonthlyPluginConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

@@ -1,6 +1,7 @@
 import { DashboardPlugin } from "./types";
 import { WelcomeMessagesPlugin } from "./welcomeMessages/WelcomeMessagesPlugin";
 import { BookmarksPlugin } from "./bookmarks/BookmarksPlugin";
+import { EmployerMonthlyUploadsPlugin } from "./employerMonthlyUploads/EmployerMonthlyUploadsPlugin";
 
 export const pluginRegistry: DashboardPlugin[] = [
   {
@@ -18,6 +19,15 @@ export const pluginRegistry: DashboardPlugin[] = [
     order: 2,
     component: BookmarksPlugin,
     requiredPermissions: ["bookmark", "admin"],
+    enabledByDefault: true,
+  },
+  {
+    id: "employer-monthly-uploads",
+    name: "Employer Monthly Uploads",
+    description: "Display employer monthly upload statistics by wizard type",
+    order: 3,
+    component: EmployerMonthlyUploadsPlugin,
+    requiredPermissions: ["admin"],
     enabledByDefault: true,
   },
 ];
