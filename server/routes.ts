@@ -849,16 +849,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/workers/:workerId/hours", requireAuth, requirePermission("workers.manage"), async (req, res) => {
     try {
       const { workerId } = req.params;
-      const { month, year, employerId, employmentStatusId, hours } = req.body;
+      const { month, year, day, employerId, employmentStatusId, hours } = req.body;
 
-      if (!month || !year || !employerId || !employmentStatusId) {
-        return res.status(400).json({ message: "Month, year, employer ID, and employment status ID are required" });
+      if (!month || !year || !day || !employerId || !employmentStatusId) {
+        return res.status(400).json({ message: "Month, year, day, employer ID, and employment status ID are required" });
       }
 
       const hoursEntry = await storage.workers.createWorkerHours({
         workerId,
         month,
         year,
+        day,
         employerId,
         employmentStatusId,
         hours: hours ?? null,
@@ -868,7 +869,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Failed to create worker hours:", error);
       if (error.message?.includes("duplicate key") || error.code === "23505") {
-        return res.status(409).json({ message: "Hours entry already exists for this worker, employer, and month/year" });
+        return res.status(409).json({ message: "Hours entry already exists for this worker, employer, and date" });
       }
       res.status(500).json({ message: "Failed to create worker hours" });
     }
@@ -878,9 +879,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/worker-hours/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
     try {
       const { id } = req.params;
-      const { employerId, employmentStatusId, hours } = req.body;
+      const { year, month, day, employerId, employmentStatusId, hours } = req.body;
 
       const updated = await storage.workers.updateWorkerHours(id, {
+        year,
+        month,
+        day,
         employerId,
         employmentStatusId,
         hours: hours ?? null,
@@ -891,8 +895,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       res.json(updated);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to update worker hours:", error);
+      if (error.message?.includes("duplicate key") || error.code === "23505") {
+        return res.status(409).json({ message: "Hours entry already exists for this worker, employer, and date" });
+      }
       res.status(500).json({ message: "Failed to update worker hours" });
     }
   });
