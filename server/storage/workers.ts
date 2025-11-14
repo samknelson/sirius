@@ -403,7 +403,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         LEFT JOIN employers e ON sc.employer_id = e.id
         LEFT JOIN options_employment_status es ON sc.employment_status_id = es.id
         WHERE sc.prev_status_id IS NULL OR sc.prev_status_id != sc.employment_status_id
-        ORDER BY sc.employer_id, sc.year, sc.month, sc.day
+        ORDER BY sc.year DESC, sc.month DESC, sc.day DESC, sc.employer_id
       `);
 
       return results.rows.map((row: any) => ({
