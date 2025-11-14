@@ -40,15 +40,17 @@ export default function DashboardPluginsConfigPage() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins/config"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins"] });
       toast({
         title: "Plugin Updated",
         description: `Plugin ${variables.enabled ? "enabled" : "disabled"} successfully.`,
       });
     },
     onError: (error: any, variables) => {
+      console.error("Plugin update error:", error);
       toast({
         title: "Update Failed",
-        description: error?.message || "Failed to update plugin.",
+        description: error?.message || "Failed to update plugin configuration. Please try again.",
         variant: "destructive",
       });
       // Revert local state on error

@@ -67,7 +67,8 @@ export default function PluginSettingsPage() {
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            This plugin does not have any configurable settings.
+            The plugin "{plugin.name}" does not have any configurable settings. 
+            Click the button above to return to the Dashboard Plugins page.
           </AlertDescription>
         </Alert>
       </div>
@@ -77,8 +78,9 @@ export default function PluginSettingsPage() {
   const SettingsComponent = plugin.settingsComponent;
 
   const handleConfigSaved = () => {
-    // Invalidate dashboard plugin queries to refresh UI
+    // Invalidate all dashboard plugin queries to refresh UI
     queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins/config"] });
   };
 
   return (
