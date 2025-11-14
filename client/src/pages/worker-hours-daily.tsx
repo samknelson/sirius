@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import {
@@ -19,6 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 
 interface EmploymentStatus {
   id: string;
@@ -37,6 +39,7 @@ interface WorkerHoursEntry {
   employerId: string;
   employmentStatusId: string;
   hours: number | null;
+  home: boolean;
   employer: Employer;
   employmentStatus: EmploymentStatus;
 }
@@ -52,6 +55,7 @@ function WorkerHoursContent() {
   const [selectedEmployerId, setSelectedEmployerId] = useState<string>("");
   const [selectedEmploymentStatusId, setSelectedEmploymentStatusId] = useState<string>("");
   const [selectedHours, setSelectedHours] = useState<string>("");
+  const [selectedHome, setSelectedHome] = useState<boolean>(false);
   const [editingEntry, setEditingEntry] = useState<WorkerHoursEntry | null>(null);
 
   // Fetch worker hours
@@ -76,7 +80,7 @@ function WorkerHoursContent() {
 
   // Create mutation
   const createMutation = useMutation({
-    mutationFn: async (data: { month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null }) => {
+    mutationFn: async (data: { month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home: boolean }) => {
       const response = await fetch(`/api/workers/${worker.id}/hours`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -105,7 +109,7 @@ function WorkerHoursContent() {
 
   // Update mutation
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: { year: number; month: number; day: number; employerId: string; employmentStatusId: string; hours: number | null } }) => {
+    mutationFn: async ({ id, data }: { id: string; data: { year: number; month: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home: boolean } }) => {
       const response = await fetch(`/api/worker-hours/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -164,6 +168,7 @@ function WorkerHoursContent() {
     setSelectedEmployerId("");
     setSelectedEmploymentStatusId("");
     setSelectedHours("");
+    setSelectedHome(false);
     setEditingEntry(null);
   };
 
@@ -184,6 +189,7 @@ function WorkerHoursContent() {
       employerId: selectedEmployerId,
       employmentStatusId: selectedEmploymentStatusId,
       hours: selectedHours ? parseFloat(selectedHours) : null,
+      home: selectedHome,
     });
   };
 
@@ -195,6 +201,7 @@ function WorkerHoursContent() {
     setSelectedEmployerId(entry.employerId);
     setSelectedEmploymentStatusId(entry.employmentStatusId);
     setSelectedHours(entry.hours?.toString() || "");
+    setSelectedHome(entry.home);
     setIsEditDialogOpen(true);
   };
 
@@ -217,6 +224,7 @@ function WorkerHoursContent() {
         employerId: selectedEmployerId,
         employmentStatusId: selectedEmploymentStatusId,
         hours: selectedHours ? parseFloat(selectedHours) : null,
+        home: selectedHome,
       },
     });
   };
@@ -369,6 +377,15 @@ function WorkerHoursContent() {
                     data-testid="input-hours"
                   />
                 </div>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="home">Home</Label>
+                  <Switch
+                    id="home"
+                    checked={selectedHome}
+                    onCheckedChange={setSelectedHome}
+                    data-testid="switch-home"
+                  />
+                </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => { setIsAddDialogOpen(false); resetForm(); }}>
@@ -398,6 +415,7 @@ function WorkerHoursContent() {
                 <TableHead>Day</TableHead>
                 <TableHead>Employer</TableHead>
                 <TableHead>Employment Status</TableHead>
+                <TableHead>Home</TableHead>
                 <TableHead className="text-right">Hours</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -410,6 +428,11 @@ function WorkerHoursContent() {
                   <TableCell>{entry.day}</TableCell>
                   <TableCell>{entry.employer?.name || "Unknown"}</TableCell>
                   <TableCell>{entry.employmentStatus?.name || "Unknown"}</TableCell>
+                  <TableCell>
+                    <Badge variant={entry.home ? "default" : "secondary"} data-testid={`badge-home-${entry.id}`}>
+                      {entry.home ? "Home" : "On-site"}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-right">{entry.hours?.toFixed(2) || "-"}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
@@ -532,6 +555,15 @@ function WorkerHoursContent() {
                 value={selectedHours}
                 onChange={(e) => setSelectedHours(e.target.value)}
                 data-testid="input-edit-hours"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="edit-home">Home</Label>
+              <Switch
+                id="edit-home"
+                checked={selectedHome}
+                onCheckedChange={setSelectedHome}
+                data-testid="switch-edit-home"
               />
             </div>
           </div>
