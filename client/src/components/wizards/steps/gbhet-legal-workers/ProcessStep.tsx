@@ -24,6 +24,8 @@ interface ProcessError {
 
 interface ProcessResults {
   totalRows: number;
+  createdCount: number;
+  updatedCount: number;
   successCount: number;
   failureCount: number;
   errors: ProcessError[];
@@ -32,7 +34,7 @@ interface ProcessResults {
 
 export function ProcessStep({ wizardId, wizardType, data, onDataChange }: ProcessStepProps) {
   const [isProcessing, setIsProcessing] = useState(false);
-  const [progress, setProgress] = useState({ processed: 0, total: 0, successCount: 0, failureCount: 0 });
+  const [progress, setProgress] = useState({ processed: 0, total: 0, createdCount: 0, updatedCount: 0, successCount: 0, failureCount: 0 });
   const [results, setResults] = useState<ProcessResults | null>(data?.processResults || null);
   const [error, setError] = useState<string | null>(null);
   const [wizardStatus, setWizardStatus] = useState<string | null>(null);
@@ -47,7 +49,7 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
   const startProcessing = async () => {
     setIsProcessing(true);
     setError(null);
-    setProgress({ processed: 0, total: 0, successCount: 0, failureCount: 0 });
+    setProgress({ processed: 0, total: 0, createdCount: 0, updatedCount: 0, successCount: 0, failureCount: 0 });
 
     try {
       const eventSource = new EventSource(`/api/wizards/${wizardId}/process`, {
@@ -61,6 +63,8 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
           setProgress({
             processed: data.processed,
             total: data.total,
+            createdCount: data.createdCount || 0,
+            updatedCount: data.updatedCount || 0,
             successCount: data.successCount,
             failureCount: data.failureCount,
           });
@@ -138,7 +142,7 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
               
               <Progress value={progressPercentage} className="h-2" />
               
-              <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-4 gap-4 text-sm">
                 <div>
                   <p className="text-muted-foreground">Processed</p>
                   <p className="text-lg font-semibold" data-testid="text-processed">
@@ -146,9 +150,15 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
                   </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Success</p>
-                  <p className="text-lg font-semibold text-green-600" data-testid="text-success">
-                    {progress.successCount.toLocaleString()}
+                  <p className="text-muted-foreground">Created</p>
+                  <p className="text-lg font-semibold text-green-600" data-testid="text-created">
+                    {(progress.createdCount || 0).toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Updated</p>
+                  <p className="text-lg font-semibold text-blue-600" data-testid="text-updated">
+                    {(progress.updatedCount || 0).toLocaleString()}
                   </p>
                 </div>
                 <div>
@@ -180,7 +190,7 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
                 )}
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-4 gap-4">
                 <Card>
                   <CardContent className="pt-6">
                     <div className="text-center">
@@ -196,13 +206,24 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
                     <div className="text-center">
                       <div className="flex items-center justify-center space-x-2">
                         <CheckCircle2 className="h-5 w-5 text-green-600" />
-                        <p className="text-2xl font-bold text-green-600" data-testid="text-success-count">
-                          {results.successCount.toLocaleString()}
+                        <p className="text-2xl font-bold text-green-600" data-testid="text-created-count">
+                          {(results.createdCount || 0).toLocaleString()}
                         </p>
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        {mode === 'create' ? 'Created' : 'Updated'}
-                      </p>
+                      <p className="text-sm text-muted-foreground">Created</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <div className="flex items-center justify-center space-x-2">
+                        <CheckCircle2 className="h-5 w-5 text-blue-600" />
+                        <p className="text-2xl font-bold text-blue-600" data-testid="text-updated-count">
+                          {(results.updatedCount || 0).toLocaleString()}
+                        </p>
+                      </div>
+                      <p className="text-sm text-muted-foreground">Updated</p>
                     </div>
                   </CardContent>
                 </Card>

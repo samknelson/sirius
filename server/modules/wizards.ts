@@ -1073,10 +1073,16 @@ export function registerWizardRoutes(
             id,
             100, // batch size
             (progress) => {
-              // Send progress event
+              // Send progress event with explicit fields
               res.write(`data: ${JSON.stringify({ 
-                type: 'progress', 
-                ...progress 
+                type: 'progress',
+                processed: progress.processed,
+                total: progress.total,
+                createdCount: progress.createdCount,
+                updatedCount: progress.updatedCount,
+                successCount: progress.successCount,
+                failureCount: progress.failureCount,
+                currentRow: progress.currentRow
               })}\n\n`);
             }
           );
