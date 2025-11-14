@@ -9,6 +9,7 @@ import { FeedWizard } from "../wizards/feed.js";
 import { objectStorageService } from "../services/objectStorage.js";
 import { hashHeaderRow } from "../utils/hash.js";
 import { db } from "../db";
+import { eq, and, or } from "drizzle-orm";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -19,6 +20,15 @@ const upload = multer({
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
+
+class HttpError extends Error {
+  statusCode: number;
+  constructor(statusCode: number, message: string) {
+    super(message);
+    this.statusCode = statusCode;
+    this.name = 'HttpError';
+  }
+}
 
 export function registerWizardRoutes(
   app: Express, 
@@ -265,9 +275,86 @@ export function registerWizardRoutes(
             message: "Month must be an integer between 1 and 12" 
           });
         }
+        
+        // Type-specific constraint validation
+        if (validatedData.type === 'legal_workers_monthly') {
+          // Check for duplicate monthly wizard
+          const existingWizards = await storage.wizardEmployerMonthly.findByEmployerTypeAndPeriod(
+            validatedData.entityId,
+            'legal_workers_monthly',
+            year,
+            month
+          );
+          
+          if (existingWizards.length > 0) {
+            return res.status(400).json({ 
+              message: `A legal workers monthly wizard already exists for this employer in ${month}/${year}` 
+            });
+          }
+        } else if (validatedData.type === 'legal_workers_corrections') {
+          // Check for completed monthly wizard prerequisite
+          const completedMonthly = await storage.wizardEmployerMonthly.findCompletedMonthlyByEmployerAndPeriod(
+            validatedData.entityId,
+            year,
+            month
+          );
+          
+          if (!completedMonthly) {
+            return res.status(400).json({ 
+              message: `Cannot create legal workers corrections wizard: no completed legal workers monthly wizard found for ${month}/${year}` 
+            });
+          }
+        }
       }
       
       const wizard = await db.transaction(async (tx) => {
+        // Re-validate constraints inside transaction to prevent race conditions
+        if (isMonthlyWizard && validatedData.entityId) {
+          const wizardData = validatedData.data as any;
+          const launchArgs = wizardData?.launchArguments || {};
+          const year = Number(launchArgs.year);
+          const month = Number(launchArgs.month);
+          
+          if (validatedData.type === 'legal_workers_monthly') {
+            // Re-check for duplicate monthly wizard inside transaction
+            const existingWizards = await tx
+              .select()
+              .from(wizardEmployerMonthly)
+              .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
+              .where(
+                and(
+                  eq(wizardEmployerMonthly.employerId, validatedData.entityId),
+                  eq(wizardEmployerMonthly.year, year),
+                  eq(wizardEmployerMonthly.month, month),
+                  eq(wizards.type, 'legal_workers_monthly')
+                )
+              );
+            
+            if (existingWizards.length > 0) {
+              throw new HttpError(400, `A legal workers monthly wizard already exists for this employer in ${month}/${year}`);
+            }
+          } else if (validatedData.type === 'legal_workers_corrections') {
+            // Re-check for completed monthly wizard prerequisite inside transaction
+            const [completedMonthly] = await tx
+              .select()
+              .from(wizardEmployerMonthly)
+              .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
+              .where(
+                and(
+                  eq(wizardEmployerMonthly.employerId, validatedData.entityId),
+                  eq(wizardEmployerMonthly.year, year),
+                  eq(wizardEmployerMonthly.month, month),
+                  eq(wizards.type, 'legal_workers_monthly'),
+                  or(eq(wizards.status, 'completed'), eq(wizards.status, 'complete'))
+                )
+              );
+            
+            if (!completedMonthly) {
+              throw new HttpError(400, `Cannot create legal workers corrections wizard: no completed legal workers monthly wizard found for ${month}/${year}`);
+            }
+          }
+        }
+        
         // Create the wizard
         const [createdWizard] = await tx
           .insert(wizards)
@@ -296,7 +383,9 @@ export function registerWizardRoutes(
       
       res.status(201).json(wizard);
     } catch (error) {
-      if (error instanceof Error && error.name === "ZodError") {
+      if (error instanceof HttpError) {
+        res.status(error.statusCode).json({ message: error.message });
+      } else if (error instanceof Error && error.name === "ZodError") {
         res.status(400).json({ message: "Invalid wizard data", error });
       } else {
         res.status(500).json({ message: "Failed to create wizard" });
@@ -1100,7 +1189,7 @@ export function registerWizardRoutes(
           );
 
           // Update wizard status based on results
-          const finalStatus = results.failureCount > 0 ? 'needs_review' : 'complete';
+          const finalStatus = results.failureCount > 0 ? 'needs_review' : 'completed';
           
           // Update wizard with final status (preserve processResults that was just saved)
           await storage.wizards.update(id, {

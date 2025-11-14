@@ -36,6 +36,8 @@ export interface WizardEmployerMonthlyStorage {
   listAllEmployersWithUploads(year: number, month: number, wizardType: string): Promise<EmployerWithUploads[]>;
   listAllEmployersWithUploadsForRange(year: number, month: number, wizardType: string): Promise<EmployerWithUploads[]>;
   getMonthlyStats(year: number, month: number, wizardType: string): Promise<EmployerMonthlyStats>;
+  findByEmployerTypeAndPeriod(employerId: string, wizardType: string, year: number, month: number): Promise<any[]>;
+  findCompletedMonthlyByEmployerAndPeriod(employerId: string, year: number, month: number): Promise<any | undefined>;
   delete(wizardId: string): Promise<boolean>;
 }
 
@@ -236,6 +238,74 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
         totalActiveEmployers,
         byStatus,
       };
+    },
+
+    async findByEmployerTypeAndPeriod(
+      employerId: string,
+      wizardType: string,
+      year: number,
+      month: number
+    ): Promise<any[]> {
+      const results = await db
+        .select({
+          wizardId: wizardEmployerMonthly.wizardId,
+          employerId: wizardEmployerMonthly.employerId,
+          year: wizardEmployerMonthly.year,
+          month: wizardEmployerMonthly.month,
+          id: wizards.id,
+          type: wizards.type,
+          status: wizards.status,
+          currentStep: wizards.currentStep,
+          entityId: wizards.entityId,
+          data: wizards.data,
+          createdAt: wizards.date,
+        })
+        .from(wizardEmployerMonthly)
+        .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
+        .where(
+          and(
+            eq(wizardEmployerMonthly.employerId, employerId),
+            eq(wizardEmployerMonthly.year, year),
+            eq(wizardEmployerMonthly.month, month),
+            eq(wizards.type, wizardType)
+          )
+        );
+      
+      return results;
+    },
+
+    async findCompletedMonthlyByEmployerAndPeriod(
+      employerId: string,
+      year: number,
+      month: number
+    ): Promise<any | undefined> {
+      const [result] = await db
+        .select({
+          wizardId: wizardEmployerMonthly.wizardId,
+          employerId: wizardEmployerMonthly.employerId,
+          year: wizardEmployerMonthly.year,
+          month: wizardEmployerMonthly.month,
+          id: wizards.id,
+          type: wizards.type,
+          status: wizards.status,
+          currentStep: wizards.currentStep,
+          entityId: wizards.entityId,
+          data: wizards.data,
+          createdAt: wizards.date,
+        })
+        .from(wizardEmployerMonthly)
+        .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
+        .where(
+          and(
+            eq(wizardEmployerMonthly.employerId, employerId),
+            eq(wizardEmployerMonthly.year, year),
+            eq(wizardEmployerMonthly.month, month),
+            eq(wizards.type, 'legal_workers_monthly'),
+            or(eq(wizards.status, 'completed'), eq(wizards.status, 'complete'))
+          )
+        );
+      
+      return result || undefined;
     },
 
     async delete(wizardId: string): Promise<boolean> {
