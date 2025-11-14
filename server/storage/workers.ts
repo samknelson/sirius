@@ -2,10 +2,19 @@ import { db } from "../db";
 import {
   workers,
   contacts,
+  trustWmb,
+  workerHours,
+  trustBenefits,
+  employers,
+  optionsEmploymentStatus,
   type Worker,
   type InsertWorker,
+  type TrustWmb,
+  type WorkerHours,
+  type TrustBenefit,
+  type Employer,
 } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, desc } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 
@@ -29,6 +38,15 @@ export interface WorkerStorage {
   updateWorkerContactGender(workerId: string, gender: string | null, genderNota: string | null): Promise<Worker | undefined>;
   updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined>;
   deleteWorker(id: string): Promise<boolean>;
+  // Worker benefits methods
+  getWorkerBenefits(workerId: string): Promise<any[]>;
+  createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb>;
+  deleteWorkerBenefit(id: string): Promise<boolean>;
+  // Worker hours methods
+  getWorkerHours(workerId: string): Promise<any[]>;
+  createWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null }): Promise<WorkerHours>;
+  updateWorkerHours(id: string, data: { employerId?: string; employmentStatusId?: string; hours?: number | null }): Promise<WorkerHours | undefined>;
+  deleteWorkerHours(id: string): Promise<boolean>;
 }
 
 export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerStorage {
@@ -224,6 +242,96 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         await contactsStorage.deleteContact(worker.contactId);
       }
       
+      return result.length > 0;
+    },
+
+    // Worker benefits methods
+    async getWorkerBenefits(workerId: string): Promise<any[]> {
+      const results = await db
+        .select({
+          id: trustWmb.id,
+          month: trustWmb.month,
+          year: trustWmb.year,
+          workerId: trustWmb.workerId,
+          employerId: trustWmb.employerId,
+          benefitId: trustWmb.benefitId,
+          benefit: trustBenefits,
+          employer: employers,
+        })
+        .from(trustWmb)
+        .leftJoin(trustBenefits, eq(trustWmb.benefitId, trustBenefits.id))
+        .leftJoin(employers, eq(trustWmb.employerId, employers.id))
+        .where(eq(trustWmb.workerId, workerId))
+        .orderBy(desc(trustWmb.year), desc(trustWmb.month));
+
+      return results;
+    },
+
+    async createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb> {
+      const [wmb] = await db
+        .insert(trustWmb)
+        .values(data)
+        .returning();
+      return wmb;
+    },
+
+    async deleteWorkerBenefit(id: string): Promise<boolean> {
+      const result = await db
+        .delete(trustWmb)
+        .where(eq(trustWmb.id, id))
+        .returning();
+      return result.length > 0;
+    },
+
+    // Worker hours methods
+    async getWorkerHours(workerId: string): Promise<any[]> {
+      const results = await db
+        .select({
+          id: workerHours.id,
+          month: workerHours.month,
+          year: workerHours.year,
+          day: workerHours.day,
+          workerId: workerHours.workerId,
+          employerId: workerHours.employerId,
+          employmentStatusId: workerHours.employmentStatusId,
+          hours: workerHours.hours,
+          employer: employers,
+          employmentStatus: optionsEmploymentStatus,
+        })
+        .from(workerHours)
+        .leftJoin(employers, eq(workerHours.employerId, employers.id))
+        .leftJoin(optionsEmploymentStatus, eq(workerHours.employmentStatusId, optionsEmploymentStatus.id))
+        .where(eq(workerHours.workerId, workerId))
+        .orderBy(desc(workerHours.year), desc(workerHours.month));
+
+      return results;
+    },
+
+    async createWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null }): Promise<WorkerHours> {
+      const [hours] = await db
+        .insert(workerHours)
+        .values({
+          ...data,
+          day: 1, // Always use day 1 as specified
+        })
+        .returning();
+      return hours;
+    },
+
+    async updateWorkerHours(id: string, data: { employerId?: string; employmentStatusId?: string; hours?: number | null }): Promise<WorkerHours | undefined> {
+      const [updated] = await db
+        .update(workerHours)
+        .set(data)
+        .where(eq(workerHours.id, id))
+        .returning();
+      return updated || undefined;
+    },
+
+    async deleteWorkerHours(id: string): Promise<boolean> {
+      const result = await db
+        .delete(workerHours)
+        .where(eq(workerHours.id, id))
+        .returning();
       return result.length > 0;
     },
   };

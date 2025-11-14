@@ -842,6 +842,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Worker Hours routes
+
+  // GET /api/workers/:workerId/hours - Get all hours for a worker (requires worker policy: staff or worker with matching email)
+  app.get("/api/workers/:workerId/hours", requireAuth, requireAccess(policies.worker), async (req, res) => {
+    try {
+      const { workerId } = req.params;
+      const hours = await storage.workers.getWorkerHours(workerId);
+      res.json(hours);
+    } catch (error) {
+      console.error("Failed to fetch worker hours:", error);
+      res.status(500).json({ message: "Failed to fetch worker hours" });
+    }
+  });
+
+  // POST /api/workers/:workerId/hours - Create a new hours entry for a worker (requires workers.manage permission)
+  app.post("/api/workers/:workerId/hours", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+    try {
+      const { workerId } = req.params;
+      const { month, year, employerId, employmentStatusId, hours } = req.body;
+
+      if (!month || !year || !employerId || !employmentStatusId) {
+        return res.status(400).json({ message: "Month, year, employer ID, and employment status ID are required" });
+      }
+
+      const hoursEntry = await storage.workers.createWorkerHours({
+        workerId,
+        month,
+        year,
+        employerId,
+        employmentStatusId,
+        hours: hours ?? null,
+      });
+
+      res.status(201).json(hoursEntry);
+    } catch (error: any) {
+      console.error("Failed to create worker hours:", error);
+      if (error.message?.includes("duplicate key") || error.code === "23505") {
+        return res.status(409).json({ message: "Hours entry already exists for this worker, employer, and month/year" });
+      }
+      res.status(500).json({ message: "Failed to create worker hours" });
+    }
+  });
+
+  // PATCH /api/worker-hours/:id - Update a worker hours entry (requires workers.manage permission)
+  app.patch("/api/worker-hours/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { employerId, employmentStatusId, hours } = req.body;
+
+      const updated = await storage.workers.updateWorkerHours(id, {
+        employerId,
+        employmentStatusId,
+        hours: hours ?? null,
+      });
+
+      if (!updated) {
+        return res.status(404).json({ message: "Worker hours entry not found" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Failed to update worker hours:", error);
+      res.status(500).json({ message: "Failed to update worker hours" });
+    }
+  });
+
+  // DELETE /api/worker-hours/:id - Delete a worker hours entry (requires workers.manage permission)
+  app.delete("/api/worker-hours/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.workers.deleteWorkerHours(id);
+
+      if (!deleted) {
+        return res.status(404).json({ message: "Worker hours entry not found" });
+      }
+
+      res.status(204).send();
+    } catch (error) {
+      console.error("Failed to delete worker hours:", error);
+      res.status(500).json({ message: "Failed to delete worker hours" });
+    }
+  });
+
   // GET /api/workers/:workerId/logs - Get all logs related to a worker (requires staff permission)
   app.get("/api/workers/:workerId/logs", requireAuth, requireAccess(policies.staff), async (req, res) => {
     try {

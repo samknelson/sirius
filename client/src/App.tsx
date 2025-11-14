@@ -22,6 +22,7 @@ import WorkerIDs from "@/pages/worker-ids";
 import WorkerBirthDate from "@/pages/worker-birth-date";
 import WorkerGender from "@/pages/worker-gender";
 import WorkerBenefits from "@/pages/worker-benefits";
+import WorkerHours from "@/pages/worker-hours";
 import WorkerEmploymentHistory from "@/pages/WorkerEmploymentHistory";
 import WorkerLogs from "@/pages/worker-logs";
 import WorkerAddresses from "@/pages/worker-addresses";
@@ -207,6 +208,14 @@ function Router() {
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
             <WorkerBenefits />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/hours">
+        <ProtectedRoute permission="workers.view">
+          <AuthenticatedLayout>
+            <WorkerHours />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

@@ -26,7 +26,7 @@ export function useWorkerLayout() {
 }
 
 interface WorkerLayoutProps {
-  activeTab: "details" | "identity" | "name" | "email" | "ids" | "addresses" | "phone-numbers" | "birth-date" | "gender" | "employment-history" | "benefits" | "logs" | "delete";
+  activeTab: "details" | "identity" | "name" | "email" | "ids" | "addresses" | "phone-numbers" | "birth-date" | "gender" | "employment-history" | "benefits" | "hours" | "logs" | "delete";
   children: ReactNode;
 }
 
@@ -152,6 +152,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     { id: "contact", label: "Contact", href: `/workers/${worker.id}/email` },
     { id: "employment-history", label: "Employment History", href: `/workers/${worker.id}/employment-history` },
     { id: "benefits", label: "Benefits", href: `/workers/${worker.id}/benefits` },
+    { id: "hours", label: "Hours", href: `/workers/${worker.id}/hours` },
     { id: "logs", label: "Logs", href: `/workers/${worker.id}/logs` },
     { id: "delete", label: "Delete", href: `/workers/${worker.id}/delete` },
   ];
