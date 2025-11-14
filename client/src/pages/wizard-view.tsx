@@ -57,12 +57,8 @@ export default function WizardView() {
   const { toast } = useToast();
 
   const { data: wizard, isLoading: wizardLoading, error: wizardError } = useQuery<Wizard>({
-    queryKey: ["/api/wizards", id],
-    queryFn: async () => {
-      const response = await fetch(`/api/wizards/${id}`, { credentials: "include" });
-      if (!response.ok) throw new Error("Wizard not found");
-      return response.json();
-    },
+    queryKey: [`/api/wizards/${id}`],
+    enabled: !!id,
   });
 
   const { data: allWizardTypes } = useQuery<WizardType[]>({
@@ -73,52 +69,36 @@ export default function WizardView() {
   const wizardType = allWizardTypes?.find(t => t.name === wizard?.type);
 
   const { data: wizardStatuses } = useQuery<WizardStatus[]>({
-    queryKey: ["/api/wizard-types", wizard?.type, "statuses"],
-    queryFn: async () => {
-      const response = await fetch(`/api/wizard-types/${wizard?.type}/statuses`, { credentials: "include" });
-      if (!response.ok) throw new Error("Failed to fetch statuses");
-      return response.json();
-    },
+    queryKey: [`/api/wizard-types/${wizard?.type}/statuses`],
     enabled: !!wizard,
   });
 
   const { data: wizardSteps } = useQuery<WizardStep[]>({
-    queryKey: ["/api/wizard-types", wizard?.type, "steps"],
-    queryFn: async () => {
-      const response = await fetch(`/api/wizard-types/${wizard?.type}/steps`, { credentials: "include" });
-      if (!response.ok) throw new Error("Failed to fetch steps");
-      return response.json();
-    },
+    queryKey: [`/api/wizard-types/${wizard?.type}/steps`],
     enabled: !!wizard,
   });
 
   const { data: employer } = useQuery<Employer>({
-    queryKey: ["/api/employers", wizard?.entityId],
-    queryFn: async () => {
-      const response = await fetch(`/api/employers/${wizard?.entityId}`, { credentials: "include" });
-      if (!response.ok) throw new Error("Employer not found");
-      return response.json();
-    },
+    queryKey: [`/api/employers/${wizard?.entityId}`],
     enabled: !!wizard?.entityId && wizardType?.entityType === 'employer',
   });
 
   const { data: wizardFiles = [] } = useQuery<any[]>({
-    queryKey: ["/api/wizards", id, "files"],
-    enabled: !!wizard,
+    queryKey: [`/api/wizards/${id}/files`],
+    enabled: !!wizard && !!id,
   });
 
   const { data: wizardFields = [] } = useQuery<any[]>({
-    queryKey: ["/api/wizard-types", wizard?.type, "fields"],
+    queryKey: [`/api/wizard-types/${wizard?.type}/fields`],
     enabled: !!wizard && !!wizardType?.isFeed,
   });
 
   const updateStatusMutation = useMutation({
     mutationFn: async (newStatus: string) => {
-      const response = await apiRequest("PATCH", `/api/wizards/${id}`, { status: newStatus });
-      return await response.json();
+      return await apiRequest("PATCH", `/api/wizards/${id}`, { status: newStatus });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/wizards", id] });
+      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${id}`] });
       toast({
         title: "Status Updated",
         description: "Wizard status has been updated successfully.",
@@ -135,11 +115,10 @@ export default function WizardView() {
 
   const nextStepMutation = useMutation({
     mutationFn: async (payload?: any) => {
-      const response = await apiRequest("POST", `/api/wizards/${id}/steps/next`, { payload });
-      return await response.json();
+      return await apiRequest("POST", `/api/wizards/${id}/steps/next`, { payload });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/wizards", id] });
+      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${id}`] });
       toast({
         title: "Step Advanced",
         description: "Moved to next step successfully.",
@@ -156,11 +135,10 @@ export default function WizardView() {
 
   const previousStepMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", `/api/wizards/${id}/steps/previous`, {});
-      return await response.json();
+      return await apiRequest("POST", `/api/wizards/${id}/steps/previous`, {});
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/wizards", id] });
+      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${id}`] });
       toast({
         title: "Step Returned",
         description: "Moved to previous step successfully.",
@@ -177,10 +155,7 @@ export default function WizardView() {
 
   const deleteWizardMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("DELETE", `/api/wizards/${id}`, {});
-      if (!response.ok) {
-        throw new Error("Failed to delete wizard");
-      }
+      return await apiRequest("DELETE", `/api/wizards/${id}`, {});
     },
     onSuccess: () => {
       toast({

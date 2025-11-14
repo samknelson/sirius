@@ -51,16 +51,15 @@ export default function Reports() {
   // Filter report wizards client-side from all wizards
   const reportWizards = allWizards?.filter(w => w.type.startsWith('report_')) || [];
 
-  const createReportMutation = useMutation({
+  const createReportMutation = useMutation<Wizard, Error, string>({
     mutationFn: async (reportType: string) => {
       // apiRequest already returns parsed JSON, not a Response object
-      const wizard = await apiRequest("POST", `/api/wizards`, {
+      return await apiRequest("POST", `/api/wizards`, {
         type: reportType,
         status: "draft",
         entityId: null,
         data: {}
-      });
-      return wizard;
+      }) as Promise<Wizard>;
     },
     onSuccess: (newWizard: Wizard) => {
       queryClient.invalidateQueries({ queryKey: ["/api/wizards"] });
