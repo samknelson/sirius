@@ -55,6 +55,7 @@ export class ReportWorkersInvalidSSN extends WizardReport {
     // Query workers with non-empty SSN, joining with contacts table
     const workersWithSSN = await db
       .select({
+        workerId: workers.id,
         siriusId: workers.siriusId,
         ssn: workers.ssn,
         displayName: contacts.displayName,
@@ -80,6 +81,7 @@ export class ReportWorkersInvalidSSN extends WizardReport {
       // Only include workers with invalid SSNs
       if (!validation.valid) {
         records.push({
+          workerId: worker.workerId,
           siriusId: worker.siriusId,
           displayName: worker.displayName || '',
           ssn: worker.ssn,
