@@ -20,16 +20,19 @@ export function RunStep({ wizardId, wizardType, data }: RunStepProps) {
   const { data: wizard } = useQuery<any>({
     queryKey: [`/api/wizards/${wizardId}`],
     refetchInterval: (query) => {
-      // Poll every second if the run step is in progress
+      // Poll every second if the run step is actually in progress (percentComplete > 0)
       const wizardData = query.state.data;
       const runProgress = wizardData?.data?.progress?.run;
-      return runProgress?.status === 'in_progress' ? 1000 : false;
+      const actuallyRunning = runProgress?.status === 'in_progress' && (runProgress?.percentComplete || 0) > 0;
+      return actuallyRunning ? 1000 : false;
     },
   });
 
   const wizardData = wizard?.data || data;
   const runProgress = wizardData?.progress?.run;
-  const isGenerating = runProgress?.status === 'in_progress';
+  // Only consider it "generating" if status is in_progress AND percentComplete > 0
+  // This prevents showing spinner when step is first entered (status is auto-set to in_progress)
+  const isGenerating = runProgress?.status === 'in_progress' && (runProgress?.percentComplete || 0) > 0;
   const completed = runProgress?.status === 'completed';
   const error = runProgress?.error;
   const progress = runProgress?.percentComplete || 0;
