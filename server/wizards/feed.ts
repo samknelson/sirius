@@ -533,11 +533,24 @@ export abstract class FeedWizard extends BaseWizard {
               await storage.workers.updateWorkerContactBirthDate(existingWorker.id, birthDate);
             }
 
+            let hoursProcessed = true;
+            let hoursError: string | undefined;
+
+            // Process worker hours if this wizard type supports it (for gbhet_legal_workers wizards)
+            if (typeof (this as any).processWorkerHours === 'function') {
+              try {
+                await (this as any).processWorkerHours(existingWorker.id, row, wizard);
+              } catch (err: any) {
+                hoursProcessed = false;
+                hoursError = err.message || 'Hours processing failed';
+              }
+            }
+
             updatedCount++;
             rowResults.push({
               rowIndex,
               status: 'success',
-              message: 'Worker updated'
+              message: hoursProcessed ? 'Worker updated' : `Worker updated (hours processing failed: ${hoursError})`
             });
             
             if (onProgress) {
@@ -594,22 +607,32 @@ export abstract class FeedWizard extends BaseWizard {
               await storage.workers.updateWorkerContactBirthDate(workerId, birthDate);
             }
 
+            let hoursProcessed = true;
+            let hoursError: string | undefined;
+
+            // Process worker hours if this wizard type supports it (for gbhet_legal_workers wizards)
+            if (typeof (this as any).processWorkerHours === 'function') {
+              try {
+                await (this as any).processWorkerHours(workerId, row, wizard);
+              } catch (err: any) {
+                hoursProcessed = false;
+                hoursError = err.message || 'Hours processing failed';
+              }
+            }
+
             // Increment appropriate counter and add row result
             if (isNewWorker) {
               createdCount++;
-              rowResults.push({
-                rowIndex,
-                status: 'success',
-                message: 'Worker created'
-              });
             } else {
               updatedCount++;
-              rowResults.push({
-                rowIndex,
-                status: 'success',
-                message: 'Worker updated'
-              });
             }
+
+            const workerAction = isNewWorker ? 'created' : 'updated';
+            rowResults.push({
+              rowIndex,
+              status: 'success',
+              message: hoursProcessed ? `Worker ${workerAction}` : `Worker ${workerAction} (hours processing failed: ${hoursError})`
+            });
 
             if (onProgress) {
               onProgress({

@@ -45,7 +45,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   entityType = 'employer';
   
   // Cache for employment status options to avoid repeated DB queries
-  private employmentStatusCache: Array<{ name: string; code: string }> | null = null;
+  private employmentStatusCache: Array<{ id: string; name: string; code: string }> | null = null;
 
   /**
    * Get the field definitions for the GBHET Legal Workers feed
@@ -190,10 +190,10 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   /**
    * Get employment status options (cached to avoid repeated DB queries)
    */
-  private async getEmploymentStatusOptions(): Promise<Array<{ name: string; code: string }>> {
+  private async getEmploymentStatusOptions(): Promise<Array<{ id: string; name: string; code: string }>> {
     if (!this.employmentStatusCache) {
       const statuses = await storage.options.employmentStatus.getAll();
-      this.employmentStatusCache = statuses.map(s => ({ name: s.name, code: s.code }));
+      this.employmentStatusCache = statuses.map(s => ({ id: s.id, name: s.name, code: s.code }));
     }
     return this.employmentStatusCache;
   }
@@ -278,4 +278,87 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     
     return errors;
   }
+
+  /**
+   * Process worker hours for a row during feed processing
+   * This method is called by the processFeedData method when processing each worker
+   */
+  protected async processWorkerHours(workerId: string, row: Record<string, any>, wizard: any): Promise<void> {
+    // Extract hours and employment status from row
+    const rawHours = row.numberOfHours;
+    const employmentStatusValue = row.employmentStatus;
+
+    // Validate hours - if missing or blank, skip
+    if (rawHours === undefined || rawHours === null || rawHours === '') {
+      return; // Skip hours processing if not provided
+    }
+
+    // Parse hours as number
+    const hours = typeof rawHours === 'number' ? rawHours : parseFloat(String(rawHours));
+    if (!isFinite(hours)) {
+      throw new Error(`Invalid hours value: ${rawHours}`);
+    }
+
+    // Validate employment status - it should already be normalized from validation step
+    if (!employmentStatusValue || employmentStatusValue === '') {
+      throw new Error('Employment status is required when hours are provided');
+    }
+
+    // Get employer ID from wizard entity
+    const employerId = wizard.entity_id;
+    if (!employerId) {
+      throw new Error('Wizard is not linked to an employer');
+    }
+
+    // Get year and month from wizard launch arguments (coerce to numbers)
+    const launchArguments = wizard.launch_arguments || {};
+    const yearValue = launchArguments.year;
+    const monthValue = launchArguments.month;
+
+    if (yearValue === undefined || yearValue === null || monthValue === undefined || monthValue === null) {
+      throw new Error('Year and month are required in wizard launch arguments');
+    }
+
+    const year = typeof yearValue === 'number' ? yearValue : parseInt(String(yearValue), 10);
+    const month = typeof monthValue === 'number' ? monthValue : parseInt(String(monthValue), 10);
+
+    if (!isFinite(year) || !isFinite(month) || year < 2000 || year > 2100 || month < 1 || month > 12) {
+      throw new Error(`Invalid year/month in wizard launch arguments: ${yearValue}/${monthValue}`);
+    }
+
+    // Look up employment status ID by direct ID, name, or code
+    const employmentStatusOptions = await this.getEmploymentStatusOptions();
+    
+    // First, check if the value is a direct ID match
+    let matchingOption = employmentStatusOptions.find(option => option.id === employmentStatusValue);
+    
+    // If not a direct ID, try normalized name/code matching
+    if (!matchingOption) {
+      const normalizedInput = normalizeForComparison(String(employmentStatusValue));
+      matchingOption = employmentStatusOptions.find(option => {
+        if (normalizeForComparison(option.name) === normalizedInput) {
+          return true;
+        }
+        if (option.code && normalizeForComparison(option.code) === normalizedInput) {
+          return true;
+        }
+        return false;
+      });
+    }
+
+    if (!matchingOption) {
+      throw new Error(`Employment status "${employmentStatusValue}" not found; verify name, code, or ID`);
+    }
+
+    // Upsert worker hours using the matched employment status ID
+    await storage.workers.upsertWorkerHours({
+      workerId,
+      employerId,
+      employmentStatusId: matchingOption.id,
+      year,
+      month,
+      hours
+    });
+  }
+
 }

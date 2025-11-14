@@ -47,6 +47,7 @@ export interface WorkerStorage {
   createWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null }): Promise<WorkerHours>;
   updateWorkerHours(id: string, data: { employerId?: string; employmentStatusId?: string; hours?: number | null }): Promise<WorkerHours | undefined>;
   deleteWorkerHours(id: string): Promise<boolean>;
+  upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null }): Promise<WorkerHours>;
 }
 
 export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerStorage {
@@ -334,6 +335,24 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .returning();
       return result.length > 0;
     },
+
+    async upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null }): Promise<WorkerHours> {
+      const [hours] = await db
+        .insert(workerHours)
+        .values({
+          ...data,
+          day: 1, // Always use day 1 as specified
+        })
+        .onConflictDoUpdate({
+          target: [workerHours.workerId, workerHours.employerId, workerHours.year, workerHours.month, workerHours.day],
+          set: {
+            employmentStatusId: data.employmentStatusId,
+            hours: data.hours,
+          },
+        })
+        .returning();
+      return hours;
+    },
   };
 }
 
@@ -505,6 +524,70 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
             month: hoursEntry.month,
             hours: hoursEntry.hours,
             note: `Hours entry deleted for ${hoursEntry.year}/${hoursEntry.month}`
+          }
+        };
+      }
+    },
+    upsertWorkerHours: {
+      enabled: true,
+      getEntityId: (args, result) => result?.id || 'hours entry',
+      getHostEntityId: (args) => args[0]?.workerId, // Worker ID is the host
+      getDescription: async (args, result, beforeState, afterState, storage) => {
+        const operation = beforeState && beforeState.hours ? 'update' : 'create';
+        const workerId = args[0]?.workerId || result?.workerId;
+        const year = args[0]?.year || result?.year;
+        const month = args[0]?.month || result?.month;
+        return `Worker hours ${operation}d for worker ${workerId} (${year}/${month})`;
+      },
+      before: async (args, storage) => {
+        // Check if an existing entry exists
+        const [existingEntry] = await db
+          .select()
+          .from(workerHours)
+          .where(
+            and(
+              eq(workerHours.workerId, args[0].workerId),
+              eq(workerHours.employerId, args[0].employerId),
+              eq(workerHours.year, args[0].year),
+              eq(workerHours.month, args[0].month),
+              eq(workerHours.day, 1)
+            )
+          );
+        
+        if (!existingEntry) {
+          return null;
+        }
+        
+        const [employer] = await db.select().from(employers).where(eq(employers.id, existingEntry.employerId));
+        const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, existingEntry.employmentStatusId));
+        return {
+          hours: existingEntry,
+          employer: employer,
+          employmentStatus: employmentStatus,
+          metadata: {
+            workerId: existingEntry.workerId,
+            year: existingEntry.year,
+            month: existingEntry.month,
+            hours: existingEntry.hours,
+            operation: 'update'
+          }
+        };
+      },
+      after: async (args, result, storage) => {
+        if (!result) return null;
+        
+        const [employer] = await db.select().from(employers).where(eq(employers.id, result.employerId));
+        const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, result.employmentStatusId));
+        
+        return {
+          hours: result,
+          employer: employer,
+          employmentStatus: employmentStatus,
+          metadata: {
+            workerId: result.workerId,
+            year: result.year,
+            month: result.month,
+            hours: result.hours
           }
         };
       }
