@@ -340,14 +340,15 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 /**
  * Logging configuration for worker storage operations
  * 
- * Note: Only createWorker and deleteWorker are logged at the worker level.
- * Update methods (updateWorkerContactName, updateWorkerContactEmail, updateWorkerSSN, etc.) 
- * are not logged at the worker level to avoid redundant entries. Contact-related updates 
- * are logged via the contact storage module, and SSN updates are simple field changes that 
- * don't require separate logging.
+ * Note: createWorker and deleteWorker are logged at the worker level because they involve 
+ * both worker and contact records, providing a clear entry point for tracking worker lifecycle.
  * 
- * The create and delete operations are logged here because they involve both worker
- * and contact records, providing a clear entry point for tracking worker lifecycle.
+ * Contact-related update methods (updateWorkerContactName, updateWorkerContactEmail, etc.) 
+ * are not logged at the worker level to avoid redundant entries - they are logged via the 
+ * contact storage module.
+ * 
+ * Worker hours CRUD operations are logged here with the worker as the host entity to maintain
+ * a complete audit trail of worker-related data changes.
  */
 export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
   module: 'workers',
@@ -401,6 +402,109 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
           workerId: args[0],
           metadata: {
             note: 'Worker and associated contact successfully deleted'
+          }
+        };
+      }
+    },
+    createWorkerHours: {
+      enabled: true,
+      getEntityId: (args, result) => result?.id || 'new hours entry',
+      getHostEntityId: (args) => args[0]?.workerId, // Worker ID is the host
+      after: async (args, result, storage) => {
+        // Fetch related employer and employment status for enriched logging
+        const [employer] = await db.select().from(employers).where(eq(employers.id, result.employerId));
+        const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, result.employmentStatusId));
+        return {
+          hours: result,
+          employer: employer,
+          employmentStatus: employmentStatus,
+          metadata: {
+            workerId: result.workerId,
+            year: result.year,
+            month: result.month,
+            hours: result.hours,
+            note: `Hours entry created for ${result.year}/${result.month}`
+          }
+        };
+      }
+    },
+    updateWorkerHours: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Hours entry ID
+      getHostEntityId: async (args, result, beforeState) => {
+        // Get worker ID from the hours entry
+        if (beforeState?.hours?.workerId) {
+          return beforeState.hours.workerId;
+        }
+        const [hoursEntry] = await db.select().from(workerHours).where(eq(workerHours.id, args[0]));
+        return hoursEntry?.workerId;
+      },
+      before: async (args, storage) => {
+        const [hoursEntry] = await db.select().from(workerHours).where(eq(workerHours.id, args[0]));
+        if (!hoursEntry) {
+          return null;
+        }
+        
+        const [employer] = await db.select().from(employers).where(eq(employers.id, hoursEntry.employerId));
+        const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursEntry.employmentStatusId));
+        return {
+          hours: hoursEntry,
+          employer: employer,
+          employmentStatus: employmentStatus,
+          metadata: {
+            workerId: hoursEntry.workerId,
+            year: hoursEntry.year,
+            month: hoursEntry.month
+          }
+        };
+      },
+      after: async (args, result, storage) => {
+        if (!result) return null;
+        
+        const [employer] = await db.select().from(employers).where(eq(employers.id, result.employerId));
+        const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, result.employmentStatusId));
+        return {
+          hours: result,
+          employer: employer,
+          employmentStatus: employmentStatus,
+          metadata: {
+            workerId: result.workerId,
+            year: result.year,
+            month: result.month,
+            hours: result.hours
+          }
+        };
+      }
+    },
+    deleteWorkerHours: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Hours entry ID
+      getHostEntityId: async (args, result, beforeState) => {
+        // Get worker ID from the hours entry
+        if (beforeState?.hours?.workerId) {
+          return beforeState.hours.workerId;
+        }
+        const [hoursEntry] = await db.select().from(workerHours).where(eq(workerHours.id, args[0]));
+        return hoursEntry?.workerId;
+      },
+      before: async (args, storage) => {
+        const [hoursEntry] = await db.select().from(workerHours).where(eq(workerHours.id, args[0]));
+        if (!hoursEntry) {
+          return null;
+        }
+        
+        const [employer] = await db.select().from(employers).where(eq(employers.id, hoursEntry.employerId));
+        const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursEntry.employmentStatusId));
+        return {
+          hours: hoursEntry,
+          employer: employer,
+          employmentStatus: employmentStatus,
+          metadata: {
+            workerId: hoursEntry.workerId,
+            year: hoursEntry.year,
+            month: hoursEntry.month,
+            hours: hoursEntry.hours,
+            note: `Hours entry deleted for ${hoursEntry.year}/${hoursEntry.month}`
           }
         };
       }
