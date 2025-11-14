@@ -495,23 +495,45 @@ export abstract class FeedWizard extends BaseWizard {
             }
 
           } else {
-            // Create mode: create new worker
+            // Create mode: upsert behavior (update if SSN exists, create if not)
             if (!firstName && !lastName) {
               throw new Error('First name or last name is required');
             }
 
-            // Create worker with name
-            const fullName = [firstName, lastName].filter(Boolean).join(' ');
-            const newWorker = await storage.workers.createWorker(fullName);
-
-            // Set SSN if provided
+            let workerId: string;
+            
+            // Check if worker with this SSN already exists
             if (ssn) {
-              await storage.workers.updateWorkerSSN(newWorker.id, ssn);
+              const existingWorker = await storage.workers.getWorkerBySSN(ssn);
+              if (existingWorker) {
+                // Worker exists, update it
+                workerId = existingWorker.id;
+              } else {
+                // Worker doesn't exist, create new one
+                const fullName = [firstName, lastName].filter(Boolean).join(' ');
+                const newWorker = await storage.workers.createWorker(fullName);
+                workerId = newWorker.id;
+                // Set SSN for the new worker
+                await storage.workers.updateWorkerSSN(workerId, ssn);
+              }
+            } else {
+              // No SSN provided, always create new worker
+              const fullName = [firstName, lastName].filter(Boolean).join(' ');
+              const newWorker = await storage.workers.createWorker(fullName);
+              workerId = newWorker.id;
             }
 
-            // Set birth date if provided
+            // Update name components if provided
+            if (firstName || lastName) {
+              await storage.workers.updateWorkerContactNameComponents(workerId, {
+                given: firstName || undefined,
+                family: lastName || undefined
+              });
+            }
+
+            // Update birth date if provided
             if (birthDate) {
-              await storage.workers.updateWorkerContactBirthDate(newWorker.id, birthDate);
+              await storage.workers.updateWorkerContactBirthDate(workerId, birthDate);
             }
 
             successCount++;
