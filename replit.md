@@ -7,14 +7,18 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 ## Report Wizard Framework
 -   **Custom Reporting System**: Implemented extensible report wizard framework for worker data analysis, integrated with existing wizard infrastructure
 -   **WizardReport Base Class** (server/wizards/report.ts): Three-step workflow (Inputs → Run → Results) with abstract methods for column definitions and record fetching. Supports batch processing with progress tracking
--   **Report Data Storage**: Added `wizard_report_data` table with temporal ordering (created_at) for storing report outputs. Multiple reports per wizard supported with `getLatestReportData()` retrieving most recent results
--   **Storage Methods**: Extended WizardStorage with `saveReportData()`, `getReportData()`, and `getLatestReportData()` for report data management
+-   **Report Data Storage**: Per-worker row storage in `wizard_report_data` table with unique constraint on `(wizard_id, pk)` where `pk` is the worker's UUID. Each report result gets its own database row for granular querying and efficient updates.
+    -   Added `pk` column (varchar NOT NULL) to support per-worker storage
+    -   Unique index on `(wizard_id, pk)` prevents duplicate worker entries
+    -   Re-run support: `deleteReportData()` removes old report data before generating new results
+    -   Zero-record handling: Metadata row (empty pk) persisted when no workers match report criteria
+-   **Storage Methods**: Extended WizardStorage with `saveReportData(wizardId, pk, data)`, `getReportData(wizardId)`, `getLatestReportData(wizardId)`, and `deleteReportData(wizardId)` for complete report lifecycle management
 -   **Concrete Implementations**: 
-    -   `ReportWorkersMissingSSN`: Finds workers with null/empty SSN using efficient database JOINs (workers LEFT JOIN contacts)
-    -   `ReportWorkersInvalidSSN`: Finds workers with invalid SSN format using database JOINs and validateSSN() 
+    -   `ReportWorkersMissingSSN`: Finds workers with null/empty SSN using efficient database JOINs (workers LEFT JOIN contacts), includes workers.id as workerId
+    -   `ReportWorkersInvalidSSN`: Finds workers with invalid SSN format using database JOINs and validateSSN(), includes workers.id as workerId
 -   **API Endpoints**: 
-    -   POST /api/wizards/:id/generate-report - Triggers report generation and returns results
-    -   GET /api/wizards/:id/report-data - Retrieves latest report data
+    -   POST /api/wizards/:id/generate-report - Triggers report generation, saves individual worker rows, returns aggregated results
+    -   GET /api/wizards/:id/report-data - Retrieves all report rows and reconstructs full ReportResults structure
 -   **Frontend Components**:
     -   InputsStep: Report configuration UI (extensible for future parameters)
     -   RunStep: Report generation trigger with real-time progress polling via useQuery refetchInterval
@@ -22,7 +26,7 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 -   **Reports Page** (/reports): Lists report wizard types, shows recent reports with status, dialog for creating new reports with admin-only access
 -   **Navigation**: Added "Reports" link to Header navigation (admin policy required)
 -   **Step Registry Integration**: Registered report step components with completion evaluators (evaluateRunComplete checks wizard.data.progress.run.status)
--   **Performance Optimization**: Report fetchers use database JOINs instead of serial per-record lookups to avoid O(n²) performance issues
+-   **Performance Optimization**: Report fetchers use database JOINs instead of serial per-record lookups to avoid O(n²) performance issues. Single query reconstruction in getReportResults() maintains frontend compatibility while enabling per-worker persistence.
 
 # Recent Changes (November 14, 2025)
 
