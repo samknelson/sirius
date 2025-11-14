@@ -1044,6 +1044,91 @@ export function registerWizardRoutes(
     }
   );
 
+  // Process wizard data with SSE for progress tracking
+  app.get("/api/wizards/:id/process",
+    checkWizardAccess,
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const wizard = (req as any).wizard;
+
+        // Get wizard type instance
+        const wizardType = wizardRegistry.get(wizard.type);
+        if (!wizardType || !(wizardType instanceof FeedWizard)) {
+          return res.status(400).json({ message: "This wizard type does not support processing" });
+        }
+
+        // Set up SSE headers
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders();
+
+        // Send initial event
+        res.write(`data: ${JSON.stringify({ type: 'start', message: 'Starting processing...' })}\n\n`);
+
+        // Run processing with progress callback
+        try {
+          const results = await wizardType.processFeedData(
+            id,
+            100, // batch size
+            (progress) => {
+              // Send progress event
+              res.write(`data: ${JSON.stringify({ 
+                type: 'progress', 
+                ...progress 
+              })}\n\n`);
+            }
+          );
+
+          // Update wizard status based on results
+          const finalStatus = results.failureCount > 0 ? 'needs_review' : 'complete';
+          
+          // Update wizard with final status
+          await storage.wizards.update(id, {
+            status: finalStatus,
+            data: {
+              ...wizard.data,
+              progress: {
+                ...wizard.data?.progress,
+                process: {
+                  status: 'completed',
+                  completedAt: new Date().toISOString()
+                }
+              }
+            }
+          });
+
+          // Send completion event
+          res.write(`data: ${JSON.stringify({ 
+            type: 'complete', 
+            results,
+            wizardStatus: finalStatus
+          })}\n\n`);
+          res.end();
+        } catch (processingError) {
+          // Send error event
+          res.write(`data: ${JSON.stringify({ 
+            type: 'error', 
+            message: processingError instanceof Error ? processingError.message : 'Processing failed' 
+          })}\n\n`);
+          res.end();
+        }
+      } catch (error) {
+        console.error("Processing error:", error);
+        if (!res.headersSent) {
+          res.status(500).json({ message: error instanceof Error ? error.message : "Failed to start processing" });
+        } else {
+          res.write(`data: ${JSON.stringify({ 
+            type: 'error', 
+            message: error instanceof Error ? error.message : 'Processing failed' 
+          })}\n\n`);
+          res.end();
+        }
+      }
+    }
+  );
+
   // Delete a file from a wizard
   app.delete("/api/wizards/:id/files/:fileId",
     checkWizardAccess,
