@@ -26,6 +26,7 @@ import WorkerEmploymentHistory from "@/pages/WorkerEmploymentHistory";
 import WorkerLogs from "@/pages/worker-logs";
 import WorkerAddresses from "@/pages/worker-addresses";
 import WorkerPhoneNumbers from "@/pages/worker-phone-numbers";
+import WorkerDelete from "@/pages/worker-delete";
 import Employers from "@/pages/employers";
 import EmployersAdd from "@/pages/employers-add";
 import EmployerView from "@/pages/employer-view";
@@ -222,6 +223,14 @@ function Router() {
         <ProtectedRoute policy="staff">
           <AuthenticatedLayout>
             <WorkerLogs />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/delete">
+        <ProtectedRoute policy="worker">
+          <AuthenticatedLayout>
+            <WorkerDelete />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
