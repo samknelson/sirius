@@ -6,24 +6,25 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { MessageSquare, Save, AlertCircle } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
 import { Role } from "@shared/schema";
-import DOMPurify from "isomorphic-dompurify";
 import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
 import { PluginSettingsProps } from "../types";
 
-export function WelcomeMessagesSettings({ plugin, queryClient, onConfigSaved }: PluginSettingsProps) {
+type WelcomeMessagesSettings = Record<string, string>;
+
+export function WelcomeMessagesSettings({ plugin, queryClient, onConfigSaved, loadSettings, saveSettings }: PluginSettingsProps<WelcomeMessagesSettings>) {
   const { toast } = useToast();
   
   const { data: roles = [], isLoading: rolesLoading } = useQuery<Role[]>({
     queryKey: ["/api/admin/roles"],
   });
 
-  const { data: welcomeMessages = {}, isLoading: messagesLoading } = useQuery<Record<string, string>>({
-    queryKey: ["/api/welcome-messages"],
+  const { data: welcomeMessages = {}, isLoading: messagesLoading } = useQuery<WelcomeMessagesSettings>({
+    queryKey: [`/api/dashboard-plugins/${plugin.id}/settings`],
+    queryFn: loadSettings,
   });
 
-  const [editedMessages, setEditedMessages] = useState<Record<string, string>>({});
+  const [editedMessages, setEditedMessages] = useState<WelcomeMessagesSettings>({});
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,10 +35,14 @@ export function WelcomeMessagesSettings({ plugin, queryClient, onConfigSaved }: 
 
   const updateMessageMutation = useMutation({
     mutationFn: async ({ roleId, message }: { roleId: string; message: string }) => {
-      return apiRequest("PUT", `/api/welcome-messages/${roleId}`, { message });
+      const newSettings = {
+        ...editedMessages,
+        [roleId]: message,
+      };
+      await saveSettings(newSettings);
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/welcome-messages"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/dashboard-plugins/${plugin.id}/settings`] });
       toast({
         title: "Welcome Message Updated",
         description: `Dashboard message for this role has been updated successfully.`,

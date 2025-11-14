@@ -148,6 +148,43 @@ export function registerDashboardRoutes(
       const variableName = `dashboard_plugin_${pluginId}_settings`;
       const variable = await storage.variables.getByName(variableName);
       
+      // If unified settings don't exist, try to migrate from legacy format
+      if (!variable && pluginId === "welcome_messages") {
+        // Migrate welcome messages from individual role variables
+        const roles = await storage.users.getAllRoles();
+        const migratedSettings: Record<string, string> = {};
+        
+        for (const role of roles) {
+          const legacyVarName = `welcome_message_${role.id}`;
+          const legacyVar = await storage.variables.getByName(legacyVarName);
+          if (legacyVar) {
+            migratedSettings[role.id] = legacyVar.value as string;
+          }
+        }
+        
+        // Save migrated settings to new unified variable
+        if (Object.keys(migratedSettings).length > 0) {
+          await storage.variables.create({ 
+            name: variableName, 
+            value: migratedSettings 
+          });
+          res.json(migratedSettings);
+          return;
+        }
+      } else if (!variable && pluginId === "employer_monthly") {
+        // Migrate employer monthly config from legacy variable
+        const legacyVar = await storage.variables.getByName('employer_monthly_plugin_config');
+        if (legacyVar) {
+          const migratedSettings = legacyVar.value;
+          await storage.variables.create({ 
+            name: variableName, 
+            value: migratedSettings 
+          });
+          res.json(migratedSettings);
+          return;
+        }
+      }
+      
       res.json(variable ? variable.value : {});
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch plugin settings" });
