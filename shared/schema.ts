@@ -286,6 +286,14 @@ export const wizardFeedMappings = pgTable("wizard_feed_mappings", {
   index("idx_wizard_feed_mappings_user_type_hash").on(table.userId, table.type, table.firstRowHash),
 ]);
 
+export const wizardReportData = pgTable("wizard_report_data", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  wizardId: varchar("wizard_id").notNull().references(() => wizards.id, { onDelete: 'cascade' }),
+  data: jsonb("data"),
+}, (table) => [
+  index("idx_wizard_report_data_wizard_id").on(table.wizardId),
+]);
+
 export const files = pgTable("files", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   fileName: varchar("file_name").notNull(),
