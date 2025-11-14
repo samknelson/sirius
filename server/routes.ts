@@ -9,7 +9,6 @@ import { registerUserRoutes } from "./modules/users";
 import { registerVariableRoutes } from "./modules/variables";
 import { registerPostalAddressRoutes } from "./modules/postal-addresses";
 import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
-import { registerWorkerEmphistRoutes } from "./modules/worker-emphist";
 import { registerEmployerContactRoutes } from "./modules/employer-contacts";
 import { registerTrustBenefitsRoutes } from "./modules/trust-benefits";
 import { registerOptionsRoutes } from "./modules/options";
@@ -237,9 +236,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register phone number management routes
   registerPhoneNumberRoutes(app, requireAuth, requirePermission);
-  
-  // Register worker employment history routes
-  registerWorkerEmphistRoutes(app, requireAuth, requirePermission);
   
   // Register employer contact routes
   registerEmployerContactRoutes(app, requireAuth, requirePermission);
