@@ -119,6 +119,41 @@ export function registerWizardRoutes(
     }
   });
 
+  app.get("/api/wizards/employer-monthly/employers", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { year, month, wizardType } = req.query;
+      
+      // Validate parameters
+      const yearNum = Number(year);
+      const monthNum = Number(month);
+      
+      if (!year || !month || !wizardType) {
+        return res.status(400).json({ message: "Year, month, and wizardType parameters are required" });
+      }
+      
+      if (!Number.isInteger(yearNum) || yearNum < 1900 || yearNum > 2100) {
+        return res.status(400).json({ message: "Year must be a valid integer between 1900 and 2100" });
+      }
+      
+      if (!Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12) {
+        return res.status(400).json({ message: "Month must be a valid integer between 1 and 12" });
+      }
+      
+      if (typeof wizardType !== 'string' || wizardType.trim() === '') {
+        return res.status(400).json({ message: "Wizard type must be a non-empty string" });
+      }
+      
+      const employersWithUploads = await storage.wizardEmployerMonthly.listAllEmployersWithUploads(
+        yearNum, 
+        monthNum, 
+        wizardType as string
+      );
+      res.json(employersWithUploads);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch employers with monthly uploads" });
+    }
+  });
+
   app.get("/api/wizards/:id", requireAccess(policies.admin), async (req, res) => {
     try {
       const { id } = req.params;
