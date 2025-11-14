@@ -3,6 +3,7 @@ import { storage } from "../storage";
 import { requireAccess } from "../accessControl";
 import { policies } from "../policies";
 import { employerMonthlyPluginConfigSchema } from "@shared/schema";
+import { getPluginMetadata } from "@shared/pluginMetadata";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -107,6 +108,111 @@ export function registerDashboardRoutes(
       res.json({ pluginId, enabled });
     } catch (error) {
       res.status(500).json({ message: "Failed to update plugin configuration" });
+    }
+  });
+
+  // GET /api/dashboard-plugins/:pluginId/settings - Get plugin settings
+  app.get("/api/dashboard-plugins/:pluginId/settings", requireAuth, async (req, res) => {
+    try {
+      const { pluginId } = req.params;
+      const user = req.user as any;
+      const replitUserId = user.claims.sub;
+      const dbUser = await storage.users.getUserByReplitId(replitUserId);
+      
+      if (!dbUser) {
+        res.status(401).json({ message: "User not found" });
+        return;
+      }
+      
+      // Get plugin metadata to check permissions
+      const metadata = getPluginMetadata(pluginId);
+      if (!metadata) {
+        res.status(404).json({ message: "Plugin not found" });
+        return;
+      }
+      
+      // Check permissions
+      if (metadata.requiredPermissions && metadata.requiredPermissions.length > 0) {
+        const userPermissions = await storage.users.getUserPermissions(dbUser.id);
+        const userPermissionKeys = userPermissions.map(p => p.key);
+        const hasPermission = metadata.requiredPermissions.some(
+          perm => userPermissionKeys.includes(perm)
+        );
+        
+        if (!hasPermission) {
+          res.status(403).json({ message: "Access denied: Insufficient permissions" });
+          return;
+        }
+      }
+      
+      const variableName = `dashboard_plugin_${pluginId}_settings`;
+      const variable = await storage.variables.getByName(variableName);
+      
+      res.json(variable ? variable.value : {});
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch plugin settings" });
+    }
+  });
+
+  // PUT /api/dashboard-plugins/:pluginId/settings - Update plugin settings
+  app.put("/api/dashboard-plugins/:pluginId/settings", requireAuth, async (req, res) => {
+    try {
+      const { pluginId } = req.params;
+      const settings = req.body;
+      const user = req.user as any;
+      const replitUserId = user.claims.sub;
+      const dbUser = await storage.users.getUserByReplitId(replitUserId);
+      
+      if (!dbUser) {
+        res.status(401).json({ message: "User not found" });
+        return;
+      }
+      
+      // Get plugin metadata to check permissions and validate schema
+      const metadata = getPluginMetadata(pluginId);
+      if (!metadata) {
+        res.status(404).json({ message: "Plugin not found" });
+        return;
+      }
+      
+      // Check permissions
+      if (metadata.requiredPermissions && metadata.requiredPermissions.length > 0) {
+        const userPermissions = await storage.users.getUserPermissions(dbUser.id);
+        const userPermissionKeys = userPermissions.map(p => p.key);
+        const hasPermission = metadata.requiredPermissions.some(
+          perm => userPermissionKeys.includes(perm)
+        );
+        
+        if (!hasPermission) {
+          res.status(403).json({ message: "Access denied: Insufficient permissions" });
+          return;
+        }
+      }
+      
+      // Validate settings against schema if provided
+      if (metadata.settingsSchema) {
+        const result = metadata.settingsSchema.safeParse(settings);
+        if (!result.success) {
+          res.status(400).json({ 
+            message: "Invalid settings format",
+            errors: result.error.errors,
+          });
+          return;
+        }
+      }
+      
+      const variableName = `dashboard_plugin_${pluginId}_settings`;
+      const existingVariable = await storage.variables.getByName(variableName);
+      
+      if (existingVariable) {
+        await storage.variables.update(existingVariable.id, { value: settings });
+      } else {
+        await storage.variables.create({ name: variableName, value: settings });
+      }
+      
+      res.json({ success: true, settings });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update plugin settings" });
     }
   });
 

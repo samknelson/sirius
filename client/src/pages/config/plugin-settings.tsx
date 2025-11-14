@@ -5,6 +5,7 @@ import { AlertCircle } from "lucide-react";
 import { getPluginById } from "@/plugins/registry";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
 
 export default function PluginSettingsPage() {
   const { pluginId } = useParams<{ pluginId: string }>();
@@ -83,6 +84,20 @@ export default function PluginSettingsPage() {
     queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins/config"] });
   };
 
+  // Generic load/save functions for plugin settings
+  const loadSettings = async () => {
+    const response = await fetch(`/api/dashboard-plugins/${plugin.id}/settings`);
+    if (!response.ok) {
+      throw new Error("Failed to load settings");
+    }
+    return response.json();
+  };
+
+  const saveSettings = async (settings: any) => {
+    await apiRequest("PUT", `/api/dashboard-plugins/${plugin.id}/settings`, settings);
+    handleConfigSaved();
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -100,6 +115,8 @@ export default function PluginSettingsPage() {
         plugin={plugin}
         queryClient={queryClient}
         onConfigSaved={handleConfigSaved}
+        loadSettings={loadSettings}
+        saveSettings={saveSettings}
       />
     </div>
   );

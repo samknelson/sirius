@@ -1,6 +1,7 @@
 import { ComponentType } from "react";
 import { Role } from "@shared/schema";
 import type { QueryClient } from "@tanstack/react-query";
+import type { z } from "zod";
 
 export interface DashboardPluginProps {
   userId: string;
@@ -8,10 +9,12 @@ export interface DashboardPluginProps {
   userPermissions: string[];
 }
 
-export interface PluginSettingsProps {
+export interface PluginSettingsProps<T = any> {
   plugin: DashboardPlugin;
   queryClient: QueryClient;
   onConfigSaved?: () => void;
+  loadSettings: () => Promise<T>;
+  saveSettings: (settings: T) => Promise<void>;
 }
 
 export interface DashboardPlugin {
@@ -22,7 +25,8 @@ export interface DashboardPlugin {
   component: ComponentType<DashboardPluginProps>;
   requiredPermissions?: string[];
   enabledByDefault: boolean;
-  settingsComponent?: ComponentType<PluginSettingsProps>;
+  settingsComponent?: ComponentType<PluginSettingsProps<any>>;
+  settingsSchema?: z.ZodType<any>;
 }
 
 export interface PluginConfig {
