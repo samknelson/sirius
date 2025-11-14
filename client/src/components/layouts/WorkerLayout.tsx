@@ -150,7 +150,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     { id: "details", label: "Details", href: `/workers/${worker.id}` },
     { id: "identity", label: "Identity", href: `/workers/${worker.id}/name` },
     { id: "contact", label: "Contact", href: `/workers/${worker.id}/email` },
-    { id: "employment", label: "Employment", href: `/workers/${worker.id}/hours` },
+    { id: "employment", label: "Employment", href: `/workers/${worker.id}/employment/current` },
     { id: "benefits", label: "Benefits", href: `/workers/${worker.id}/benefits` },
     { id: "logs", label: "Logs", href: `/workers/${worker.id}/logs` },
     { id: "delete", label: "Delete", href: `/workers/${worker.id}/delete` },
