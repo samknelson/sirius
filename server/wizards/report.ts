@@ -114,19 +114,16 @@ export abstract class WizardReport extends BaseWizard {
     // Get column definitions
     const columns = this.getColumns();
 
-    // Build results
-    const results: ReportResults = {
-      totalRecords: records.length,
-      recordCount: records.length,
-      records,
-      generatedAt: new Date(),
-      columns
-    };
+    // Save each record as a separate row in wizard_report_data
+    // Using workerId as the pk for each row
+    for (const record of records) {
+      if (!record.workerId) {
+        throw new Error('Record missing workerId - cannot save to report data');
+      }
+      await storage.wizards.saveReportData(wizardId, record.workerId, record);
+    }
 
-    // Save results to wizard_report_data table
-    const reportData = await storage.wizards.saveReportData(wizardId, results);
-
-    // Update wizard with completion status and report data reference
+    // Update wizard with completion status
     // Separate status update from data update to ensure both persist correctly
     await storage.wizards.update(wizardId, {
       status: 'completed'
@@ -137,7 +134,6 @@ export abstract class WizardReport extends BaseWizard {
         ...wizardData,
         recordCount: records.length,
         generatedAt: new Date(),
-        reportDataId: reportData.id,
         progress: {
           ...(wizardData?.progress || {}),
           run: {
@@ -148,6 +144,15 @@ export abstract class WizardReport extends BaseWizard {
         }
       }
     });
+
+    // Build results to return
+    const results: ReportResults = {
+      totalRecords: records.length,
+      recordCount: records.length,
+      records,
+      generatedAt: new Date(),
+      columns
+    };
 
     return results;
   }
