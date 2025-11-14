@@ -26,7 +26,7 @@ export function useWorkerLayout() {
 }
 
 interface WorkerLayoutProps {
-  activeTab: "details" | "identity" | "name" | "email" | "ids" | "addresses" | "phone-numbers" | "birth-date" | "gender" | "employment-history" | "benefits" | "hours" | "logs" | "delete";
+  activeTab: "details" | "identity" | "name" | "email" | "ids" | "addresses" | "phone-numbers" | "birth-date" | "gender" | "employment" | "employment-history" | "hours" | "benefits" | "logs" | "delete";
   children: ReactNode;
 }
 
@@ -150,9 +150,8 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     { id: "details", label: "Details", href: `/workers/${worker.id}` },
     { id: "identity", label: "Identity", href: `/workers/${worker.id}/name` },
     { id: "contact", label: "Contact", href: `/workers/${worker.id}/email` },
-    { id: "employment-history", label: "Employment History", href: `/workers/${worker.id}/employment-history` },
+    { id: "employment", label: "Employment", href: `/workers/${worker.id}/employment-history` },
     { id: "benefits", label: "Benefits", href: `/workers/${worker.id}/benefits` },
-    { id: "hours", label: "Hours", href: `/workers/${worker.id}/hours` },
     { id: "logs", label: "Logs", href: `/workers/${worker.id}/logs` },
     { id: "delete", label: "Delete", href: `/workers/${worker.id}/delete` },
   ];
@@ -170,11 +169,18 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     { id: "phone-numbers", label: "Phone Numbers", href: `/workers/${worker.id}/phone-numbers` },
   ];
 
+  const employmentSubTabs = [
+    { id: "employment-history", label: "Employment History", href: `/workers/${worker.id}/employment-history` },
+    { id: "hours", label: "Hours", href: `/workers/${worker.id}/hours` },
+  ];
+
   // Determine if we're in a sub-tab
   const isIdentitySubTab = ["name", "ids", "birth-date", "gender"].includes(activeTab);
   const isContactSubTab = ["email", "addresses", "phone-numbers"].includes(activeTab);
+  const isEmploymentSubTab = ["employment-history", "hours"].includes(activeTab);
   const showIdentitySubTabs = isIdentitySubTab;
   const showContactSubTabs = isContactSubTab;
+  const showEmploymentSubTabs = isEmploymentSubTab;
 
   const contextValue: WorkerLayoutContextValue = {
     worker,
@@ -216,7 +222,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center space-x-2 py-3">
               {mainTabs.map((tab) => {
-                const isActive = tab.id === activeTab || (tab.id === "identity" && isIdentitySubTab) || (tab.id === "contact" && isContactSubTab);
+                const isActive = tab.id === activeTab || (tab.id === "identity" && isIdentitySubTab) || (tab.id === "contact" && isContactSubTab) || (tab.id === "employment" && isEmploymentSubTab);
                 return isActive ? (
                   <Button
                     key={tab.id}
@@ -280,6 +286,38 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex items-center space-x-2 py-2 pl-4">
                 {contactSubTabs.map((tab) => (
+                  tab.id === activeTab ? (
+                    <Button
+                      key={tab.id}
+                      variant="secondary"
+                      size="sm"
+                      data-testid={`button-worker-${tab.id}`}
+                    >
+                      {tab.label}
+                    </Button>
+                  ) : (
+                    <Link key={tab.id} href={tab.href}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid={`button-worker-${tab.id}`}
+                      >
+                        {tab.label}
+                      </Button>
+                    </Link>
+                  )
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Employment Sub-Tab Navigation */}
+        {showEmploymentSubTabs && (
+          <div className="bg-muted/30 border-b border-border">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex items-center space-x-2 py-2 pl-4">
+                {employmentSubTabs.map((tab) => (
                   tab.id === activeTab ? (
                     <Button
                       key={tab.id}
