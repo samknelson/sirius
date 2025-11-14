@@ -47,8 +47,8 @@ export interface WorkerStorage {
   getWorkerHoursCurrent(workerId: string): Promise<any[]>;
   getWorkerHoursHistory(workerId: string): Promise<any[]>;
   getWorkerHoursMonthly(workerId: string): Promise<any[]>;
-  createWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null }): Promise<WorkerHours>;
-  updateWorkerHours(id: string, data: { employerId?: string; employmentStatusId?: string; hours?: number | null }): Promise<WorkerHours | undefined>;
+  createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null }): Promise<WorkerHours>;
+  updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null }): Promise<WorkerHours | undefined>;
   deleteWorkerHours(id: string): Promise<boolean>;
   upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null }): Promise<WorkerHours>;
 }
@@ -482,18 +482,15 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       }));
     },
 
-    async createWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null }): Promise<WorkerHours> {
+    async createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null }): Promise<WorkerHours> {
       const [hours] = await db
         .insert(workerHours)
-        .values({
-          ...data,
-          day: 1, // Always use day 1 as specified
-        })
+        .values(data)
         .returning();
       return hours;
     },
 
-    async updateWorkerHours(id: string, data: { employerId?: string; employmentStatusId?: string; hours?: number | null }): Promise<WorkerHours | undefined> {
+    async updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null }): Promise<WorkerHours | undefined> {
       const [updated] = await db
         .update(workerHours)
         .set(data)

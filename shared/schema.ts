@@ -371,6 +371,18 @@ export const insertEmployerContactSchema = createInsertSchema(employerContacts).
 
 export const insertWorkerHoursSchema = createInsertSchema(workerHours).omit({
   id: true,
+}).refine((data) => {
+  // Validate day is within 1-31
+  if (data.day < 1 || data.day > 31) {
+    return false;
+  }
+  
+  // Validate day against the actual days in the month
+  const daysInMonth = new Date(data.year, data.month, 0).getDate();
+  return data.day <= daysInMonth;
+}, {
+  message: "Invalid day for the specified month and year",
+  path: ["day"],
 });
 
 export const insertTrustBenefitSchema = createInsertSchema(trustBenefits).omit({

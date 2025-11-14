@@ -48,6 +48,7 @@ function WorkerHoursContent() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedYear, setSelectedYear] = useState<string>("");
   const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const [selectedDay, setSelectedDay] = useState<string>("");
   const [selectedEmployerId, setSelectedEmployerId] = useState<string>("");
   const [selectedEmploymentStatusId, setSelectedEmploymentStatusId] = useState<string>("");
   const [selectedHours, setSelectedHours] = useState<string>("");
@@ -75,7 +76,7 @@ function WorkerHoursContent() {
 
   // Create mutation
   const createMutation = useMutation({
-    mutationFn: async (data: { month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null }) => {
+    mutationFn: async (data: { month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null }) => {
       const response = await fetch(`/api/workers/${worker.id}/hours`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -104,7 +105,7 @@ function WorkerHoursContent() {
 
   // Update mutation
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: { employerId: string; employmentStatusId: string; hours: number | null } }) => {
+    mutationFn: async ({ id, data }: { id: string; data: { year: number; month: number; day: number; employerId: string; employmentStatusId: string; hours: number | null } }) => {
       const response = await fetch(`/api/worker-hours/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -159,6 +160,7 @@ function WorkerHoursContent() {
   const resetForm = () => {
     setSelectedYear("");
     setSelectedMonth("");
+    setSelectedDay("");
     setSelectedEmployerId("");
     setSelectedEmploymentStatusId("");
     setSelectedHours("");
@@ -166,7 +168,7 @@ function WorkerHoursContent() {
   };
 
   const handleCreate = () => {
-    if (!selectedYear || !selectedMonth || !selectedEmployerId || !selectedEmploymentStatusId) {
+    if (!selectedYear || !selectedMonth || !selectedDay || !selectedEmployerId || !selectedEmploymentStatusId) {
       toast({
         title: "Validation Error",
         description: "Please fill in all required fields",
@@ -178,6 +180,7 @@ function WorkerHoursContent() {
     createMutation.mutate({
       year: parseInt(selectedYear),
       month: parseInt(selectedMonth),
+      day: parseInt(selectedDay),
       employerId: selectedEmployerId,
       employmentStatusId: selectedEmploymentStatusId,
       hours: selectedHours ? parseFloat(selectedHours) : null,
@@ -186,6 +189,9 @@ function WorkerHoursContent() {
 
   const handleEdit = (entry: WorkerHoursEntry) => {
     setEditingEntry(entry);
+    setSelectedYear(entry.year.toString());
+    setSelectedMonth(entry.month.toString());
+    setSelectedDay(entry.day.toString());
     setSelectedEmployerId(entry.employerId);
     setSelectedEmploymentStatusId(entry.employmentStatusId);
     setSelectedHours(entry.hours?.toString() || "");
@@ -193,7 +199,7 @@ function WorkerHoursContent() {
   };
 
   const handleUpdate = () => {
-    if (!editingEntry || !selectedEmployerId || !selectedEmploymentStatusId) {
+    if (!editingEntry || !selectedYear || !selectedMonth || !selectedDay || !selectedEmployerId || !selectedEmploymentStatusId) {
       toast({
         title: "Validation Error",
         description: "Please fill in all required fields",
@@ -205,6 +211,9 @@ function WorkerHoursContent() {
     updateMutation.mutate({
       id: editingEntry.id,
       data: {
+        year: parseInt(selectedYear),
+        month: parseInt(selectedMonth),
+        day: parseInt(selectedDay),
         employerId: selectedEmployerId,
         employmentStatusId: selectedEmploymentStatusId,
         hours: selectedHours ? parseFloat(selectedHours) : null,
@@ -241,6 +250,17 @@ function WorkerHoursContent() {
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     return monthNames[month - 1];
   };
+
+  // Get valid days for selected month/year
+  const getDaysInMonth = () => {
+    if (!selectedYear || !selectedMonth) return [];
+    const year = parseInt(selectedYear);
+    const month = parseInt(selectedMonth);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    return Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  };
+
+  const validDays = getDaysInMonth();
 
   return (
     <Card>
@@ -287,6 +307,21 @@ function WorkerHoursContent() {
                       {months.map((month) => (
                         <SelectItem key={month.value} value={month.value}>
                           {month.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="day">Day *</Label>
+                  <Select value={selectedDay} onValueChange={setSelectedDay} disabled={!selectedYear || !selectedMonth}>
+                    <SelectTrigger id="day" data-testid="select-day">
+                      <SelectValue placeholder={validDays.length > 0 ? "Select day" : "Select year and month first"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {validDays.map((day) => (
+                        <SelectItem key={day} value={day.toString()}>
+                          {day}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -360,6 +395,7 @@ function WorkerHoursContent() {
               <TableRow>
                 <TableHead>Year</TableHead>
                 <TableHead>Month</TableHead>
+                <TableHead>Day</TableHead>
                 <TableHead>Employer</TableHead>
                 <TableHead>Employment Status</TableHead>
                 <TableHead className="text-right">Hours</TableHead>
@@ -371,6 +407,7 @@ function WorkerHoursContent() {
                 <TableRow key={entry.id} data-testid={`row-hours-${entry.id}`}>
                   <TableCell>{entry.year}</TableCell>
                   <TableCell>{getMonthName(entry.month)}</TableCell>
+                  <TableCell>{entry.day}</TableCell>
                   <TableCell>{entry.employer?.name || "Unknown"}</TableCell>
                   <TableCell>{entry.employmentStatus?.name || "Unknown"}</TableCell>
                   <TableCell className="text-right">{entry.hours?.toFixed(2) || "-"}</TableCell>
@@ -406,10 +443,55 @@ function WorkerHoursContent() {
           <DialogHeader>
             <DialogTitle>Edit Hours Entry</DialogTitle>
             <DialogDescription>
-              Update hours for {editingEntry && `${getMonthName(editingEntry.month)} ${editingEntry.year}`}
+              Update hours entry details
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div>
+              <Label htmlFor="edit-year">Year *</Label>
+              <Select value={selectedYear} onValueChange={setSelectedYear}>
+                <SelectTrigger id="edit-year" data-testid="select-edit-year">
+                  <SelectValue placeholder="Select year" />
+                </SelectTrigger>
+                <SelectContent>
+                  {years.map((year) => (
+                    <SelectItem key={year} value={year.toString()}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="edit-month">Month *</Label>
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger id="edit-month" data-testid="select-edit-month">
+                  <SelectValue placeholder="Select month" />
+                </SelectTrigger>
+                <SelectContent>
+                  {months.map((month) => (
+                    <SelectItem key={month.value} value={month.value}>
+                      {month.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="edit-day">Day *</Label>
+              <Select value={selectedDay} onValueChange={setSelectedDay} disabled={!selectedYear || !selectedMonth}>
+                <SelectTrigger id="edit-day" data-testid="select-edit-day">
+                  <SelectValue placeholder={validDays.length > 0 ? "Select day" : "Select year and month first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {validDays.map((day) => (
+                    <SelectItem key={day} value={day.toString()}>
+                      {day}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <Label htmlFor="edit-employer">Employer *</Label>
               <Select value={selectedEmployerId} onValueChange={setSelectedEmployerId}>
