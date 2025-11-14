@@ -51,6 +51,8 @@ export interface ProcessError {
 
 export interface ProcessResults {
   totalRows: number;
+  createdCount: number;
+  updatedCount: number;
   successCount: number;
   failureCount: number;
   errors: ProcessError[];
