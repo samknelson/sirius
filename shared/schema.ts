@@ -101,6 +101,7 @@ export const workerHours = pgTable("worker_hours", {
   employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
   employmentStatusId: varchar("employment_status_id").notNull().references(() => optionsEmploymentStatus.id, { onDelete: 'cascade' }),
   hours: doublePrecision("hours"),
+  home: boolean("home").default(false).notNull(),
 }, (table) => ({
   uniqueWorkerEmployerYearMonthDay: unique().on(table.workerId, table.employerId, table.year, table.month, table.day),
 }));
