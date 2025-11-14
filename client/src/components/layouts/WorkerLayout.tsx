@@ -26,7 +26,7 @@ export function useWorkerLayout() {
 }
 
 interface WorkerLayoutProps {
-  activeTab: "details" | "identity" | "name" | "email" | "ids" | "addresses" | "phone-numbers" | "birth-date" | "gender" | "employment" | "employment-history" | "hours" | "benefits" | "logs" | "delete";
+  activeTab: "details" | "identity" | "name" | "email" | "ids" | "addresses" | "phone-numbers" | "birth-date" | "gender" | "employment" | "hours" | "benefits" | "logs" | "delete";
   children: ReactNode;
 }
 
@@ -150,7 +150,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     { id: "details", label: "Details", href: `/workers/${worker.id}` },
     { id: "identity", label: "Identity", href: `/workers/${worker.id}/name` },
     { id: "contact", label: "Contact", href: `/workers/${worker.id}/email` },
-    { id: "employment", label: "Employment", href: `/workers/${worker.id}/employment-history` },
+    { id: "employment", label: "Employment", href: `/workers/${worker.id}/hours` },
     { id: "benefits", label: "Benefits", href: `/workers/${worker.id}/benefits` },
     { id: "logs", label: "Logs", href: `/workers/${worker.id}/logs` },
     { id: "delete", label: "Delete", href: `/workers/${worker.id}/delete` },
@@ -170,14 +170,13 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
   ];
 
   const employmentSubTabs = [
-    { id: "employment-history", label: "Employment History", href: `/workers/${worker.id}/employment-history` },
     { id: "hours", label: "Hours", href: `/workers/${worker.id}/hours` },
   ];
 
   // Determine if we're in a sub-tab
   const isIdentitySubTab = ["name", "ids", "birth-date", "gender"].includes(activeTab);
   const isContactSubTab = ["email", "addresses", "phone-numbers"].includes(activeTab);
-  const isEmploymentSubTab = ["employment-history", "hours"].includes(activeTab);
+  const isEmploymentSubTab = ["hours"].includes(activeTab);
   const showIdentitySubTabs = isIdentitySubTab;
   const showContactSubTabs = isContactSubTab;
   const showEmploymentSubTabs = isEmploymentSubTab;
