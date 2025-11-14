@@ -289,10 +289,12 @@ export const wizardFeedMappings = pgTable("wizard_feed_mappings", {
 export const wizardReportData = pgTable("wizard_report_data", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   wizardId: varchar("wizard_id").notNull().references(() => wizards.id, { onDelete: 'cascade' }),
+  pk: varchar("pk").notNull(),
   data: jsonb("data"),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 }, (table) => [
   index("idx_wizard_report_data_wizard_id").on(table.wizardId),
+  unique("idx_wizard_report_data_wizard_id_pk").on(table.wizardId, table.pk),
 ]);
 
 export const files = pgTable("files", {
