@@ -1281,4 +1281,68 @@ export function registerWizardRoutes(
       }
     }
   );
+
+  // Generate a report for a report wizard
+  app.post("/api/wizards/:id/generate-report",
+    requireAccess(policies.admin),
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const wizard = await storage.wizards.getById(id);
+        
+        if (!wizard) {
+          return res.status(404).json({ message: "Wizard not found" });
+        }
+
+        // Get wizard type instance
+        const { WizardReport } = await import('../wizards/report.js');
+        const wizardType = wizardRegistry.get(wizard.type);
+        if (!wizardType || !(wizardType instanceof WizardReport)) {
+          return res.status(400).json({ message: "This wizard type does not support report generation" });
+        }
+
+        // Generate the report
+        const results = await wizardType.generateReport(id);
+        
+        res.json(results);
+      } catch (error) {
+        console.error("Error generating report:", error);
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to generate report" });
+      }
+    }
+  );
+
+  // Get report data for a wizard
+  app.get("/api/wizards/:id/report-data",
+    requireAccess(policies.admin),
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const wizard = await storage.wizards.getById(id);
+        
+        if (!wizard) {
+          return res.status(404).json({ message: "Wizard not found" });
+        }
+
+        // Get wizard type instance
+        const { WizardReport } = await import('../wizards/report.js');
+        const wizardType = wizardRegistry.get(wizard.type);
+        if (!wizardType || !(wizardType instanceof WizardReport)) {
+          return res.status(400).json({ message: "This wizard type does not support reports" });
+        }
+
+        // Get the latest report data
+        const reportData = await wizardType.getReportResults(id);
+        
+        if (!reportData) {
+          return res.status(404).json({ message: "No report data found for this wizard" });
+        }
+
+        res.json(reportData);
+      } catch (error) {
+        console.error("Error fetching report data:", error);
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to fetch report data" });
+      }
+    }
+  );
 }

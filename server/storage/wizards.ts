@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { wizards, type Wizard, type InsertWizard } from "@shared/schema";
+import { wizards, wizardReportData, type Wizard, type InsertWizard, type WizardReportData, type InsertWizardReportData } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 
 export interface WizardStorage {
@@ -8,6 +8,9 @@ export interface WizardStorage {
   create(wizard: InsertWizard): Promise<Wizard>;
   update(id: string, updates: Partial<Omit<InsertWizard, 'id'>>): Promise<Wizard | undefined>;
   delete(id: string): Promise<boolean>;
+  saveReportData(wizardId: string, data: any): Promise<WizardReportData>;
+  getReportData(wizardId: string): Promise<WizardReportData[]>;
+  getLatestReportData(wizardId: string): Promise<WizardReportData | undefined>;
 }
 
 export function createWizardStorage(): WizardStorage {
@@ -64,6 +67,35 @@ export function createWizardStorage(): WizardStorage {
     async delete(id: string): Promise<boolean> {
       const result = await db.delete(wizards).where(eq(wizards.id, id)).returning();
       return result.length > 0;
+    },
+
+    async saveReportData(wizardId: string, data: any): Promise<WizardReportData> {
+      const [reportData] = await db
+        .insert(wizardReportData)
+        .values({
+          wizardId,
+          data
+        })
+        .returning();
+      return reportData;
+    },
+
+    async getReportData(wizardId: string): Promise<WizardReportData[]> {
+      return db
+        .select()
+        .from(wizardReportData)
+        .where(eq(wizardReportData.wizardId, wizardId))
+        .orderBy(desc(wizardReportData.createdAt));
+    },
+
+    async getLatestReportData(wizardId: string): Promise<WizardReportData | undefined> {
+      const [reportData] = await db
+        .select()
+        .from(wizardReportData)
+        .where(eq(wizardReportData.wizardId, wizardId))
+        .orderBy(desc(wizardReportData.createdAt))
+        .limit(1);
+      return reportData || undefined;
     }
   };
 }
