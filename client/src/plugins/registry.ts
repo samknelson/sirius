@@ -1,7 +1,9 @@
 import { DashboardPlugin } from "./types";
 import { WelcomeMessagesPlugin } from "./welcomeMessages/WelcomeMessagesPlugin";
+import { WelcomeMessagesSettings } from "./welcomeMessages/WelcomeMessagesSettings";
 import { BookmarksPlugin } from "./bookmarks/BookmarksPlugin";
 import { EmployerMonthlyUploadsPlugin } from "./employerMonthlyUploads/EmployerMonthlyUploadsPlugin";
+import { EmployerMonthlySettings } from "./employerMonthlyUploads/EmployerMonthlySettings";
 
 export const pluginRegistry: DashboardPlugin[] = [
   {
@@ -11,6 +13,7 @@ export const pluginRegistry: DashboardPlugin[] = [
     order: 1,
     component: WelcomeMessagesPlugin,
     enabledByDefault: true,
+    settingsComponent: WelcomeMessagesSettings,
   },
   {
     id: "bookmarks",
@@ -29,6 +32,7 @@ export const pluginRegistry: DashboardPlugin[] = [
     component: EmployerMonthlyUploadsPlugin,
     requiredPermissions: ["admin"],
     enabledByDefault: true,
+    settingsComponent: EmployerMonthlySettings,
   },
 ];
 

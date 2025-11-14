@@ -72,9 +72,8 @@ import TrustBenefitTypesPage from "@/pages/config/trust-benefit-types";
 import EmployerContactTypesPage from "@/pages/config/employer-contact-types";
 import MasqueradePage from "@/pages/config/masquerade";
 import LogsPage from "@/pages/config/logs";
-import WelcomeMessagesConfigPage from "@/pages/config/welcome-messages";
 import DashboardPluginsConfigPage from "@/pages/config/dashboard-plugins";
-import EmployerMonthlyPluginConfigPage from "@/pages/config/employer-monthly-plugin";
+import PluginSettingsPage from "@/pages/config/plugin-settings";
 import ComponentsConfigPage from "@/pages/config/components";
 import StripeTestPage from "@/pages/config/ledger/stripe/test";
 import StripeSettingsPage from "@/pages/config/ledger/stripe/settings";
@@ -589,16 +588,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/welcome-messages">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <WelcomeMessagesConfigPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
       <Route path="/config/dashboard-plugins">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
@@ -609,11 +598,11 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/employer-monthly-plugin">
+      <Route path="/config/dashboard-plugins/:pluginId">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <EmployerMonthlyPluginConfigPage />
+              <PluginSettingsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

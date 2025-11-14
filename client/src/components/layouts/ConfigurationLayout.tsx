@@ -25,7 +25,6 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
   const [isSystemOpen, setIsSystemOpen] = useState(false);
   const [isTrustOpen, setIsTrustOpen] = useState(false);
   const [isThemeOpen, setIsThemeOpen] = useState(false);
-  const [isDashboardPluginsOpen, setIsDashboardPluginsOpen] = useState(false);
   const [isContactOpen, setIsContactOpen] = useState(false);
   const [isEmployersOpen, setIsEmployersOpen] = useState(false);
   const [isDropDownListsOpen, setIsDropDownListsOpen] = useState(false);
@@ -97,20 +96,6 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       label: "Dashboard Plugins",
       icon: Puzzle,
       testId: "nav-config-dashboard-plugins",
-      permission: "admin",
-    },
-    {
-      path: "/config/employer-monthly-plugin",
-      label: "Employer Monthly",
-      icon: Building2,
-      testId: "nav-config-employer-monthly-plugin",
-      permission: "admin",
-    },
-    {
-      path: "/config/welcome-messages",
-      label: "Welcome Messages",
-      icon: MessageSquare,
-      testId: "nav-config-welcome-messages",
       permission: "admin",
     },
   ];
@@ -329,10 +314,6 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
     (item) => location === item.path || location.startsWith(item.path + "/")
   );
 
-  // Check if any dashboard plugin item is active
-  const isDashboardPluginsActive = dashboardPluginItems.some(
-    (item) => location === item.path || location.startsWith(item.path + "/")
-  );
 
   // Check if any contact item is active
   const isContactActive = contactItems.some(
@@ -676,46 +657,24 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
                     );
                   })}
 
-                  {/* Dashboard Plugins Sub-group */}
-                  {dashboardPluginItems.some((item) => hasPermission(item.permission)) && (
-                    <Collapsible
-                      open={isDashboardPluginsOpen || isDashboardPluginsActive}
-                      onOpenChange={setIsDashboardPluginsOpen}
-                    >
-                      <CollapsibleTrigger asChild>
+                  {/* Dashboard Plugins - Single direct link now */}
+                  {dashboardPluginItems.filter((item) => hasPermission(item.permission)).map((item) => {
+                    const Icon = item.icon;
+                    const isActive = location === item.path || location.startsWith(item.path + "/");
+                    
+                    return (
+                      <Link key={item.path} href={item.path}>
                         <Button
-                          variant={isDashboardPluginsActive ? "secondary" : "ghost"}
+                          variant={isActive ? "secondary" : "ghost"}
                           className="w-full justify-start text-sm"
-                          data-testid="nav-config-dashboard-plugins-group"
+                          data-testid={item.testId}
                         >
-                          <Puzzle className="mr-2 h-4 w-4" />
-                          Dashboard Plugins
-                          <ChevronDown className="ml-auto h-4 w-4 transition-transform duration-200" 
-                            style={{ transform: (isDashboardPluginsOpen || isDashboardPluginsActive) ? 'rotate(180deg)' : 'rotate(0deg)' }} 
-                          />
+                          <Icon className="mr-2 h-4 w-4" />
+                          {item.label}
                         </Button>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="ml-4 mt-2 space-y-2">
-                        {dashboardPluginItems.filter((item) => hasPermission(item.permission)).map((item) => {
-                          const Icon = item.icon;
-                          const isActive = location === item.path || location.startsWith(item.path + "/");
-                          
-                          return (
-                            <Link key={item.path} href={item.path}>
-                              <Button
-                                variant={isActive ? "secondary" : "ghost"}
-                                className="w-full justify-start text-xs"
-                                data-testid={item.testId}
-                              >
-                                <Icon className="mr-2 h-4 w-4" />
-                                {item.label}
-                              </Button>
-                            </Link>
-                          );
-                        })}
-                      </CollapsibleContent>
-                    </Collapsible>
-                  )}
+                      </Link>
+                    );
+                  })}
                 </CollapsibleContent>
               </Collapsible>
             )}

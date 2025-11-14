@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { Puzzle, Info } from "lucide-react";
+import { Puzzle, Info, Settings } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { getAllPlugins } from "@/plugins/registry";
 import { PluginConfig } from "@/plugins/types";
@@ -129,6 +131,16 @@ export default function DashboardPluginsConfigPage() {
                 <div>
                   <span className="font-medium">Required Permissions:</span>{" "}
                   {plugin.requiredPermissions.join(", ")}
+                </div>
+              )}
+              {plugin.settingsComponent && (
+                <div className="pt-2">
+                  <Link href={`/config/dashboard-plugins/${plugin.id}`}>
+                    <Button variant="outline" size="sm" data-testid={`button-settings-${plugin.id}`}>
+                      <Settings className="h-4 w-4 mr-2" />
+                      Configure Settings
+                    </Button>
+                  </Link>
                 </div>
               )}
             </CardContent>
