@@ -1,4 +1,4 @@
-import { useParams } from "wouter";
+import { useParams, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -12,7 +12,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Trash2, Plus } from "lucide-react";
+import { Loader2, Trash2, Plus, ExternalLink } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -220,23 +220,33 @@ export default function EmployerLedgerAccounts() {
               return (
                 <div
                   key={entry.id}
-                  className="border rounded-lg p-4"
+                  className="border rounded-lg p-4 hover:border-primary/50 transition-colors"
                   data-testid={`card-entry-${entry.id}`}
                 >
                   <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h4 className="font-medium text-foreground">
-                        {account?.name || "Unknown Account"}
-                      </h4>
+                    <Link
+                      href={`/ea/${entry.id}`}
+                      className="flex-1 hover:opacity-80 transition-opacity"
+                      data-testid={`link-entry-${entry.id}`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-medium text-foreground">
+                          {account?.name || "Unknown Account"}
+                        </h4>
+                        <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                      </div>
                       {account?.description && (
                         <p className="text-sm text-muted-foreground mt-1">{account.description}</p>
                       )}
-                      {entry.data && (
-                        <pre className="bg-muted mt-3 p-3 rounded-md overflow-x-auto text-sm">
-                          <code>{JSON.stringify(entry.data, null, 2)}</code>
-                        </pre>
-                      )}
-                    </div>
+                      {entry.data && (() => {
+                        const dataString = JSON.stringify(entry.data, null, 2);
+                        return (
+                          <pre className="bg-muted mt-3 p-3 rounded-md overflow-x-auto text-sm">
+                            <code>{dataString}</code>
+                          </pre>
+                        );
+                      })()}
+                    </Link>
                     <Button
                       variant="ghost"
                       size="icon"

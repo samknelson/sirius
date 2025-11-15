@@ -53,6 +53,9 @@ import WizardView from "@/pages/wizard-view";
 import StripeCustomerPage from "@/pages/employers/stripe-customer";
 import StripePaymentMethodsPage from "@/pages/employers/stripe-payment-methods";
 import EmployerLedgerAccountsWrapper from "@/pages/employer-ledger-accounts-wrapper";
+import EAView from "@/pages/ea-view";
+import EAInvoices from "@/pages/ea-invoices";
+import EAPayments from "@/pages/ea-payments";
 import TrustBenefits from "@/pages/trust-benefits";
 import TrustBenefitsAdd from "@/pages/trust-benefits-add";
 import TrustBenefitView from "@/pages/trust-benefit-view";
@@ -358,6 +361,30 @@ function Router() {
         <ProtectedRoute policy="admin">
           <AuthenticatedLayout>
             <WizardView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ea/:id">
+        <ProtectedRoute policy="ledgerStaff">
+          <AuthenticatedLayout>
+            <EAView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ea/:id/invoices">
+        <ProtectedRoute policy="ledgerStaff">
+          <AuthenticatedLayout>
+            <EAInvoices />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ea/:id/payments">
+        <ProtectedRoute policy="ledgerStaff">
+          <AuthenticatedLayout>
+            <EAPayments />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
