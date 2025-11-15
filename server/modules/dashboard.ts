@@ -193,7 +193,7 @@ export function registerDashboardRoutes(
       
       // Verify user has access to this wizard type
       const userRoles = await storage.users.getUserRoles(dbUser.id);
-      const variable = await storage.variables.getByName('employer_monthly_plugin_config');
+      const variable = await storage.variables.getByName('dashboard_plugin_employer-monthly-uploads_settings');
       const config = variable ? (variable.value as Record<string, string[]>) : {};
       
       const allowedWizardTypes = new Set<string>();
