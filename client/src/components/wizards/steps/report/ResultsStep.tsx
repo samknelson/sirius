@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,10 +33,14 @@ export function ResultsStep({ wizardId, wizardType, data }: ResultsStepProps) {
 
     const { columns, records } = reportData;
     
+    // For duplicate SSN report, export ungrouped data with all columns
+    const exportColumns = columns;
+    const exportRecords = records;
+    
     // Convert to CSV
-    const headers = columns.map(col => col.header).join(',');
-    const rows = records.map(record => 
-      columns.map(col => {
+    const headers = exportColumns.map(col => col.header).join(',');
+    const rows = exportRecords.map(record => 
+      exportColumns.map(col => {
         const value = record[col.id];
         // Escape commas and quotes in CSV
         if (value === null || value === undefined) return '';
@@ -115,6 +120,31 @@ export function ResultsStep({ wizardId, wizardType, data }: ResultsStepProps) {
 
   const { columns, records, recordCount, generatedAt } = reportData;
 
+  // For duplicate SSN report, group records by SSN
+  const isDuplicateSSNReport = wizardType === 'report_workers_duplicate_ssn';
+  const displayRecords = isDuplicateSSNReport && records.length > 0 ? (() => {
+    const grouped = new Map<string, any[]>();
+    records.forEach((record: any) => {
+      const ssn = record.ssn;
+      if (!grouped.has(ssn)) {
+        grouped.set(ssn, []);
+      }
+      grouped.get(ssn)!.push(record);
+    });
+    
+    return Array.from(grouped.entries()).map(([ssn, workers]) => ({
+      ssn,
+      workerCount: workers.length,
+      workers: workers
+    }));
+  })() : records;
+
+  const displayColumns = isDuplicateSSNReport ? [
+    { id: 'ssn', header: 'SSN', type: 'string' },
+    { id: 'workerCount', header: 'Worker Count', type: 'number' },
+    { id: 'workers', header: 'Workers', type: 'string' }
+  ] : columns;
+
   return (
     <Card>
       <CardHeader>
@@ -156,7 +186,7 @@ export function ResultsStep({ wizardId, wizardType, data }: ResultsStepProps) {
               <Table>
                 <TableHeader className="sticky top-0 bg-muted">
                   <TableRow>
-                    {columns.map((col: any) => (
+                    {displayColumns.map((col: any) => (
                       <TableHead key={col.id} className="font-semibold">
                         {col.header}
                       </TableHead>
@@ -164,13 +194,29 @@ export function ResultsStep({ wizardId, wizardType, data }: ResultsStepProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {records.map((record: any, idx: number) => (
+                  {displayRecords.map((record: any, idx: number) => (
                     <TableRow key={idx} data-testid={`row-record-${idx}`}>
-                      {columns.map((col: any) => (
+                      {displayColumns.map((col: any) => (
                         <TableCell key={col.id}>
-                          {col.type === 'date' && record[col.id] 
-                            ? format(new Date(record[col.id]), 'PP')
-                            : record[col.id] || '-'}
+                          {col.id === 'workers' && isDuplicateSSNReport && record.workers ? (
+                            <div className="space-y-1">
+                              {record.workers.map((worker: any) => (
+                                <div key={worker.workerId}>
+                                  <Link 
+                                    href={`/workers/${worker.workerId}`} 
+                                    className="text-sm font-medium text-primary hover:underline" 
+                                    data-testid={`link-worker-${worker.workerId}`}
+                                  >
+                                    {worker.displayName} (ID: {worker.siriusId})
+                                  </Link>
+                                </div>
+                              ))}
+                            </div>
+                          ) : col.type === 'date' && record[col.id] ? (
+                            format(new Date(record[col.id]), 'PP')
+                          ) : (
+                            record[col.id] || '-'
+                          )}
                         </TableCell>
                       ))}
                     </TableRow>
