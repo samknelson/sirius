@@ -104,7 +104,7 @@ export function ReportsPlugin({ userRoles }: DashboardPluginProps) {
               <Link 
                 href={`/wizards/${wizard.id}`}
                 data-testid={`report-link-${reportType}`}
-                className="group block cursor-pointer rounded-lg border p-4 transition-colors hover:bg-accent hover:text-accent-foreground"
+                className="group block"
               >
                 <div className="space-y-2 text-sm">
                   {generatedAt && (
