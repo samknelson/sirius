@@ -85,56 +85,53 @@ export function ReportsPlugin({ userRoles }: DashboardPluginProps) {
   }
 
   return (
-    <Card data-testid="plugin-reports">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <FileText className="h-5 w-5" />
-          Reports
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {Array.from(reportWizards.entries()).map(([reportType, wizard]) => {
-          const displayName = reportTypeMap.get(reportType) || reportType;
-          const reportMeta = wizard.data?.reportMeta;
-          const generatedAt = reportMeta?.generatedAt ? new Date(reportMeta.generatedAt) : null;
-          const recordCount = reportMeta?.recordCount ?? 0;
+    <>
+      {Array.from(reportWizards.entries()).map(([reportType, wizard]) => {
+        const displayName = reportTypeMap.get(reportType) || reportType;
+        const reportMeta = wizard.data?.reportMeta;
+        const generatedAt = reportMeta?.generatedAt ? new Date(reportMeta.generatedAt) : null;
+        const recordCount = reportMeta?.recordCount ?? 0;
 
-          return (
-            <Link 
-              key={reportType} 
-              href={`/wizards/${wizard.id}`}
-              data-testid={`report-card-${reportType}`}
-            >
-              <div className="group cursor-pointer rounded-lg border p-4 transition-colors hover:bg-accent hover:text-accent-foreground">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="font-medium group-hover:underline flex items-center gap-2">
-                      {displayName}
-                      <ExternalLink className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </h3>
-                    <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-                      {generatedAt && (
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4" />
-                          <span data-testid={`report-date-${reportType}`}>
-                            Last run: {format(generatedAt, 'MMM d, yyyy h:mm a')}
-                          </span>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2">
-                        <Hash className="h-4 w-4" />
-                        <span data-testid={`report-count-${reportType}`}>
-                          {recordCount} {recordCount === 1 ? 'record' : 'records'}
+        return (
+          <Card key={reportType} data-testid={`plugin-reports-${reportType}`}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                {displayName}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Link 
+                href={`/wizards/${wizard.id}`}
+                data-testid={`report-link-${reportType}`}
+              >
+                <div className="group cursor-pointer rounded-lg border p-4 transition-colors hover:bg-accent hover:text-accent-foreground">
+                  <div className="space-y-2 text-sm">
+                    {generatedAt && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Calendar className="h-4 w-4" />
+                        <span data-testid={`report-date-${reportType}`}>
+                          Last run: {format(generatedAt, 'MMM d, yyyy h:mm a')}
                         </span>
                       </div>
+                    )}
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Hash className="h-4 w-4" />
+                      <span data-testid={`report-count-${reportType}`}>
+                        {recordCount} {recordCount === 1 ? 'record' : 'records'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm font-medium text-primary group-hover:underline">
+                      View Report
+                      <ExternalLink className="h-4 w-4" />
                     </div>
                   </div>
                 </div>
-              </div>
-            </Link>
-          );
-        })}
-      </CardContent>
-    </Card>
+              </Link>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </>
   );
 }
