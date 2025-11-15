@@ -104,7 +104,6 @@ type FilterFormData = z.infer<typeof filterSchema>;
 export default function EmployersMonthlyUploads() {
   const [location, setLocation] = useLocation();
   const [filters, setFilters] = useState<FilterFormData | null>(null);
-  const [initialized, setInitialized] = useState(false);
 
   const { data: wizardTypes = [] } = useQuery<WizardType[]>({
     queryKey: ["/api/wizard-types"],
@@ -125,38 +124,38 @@ export default function EmployersMonthlyUploads() {
     defaultValues: {
       year: urlYear ? Number(urlYear) : new Date().getFullYear(),
       month: urlMonth ? Number(urlMonth) : new Date().getMonth() + 1,
-      wizardType: urlWizardType || (monthlyWizardTypes.length > 0 ? monthlyWizardTypes[0].name : ""),
+      wizardType: urlWizardType || "",
       status: urlStatus || "",
     },
   });
 
-  // Initialize from URL params when wizard types are loaded
+  // Initialize from URL params or set default wizard type when wizard types are loaded
   useEffect(() => {
-    if (monthlyWizardTypes.length > 0 && !initialized) {
-      // Check if we have URL params with a valid wizard type
-      if (urlYear && urlMonth && urlWizardType) {
-        const isValidWizardType = monthlyWizardTypes.some(wt => wt.name === urlWizardType);
-        
-        if (isValidWizardType) {
-          // Auto-submit with URL params
-          const data: FilterFormData = {
-            year: Number(urlYear),
-            month: Number(urlMonth),
-            wizardType: urlWizardType,
-            status: urlStatus || undefined,
-          };
-          setFilters(data);
-        }
-      } else if (monthlyWizardTypes.length > 0) {
-        // Set default wizard type in form if not already set
-        const currentWizardType = form.getValues('wizardType');
-        if (!currentWizardType) {
-          form.setValue('wizardType', monthlyWizardTypes[0].name);
-        }
+    if (monthlyWizardTypes.length === 0) return;
+
+    // Check if we have URL params with a valid wizard type - auto-load data
+    if (urlYear && urlMonth && urlWizardType) {
+      const isValidWizardType = monthlyWizardTypes.some(wt => wt.name === urlWizardType);
+      
+      if (isValidWizardType && filters === null) {
+        // Auto-submit with URL params
+        const data: FilterFormData = {
+          year: Number(urlYear),
+          month: Number(urlMonth),
+          wizardType: urlWizardType,
+          status: urlStatus || undefined,
+        };
+        setFilters(data);
+        return;
       }
-      setInitialized(true);
     }
-  }, [monthlyWizardTypes.length, initialized, urlYear, urlMonth, urlWizardType, urlStatus, form]);
+    
+    // No URL params - just set default wizard type in form if empty
+    const currentWizardType = form.getValues('wizardType');
+    if (!currentWizardType && monthlyWizardTypes.length > 0) {
+      form.setValue('wizardType', monthlyWizardTypes[0].name);
+    }
+  }, [monthlyWizardTypes, urlYear, urlMonth, urlWizardType, urlStatus, filters, form]);
 
   const { data: employersWithUploads = [], isLoading, error } = useQuery<EmployerWithUploads[]>({
     queryKey: ["/api/wizards/employer-monthly/employers", filters],
