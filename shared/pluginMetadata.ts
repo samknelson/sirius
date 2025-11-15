@@ -14,6 +14,9 @@ export const welcomeMessagesSettingsSchema = z.record(z.string(), z.string());
 // Employer Monthly Plugin Settings Schema  
 export const employerMonthlySettingsSchema = z.record(z.string(), z.array(z.string()));
 
+// Reports Plugin Settings Schema (maps role IDs to arrays of report type names)
+export const reportsSettingsSchema = z.record(z.string(), z.array(z.string()));
+
 // Plugin metadata registry
 export const pluginMetadata: Record<string, PluginMetadata> = {
   "welcome-messages": {
@@ -25,6 +28,11 @@ export const pluginMetadata: Record<string, PluginMetadata> = {
     id: "employer-monthly-uploads",
     requiredPermissions: ["admin"],
     settingsSchema: employerMonthlySettingsSchema,
+  },
+  "reports": {
+    id: "reports",
+    requiredPermissions: ["admin"],
+    settingsSchema: reportsSettingsSchema,
   },
 };
 

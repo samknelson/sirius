@@ -43,6 +43,7 @@ export function registerWizardRoutes(
         description: type.description,
         isFeed: type.isFeed,
         isMonthly: type.isMonthly,
+        isReport: (type as any).isReport || false,
         entityType: type.entityType
       }));
       res.json(types);

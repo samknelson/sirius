@@ -4,6 +4,8 @@ import { WelcomeMessagesSettings } from "./welcomeMessages/WelcomeMessagesSettin
 import { BookmarksPlugin } from "./bookmarks/BookmarksPlugin";
 import { EmployerMonthlyUploadsPlugin } from "./employerMonthlyUploads/EmployerMonthlyUploadsPlugin";
 import { EmployerMonthlySettings } from "./employerMonthlyUploads/EmployerMonthlySettings";
+import { ReportsPlugin } from "./reports/ReportsPlugin";
+import { ReportsSettings } from "./reports/ReportsSettings";
 
 export const pluginRegistry: DashboardPlugin[] = [
   {
@@ -25,10 +27,20 @@ export const pluginRegistry: DashboardPlugin[] = [
     enabledByDefault: true,
   },
   {
+    id: "reports",
+    name: "Reports",
+    description: "Display recent report summaries with links to details",
+    order: 3,
+    component: ReportsPlugin,
+    requiredPermissions: ["admin"],
+    enabledByDefault: true,
+    settingsComponent: ReportsSettings,
+  },
+  {
     id: "employer-monthly-uploads",
     name: "Employer Monthly Uploads",
     description: "Display employer monthly upload statistics by wizard type",
-    order: 3,
+    order: 4,
     component: EmployerMonthlyUploadsPlugin,
     requiredPermissions: ["admin"],
     enabledByDefault: true,
