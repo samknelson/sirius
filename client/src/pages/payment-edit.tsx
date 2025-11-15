@@ -2,6 +2,7 @@ import { PaymentLayout } from "@/components/layouts/PaymentLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,6 +32,7 @@ function PaymentEditContent() {
     values: payment ? {
       status: payment.status,
       allocated: payment.allocated,
+      amount: payment.amount,
       payerEaId: payment.payerEaId,
       details: payment.details as any,
     } : undefined,
@@ -99,6 +101,26 @@ function PaymentEditContent() {
       <CardContent>
         <Form {...form}>
           <form onSubmit={onSubmit} className="space-y-6">
+            <FormField
+              control={form.control}
+              name="amount"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Amount</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      data-testid="input-amount"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <FormField
               control={form.control}
               name="status"

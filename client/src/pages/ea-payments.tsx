@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
@@ -33,6 +34,7 @@ function EAPaymentsContent() {
     defaultValues: {
       status: "draft",
       allocated: false,
+      amount: "0.00",
       payerEaId: id,
       details: null,
     },
@@ -48,6 +50,7 @@ function EAPaymentsContent() {
       form.reset({
         status: "draft",
         allocated: false,
+        amount: "0.00",
         payerEaId: id,
         details: null,
       });
@@ -108,6 +111,26 @@ function EAPaymentsContent() {
               </DialogHeader>
               <Form {...form}>
                 <form onSubmit={onSubmit} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="amount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Amount</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            data-testid="input-amount"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
                   <FormField
                     control={form.control}
                     name="status"
@@ -173,6 +196,7 @@ function EAPaymentsContent() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Payment ID</TableHead>
+                  <TableHead>Amount</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Allocated</TableHead>
                   <TableHead>Details</TableHead>
@@ -187,6 +211,9 @@ function EAPaymentsContent() {
                           {payment.id.slice(0, 8)}...
                         </a>
                       </Link>
+                    </TableCell>
+                    <TableCell className="font-mono" data-testid={`text-amount-${payment.id}`}>
+                      ${parseFloat(payment.amount).toFixed(2)}
                     </TableCell>
                     <TableCell>
                       <Badge variant={getStatusBadgeVariant(payment.status)} data-testid={`badge-status-${payment.id}`}>

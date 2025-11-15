@@ -70,6 +70,13 @@ function PaymentViewContent() {
           </div>
 
           <div>
+            <label className="text-sm font-medium text-muted-foreground">Amount</label>
+            <p className="mt-1 font-mono text-lg font-semibold" data-testid="text-amount">
+              ${parseFloat(payment.amount).toFixed(2)}
+            </p>
+          </div>
+
+          <div>
             <label className="text-sm font-medium text-muted-foreground">Status</label>
             <div className="mt-1">
               <Badge variant={getStatusBadgeVariant(payment.status)} data-testid="badge-payment-status">
