@@ -320,14 +320,17 @@ export default function EmployersMonthlyUploads() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Status (Optional)</FormLabel>
-                      <Select value={field.value || ""} onValueChange={field.onChange}>
+                      <Select 
+                        value={field.value || "all"} 
+                        onValueChange={(value) => field.onChange(value === "all" ? undefined : value)}
+                      >
                         <FormControl>
                           <SelectTrigger data-testid="select-status">
                             <SelectValue placeholder="All statuses" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="" data-testid="select-option-all-statuses">
+                          <SelectItem value="all" data-testid="select-option-all-statuses">
                             All statuses
                           </SelectItem>
                           <SelectItem value="completed" data-testid="select-option-completed">
