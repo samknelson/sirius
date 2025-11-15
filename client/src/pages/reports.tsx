@@ -1,17 +1,11 @@
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { useLocation, Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { FileText, Plus, Wand2, Info, Play } from "lucide-react";
+import { FileText, ChevronRight, Clock, BarChart3 } from "lucide-react";
 import { format } from "date-fns";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 
 interface Wizard {
   id: string;
@@ -33,248 +27,163 @@ interface WizardType {
 
 export default function Reports() {
   const [, setLocation] = useLocation();
-  const { toast } = useToast();
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [selectedReportType, setSelectedReportType] = useState<WizardType | null>(null);
 
-  const { data: allWizardTypes } = useQuery<WizardType[]>({
+  const { data: allWizardTypes, isLoading: typesLoading } = useQuery<WizardType[]>({
     queryKey: ["/api/wizard-types"],
   });
 
-  // Filter to only report wizard types (those starting with "report_")
   const reportTypes = allWizardTypes?.filter(wt => wt.name.startsWith('report_')) || [];
 
   const { data: allWizards, isLoading: wizardsLoading } = useQuery<Wizard[]>({
     queryKey: ["/api/wizards"],
   });
 
-  // Filter report wizards client-side from all wizards
   const reportWizards = allWizards?.filter(w => w.type.startsWith('report_')) || [];
 
-  const createReportMutation = useMutation<Wizard, Error, string>({
-    mutationFn: async (reportType: string) => {
-      return await apiRequest("POST", `/api/wizards`, {
-        type: reportType,
-        status: "draft",
-        entityId: null,
-        data: {}
-      });
-    },
-    onSuccess: (newWizard: Wizard) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/wizards"] });
-      setIsCreateDialogOpen(false);
-      setSelectedReportType(null);
-      toast({
-        title: "Report Created",
-        description: "The report wizard has been created successfully.",
-      });
-      setLocation(`/wizards/${newWizard.id}`);
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create report",
-        variant: "destructive",
-      });
-    },
+  // Group reports by type
+  const reportsByType = reportTypes.map(reportType => {
+    const reportsOfType = reportWizards.filter(w => w.type === reportType.name);
+    const sortedReports = reportsOfType.sort((a, b) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+    const mostRecent = sortedReports[0];
+
+    return {
+      type: reportType,
+      count: reportsOfType.length,
+      mostRecent,
+    };
   });
 
-  const handleCreateReport = () => {
-    if (!selectedReportType) return;
-    createReportMutation.mutate(selectedReportType.name);
-  };
+  const isLoading = typesLoading || wizardsLoading;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-              <FileText className="text-primary-foreground" size={20} />
-            </div>
-            <div>
-              <h1 className="text-2xl font-semibold text-foreground" data-testid="text-reports-title">
-                Reports
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Generate and view worker data reports
-              </p>
-            </div>
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
+            <FileText className="text-primary-foreground" size={20} />
           </div>
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-create-report">
-                <Plus className="h-4 w-4 mr-2" />
-                New Report
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Create New Report</DialogTitle>
-                <DialogDescription>
-                  Select a report type to analyze your worker data
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                {reportTypes.length === 0 ? (
-                  <Alert>
-                    <Info className="h-4 w-4" />
-                    <AlertDescription>
-                      No report types are available at this time.
-                    </AlertDescription>
-                  </Alert>
-                ) : (
-                  <div className="space-y-3">
-                    {reportTypes.map(reportType => (
-                      <Card 
-                        key={reportType.name}
-                        className={`cursor-pointer transition-all ${
-                          selectedReportType?.name === reportType.name 
-                            ? 'ring-2 ring-primary bg-accent' 
-                            : 'hover:bg-accent/50'
-                        }`}
-                        onClick={() => setSelectedReportType(reportType)}
-                        data-testid={`card-report-type-${reportType.name}`}
-                      >
-                        <CardHeader className="pb-3">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <CardTitle className="text-base">{reportType.displayName}</CardTitle>
-                              {reportType.description && (
-                                <CardDescription className="mt-1">
-                                  {reportType.description}
-                                </CardDescription>
-                              )}
-                            </div>
-                            {selectedReportType?.name === reportType.name && (
-                              <div className="ml-2 h-6 w-6 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
-                                <div className="h-2 w-2 rounded-full bg-primary-foreground" />
-                              </div>
-                            )}
-                          </div>
-                        </CardHeader>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-                
-                <div className="flex justify-end gap-2 pt-4">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setIsCreateDialogOpen(false);
-                      setSelectedReportType(null);
-                    }}
-                    data-testid="button-cancel-create"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleCreateReport}
-                    disabled={!selectedReportType || createReportMutation.isPending}
-                    data-testid="button-confirm-create"
-                  >
-                    <Play className="h-4 w-4 mr-2" />
-                    {createReportMutation.isPending ? "Creating..." : "Create Report"}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <div>
+            <h1 className="text-2xl font-semibold text-foreground" data-testid="text-reports-title">
+              Reports
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Generate and view worker data reports
+            </p>
+          </div>
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Wand2 className="h-5 w-5 text-muted-foreground" />
-            Recent Reports
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {wizardsLoading ? (
-            <div className="space-y-3">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-            </div>
-          ) : !reportWizards || reportWizards.length === 0 ? (
+      {isLoading ? (
+        <div className="space-y-4">
+          <Skeleton className="h-48 w-full" />
+          <Skeleton className="h-48 w-full" />
+        </div>
+      ) : reportTypes.length === 0 ? (
+        <Card>
+          <CardContent className="pt-6">
             <div className="text-center py-12">
               <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
                 <FileText className="text-muted-foreground" size={32} />
               </div>
-              <h3 className="text-lg font-medium text-foreground mb-2">No Reports Yet</h3>
-              <p className="text-muted-foreground mb-4">
-                Create your first report to get started analyzing worker data
+              <h3 className="text-lg font-medium text-foreground mb-2">No Report Types Available</h3>
+              <p className="text-muted-foreground">
+                No report types have been configured yet
               </p>
-              <Button 
-                variant="outline" 
-                onClick={() => setIsCreateDialogOpen(true)}
-                data-testid="button-create-first-report"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Create Your First Report
-              </Button>
             </div>
-          ) : (
-            <div className="border rounded-lg overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Report Type</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Records</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reportWizards.map(wizard => {
-                    const reportType = reportTypes.find(rt => rt.name === wizard.type);
-                    const recordCount = wizard.data?.reportMeta?.recordCount;
-                    return (
-                      <TableRow 
-                        key={wizard.id}
-                        className="cursor-pointer"
-                        onClick={() => setLocation(`/wizards/${wizard.id}`)}
-                        data-testid={`row-report-${wizard.id}`}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-2">
+          {reportsByType.map(({ type, count, mostRecent }) => (
+            <Card 
+              key={type.name}
+              className="hover:shadow-md transition-shadow"
+              data-testid={`card-report-type-${type.name}`}
+            >
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <CardTitle className="text-lg">{type.displayName}</CardTitle>
+                    {type.description && (
+                      <CardDescription className="mt-1">
+                        {type.description}
+                      </CardDescription>
+                    )}
+                  </div>
+                  <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <BarChart3 className="text-primary" size={20} />
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {mostRecent ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Most Recent</span>
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="text-foreground">
+                          {format(new Date(mostRecent.date), 'PPp')}
+                        </span>
+                      </div>
+                    </div>
+                    {mostRecent.data?.reportMeta?.recordCount !== undefined && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Records Found</span>
+                        <Badge variant="secondary" data-testid={`badge-record-count-${type.name}`}>
+                          {mostRecent.data.reportMeta.recordCount.toLocaleString()}
+                        </Badge>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Total Reports</span>
+                      <span className="text-foreground font-medium">{count}</span>
+                    </div>
+                    <div className="flex items-center gap-2 pt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setLocation(`/wizards/${mostRecent.id}`)}
+                        data-testid={`button-view-latest-${type.name}`}
                       >
-                        <TableCell className="font-medium">
-                          {reportType?.displayName || wizard.type}
-                        </TableCell>
-                        <TableCell>
-                          {format(new Date(wizard.date), 'PPp')}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={wizard.status === 'completed' ? 'default' : 'secondary'}>
-                            {wizard.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell data-testid={`text-record-count-${wizard.id}`}>
-                          {recordCount !== undefined ? recordCount.toLocaleString() : '—'}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setLocation(`/wizards/${wizard.id}`);
-                            }}
-                            data-testid={`button-view-report-${wizard.id}`}
-                          >
-                            View
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                        View Latest
+                      </Button>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setLocation(`/reports/${type.name}`)}
+                        data-testid={`button-view-all-${type.name}`}
+                      >
+                        View All
+                        <ChevronRight className="h-4 w-4 ml-1" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-sm text-muted-foreground mb-4">
+                      No reports generated yet
+                    </p>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => setLocation(`/reports/${type.name}`)}
+                      data-testid={`button-create-first-${type.name}`}
+                    >
+                      Create Report
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

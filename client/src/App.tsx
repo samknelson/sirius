@@ -14,6 +14,7 @@ import Bootstrap from "@/pages/bootstrap";
 import Dashboard from "@/pages/dashboard";
 import Bookmarks from "@/pages/bookmarks";
 import Reports from "@/pages/reports";
+import ReportType from "@/pages/report-type";
 import Workers from "@/pages/workers";
 import WorkersAdd from "@/pages/workers-add";
 import WorkerView from "@/pages/worker-view";
@@ -283,6 +284,14 @@ function Router() {
         <ProtectedRoute policy="bookmark">
           <AuthenticatedLayout>
             <Bookmarks />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/reports/:reportType">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <ReportType />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
