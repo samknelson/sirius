@@ -16,8 +16,7 @@ export function AddWorkerForm() {
 
   const addWorkerMutation = useMutation({
     mutationFn: async (workerData: { name: string }) => {
-      const response = await apiRequest("POST", "/api/workers", workerData);
-      return response.json();
+      return await apiRequest("POST", "/api/workers", workerData);
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/workers"] });

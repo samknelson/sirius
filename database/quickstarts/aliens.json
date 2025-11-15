@@ -1,0 +1,3302 @@
+{
+  "metadata": {
+    "name": "aliens",
+    "exportedAt": "2025-11-15T12:29:22.096Z",
+    "tableCounts": {
+      "variables": 25,
+      "roles": 6,
+      "users": 8,
+      "optionsGender": 3,
+      "optionsWorkerIdType": 2,
+      "optionsTrustBenefitType": 2,
+      "optionsLedgerPaymentType": 3,
+      "optionsEmployerContactType": 2,
+      "optionsWorkerWs": 4,
+      "optionsEmploymentStatus": 3,
+      "ledgerAccounts": 1,
+      "employers": 2,
+      "contacts": 19,
+      "userRoles": 12,
+      "rolePermissions": 14,
+      "trustBenefits": 1,
+      "bookmarks": 4,
+      "ledgerStripePaymentMethods": 3,
+      "ledgerPayments": 0,
+      "wizards": 10,
+      "workers": 15,
+      "employerContacts": 2,
+      "postalAddresses": 9,
+      "phoneNumbers": 6,
+      "wizardEmployerMonthly": 5,
+      "wizardFeedMappings": 2,
+      "wizardReportData": 17,
+      "workerIds": 6,
+      "workerHours": 7,
+      "trustWmb": 2
+    },
+    "version": "1.0",
+    "schemaVersion": "1.0"
+  },
+  "data": {
+    "variables": [
+      {
+        "id": "74bee797-489f-4849-b8f2-60a6a042fd5d",
+        "name": "app_config",
+        "value": {
+          "theme": "dark",
+          "version": "1.0"
+        }
+      },
+      {
+        "id": "9c45314c-59fe-474c-8a52-5482c9afe2a9",
+        "name": "api_settings",
+        "value": {
+          "retries": 3,
+          "timeout": 5000
+        }
+      },
+      {
+        "id": "4fc4a607-18cd-4d17-b26f-93b197888dd1",
+        "name": "address_validation_config",
+        "value": {
+          "mode": "google",
+          "local": {
+            "enabled": false,
+            "countries": [
+              "US"
+            ],
+            "strictValidation": true
+          },
+          "google": {
+            "enabled": true,
+            "apiKeyName": "GOOGLE_MAPS_API_KEY",
+            "components": {
+              "country": true,
+              "postal_code": true,
+              "administrative_area_level_1": true
+            }
+          },
+          "fallback": {
+            "logValidationAttempts": true,
+            "useLocalOnGoogleFailure": true
+          }
+        }
+      },
+      {
+        "id": "8b571b65-d4e8-42d4-84e5-485f723b3109",
+        "name": "site_footer",
+        "value": "Copyright&nbsp;© Sirius 2025 - <a href=\"https://www.google.com\">Privacy Policy</a> | Terms of Service"
+      },
+      {
+        "id": "6d2fbbde-9658-42bf-b727-3c6c25dc1350",
+        "name": "employer_user_roles_required",
+        "value": [
+          "9ce91134-359b-4307-a252-5cf205865a8b"
+        ]
+      },
+      {
+        "id": "3ecd3751-07da-4331-bdc8-1396a07cd7d4",
+        "name": "employer_user_roles_optional",
+        "value": [
+          "c1d07544-e08c-49a3-8d3f-318e080754f2"
+        ]
+      },
+      {
+        "id": "88cdda4e-ef52-4005-8298-fdb8d0471acd",
+        "name": "component_employer.login",
+        "value": true
+      },
+      {
+        "id": "99c27563-f248-4a5f-8179-3f73c972a947",
+        "name": "phone_validation_config",
+        "value": {
+          "mode": "twilio",
+          "local": {
+            "enabled": false,
+            "defaultCountry": "US",
+            "strictValidation": true
+          },
+          "twilio": {
+            "enabled": true,
+            "lookupType": [
+              "line_type_intelligence",
+              "caller_name"
+            ]
+          },
+          "fallback": {
+            "logValidationAttempts": true,
+            "useLocalOnTwilioFailure": true
+          }
+        }
+      },
+      {
+        "id": "d5a2dc83-750b-4ba7-bf0e-6b7ed954f9ac",
+        "name": "welcome_message_d9e68151-64ea-49b5-953f-51325edb72dd",
+        "value": "Welcome, Staff."
+      },
+      {
+        "id": "3f6eb6ac-50e4-4bd6-a895-ee57a19ab6ea",
+        "name": "stripe_payment_methods",
+        "value": [
+          "card",
+          "us_bank_account"
+        ]
+      },
+      {
+        "id": "5e63087f-bd86-46e2-b49b-c0de56fccdf2",
+        "name": "welcome_message_35cdd921-35af-4ca0-a66b-8b38827399fd",
+        "value": "Welcome, Provider! It's so wonderful to see you."
+      },
+      {
+        "id": "33c1191b-4c95-4f7f-8c6b-9f8007b28503",
+        "name": "welcome_message_f4af19fc-2166-4e2b-b202-61a0335cb533",
+        "value": "Hail the <b>all powerful</b>&nbsp;holy admin. Welcome, lord."
+      },
+      {
+        "id": "db2f765f-0b6f-484b-a706-644c5acc878e",
+        "name": "component_cardcheck",
+        "value": true
+      },
+      {
+        "id": "f1fafe6e-6046-490b-9280-aa2bde816523",
+        "name": "component_ledger",
+        "value": true
+      },
+      {
+        "id": "1bcfc340-27b5-476b-af7e-1ba22818b68d",
+        "name": "employer_ab5f98ff-90b1-4106-b332-32c73917fffd_stripe_customer_id",
+        "value": "cus_TND0Sd8R79yHu1"
+      },
+      {
+        "id": "0c443779-9277-4884-bd87-6ceae016d466",
+        "name": "stripe_payment_types",
+        "value": [
+          "card",
+          "cashapp",
+          "us_bank_account"
+        ]
+      },
+      {
+        "id": "797db399-daf0-4c54-884d-dbc5bc7e56c0",
+        "name": "component_ledger.stripe",
+        "value": true
+      },
+      {
+        "id": "7b11ecf6-e35b-4283-94a6-7d3002c241ae",
+        "name": "dashboard_plugin_welcome-messages",
+        "value": true
+      },
+      {
+        "id": "08afbd8b-85c3-4f6b-af0c-4030b9cb3c8a",
+        "name": "ledger_stripe_payment_type",
+        "value": {
+          "paymentTypeId": "3cd4830b-1606-449b-804e-4982712c5954"
+        }
+      },
+      {
+        "id": "6435551f-5143-485b-a091-77990de15da3",
+        "name": "component_sitespecific.btu",
+        "value": true
+      },
+      {
+        "id": "4cf283db-3ee9-4709-8a9d-58d24829ee43",
+        "name": "component_sitespecific.gbhet",
+        "value": true
+      },
+      {
+        "id": "e329613a-f18f-4133-afcb-b3d541ec0b0c",
+        "name": "dashboard_plugin_welcome-messages_settings",
+        "value": {
+          "35cdd921-35af-4ca0-a66b-8b38827399fd": "Welcome, Provider! It's so wonderful to see you:)",
+          "d9e68151-64ea-49b5-953f-51325edb72dd": "Welcome, Staff...",
+          "f4af19fc-2166-4e2b-b202-61a0335cb533": "Hail the <b>all powerful</b>&nbsp;holy admin. Welcome, lord!"
+        }
+      },
+      {
+        "id": "892eae97-1de1-4092-bfe2-9a0a1d2f40e4",
+        "name": "dashboard_plugin_reports_settings",
+        "value": {
+          "d9e68151-64ea-49b5-953f-51325edb72dd": [
+            "report_workers_missing_ssn",
+            "report_workers_invalid_ssn"
+          ],
+          "f4af19fc-2166-4e2b-b202-61a0335cb533": [
+            "report_workers_missing_ssn",
+            "report_workers_invalid_ssn"
+          ]
+        }
+      },
+      {
+        "id": "0d5b1ebc-e26a-47b6-a488-cb6c238d1783",
+        "name": "dashboard_plugin_employer-monthly-uploads_settings",
+        "value": {
+          "35cdd921-35af-4ca0-a66b-8b38827399fd": [],
+          "a2e17f74-4e29-455b-8952-88b585a672c5": [],
+          "c1d07544-e08c-49a3-8d3f-318e080754f2": [],
+          "d9e68151-64ea-49b5-953f-51325edb72dd": [
+            "gbhet_legal_workers_monthly"
+          ],
+          "f4af19fc-2166-4e2b-b202-61a0335cb533": [
+            "gbhet_legal_workers_monthly",
+            "gbhet_legal_workers_corrections"
+          ]
+        }
+      },
+      {
+        "id": "03ad4c13-a120-49e5-8f42-4924a1441400",
+        "name": "site_name",
+        "value": "GBHET Legal Benefit6"
+      }
+    ],
+    "roles": [
+      {
+        "id": "d9e68151-64ea-49b5-953f-51325edb72dd",
+        "name": "Staff",
+        "description": "Can manage worker information",
+        "sequence": 1,
+        "createdAt": "2025-09-23T20:12:39.029Z"
+      },
+      {
+        "id": "9ce91134-359b-4307-a252-5cf205865a8b",
+        "name": "Employer",
+        "description": "",
+        "sequence": 2,
+        "createdAt": "2025-11-04T15:33:38.047Z"
+      },
+      {
+        "id": "a2e17f74-4e29-455b-8952-88b585a672c5",
+        "name": "Worker",
+        "description": "",
+        "sequence": 5,
+        "createdAt": "2025-11-08T02:05:07.344Z"
+      },
+      {
+        "id": "c1d07544-e08c-49a3-8d3f-318e080754f2",
+        "name": "Employer User Manager",
+        "description": "",
+        "sequence": 3,
+        "createdAt": "2025-11-09T21:55:26.871Z"
+      },
+      {
+        "id": "35cdd921-35af-4ca0-a66b-8b38827399fd",
+        "name": "Provider",
+        "description": "",
+        "sequence": 4,
+        "createdAt": "2025-11-04T15:33:44.217Z"
+      },
+      {
+        "id": "f4af19fc-2166-4e2b-b202-61a0335cb533",
+        "name": "Administrator",
+        "description": "System administrator with full access",
+        "sequence": 0,
+        "createdAt": "2025-09-23T20:12:39.029Z"
+      }
+    ],
+    "users": [
+      {
+        "id": "d4a40936-e27f-41e9-9098-ff1f1266b6c7",
+        "replitUserId": "49383536",
+        "email": "john.young@activistcentral.net",
+        "firstName": null,
+        "lastName": null,
+        "profileImageUrl": null,
+        "accountStatus": "linked",
+        "isActive": true,
+        "createdAt": "2025-11-05T15:13:30.166Z",
+        "updatedAt": "2025-11-05T15:42:13.022Z",
+        "lastLogin": "2025-11-13T17:21:28.472Z"
+      },
+      {
+        "id": "331d0601-870d-48dd-9a1f-63a79577155b",
+        "replitUserId": "45808420",
+        "email": "samknelson@gmail.com",
+        "firstName": "Sam",
+        "lastName": "Nelson",
+        "profileImageUrl": null,
+        "accountStatus": "linked",
+        "isActive": true,
+        "createdAt": "2025-09-23T20:13:19.620Z",
+        "updatedAt": "2025-11-04T15:56:18.940Z",
+        "lastLogin": "2025-11-14T21:34:51.818Z"
+      },
+      {
+        "id": "b4a10a1f-0350-4543-81d7-f1df6e1ca398",
+        "replitUserId": null,
+        "email": "placeholder-b4a10a1f-0350-4543-81d7-f1df6e1ca398@temporary.local",
+        "firstName": null,
+        "lastName": null,
+        "profileImageUrl": null,
+        "accountStatus": "pending",
+        "isActive": false,
+        "createdAt": "2025-09-24T11:08:19.947Z",
+        "updatedAt": "2025-11-04T15:43:19.102Z",
+        "lastLogin": null
+      },
+      {
+        "id": "8971aaf0-3c81-4745-a0b5-7cbb16bdec9e",
+        "replitUserId": null,
+        "email": "placeholder-8971aaf0-3c81-4745-a0b5-7cbb16bdec9e@temporary.local",
+        "firstName": null,
+        "lastName": null,
+        "profileImageUrl": null,
+        "accountStatus": "pending",
+        "isActive": false,
+        "createdAt": "2025-09-24T11:08:35.357Z",
+        "updatedAt": "2025-11-04T15:43:19.102Z",
+        "lastLogin": null
+      },
+      {
+        "id": "7cc8579b-8295-43a7-a633-64c32121103d",
+        "replitUserId": null,
+        "email": "provider@nodomain.com",
+        "firstName": "Peter",
+        "lastName": "Provider",
+        "profileImageUrl": null,
+        "accountStatus": "pending",
+        "isActive": true,
+        "createdAt": "2025-11-05T21:41:01.940Z",
+        "updatedAt": "2025-11-05T21:41:01.940Z",
+        "lastLogin": null
+      },
+      {
+        "id": "bf1b01c2-dcd9-4aeb-a562-1cde1f1e3a91",
+        "replitUserId": "45845176",
+        "email": "sam@clevernamehere.com",
+        "firstName": null,
+        "lastName": null,
+        "profileImageUrl": null,
+        "accountStatus": "linked",
+        "isActive": true,
+        "createdAt": "2025-11-04T17:02:32.355Z",
+        "updatedAt": "2025-11-04T17:03:02.472Z",
+        "lastLogin": "2025-11-04T17:03:02.489Z"
+      },
+      {
+        "id": "cc9beee4-60e1-47a6-a66e-9fd26114b04d",
+        "replitUserId": null,
+        "email": "samknelson+alien@gmail.com",
+        "firstName": "Alien",
+        "lastName": "Martian",
+        "profileImageUrl": null,
+        "accountStatus": "pending",
+        "isActive": true,
+        "createdAt": "2025-11-08T02:04:42.348Z",
+        "updatedAt": "2025-11-08T02:04:42.348Z",
+        "lastLogin": null
+      },
+      {
+        "id": "8edec822-3669-401a-b1b4-c3d2a91a077f",
+        "replitUserId": null,
+        "email": "samknelson+1234@gmail.com",
+        "firstName": "Invader",
+        "lastName": "Invaderson",
+        "profileImageUrl": null,
+        "accountStatus": "active",
+        "isActive": true,
+        "createdAt": "2025-11-10T14:06:51.971Z",
+        "updatedAt": "2025-11-10T14:06:51.971Z",
+        "lastLogin": null
+      }
+    ],
+    "optionsGender": [
+      {
+        "id": "f8a2430a-635a-41f0-b5b0-c8e9d5ca1b1e",
+        "name": "I Identify As",
+        "code": "X",
+        "nota": true,
+        "sequence": 2
+      },
+      {
+        "id": "373734dc-ce1f-441d-9a97-8250f3b83c82",
+        "name": "Male",
+        "code": "M",
+        "nota": false,
+        "sequence": 0
+      },
+      {
+        "id": "8323450e-b61a-49ef-8ca5-b168235a2348",
+        "name": "Female",
+        "code": "F",
+        "nota": false,
+        "sequence": 1
+      }
+    ],
+    "optionsWorkerIdType": [
+      {
+        "id": "44151277-8ef2-4d4b-95ca-2d5c32745438",
+        "name": "Titan ID",
+        "sequence": 1,
+        "validator": "^[A-Z]\\d+$"
+      },
+      {
+        "id": "0ca0c5d1-db15-41f0-8260-52cd5626913b",
+        "name": "External ID",
+        "sequence": 0,
+        "validator": "^\\d+$"
+      }
+    ],
+    "optionsTrustBenefitType": [
+      {
+        "id": "de496427-97e8-4631-a7df-968a153afeee",
+        "name": "Medical",
+        "sequence": 0
+      },
+      {
+        "id": "e89e7a38-890c-451c-b93e-e41bb295d3de",
+        "name": "Legal",
+        "sequence": 1
+      }
+    ],
+    "optionsLedgerPaymentType": [
+      {
+        "id": "3cd4830b-1606-449b-804e-4982712c5954",
+        "name": "Stripe",
+        "description": "Payment from the Stripe payment processor",
+        "sequence": 1
+      },
+      {
+        "id": "6a0db487-386f-4e16-a873-cc03d74d9508",
+        "name": "Adjustment",
+        "description": "Manual adjustment to the accounting.",
+        "sequence": 2
+      },
+      {
+        "id": "cc81bcb3-be7f-48d4-87d7-21f4a70a8817",
+        "name": "Offline Payment",
+        "description": "Imported offline payment",
+        "sequence": 0
+      }
+    ],
+    "optionsEmployerContactType": [
+      {
+        "id": "c15754f0-74c8-4b01-9413-7c4b6c82eaab",
+        "name": "Overlord",
+        "description": null
+      },
+      {
+        "id": "72f3c29f-3ea5-436a-b2d1-d381c5000199",
+        "name": "Underlord",
+        "description": null
+      }
+    ],
+    "optionsWorkerWs": [
+      {
+        "id": "18f213c7-9747-4a1d-9aba-0e0de2b29c17",
+        "name": "Active",
+        "description": null,
+        "sequence": 0
+      },
+      {
+        "id": "5016a7c0-77c3-4cd7-8aad-49a6172282b1",
+        "name": "Inactive",
+        "description": null,
+        "sequence": 1
+      },
+      {
+        "id": "1ae32248-83e5-4347-8c79-b687aa72d252",
+        "name": "Deceased",
+        "description": null,
+        "sequence": 3
+      },
+      {
+        "id": "4089be36-ff33-4887-a5df-b92425897542",
+        "name": "Disabled",
+        "description": null,
+        "sequence": 2
+      }
+    ],
+    "optionsEmploymentStatus": [
+      {
+        "id": "d73eb3ed-9837-4b7d-9504-b17c64f4ee33",
+        "name": "Active",
+        "code": "A",
+        "employed": true,
+        "description": null,
+        "sequence": 0
+      },
+      {
+        "id": "0c3080d5-a137-49ec-9d2d-a93687cafac6",
+        "name": "Terminated",
+        "code": "t",
+        "employed": false,
+        "description": null,
+        "sequence": 1
+      },
+      {
+        "id": "a31b3341-d052-45c2-9f79-c01155a61896",
+        "name": "Disability",
+        "code": "D",
+        "employed": true,
+        "description": null,
+        "sequence": 2
+      }
+    ],
+    "ledgerAccounts": [
+      {
+        "id": "be2b137e-8094-48f1-aa26-c16afb282304",
+        "name": "Employer Contributions",
+        "description": "Just a description here.",
+        "isActive": true
+      }
+    ],
+    "employers": [
+      {
+        "id": "bd6d9bef-4654-466f-8d86-a09e634f6c9a",
+        "siriusId": 1,
+        "name": "Vogon Constructor Fleet",
+        "isActive": true,
+        "stripeCustomerId": "cus_TNlwtdLpTZVCXw"
+      },
+      {
+        "id": "ab5f98ff-90b1-4106-b332-32c73917fffd",
+        "siriusId": 2,
+        "name": "Invasion Suppliers LLC",
+        "isActive": true,
+        "stripeCustomerId": "cus_TNDD4jQ4HV2hRK"
+      }
+    ],
+    "contacts": [
+      {
+        "id": "6cac1d30-daf1-4747-88a8-7e273264a002",
+        "title": "Dr.",
+        "given": "Invader",
+        "middle": "I",
+        "family": "Invaderson",
+        "generational": "III",
+        "credentials": null,
+        "displayName": "Dr. Invader I Invaderson III",
+        "email": "samknelson+1234@gmail.com",
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "dd2cd11b-4f20-4c69-8a7c-2beb116b765a",
+        "title": "",
+        "given": "Vinnie",
+        "middle": "The",
+        "family": "Vogon",
+        "generational": "",
+        "credentials": "",
+        "displayName": "Vinnie The Vogon",
+        "email": "samknelson+vinnie@gmail.com",
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "cf64d4cc-61a6-42fb-b68d-aab34b883c0e",
+        "title": null,
+        "given": "Alien",
+        "middle": "A",
+        "family": "Martian",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Alien A Martian",
+        "email": "samknelson+alien@gmail.com",
+        "birthDate": "1977-07-17",
+        "gender": "f8a2430a-635a-41f0-b5b0-c8e9d5ca1b1e",
+        "genderNota": "Squamous",
+        "genderCalc": "Squamous"
+      },
+      {
+        "id": "0fb9a1ab-0166-4655-9508-4b4f62b63daf",
+        "title": null,
+        "given": "Short",
+        "middle": null,
+        "family": "SSN Alien",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Short SSN Alien",
+        "email": null,
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "88e5e004-df8c-44a2-8eb7-160af46fd423",
+        "title": null,
+        "given": "Ordinary",
+        "middle": null,
+        "family": "Alien",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Ordinary Alien",
+        "email": null,
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "ab781677-9761-4922-81fc-530534b30311",
+        "title": null,
+        "given": "Disabled",
+        "middle": null,
+        "family": "Alien",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Disabled Alien",
+        "email": null,
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "c28057e1-c775-4493-afc9-e8488c65f804",
+        "title": null,
+        "given": "Invalid",
+        "middle": null,
+        "family": "Dob Alien",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Invalid Dob Alien",
+        "email": null,
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "8f349537-0c21-4994-88d2-5c5ed20d42e5",
+        "title": null,
+        "given": "Newbie",
+        "middle": null,
+        "family": "Workerson_TEST",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Newbie Workerson_TEST",
+        "email": null,
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "1d8a72bf-e1ee-400d-9a93-3e7dcdb9e5ca",
+        "title": null,
+        "given": "Newbie",
+        "middle": null,
+        "family": "Workerson_test",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Newbie Workerson_test",
+        "email": null,
+        "birthDate": "2015-01-02",
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "311a53d7-a888-49ee-9df2-5da5def4b811",
+        "title": null,
+        "given": "Test",
+        "middle": "T",
+        "family": "Testerson Jr.",
+        "generational": null,
+        "credentials": "Ph.D.",
+        "displayName": "Test T Testerson Jr., Ph.D.",
+        "email": "samknelson@gmail.com",
+        "birthDate": "1970-03-02",
+        "gender": "f8a2430a-635a-41f0-b5b0-c8e9d5ca1b1e",
+        "genderNota": "Squamous",
+        "genderCalc": "Squamous"
+      },
+      {
+        "id": "e3fc73b8-0486-4942-a546-adf178fd590f",
+        "title": null,
+        "given": "Yet",
+        "middle": null,
+        "family": "Another Testerson",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Yet Another Testerson",
+        "email": "samknelson+12342sdf3@gmail.com",
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "574ff0b4-27bc-47e1-b4e9-82a01211be75",
+        "title": null,
+        "given": "Short",
+        "middle": null,
+        "family": "SSN Alien",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Short SSN Alien",
+        "email": null,
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "d27c5339-29a6-4aeb-8f25-0069c334960e",
+        "title": "AAA",
+        "given": "BBB",
+        "middle": "",
+        "family": "CCC",
+        "generational": "",
+        "credentials": "",
+        "displayName": "AAA BBB CCC",
+        "email": "samknelson+invader@gmail.com",
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "97ac1642-d5c5-4a93-919e-093fb8d6d742",
+        "title": "aaa",
+        "given": "bbb",
+        "middle": "ccc",
+        "family": "",
+        "generational": "",
+        "credentials": "",
+        "displayName": "aaa bbb ccc",
+        "email": "samknelson+invader2@gmail.com",
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "30c04efb-285c-45bf-b428-9f91f8a88d57",
+        "title": null,
+        "given": "Ordinary",
+        "middle": null,
+        "family": "Alien",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Ordinary Alien",
+        "email": null,
+        "birthDate": "1955-06-08",
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "ca716f23-af64-4da9-986f-6df08ac4230d",
+        "title": null,
+        "given": "Invalid status",
+        "middle": null,
+        "family": "Alien",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Invalid status Alien",
+        "email": null,
+        "birthDate": "2015-01-02",
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "543ed580-bed5-4496-bdd6-c8fabd587092",
+        "title": null,
+        "given": "Newbie",
+        "middle": null,
+        "family": "Workerson_test",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Newbie Workerson_test",
+        "email": null,
+        "birthDate": "2015-01-02",
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "0211e445-be68-43ae-bb95-a413b47525fe",
+        "title": null,
+        "given": "Short ssn",
+        "middle": null,
+        "family": "Alien",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Short ssn Alien",
+        "email": null,
+        "birthDate": "2015-01-02",
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "5fb2ef88-3430-4ba8-a5b4-d2b4bb1ca993",
+        "title": null,
+        "given": "Disabled",
+        "middle": null,
+        "family": "Alien",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Disabled Alien",
+        "email": null,
+        "birthDate": "2015-01-02",
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      }
+    ],
+    "userRoles": [
+      {
+        "userId": "331d0601-870d-48dd-9a1f-63a79577155b",
+        "roleId": "f4af19fc-2166-4e2b-b202-61a0335cb533",
+        "assignedAt": "2025-09-23T20:13:30.441Z"
+      },
+      {
+        "userId": "331d0601-870d-48dd-9a1f-63a79577155b",
+        "roleId": "4ba546aa-d8ae-4804-91b3-39f07cb54d7f",
+        "assignedAt": "2025-09-24T15:32:58.716Z"
+      },
+      {
+        "userId": "bf1b01c2-dcd9-4aeb-a562-1cde1f1e3a91",
+        "roleId": "f4af19fc-2166-4e2b-b202-61a0335cb533",
+        "assignedAt": "2025-11-04T18:00:50.009Z"
+      },
+      {
+        "userId": "d4a40936-e27f-41e9-9098-ff1f1266b6c7",
+        "roleId": "f4af19fc-2166-4e2b-b202-61a0335cb533",
+        "assignedAt": "2025-11-05T15:13:34.861Z"
+      },
+      {
+        "userId": "8971aaf0-3c81-4745-a0b5-7cbb16bdec9e",
+        "roleId": "35cdd921-35af-4ca0-a66b-8b38827399fd",
+        "assignedAt": "2025-11-05T21:40:31.763Z"
+      },
+      {
+        "userId": "7cc8579b-8295-43a7-a633-64c32121103d",
+        "roleId": "35cdd921-35af-4ca0-a66b-8b38827399fd",
+        "assignedAt": "2025-11-05T21:59:58.669Z"
+      },
+      {
+        "userId": "331d0601-870d-48dd-9a1f-63a79577155b",
+        "roleId": "35cdd921-35af-4ca0-a66b-8b38827399fd",
+        "assignedAt": "2025-11-08T01:15:22.715Z"
+      },
+      {
+        "userId": "331d0601-870d-48dd-9a1f-63a79577155b",
+        "roleId": "9ce91134-359b-4307-a252-5cf205865a8b",
+        "assignedAt": "2025-11-08T01:21:10.490Z"
+      },
+      {
+        "userId": "bf1b01c2-dcd9-4aeb-a562-1cde1f1e3a91",
+        "roleId": "d9e68151-64ea-49b5-953f-51325edb72dd",
+        "assignedAt": "2025-11-08T01:25:01.205Z"
+      },
+      {
+        "userId": "cc9beee4-60e1-47a6-a66e-9fd26114b04d",
+        "roleId": "a2e17f74-4e29-455b-8952-88b585a672c5",
+        "assignedAt": "2025-11-08T02:21:33.217Z"
+      },
+      {
+        "userId": "8edec822-3669-401a-b1b4-c3d2a91a077f",
+        "roleId": "9ce91134-359b-4307-a252-5cf205865a8b",
+        "assignedAt": "2025-11-10T14:06:52.009Z"
+      },
+      {
+        "userId": "8edec822-3669-401a-b1b4-c3d2a91a077f",
+        "roleId": "c1d07544-e08c-49a3-8d3f-318e080754f2",
+        "assignedAt": "2025-11-10T14:29:44.588Z"
+      }
+    ],
+    "rolePermissions": [
+      {
+        "roleId": "f4af19fc-2166-4e2b-b202-61a0335cb533",
+        "permissionKey": "admin.manage",
+        "assignedAt": "2025-09-23T20:14:17.658Z"
+      },
+      {
+        "roleId": "f4af19fc-2166-4e2b-b202-61a0335cb533",
+        "permissionKey": "workers.manage",
+        "assignedAt": "2025-09-23T20:14:17.658Z"
+      },
+      {
+        "roleId": "f4af19fc-2166-4e2b-b202-61a0335cb533",
+        "permissionKey": "workers.view",
+        "assignedAt": "2025-09-23T20:14:17.658Z"
+      },
+      {
+        "roleId": "d9e68151-64ea-49b5-953f-51325edb72dd",
+        "permissionKey": "workers.manage",
+        "assignedAt": "2025-09-23T20:14:17.658Z"
+      },
+      {
+        "roleId": "d9e68151-64ea-49b5-953f-51325edb72dd",
+        "permissionKey": "workers.view",
+        "assignedAt": "2025-09-23T20:14:17.658Z"
+      },
+      {
+        "roleId": "4ba546aa-d8ae-4804-91b3-39f07cb54d7f",
+        "permissionKey": "workers.view",
+        "assignedAt": "2025-09-23T20:14:17.658Z"
+      },
+      {
+        "roleId": "f4af19fc-2166-4e2b-b202-61a0335cb533",
+        "permissionKey": "variables.manage",
+        "assignedAt": "2025-09-24T10:45:01.724Z"
+      },
+      {
+        "roleId": "d9e68151-64ea-49b5-953f-51325edb72dd",
+        "permissionKey": "staff",
+        "assignedAt": "2025-11-04T20:38:26.507Z"
+      },
+      {
+        "roleId": "35cdd921-35af-4ca0-a66b-8b38827399fd",
+        "permissionKey": "provider",
+        "assignedAt": "2025-11-04T20:38:32.554Z"
+      },
+      {
+        "roleId": "9ce91134-359b-4307-a252-5cf205865a8b",
+        "permissionKey": "employer",
+        "assignedAt": "2025-11-04T20:38:38.806Z"
+      },
+      {
+        "roleId": "f4af19fc-2166-4e2b-b202-61a0335cb533",
+        "permissionKey": "admin",
+        "assignedAt": "2025-11-04T20:39:13.024Z"
+      },
+      {
+        "roleId": "a2e17f74-4e29-455b-8952-88b585a672c5",
+        "permissionKey": "worker",
+        "assignedAt": "2025-11-08T02:06:24.321Z"
+      },
+      {
+        "roleId": "d9e68151-64ea-49b5-953f-51325edb72dd",
+        "permissionKey": "employer.usermanage",
+        "assignedAt": "2025-11-10T14:26:01.487Z"
+      },
+      {
+        "roleId": "c1d07544-e08c-49a3-8d3f-318e080754f2",
+        "permissionKey": "employer.usermanage",
+        "assignedAt": "2025-11-10T14:26:08.252Z"
+      }
+    ],
+    "trustBenefits": [
+      {
+        "id": "7a14e5a9-b6ce-41ad-994e-671aff7d5bf7",
+        "name": "Regan",
+        "benefitType": "e89e7a38-890c-451c-b93e-e41bb295d3de",
+        "isActive": true,
+        "description": "This is<br><ul><li>a very</li><li>nice</li><li>benefit</li></ul>(This is not related to <em>Ronald Reagan)</em><br><br>"
+      }
+    ],
+    "bookmarks": [
+      {
+        "id": "678635ea-ae67-450b-94d8-e2600de11112",
+        "userId": "331d0601-870d-48dd-9a1f-63a79577155b",
+        "entityType": "worker",
+        "entityId": "d6fea247-89ad-4def-b688-7401b11c2788",
+        "createdAt": "2025-11-05T21:01:21.880Z"
+      },
+      {
+        "id": "95c339a0-a4d8-4044-b853-e89c3ff5b300",
+        "userId": "331d0601-870d-48dd-9a1f-63a79577155b",
+        "entityType": "worker",
+        "entityId": "199da85e-bbf0-47fc-97b1-2c93c912168c",
+        "createdAt": "2025-11-05T21:43:36.889Z"
+      },
+      {
+        "id": "b0323d31-1a6a-4537-ba67-00f12827b128",
+        "userId": "331d0601-870d-48dd-9a1f-63a79577155b",
+        "entityType": "employer",
+        "entityId": "ab5f98ff-90b1-4106-b332-32c73917fffd",
+        "createdAt": "2025-11-06T14:07:54.631Z"
+      },
+      {
+        "id": "6063677b-fc55-4001-921e-bc6722fc6fd0",
+        "userId": "331d0601-870d-48dd-9a1f-63a79577155b",
+        "entityType": "employer",
+        "entityId": "bd6d9bef-4654-466f-8d86-a09e634f6c9a",
+        "createdAt": "2025-11-10T14:10:12.025Z"
+      }
+    ],
+    "ledgerStripePaymentMethods": [
+      {
+        "id": "35f82799-d3d3-48fa-b1c7-c0196d41e608",
+        "entityType": "employer",
+        "entityId": "ab5f98ff-90b1-4106-b332-32c73917fffd",
+        "paymentMethod": "pm_1SQTrmE3zxs69wvi5fwybQKZ",
+        "isActive": true,
+        "isDefault": true,
+        "createdAt": "2025-11-06T14:08:48.358Z"
+      },
+      {
+        "id": "90ecefe6-e55e-45e0-a32f-3268eb75234b",
+        "entityType": "employer",
+        "entityId": "ab5f98ff-90b1-4106-b332-32c73917fffd",
+        "paymentMethod": "pm_1SQrnyE3zxs69wvivs8Bck0K",
+        "isActive": true,
+        "isDefault": false,
+        "createdAt": "2025-11-07T15:42:27.251Z"
+      },
+      {
+        "id": "d67e0909-7413-4465-9b4e-0ed85d33f23a",
+        "entityType": "employer",
+        "entityId": "bd6d9bef-4654-466f-8d86-a09e634f6c9a",
+        "paymentMethod": "pm_1SR0VcE3zxs69wviIFOMINqf",
+        "isActive": true,
+        "isDefault": true,
+        "createdAt": "2025-11-08T01:00:05.580Z"
+      }
+    ],
+    "ledgerPayments": [],
+    "wizards": [
+      {
+        "id": "3f4b710e-6807-413b-b9b5-818e50e04668",
+        "date": "2025-11-11T00:31:56.589Z",
+        "type": "test_wizard",
+        "status": "in_progress",
+        "currentStep": null,
+        "entityId": null,
+        "data": {
+          "step": 1,
+          "notes": "test wizard"
+        }
+      },
+      {
+        "id": "82f1ccdf-7040-4093-b32e-4dbd5c204c6c",
+        "date": "2025-11-12T16:56:58.230Z",
+        "type": "gbhet_legal_workers_monthly",
+        "status": "draft",
+        "currentStep": "upload",
+        "entityId": "ab5f98ff-90b1-4106-b332-32c73917fffd",
+        "data": {
+          "mode": "create",
+          "progress": {
+            "map": {
+              "status": "pending"
+            },
+            "upload": {
+              "status": "in_progress"
+            },
+            "validate": {
+              "status": "pending"
+            }
+          },
+          "hasHeaders": true,
+          "columnMapping": {
+            "col_0": "ssn",
+            "col_1": "numberOfHours",
+            "col_2": "employmentStatus",
+            "col_3": "firstName",
+            "col_4": "middleName",
+            "col_5": "lastName",
+            "col_7": "dateOfBirth"
+          },
+          "uploadedFileId": "21ca2578-6cab-42c9-8216-f448dbe32997",
+          "launchArguments": {
+            "year": 2025,
+            "month": 11
+          },
+          "validationResults": {
+            "errors": [
+              {
+                "field": "employmentStatus",
+                "value": "INVALID",
+                "message": "Employment status must match one of the configured options",
+                "rowIndex": 2
+              },
+              {
+                "field": "ssn",
+                "value": "XYZPDQ",
+                "message": "SSN must match format XXX-XX-XXXX",
+                "rowIndex": 6
+              },
+              {
+                "field": "employmentStatus",
+                "value": "",
+                "message": "Employment Status is required",
+                "rowIndex": 6
+              }
+            ],
+            "totalRows": 7,
+            "validRows": 5,
+            "completedAt": "2025-11-14T13:42:04.860Z",
+            "invalidRows": 2,
+            "errorSummary": {
+              "ssn: SSN must match format XXX-XX-XXXX": 1,
+              "employmentStatus: Employment Status is required": 1,
+              "employmentStatus: Employment status must match one of the configured options": 1
+            }
+          }
+        }
+      },
+      {
+        "id": "b41195e1-94d6-47fa-b390-39aa1267f656",
+        "date": "2025-11-14T13:43:38.654Z",
+        "type": "gbhet_legal_workers_monthly",
+        "status": "complete",
+        "currentStep": "review",
+        "entityId": "bd6d9bef-4654-466f-8d86-a09e634f6c9a",
+        "data": {
+          "mode": "create",
+          "progress": {
+            "map": {
+              "status": "completed",
+              "completedAt": "2025-11-14T16:01:17.717Z"
+            },
+            "review": {
+              "status": "in_progress"
+            },
+            "upload": {
+              "status": "completed",
+              "completedAt": "2025-11-14T16:01:10.668Z"
+            },
+            "process": {
+              "status": "completed",
+              "completedAt": "2025-11-14T16:03:42.479Z"
+            },
+            "validate": {
+              "status": "completed",
+              "completedAt": "2025-11-14T16:01:58.731Z"
+            }
+          },
+          "hasHeaders": true,
+          "columnMapping": {
+            "col_0": "ssn",
+            "col_1": "numberOfHours",
+            "col_2": "employmentStatus",
+            "col_3": "firstName",
+            "col_4": "middleName",
+            "col_5": "lastName",
+            "col_7": "dateOfBirth"
+          },
+          "processResults": {
+            "errors": [],
+            "totalRows": 6,
+            "rowResults": [
+              {
+                "status": "success",
+                "message": "Worker updated",
+                "rowIndex": 0
+              },
+              {
+                "status": "success",
+                "message": "Worker updated",
+                "rowIndex": 1
+              },
+              {
+                "status": "success",
+                "message": "Worker updated",
+                "rowIndex": 2
+              },
+              {
+                "status": "success",
+                "message": "Worker updated",
+                "rowIndex": 3
+              },
+              {
+                "status": "success",
+                "message": "Worker updated",
+                "rowIndex": 4
+              },
+              {
+                "status": "success",
+                "message": "Worker updated",
+                "rowIndex": 5
+              }
+            ],
+            "completedAt": "2025-11-14T16:03:40.259Z",
+            "createdCount": 0,
+            "failureCount": 0,
+            "successCount": 6,
+            "updatedCount": 6,
+            "resultsFileId": "107f4fe1-45c5-4bef-91d9-e3450b0fe1a4"
+          },
+          "uploadedFileId": "79f06913-964f-4289-aeda-20aded9257f5",
+          "launchArguments": {
+            "year": 2025,
+            "month": 11
+          },
+          "validationResults": {
+            "errors": [],
+            "totalRows": 6,
+            "validRows": 6,
+            "completedAt": "2025-11-14T13:47:11.641Z",
+            "invalidRows": 0,
+            "errorSummary": {}
+          }
+        }
+      },
+      {
+        "id": "20487947-b5bf-40fc-9467-430101c95433",
+        "date": "2025-11-14T16:29:22.296Z",
+        "type": "gbhet_legal_workers_corrections",
+        "status": "complete",
+        "currentStep": "review",
+        "entityId": "bd6d9bef-4654-466f-8d86-a09e634f6c9a",
+        "data": {
+          "mode": "create",
+          "progress": {
+            "map": {
+              "status": "completed",
+              "completedAt": "2025-11-14T16:34:28.815Z"
+            },
+            "review": {
+              "status": "in_progress"
+            },
+            "upload": {
+              "status": "completed",
+              "completedAt": "2025-11-14T16:29:32.528Z"
+            },
+            "process": {
+              "status": "completed",
+              "completedAt": "2025-11-14T16:34:42.415Z"
+            },
+            "validate": {
+              "status": "completed",
+              "completedAt": "2025-11-14T16:34:37.213Z"
+            }
+          },
+          "hasHeaders": true,
+          "columnMapping": {
+            "col_0": "ssn",
+            "col_1": "numberOfHours",
+            "col_2": "employmentStatus",
+            "col_3": "firstName",
+            "col_5": "lastName",
+            "col_7": "dateOfBirth",
+            "col_14": "_unmapped"
+          },
+          "processResults": {
+            "errors": [],
+            "totalRows": 6,
+            "rowResults": [
+              {
+                "status": "success",
+                "message": "Worker updated",
+                "rowIndex": 0
+              },
+              {
+                "status": "success",
+                "message": "Worker updated",
+                "rowIndex": 1
+              },
+              {
+                "status": "success",
+                "message": "Worker updated",
+                "rowIndex": 2
+              },
+              {
+                "status": "success",
+                "message": "Worker updated",
+                "rowIndex": 3
+              },
+              {
+                "status": "success",
+                "message": "Worker updated",
+                "rowIndex": 4
+              },
+              {
+                "status": "success",
+                "message": "Worker updated",
+                "rowIndex": 5
+              }
+            ],
+            "completedAt": "2025-11-14T16:34:39.947Z",
+            "createdCount": 0,
+            "failureCount": 0,
+            "successCount": 6,
+            "updatedCount": 6,
+            "resultsFileId": "4cd6fcd5-f348-4df5-8630-8c30657907c9"
+          },
+          "uploadedFileId": "081a2a2b-1079-4634-abf5-3f0c600b1bbc",
+          "launchArguments": {
+            "year": 2025,
+            "month": 11
+          },
+          "validationResults": {
+            "errors": [],
+            "totalRows": 6,
+            "validRows": 6,
+            "completedAt": "2025-11-14T16:34:34.178Z",
+            "invalidRows": 0,
+            "errorSummary": {}
+          }
+        }
+      },
+      {
+        "id": "106958b8-7e63-4506-88e4-aa6ed7857ea0",
+        "date": "2025-11-14T16:53:09.720Z",
+        "type": "gbhet_legal_workers_monthly",
+        "status": "draft",
+        "currentStep": "upload",
+        "entityId": "bd6d9bef-4654-466f-8d86-a09e634f6c9a",
+        "data": {
+          "progress": {
+            "upload": {
+              "status": "in_progress"
+            }
+          },
+          "launchArguments": {
+            "year": 2025,
+            "month": 11
+          }
+        }
+      },
+      {
+        "id": "1b5f1947-e702-4b08-ac0c-0f41b1fb18a9",
+        "date": "2025-11-14T17:42:17.214Z",
+        "type": "gbhet_legal_workers_corrections",
+        "status": "draft",
+        "currentStep": "upload",
+        "entityId": "bd6d9bef-4654-466f-8d86-a09e634f6c9a",
+        "data": {
+          "progress": {
+            "upload": {
+              "status": "in_progress"
+            }
+          },
+          "launchArguments": {
+            "year": 2025,
+            "month": 11
+          }
+        }
+      },
+      {
+        "id": "8cce486c-11ee-493d-92f7-5a994895ad44",
+        "date": "2025-11-15T00:23:49.738Z",
+        "type": "report_workers_missing_ssn",
+        "status": "completed",
+        "currentStep": "results",
+        "entityId": null,
+        "data": {
+          "progress": {
+            "run": {
+              "status": "completed",
+              "completedAt": "2025-11-15T00:23:56.260Z"
+            },
+            "inputs": {
+              "status": "completed",
+              "completedAt": "2025-11-15T00:23:51.529Z"
+            },
+            "results": {
+              "status": "in_progress"
+            }
+          },
+          "reportMeta": {
+            "columns": [
+              {
+                "id": "siriusId",
+                "type": "number",
+                "width": 120,
+                "header": "Sirius ID"
+              },
+              {
+                "id": "displayName",
+                "type": "string",
+                "width": 250,
+                "header": "Name"
+              },
+              {
+                "id": "email",
+                "type": "string",
+                "width": 200,
+                "header": "Email"
+              },
+              {
+                "id": "birthDate",
+                "type": "date",
+                "width": 120,
+                "header": "Birth Date"
+              }
+            ],
+            "generatedAt": "2025-11-15T00:23:54.442Z",
+            "recordCount": 10
+          },
+          "generatedAt": "2025-11-15T00:23:54.442Z",
+          "recordCount": 10
+        }
+      },
+      {
+        "id": "3f5d89eb-8ff3-4e9c-b073-aa08f6fb33f1",
+        "date": "2025-11-15T01:33:04.511Z",
+        "type": "report_workers_duplicate_ssn",
+        "status": "completed",
+        "currentStep": "run",
+        "entityId": null,
+        "data": {
+          "progress": {
+            "run": {
+              "status": "in_progress"
+            },
+            "inputs": {
+              "status": "completed",
+              "completedAt": "2025-11-15T01:34:51.123Z"
+            },
+            "results": {
+              "status": "pending"
+            }
+          },
+          "reportMeta": {
+            "columns": [
+              {
+                "id": "ssn",
+                "type": "string",
+                "width": 130,
+                "header": "SSN"
+              },
+              {
+                "id": "workerCount",
+                "type": "number",
+                "width": 120,
+                "header": "Worker Count"
+              },
+              {
+                "id": "workers",
+                "type": "string",
+                "width": 400,
+                "header": "Workers"
+              }
+            ],
+            "generatedAt": "2025-11-15T01:37:16.286Z",
+            "recordCount": 0,
+            "primaryKeyField": "ssn"
+          },
+          "generatedAt": "2025-11-15T01:37:16.286Z",
+          "recordCount": 0
+        }
+      },
+      {
+        "id": "eac49cfe-e547-4c2a-b32a-5bf940f25bc9",
+        "date": "2025-11-15T00:24:16.713Z",
+        "type": "report_workers_invalid_ssn",
+        "status": "completed",
+        "currentStep": "results",
+        "entityId": null,
+        "data": {
+          "progress": {
+            "run": {
+              "status": "completed",
+              "completedAt": "2025-11-15T00:24:22.353Z"
+            },
+            "inputs": {
+              "status": "completed",
+              "completedAt": "2025-11-15T00:24:18.560Z"
+            },
+            "results": {
+              "status": "in_progress"
+            }
+          },
+          "reportMeta": {
+            "columns": [
+              {
+                "id": "siriusId",
+                "type": "number",
+                "width": 120,
+                "header": "Sirius ID"
+              },
+              {
+                "id": "displayName",
+                "type": "string",
+                "width": 250,
+                "header": "Name"
+              },
+              {
+                "id": "ssn",
+                "type": "string",
+                "width": 130,
+                "header": "SSN"
+              },
+              {
+                "id": "validationError",
+                "type": "string",
+                "width": 300,
+                "header": "Validation Error"
+              },
+              {
+                "id": "email",
+                "type": "string",
+                "width": 200,
+                "header": "Email"
+              }
+            ],
+            "generatedAt": "2025-11-15T00:24:21.116Z",
+            "recordCount": 0
+          },
+          "generatedAt": "2025-11-15T00:24:21.116Z",
+          "recordCount": 0
+        }
+      },
+      {
+        "id": "f6512bd7-fbda-41ab-aa9d-8d8cf2dc6923",
+        "date": "2025-11-15T00:24:57.612Z",
+        "type": "report_workers_missing_ssn",
+        "status": "completed",
+        "currentStep": "results",
+        "entityId": null,
+        "data": {
+          "progress": {
+            "run": {
+              "status": "completed",
+              "completedAt": "2025-11-15T01:44:39.046Z"
+            },
+            "inputs": {
+              "status": "completed",
+              "completedAt": "2025-11-15T00:24:59.870Z"
+            },
+            "results": {
+              "status": "in_progress"
+            }
+          },
+          "reportMeta": {
+            "columns": [
+              {
+                "id": "siriusId",
+                "type": "number",
+                "width": 120,
+                "header": "Sirius ID"
+              },
+              {
+                "id": "displayName",
+                "type": "string",
+                "width": 250,
+                "header": "Name"
+              },
+              {
+                "id": "email",
+                "type": "string",
+                "width": 200,
+                "header": "Email"
+              },
+              {
+                "id": "birthDate",
+                "type": "date",
+                "width": 120,
+                "header": "Birth Date"
+              }
+            ],
+            "generatedAt": "2025-11-15T01:44:37.433Z",
+            "recordCount": 7,
+            "primaryKeyField": "workerId"
+          },
+          "generatedAt": "2025-11-15T01:44:37.433Z",
+          "recordCount": 7
+        }
+      }
+    ],
+    "workers": [
+      {
+        "id": "da51853b-0ba5-464f-81e7-b394d6c5b104",
+        "siriusId": 1,
+        "contactId": "e3fc73b8-0486-4942-a546-adf178fd590f",
+        "ssn": null,
+        "denormHomeEmployerId": null,
+        "denormEmployerIds": null
+      },
+      {
+        "id": "d6817d3b-63c4-4c89-9ff8-b5905ff9e1a9",
+        "siriusId": 11,
+        "contactId": "ab781677-9761-4922-81fc-530534b30311",
+        "ssn": "008629123",
+        "denormHomeEmployerId": null,
+        "denormEmployerIds": null
+      },
+      {
+        "id": "42353511-2bf4-44b8-b926-a57b318e017b",
+        "siriusId": 18,
+        "contactId": "5fb2ef88-3430-4ba8-a5b4-d2b4bb1ca993",
+        "ssn": "008620002",
+        "denormHomeEmployerId": null,
+        "denormEmployerIds": null
+      },
+      {
+        "id": "5eeff741-d6c2-4d7f-8057-fa8092b85634",
+        "siriusId": 21,
+        "contactId": "1d8a72bf-e1ee-400d-9a93-3e7dcdb9e5ca",
+        "ssn": "008620005",
+        "denormHomeEmployerId": null,
+        "denormEmployerIds": null
+      },
+      {
+        "id": "2d654e76-339a-4390-9970-f2ef5fab90e5",
+        "siriusId": 8,
+        "contactId": "543ed580-bed5-4496-bdd6-c8fabd587092",
+        "ssn": "008621222",
+        "denormHomeEmployerId": null,
+        "denormEmployerIds": null
+      },
+      {
+        "id": "3163564d-641e-458a-b3bf-09bf4401da08",
+        "siriusId": 4,
+        "contactId": "30c04efb-285c-45bf-b428-9f91f8a88d57",
+        "ssn": "008620001",
+        "denormHomeEmployerId": null,
+        "denormEmployerIds": null
+      },
+      {
+        "id": "c8ed401e-f57b-4c09-9037-c26fc17ea65d",
+        "siriusId": 6,
+        "contactId": "ca716f23-af64-4da9-986f-6df08ac4230d",
+        "ssn": "008620003",
+        "denormHomeEmployerId": null,
+        "denormEmployerIds": null
+      },
+      {
+        "id": "199da85e-bbf0-47fc-97b1-2c93c912168c",
+        "siriusId": 2,
+        "contactId": "311a53d7-a888-49ee-9df2-5da5def4b811",
+        "ssn": "008621234",
+        "denormHomeEmployerId": "ab5f98ff-90b1-4106-b332-32c73917fffd",
+        "denormEmployerIds": [
+          "bd6d9bef-4654-466f-8d86-a09e634f6c9a",
+          "ab5f98ff-90b1-4106-b332-32c73917fffd"
+        ]
+      },
+      {
+        "id": "d6fea247-89ad-4def-b688-7401b11c2788",
+        "siriusId": 3,
+        "contactId": "cf64d4cc-61a6-42fb-b68d-aab34b883c0e",
+        "ssn": null,
+        "denormHomeEmployerId": "ab5f98ff-90b1-4106-b332-32c73917fffd",
+        "denormEmployerIds": [
+          "ab5f98ff-90b1-4106-b332-32c73917fffd",
+          "bd6d9bef-4654-466f-8d86-a09e634f6c9a"
+        ]
+      },
+      {
+        "id": "ef9770fa-c6c4-4e98-9291-11a1c7eecd4c",
+        "siriusId": 9,
+        "contactId": "0fb9a1ab-0166-4655-9508-4b4f62b63daf",
+        "ssn": null,
+        "denormHomeEmployerId": null,
+        "denormEmployerIds": null
+      },
+      {
+        "id": "ef2ca50f-d725-473d-b17a-f9f422fea5e6",
+        "siriusId": 10,
+        "contactId": "88e5e004-df8c-44a2-8eb7-160af46fd423",
+        "ssn": null,
+        "denormHomeEmployerId": null,
+        "denormEmployerIds": null
+      },
+      {
+        "id": "7f319270-930f-44ec-8478-395fe03aea1d",
+        "siriusId": 13,
+        "contactId": "c28057e1-c775-4493-afc9-e8488c65f804",
+        "ssn": null,
+        "denormHomeEmployerId": null,
+        "denormEmployerIds": null
+      },
+      {
+        "id": "fd4d288c-37e8-4ee3-8d71-1fe8160e171b",
+        "siriusId": 14,
+        "contactId": "8f349537-0c21-4994-88d2-5c5ed20d42e5",
+        "ssn": null,
+        "denormHomeEmployerId": null,
+        "denormEmployerIds": null
+      },
+      {
+        "id": "5366a796-a51f-4688-8ea1-3eb6f6afe01c",
+        "siriusId": 16,
+        "contactId": "574ff0b4-27bc-47e1-b4e9-82a01211be75",
+        "ssn": null,
+        "denormHomeEmployerId": null,
+        "denormEmployerIds": null
+      },
+      {
+        "id": "50ea4aea-3d98-4249-8052-0ac13bb8a749",
+        "siriusId": 22,
+        "contactId": "0211e445-be68-43ae-bb95-a413b47525fe",
+        "ssn": "008620006",
+        "denormHomeEmployerId": null,
+        "denormEmployerIds": null
+      }
+    ],
+    "employerContacts": [
+      {
+        "id": "203a2324-b68d-4dd3-ba4e-f68a36e95325",
+        "employerId": "bd6d9bef-4654-466f-8d86-a09e634f6c9a",
+        "contactId": "dd2cd11b-4f20-4c69-8a7c-2beb116b765a",
+        "contactTypeId": "72f3c29f-3ea5-436a-b2d1-d381c5000199"
+      },
+      {
+        "id": "92c0c3e8-a67c-4430-ac52-ed52808342dd",
+        "employerId": "ab5f98ff-90b1-4106-b332-32c73917fffd",
+        "contactId": "6cac1d30-daf1-4747-88a8-7e273264a002",
+        "contactTypeId": "c15754f0-74c8-4b01-9413-7c4b6c82eaab"
+      }
+    ],
+    "postalAddresses": [
+      {
+        "id": "29dcf258-954e-424b-9117-136535fb7e6b",
+        "contactId": "e3fc73b8-0486-4942-a546-adf178fd590f",
+        "friendlyName": "Office",
+        "street": "283 Main Street",
+        "city": "Beacon",
+        "state": "NY",
+        "postalCode": "12508",
+        "country": "United States",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "latitude": null,
+        "longitude": null,
+        "accuracy": null,
+        "createdAt": "2025-11-02T08:13:50.869Z"
+      },
+      {
+        "id": "f5daa193-fa94-44ae-aef4-7662fb643419",
+        "contactId": "311a53d7-a888-49ee-9df2-5da5def4b811",
+        "friendlyName": "Office",
+        "street": "24 Cliff St",
+        "city": "Beacon",
+        "state": "NY",
+        "postalCode": "12508",
+        "country": "United States",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": {
+          "types": [
+            "premise",
+            "street_address"
+          ],
+          "geometry": {
+            "bounds": {
+              "northeast": {
+                "lat": 41.5064891,
+                "lng": -73.97613960000001
+              },
+              "southwest": {
+                "lat": 41.5063217,
+                "lng": -73.9763668
+              }
+            },
+            "location": {
+              "lat": 41.5064088,
+              "lng": -73.97624859999999
+            },
+            "viewport": {
+              "northeast": {
+                "lat": 41.5077543802915,
+                "lng": -73.9749057697085
+              },
+              "southwest": {
+                "lat": 41.5050564197085,
+                "lng": -73.97760373029152
+              }
+            },
+            "location_type": "ROOFTOP"
+          },
+          "place_id": "ChIJBTWow3sx3YkRtxPhr5thNIg",
+          "formatted_address": "24 Cliff St, Beacon, NY 12508, USA",
+          "navigation_points": [
+            {
+              "location": {
+                "latitude": 41.5064309,
+                "longitude": -73.97630079999999
+              }
+            }
+          ],
+          "address_components": [
+            {
+              "types": [
+                "street_number"
+              ],
+              "long_name": "24",
+              "short_name": "24"
+            },
+            {
+              "types": [
+                "route"
+              ],
+              "long_name": "Cliff Street",
+              "short_name": "Cliff St"
+            },
+            {
+              "types": [
+                "locality",
+                "political"
+              ],
+              "long_name": "Beacon",
+              "short_name": "Beacon"
+            },
+            {
+              "types": [
+                "administrative_area_level_2",
+                "political"
+              ],
+              "long_name": "Dutchess County",
+              "short_name": "Dutchess County"
+            },
+            {
+              "types": [
+                "administrative_area_level_1",
+                "political"
+              ],
+              "long_name": "New York",
+              "short_name": "NY"
+            },
+            {
+              "types": [
+                "country",
+                "political"
+              ],
+              "long_name": "United States",
+              "short_name": "US"
+            },
+            {
+              "types": [
+                "postal_code"
+              ],
+              "long_name": "12508",
+              "short_name": "12508"
+            },
+            {
+              "types": [
+                "postal_code_suffix"
+              ],
+              "long_name": "2723",
+              "short_name": "2723"
+            }
+          ]
+        },
+        "latitude": 41.5064088,
+        "longitude": -73.97624859999999,
+        "accuracy": "ROOFTOP",
+        "createdAt": "2025-09-29T09:21:11.686Z"
+      },
+      {
+        "id": "3d5aef9d-4336-4848-982b-8f842731f5df",
+        "contactId": "e3fc73b8-0486-4942-a546-adf178fd590f",
+        "friendlyName": null,
+        "street": "23 Cliff St.",
+        "city": "Beacon",
+        "state": "NY",
+        "postalCode": "12508",
+        "country": "United States",
+        "isPrimary": false,
+        "isActive": true,
+        "validationResponse": {
+          "types": [
+            "premise",
+            "street_address"
+          ],
+          "geometry": {
+            "bounds": {
+              "northeast": {
+                "lat": 41.5068066,
+                "lng": -73.9763057
+              },
+              "southwest": {
+                "lat": 41.5067023,
+                "lng": -73.9764694
+              }
+            },
+            "location": {
+              "lat": 41.5067544,
+              "lng": -73.9763875
+            },
+            "viewport": {
+              "northeast": {
+                "lat": 41.5080802302915,
+                "lng": -73.9749828697085
+              },
+              "southwest": {
+                "lat": 41.5053822697085,
+                "lng": -73.97768083029152
+              }
+            },
+            "location_type": "ROOFTOP"
+          },
+          "place_id": "ChIJeYQuxXsx3YkREvL6FAFu4OE",
+          "formatted_address": "23 Cliff St, Beacon, NY 12508, USA",
+          "navigation_points": [
+            {
+              "location": {
+                "latitude": 41.5066919,
+                "longitude": -73.9762634
+              }
+            }
+          ],
+          "address_components": [
+            {
+              "types": [
+                "street_number"
+              ],
+              "long_name": "23",
+              "short_name": "23"
+            },
+            {
+              "types": [
+                "route"
+              ],
+              "long_name": "Cliff Street",
+              "short_name": "Cliff St"
+            },
+            {
+              "types": [
+                "locality",
+                "political"
+              ],
+              "long_name": "Beacon",
+              "short_name": "Beacon"
+            },
+            {
+              "types": [
+                "administrative_area_level_2",
+                "political"
+              ],
+              "long_name": "Dutchess County",
+              "short_name": "Dutchess County"
+            },
+            {
+              "types": [
+                "administrative_area_level_1",
+                "political"
+              ],
+              "long_name": "New York",
+              "short_name": "NY"
+            },
+            {
+              "types": [
+                "country",
+                "political"
+              ],
+              "long_name": "United States",
+              "short_name": "US"
+            },
+            {
+              "types": [
+                "postal_code"
+              ],
+              "long_name": "12508",
+              "short_name": "12508"
+            },
+            {
+              "types": [
+                "postal_code_suffix"
+              ],
+              "long_name": "2719",
+              "short_name": "2719"
+            }
+          ]
+        },
+        "latitude": 41.5067544,
+        "longitude": -73.9763875,
+        "accuracy": "ROOFTOP",
+        "createdAt": "2025-09-29T09:42:16.896Z"
+      },
+      {
+        "id": "94c0fe3d-a95a-45ed-bf0e-34bd2f64f9ea",
+        "contactId": "311a53d7-a888-49ee-9df2-5da5def4b811",
+        "friendlyName": "House",
+        "street": "24 Cliff St.",
+        "city": "Beacon",
+        "state": "NY",
+        "postalCode": "12508",
+        "country": "United States",
+        "isPrimary": false,
+        "isActive": true,
+        "validationResponse": {
+          "types": [
+            "premise",
+            "street_address"
+          ],
+          "geometry": {
+            "bounds": {
+              "northeast": {
+                "lat": 41.5064891,
+                "lng": -73.97613960000001
+              },
+              "southwest": {
+                "lat": 41.5063217,
+                "lng": -73.9763668
+              }
+            },
+            "location": {
+              "lat": 41.5064088,
+              "lng": -73.97624859999999
+            },
+            "viewport": {
+              "northeast": {
+                "lat": 41.5077543802915,
+                "lng": -73.9749057697085
+              },
+              "southwest": {
+                "lat": 41.5050564197085,
+                "lng": -73.97760373029152
+              }
+            },
+            "location_type": "ROOFTOP"
+          },
+          "place_id": "ChIJBTWow3sx3YkRtxPhr5thNIg",
+          "formatted_address": "24 Cliff St, Beacon, NY 12508, USA",
+          "navigation_points": [
+            {
+              "location": {
+                "latitude": 41.5064309,
+                "longitude": -73.97630079999999
+              }
+            }
+          ],
+          "address_components": [
+            {
+              "types": [
+                "street_number"
+              ],
+              "long_name": "24",
+              "short_name": "24"
+            },
+            {
+              "types": [
+                "route"
+              ],
+              "long_name": "Cliff Street",
+              "short_name": "Cliff St"
+            },
+            {
+              "types": [
+                "locality",
+                "political"
+              ],
+              "long_name": "Beacon",
+              "short_name": "Beacon"
+            },
+            {
+              "types": [
+                "administrative_area_level_2",
+                "political"
+              ],
+              "long_name": "Dutchess County",
+              "short_name": "Dutchess County"
+            },
+            {
+              "types": [
+                "administrative_area_level_1",
+                "political"
+              ],
+              "long_name": "New York",
+              "short_name": "NY"
+            },
+            {
+              "types": [
+                "country",
+                "political"
+              ],
+              "long_name": "United States",
+              "short_name": "US"
+            },
+            {
+              "types": [
+                "postal_code"
+              ],
+              "long_name": "12508",
+              "short_name": "12508"
+            },
+            {
+              "types": [
+                "postal_code_suffix"
+              ],
+              "long_name": "2723",
+              "short_name": "2723"
+            }
+          ]
+        },
+        "latitude": 41.5064088,
+        "longitude": -73.97624859999999,
+        "accuracy": "ROOFTOP",
+        "createdAt": "2025-09-29T09:22:51.337Z"
+      },
+      {
+        "id": "dad05fd3-e3a2-445d-a644-e6ac31d2ba68",
+        "contactId": "311a53d7-a888-49ee-9df2-5da5def4b811",
+        "friendlyName": "Office 2",
+        "street": "100 East Main Street",
+        "city": "Beacon",
+        "state": "NY",
+        "postalCode": "12508",
+        "country": "United States",
+        "isPrimary": false,
+        "isActive": true,
+        "validationResponse": {
+          "types": [
+            "street_address",
+            "subpremise"
+          ],
+          "geometry": {
+            "location": {
+              "lat": 41.5000003,
+              "lng": -73.95937239999999
+            },
+            "viewport": {
+              "northeast": {
+                "lat": 41.5012776302915,
+                "lng": -73.95803981970849
+              },
+              "southwest": {
+                "lat": 41.4985796697085,
+                "lng": -73.96073778029151
+              }
+            },
+            "location_type": "ROOFTOP"
+          },
+          "place_id": "ChIJNSUc1V8x3YkRsG6dzafyYxc",
+          "formatted_address": "100 E Main St, Beacon, NY 12508, USA",
+          "navigation_points": [
+            {
+              "location": {
+                "latitude": 41.4999156,
+                "longitude": -73.95938459999999
+              }
+            }
+          ],
+          "address_components": [
+            {
+              "types": [
+                "street_number"
+              ],
+              "long_name": "100",
+              "short_name": "100"
+            },
+            {
+              "types": [
+                "route"
+              ],
+              "long_name": "East Main Street",
+              "short_name": "E Main St"
+            },
+            {
+              "types": [
+                "locality",
+                "political"
+              ],
+              "long_name": "Beacon",
+              "short_name": "Beacon"
+            },
+            {
+              "types": [
+                "administrative_area_level_2",
+                "political"
+              ],
+              "long_name": "Dutchess County",
+              "short_name": "Dutchess County"
+            },
+            {
+              "types": [
+                "administrative_area_level_1",
+                "political"
+              ],
+              "long_name": "New York",
+              "short_name": "NY"
+            },
+            {
+              "types": [
+                "country",
+                "political"
+              ],
+              "long_name": "United States",
+              "short_name": "US"
+            },
+            {
+              "types": [
+                "postal_code"
+              ],
+              "long_name": "12508",
+              "short_name": "12508"
+            }
+          ]
+        },
+        "latitude": 41.5000003,
+        "longitude": -73.95937239999999,
+        "accuracy": "ROOFTOP",
+        "createdAt": "2025-11-04T14:24:17.478Z"
+      },
+      {
+        "id": "c1e83090-1b1a-46ee-8cbe-343730b612cc",
+        "contactId": "cf64d4cc-61a6-42fb-b68d-aab34b883c0e",
+        "friendlyName": null,
+        "street": "123 Fake St.",
+        "city": "Fakeville",
+        "state": "FV",
+        "postalCode": "12345",
+        "country": "United States",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": {
+          "types": [
+            "country",
+            "political"
+          ],
+          "geometry": {
+            "bounds": {
+              "northeast": {
+                "lat": 74.071038,
+                "lng": -66.885417
+              },
+              "southwest": {
+                "lat": 18.7763,
+                "lng": 166.9999999
+              }
+            },
+            "location": {
+              "lat": 38.7945952,
+              "lng": -106.5348379
+            },
+            "viewport": {
+              "northeast": {
+                "lat": 72.7087158,
+                "lng": -66.3193754
+              },
+              "southwest": {
+                "lat": 15.7760139,
+                "lng": -173.2992296
+              }
+            },
+            "location_type": "APPROXIMATE"
+          },
+          "place_id": "ChIJCzYy5IS16lQRQrfeQ5K5Oxw",
+          "partial_match": true,
+          "formatted_address": "United States",
+          "address_components": [
+            {
+              "types": [
+                "country",
+                "political"
+              ],
+              "long_name": "United States",
+              "short_name": "US"
+            }
+          ]
+        },
+        "latitude": 38.7945952,
+        "longitude": -106.5348379,
+        "accuracy": "APPROXIMATE",
+        "createdAt": "2025-11-02T16:24:03.311Z"
+      },
+      {
+        "id": "783e73f3-ced4-43a0-8363-2c09abcd56d8",
+        "contactId": "e3fc73b8-0486-4942-a546-adf178fd590f",
+        "friendlyName": "Home!",
+        "street": "24 Cliff Street",
+        "city": "Beacon",
+        "state": "NY",
+        "postalCode": "12508",
+        "country": "United States",
+        "isPrimary": false,
+        "isActive": true,
+        "validationResponse": {
+          "types": [
+            "premise",
+            "street_address"
+          ],
+          "geometry": {
+            "bounds": {
+              "northeast": {
+                "lat": 41.5064891,
+                "lng": -73.97613960000001
+              },
+              "southwest": {
+                "lat": 41.5063217,
+                "lng": -73.9763668
+              }
+            },
+            "location": {
+              "lat": 41.5064088,
+              "lng": -73.97624859999999
+            },
+            "viewport": {
+              "northeast": {
+                "lat": 41.5077543802915,
+                "lng": -73.9749057697085
+              },
+              "southwest": {
+                "lat": 41.5050564197085,
+                "lng": -73.97760373029152
+              }
+            },
+            "location_type": "ROOFTOP"
+          },
+          "place_id": "ChIJBTWow3sx3YkRtxPhr5thNIg",
+          "formatted_address": "24 Cliff St, Beacon, NY 12508, USA",
+          "navigation_points": [
+            {
+              "location": {
+                "latitude": 41.5064309,
+                "longitude": -73.97630079999999
+              }
+            }
+          ],
+          "address_components": [
+            {
+              "types": [
+                "street_number"
+              ],
+              "long_name": "24",
+              "short_name": "24"
+            },
+            {
+              "types": [
+                "route"
+              ],
+              "long_name": "Cliff Street",
+              "short_name": "Cliff St"
+            },
+            {
+              "types": [
+                "locality",
+                "political"
+              ],
+              "long_name": "Beacon",
+              "short_name": "Beacon"
+            },
+            {
+              "types": [
+                "administrative_area_level_2",
+                "political"
+              ],
+              "long_name": "Dutchess County",
+              "short_name": "Dutchess County"
+            },
+            {
+              "types": [
+                "administrative_area_level_1",
+                "political"
+              ],
+              "long_name": "New York",
+              "short_name": "NY"
+            },
+            {
+              "types": [
+                "country",
+                "political"
+              ],
+              "long_name": "United States",
+              "short_name": "US"
+            },
+            {
+              "types": [
+                "postal_code"
+              ],
+              "long_name": "12508",
+              "short_name": "12508"
+            },
+            {
+              "types": [
+                "postal_code_suffix"
+              ],
+              "long_name": "2723",
+              "short_name": "2723"
+            }
+          ]
+        },
+        "latitude": 41.5064088,
+        "longitude": -73.97624859999999,
+        "accuracy": "ROOFTOP",
+        "createdAt": "2025-11-02T08:23:34.548Z"
+      },
+      {
+        "id": "fb0374bb-91bf-41c3-951f-fdb813ecf701",
+        "contactId": "e3fc73b8-0486-4942-a546-adf178fd590f",
+        "friendlyName": "Test",
+        "street": "200 Main St.",
+        "city": "Beacon",
+        "state": "NY",
+        "postalCode": "125508",
+        "country": "United States",
+        "isPrimary": false,
+        "isActive": true,
+        "validationResponse": {
+          "types": [
+            "premise",
+            "street_address"
+          ],
+          "geometry": {
+            "bounds": {
+              "northeast": {
+                "lat": 41.5078307,
+                "lng": -73.9740637
+              },
+              "southwest": {
+                "lat": 41.5075513,
+                "lng": -73.974426
+              }
+            },
+            "location": {
+              "lat": 41.5076905,
+              "lng": -73.9742442
+            },
+            "viewport": {
+              "northeast": {
+                "lat": 41.5090399802915,
+                "lng": -73.9728958697085
+              },
+              "southwest": {
+                "lat": 41.5063420197085,
+                "lng": -73.9755938302915
+              }
+            },
+            "location_type": "ROOFTOP"
+          },
+          "place_id": "ChIJgZfoV3ox3YkRD29AAtaYXMA",
+          "partial_match": true,
+          "formatted_address": "200 Main St, Beacon, NY 12508, USA",
+          "navigation_points": [
+            {
+              "location": {
+                "latitude": 41.5076099,
+                "longitude": -73.9743739
+              }
+            }
+          ],
+          "address_components": [
+            {
+              "types": [
+                "street_number"
+              ],
+              "long_name": "200",
+              "short_name": "200"
+            },
+            {
+              "types": [
+                "route"
+              ],
+              "long_name": "Main Street",
+              "short_name": "Main St"
+            },
+            {
+              "types": [
+                "locality",
+                "political"
+              ],
+              "long_name": "Beacon",
+              "short_name": "Beacon"
+            },
+            {
+              "types": [
+                "administrative_area_level_2",
+                "political"
+              ],
+              "long_name": "Dutchess County",
+              "short_name": "Dutchess County"
+            },
+            {
+              "types": [
+                "administrative_area_level_1",
+                "political"
+              ],
+              "long_name": "New York",
+              "short_name": "NY"
+            },
+            {
+              "types": [
+                "country",
+                "political"
+              ],
+              "long_name": "United States",
+              "short_name": "US"
+            },
+            {
+              "types": [
+                "postal_code"
+              ],
+              "long_name": "12508",
+              "short_name": "12508"
+            },
+            {
+              "types": [
+                "postal_code_suffix"
+              ],
+              "long_name": "2728",
+              "short_name": "2728"
+            }
+          ]
+        },
+        "latitude": 41.5076905,
+        "longitude": -73.9742442,
+        "accuracy": "ROOFTOP",
+        "createdAt": "2025-09-29T09:42:29.008Z"
+      },
+      {
+        "id": "3c295a3f-b003-4b3d-a8bc-e6a61df7fc8a",
+        "contactId": "6cac1d30-daf1-4747-88a8-7e273264a002",
+        "friendlyName": null,
+        "street": "399 Main Street",
+        "city": "Beacon",
+        "state": "NY",
+        "postalCode": "12508",
+        "country": "United States",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": {
+          "types": [
+            "street_address"
+          ],
+          "geometry": {
+            "location": {
+              "lat": 41.5034007,
+              "lng": -73.96738409999999
+            },
+            "viewport": {
+              "northeast": {
+                "lat": 41.50481438029151,
+                "lng": -73.96597056970849
+              },
+              "southwest": {
+                "lat": 41.50211641970851,
+                "lng": -73.9686685302915
+              }
+            },
+            "location_type": "RANGE_INTERPOLATED"
+          },
+          "place_id": "EiIzOTkgTWFpbiBTdCwgQmVhY29uLCBOWSAxMjUwOCwgVVNBIjESLwoUChIJsUhFiGMx3YkR-1-0DzzbSfwQjwMqFAoSCdsClJNkMd2JER8OjxBy8vuV",
+          "formatted_address": "399 Main St, Beacon, NY 12508, USA",
+          "navigation_points": [
+            {
+              "location": {
+                "latitude": 41.5035229,
+                "longitude": -73.9672621
+              }
+            }
+          ],
+          "address_components": [
+            {
+              "types": [
+                "street_number"
+              ],
+              "long_name": "399",
+              "short_name": "399"
+            },
+            {
+              "types": [
+                "route"
+              ],
+              "long_name": "Main Street",
+              "short_name": "Main St"
+            },
+            {
+              "types": [
+                "locality",
+                "political"
+              ],
+              "long_name": "Beacon",
+              "short_name": "Beacon"
+            },
+            {
+              "types": [
+                "administrative_area_level_2",
+                "political"
+              ],
+              "long_name": "Dutchess County",
+              "short_name": "Dutchess County"
+            },
+            {
+              "types": [
+                "administrative_area_level_1",
+                "political"
+              ],
+              "long_name": "New York",
+              "short_name": "NY"
+            },
+            {
+              "types": [
+                "country",
+                "political"
+              ],
+              "long_name": "United States",
+              "short_name": "US"
+            },
+            {
+              "types": [
+                "postal_code"
+              ],
+              "long_name": "12508",
+              "short_name": "12508"
+            },
+            {
+              "types": [
+                "postal_code_suffix"
+              ],
+              "long_name": "3014",
+              "short_name": "3014"
+            }
+          ]
+        },
+        "latitude": 41.5034007,
+        "longitude": -73.96738409999999,
+        "accuracy": "RANGE_INTERPOLATED",
+        "createdAt": "2025-11-10T11:49:10.892Z"
+      }
+    ],
+    "phoneNumbers": [
+      {
+        "id": "0a753f34-5bbb-41f3-bb67-384c6af32bff",
+        "contactId": "311a53d7-a888-49ee-9df2-5da5def4b811",
+        "friendlyName": "",
+        "phoneNumber": "+18454537272",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": {
+          "type": "mobile",
+          "country": "US",
+          "isValid": true,
+          "e164Format": "+18454537272",
+          "twilioData": {
+            "url": "https://lookups.twilio.com/v2/PhoneNumbers/+18454537272",
+            "valid": true,
+            "preFill": null,
+            "simSwap": null,
+            "callerName": {
+              "error_code": null,
+              "caller_name": null,
+              "caller_type": "UNDETERMINED"
+            },
+            "lineStatus": null,
+            "countryCode": "US",
+            "phoneNumber": "+18454537272",
+            "identityMatch": null,
+            "callForwarding": null,
+            "nationalFormat": "(845) 453-7272",
+            "smsPumpingRisk": null,
+            "reassignedNumber": null,
+            "validationErrors": [],
+            "callingCountryCode": "1",
+            "lineTypeIntelligence": {
+              "type": "mobile",
+              "error_code": null,
+              "carrier_name": "Verizon Wireless",
+              "mobile_country_code": "310",
+              "mobile_network_code": "012"
+            },
+            "phoneNumberQualityScore": null
+          },
+          "nationalFormat": "(845) 453-7272",
+          "internationalFormat": "+1 845 453 7272"
+        },
+        "createdAt": "2025-11-02T10:06:35.313Z"
+      },
+      {
+        "id": "b12b2db7-1197-4106-b9d3-130562914709",
+        "contactId": "e3fc73b8-0486-4942-a546-adf178fd590f",
+        "friendlyName": "Home",
+        "phoneNumber": "+18454537272",
+        "isPrimary": false,
+        "isActive": true,
+        "validationResponse": {
+          "type": "FIXED_LINE_OR_MOBILE",
+          "country": "US",
+          "isValid": true,
+          "e164Format": "+18454537272",
+          "nationalFormat": "(845) 453-7272",
+          "internationalFormat": "+1 845 453 7272"
+        },
+        "createdAt": "2025-11-02T09:36:27.088Z"
+      },
+      {
+        "id": "273f5983-aded-48c6-8653-5ea798f7a8c4",
+        "contactId": "e3fc73b8-0486-4942-a546-adf178fd590f",
+        "friendlyName": "Test",
+        "phoneNumber": "+18454537272",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": {
+          "type": "mobile",
+          "country": "US",
+          "isValid": true,
+          "e164Format": "+18454537272",
+          "twilioData": {
+            "url": "https://lookups.twilio.com/v2/PhoneNumbers/+18454537272",
+            "valid": true,
+            "preFill": null,
+            "simSwap": null,
+            "callerName": {
+              "error_code": null,
+              "caller_name": null,
+              "caller_type": "UNDETERMINED"
+            },
+            "lineStatus": null,
+            "countryCode": "US",
+            "phoneNumber": "+18454537272",
+            "identityMatch": null,
+            "callForwarding": null,
+            "nationalFormat": "(845) 453-7272",
+            "smsPumpingRisk": null,
+            "reassignedNumber": null,
+            "validationErrors": [],
+            "callingCountryCode": "1",
+            "lineTypeIntelligence": {
+              "type": "mobile",
+              "error_code": null,
+              "carrier_name": "Verizon Wireless",
+              "mobile_country_code": "310",
+              "mobile_network_code": "012"
+            },
+            "phoneNumberQualityScore": null
+          },
+          "nationalFormat": "(845) 453-7272",
+          "internationalFormat": "+1 845 453 7272"
+        },
+        "createdAt": "2025-11-02T10:29:40.517Z"
+      },
+      {
+        "id": "259f7037-a380-4ce1-b789-3b740e09d0ce",
+        "contactId": "311a53d7-a888-49ee-9df2-5da5def4b811",
+        "friendlyName": "Information",
+        "phoneNumber": "+12125551212",
+        "isPrimary": false,
+        "isActive": true,
+        "validationResponse": {
+          "type": "FIXED_LINE_OR_MOBILE",
+          "country": "US",
+          "isValid": true,
+          "e164Format": "+12125551212",
+          "twilioData": {
+            "url": "https://lookups.twilio.com/v2/PhoneNumbers/+12125551212",
+            "valid": true,
+            "preFill": null,
+            "simSwap": null,
+            "callerName": {
+              "error_code": null,
+              "caller_name": null,
+              "caller_type": "UNDETERMINED"
+            },
+            "lineStatus": null,
+            "countryCode": "US",
+            "phoneNumber": "+12125551212",
+            "identityMatch": null,
+            "callForwarding": null,
+            "nationalFormat": "(212) 555-1212",
+            "smsPumpingRisk": null,
+            "reassignedNumber": null,
+            "validationErrors": [],
+            "callingCountryCode": "1",
+            "lineTypeIntelligence": {
+              "type": null,
+              "error_code": 60600,
+              "carrier_name": null,
+              "mobile_country_code": null,
+              "mobile_network_code": null
+            },
+            "phoneNumberQualityScore": null
+          },
+          "nationalFormat": "(212) 555-1212",
+          "internationalFormat": "+1 212 555 1212"
+        },
+        "createdAt": "2025-11-02T10:06:45.857Z"
+      },
+      {
+        "id": "2f51af0c-23bb-4de7-821c-f807cca0c6c7",
+        "contactId": "dd2cd11b-4f20-4c69-8a7c-2beb116b765a",
+        "friendlyName": "Complaints Dept",
+        "phoneNumber": "+18025551212",
+        "isPrimary": false,
+        "isActive": true,
+        "validationResponse": {
+          "type": "FIXED_LINE_OR_MOBILE",
+          "country": "US",
+          "isValid": true,
+          "e164Format": "+18025551212",
+          "twilioData": {
+            "url": "https://lookups.twilio.com/v2/PhoneNumbers/+18025551212",
+            "valid": true,
+            "preFill": null,
+            "simSwap": null,
+            "callerName": {
+              "error_code": null,
+              "caller_name": null,
+              "caller_type": "UNDETERMINED"
+            },
+            "lineStatus": null,
+            "countryCode": "US",
+            "phoneNumber": "+18025551212",
+            "identityMatch": null,
+            "callForwarding": null,
+            "nationalFormat": "(802) 555-1212",
+            "smsPumpingRisk": null,
+            "reassignedNumber": null,
+            "validationErrors": [],
+            "callingCountryCode": "1",
+            "lineTypeIntelligence": {
+              "type": null,
+              "error_code": 60600,
+              "carrier_name": null,
+              "mobile_country_code": null,
+              "mobile_network_code": null
+            },
+            "phoneNumberQualityScore": null
+          },
+          "nationalFormat": "(802) 555-1212",
+          "internationalFormat": "+1 802 555 1212"
+        },
+        "createdAt": "2025-11-10T13:38:48.342Z"
+      },
+      {
+        "id": "b819df0d-4b8d-4472-b82a-9b477ed9add0",
+        "contactId": "6cac1d30-daf1-4747-88a8-7e273264a002",
+        "friendlyName": "Main",
+        "phoneNumber": "+18455551212",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": {
+          "type": "FIXED_LINE_OR_MOBILE",
+          "country": "US",
+          "isValid": true,
+          "e164Format": "+18455551212",
+          "twilioData": {
+            "url": "https://lookups.twilio.com/v2/PhoneNumbers/+18455551212",
+            "valid": true,
+            "preFill": null,
+            "simSwap": null,
+            "callerName": {
+              "error_code": null,
+              "caller_name": null,
+              "caller_type": "UNDETERMINED"
+            },
+            "lineStatus": null,
+            "countryCode": "US",
+            "phoneNumber": "+18455551212",
+            "identityMatch": null,
+            "callForwarding": null,
+            "nationalFormat": "(845) 555-1212",
+            "smsPumpingRisk": null,
+            "reassignedNumber": null,
+            "validationErrors": [],
+            "callingCountryCode": "1",
+            "lineTypeIntelligence": {
+              "type": null,
+              "error_code": 60600,
+              "carrier_name": null,
+              "mobile_country_code": null,
+              "mobile_network_code": null
+            },
+            "phoneNumberQualityScore": null
+          },
+          "nationalFormat": "(845) 555-1212",
+          "internationalFormat": "+1 845 555 1212"
+        },
+        "createdAt": "2025-11-10T11:43:51.394Z"
+      }
+    ],
+    "wizardEmployerMonthly": [
+      {
+        "wizardId": "82f1ccdf-7040-4093-b32e-4dbd5c204c6c",
+        "employerId": "ab5f98ff-90b1-4106-b332-32c73917fffd",
+        "year": 2025,
+        "month": 11
+      },
+      {
+        "wizardId": "b41195e1-94d6-47fa-b390-39aa1267f656",
+        "employerId": "bd6d9bef-4654-466f-8d86-a09e634f6c9a",
+        "year": 2025,
+        "month": 11
+      },
+      {
+        "wizardId": "20487947-b5bf-40fc-9467-430101c95433",
+        "employerId": "bd6d9bef-4654-466f-8d86-a09e634f6c9a",
+        "year": 2025,
+        "month": 11
+      },
+      {
+        "wizardId": "106958b8-7e63-4506-88e4-aa6ed7857ea0",
+        "employerId": "bd6d9bef-4654-466f-8d86-a09e634f6c9a",
+        "year": 2025,
+        "month": 11
+      },
+      {
+        "wizardId": "1b5f1947-e702-4b08-ac0c-0f41b1fb18a9",
+        "employerId": "bd6d9bef-4654-466f-8d86-a09e634f6c9a",
+        "year": 2025,
+        "month": 11
+      }
+    ],
+    "wizardFeedMappings": [
+      {
+        "id": "f3799069-9711-4284-9768-a619646a819b",
+        "userId": "331d0601-870d-48dd-9a1f-63a79577155b",
+        "type": "gbhet_legal_workers_monthly",
+        "firstRowHash": "56ac5ce5d7eb1d6dbb40c188085dce7096292dbfcece2faae4dc71f5bcff7081",
+        "mapping": {
+          "col_0": "ssn",
+          "col_1": "numberOfHours",
+          "col_2": "employmentStatus",
+          "col_3": "firstName",
+          "col_4": "middleName",
+          "col_5": "lastName",
+          "col_7": "dateOfBirth"
+        },
+        "createdAt": "2025-11-12T16:57:51.929Z",
+        "updatedAt": "2025-11-14T16:01:14.976Z"
+      },
+      {
+        "id": "1e063eca-cf26-4a01-85ae-7ffc9cc6929d",
+        "userId": "331d0601-870d-48dd-9a1f-63a79577155b",
+        "type": "gbhet_legal_workers_corrections",
+        "firstRowHash": "56ac5ce5d7eb1d6dbb40c188085dce7096292dbfcece2faae4dc71f5bcff7081",
+        "mapping": {
+          "col_0": "ssn",
+          "col_1": "numberOfHours",
+          "col_2": "employmentStatus",
+          "col_3": "firstName",
+          "col_5": "lastName",
+          "col_7": "dateOfBirth",
+          "col_14": "_unmapped"
+        },
+        "createdAt": "2025-11-11T14:28:34.943Z",
+        "updatedAt": "2025-11-14T16:34:25.463Z"
+      }
+    ],
+    "wizardReportData": [
+      {
+        "id": "87313bb4-6505-4c97-861f-902fce2d41af",
+        "wizardId": "8cce486c-11ee-493d-92f7-5a994895ad44",
+        "pk": "d6fea247-89ad-4def-b688-7401b11c2788",
+        "data": {
+          "email": "samknelson+alien@gmail.com",
+          "siriusId": 3,
+          "workerId": "d6fea247-89ad-4def-b688-7401b11c2788",
+          "birthDate": "1977-07-17",
+          "displayName": "Alien A Martian"
+        },
+        "createdAt": "2025-11-15T00:23:54.467Z"
+      },
+      {
+        "id": "817b740f-8c58-42b8-a99a-93fcdba318e6",
+        "wizardId": "8cce486c-11ee-493d-92f7-5a994895ad44",
+        "pk": "ef9770fa-c6c4-4e98-9291-11a1c7eecd4c",
+        "data": {
+          "email": "",
+          "siriusId": 9,
+          "workerId": "ef9770fa-c6c4-4e98-9291-11a1c7eecd4c",
+          "birthDate": null,
+          "displayName": "Short SSN Alien"
+        },
+        "createdAt": "2025-11-15T00:23:54.490Z"
+      },
+      {
+        "id": "b1070ba2-c8c0-40b6-9e6e-0a6a9451c314",
+        "wizardId": "8cce486c-11ee-493d-92f7-5a994895ad44",
+        "pk": "ef2ca50f-d725-473d-b17a-f9f422fea5e6",
+        "data": {
+          "email": "",
+          "siriusId": 10,
+          "workerId": "ef2ca50f-d725-473d-b17a-f9f422fea5e6",
+          "birthDate": null,
+          "displayName": "Ordinary Alien"
+        },
+        "createdAt": "2025-11-15T00:23:54.508Z"
+      },
+      {
+        "id": "6aeedc56-7b80-4558-bab7-82201249f8b6",
+        "wizardId": "8cce486c-11ee-493d-92f7-5a994895ad44",
+        "pk": "d6817d3b-63c4-4c89-9ff8-b5905ff9e1a9",
+        "data": {
+          "email": "",
+          "siriusId": 11,
+          "workerId": "d6817d3b-63c4-4c89-9ff8-b5905ff9e1a9",
+          "birthDate": null,
+          "displayName": "Disabled Alien"
+        },
+        "createdAt": "2025-11-15T00:23:54.527Z"
+      },
+      {
+        "id": "f5e98473-b6f3-48ee-93b7-428b3c49c26b",
+        "wizardId": "8cce486c-11ee-493d-92f7-5a994895ad44",
+        "pk": "25a451d1-7df2-4771-945e-0dcf0b8e2ea1",
+        "data": {
+          "email": "",
+          "siriusId": 12,
+          "workerId": "25a451d1-7df2-4771-945e-0dcf0b8e2ea1",
+          "birthDate": null,
+          "displayName": "Invalid Status Alien"
+        },
+        "createdAt": "2025-11-15T00:23:54.545Z"
+      },
+      {
+        "id": "ca8d587a-df7e-490c-931d-d8d51c09135b",
+        "wizardId": "8cce486c-11ee-493d-92f7-5a994895ad44",
+        "pk": "7f319270-930f-44ec-8478-395fe03aea1d",
+        "data": {
+          "email": "",
+          "siriusId": 13,
+          "workerId": "7f319270-930f-44ec-8478-395fe03aea1d",
+          "birthDate": null,
+          "displayName": "Invalid Dob Alien"
+        },
+        "createdAt": "2025-11-15T00:23:54.564Z"
+      },
+      {
+        "id": "8a84dbeb-a485-4c11-8147-717fd5752ef9",
+        "wizardId": "8cce486c-11ee-493d-92f7-5a994895ad44",
+        "pk": "fd4d288c-37e8-4ee3-8d71-1fe8160e171b",
+        "data": {
+          "email": "",
+          "siriusId": 14,
+          "workerId": "fd4d288c-37e8-4ee3-8d71-1fe8160e171b",
+          "birthDate": null,
+          "displayName": "Newbie Workerson_TEST"
+        },
+        "createdAt": "2025-11-15T00:23:54.583Z"
+      },
+      {
+        "id": "ff9b17cd-3974-4a02-b47d-13b1358cad3f",
+        "wizardId": "8cce486c-11ee-493d-92f7-5a994895ad44",
+        "pk": "ac7b7656-d196-4f8d-a430-e0ca0a88e4d3",
+        "data": {
+          "email": "",
+          "siriusId": 15,
+          "workerId": "ac7b7656-d196-4f8d-a430-e0ca0a88e4d3",
+          "birthDate": null,
+          "displayName": "Short SSN Alien"
+        },
+        "createdAt": "2025-11-15T00:23:54.601Z"
+      },
+      {
+        "id": "d456db10-e637-4112-a2be-7c6b6f9b303d",
+        "wizardId": "8cce486c-11ee-493d-92f7-5a994895ad44",
+        "pk": "da51853b-0ba5-464f-81e7-b394d6c5b104",
+        "data": {
+          "email": "samknelson+12342sdf3@gmail.com",
+          "siriusId": 1,
+          "workerId": "da51853b-0ba5-464f-81e7-b394d6c5b104",
+          "birthDate": null,
+          "displayName": "Yet Another Testerson"
+        },
+        "createdAt": "2025-11-15T00:23:54.619Z"
+      },
+      {
+        "id": "b0f84ec7-8531-48b4-b042-18b64213bda4",
+        "wizardId": "8cce486c-11ee-493d-92f7-5a994895ad44",
+        "pk": "5366a796-a51f-4688-8ea1-3eb6f6afe01c",
+        "data": {
+          "email": "",
+          "siriusId": 16,
+          "workerId": "5366a796-a51f-4688-8ea1-3eb6f6afe01c",
+          "birthDate": null,
+          "displayName": "Short SSN Alien"
+        },
+        "createdAt": "2025-11-15T00:23:54.640Z"
+      },
+      {
+        "id": "30a0e425-ef2d-4d58-b446-243ae45457c9",
+        "wizardId": "f6512bd7-fbda-41ab-aa9d-8d8cf2dc6923",
+        "pk": "d6fea247-89ad-4def-b688-7401b11c2788",
+        "data": {
+          "email": "samknelson+alien@gmail.com",
+          "siriusId": 3,
+          "workerId": "d6fea247-89ad-4def-b688-7401b11c2788",
+          "birthDate": "1977-07-17",
+          "displayName": "Alien A Martian"
+        },
+        "createdAt": "2025-11-15T01:44:37.463Z"
+      },
+      {
+        "id": "32b10099-d291-4cc1-8cac-640348b2d41a",
+        "wizardId": "f6512bd7-fbda-41ab-aa9d-8d8cf2dc6923",
+        "pk": "ef9770fa-c6c4-4e98-9291-11a1c7eecd4c",
+        "data": {
+          "email": "",
+          "siriusId": 9,
+          "workerId": "ef9770fa-c6c4-4e98-9291-11a1c7eecd4c",
+          "birthDate": null,
+          "displayName": "Short SSN Alien"
+        },
+        "createdAt": "2025-11-15T01:44:37.486Z"
+      },
+      {
+        "id": "309d59de-dbed-4bc7-9cbf-4c262c452cd5",
+        "wizardId": "f6512bd7-fbda-41ab-aa9d-8d8cf2dc6923",
+        "pk": "ef2ca50f-d725-473d-b17a-f9f422fea5e6",
+        "data": {
+          "email": "",
+          "siriusId": 10,
+          "workerId": "ef2ca50f-d725-473d-b17a-f9f422fea5e6",
+          "birthDate": null,
+          "displayName": "Ordinary Alien"
+        },
+        "createdAt": "2025-11-15T01:44:37.504Z"
+      },
+      {
+        "id": "ad3e07bb-9dbc-428d-aa5a-48adf2920880",
+        "wizardId": "f6512bd7-fbda-41ab-aa9d-8d8cf2dc6923",
+        "pk": "7f319270-930f-44ec-8478-395fe03aea1d",
+        "data": {
+          "email": "",
+          "siriusId": 13,
+          "workerId": "7f319270-930f-44ec-8478-395fe03aea1d",
+          "birthDate": null,
+          "displayName": "Invalid Dob Alien"
+        },
+        "createdAt": "2025-11-15T01:44:37.523Z"
+      },
+      {
+        "id": "46c26785-1322-457f-b1ca-0e736a9da3c0",
+        "wizardId": "f6512bd7-fbda-41ab-aa9d-8d8cf2dc6923",
+        "pk": "fd4d288c-37e8-4ee3-8d71-1fe8160e171b",
+        "data": {
+          "email": "",
+          "siriusId": 14,
+          "workerId": "fd4d288c-37e8-4ee3-8d71-1fe8160e171b",
+          "birthDate": null,
+          "displayName": "Newbie Workerson_TEST"
+        },
+        "createdAt": "2025-11-15T01:44:37.542Z"
+      },
+      {
+        "id": "52300b9d-5934-4db0-a886-caa604c7ea53",
+        "wizardId": "f6512bd7-fbda-41ab-aa9d-8d8cf2dc6923",
+        "pk": "da51853b-0ba5-464f-81e7-b394d6c5b104",
+        "data": {
+          "email": "samknelson+12342sdf3@gmail.com",
+          "siriusId": 1,
+          "workerId": "da51853b-0ba5-464f-81e7-b394d6c5b104",
+          "birthDate": null,
+          "displayName": "Yet Another Testerson"
+        },
+        "createdAt": "2025-11-15T01:44:37.561Z"
+      },
+      {
+        "id": "90807c35-e66a-452d-9a82-5ea2ae2ecbb5",
+        "wizardId": "f6512bd7-fbda-41ab-aa9d-8d8cf2dc6923",
+        "pk": "5366a796-a51f-4688-8ea1-3eb6f6afe01c",
+        "data": {
+          "email": "",
+          "siriusId": 16,
+          "workerId": "5366a796-a51f-4688-8ea1-3eb6f6afe01c",
+          "birthDate": null,
+          "displayName": "Short SSN Alien"
+        },
+        "createdAt": "2025-11-15T01:44:37.580Z"
+      }
+    ],
+    "workerIds": [
+      {
+        "id": "c200c290-2448-4f40-ada8-0f288e46dd6e",
+        "workerId": "da51853b-0ba5-464f-81e7-b394d6c5b104",
+        "typeId": "44151277-8ef2-4d4b-95ca-2d5c32745438",
+        "value": "X1234"
+      },
+      {
+        "id": "3e39d640-b3ae-443c-a926-3cad2e3ec848",
+        "workerId": "da51853b-0ba5-464f-81e7-b394d6c5b104",
+        "typeId": "0ca0c5d1-db15-41f0-8260-52cd5626913b",
+        "value": "112233"
+      },
+      {
+        "id": "2334caff-4654-4f07-af94-23b0d1c5a393",
+        "workerId": "199da85e-bbf0-47fc-97b1-2c93c912168c",
+        "typeId": "44151277-8ef2-4d4b-95ca-2d5c32745438",
+        "value": "X229944"
+      },
+      {
+        "id": "97f4a7d1-e737-4f2b-9342-009f32bea764",
+        "workerId": "199da85e-bbf0-47fc-97b1-2c93c912168c",
+        "typeId": "0ca0c5d1-db15-41f0-8260-52cd5626913b",
+        "value": "666666"
+      },
+      {
+        "id": "7d51b45d-ef4e-4e11-af0f-19c4f81def15",
+        "workerId": "d6fea247-89ad-4def-b688-7401b11c2788",
+        "typeId": "44151277-8ef2-4d4b-95ca-2d5c32745438",
+        "value": "Z1112223"
+      },
+      {
+        "id": "c0783e7a-5ae6-4deb-868e-5c24544989d2",
+        "workerId": "d6fea247-89ad-4def-b688-7401b11c2788",
+        "typeId": "0ca0c5d1-db15-41f0-8260-52cd5626913b",
+        "value": "223232"
+      }
+    ],
+    "workerHours": [
+      {
+        "id": "25a4c45d-6902-4e97-8b7f-46e3629e359a",
+        "year": 2025,
+        "month": 2,
+        "day": 1,
+        "workerId": "d6fea247-89ad-4def-b688-7401b11c2788",
+        "employerId": "ab5f98ff-90b1-4106-b332-32c73917fffd",
+        "employmentStatusId": "d73eb3ed-9837-4b7d-9504-b17c64f4ee33",
+        "hours": 15.25,
+        "home": false
+      },
+      {
+        "id": "fe88ff71-6c35-42d5-99d6-ef0afdc74ab6",
+        "year": 2024,
+        "month": 4,
+        "day": 1,
+        "workerId": "d6fea247-89ad-4def-b688-7401b11c2788",
+        "employerId": "ab5f98ff-90b1-4106-b332-32c73917fffd",
+        "employmentStatusId": "a31b3341-d052-45c2-9f79-c01155a61896",
+        "hours": 14,
+        "home": false
+      },
+      {
+        "id": "9bee8efd-f455-4b54-801d-4105362e0219",
+        "year": 2024,
+        "month": 3,
+        "day": 1,
+        "workerId": "d6fea247-89ad-4def-b688-7401b11c2788",
+        "employerId": "ab5f98ff-90b1-4106-b332-32c73917fffd",
+        "employmentStatusId": "0c3080d5-a137-49ec-9d2d-a93687cafac6",
+        "hours": 14,
+        "home": false
+      },
+      {
+        "id": "2cef3b7c-9f31-4dcb-9908-f5f7c5ebf0be",
+        "year": 2024,
+        "month": 5,
+        "day": 1,
+        "workerId": "d6fea247-89ad-4def-b688-7401b11c2788",
+        "employerId": "ab5f98ff-90b1-4106-b332-32c73917fffd",
+        "employmentStatusId": "d73eb3ed-9837-4b7d-9504-b17c64f4ee33",
+        "hours": 14,
+        "home": false
+      },
+      {
+        "id": "931538b3-d087-4adb-baa5-9963809ef888",
+        "year": 2024,
+        "month": 6,
+        "day": 1,
+        "workerId": "d6fea247-89ad-4def-b688-7401b11c2788",
+        "employerId": "ab5f98ff-90b1-4106-b332-32c73917fffd",
+        "employmentStatusId": "d73eb3ed-9837-4b7d-9504-b17c64f4ee33",
+        "hours": 1,
+        "home": false
+      },
+      {
+        "id": "078d59c3-457c-4c27-86ae-ca0ef180b0d1",
+        "year": 2025,
+        "month": 2,
+        "day": 1,
+        "workerId": "d6fea247-89ad-4def-b688-7401b11c2788",
+        "employerId": "bd6d9bef-4654-466f-8d86-a09e634f6c9a",
+        "employmentStatusId": "d73eb3ed-9837-4b7d-9504-b17c64f4ee33",
+        "hours": 11,
+        "home": true
+      },
+      {
+        "id": "3567b00a-3b5f-4f57-b2b8-8a911f847702",
+        "year": 2025,
+        "month": 2,
+        "day": 4,
+        "workerId": "d6fea247-89ad-4def-b688-7401b11c2788",
+        "employerId": "ab5f98ff-90b1-4106-b332-32c73917fffd",
+        "employmentStatusId": "d73eb3ed-9837-4b7d-9504-b17c64f4ee33",
+        "hours": 11,
+        "home": true
+      }
+    ],
+    "trustWmb": [
+      {
+        "id": "3a572849-507a-4de7-8087-f2fbd487193b",
+        "month": 11,
+        "year": 2025,
+        "workerId": "199da85e-bbf0-47fc-97b1-2c93c912168c",
+        "employerId": "ab5f98ff-90b1-4106-b332-32c73917fffd",
+        "benefitId": "7a14e5a9-b6ce-41ad-994e-671aff7d5bf7"
+      },
+      {
+        "id": "1f1e6df3-247b-4459-a6ea-820e7dbeaf0c",
+        "month": 11,
+        "year": 2025,
+        "workerId": "d6fea247-89ad-4def-b688-7401b11c2788",
+        "employerId": "bd6d9bef-4654-466f-8d86-a09e634f6c9a",
+        "benefitId": "7a14e5a9-b6ce-41ad-994e-671aff7d5bf7"
+      }
+    ]
+  }
+}
