@@ -96,13 +96,15 @@ const filterSchema = z.object({
   year: z.coerce.number().int().min(1900).max(2100),
   month: z.coerce.number().int().min(1).max(12),
   wizardType: z.string().min(1, "Please select an upload type"),
+  status: z.string().optional(),
 });
 
 type FilterFormData = z.infer<typeof filterSchema>;
 
 export default function EmployersMonthlyUploads() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const [filters, setFilters] = useState<FilterFormData | null>(null);
+  const [hasInitialized, setHasInitialized] = useState(false);
 
   const { data: wizardTypes = [] } = useQuery<WizardType[]>({
     queryKey: ["/api/wizard-types"],
@@ -110,23 +112,51 @@ export default function EmployersMonthlyUploads() {
 
   const monthlyWizardTypes = wizardTypes.filter(wt => wt.isMonthly === true);
   
+  // Parse URL search params
+  const searchParams = new URLSearchParams(location.split('?')[1] || '');
+  const urlYear = searchParams.get('year');
+  const urlMonth = searchParams.get('month');
+  const urlWizardType = searchParams.get('wizardType');
+  const urlStatus = searchParams.get('status');
+  
   const form = useForm<FilterFormData>({
     resolver: zodResolver(filterSchema),
     mode: "onChange",
     defaultValues: {
-      year: new Date().getFullYear(),
-      month: new Date().getMonth() + 1,
-      wizardType: "",
+      year: urlYear ? Number(urlYear) : new Date().getFullYear(),
+      month: urlMonth ? Number(urlMonth) : new Date().getMonth() + 1,
+      wizardType: urlWizardType || "",
+      status: urlStatus || "",
     },
   });
 
+  // Initialize from URL params or default wizard type
   useEffect(() => {
-    if (monthlyWizardTypes.length > 0 && !form.getValues('wizardType')) {
-      form.setValue('wizardType', monthlyWizardTypes[0].name, { 
-        shouldValidate: true 
-      });
+    if (monthlyWizardTypes.length > 0 && !hasInitialized) {
+      const currentWizardType = form.getValues('wizardType');
+      
+      // If wizard type is set from URL or already initialized, use it
+      if (currentWizardType && monthlyWizardTypes.some(wt => wt.name === currentWizardType)) {
+        // Wizard type is valid, auto-submit if we have URL params
+        if (urlYear && urlMonth && urlWizardType) {
+          const data = {
+            year: Number(urlYear),
+            month: Number(urlMonth),
+            wizardType: urlWizardType,
+            status: urlStatus || undefined,
+          };
+          setFilters(data);
+        }
+      } else {
+        // Set default wizard type
+        form.setValue('wizardType', monthlyWizardTypes[0].name, { 
+          shouldValidate: true 
+        });
+      }
+      
+      setHasInitialized(true);
     }
-  }, [monthlyWizardTypes.length]);
+  }, [monthlyWizardTypes.length, hasInitialized]);
 
   const { data: employersWithUploads = [], isLoading, error } = useQuery<EmployerWithUploads[]>({
     queryKey: ["/api/wizards/employer-monthly/employers", filters],
@@ -149,6 +179,16 @@ export default function EmployersMonthlyUploads() {
 
   const handleApplyFilters = (data: FilterFormData) => {
     setFilters(data);
+    // Update URL with filter params
+    const params = new URLSearchParams({
+      year: data.year.toString(),
+      month: data.month.toString(),
+      wizardType: data.wizardType,
+    });
+    if (data.status) {
+      params.set('status', data.status);
+    }
+    setLocation(`/employers/monthly-uploads?${params.toString()}`);
   };
 
   const yearOptions = generateYearOptions();
@@ -156,6 +196,18 @@ export default function EmployersMonthlyUploads() {
 
   const selectedWizardType = wizardTypes.find(wt => wt.name === filters?.wizardType);
   const monthPeriods = filters ? calculateMonthPeriods(filters.year, filters.month) : [];
+
+  // Apply client-side status filtering
+  const filteredEmployersWithUploads = filters?.status 
+    ? employersWithUploads.filter(emp => {
+        if (filters.status === 'no_upload') {
+          // For no_upload, show employers with no uploads
+          return emp.uploads.length === 0;
+        }
+        // For other statuses, check if any upload has that status
+        return emp.uploads.some(upload => upload.status === filters.status);
+      })
+    : employersWithUploads;
 
   return (
     <div className="container mx-auto py-8 px-4">
@@ -176,7 +228,7 @@ export default function EmployersMonthlyUploads() {
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handleApplyFilters)} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <FormField
                   control={form.control}
                   name="year"
@@ -261,6 +313,47 @@ export default function EmployersMonthlyUploads() {
                     </FormItem>
                   )}
                 />
+
+                <FormField
+                  control={form.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Status (Optional)</FormLabel>
+                      <Select value={field.value || ""} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-status">
+                            <SelectValue placeholder="All statuses" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="" data-testid="select-option-all-statuses">
+                            All statuses
+                          </SelectItem>
+                          <SelectItem value="completed" data-testid="select-option-completed">
+                            Completed
+                          </SelectItem>
+                          <SelectItem value="in_progress" data-testid="select-option-in-progress">
+                            In Progress
+                          </SelectItem>
+                          <SelectItem value="draft" data-testid="select-option-draft">
+                            Draft
+                          </SelectItem>
+                          <SelectItem value="no_upload" data-testid="select-option-no-upload">
+                            No Upload
+                          </SelectItem>
+                          <SelectItem value="error" data-testid="select-option-error">
+                            Error
+                          </SelectItem>
+                          <SelectItem value="cancelled" data-testid="select-option-cancelled">
+                            Cancelled
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
 
               <Button 
@@ -301,10 +394,10 @@ export default function EmployersMonthlyUploads() {
               <div className="text-center py-8 text-muted-foreground" data-testid="text-loading">
                 Loading employers and uploads...
               </div>
-            ) : employersWithUploads.length === 0 ? (
+            ) : filteredEmployersWithUploads.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground" data-testid="text-no-employers">
                 <Building2 className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                <p>No employers found</p>
+                <p>No employers found{filters?.status ? ` with status "${filters.status}"` : ''}</p>
               </div>
             ) : (
               <div className="rounded-md border">
@@ -326,7 +419,7 @@ export default function EmployersMonthlyUploads() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {employersWithUploads.map(({ employer, uploads }) => (
+                    {filteredEmployersWithUploads.map(({ employer, uploads }) => (
                       <TableRow key={employer.id} data-testid={`table-row-${employer.id}`}>
                         <TableCell className="font-medium">
                           <div 

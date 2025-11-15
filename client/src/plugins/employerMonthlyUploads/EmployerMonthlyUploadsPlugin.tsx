@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building2, Calendar } from "lucide-react";
+import { Building2, Calendar, ExternalLink } from "lucide-react";
 import { DashboardPluginProps } from "../types";
 import { format, subMonths } from "date-fns";
 
@@ -117,6 +118,8 @@ interface StatsCardProps {
 }
 
 function StatsCard({ wizardType, year, month }: StatsCardProps) {
+  const [, setLocation] = useLocation();
+
   const { data: stats, isLoading } = useQuery<EmployerMonthlyStats>({
     queryKey: ["/api/dashboard-plugins/employer-monthly/stats", { year, month, wizardType: wizardType.name }],
     queryFn: async () => {
@@ -132,6 +135,18 @@ function StatsCard({ wizardType, year, month }: StatsCardProps) {
       return response.json();
     },
   });
+
+  const handleNavigate = (status?: string) => {
+    const params = new URLSearchParams({
+      year: year.toString(),
+      month: month.toString(),
+      wizardType: wizardType.name,
+    });
+    if (status) {
+      params.set('status', status);
+    }
+    setLocation(`/employers/monthly-uploads?${params.toString()}`);
+  };
 
   if (isLoading) {
     return (
@@ -156,7 +171,14 @@ function StatsCard({ wizardType, year, month }: StatsCardProps) {
   return (
     <Card data-testid={`stats-card-${wizardType.name}`}>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">{wizardType.displayName}</CardTitle>
+        <CardTitle 
+          className="text-sm font-medium cursor-pointer hover:underline flex items-center gap-1"
+          onClick={() => handleNavigate()}
+          data-testid={`card-title-${wizardType.name}`}
+        >
+          {wizardType.displayName}
+          <ExternalLink className="h-3 w-3" />
+        </CardTitle>
         <CardDescription className="text-xs">
           {stats.totalActiveEmployers} active employers
         </CardDescription>
@@ -172,7 +194,8 @@ function StatsCard({ wizardType, year, month }: StatsCardProps) {
             return (
               <div 
                 key={status} 
-                className="flex items-center justify-between text-sm"
+                className="flex items-center justify-between text-sm cursor-pointer hover:bg-accent rounded px-2 py-1 -mx-2"
+                onClick={() => handleNavigate(status)}
                 data-testid={`stat-${wizardType.name}-${status}`}
               >
                 <span className="text-muted-foreground">{formatStatusName(status)}</span>
