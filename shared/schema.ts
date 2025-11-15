@@ -248,9 +248,7 @@ export const ledgerPayments = pgTable("ledger_payments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   status: text("status").notNull().$type<'draft' | 'canceled' | 'cleared' | 'error'>(),
   allocated: boolean("allocated").notNull().default(false),
-  payerType: text("payer_type").notNull().$type<'worker' | 'employer'>(),
-  payerId: varchar("payer_id").notNull(),
-  account: varchar("account").notNull().references(() => ledgerAccounts.id),
+  payerEaId: varchar("payer_ea_id").notNull().references(() => ledgerEa.id),
   details: jsonb("details"),
 });
 
