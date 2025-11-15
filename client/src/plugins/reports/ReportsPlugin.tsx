@@ -104,27 +104,26 @@ export function ReportsPlugin({ userRoles }: DashboardPluginProps) {
               <Link 
                 href={`/wizards/${wizard.id}`}
                 data-testid={`report-link-${reportType}`}
+                className="group block cursor-pointer rounded-lg border p-4 transition-colors hover:bg-accent hover:text-accent-foreground"
               >
-                <div className="group cursor-pointer rounded-lg border p-4 transition-colors hover:bg-accent hover:text-accent-foreground">
-                  <div className="space-y-2 text-sm">
-                    {generatedAt && (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Calendar className="h-4 w-4" />
-                        <span data-testid={`report-date-${reportType}`}>
-                          Last run: {format(generatedAt, 'MMM d, yyyy h:mm a')}
-                        </span>
-                      </div>
-                    )}
+                <div className="space-y-2 text-sm">
+                  {generatedAt && (
                     <div className="flex items-center gap-2 text-muted-foreground">
-                      <Hash className="h-4 w-4" />
-                      <span data-testid={`report-count-${reportType}`}>
-                        {recordCount} {recordCount === 1 ? 'record' : 'records'}
+                      <Calendar className="h-4 w-4" />
+                      <span data-testid={`report-date-${reportType}`}>
+                        Last run: {format(generatedAt, 'MMM d, yyyy h:mm a')}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-sm font-medium text-primary group-hover:underline">
-                      View Report
-                      <ExternalLink className="h-4 w-4" />
-                    </div>
+                  )}
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Hash className="h-4 w-4" />
+                    <span data-testid={`report-count-${reportType}`}>
+                      {recordCount} {recordCount === 1 ? 'record' : 'records'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm font-medium text-primary group-hover:underline">
+                    View Report
+                    <ExternalLink className="h-4 w-4" />
                   </div>
                 </div>
               </Link>
