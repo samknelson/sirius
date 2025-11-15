@@ -120,31 +120,6 @@ export function ResultsStep({ wizardId, wizardType, data }: ResultsStepProps) {
 
   const { columns, records, recordCount, generatedAt } = reportData;
 
-  // For duplicate SSN report, group records by SSN
-  const isDuplicateSSNReport = wizardType === 'report_workers_duplicate_ssn';
-  const displayRecords = isDuplicateSSNReport && records.length > 0 ? (() => {
-    const grouped = new Map<string, any[]>();
-    records.forEach((record: any) => {
-      const ssn = record.ssn;
-      if (!grouped.has(ssn)) {
-        grouped.set(ssn, []);
-      }
-      grouped.get(ssn)!.push(record);
-    });
-    
-    return Array.from(grouped.entries()).map(([ssn, workers]) => ({
-      ssn,
-      workerCount: workers.length,
-      workers: workers
-    }));
-  })() : records;
-
-  const displayColumns = isDuplicateSSNReport ? [
-    { id: 'ssn', header: 'SSN', type: 'string' },
-    { id: 'workerCount', header: 'Worker Count', type: 'number' },
-    { id: 'workers', header: 'Workers', type: 'string' }
-  ] : columns;
-
   return (
     <Card>
       <CardHeader>
@@ -186,7 +161,7 @@ export function ResultsStep({ wizardId, wizardType, data }: ResultsStepProps) {
               <Table>
                 <TableHeader className="sticky top-0 bg-muted">
                   <TableRow>
-                    {displayColumns.map((col: any) => (
+                    {columns.map((col: any) => (
                       <TableHead key={col.id} className="font-semibold">
                         {col.header}
                       </TableHead>
@@ -194,13 +169,13 @@ export function ResultsStep({ wizardId, wizardType, data }: ResultsStepProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {displayRecords.map((record: any, idx: number) => (
+                  {records.map((record: any, idx: number) => (
                     <TableRow key={idx} data-testid={`row-record-${idx}`}>
-                      {displayColumns.map((col: any) => (
+                      {columns.map((col: any) => (
                         <TableCell key={col.id}>
-                          {col.id === 'workers' && isDuplicateSSNReport && record.workers ? (
+                          {col.id === 'workers' && record.workerDetails ? (
                             <div className="space-y-1">
-                              {record.workers.map((worker: any) => (
+                              {record.workerDetails.map((worker: any) => (
                                 <div key={worker.workerId}>
                                   <Link 
                                     href={`/workers/${worker.workerId}`} 

@@ -3,7 +3,14 @@ import { WizardReport, ReportConfig, ReportColumn, ReportRecord } from '../repor
 export class ReportWorkersDuplicateSSN extends WizardReport {
   name = 'report_workers_duplicate_ssn';
   displayName = 'Workers with Duplicate SSN';
-  description = 'Generate a report of workers whose Social Security Numbers are duplicated';
+  description = 'Generate a report of Social Security Numbers that are associated with more than one worker';
+
+  /**
+   * Override to use SSN as the primary key instead of workerId
+   */
+  getPrimaryKeyField(): string {
+    return 'ssn';
+  }
 
   getColumns(): ReportColumn[] {
     return [
@@ -14,28 +21,16 @@ export class ReportWorkersDuplicateSSN extends WizardReport {
         width: 130
       },
       {
-        id: 'duplicateCount',
-        header: 'Duplicate Count',
-        type: 'number',
-        width: 150
-      },
-      {
-        id: 'siriusId',
-        header: 'Sirius ID',
+        id: 'workerCount',
+        header: 'Worker Count',
         type: 'number',
         width: 120
       },
       {
-        id: 'displayName',
-        header: 'Name',
+        id: 'workers',
+        header: 'Workers',
         type: 'string',
-        width: 250
-      },
-      {
-        id: 'email',
-        header: 'Email',
-        type: 'string',
-        width: 200
+        width: 400
       }
     ];
   }
@@ -69,50 +64,39 @@ export class ReportWorkersDuplicateSSN extends WizardReport {
       return [];
     }
 
-    // Create a map of SSN -> count for quick lookup
-    const ssnCountMap = new Map(
-      duplicateSSNs.map(({ ssn, count }) => [ssn!, count])
-    );
+    const records: ReportRecord[] = [];
+    const total = duplicateSSNs.length;
 
-    // Fetch all workers that have duplicate SSNs
-    const duplicateSSNValues = duplicateSSNs.map(d => d.ssn!);
-    const workersWithDuplicateSSN = await db
-      .select({
-        workerId: workers.id,
-        siriusId: workers.siriusId,
-        ssn: workers.ssn,
-        displayName: contacts.displayName,
-        email: contacts.email
-      })
-      .from(workers)
-      .innerJoin(contacts, eq(workers.contactId, contacts.id))
-      .where(inArray(workers.ssn, duplicateSSNValues))
-      .orderBy(workers.ssn, workers.siriusId);
+    // For each duplicate SSN, fetch all workers with that SSN and create one record
+    for (let i = 0; i < total; i++) {
+      const { ssn, count } = duplicateSSNs[i];
 
-    // Create one record per worker, including the duplicate count
-    const records: ReportRecord[] = workersWithDuplicateSSN.map((worker, index) => {
-      if (onProgress && index % 10 === 0) {
+      // Fetch all workers with this SSN
+      const workersWithSSN = await db
+        .select({
+          workerId: workers.id,
+          siriusId: workers.siriusId,
+          displayName: contacts.displayName
+        })
+        .from(workers)
+        .innerJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(eq(workers.ssn, ssn!));
+
+      // Create one record per SSN with embedded worker details
+      records.push({
+        ssn: ssn!,
+        workerCount: count,
+        workers: workersWithSSN.map(w => `${w.displayName} (ID: ${w.siriusId})`).join(', '),
+        workerIds: workersWithSSN.map(w => w.workerId), // For linking
+        workerDetails: workersWithSSN // For frontend rendering with links
+      });
+
+      if (onProgress) {
         onProgress({
-          processed: index,
-          total: workersWithDuplicateSSN.length
+          processed: i + 1,
+          total
         });
       }
-
-      return {
-        workerId: worker.workerId,
-        ssn: worker.ssn!,
-        duplicateCount: ssnCountMap.get(worker.ssn!) || 0,
-        siriusId: worker.siriusId,
-        displayName: worker.displayName || '',
-        email: worker.email || ''
-      };
-    });
-
-    if (onProgress) {
-      onProgress({
-        processed: records.length,
-        total: records.length
-      });
     }
 
     return records;

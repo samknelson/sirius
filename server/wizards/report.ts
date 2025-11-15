@@ -13,6 +13,7 @@ export interface ReportMeta {
   generatedAt: string; // ISO string
   recordCount: number;
   columns: ReportColumn[];
+  primaryKeyField?: string; // Field name used as primary key (e.g., 'workerId', 'ssn')
 }
 
 export interface ReportData {
@@ -71,6 +72,30 @@ export abstract class WizardReport extends BaseWizard {
     batchSize?: number,
     onProgress?: (progress: { processed: number; total: number }) => void
   ): Promise<ReportRecord[]>;
+
+  /**
+   * Get the field name to use as the primary key for this report
+   * Override in subclasses to use a different primary key field
+   * @returns Field name (e.g., 'workerId', 'ssn')
+   */
+  getPrimaryKeyField(): string {
+    return 'workerId'; // Default to workerId for backward compatibility
+  }
+
+  /**
+   * Extract the primary key value from a record
+   * Override in subclasses if custom logic is needed
+   * @param record The record to extract the primary key from
+   * @returns The primary key value
+   */
+  getPrimaryKeyValue(record: ReportRecord): string {
+    const pkField = this.getPrimaryKeyField();
+    const pkValue = record[pkField];
+    if (!pkValue) {
+      throw new Error(`Record missing ${pkField} - cannot save to report data`);
+    }
+    return String(pkValue);
+  }
 
   /**
    * Standard three-step flow for report wizards
@@ -143,13 +168,12 @@ export abstract class WizardReport extends BaseWizard {
     await storage.wizards.deleteReportData(wizardId);
 
     // Save each record as a separate row in wizard_report_data
-    // Using workerId as the pk for each row
+    // Using the report-defined primary key field (e.g., workerId, ssn)
     // Note: Zero-result reports will have no rows in wizard_report_data
+    const pkField = this.getPrimaryKeyField();
     for (const record of records) {
-      if (!record.workerId) {
-        throw new Error('Record missing workerId - cannot save to report data');
-      }
-      await storage.wizards.saveReportData(wizardId, record.workerId, record);
+      const pk = this.getPrimaryKeyValue(record);
+      await storage.wizards.saveReportData(wizardId, pk, record);
     }
 
     // Update wizard with metadata and completion status in a single update
@@ -160,7 +184,8 @@ export abstract class WizardReport extends BaseWizard {
         reportMeta: {
           generatedAt: generatedAt.toISOString(),
           recordCount: records.length,
-          columns
+          columns,
+          primaryKeyField: pkField
         },
         // Legacy fields for backward compatibility - stored as primitives to avoid serialization issues
         recordCount: records.length,
