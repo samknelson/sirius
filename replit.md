@@ -27,7 +27,7 @@ The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI),
 -   **Data Validation**: Extensive Zod schema validation, `libphonenumber-js` for phone numbers, and custom SSN/date validation.
 -   **Employer & Contact Management**: Manages employer records and links them to contacts with type categorization.
 -   **Bookmarks**: User-specific, entity-agnostic bookmarking for workers and employers.
--   **Dashboard Plugin System**: Extensible architecture for customizable dashboard widgets with unified settings storage and a generic settings API.
+-   **Dashboard Plugin System**: Extensible architecture for customizable dashboard widgets with unified settings storage and a generic settings API. Includes plugins for welcome messages, bookmarks, employer monthly uploads, and reports. The Reports plugin displays role-configured report cards showing the latest run information (date, record count) with links to detailed results.
 -   **Components Feature Flag System**: Centralized registry for managing application features with dependency management and access control.
 -   **Routing Architecture**: Consistent routing patterns for configuration and detail pages.
 -   **Ledger System**: Manages financial transactions using a `ledger_payments` table.
