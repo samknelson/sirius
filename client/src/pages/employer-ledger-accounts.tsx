@@ -24,16 +24,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-const formSchema = insertLedgerEaSchema.extend({
-  data: z.string().optional().transform(val => {
-    if (!val || val.trim() === '') return null;
-    try {
-      return JSON.parse(val);
-    } catch {
-      throw new Error("Invalid JSON format");
-    }
-  }),
-});
+const formSchema = insertLedgerEaSchema.omit({ data: true });
 
 type FormData = z.infer<typeof formSchema>;
 
@@ -57,7 +48,6 @@ export default function EmployerLedgerAccounts() {
       accountId: "",
       entityType: "employer",
       entityId: employerId,
-      data: "",
     },
   });
 
@@ -75,7 +65,6 @@ export default function EmployerLedgerAccounts() {
         accountId: "",
         entityType: "employer",
         entityId: employerId,
-        data: "",
       });
       setIsFormOpen(false);
     },
@@ -187,26 +176,6 @@ export default function EmployerLedgerAccounts() {
                           ))}
                         </SelectContent>
                       </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="data"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Data (JSON)</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder='{"key": "value"}'
-                          className="font-mono text-sm"
-                          rows={5}
-                          data-testid="textarea-data"
-                          {...field}
-                        />
-                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
