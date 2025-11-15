@@ -104,125 +104,137 @@ export default function EmployerLedgerAccounts() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400 dark:text-gray-600" />
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Accounts</CardTitle>
+          <CardDescription>Loading account entries...</CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-5xl">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Accounts</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Manage ledger account entries for this employer
-          </p>
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Accounts</CardTitle>
+            <CardDescription>Manage ledger account entries for this employer</CardDescription>
+          </div>
+          {isFormOpen ? (
+            <Button
+              onClick={() => setIsFormOpen(false)}
+              data-testid="button-toggle-form"
+            >
+              Cancel
+            </Button>
+          ) : (
+            <Button
+              onClick={() => setIsFormOpen(true)}
+              data-testid="button-toggle-form"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Entry
+            </Button>
+          )}
         </div>
-        {isFormOpen ? (
-          <Button
-            onClick={() => setIsFormOpen(false)}
-            data-testid="button-toggle-form"
-          >
-            Cancel
-          </Button>
-        ) : (
-          <Button
-            onClick={() => setIsFormOpen(true)}
-            data-testid="button-toggle-form"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Entry
-          </Button>
-        )}
-      </div>
+      </CardHeader>
+      <CardContent>
+        {isFormOpen && (
+          <Card className="mb-6" data-testid="card-add-entry-form">
+            <CardHeader>
+              <CardTitle>Add Ledger Account Entry</CardTitle>
+              <CardDescription>
+                Create a new ledger account entry for this employer
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="accountId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Ledger Account</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                          data-testid="select-account"
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select an account" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {accounts.map((account) => (
+                              <SelectItem
+                                key={account.id}
+                                value={account.id}
+                                data-testid={`select-item-account-${account.id}`}
+                              >
+                                {account.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-      {isFormOpen && (
-        <Card className="mb-6" data-testid="card-add-entry-form">
-          <CardHeader>
-            <CardTitle>Add Ledger Account Entry</CardTitle>
-            <CardDescription>
-              Create a new ledger account entry for this employer
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="accountId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Ledger Account</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value}
-                        data-testid="select-account"
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select an account" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {accounts.map((account) => (
-                            <SelectItem
-                              key={account.id}
-                              value={account.id}
-                              data-testid={`select-item-account-${account.id}`}
-                            >
-                              {account.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <Button
-                  type="submit"
-                  disabled={createMutation.isPending}
-                  data-testid="button-submit"
-                >
-                  {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Create Entry
-                </Button>
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="space-y-4">
-        {entries.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <p className="text-gray-500 dark:text-gray-400 mb-4" data-testid="text-no-entries">
-                No ledger account entries found
-              </p>
-              {!isFormOpen && (
-                <Button onClick={() => setIsFormOpen(true)} data-testid="button-create-first">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create First Entry
-                </Button>
-              )}
+                  <Button
+                    type="submit"
+                    disabled={createMutation.isPending}
+                    data-testid="button-submit"
+                  >
+                    {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Create Entry
+                  </Button>
+                </form>
+              </Form>
             </CardContent>
           </Card>
+        )}
+
+        {entries.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12">
+            <p className="text-muted-foreground mb-4" data-testid="text-no-entries">
+              No ledger account entries found
+            </p>
+            {!isFormOpen && (
+              <Button onClick={() => setIsFormOpen(true)} data-testid="button-create-first">
+                <Plus className="h-4 w-4 mr-2" />
+                Create First Entry
+              </Button>
+            )}
+          </div>
         ) : (
-          entries.map((entry) => {
-            const account = accounts.find(a => a.id === entry.accountId);
-            return (
-              <Card key={entry.id} data-testid={`card-entry-${entry.id}`}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="text-lg">
+          <div className="space-y-4">
+            {entries.map((entry) => {
+              const account = accounts.find(a => a.id === entry.accountId);
+              return (
+                <div
+                  key={entry.id}
+                  className="border rounded-lg p-4"
+                  data-testid={`card-entry-${entry.id}`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h4 className="font-medium text-foreground">
                         {account?.name || "Unknown Account"}
-                      </CardTitle>
+                      </h4>
                       {account?.description && (
-                        <CardDescription>{account.description}</CardDescription>
+                        <p className="text-sm text-muted-foreground mt-1">{account.description}</p>
+                      )}
+                      {entry.data && (
+                        <pre className="bg-muted mt-3 p-3 rounded-md overflow-x-auto text-sm">
+                          <code>{JSON.stringify(entry.data, null, 2)}</code>
+                        </pre>
                       )}
                     </div>
                     <Button
@@ -231,22 +243,15 @@ export default function EmployerLedgerAccounts() {
                       onClick={() => setDeleteId(entry.id)}
                       data-testid={`button-delete-${entry.id}`}
                     >
-                      <Trash2 className="h-4 w-4 text-red-600 dark:text-red-400" />
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
-                </CardHeader>
-                {entry.data ? (
-                  <CardContent>
-                    <pre className="bg-gray-50 dark:bg-gray-800 p-4 rounded-md overflow-x-auto text-sm">
-                      <code>{JSON.stringify(entry.data, null, 2)}</code>
-                    </pre>
-                  </CardContent>
-                ) : null}
-              </Card>
-            );
-          })
+                </div>
+              );
+            })}
+          </div>
         )}
-      </div>
+      </CardContent>
 
       <AlertDialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>
@@ -269,6 +274,6 @@ export default function EmployerLedgerAccounts() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </Card>
   );
 }
