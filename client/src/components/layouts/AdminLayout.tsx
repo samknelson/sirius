@@ -25,12 +25,6 @@ const adminNavItems = [
     label: 'Permissions', 
     icon: Key,
     description: 'Manage permissions'
-  },
-  {
-    href: '/admin/quickstarts',
-    label: 'Quickstarts',
-    icon: Database,
-    description: 'Export and import database snapshots'
   }
 ];
 

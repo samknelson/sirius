@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Users, MapPin, Phone, Globe, List, UserCog, ChevronDown, MessageSquare, Puzzle, Package, Heart, CreditCard, Activity, BookOpen, Wallet, Settings, Shield, Key, FileText, Palette, Building2 } from "lucide-react";
+import { Users, MapPin, Phone, Globe, List, UserCog, ChevronDown, MessageSquare, Puzzle, Package, Heart, CreditCard, Activity, BookOpen, Wallet, Settings, Shield, Key, FileText, Palette, Building2, Database } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -59,6 +59,13 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       label: "System Logs",
       icon: FileText,
       testId: "nav-config-logs",
+      policy: "admin" as const,
+    },
+    {
+      path: "/admin/quickstarts",
+      label: "Quickstarts",
+      icon: Database,
+      testId: "nav-config-quickstarts",
       policy: "admin" as const,
     },
   ];
