@@ -224,12 +224,14 @@ export default function Reports() {
                     <TableHead>Report Type</TableHead>
                     <TableHead>Created</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Records</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {reportWizards.map(wizard => {
                     const reportType = reportTypes.find(rt => rt.name === wizard.type);
+                    const recordCount = wizard.data?.reportMeta?.recordCount;
                     return (
                       <TableRow 
                         key={wizard.id}
@@ -247,6 +249,9 @@ export default function Reports() {
                           <Badge variant={wizard.status === 'completed' ? 'default' : 'secondary'}>
                             {wizard.status}
                           </Badge>
+                        </TableCell>
+                        <TableCell data-testid={`text-record-count-${wizard.id}`}>
+                          {recordCount !== undefined ? recordCount.toLocaleString() : '—'}
                         </TableCell>
                         <TableCell className="text-right">
                           <Button
