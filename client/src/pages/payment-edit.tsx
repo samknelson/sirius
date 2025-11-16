@@ -43,8 +43,8 @@ function PaymentEditContent() {
       paymentType: payment.paymentType,
       ledgerEaId: payment.ledgerEaId,
       details: payment.details as any,
-      dateReceived: payment.dateReceived,
-      dateCleared: payment.dateCleared,
+      dateReceived: payment.dateReceived ? new Date(payment.dateReceived) : undefined,
+      dateCleared: payment.dateCleared ? new Date(payment.dateCleared) : undefined,
       memo: payment.memo,
     } : undefined,
   });
