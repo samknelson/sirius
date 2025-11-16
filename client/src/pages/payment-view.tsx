@@ -119,6 +119,13 @@ function PaymentViewContent() {
           </div>
         </div>
 
+        {payment.memo && (
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">Memo</label>
+            <p className="mt-1 whitespace-pre-wrap" data-testid="text-memo">{payment.memo}</p>
+          </div>
+        )}
+
         {payment.details ? (
           <div>
             <label className="text-sm font-medium text-muted-foreground">Details</label>
