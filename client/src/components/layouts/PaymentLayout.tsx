@@ -2,9 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { LedgerPayment } from "@shared/schema";
+import type { LedgerPayment, LedgerPaymentType } from "@shared/schema";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { getPaymentTitle } from "@/lib/payment-utils";
 
 interface PaymentLayoutProps {
   children: React.ReactNode;
@@ -15,11 +16,15 @@ export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
 
-  const { data: payment, isLoading } = useQuery<LedgerPayment>({
+  const { data: payment, isLoading: isLoadingPayment } = useQuery<LedgerPayment>({
     queryKey: ["/api/ledger/payments", id],
   });
 
-  if (isLoading) {
+  const { data: paymentTypes = [] } = useQuery<LedgerPaymentType[]>({
+    queryKey: ["/api/ledger/payment-types"],
+  });
+
+  if (isLoadingPayment) {
     return (
       <div className="container mx-auto py-6 space-y-6">
         <Skeleton className="h-8 w-64" />
@@ -37,7 +42,8 @@ export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
     );
   }
 
-  const paymentIdShort = payment.id.slice(0, 8);
+  const paymentType = paymentTypes.find(pt => pt.id === payment.paymentType);
+  const paymentTitle = getPaymentTitle(payment, paymentType);
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -55,7 +61,7 @@ export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
 
       <div>
         <h1 className="text-3xl font-bold tracking-tight" data-testid="text-page-title">
-          Payment {paymentIdShort}...
+          {paymentTitle}
         </h1>
         <p className="text-muted-foreground mt-1">
           Manage this payment record
