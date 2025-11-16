@@ -46,7 +46,14 @@ export function registerLedgerPaymentRoutes(app: Express) {
   // POST /api/ledger/payments - Create a new payment
   app.post("/api/ledger/payments", requireAccess(policies.ledgerStaff), async (req, res) => {
     try {
-      const validatedData = insertLedgerPaymentSchema.parse(req.body);
+      // Convert date strings to Date objects
+      const processedBody = {
+        ...req.body,
+        dateReceived: req.body.dateReceived ? new Date(req.body.dateReceived) : undefined,
+        dateCleared: req.body.dateCleared ? new Date(req.body.dateCleared) : undefined,
+      };
+      
+      const validatedData = insertLedgerPaymentSchema.parse(processedBody);
       const payment = await storage.ledger.payments.create(validatedData);
       res.status(201).json(payment);
     } catch (error) {
@@ -62,8 +69,15 @@ export function registerLedgerPaymentRoutes(app: Express) {
   app.put("/api/ledger/payments/:id", requireAccess(policies.ledgerStaff), async (req, res) => {
     try {
       const { id } = req.params;
-      console.log("Update payment request body:", JSON.stringify(req.body, null, 2));
-      const validatedData = insertLedgerPaymentSchema.partial().parse(req.body);
+      
+      // Convert date strings to Date objects
+      const processedBody = {
+        ...req.body,
+        dateReceived: req.body.dateReceived ? new Date(req.body.dateReceived) : undefined,
+        dateCleared: req.body.dateCleared ? new Date(req.body.dateCleared) : undefined,
+      };
+      
+      const validatedData = insertLedgerPaymentSchema.partial().parse(processedBody);
       
       const payment = await storage.ledger.payments.update(id, validatedData);
       
@@ -75,10 +89,8 @@ export function registerLedgerPaymentRoutes(app: Express) {
       res.json(payment);
     } catch (error) {
       if (error instanceof Error && error.name === "ZodError") {
-        console.error("Zod validation error:", error);
-        res.status(400).json({ message: "Invalid payment data", error: error });
+        res.status(400).json({ message: "Invalid payment data" });
       } else {
-        console.error("Failed to update payment:", error);
         res.status(500).json({ message: "Failed to update payment" });
       }
     }
