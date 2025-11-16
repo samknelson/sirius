@@ -42,6 +42,8 @@ function EAPaymentsContent() {
       paymentType: paymentTypes[0]?.id || "",
       ledgerEaId: id,
       details: null,
+      dateReceived: null,
+      dateCleared: null,
     },
   });
 
@@ -59,6 +61,8 @@ function EAPaymentsContent() {
         paymentType: paymentTypes[0]?.id || "",
         ledgerEaId: id,
         details: null,
+        dateReceived: null,
+        dateCleared: null,
       });
       toast({
         title: "Payment created",
@@ -182,6 +186,44 @@ function EAPaymentsContent() {
                             ))}
                           </SelectContent>
                         </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="dateReceived"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Date Received</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="date"
+                            data-testid="input-date-received"
+                            value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
+                            onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="dateCleared"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Date Cleared</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="date"
+                            data-testid="input-date-cleared"
+                            value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
+                            onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}

@@ -39,6 +39,8 @@ function PaymentEditContent() {
       paymentType: payment.paymentType,
       ledgerEaId: payment.ledgerEaId,
       details: payment.details as any,
+      dateReceived: payment.dateReceived,
+      dateCleared: payment.dateCleared,
     } : undefined,
   });
 
@@ -190,6 +192,44 @@ function PaymentEditContent() {
                   <div className="space-y-1 leading-none">
                     <FormLabel>Allocated</FormLabel>
                   </div>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="dateReceived"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Date Received</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="date"
+                      data-testid="input-date-received"
+                      value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
+                      onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="dateCleared"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Date Cleared</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="date"
+                      data-testid="input-date-cleared"
+                      value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
+                      onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
+                    />
+                  </FormControl>
+                  <FormMessage />
                 </FormItem>
               )}
             />
