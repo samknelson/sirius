@@ -255,6 +255,7 @@ export const ledgerPayments = pgTable("ledger_payments", {
   dateCreated: timestamp("date_created").default(sql`now()`).notNull(),
   dateReceived: timestamp("date_received"),
   dateCleared: timestamp("date_cleared"),
+  memo: text("memo"),
 });
 
 export const ledgerEa = pgTable("ledger_ea", {
