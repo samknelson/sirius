@@ -5,6 +5,16 @@ import { policies } from "../../policies";
 import { requireAccess } from "../../accessControl";
 
 export function registerLedgerPaymentRoutes(app: Express) {
+  // GET /api/ledger/payment-types - Get all payment types
+  app.get("/api/ledger/payment-types", requireAccess(policies.ledgerStaff), async (req, res) => {
+    try {
+      const paymentTypes = await storage.options.ledgerPaymentTypes.getAllLedgerPaymentTypes();
+      res.json(paymentTypes);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch payment types" });
+    }
+  });
+
   // GET /api/ledger/payments/ea/:eaId - Get all payments for a specific EA entry
   app.get("/api/ledger/payments/ea/:eaId", requireAccess(policies.ledgerStaff), async (req, res) => {
     try {

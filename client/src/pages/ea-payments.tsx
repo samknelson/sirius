@@ -11,7 +11,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertLedgerPaymentSchema, type LedgerPayment } from "@shared/schema";
+import { insertLedgerPaymentSchema, type LedgerPayment, type LedgerPaymentType } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Plus, DollarSign } from "lucide-react";
 import { useState } from "react";
@@ -29,12 +29,17 @@ function EAPaymentsContent() {
     queryKey: ["/api/ledger/payments/ea", id],
   });
 
+  const { data: paymentTypes = [] } = useQuery<LedgerPaymentType[]>({
+    queryKey: ["/api/ledger/payment-types"],
+  });
+
   const form = useForm<z.infer<typeof insertLedgerPaymentSchema>>({
     resolver: zodResolver(insertLedgerPaymentSchema),
     defaultValues: {
       status: "draft",
       allocated: false,
       amount: "0.00",
+      paymentType: paymentTypes[0]?.id || "",
       payerEaId: id,
       details: null,
     },
@@ -51,6 +56,7 @@ function EAPaymentsContent() {
         status: "draft",
         allocated: false,
         amount: "0.00",
+        paymentType: paymentTypes[0]?.id || "",
         payerEaId: id,
         details: null,
       });
@@ -133,6 +139,31 @@ function EAPaymentsContent() {
 
                   <FormField
                     control={form.control}
+                    name="paymentType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Payment Type</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-payment-type">
+                              <SelectValue placeholder="Select payment type" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {paymentTypes.map((type) => (
+                              <SelectItem key={type.id} value={type.id} data-testid={`option-${type.id}`}>
+                                {type.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
                     name="status"
                     render={({ field }) => (
                       <FormItem>
@@ -197,41 +228,40 @@ function EAPaymentsContent() {
                 <TableRow>
                   <TableHead>Payment ID</TableHead>
                   <TableHead>Amount</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Allocated</TableHead>
-                  <TableHead>Details</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {payments.map((payment) => (
-                  <TableRow key={payment.id} data-testid={`row-payment-${payment.id}`}>
-                    <TableCell className="font-mono text-sm">
-                      <Link href={`/ledger/payment/${payment.id}`}>
-                        <a className="text-primary hover:underline" data-testid={`link-payment-${payment.id}`}>
-                          {payment.id.slice(0, 8)}...
-                        </a>
-                      </Link>
-                    </TableCell>
-                    <TableCell className="font-mono" data-testid={`text-amount-${payment.id}`}>
-                      ${parseFloat(payment.amount).toFixed(2)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={getStatusBadgeVariant(payment.status)} data-testid={`badge-status-${payment.id}`}>
-                        {payment.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell data-testid={`text-allocated-${payment.id}`}>
-                      {payment.allocated ? "Yes" : "No"}
-                    </TableCell>
-                    <TableCell className="max-w-xs truncate" data-testid={`text-details-${payment.id}`}>
-                      {payment.details ? (
-                        <code className="text-xs">{JSON.stringify(payment.details)}</code>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {payments.map((payment) => {
+                  const paymentType = paymentTypes.find(t => t.id === payment.paymentType);
+                  return (
+                    <TableRow key={payment.id} data-testid={`row-payment-${payment.id}`}>
+                      <TableCell className="font-mono text-sm">
+                        <Link href={`/ledger/payment/${payment.id}`}>
+                          <a className="text-primary hover:underline" data-testid={`link-payment-${payment.id}`}>
+                            {payment.id.slice(0, 8)}...
+                          </a>
+                        </Link>
+                      </TableCell>
+                      <TableCell className="font-mono" data-testid={`text-amount-${payment.id}`}>
+                        ${parseFloat(payment.amount).toFixed(2)}
+                      </TableCell>
+                      <TableCell data-testid={`text-payment-type-${payment.id}`}>
+                        {paymentType?.name || "-"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={getStatusBadgeVariant(payment.status)} data-testid={`badge-status-${payment.id}`}>
+                          {payment.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell data-testid={`text-allocated-${payment.id}`}>
+                        {payment.allocated ? "Yes" : "No"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

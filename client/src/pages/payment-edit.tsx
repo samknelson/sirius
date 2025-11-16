@@ -9,7 +9,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertLedgerPaymentSchema, type LedgerPayment } from "@shared/schema";
+import { insertLedgerPaymentSchema, type LedgerPayment, type LedgerPaymentType } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,12 +26,17 @@ function PaymentEditContent() {
     queryKey: ["/api/ledger/payments", id],
   });
 
+  const { data: paymentTypes = [] } = useQuery<LedgerPaymentType[]>({
+    queryKey: ["/api/ledger/payment-types"],
+  });
+
   const form = useForm<z.infer<typeof insertLedgerPaymentSchema>>({
     resolver: zodResolver(insertLedgerPaymentSchema),
     values: payment ? {
       status: payment.status,
       allocated: payment.allocated,
       amount: payment.amount,
+      paymentType: payment.paymentType,
       payerEaId: payment.payerEaId,
       details: payment.details as any,
     } : undefined,
@@ -115,6 +120,31 @@ function PaymentEditContent() {
                       {...field}
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="paymentType"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Payment Type</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-payment-type">
+                        <SelectValue placeholder="Select payment type" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {paymentTypes.map((type) => (
+                        <SelectItem key={type.id} value={type.id} data-testid={`option-${type.id}`}>
+                          {type.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

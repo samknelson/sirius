@@ -249,6 +249,7 @@ export const ledgerPayments = pgTable("ledger_payments", {
   status: text("status").notNull().$type<'draft' | 'canceled' | 'cleared' | 'error'>(),
   allocated: boolean("allocated").notNull().default(false),
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  paymentType: varchar("payment_type").notNull().references(() => optionsLedgerPaymentType.id),
   payerEaId: varchar("payer_ea_id").notNull().references(() => ledgerEa.id),
   details: jsonb("details"),
 });
