@@ -119,6 +119,20 @@ function PaymentViewContent() {
           </div>
         </div>
 
+        {payment.details && (payment.details as any).merchant && (
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">Merchant</label>
+            <p className="mt-1" data-testid="text-merchant">{(payment.details as any).merchant}</p>
+          </div>
+        )}
+
+        {payment.details && (payment.details as any).checkTransactionNumber && (
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">Check or Transaction Number</label>
+            <p className="mt-1" data-testid="text-check-transaction-number">{(payment.details as any).checkTransactionNumber}</p>
+          </div>
+        )}
+
         {payment.memo && (
           <div>
             <label className="text-sm font-medium text-muted-foreground">Memo</label>

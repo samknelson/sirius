@@ -24,6 +24,8 @@ const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
 function EAPaymentsContent() {
   const { id } = useParams<{ id: string }>();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [merchant, setMerchant] = useState("");
+  const [checkTransactionNumber, setCheckTransactionNumber] = useState("");
   const { toast } = useToast();
 
   const { data: payments, isLoading } = useQuery<LedgerPayment[]>({
@@ -56,6 +58,8 @@ function EAPaymentsContent() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ledger/payments/ea", id] });
       setDialogOpen(false);
+      setMerchant("");
+      setCheckTransactionNumber("");
       form.reset({
         status: "draft",
         allocated: false,
@@ -82,7 +86,25 @@ function EAPaymentsContent() {
   });
 
   const onSubmit = form.handleSubmit((data) => {
-    createPaymentMutation.mutate(data);
+    const existingDetails = (data.details || {}) as Record<string, any>;
+    const details: any = { ...existingDetails };
+    
+    if (merchant) {
+      details.merchant = merchant;
+    } else {
+      delete details.merchant;
+    }
+    
+    if (checkTransactionNumber) {
+      details.checkTransactionNumber = checkTransactionNumber;
+    } else {
+      delete details.checkTransactionNumber;
+    }
+    
+    createPaymentMutation.mutate({
+      ...data,
+      details: Object.keys(details).length > 0 ? details : null,
+    });
   });
 
   const getStatusBadgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
@@ -231,6 +253,32 @@ function EAPaymentsContent() {
                       </FormItem>
                     )}
                   />
+
+                  <div>
+                    <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                      Merchant
+                    </label>
+                    <Input
+                      placeholder="Enter merchant name..."
+                      data-testid="input-merchant"
+                      value={merchant}
+                      onChange={(e) => setMerchant(e.target.value)}
+                      className="mt-2"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                      Check or Transaction Number
+                    </label>
+                    <Input
+                      placeholder="Enter check or transaction number..."
+                      data-testid="input-check-transaction-number"
+                      value={checkTransactionNumber}
+                      onChange={(e) => setCheckTransactionNumber(e.target.value)}
+                      className="mt-2"
+                    />
+                  </div>
 
                   <FormField
                     control={form.control}

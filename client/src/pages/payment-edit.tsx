@@ -14,6 +14,7 @@ import { insertLedgerPaymentSchema, type LedgerPayment, type LedgerPaymentType }
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useState, useEffect } from "react";
 import type { z } from "zod";
 
 const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
@@ -22,6 +23,8 @@ function PaymentEditContent() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const [merchant, setMerchant] = useState("");
+  const [checkTransactionNumber, setCheckTransactionNumber] = useState("");
 
   const { data: payment, isLoading } = useQuery<LedgerPayment>({
     queryKey: ["/api/ledger/payments", id],
@@ -46,6 +49,14 @@ function PaymentEditContent() {
     } : undefined,
   });
 
+  useEffect(() => {
+    if (payment?.details) {
+      const details = payment.details as any;
+      setMerchant(details.merchant || "");
+      setCheckTransactionNumber(details.checkTransactionNumber || "");
+    }
+  }, [payment]);
+
   const updatePaymentMutation = useMutation({
     mutationFn: async (data: z.infer<typeof insertLedgerPaymentSchema>) => {
       return await apiRequest("PUT", `/api/ledger/payments/${id}`, data);
@@ -69,7 +80,25 @@ function PaymentEditContent() {
   });
 
   const onSubmit = form.handleSubmit((data) => {
-    updatePaymentMutation.mutate(data);
+    const existingDetails = (data.details || {}) as Record<string, any>;
+    const details: any = { ...existingDetails };
+    
+    if (merchant) {
+      details.merchant = merchant;
+    } else {
+      delete details.merchant;
+    }
+    
+    if (checkTransactionNumber) {
+      details.checkTransactionNumber = checkTransactionNumber;
+    } else {
+      delete details.checkTransactionNumber;
+    }
+    
+    updatePaymentMutation.mutate({
+      ...data,
+      details: Object.keys(details).length > 0 ? details : null,
+    });
   });
 
   if (isLoading) {
@@ -235,6 +264,32 @@ function PaymentEditContent() {
                 </FormItem>
               )}
             />
+
+            <div>
+              <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                Merchant
+              </label>
+              <Input
+                placeholder="Enter merchant name..."
+                data-testid="input-merchant"
+                value={merchant}
+                onChange={(e) => setMerchant(e.target.value)}
+                className="mt-2"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                Check or Transaction Number
+              </label>
+              <Input
+                placeholder="Enter check or transaction number..."
+                data-testid="input-check-transaction-number"
+                value={checkTransactionNumber}
+                onChange={(e) => setCheckTransactionNumber(e.target.value)}
+                className="mt-2"
+              />
+            </div>
 
             <FormField
               control={form.control}
