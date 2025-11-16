@@ -62,6 +62,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
   app.put("/api/ledger/payments/:id", requireAccess(policies.ledgerStaff), async (req, res) => {
     try {
       const { id } = req.params;
+      console.log("Update payment request body:", JSON.stringify(req.body, null, 2));
       const validatedData = insertLedgerPaymentSchema.partial().parse(req.body);
       
       const payment = await storage.ledger.payments.update(id, validatedData);
@@ -74,8 +75,10 @@ export function registerLedgerPaymentRoutes(app: Express) {
       res.json(payment);
     } catch (error) {
       if (error instanceof Error && error.name === "ZodError") {
-        res.status(400).json({ message: "Invalid payment data" });
+        console.error("Zod validation error:", error);
+        res.status(400).json({ message: "Invalid payment data", error: error });
       } else {
+        console.error("Failed to update payment:", error);
         res.status(500).json({ message: "Failed to update payment" });
       }
     }
