@@ -339,25 +339,22 @@ function EAPaymentsContent() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Payment ID</TableHead>
                   <TableHead>Amount</TableHead>
-                  <TableHead>Type</TableHead>
+                  <TableHead>Payment Type</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Allocated</TableHead>
+                  <TableHead>Merchant</TableHead>
+                  <TableHead>Date Created</TableHead>
+                  <TableHead>Date Received</TableHead>
+                  <TableHead>Date Cleared</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {payments.map((payment) => {
                   const paymentType = paymentTypes.find(t => t.id === payment.paymentType);
+                  const details = payment.details as any;
                   return (
                     <TableRow key={payment.id} data-testid={`row-payment-${payment.id}`}>
-                      <TableCell className="font-mono text-sm">
-                        <Link href={`/ledger/payment/${payment.id}`}>
-                          <a className="text-primary hover:underline" data-testid={`link-payment-${payment.id}`}>
-                            {payment.id.slice(0, 8)}...
-                          </a>
-                        </Link>
-                      </TableCell>
                       <TableCell className="font-mono" data-testid={`text-amount-${payment.id}`}>
                         ${parseFloat(payment.amount).toFixed(2)}
                       </TableCell>
@@ -369,8 +366,26 @@ function EAPaymentsContent() {
                           {payment.status}
                         </Badge>
                       </TableCell>
-                      <TableCell data-testid={`text-allocated-${payment.id}`}>
-                        {payment.allocated ? "Yes" : "No"}
+                      <TableCell data-testid={`text-merchant-${payment.id}`}>
+                        {details?.merchant || "-"}
+                      </TableCell>
+                      <TableCell data-testid={`text-date-created-${payment.id}`}>
+                        {payment.dateCreated ? new Date(payment.dateCreated).toLocaleDateString() : "-"}
+                      </TableCell>
+                      <TableCell data-testid={`text-date-received-${payment.id}`}>
+                        {payment.dateReceived ? new Date(payment.dateReceived).toLocaleDateString() : "-"}
+                      </TableCell>
+                      <TableCell data-testid={`text-date-cleared-${payment.id}`}>
+                        {payment.dateCleared ? new Date(payment.dateCleared).toLocaleDateString() : "-"}
+                      </TableCell>
+                      <TableCell>
+                        <Link 
+                          href={`/ledger/payment/${payment.id}`}
+                          className="text-primary hover:underline"
+                          data-testid={`link-view-${payment.id}`}
+                        >
+                          View
+                        </Link>
                       </TableCell>
                     </TableRow>
                   );
