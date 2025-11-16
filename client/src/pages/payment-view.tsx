@@ -93,8 +93,8 @@ function PaymentViewContent() {
           </div>
 
           <div>
-            <label className="text-sm font-medium text-muted-foreground">Payer EA ID</label>
-            <p className="mt-1 font-mono text-sm" data-testid="text-payer-ea-id">{payment.payerEaId}</p>
+            <label className="text-sm font-medium text-muted-foreground">Ledger EA ID</label>
+            <p className="mt-1 font-mono text-sm" data-testid="text-ledger-ea-id">{payment.ledgerEaId}</p>
           </div>
         </div>
 

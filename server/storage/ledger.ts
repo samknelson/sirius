@@ -43,7 +43,7 @@ export interface LedgerEaStorage {
 export interface LedgerPaymentStorage {
   getAll(): Promise<LedgerPayment[]>;
   get(id: string): Promise<LedgerPayment | undefined>;
-  getByPayerEaId(payerEaId: string): Promise<LedgerPayment[]>;
+  getByLedgerEaId(ledgerEaId: string): Promise<LedgerPayment[]>;
   create(payment: InsertLedgerPayment): Promise<LedgerPayment>;
   update(id: string, payment: Partial<InsertLedgerPayment>): Promise<LedgerPayment | undefined>;
   delete(id: string): Promise<boolean>;
@@ -208,9 +208,9 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
       return payment || undefined;
     },
 
-    async getByPayerEaId(payerEaId: string): Promise<LedgerPayment[]> {
+    async getByLedgerEaId(ledgerEaId: string): Promise<LedgerPayment[]> {
       return await db.select().from(ledgerPayments)
-        .where(eq(ledgerPayments.payerEaId, payerEaId))
+        .where(eq(ledgerPayments.ledgerEaId, ledgerEaId))
         .orderBy(desc(ledgerPayments.id));
     },
 

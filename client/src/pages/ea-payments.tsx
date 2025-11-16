@@ -40,7 +40,7 @@ function EAPaymentsContent() {
       allocated: false,
       amount: "0.00",
       paymentType: paymentTypes[0]?.id || "",
-      payerEaId: id,
+      ledgerEaId: id,
       details: null,
     },
   });
@@ -57,7 +57,7 @@ function EAPaymentsContent() {
         allocated: false,
         amount: "0.00",
         paymentType: paymentTypes[0]?.id || "",
-        payerEaId: id,
+        ledgerEaId: id,
         details: null,
       });
       toast({

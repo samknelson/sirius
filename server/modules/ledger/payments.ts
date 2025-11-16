@@ -19,7 +19,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
   app.get("/api/ledger/payments/ea/:eaId", requireAccess(policies.ledgerStaff), async (req, res) => {
     try {
       const { eaId } = req.params;
-      const payments = await storage.ledger.payments.getByPayerEaId(eaId);
+      const payments = await storage.ledger.payments.getByLedgerEaId(eaId);
       res.json(payments);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch payments" });

@@ -37,7 +37,7 @@ function PaymentEditContent() {
       allocated: payment.allocated,
       amount: payment.amount,
       paymentType: payment.paymentType,
-      payerEaId: payment.payerEaId,
+      ledgerEaId: payment.ledgerEaId,
       details: payment.details as any,
     } : undefined,
   });
@@ -48,7 +48,7 @@ function PaymentEditContent() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ledger/payments", id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/ledger/payments/ea", payment?.payerEaId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ledger/payments/ea", payment?.ledgerEaId] });
       toast({
         title: "Payment updated",
         description: "The payment has been updated successfully.",
