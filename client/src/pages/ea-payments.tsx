@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
@@ -44,6 +45,7 @@ function EAPaymentsContent() {
       details: null,
       dateReceived: null,
       dateCleared: null,
+      memo: null,
     },
   });
 
@@ -63,6 +65,7 @@ function EAPaymentsContent() {
         details: null,
         dateReceived: null,
         dateCleared: null,
+        memo: null,
       });
       toast({
         title: "Payment created",
@@ -222,6 +225,26 @@ function EAPaymentsContent() {
                             data-testid="input-date-cleared"
                             value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
                             onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="memo"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Memo</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="Add notes or description for this payment..."
+                            data-testid="input-memo"
+                            value={field.value || ''}
+                            onChange={field.onChange}
+                            rows={3}
                           />
                         </FormControl>
                         <FormMessage />

@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -41,6 +42,7 @@ function PaymentEditContent() {
       details: payment.details as any,
       dateReceived: payment.dateReceived,
       dateCleared: payment.dateCleared,
+      memo: payment.memo,
     } : undefined,
   });
 
@@ -227,6 +229,26 @@ function PaymentEditContent() {
                       data-testid="input-date-cleared"
                       value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
                       onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="memo"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Memo</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Add notes or description for this payment..."
+                      data-testid="input-memo"
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                      rows={3}
                     />
                   </FormControl>
                   <FormMessage />
