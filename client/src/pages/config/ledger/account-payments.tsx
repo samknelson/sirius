@@ -10,7 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import type { LedgerPaymentWithEntity, LedgerPaymentType } from "@shared/schema";
 import { Download, ArrowUpDown, Filter, X } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { stringify } from "csv-stringify/browser/esm/sync";
 
@@ -47,19 +47,13 @@ function AccountPaymentsContent() {
   const [sortField, setSortField] = useState<SortField>("dateCleared");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
-  const offset = (currentPage - 1) * ITEMS_PER_PAGE;
-
-  const { data: paymentsResponse, isLoading } = useQuery<{ data: LedgerPaymentWithEntity[]; total: number }>({
-    queryKey: ["/api/ledger/accounts", id, "payments", { limit: ITEMS_PER_PAGE, offset }],
+  const { data: payments, isLoading } = useQuery<LedgerPaymentWithEntity[]>({
+    queryKey: ["/api/ledger/accounts", id, "payments"],
   });
 
   const { data: paymentTypes = [] } = useQuery<LedgerPaymentType[]>({
     queryKey: ["/api/ledger/payment-types"],
   });
-
-  const payments = paymentsResponse?.data || [];
-  const totalPayments = paymentsResponse?.total || 0;
-  const totalPages = Math.ceil(totalPayments / ITEMS_PER_PAGE);
 
   const getStatusBadgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
@@ -250,6 +244,42 @@ function AccountPaymentsContent() {
     sortDirection,
   ]);
 
+  // Reset to page 1 when filters or sort changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    filterPaymentType,
+    filterStatus,
+    filterEntityType,
+    filterEntityName,
+    filterMerchant,
+    filterAmountMin,
+    filterAmountMax,
+    filterDateCreatedFrom,
+    filterDateCreatedTo,
+    filterDateReceivedFrom,
+    filterDateReceivedTo,
+    filterDateClearedFrom,
+    filterDateClearedTo,
+    sortField,
+    sortDirection,
+  ]);
+
+  // Calculate pagination values based on filtered results
+  const totalFilteredPayments = filteredAndSortedPayments.length;
+  const totalPages = Math.ceil(totalFilteredPayments / ITEMS_PER_PAGE);
+  
+  // Clamp currentPage when totalPages shrinks (e.g., due to filtering or data refresh)
+  useEffect(() => {
+    const normalizedPage = totalPages > 0 ? Math.min(currentPage, totalPages) : 1;
+    if (currentPage !== normalizedPage) {
+      setCurrentPage(normalizedPage);
+    }
+  }, [totalPages, currentPage, payments?.length]);
+  
+  const offset = (currentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedPayments = filteredAndSortedPayments.slice(offset, offset + ITEMS_PER_PAGE);
+
   // Get unique entity types
   const entityTypes = useMemo(() => {
     if (!payments) return [];
@@ -277,7 +307,8 @@ function AccountPaymentsContent() {
 
   // Export to CSV
   const exportToCSV = () => {
-    if (!filteredAndSortedPayments.length) {
+    const dataToExport = filteredAndSortedPayments;
+    if (!dataToExport.length) {
       toast({
         title: "No data to export",
         description: "There are no payments to export.",
@@ -286,7 +317,7 @@ function AccountPaymentsContent() {
       return;
     }
 
-    const csvData = filteredAndSortedPayments.map(payment => {
+    const csvData = dataToExport.map(payment => {
       const paymentType = paymentTypes.find(t => t.id === payment.paymentType);
       const details = payment.details as any;
       
@@ -336,7 +367,7 @@ function AccountPaymentsContent() {
 
     toast({
       title: "Export successful",
-      description: `Exported ${filteredAndSortedPayments.length} payment(s) from current page to CSV.`,
+      description: `Exported ${dataToExport.length} filtered payment(s) to CSV.`,
     });
   };
 
@@ -356,13 +387,15 @@ function AccountPaymentsContent() {
           <div>
             <CardTitle>Payments</CardTitle>
             <CardDescription>
-              {totalPayments > 0 ? (
+              {payments && payments.length > 0 ? (
                 <>
-                  Showing page {currentPage} of {totalPages} ({totalPayments} total payments)
-                  {filteredAndSortedPayments.length !== payments?.length && (
-                    <span className="ml-2">
-                      - {filteredAndSortedPayments.length} filtered on this page
-                    </span>
+                  {filteredAndSortedPayments.length !== payments.length ? (
+                    <>Showing {filteredAndSortedPayments.length} of {payments.length} payments (filtered)</>
+                  ) : (
+                    <>Showing {payments.length} payments</>
+                  )}
+                  {totalPages > 1 && (
+                    <span className="ml-2">- Page {currentPage} of {totalPages}</span>
                   )}
                 </>
               ) : (
@@ -609,7 +642,7 @@ function AccountPaymentsContent() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredAndSortedPayments.map((payment) => {
+                {paginatedPayments.map((payment) => {
                   const paymentType = paymentTypes.find(t => t.id === payment.paymentType);
                   const details = payment.details as any;
                   
@@ -734,7 +767,7 @@ function AccountPaymentsContent() {
         )}
 
         <div className="mt-4 text-sm text-muted-foreground text-center">
-          Showing {payments.length > 0 ? offset + 1 : 0} - {offset + payments.length} of {totalPayments} payments
+          Showing {paginatedPayments.length > 0 ? offset + 1 : 0} - {offset + paginatedPayments.length} of {totalFilteredPayments} {filteredAndSortedPayments.length !== (payments?.length || 0) ? 'filtered ' : ''}payments
         </div>
       </CardContent>
     </Card>
