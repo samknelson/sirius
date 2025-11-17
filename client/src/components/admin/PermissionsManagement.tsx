@@ -51,8 +51,7 @@ export default function PermissionsManagement() {
 
   const assignPermissionMutation = useMutation({
     mutationFn: async ({ roleId, permissionKey }: { roleId: string; permissionKey: string }) => {
-      const response = await apiRequest('POST', `/api/admin/roles/${roleId}/permissions`, { permissionKey });
-      return await response.json();
+      return await apiRequest('POST', `/api/admin/roles/${roleId}/permissions`, { permissionKey });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/role-permissions'] });

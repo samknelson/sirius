@@ -40,8 +40,7 @@ function UserAccountContent() {
 
   const toggleStatusMutation = useMutation({
     mutationFn: async (isActive: boolean) => {
-      const response = await apiRequest('PUT', `/api/admin/users/${user.id}/status`, { isActive });
-      return await response.json();
+      return await apiRequest('PUT', `/api/admin/users/${user.id}/status`, { isActive });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/users', user.id] });
@@ -62,8 +61,7 @@ function UserAccountContent() {
 
   const assignRoleMutation = useMutation({
     mutationFn: async (roleId: string) => {
-      const response = await apiRequest('POST', `/api/admin/users/${user.id}/roles`, { roleId });
-      return await response.json();
+      return await apiRequest('POST', `/api/admin/users/${user.id}/roles`, { roleId });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/users', user.id, 'roles'] });

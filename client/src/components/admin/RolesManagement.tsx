@@ -35,12 +35,11 @@ export default function RolesManagement() {
   const createRoleMutation = useMutation({
     mutationFn: async ({ name, description }: { name: string; description: string }) => {
       const maxSequence = roles.reduce((max, role) => Math.max(max, role.sequence), -1);
-      const response = await apiRequest('POST', '/api/admin/roles', { 
+      return await apiRequest('POST', '/api/admin/roles', { 
         name, 
         description,
         sequence: maxSequence + 1
       });
-      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/roles'] });
@@ -63,8 +62,7 @@ export default function RolesManagement() {
 
   const updateRoleMutation = useMutation({
     mutationFn: async ({ id, name, description }: { id: string; name: string; description: string }) => {
-      const response = await apiRequest('PUT', `/api/admin/roles/${id}`, { name, description });
-      return await response.json();
+      return await apiRequest('PUT', `/api/admin/roles/${id}`, { name, description });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/roles'] });

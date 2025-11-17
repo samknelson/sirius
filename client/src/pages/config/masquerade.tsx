@@ -59,8 +59,7 @@ export default function MasqueradePage() {
 
   const startMasqueradeMutation = useMutation({
     mutationFn: async (userId: string) => {
-      const response = await apiRequest('POST', '/api/auth/masquerade/start', { userId });
-      return await response.json();
+      return await apiRequest('POST', '/api/auth/masquerade/start', { userId });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });

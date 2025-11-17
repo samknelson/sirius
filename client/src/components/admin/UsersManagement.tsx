@@ -134,8 +134,7 @@ export default function UsersManagement() {
 
   const createUserMutation = useMutation({
     mutationFn: async (userData: { email: string; firstName?: string; lastName?: string }) => {
-      const response = await apiRequest('POST', '/api/admin/users', userData);
-      return await response.json();
+      return await apiRequest('POST', '/api/admin/users', userData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });

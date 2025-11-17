@@ -90,13 +90,12 @@ function EmployerWizardsContent() {
 
   const createWizardMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", `/api/wizards`, {
+      return await apiRequest("POST", `/api/wizards`, {
         type: selectedWizardType,
         status: "draft",
         entityId: employer.id,
         data: { launchArguments: launchArgValues }
       });
-      return await response.json();
     },
     onSuccess: (newWizard: Wizard) => {
       queryClient.invalidateQueries({ queryKey: ["/api/wizards"] });
