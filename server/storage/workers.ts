@@ -874,6 +874,99 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
           }
         };
       }
+    },
+    createWorkerWsh: {
+      enabled: true,
+      getEntityId: (args, result) => result?.id || 'new work status history',
+      getHostEntityId: (args) => args[0]?.workerId, // Worker ID is the host
+      after: async (args, result, storage) => {
+        // Fetch the work status option for a friendly name
+        const [workStatus] = await db.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, result.wsId));
+        return {
+          wsh: result,
+          workStatus: workStatus,
+          metadata: {
+            workerId: result.workerId,
+            date: result.date,
+            workStatusName: workStatus?.name || 'Unknown',
+            note: `Work status history entry created: ${workStatus?.name || 'Unknown'} on ${result.date}`
+          }
+        };
+      }
+    },
+    updateWorkerWsh: {
+      enabled: true,
+      getEntityId: (args) => args[0], // WSH entry ID
+      getHostEntityId: async (args, result, beforeState) => {
+        // Get worker ID from the WSH entry
+        if (beforeState?.wsh?.workerId) {
+          return beforeState.wsh.workerId;
+        }
+        const [wshEntry] = await db.select().from(workerWsh).where(eq(workerWsh.id, args[0]));
+        return wshEntry?.workerId;
+      },
+      before: async (args, storage) => {
+        const [wshEntry] = await db.select().from(workerWsh).where(eq(workerWsh.id, args[0]));
+        if (!wshEntry) {
+          return null;
+        }
+        
+        const [workStatus] = await db.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, wshEntry.wsId));
+        return {
+          wsh: wshEntry,
+          workStatus: workStatus,
+          metadata: {
+            workerId: wshEntry.workerId,
+            date: wshEntry.date,
+            workStatusName: workStatus?.name || 'Unknown'
+          }
+        };
+      },
+      after: async (args, result, storage) => {
+        if (!result) return null;
+        
+        const [workStatus] = await db.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, result.wsId));
+        return {
+          wsh: result,
+          workStatus: workStatus,
+          metadata: {
+            workerId: result.workerId,
+            date: result.date,
+            workStatusName: workStatus?.name || 'Unknown',
+            note: `Work status history entry updated to: ${workStatus?.name || 'Unknown'} on ${result.date}`
+          }
+        };
+      }
+    },
+    deleteWorkerWsh: {
+      enabled: true,
+      getEntityId: (args) => args[0], // WSH entry ID
+      getHostEntityId: async (args, result, beforeState) => {
+        // Get worker ID from the WSH entry
+        if (beforeState?.wsh?.workerId) {
+          return beforeState.wsh.workerId;
+        }
+        const [wshEntry] = await db.select().from(workerWsh).where(eq(workerWsh.id, args[0]));
+        return wshEntry?.workerId;
+      },
+      before: async (args, storage) => {
+        const [wshEntry] = await db.select().from(workerWsh).where(eq(workerWsh.id, args[0]));
+        if (!wshEntry) {
+          return null;
+        }
+        
+        const [workStatus] = await db.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, wshEntry.wsId));
+        return {
+          wsh: wshEntry,
+          workStatus: workStatus,
+          metadata: {
+            workerId: wshEntry.workerId,
+            date: wshEntry.date,
+            workStatusName: workStatus?.name || 'Unknown',
+            note: `Work status history entry deleted: ${workStatus?.name || 'Unknown'} on ${wshEntry.date}`
+          }
+        };
+      }
     }
   }
 };
