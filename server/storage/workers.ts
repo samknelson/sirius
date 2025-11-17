@@ -7,12 +7,16 @@ import {
   trustBenefits,
   employers,
   optionsEmploymentStatus,
+  workerWsh,
+  optionsWorkerWs,
   type Worker,
   type InsertWorker,
   type TrustWmb,
   type WorkerHours,
   type TrustBenefit,
   type Employer,
+  type WorkerWsh,
+  type InsertWorkerWsh,
 } from "@shared/schema";
 import { eq, sql, and, desc } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
@@ -51,6 +55,11 @@ export interface WorkerStorage {
   updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean }): Promise<WorkerHours | undefined>;
   deleteWorkerHours(id: string): Promise<boolean>;
   upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHours>;
+  // Worker work status history methods
+  getWorkerWsh(workerId: string): Promise<any[]>;
+  createWorkerWsh(data: { workerId: string; date: string; wsId: string; data?: any }): Promise<WorkerWsh>;
+  updateWorkerWsh(id: string, data: { date?: string; wsId?: string; data?: any }): Promise<WorkerWsh | undefined>;
+  deleteWorkerWsh(id: string): Promise<boolean>;
 }
 
 export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerStorage {
@@ -543,6 +552,50 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         })
         .returning();
       return hours;
+    },
+
+    // Worker work status history methods
+    async getWorkerWsh(workerId: string): Promise<any[]> {
+      const results = await db
+        .select({
+          id: workerWsh.id,
+          date: workerWsh.date,
+          workerId: workerWsh.workerId,
+          wsId: workerWsh.wsId,
+          data: workerWsh.data,
+          ws: optionsWorkerWs,
+        })
+        .from(workerWsh)
+        .leftJoin(optionsWorkerWs, eq(workerWsh.wsId, optionsWorkerWs.id))
+        .where(eq(workerWsh.workerId, workerId))
+        .orderBy(desc(workerWsh.date));
+
+      return results;
+    },
+
+    async createWorkerWsh(data: { workerId: string; date: string; wsId: string; data?: any }): Promise<WorkerWsh> {
+      const [wsh] = await db
+        .insert(workerWsh)
+        .values(data)
+        .returning();
+      return wsh;
+    },
+
+    async updateWorkerWsh(id: string, data: { date?: string; wsId?: string; data?: any }): Promise<WorkerWsh | undefined> {
+      const [updated] = await db
+        .update(workerWsh)
+        .set(data)
+        .where(eq(workerWsh.id, id))
+        .returning();
+      return updated || undefined;
+    },
+
+    async deleteWorkerWsh(id: string): Promise<boolean> {
+      const result = await db
+        .delete(workerWsh)
+        .where(eq(workerWsh.id, id))
+        .returning();
+      return result.length > 0;
     },
   };
 }
