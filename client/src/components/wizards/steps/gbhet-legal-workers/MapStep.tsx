@@ -139,7 +139,7 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
   const updateMutation = useMutation({
     mutationFn: async (values: z.infer<typeof formSchema>) => {
       // Save wizard data
-      const response = await apiRequest("PATCH", `/api/wizards/${wizardId}`, {
+      const updatedWizard = await apiRequest("PATCH", `/api/wizards/${wizardId}`, {
         data: {
           ...data,
           mode: values.mode,
@@ -147,7 +147,6 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
           columnMapping: values.columnMapping
         }
       });
-      const updatedWizard = await response.json();
 
       // Also save the mapping for future use if we have a headerHash
       if (headerHash && values.columnMapping && Object.keys(values.columnMapping).length > 0) {
