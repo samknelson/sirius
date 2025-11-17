@@ -41,6 +41,7 @@ export interface WorkerStorage {
   updateWorkerContactBirthDate(workerId: string, birthDate: string | null): Promise<Worker | undefined>;
   updateWorkerContactGender(workerId: string, gender: string | null, genderNota: string | null): Promise<Worker | undefined>;
   updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined>;
+  updateWorkerStatus(workerId: string, wsId: string | null): Promise<Worker | undefined>;
   deleteWorker(id: string): Promise<boolean>;
   // Worker benefits methods
   getWorkerBenefits(workerId: string): Promise<any[]>;
@@ -63,26 +64,7 @@ export interface WorkerStorage {
 }
 
 export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerStorage {
-  // Helper method to sync worker's current ws_id with most recent work status history entry
-  async function syncWorkerCurrentWorkStatus(workerId: string): Promise<void> {
-    // Get the most recent work status history entry for this worker
-    // Order by date DESC, then by createdAt DESC NULLS LAST, then by id DESC as a final fallback
-    // This ensures deterministic ordering even with legacy data or edge cases
-    const [mostRecent] = await db
-      .select()
-      .from(workerWsh)
-      .where(eq(workerWsh.workerId, workerId))
-      .orderBy(desc(workerWsh.date), sql`${workerWsh.createdAt} DESC NULLS LAST`, desc(workerWsh.id))
-      .limit(1);
-
-    // Update worker's ws_id to match the most recent history entry (or null if no history)
-    await db
-      .update(workers)
-      .set({ wsId: mostRecent?.wsId || null })
-      .where(eq(workers.id, workerId));
-  }
-
-  return {
+  const storage = {
     async getAllWorkers(): Promise<Worker[]> {
       return await db.select().from(workers);
     },
@@ -257,6 +239,16 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         }
         throw error;
       }
+    },
+
+    async updateWorkerStatus(workerId: string, wsId: string | null): Promise<Worker | undefined> {
+      const [updatedWorker] = await db
+        .update(workers)
+        .set({ wsId })
+        .where(eq(workers.id, workerId))
+        .returning();
+      
+      return updatedWorker || undefined;
     },
 
     async deleteWorker(id: string): Promise<boolean> {
@@ -633,6 +625,25 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return result.length > 0;
     },
   };
+
+  // Helper method to sync worker's current ws_id with most recent work status history entry
+  // This is defined after storage object so it can call storage.updateWorkerStatus()
+  async function syncWorkerCurrentWorkStatus(workerId: string): Promise<void> {
+    // Get the most recent work status history entry for this worker
+    // Order by date DESC, then by createdAt DESC NULLS LAST, then by id DESC as a final fallback
+    // This ensures deterministic ordering even with legacy data or edge cases
+    const [mostRecent] = await db
+      .select()
+      .from(workerWsh)
+      .where(eq(workerWsh.workerId, workerId))
+      .orderBy(desc(workerWsh.date), sql`${workerWsh.createdAt} DESC NULLS LAST`, desc(workerWsh.id))
+      .limit(1);
+
+    // Update worker's ws_id through storage layer to ensure logging
+    await storage.updateWorkerStatus(workerId, mostRecent?.wsId || null);
+  }
+
+  return storage;
 }
 
 /**
@@ -700,6 +711,61 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
           workerId: args[0],
           metadata: {
             note: 'Worker and associated contact successfully deleted'
+          }
+        };
+      }
+    },
+    updateWorkerStatus: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Worker ID
+      getHostEntityId: (args) => args[0], // Worker ID is the host
+      getDescription: async (args, result, beforeState, afterState) => {
+        const oldStatus = beforeState?.workStatus?.name || 'None';
+        const newStatus = afterState?.workStatus?.name || 'None';
+        return `Updated Current Work Status [${oldStatus} → ${newStatus}]`;
+      },
+      before: async (args, storage) => {
+        const worker = await storage.getWorker(args[0]);
+        if (!worker || !worker.wsId) {
+          return null;
+        }
+        
+        const [workStatus] = await db.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, worker.wsId));
+        return {
+          worker: worker,
+          workStatus: workStatus,
+          metadata: {
+            workerId: worker.id,
+            currentWsId: worker.wsId,
+            currentWorkStatusName: workStatus?.name || 'None'
+          }
+        };
+      },
+      after: async (args, result, storage) => {
+        if (!result) return null;
+        
+        if (!result.wsId) {
+          return {
+            worker: result,
+            workStatus: null,
+            metadata: {
+              workerId: result.id,
+              newWsId: null,
+              newWorkStatusName: 'None',
+              note: 'Worker work status cleared (synchronized from work status history)'
+            }
+          };
+        }
+        
+        const [workStatus] = await db.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, result.wsId));
+        return {
+          worker: result,
+          workStatus: workStatus,
+          metadata: {
+            workerId: result.id,
+            newWsId: result.wsId,
+            newWorkStatusName: workStatus?.name || 'Unknown',
+            note: 'Worker work status updated (synchronized from work status history)'
           }
         };
       }
