@@ -212,13 +212,6 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
 
   const ledgerItems = [
     {
-      path: "/config/ledger/accounts",
-      label: "Accounts",
-      icon: BookOpen,
-      testId: "nav-ledger-accounts",
-      policy: "ledgerStaff" as const,
-    },
-    {
       path: "/config/ledger/payment-types",
       label: "Payment Types",
       icon: Wallet,

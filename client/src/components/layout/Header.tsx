@@ -13,6 +13,7 @@ import {
   ChevronDown,
   Calendar,
   FileText,
+  BookOpen,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -36,6 +37,12 @@ export default function Header() {
 
   const { data: settings } = useQuery<SiteSettings>({
     queryKey: ["/api/site-settings"],
+  });
+
+  // Check ledgerStaff policy for Accounts navigation
+  const { data: ledgerStaffPolicy } = useQuery<{ allowed: boolean }>({
+    queryKey: ["/api/access/policies/ledgerStaff"],
+    staleTime: 30000,
   });
 
   const handleLogout = async () => {
@@ -175,6 +182,19 @@ export default function Header() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {ledgerStaffPolicy?.allowed && (
+              <Link href="/ledger/accounts">
+                <Button
+                  variant={location.startsWith("/ledger/accounts") ? "default" : "ghost"}
+                  size="sm"
+                  data-testid="nav-ledger-accounts"
+                >
+                  <BookOpen className="h-4 w-4 mr-2" />
+                  Accounts
+                </Button>
+              </Link>
+            )}
 
             {hasPermission("admin") && (
               <Link href="/reports">
