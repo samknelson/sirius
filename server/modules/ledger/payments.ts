@@ -30,8 +30,16 @@ export function registerLedgerPaymentRoutes(app: Express) {
   app.get("/api/ledger/accounts/:accountId/payments", requireAccess(policies.ledgerStaff), async (req, res) => {
     try {
       const { accountId } = req.params;
-      const payments = await storage.ledger.payments.getByAccountIdWithEntity(accountId);
-      res.json(payments);
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+      const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : undefined;
+
+      if (limit !== undefined && offset !== undefined) {
+        const result = await storage.ledger.payments.getByAccountIdWithEntityPaginated(accountId, limit, offset);
+        res.json(result);
+      } else {
+        const payments = await storage.ledger.payments.getByAccountIdWithEntity(accountId);
+        res.json(payments);
+      }
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch payments" });
     }
