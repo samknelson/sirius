@@ -879,6 +879,17 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
       enabled: true,
       getEntityId: (args, result) => result?.id || 'new work status history',
       getHostEntityId: (args) => args[0]?.workerId, // Worker ID is the host
+      getDescription: async (args, result, beforeState, afterState) => {
+        const workStatusName = afterState?.workStatus?.name || 'Unknown';
+        const date = result?.date || args[0]?.date || 'Unknown';
+        // Format date from YYYY-MM-DD to M/D/YYYY (avoid timezone issues)
+        let formattedDate = date;
+        if (date !== 'Unknown' && typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          const [year, month, day] = date.split('-');
+          formattedDate = `${parseInt(month)}/${parseInt(day)}/${year}`;
+        }
+        return `Created Work Status Entry [${workStatusName} ${formattedDate}]`;
+      },
       after: async (args, result, storage) => {
         // Fetch the work status option for a friendly name
         const [workStatus] = await db.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, result.wsId));
@@ -904,6 +915,18 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
         }
         const [wshEntry] = await db.select().from(workerWsh).where(eq(workerWsh.id, args[0]));
         return wshEntry?.workerId;
+      },
+      getDescription: async (args, result, beforeState, afterState) => {
+        const oldStatusName = beforeState?.workStatus?.name || 'Unknown';
+        const newStatusName = afterState?.workStatus?.name || 'Unknown';
+        const date = result?.date || beforeState?.wsh?.date || 'Unknown';
+        // Format date from YYYY-MM-DD to M/D/YYYY (avoid timezone issues)
+        let formattedDate = date;
+        if (date !== 'Unknown' && typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          const [year, month, day] = date.split('-');
+          formattedDate = `${parseInt(month)}/${parseInt(day)}/${year}`;
+        }
+        return `Updated Work Status Entry [${oldStatusName} → ${newStatusName} ${formattedDate}]`;
       },
       before: async (args, storage) => {
         const [wshEntry] = await db.select().from(workerWsh).where(eq(workerWsh.id, args[0]));
@@ -948,6 +971,17 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
         }
         const [wshEntry] = await db.select().from(workerWsh).where(eq(workerWsh.id, args[0]));
         return wshEntry?.workerId;
+      },
+      getDescription: async (args, result, beforeState, afterState) => {
+        const workStatusName = beforeState?.workStatus?.name || 'Unknown';
+        const date = beforeState?.wsh?.date || 'Unknown';
+        // Format date from YYYY-MM-DD to M/D/YYYY (avoid timezone issues)
+        let formattedDate = date;
+        if (date !== 'Unknown' && typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          const [year, month, day] = date.split('-');
+          formattedDate = `${parseInt(month)}/${parseInt(day)}/${year}`;
+        }
+        return `Deleted Work Status Entry [${workStatusName} ${formattedDate}]`;
       },
       before: async (args, storage) => {
         const [wshEntry] = await db.select().from(workerWsh).where(eq(workerWsh.id, args[0]));
