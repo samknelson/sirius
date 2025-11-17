@@ -23,8 +23,7 @@ function AccountEditContent() {
 
   const updateAccountMutation = useMutation({
     mutationFn: async (data: { name: string; description?: string; isActive: boolean }) => {
-      const response = await apiRequest("PUT", `/api/ledger/accounts/${account.id}`, data);
-      return response.json();
+      return await apiRequest("PUT", `/api/ledger/accounts/${account.id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ledger/accounts", account.id] });
