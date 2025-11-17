@@ -197,6 +197,7 @@ export const workerWsh = pgTable("worker_wsh", {
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
   wsId: varchar("ws_id").notNull().references(() => optionsWorkerWs.id, { onDelete: 'cascade' }),
   data: jsonb("data"),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const postalAddresses = pgTable("postal_addresses", {

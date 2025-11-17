@@ -63,6 +63,25 @@ export interface WorkerStorage {
 }
 
 export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerStorage {
+  // Helper method to sync worker's current ws_id with most recent work status history entry
+  async function syncWorkerCurrentWorkStatus(workerId: string): Promise<void> {
+    // Get the most recent work status history entry for this worker
+    // Order by date DESC, then by createdAt DESC NULLS LAST to ensure the latest entry wins
+    // and NULL createdAt values (from legacy data) don't cause incorrect results
+    const [mostRecent] = await db
+      .select()
+      .from(workerWsh)
+      .where(eq(workerWsh.workerId, workerId))
+      .orderBy(desc(workerWsh.date), sql`${workerWsh.createdAt} DESC NULLS LAST`)
+      .limit(1);
+
+    // Update worker's ws_id to match the most recent history entry (or null if no history)
+    await db
+      .update(workers)
+      .set({ wsId: mostRecent?.wsId || null })
+      .where(eq(workers.id, workerId));
+  }
+
   return {
     async getAllWorkers(): Promise<Worker[]> {
       return await db.select().from(workers);
@@ -578,6 +597,10 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .insert(workerWsh)
         .values(data)
         .returning();
+      
+      // Sync worker's current work status to the most recent history entry
+      await syncWorkerCurrentWorkStatus(data.workerId);
+      
       return wsh;
     },
 
@@ -587,6 +610,12 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .set(data)
         .where(eq(workerWsh.id, id))
         .returning();
+      
+      // Sync worker's current work status to the most recent history entry
+      if (updated) {
+        await syncWorkerCurrentWorkStatus(updated.workerId);
+      }
+      
       return updated || undefined;
     },
 
@@ -595,6 +624,12 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .delete(workerWsh)
         .where(eq(workerWsh.id, id))
         .returning();
+      
+      // Sync worker's current work status to the most recent history entry
+      if (result.length > 0 && result[0].workerId) {
+        await syncWorkerCurrentWorkStatus(result[0].workerId);
+      }
+      
       return result.length > 0;
     },
   };
