@@ -84,7 +84,7 @@ export default function WizardView() {
   });
 
   const { data: wizardFiles = [] } = useQuery<any[]>({
-    queryKey: [`/api/wizards/${id}/files`],
+    queryKey: ["/api/wizards", id, "files"],
     enabled: !!wizard && !!id,
   });
 
