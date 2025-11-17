@@ -73,7 +73,7 @@ export const workers = pgTable("workers", {
   siriusId: serial("sirius_id").notNull().unique(),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
   ssn: text("ssn").unique(),
-  wsId: varchar("ws_id").references(() => optionsWorkerWs.id, { onDelete: 'set null' }),
+  denormWsId: varchar("denorm_ws_id").references(() => optionsWorkerWs.id, { onDelete: 'set null' }),
   denormHomeEmployerId: varchar("denorm_home_employer_id").references(() => employers.id, { onDelete: 'set null' }),
   denormEmployerIds: varchar("denorm_employer_ids").array(),
 });
