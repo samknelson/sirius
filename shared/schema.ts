@@ -190,6 +190,14 @@ export const workerIds = pgTable("worker_ids", {
   uniqueTypeValue: unique().on(table.typeId, table.value),
 }));
 
+export const workersWsh = pgTable("workers_wsh", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  date: date("date").notNull(),
+  workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
+  wsId: varchar("ws_id").notNull().references(() => optionsWorkerWs.id, { onDelete: 'cascade' }),
+  data: jsonb("data"),
+});
+
 export const postalAddresses = pgTable("postal_addresses", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
@@ -489,6 +497,10 @@ export const insertWorkerIdSchema = createInsertSchema(workerIds).omit({
   id: true,
 });
 
+export const insertWorkersWshSchema = createInsertSchema(workersWsh).omit({
+  id: true,
+});
+
 export const insertTrustBenefitTypeSchema = createInsertSchema(optionsTrustBenefitType).omit({
   id: true,
 });
@@ -649,6 +661,9 @@ export type WorkerIdType = typeof optionsWorkerIdType.$inferSelect;
 
 export type InsertWorkerId = z.infer<typeof insertWorkerIdSchema>;
 export type WorkerId = typeof workerIds.$inferSelect;
+
+export type InsertWorkersWsh = z.infer<typeof insertWorkersWshSchema>;
+export type WorkersWsh = typeof workersWsh.$inferSelect;
 
 export type InsertTrustBenefitType = z.infer<typeof insertTrustBenefitTypeSchema>;
 export type TrustBenefitType = typeof optionsTrustBenefitType.$inferSelect;
