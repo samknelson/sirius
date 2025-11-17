@@ -587,6 +587,7 @@ function AccountPaymentsContent() {
                       <ArrowUpDown className="h-3 w-3" />
                     </div>
                   </TableHead>
+                  <TableHead>Links</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -597,11 +598,7 @@ function AccountPaymentsContent() {
                   return (
                     <TableRow key={payment.id}>
                       <TableCell className="font-medium">
-                        <Link href={`/ledger/payments/${payment.id}`}>
-                          <span className="hover:underline cursor-pointer">
-                            ${parseFloat(payment.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        </Link>
+                        ${parseFloat(payment.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </TableCell>
                       <TableCell>{paymentType?.name || "-"}</TableCell>
                       <TableCell>
@@ -632,6 +629,27 @@ function AccountPaymentsContent() {
                         {payment.dateCleared
                           ? new Date(payment.dateCleared).toLocaleDateString()
                           : "-"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {payment.entityType === 'employer' && payment.entityId && (
+                            <Button variant="link" size="sm" className="h-auto p-0 text-xs" asChild data-testid={`link-entity-${payment.id}`}>
+                              <Link href={`/employers/${payment.entityId}`}>
+                                Entity
+                              </Link>
+                            </Button>
+                          )}
+                          <Button variant="link" size="sm" className="h-auto p-0 text-xs" asChild data-testid={`link-ea-${payment.id}`}>
+                            <Link href={`/ledger/ea/${payment.ledgerEaId}/payments`}>
+                              EA
+                            </Link>
+                          </Button>
+                          <Button variant="link" size="sm" className="h-auto p-0 text-xs" asChild data-testid={`link-payment-${payment.id}`}>
+                            <Link href={`/ledger/payments/${payment.id}`}>
+                              Payment
+                            </Link>
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
