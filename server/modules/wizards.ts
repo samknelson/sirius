@@ -221,6 +221,16 @@ export function registerWizardRoutes(
         }
       }
       
+      // Set default retention period for report wizards
+      const isReportWizard = wizardRegistry.isReportWizard(validatedData.type);
+      if (isReportWizard) {
+        const wizardData: any = (validatedData.data as any) || {};
+        if (!wizardData.retention) {
+          wizardData.retention = '30days';
+          validatedData.data = wizardData;
+        }
+      }
+      
       // Create wizard and wizard_employer_monthly record in a transaction if needed
       const isMonthlyWizard = wizardRegistry.isMonthlyWizard(validatedData.type);
       
@@ -411,6 +421,20 @@ export function registerWizardRoutes(
         const typeValidation = await wizardRegistry.validateType(validatedData.type);
         if (!typeValidation.valid) {
           return res.status(400).json({ message: typeValidation.error });
+        }
+      }
+      
+      // Validate that only report wizards can have retention settings
+      if (validatedData.data) {
+        const incomingData = validatedData.data as any;
+        if (incomingData.retention !== undefined) {
+          const wizardType = existing.type;
+          const isReportWizard = wizardRegistry.isReportWizard(wizardType);
+          if (!isReportWizard) {
+            return res.status(400).json({ 
+              message: "Retention settings can only be set on report wizards" 
+            });
+          }
         }
       }
       
