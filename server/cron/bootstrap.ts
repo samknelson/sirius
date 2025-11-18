@@ -18,6 +18,12 @@ const DEFAULT_CRON_JOBS: DefaultCronJob[] = [
     schedule: '0 2 * * *', // Daily at 2 AM
     isEnabled: true,
   },
+  {
+    name: 'delete-old-cron-logs',
+    description: 'Deletes cron job run logs that are older than 30 days',
+    schedule: '0 3 * * *', // Daily at 3 AM
+    isEnabled: true,
+  },
 ];
 
 export async function bootstrapCronJobs(): Promise<void> {

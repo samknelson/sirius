@@ -8,7 +8,7 @@ import { setupAuth } from "./replitAuth";
 import { initAccessControl } from "./accessControl";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
-import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler } from "./cron";
+import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler } from "./cron";
 
 // Helper function to redact sensitive data from responses before logging
 function redactSensitiveData(data: any): any {
@@ -116,6 +116,7 @@ app.use((req, res, next) => {
 
   // Register cron job handlers
   registerCronJob('delete-expired-reports', deleteExpiredReportsHandler);
+  registerCronJob('delete-old-cron-logs', deleteOldCronLogsHandler);
   logger.info("Cron job handlers registered", { source: "startup" });
 
   // Bootstrap default cron jobs
