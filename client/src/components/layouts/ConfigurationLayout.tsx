@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Users, MapPin, Phone, Globe, List, UserCog, ChevronDown, MessageSquare, Puzzle, Package, Heart, CreditCard, Activity, BookOpen, Wallet, Settings, Shield, Key, FileText, Palette, Building2, Database } from "lucide-react";
+import { Users, MapPin, Phone, Globe, List, UserCog, ChevronDown, MessageSquare, Puzzle, Package, Heart, CreditCard, Activity, BookOpen, Wallet, Settings, Shield, Key, FileText, Palette, Building2, Database, Clock } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -66,6 +66,13 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       label: "Quickstarts",
       icon: Database,
       testId: "nav-config-quickstarts",
+      policy: "admin" as const,
+    },
+    {
+      path: "/admin/cron-jobs",
+      label: "Cron Jobs",
+      icon: Clock,
+      testId: "nav-config-cron-jobs",
       policy: "admin" as const,
     },
   ];

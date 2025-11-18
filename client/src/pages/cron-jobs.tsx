@@ -63,6 +63,11 @@ function StatusBadge({ status }: { status: string }) {
 function RunHistoryDialog({ job }: { job: CronJob }) {
   const { data: runs = [], isLoading } = useQuery<CronJobRun[]>({
     queryKey: ["/api/cron-jobs", job.id, "runs"],
+    queryFn: async () => {
+      const response = await fetch(`/api/cron-jobs/${job.id}/runs`);
+      if (!response.ok) throw new Error('Failed to fetch run history');
+      return response.json();
+    },
   });
 
   return (
