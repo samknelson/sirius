@@ -26,6 +26,7 @@ export interface WizardTypeDefinition {
   description?: string;
   isFeed?: boolean;
   isMonthly?: boolean;
+  isReport?: boolean;
   entityType?: string;
   getSteps: () => WizardStep[] | Promise<WizardStep[]>;
   getStatuses: () => WizardStatus[] | Promise<WizardStatus[]>;
