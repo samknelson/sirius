@@ -16,12 +16,15 @@ export interface ReportMeta {
   primaryKeyField?: string; // Field name used as primary key (e.g., 'workerId', 'ssn')
 }
 
+export type RetentionPeriod = '1day' | '7days' | '30days' | '1year' | 'always';
+
 export interface ReportData {
   config?: ReportConfig;
   reportMeta?: ReportMeta; // Metadata from last report generation
   recordCount?: number; // Deprecated: maintained for backward compatibility, use reportMeta.recordCount
   generatedAt?: string; // Deprecated: maintained for backward compatibility (ISO string), use reportMeta.generatedAt
   reportDataId?: string; // Reference to wizard_report_data entry
+  retention?: RetentionPeriod; // Data retention period for this report
   progress?: {
     [key: string]: {
       status: string;
