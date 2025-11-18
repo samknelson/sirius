@@ -8,6 +8,7 @@ import { setupAuth } from "./replitAuth";
 import { initAccessControl } from "./accessControl";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
+import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler } from "./cron";
 
 // Helper function to redact sensitive data from responses before logging
 function redactSensitiveData(data: any): any {
@@ -113,6 +114,14 @@ app.use((req, res, next) => {
   await addressValidationService.getConfig();
   logger.info("Address validation service initialized", { source: "startup" });
 
+  // Register cron job handlers
+  registerCronJob('delete-expired-reports', deleteExpiredReportsHandler);
+  logger.info("Cron job handlers registered", { source: "startup" });
+
+  // Bootstrap default cron jobs
+  await bootstrapCronJobs();
+  logger.info("Default cron jobs bootstrapped", { source: "startup" });
+
   // Setup Replit Auth
   await setupAuth(app);
   logger.info("Replit Auth initialized", { source: "startup" });
@@ -121,6 +130,17 @@ app.use((req, res, next) => {
   app.use(captureRequestContext);
 
   const server = await registerRoutes(app);
+
+  // Start cron scheduler after routes are registered
+  try {
+    await cronScheduler.start();
+    logger.info("Cron scheduler started", { source: "startup" });
+  } catch (error) {
+    logger.error("Failed to start cron scheduler", {
+      source: "startup",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   // Register error handling middleware AFTER routes to catch route errors
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

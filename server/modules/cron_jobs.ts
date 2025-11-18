@@ -3,6 +3,7 @@ import { storage } from "../storage";
 import { insertCronJobSchema, insertCronJobRunSchema } from "@shared/schema";
 import { requireAccess } from "../accessControl";
 import { policies } from "../policies";
+import { cronScheduler } from "../cron";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -163,24 +164,17 @@ export function registerCronJobRoutes(
         return res.status(401).json({ message: "User not found" });
       }
 
-      // Create a job run record
-      const run = await storage.cronJobRuns.create({
-        jobId: id,
-        status: 'running',
-        triggeredBy: dbUser.id,
-      });
+      // Execute the job via the scheduler (which handles run creation and logging)
+      await cronScheduler.manualRun(id, dbUser.id);
 
-      // TODO: In a future implementation, this would actually execute the job
-      // For now, we'll just mark it as success with a placeholder message
-      const completedRun = await storage.cronJobRuns.update(run.id, {
-        status: 'success',
-        output: 'Manual execution not yet implemented. This is a placeholder response.',
-        completedAt: new Date(),
-      });
+      // Get the latest run for this job to return to the client
+      const latestRun = await storage.cronJobRuns.getLatestByJobId(id);
 
-      res.status(201).json(completedRun);
+      res.status(201).json(latestRun);
     } catch (error) {
-      res.status(500).json({ message: "Failed to run cron job" });
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : "Failed to run cron job"
+      });
     }
   });
 }
