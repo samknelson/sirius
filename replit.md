@@ -37,6 +37,7 @@ The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI),
 -   **Worker Hours & Employment Views**: `worker_hours` table tracks worker hours with fields for year, month, day, worker_id, employer_id, employment_status_id, hours, and home status. Provides specialized views for current employment status, employment history, monthly aggregated hours, and daily full CRUD. API endpoints support RESTful operations with view parameters. Integrated into wizards for atomic upsert of hours with audit logging.
 -   **Work Status History Auto-Sync**: The `worker_wsh` table tracks historical work status entries with automatic synchronization to `workers.denorm_ws_id`. Each time a work status history entry is created, updated, or deleted, the worker's current work status is automatically updated to reflect the most recent history entry (ordered by date DESC, then createdAt DESC). The `workerWsh` table includes a `createdAt` timestamp field to ensure proper temporal ordering when multiple entries exist on the same date. The sync logic uses robust ordering with NULLS LAST and id DESC fallback for deterministic results.
 -   **Database Quickstarts**: Admin-only feature for exporting and importing complete database snapshots as JSON files. Enables rapid setup of preview/demo environments with pre-populated data. Features include: named quickstart files stored in `database/quickstarts/`, transaction-safe import with complete rollback on error, dependency-aware table ordering for foreign key integrity, schema versioning for compatibility checking, comprehensive validation to prevent corrupt data, and path traversal protection for security. Export captures all application data (excluding sessions, logs, and files) while import performs atomic replacement of all tables with the quickstart data.
+-   **Cron Job System**: Complete scheduled task execution framework with registry pattern, database-backed job configuration, and node-cron scheduler. Features include: job handler registry (`server/cron/registry.ts`) for registering named handlers with type-safe execution context, bootstrap system for seeding default jobs into database, scheduler that matches database records to registered handlers and executes on schedule, admin UI for creating/managing jobs with enable/disable toggles and manual run capability, comprehensive logging and error handling with audit trails in `cron_job_runs` table. Includes `delete-expired-reports` job that automatically cleans up wizard report data based on configurable retention periods (1day, 7days, 30days, 1year, always). Initialization order ensures handlers are registered, default jobs are bootstrapped, and scheduler starts before server accepts requests.
 
 # External Dependencies
 
@@ -61,6 +62,9 @@ The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI),
 -   **TanStack Query**: Server state management.
 -   **Date-fns**: Date utility functions.
 -   **@innova2/winston-pg**: Winston transport for PostgreSQL logging.
+
+## Task Scheduling
+-   **node-cron**: Task scheduling and cron job execution.
 
 ## Security
 -   **DOMPurify**: HTML sanitization.
