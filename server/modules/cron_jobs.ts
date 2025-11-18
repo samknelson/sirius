@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
-import { insertCronJobSchema, insertCronJobRunSchema } from "@shared/schema";
+import { insertCronJobSchema } from "@shared/schema";
 import { requireAccess } from "../accessControl";
 import { policies } from "../policies";
 import { cronScheduler } from "../cron";
@@ -71,28 +71,6 @@ export function registerCronJobRoutes(
     }
   });
 
-  // POST /api/cron-jobs - Create a new cron job
-  app.post("/api/cron-jobs", requireAccess(policies.admin), async (req, res) => {
-    try {
-      const validatedData = insertCronJobSchema.parse(req.body);
-
-      // Check if a job with this name already exists
-      const existing = await storage.cronJobs.getByName(validatedData.name);
-      if (existing) {
-        return res.status(409).json({ message: "A cron job with this name already exists" });
-      }
-
-      const job = await storage.cronJobs.create(validatedData);
-      res.status(201).json(job);
-    } catch (error) {
-      if (error instanceof Error && error.name === "ZodError") {
-        res.status(400).json({ message: "Invalid cron job data", error });
-      } else {
-        res.status(500).json({ message: "Failed to create cron job" });
-      }
-    }
-  });
-
   // PATCH /api/cron-jobs/:id - Update a cron job
   app.patch("/api/cron-jobs/:id", requireAccess(policies.admin), async (req, res) => {
     try {
@@ -121,27 +99,6 @@ export function registerCronJobRoutes(
       } else {
         res.status(500).json({ message: "Failed to update cron job" });
       }
-    }
-  });
-
-  // DELETE /api/cron-jobs/:id - Delete a cron job
-  app.delete("/api/cron-jobs/:id", requireAccess(policies.admin), async (req, res) => {
-    try {
-      const { id } = req.params;
-      
-      const existing = await storage.cronJobs.getById(id);
-      if (!existing) {
-        return res.status(404).json({ message: "Cron job not found" });
-      }
-
-      const success = await storage.cronJobs.delete(id);
-      if (!success) {
-        return res.status(404).json({ message: "Cron job not found" });
-      }
-
-      res.status(204).send();
-    } catch (error) {
-      res.status(500).json({ message: "Failed to delete cron job" });
     }
   });
 

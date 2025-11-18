@@ -1,9 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -23,23 +20,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Textarea } from "@/components/ui/textarea";
-import { Clock, Play, Eye, Calendar, Activity, Plus } from "lucide-react";
+import { Clock, Play, Eye, Calendar } from "lucide-react";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { insertCronJobSchema, type InsertCronJob } from "@shared/schema";
 
 interface CronJobRun {
   id: string;
@@ -73,182 +57,6 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant={variant} data-testid={`badge-status-${status}`}>{status}</Badge>;
 }
 
-const createCronJobFormSchema = insertCronJobSchema.extend({
-  name: insertCronJobSchema.shape.name.min(1, "Name is required"),
-  schedule: insertCronJobSchema.shape.schedule.min(1, "Schedule is required").regex(
-    /^(\S+\s+){4}\S+$/,
-    "Cron expression must have 5 space-separated fields (minute hour day month weekday)"
-  ),
-});
-
-function CreateCronJobDialog() {
-  const [open, setOpen] = useState(false);
-  const { toast } = useToast();
-
-  const form = useForm<InsertCronJob>({
-    resolver: zodResolver(createCronJobFormSchema),
-    defaultValues: {
-      name: "",
-      description: "",
-      schedule: "",
-      isEnabled: false,
-    },
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async (data: InsertCronJob) => {
-      return await apiRequest("POST", "/api/cron-jobs", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cron-jobs"] });
-      toast({
-        title: "Cron Job Created",
-        description: "The cron job has been successfully created.",
-      });
-      setOpen(false);
-      form.reset();
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Failed to Create Job",
-        description: error.message || "Failed to create the cron job",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleOpenChange = (newOpen: boolean) => {
-    setOpen(newOpen);
-    if (!newOpen) {
-      form.reset();
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button data-testid="button-create-cron-job">
-          <Plus className="h-4 w-4 mr-2" />
-          Create Cron Job
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Create New Cron Job</DialogTitle>
-          <DialogDescription>
-            Schedule a new recurring task using cron syntax.
-          </DialogDescription>
-        </DialogHeader>
-        
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit((data) => createMutation.mutate(data))} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Name</FormLabel>
-                  <FormControl>
-                    <Input 
-                      placeholder="e.g., Daily Backup" 
-                      {...field} 
-                      data-testid="input-cron-job-name"
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    A unique name to identify this cron job.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description (Optional)</FormLabel>
-                  <FormControl>
-                    <Textarea 
-                      placeholder="Describe what this job does..." 
-                      {...field} 
-                      value={field.value || ""}
-                      data-testid="input-cron-job-description"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="schedule"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Schedule (Cron Expression)</FormLabel>
-                  <FormControl>
-                    <Input 
-                      placeholder="e.g., 0 0 * * * (daily at midnight)" 
-                      className="font-mono"
-                      {...field} 
-                      data-testid="input-cron-job-schedule"
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    Use cron syntax: minute hour day month weekday. Example: "0 0 * * *" runs daily at midnight.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="isEnabled"
-              render={({ field }) => (
-                <FormItem className="flex items-center justify-between rounded-lg border p-4">
-                  <div className="space-y-0.5">
-                    <FormLabel className="text-base">Enable Immediately</FormLabel>
-                    <FormDescription>
-                      Start running this job on the specified schedule right away.
-                    </FormDescription>
-                  </div>
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                      data-testid="switch-cron-job-enabled"
-                    />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-
-            <div className="flex justify-end gap-2">
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={() => setOpen(false)}
-                data-testid="button-cancel-create"
-              >
-                Cancel
-              </Button>
-              <Button 
-                type="submit" 
-                disabled={createMutation.isPending}
-                data-testid="button-submit-create"
-              >
-                {createMutation.isPending ? "Creating..." : "Create Job"}
-              </Button>
-            </div>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 function RunHistoryDialog({ job }: { job: CronJob }) {
   const { data: runs = [], isLoading } = useQuery<CronJobRun[]>({
@@ -383,14 +191,11 @@ export default function CronJobs() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8 flex justify-between items-start">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Cron Jobs</h1>
-          <p className="text-muted-foreground mt-2">
-            Manage scheduled tasks and view execution history.
-          </p>
-        </div>
-        <CreateCronJobDialog />
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-foreground">Cron Jobs</h1>
+        <p className="text-muted-foreground mt-2">
+          Manage scheduled tasks and view execution history.
+        </p>
       </div>
 
       {jobs.length === 0 ? (
