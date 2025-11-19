@@ -70,7 +70,9 @@ import AdminRolesPage from "@/pages/admin/roles";
 import AdminPermissionsPage from "@/pages/admin/permissions";
 import AdminQuickstarts from "@/pages/admin-quickstarts";
 import CronJobs from "@/pages/cron-jobs";
-import CronJobDetail from "@/pages/cron-job-detail";
+import CronJobView from "@/pages/cron-job-view";
+import CronJobSettings from "@/pages/cron-job-settings";
+import CronJobHistory from "@/pages/cron-job-history";
 import AdminLayout from "@/components/layouts/AdminLayout";
 import ConfigurationLayout from "@/components/layouts/ConfigurationLayout";
 import UsersListPage from "@/pages/config/users/list";
@@ -907,12 +909,32 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/cron-jobs/:name">
+      <Route path="/cron-jobs/:name/view">
         <ProtectedRoute policy="admin">
           <AuthenticatedLayout>
-            <CronJobDetail />
+            <CronJobView />
           </AuthenticatedLayout>
         </ProtectedRoute>
+      </Route>
+
+      <Route path="/cron-jobs/:name/settings">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <CronJobSettings />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/cron-jobs/:name/history">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <CronJobHistory />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/cron-jobs/:name">
+        {(params) => <Redirect to={`/cron-jobs/${params.name}/view`} />}
       </Route>
 
       <Route path="/cron-jobs">
