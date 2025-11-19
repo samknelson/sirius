@@ -18,6 +18,7 @@ interface CronJobRun {
   id: string;
   jobName: string;
   status: string;
+  mode: string;
   output: string | null;
   error: string | null;
   startedAt: string;
@@ -26,6 +27,14 @@ interface CronJobRun {
   userFirstName?: string | null;
   userLastName?: string | null;
   userEmail?: string | null;
+}
+
+interface CronJobOutputData {
+  executionTimeMs: number;
+  executionTimeSec: string;
+  summary: {
+    [key: string]: any;
+  };
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -49,6 +58,15 @@ function formatTriggeredBy(run: CronJobRun): string {
   }
   
   return run.triggeredBy;
+}
+
+function parseOutputData(output: string | null): CronJobOutputData | null {
+  if (!output) return null;
+  try {
+    return JSON.parse(output);
+  } catch {
+    return null;
+  }
 }
 
 function CronJobHistoryContent() {
@@ -86,32 +104,56 @@ function CronJobHistoryContent() {
             <TableHeader>
               <TableRow>
                 <TableHead>Started</TableHead>
-                <TableHead>Completed</TableHead>
+                <TableHead>Duration</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Mode</TableHead>
                 <TableHead>Triggered By</TableHead>
-                <TableHead>Output/Error</TableHead>
+                <TableHead>Summary</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {runs.map((run) => (
-                <TableRow key={run.id} data-testid={`row-run-${run.id}`}>
-                  <TableCell className="text-sm">
-                    {format(new Date(run.startedAt), "MMM d, yyyy HH:mm:ss")}
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {run.completedAt ? format(new Date(run.completedAt), "MMM d, yyyy HH:mm:ss") : "—"}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={run.status} />
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {formatTriggeredBy(run)}
-                  </TableCell>
-                  <TableCell className="text-sm max-w-xs truncate">
-                    {run.error || run.output || "—"}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {runs.map((run) => {
+                const outputData = parseOutputData(run.output);
+                return (
+                  <TableRow key={run.id} data-testid={`row-run-${run.id}`}>
+                    <TableCell className="text-sm">
+                      {format(new Date(run.startedAt), "MMM d, HH:mm:ss")}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {outputData ? `${outputData.executionTimeSec}s` : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={run.status} />
+                    </TableCell>
+                    <TableCell>
+                      {run.mode === 'test' ? (
+                        <Badge variant="outline">Test</Badge>
+                      ) : (
+                        <Badge variant="default">Live</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {formatTriggeredBy(run)}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {run.error ? (
+                        <span className="text-destructive truncate block max-w-xs">Error: {run.error}</span>
+                      ) : outputData?.summary ? (
+                        <div className="space-x-2">
+                          {outputData.summary.totalDeleted !== undefined && (
+                            <span className="font-mono">{outputData.summary.totalDeleted} deleted</span>
+                          )}
+                          {outputData.summary.totalWizardsChecked !== undefined && (
+                            <span className="text-muted-foreground">({outputData.summary.totalWizardsChecked} checked)</span>
+                          )}
+                        </div>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}

@@ -10,6 +10,7 @@ interface CronJobRun {
   id: string;
   jobName: string;
   status: string;
+  mode: string;
   output: string | null;
   error: string | null;
   startedAt: string;
@@ -18,6 +19,14 @@ interface CronJobRun {
   userFirstName?: string | null;
   userLastName?: string | null;
   userEmail?: string | null;
+}
+
+interface CronJobOutputData {
+  executionTimeMs: number;
+  executionTimeSec: string;
+  summary: {
+    [key: string]: any;
+  };
 }
 
 interface CronJob {
@@ -51,6 +60,40 @@ function formatTriggeredBy(run: CronJobRun): string {
   }
   
   return run.triggeredBy;
+}
+
+function parseOutputData(output: string | null): CronJobOutputData | null {
+  if (!output) return null;
+  try {
+    return JSON.parse(output);
+  } catch {
+    return null;
+  }
+}
+
+function formatSummaryValue(value: any): React.ReactNode {
+  if (typeof value === 'object' && value !== null) {
+    if (Array.isArray(value)) {
+      return (
+        <div className="space-y-1">
+          {value.map((item, idx) => (
+            <div key={idx} className="text-xs">• {formatSummaryValue(item)}</div>
+          ))}
+        </div>
+      );
+    }
+    // For objects, show as key-value pairs
+    return (
+      <div className="space-y-1">
+        {Object.entries(value).map(([k, v]) => (
+          <div key={k} className="text-xs">
+            <span className="font-medium">{k}:</span> {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return String(value);
 }
 
 function CronJobViewContent() {
@@ -88,7 +131,7 @@ function CronJobViewContent() {
       </CardHeader>
       <CardContent>
         {job?.latestRun ? (
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Status</p>
@@ -97,11 +140,32 @@ function CronJobViewContent() {
                 </div>
               </div>
               <div>
+                <p className="text-sm font-medium text-muted-foreground">Mode</p>
+                <p className="text-sm mt-1" data-testid="text-mode">
+                  {job.latestRun.mode === 'test' ? (
+                    <Badge variant="outline">Test Mode</Badge>
+                  ) : (
+                    <Badge variant="default">Live Mode</Badge>
+                  )}
+                </p>
+              </div>
+              <div>
                 <p className="text-sm font-medium text-muted-foreground">Triggered By</p>
                 <p className="text-sm mt-1" data-testid="text-triggered-by">
                   {formatTriggeredBy(job.latestRun)}
                 </p>
               </div>
+              {(() => {
+                const outputData = parseOutputData(job.latestRun.output);
+                return outputData && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Execution Time</p>
+                    <p className="text-sm mt-1" data-testid="text-execution-time">
+                      {outputData.executionTimeSec} seconds
+                    </p>
+                  </div>
+                );
+              })()}
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Started At</p>
                 <p className="text-sm mt-1" data-testid="text-started-at">
@@ -117,13 +181,42 @@ function CronJobViewContent() {
                 </p>
               </div>
             </div>
-            {(job.latestRun.output || job.latestRun.error) && (
-              <div>
-                <p className="text-sm font-medium text-muted-foreground mb-2">
-                  {job.latestRun.error ? "Error" : "Output"}
-                </p>
+
+            {(() => {
+              const outputData = parseOutputData(job.latestRun.output);
+              return outputData && outputData.summary && (
+                <div className="border-t pt-4">
+                  <p className="text-sm font-medium text-muted-foreground mb-3">Summary</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    {Object.entries(outputData.summary).map(([key, value]) => (
+                      <div key={key}>
+                        <p className="text-sm font-medium text-muted-foreground capitalize">
+                          {key.replace(/([A-Z])/g, ' $1').trim()}
+                        </p>
+                        <div className="text-sm mt-1" data-testid={`summary-${key}`}>
+                          {formatSummaryValue(value)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {job.latestRun.error && (
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium text-muted-foreground mb-2">Error</p>
+                <pre className="text-sm bg-destructive/10 text-destructive p-4 rounded-md overflow-x-auto" data-testid="text-error">
+                  {job.latestRun.error}
+                </pre>
+              </div>
+            )}
+
+            {!parseOutputData(job.latestRun.output) && job.latestRun.output && !job.latestRun.error && (
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium text-muted-foreground mb-2">Output</p>
                 <pre className="text-sm bg-muted p-4 rounded-md overflow-x-auto" data-testid="text-output">
-                  {job.latestRun.error || job.latestRun.output}
+                  {job.latestRun.output}
                 </pre>
               </div>
             )}
