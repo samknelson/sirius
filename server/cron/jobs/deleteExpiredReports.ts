@@ -29,6 +29,13 @@ function getCutoffDate(retentionDays: number): Date {
   return cutoff;
 }
 
+interface ReportTypeStats {
+  reportType: string;
+  reportTypeName: string;
+  totalReports: number;
+  runsDeleted: number;
+}
+
 export const deleteExpiredReportsHandler: CronJobHandler = {
   description: 'Deletes wizard report data that has exceeded its retention period',
   
@@ -39,9 +46,8 @@ export const deleteExpiredReportsHandler: CronJobHandler = {
       mode: context.mode,
     });
 
-    let reportRunsDeleted = 0;
-    let wizardsWithExpiredRuns = 0;
-    const runsByRetention: Record<string, number> = {};
+    let totalRunsDeleted = 0;
+    const statsByType: Record<string, ReportTypeStats> = {};
 
     try {
       // Get all wizards that are reports
@@ -63,6 +69,20 @@ export const deleteExpiredReportsHandler: CronJobHandler = {
         jobId: context.jobId,
         mode: context.mode,
       });
+
+      // Initialize stats for each report type
+      for (const wizard of reportWizards) {
+        if (!statsByType[wizard.type]) {
+          const wizardDef = wizardRegistry.get(wizard.type);
+          statsByType[wizard.type] = {
+            reportType: wizard.type,
+            reportTypeName: wizardDef?.displayName || wizard.type,
+            totalReports: 0,
+            runsDeleted: 0,
+          };
+        }
+        statsByType[wizard.type].totalReports++;
+      }
 
       // Process each report wizard
       for (const wizard of reportWizards) {
@@ -94,9 +114,8 @@ export const deleteExpiredReportsHandler: CronJobHandler = {
             );
 
           if (toDelete.length > 0) {
-            reportRunsDeleted += toDelete.length;
-            wizardsWithExpiredRuns++;
-            runsByRetention[retention] = (runsByRetention[retention] || 0) + toDelete.length;
+            totalRunsDeleted += toDelete.length;
+            statsByType[wizard.type].runsDeleted += toDelete.length;
             
             logger.info(`[TEST MODE] Would delete ${toDelete.length} expired records from wizard ${wizard.id}`, {
               service: 'cron-delete-expired-reports',
@@ -120,9 +139,8 @@ export const deleteExpiredReportsHandler: CronJobHandler = {
             .returning();
 
           if (deleted.length > 0) {
-            reportRunsDeleted += deleted.length;
-            wizardsWithExpiredRuns++;
-            runsByRetention[retention] = (runsByRetention[retention] || 0) + deleted.length;
+            totalRunsDeleted += deleted.length;
+            statsByType[wizard.type].runsDeleted += deleted.length;
             
             logger.info(`Deleted ${deleted.length} expired records from wizard ${wizard.id}`, {
               service: 'cron-delete-expired-reports',
@@ -145,21 +163,19 @@ export const deleteExpiredReportsHandler: CronJobHandler = {
         }
       }
 
+      const reportTypes = Object.values(statsByType);
+
       logger.info(`Expired report cleanup completed`, {
         service: 'cron-delete-expired-reports',
         jobId: context.jobId,
         mode: context.mode,
-        reportRunsDeleted,
-        wizardsWithExpiredRuns,
-        reportWizardsChecked: reportWizards.length,
-        runsByRetention,
+        totalRunsDeleted,
+        reportTypes,
       });
 
       return {
-        reportRunsDeleted,
-        wizardsWithExpiredRuns,
-        reportWizardsChecked: reportWizards.length,
-        runsByRetention,
+        totalRunsDeleted,
+        reportTypes,
         mode: context.mode,
       };
 

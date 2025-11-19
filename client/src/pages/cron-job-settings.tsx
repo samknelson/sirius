@@ -417,23 +417,73 @@ function CronJobSettingsContent() {
 
             {(() => {
               const outputData = parseOutputData(completedRun.output);
-              return outputData?.summary && (
+              if (!outputData?.summary) return null;
+
+              const { reportTypes, totalRunsDeleted, ...otherSummary } = outputData.summary;
+
+              // Check if this is the delete-expired-reports job with the new format
+              const hasReportTypes = Array.isArray(reportTypes);
+
+              return (
                 <>
                   <Separator />
                   <div>
                     <p className="text-sm font-medium text-muted-foreground mb-3">Summary</p>
-                    <div className="grid grid-cols-2 gap-4">
-                      {Object.entries(outputData.summary).map(([key, value]) => (
-                        <div key={key}>
-                          <p className="text-sm font-medium text-muted-foreground capitalize">
-                            {key.replace(/([A-Z])/g, ' $1').trim()}
-                          </p>
-                          <div className="text-sm mt-1" data-testid={`result-summary-${key}`}>
-                            {formatSummaryValue(value)}
+                    
+                    {hasReportTypes ? (
+                      <div className="space-y-4">
+                        {reportTypes.map((type: any) => (
+                          <div key={type.reportType} className="border rounded-lg p-4">
+                            <p className="font-medium mb-2">{type.reportTypeName}</p>
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                              <div>
+                                <p className="text-muted-foreground">Total Reports</p>
+                                <p className="mt-1">{type.totalReports}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Old Runs Deleted</p>
+                                <p className="mt-1">{type.runsDeleted}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        
+                        <div className="border-t pt-4">
+                          <div className="flex justify-between items-center">
+                            <p className="font-medium">Grand Total</p>
+                            <p className="text-lg font-semibold">{totalRunsDeleted} old runs deleted</p>
                           </div>
                         </div>
-                      ))}
-                    </div>
+                        
+                        {Object.keys(otherSummary).length > 0 && (
+                          <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                            {Object.entries(otherSummary).map(([key, value]) => (
+                              <div key={key}>
+                                <p className="text-sm font-medium text-muted-foreground capitalize">
+                                  {key.replace(/([A-Z])/g, ' $1').trim()}
+                                </p>
+                                <div className="text-sm mt-1" data-testid={`result-summary-${key}`}>
+                                  {formatSummaryValue(value)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-4">
+                        {Object.entries(outputData.summary).map(([key, value]) => (
+                          <div key={key}>
+                            <p className="text-sm font-medium text-muted-foreground capitalize">
+                              {key.replace(/([A-Z])/g, ' $1').trim()}
+                            </p>
+                            <div className="text-sm mt-1" data-testid={`result-summary-${key}`}>
+                              {formatSummaryValue(value)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </>
               );
