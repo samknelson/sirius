@@ -1,8 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "wouter";
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -11,7 +14,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { format } from "date-fns";
+import { Eye, CheckCircle2, XCircle } from "lucide-react";
 import { CronJobLayout } from "@/components/layouts/CronJobLayout";
 
 interface CronJobRun {
@@ -71,6 +82,7 @@ function parseOutputData(output: string | null): CronJobOutputData | null {
 
 function CronJobHistoryContent() {
   const { name } = useParams<{ name: string }>();
+  const [selectedRun, setSelectedRun] = useState<CronJobRun | null>(null);
 
   const { data: runs = [], isLoading } = useQuery<CronJobRun[]>({
     queryKey: ["/api/cron-jobs", name, "runs"],
@@ -81,6 +93,30 @@ function CronJobHistoryContent() {
     },
     enabled: !!name,
   });
+
+  const formatSummaryValue = (value: any): React.ReactNode => {
+    if (typeof value === 'object' && value !== null) {
+      if (Array.isArray(value)) {
+        return (
+          <div className="space-y-1">
+            {value.map((item, idx) => (
+              <div key={idx} className="text-xs">• {formatSummaryValue(item)}</div>
+            ))}
+          </div>
+        );
+      }
+      return (
+        <div className="space-y-1">
+          {Object.entries(value).map(([k, v]) => (
+            <div key={k} className="text-xs">
+              <span className="font-medium">{k}:</span> {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return String(value);
+  };
 
   return (
     <Card>
@@ -109,6 +145,7 @@ function CronJobHistoryContent() {
                 <TableHead>Mode</TableHead>
                 <TableHead>Triggered By</TableHead>
                 <TableHead>Summary</TableHead>
+                <TableHead className="w-[100px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -151,6 +188,17 @@ function CronJobHistoryContent() {
                         "—"
                       )}
                     </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSelectedRun(run)}
+                        data-testid={`button-view-${run.id}`}
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        View
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -158,6 +206,119 @@ function CronJobHistoryContent() {
           </Table>
         )}
       </CardContent>
+
+      {/* View Run Details Dialog */}
+      <Dialog open={selectedRun !== null} onOpenChange={(open) => !open && setSelectedRun(null)}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto" data-testid="dialog-run-detail">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle className="flex items-center gap-2">
+                  {selectedRun?.status === "success" ? (
+                    <CheckCircle2 className="h-5 w-5 text-green-600" />
+                  ) : selectedRun?.status === "error" ? (
+                    <XCircle className="h-5 w-5 text-destructive" />
+                  ) : null}
+                  Cron Job Run Details
+                </DialogTitle>
+                <DialogDescription>
+                  {selectedRun && format(new Date(selectedRun.startedAt), "MMMM d, yyyy 'at' HH:mm:ss")}
+                </DialogDescription>
+              </div>
+              <Badge variant={selectedRun?.mode === "test" ? "outline" : "default"}>
+                {selectedRun?.mode === "test" ? "Test Mode" : "Live Mode"}
+              </Badge>
+            </div>
+          </DialogHeader>
+          {selectedRun && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Status</p>
+                  <div className="mt-1">
+                    <StatusBadge status={selectedRun.status} />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Triggered By</p>
+                  <p className="text-sm mt-1">{formatTriggeredBy(selectedRun)}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Started At</p>
+                  <p className="text-sm mt-1">
+                    {format(new Date(selectedRun.startedAt), "MMM d, yyyy HH:mm:ss")}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Completed At</p>
+                  <p className="text-sm mt-1">
+                    {selectedRun.completedAt 
+                      ? format(new Date(selectedRun.completedAt), "MMM d, yyyy HH:mm:ss")
+                      : "In Progress"}
+                  </p>
+                </div>
+                {(() => {
+                  const outputData = parseOutputData(selectedRun.output);
+                  return outputData && (
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Execution Time</p>
+                      <p className="text-sm mt-1">{outputData.executionTimeSec} seconds</p>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {(() => {
+                const outputData = parseOutputData(selectedRun.output);
+                return outputData?.summary && (
+                  <>
+                    <Separator />
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground mb-3">Execution Summary</p>
+                      <div className="grid grid-cols-2 gap-4">
+                        {Object.entries(outputData.summary).map(([key, value]) => (
+                          <div key={key}>
+                            <p className="text-sm font-medium text-muted-foreground capitalize">
+                              {key.replace(/([A-Z])/g, ' $1').trim()}
+                            </p>
+                            <div className="text-sm mt-1" data-testid={`detail-summary-${key}`}>
+                              {formatSummaryValue(value)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+
+              {selectedRun.error && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-2">Error Details</p>
+                    <pre className="text-sm bg-destructive/10 text-destructive p-4 rounded-md overflow-x-auto whitespace-pre-wrap">
+                      {selectedRun.error}
+                    </pre>
+                  </div>
+                </>
+              )}
+
+              {!parseOutputData(selectedRun.output) && selectedRun.output && !selectedRun.error && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-2">Raw Output</p>
+                    <pre className="text-sm bg-muted p-4 rounded-md overflow-x-auto whitespace-pre-wrap">
+                      {selectedRun.output}
+                    </pre>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
