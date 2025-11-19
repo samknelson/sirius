@@ -33,7 +33,7 @@ export function registerCronJobRoutes(
     }
   });
 
-  // GET /api/cron-jobs/:name - Get a specific cron job with its run history
+  // GET /api/cron-jobs/:name - Get a specific cron job with latest run
   app.get("/api/cron-jobs/:name", requireAccess(policies.admin), async (req, res) => {
     try {
       const { name } = req.params;
@@ -43,11 +43,11 @@ export function registerCronJobRoutes(
         return res.status(404).json({ message: "Cron job not found" });
       }
 
-      const runs = await storage.cronJobRuns.list({ jobName: name });
+      const latestRun = await storage.cronJobRuns.getLatestByJobName(name);
       
       res.json({
         ...job,
-        runs
+        latestRun
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch cron job" });
