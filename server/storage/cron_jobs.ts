@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { cronJobs, cronJobRuns, type CronJob, type InsertCronJob, type CronJobRun, type InsertCronJobRun } from "@shared/schema";
+import { cronJobs, cronJobRuns, users, type CronJob, type InsertCronJob, type CronJobRun, type InsertCronJobRun } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 
@@ -10,10 +10,16 @@ export interface CronJobStorage {
   update(name: string, updates: Partial<InsertCronJob>): Promise<CronJob | undefined>;
 }
 
+export type CronJobRunWithUser = CronJobRun & {
+  userFirstName?: string | null;
+  userLastName?: string | null;
+  userEmail?: string | null;
+};
+
 export interface CronJobRunStorage {
-  list(filters?: { jobName?: string; status?: string }): Promise<CronJobRun[]>;
-  getById(id: string): Promise<CronJobRun | undefined>;
-  getLatestByJobName(jobName: string): Promise<CronJobRun | undefined>;
+  list(filters?: { jobName?: string; status?: string }): Promise<CronJobRunWithUser[]>;
+  getById(id: string): Promise<CronJobRunWithUser | undefined>;
+  getLatestByJobName(jobName: string): Promise<CronJobRunWithUser | undefined>;
   create(run: InsertCronJobRun): Promise<CronJobRun>;
   update(id: string, updates: Partial<Omit<InsertCronJobRun, 'id'>>): Promise<CronJobRun | undefined>;
   delete(id: string): Promise<boolean>;
@@ -55,7 +61,7 @@ export function createCronJobStorage(): CronJobStorage {
 
 export function createCronJobRunStorage(): CronJobRunStorage {
   return {
-    async list(filters?: { jobName?: string; status?: string }): Promise<CronJobRun[]> {
+    async list(filters?: { jobName?: string; status?: string }): Promise<CronJobRunWithUser[]> {
       const conditions = [];
       
       if (filters?.jobName) {
@@ -65,29 +71,69 @@ export function createCronJobRunStorage(): CronJobRunStorage {
         conditions.push(eq(cronJobRuns.status, filters.status));
       }
 
+      const query = db
+        .select({
+          id: cronJobRuns.id,
+          jobName: cronJobRuns.jobName,
+          status: cronJobRuns.status,
+          output: cronJobRuns.output,
+          error: cronJobRuns.error,
+          startedAt: cronJobRuns.startedAt,
+          completedAt: cronJobRuns.completedAt,
+          triggeredBy: cronJobRuns.triggeredBy,
+          userFirstName: users.firstName,
+          userLastName: users.lastName,
+          userEmail: users.email,
+        })
+        .from(cronJobRuns)
+        .leftJoin(users, eq(cronJobRuns.triggeredBy, users.id))
+        .orderBy(desc(cronJobRuns.startedAt));
+
       if (conditions.length > 0) {
-        return db
-          .select()
-          .from(cronJobRuns)
-          .where(and(...conditions))
-          .orderBy(desc(cronJobRuns.startedAt));
+        return query.where(and(...conditions));
       } else {
-        return db
-          .select()
-          .from(cronJobRuns)
-          .orderBy(desc(cronJobRuns.startedAt));
+        return query;
       }
     },
 
-    async getById(id: string): Promise<CronJobRun | undefined> {
-      const [run] = await db.select().from(cronJobRuns).where(eq(cronJobRuns.id, id));
+    async getById(id: string): Promise<CronJobRunWithUser | undefined> {
+      const [run] = await db
+        .select({
+          id: cronJobRuns.id,
+          jobName: cronJobRuns.jobName,
+          status: cronJobRuns.status,
+          output: cronJobRuns.output,
+          error: cronJobRuns.error,
+          startedAt: cronJobRuns.startedAt,
+          completedAt: cronJobRuns.completedAt,
+          triggeredBy: cronJobRuns.triggeredBy,
+          userFirstName: users.firstName,
+          userLastName: users.lastName,
+          userEmail: users.email,
+        })
+        .from(cronJobRuns)
+        .leftJoin(users, eq(cronJobRuns.triggeredBy, users.id))
+        .where(eq(cronJobRuns.id, id));
       return run || undefined;
     },
 
-    async getLatestByJobName(jobName: string): Promise<CronJobRun | undefined> {
+    async getLatestByJobName(jobName: string): Promise<CronJobRunWithUser | undefined> {
       const [run] = await db
-        .select()
+        .select({
+          id: cronJobRuns.id,
+          jobName: cronJobRuns.jobName,
+          status: cronJobRuns.status,
+          output: cronJobRuns.output,
+          error: cronJobRuns.error,
+          startedAt: cronJobRuns.startedAt,
+          completedAt: cronJobRuns.completedAt,
+          triggeredBy: cronJobRuns.triggeredBy,
+          userFirstName: users.firstName,
+          userLastName: users.lastName,
+          userEmail: users.email,
+        })
         .from(cronJobRuns)
+        .leftJoin(users, eq(cronJobRuns.triggeredBy, users.id))
         .where(eq(cronJobRuns.jobName, jobName))
         .orderBy(desc(cronJobRuns.startedAt))
         .limit(1);
