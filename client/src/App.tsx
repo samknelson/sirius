@@ -70,6 +70,7 @@ import AdminRolesPage from "@/pages/admin/roles";
 import AdminPermissionsPage from "@/pages/admin/permissions";
 import AdminQuickstarts from "@/pages/admin-quickstarts";
 import CronJobs from "@/pages/cron-jobs";
+import CronJobDetail from "@/pages/cron-job-detail";
 import AdminLayout from "@/components/layouts/AdminLayout";
 import ConfigurationLayout from "@/components/layouts/ConfigurationLayout";
 import UsersListPage from "@/pages/config/users/list";
@@ -906,12 +907,24 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/admin/cron-jobs">
+      <Route path="/cron-jobs/:name">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <CronJobDetail />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/cron-jobs">
         <ProtectedRoute policy="admin">
           <AuthenticatedLayout>
             <CronJobs />
           </AuthenticatedLayout>
         </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/cron-jobs">
+        <Redirect to="/cron-jobs" />
       </Route>
 
       {/* Legacy admin route - redirect to configuration */}
