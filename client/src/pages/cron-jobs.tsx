@@ -1,17 +1,9 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -20,23 +12,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Clock, Play, Eye, Calendar } from "lucide-react";
+import { Clock, ChevronRight, Calendar } from "lucide-react";
 import { format } from "date-fns";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 
 interface CronJobRun {
   id: string;
   jobName: string;
   status: string;
-  output: string | null;
-  error: string | null;
   startedAt: string;
-  completedAt: string | null;
-  triggeredBy: string | null;
-  userFirstName?: string | null;
-  userLastName?: string | null;
-  userEmail?: string | null;
 }
 
 interface CronJob {
@@ -59,140 +42,9 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant={variant} data-testid={`badge-status-${status}`}>{status}</Badge>;
 }
 
-function formatTriggeredBy(run: CronJobRun): string {
-  if (!run.triggeredBy || run.triggeredBy === 'scheduler') {
-    return 'Scheduler';
-  }
-  
-  if (run.userEmail) {
-    const fullName = [run.userFirstName, run.userLastName].filter(Boolean).join(' ');
-    return fullName ? `${fullName} (${run.userEmail})` : run.userEmail;
-  }
-  
-  return run.triggeredBy;
-}
-
-
-function RunHistoryDialog({ job }: { job: CronJob }) {
-  const { data: runs = [], isLoading } = useQuery<CronJobRun[]>({
-    queryKey: ["/api/cron-jobs", job.name, "runs"],
-    queryFn: async () => {
-      const response = await fetch(`/api/cron-jobs/${encodeURIComponent(job.name)}/runs`);
-      if (!response.ok) throw new Error('Failed to fetch run history');
-      return response.json();
-    },
-  });
-
-  return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" data-testid={`button-view-history-${job.name}`}>
-          <Eye className="h-4 w-4 mr-2" />
-          View History
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Run History: {job.name}</DialogTitle>
-          <DialogDescription>
-            View all execution history for this cron job
-          </DialogDescription>
-        </DialogHeader>
-        
-        {isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-12" />
-            <Skeleton className="h-12" />
-            <Skeleton className="h-12" />
-          </div>
-        ) : runs.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-8">
-            No runs yet. This job hasn't been executed.
-          </p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Started</TableHead>
-                <TableHead>Completed</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Triggered By</TableHead>
-                <TableHead>Output/Error</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {runs.map((run) => (
-                <TableRow key={run.id}>
-                  <TableCell className="text-sm">
-                    {format(new Date(run.startedAt), "MMM d, yyyy HH:mm:ss")}
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {run.completedAt ? format(new Date(run.completedAt), "MMM d, yyyy HH:mm:ss") : "—"}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={run.status} />
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {formatTriggeredBy(run)}
-                  </TableCell>
-                  <TableCell className="text-sm max-w-xs truncate">
-                    {run.error || run.output || "—"}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 export default function CronJobs() {
-  const { toast } = useToast();
-
   const { data: jobs = [], isLoading } = useQuery<CronJob[]>({
     queryKey: ["/api/cron-jobs"],
-  });
-
-  const runMutation = useMutation({
-    mutationFn: async (jobName: string) => {
-      return await apiRequest("POST", `/api/cron-jobs/${encodeURIComponent(jobName)}/run`, {});
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cron-jobs"] });
-      toast({
-        title: "Job Started",
-        description: "The cron job has been manually triggered.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Failed to Run Job",
-        description: error.message || "Failed to trigger the cron job",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const toggleMutation = useMutation({
-    mutationFn: async ({ name, isEnabled }: { name: string; isEnabled: boolean }) => {
-      return await apiRequest("PATCH", `/api/cron-jobs/${encodeURIComponent(name)}`, { isEnabled });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cron-jobs"] });
-      toast({
-        title: "Job Updated",
-        description: "Cron job status has been updated.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Failed to Update Job",
-        description: error.message || "Failed to update cron job",
-        variant: "destructive",
-      });
-    },
   });
 
   if (isLoading) {
@@ -242,7 +94,7 @@ export default function CronJobs() {
                   <TableHead>Status</TableHead>
                   <TableHead>Latest Run</TableHead>
                   <TableHead>Last Status</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead className="w-[100px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -264,19 +116,9 @@ export default function CronJobs() {
                       {job.schedule}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          checked={job.isEnabled}
-                          onCheckedChange={(checked) => 
-                            toggleMutation.mutate({ name: job.name, isEnabled: checked })
-                          }
-                          disabled={toggleMutation.isPending}
-                          data-testid={`switch-enabled-${job.name}`}
-                        />
-                        <span className="text-sm text-muted-foreground">
-                          {job.isEnabled ? "Enabled" : "Disabled"}
-                        </span>
-                      </div>
+                      <Badge variant={job.isEnabled ? "default" : "secondary"} data-testid={`badge-enabled-${job.name}`}>
+                        {job.isEnabled ? "Enabled" : "Disabled"}
+                      </Badge>
                     </TableCell>
                     <TableCell className="text-sm">
                       {job.latestRun ? (
@@ -296,19 +138,12 @@ export default function CronJobs() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => runMutation.mutate(job.name)}
-                          disabled={runMutation.isPending}
-                          data-testid={`button-run-${job.name}`}
-                        >
-                          <Play className="h-4 w-4 mr-2" />
-                          Run Now
+                      <Link href={`/cron-jobs/${encodeURIComponent(job.name)}`}>
+                        <Button variant="ghost" size="sm" data-testid={`button-view-${job.name}`}>
+                          View
+                          <ChevronRight className="h-4 w-4 ml-1" />
                         </Button>
-                        <RunHistoryDialog job={job} />
-                      </div>
+                      </Link>
                     </TableCell>
                   </TableRow>
                 ))}
