@@ -36,6 +36,7 @@ export const deleteExpiredReportsHandler: CronJobHandler = {
     logger.info('Starting expired report cleanup', {
       service: 'cron-delete-expired-reports',
       jobId: context.jobId,
+      mode: context.mode,
     });
 
     let totalDeleted = 0;
@@ -59,6 +60,7 @@ export const deleteExpiredReportsHandler: CronJobHandler = {
       logger.info(`Found ${reportWizards.length} report wizards to check`, {
         service: 'cron-delete-expired-reports',
         jobId: context.jobId,
+        mode: context.mode,
       });
 
       // Process each report wizard
@@ -78,16 +80,42 @@ export const deleteExpiredReportsHandler: CronJobHandler = {
 
         const cutoffDate = getCutoffDate(retentionDays);
 
-        // Delete expired report data for this wizard
-        const deleted = await db
-          .delete(wizardReportData)
-          .where(
-            and(
-              eq(wizardReportData.wizardId, wizard.id),
-              lt(wizardReportData.createdAt, cutoffDate)
+        // In test mode, count but don't delete
+        if (context.mode === 'test') {
+          const toDelete = await db
+            .select()
+            .from(wizardReportData)
+            .where(
+              and(
+                eq(wizardReportData.wizardId, wizard.id),
+                lt(wizardReportData.createdAt, cutoffDate)
+              )
+            );
+
+          if (toDelete.length > 0) {
+            totalDeleted += toDelete.length;
+            reportsByRetention[retention] = (reportsByRetention[retention] || 0) + toDelete.length;
+            
+            logger.info(`[TEST MODE] Would delete ${toDelete.length} expired records from wizard ${wizard.id}`, {
+              service: 'cron-delete-expired-reports',
+              wizardId: wizard.id,
+              wizardType: wizard.type,
+              retention,
+              retentionDays,
+              cutoffDate: cutoffDate.toISOString(),
+            });
+          }
+        } else {
+          // Live mode: actually delete the records
+          const deleted = await db
+            .delete(wizardReportData)
+            .where(
+              and(
+                eq(wizardReportData.wizardId, wizard.id),
+                lt(wizardReportData.createdAt, cutoffDate)
+              )
             )
-          )
-          .returning();
+            .returning();
 
           if (deleted.length > 0) {
             totalDeleted += deleted.length;
@@ -102,6 +130,7 @@ export const deleteExpiredReportsHandler: CronJobHandler = {
               cutoffDate: cutoffDate.toISOString(),
             });
           }
+        }
         } catch (wizardError) {
           logger.error(`Failed to process wizard ${wizard.id}`, {
             service: 'cron-delete-expired-reports',
@@ -116,6 +145,7 @@ export const deleteExpiredReportsHandler: CronJobHandler = {
       logger.info(`Expired report cleanup completed`, {
         service: 'cron-delete-expired-reports',
         jobId: context.jobId,
+        mode: context.mode,
         totalDeleted,
         reportsByRetention,
         totalWizardsChecked: reportWizards.length,

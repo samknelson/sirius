@@ -20,23 +20,47 @@ export const deleteOldCronLogsHandler: CronJobHandler = {
       service: 'cron-delete-old-logs',
       jobId: context.jobId,
       retentionDays: RETENTION_DAYS,
+      mode: context.mode,
     });
 
     try {
       const cutoffDate = getCutoffDate(RETENTION_DAYS);
 
-      const deleted = await db
-        .delete(cronJobRuns)
-        .where(lt(cronJobRuns.startedAt, cutoffDate))
-        .returning();
+      let totalDeleted = 0;
 
-      logger.info('Old cron logs cleanup completed', {
-        service: 'cron-delete-old-logs',
-        jobId: context.jobId,
-        totalDeleted: deleted.length,
-        cutoffDate: cutoffDate.toISOString(),
-        retentionDays: RETENTION_DAYS,
-      });
+      // In test mode, count but don't delete
+      if (context.mode === 'test') {
+        const toDelete = await db
+          .select()
+          .from(cronJobRuns)
+          .where(lt(cronJobRuns.startedAt, cutoffDate));
+
+        totalDeleted = toDelete.length;
+
+        logger.info('[TEST MODE] Old cron logs cleanup - would delete', {
+          service: 'cron-delete-old-logs',
+          jobId: context.jobId,
+          totalDeleted,
+          cutoffDate: cutoffDate.toISOString(),
+          retentionDays: RETENTION_DAYS,
+        });
+      } else {
+        // Live mode: actually delete the records
+        const deleted = await db
+          .delete(cronJobRuns)
+          .where(lt(cronJobRuns.startedAt, cutoffDate))
+          .returning();
+
+        totalDeleted = deleted.length;
+
+        logger.info('Old cron logs cleanup completed', {
+          service: 'cron-delete-old-logs',
+          jobId: context.jobId,
+          totalDeleted,
+          cutoffDate: cutoffDate.toISOString(),
+          retentionDays: RETENTION_DAYS,
+        });
+      }
 
     } catch (error) {
       logger.error('Failed to delete old cron logs', {
