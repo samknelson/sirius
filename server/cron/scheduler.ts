@@ -148,7 +148,7 @@ class CronScheduler {
 
     try {
       // Execute the job handler
-      await cronJobRegistry.execute(cronJob.name, {
+      const summary = await cronJobRegistry.execute(cronJob.name, {
         jobId: cronJob.name,
         jobName: cronJob.name,
         triggeredBy,
@@ -156,13 +156,23 @@ class CronScheduler {
         mode,
       });
 
+      // Calculate execution time
+      const executionTimeMs = Date.now() - startedAt.getTime();
+
+      // Prepare output with execution time and summary
+      const outputData = {
+        executionTimeMs,
+        executionTimeSec: (executionTimeMs / 1000).toFixed(2),
+        summary,
+      };
+
       // Update run as successful
       await db
         .update(cronJobRuns)
         .set({
           status: 'success',
           completedAt: new Date(),
-          output: 'Job completed successfully',
+          output: JSON.stringify(outputData),
         })
         .where(eq(cronJobRuns.id, runId));
 
@@ -170,7 +180,8 @@ class CronScheduler {
         service: 'cron-scheduler',
         jobName: cronJob.name,
         runId,
-        duration: Date.now() - startedAt.getTime(),
+        duration: executionTimeMs,
+        summary,
       });
 
     } catch (error) {
