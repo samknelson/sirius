@@ -120,7 +120,7 @@ class CronScheduler {
     });
   }
 
-  async executeJob(cronJob: CronJob, isManual: boolean, triggeredBy?: string): Promise<void> {
+  async executeJob(cronJob: CronJob, isManual: boolean, triggeredBy?: string, mode: "live" | "test" = "live"): Promise<void> {
     const runId = crypto.randomUUID();
     const startedAt = new Date();
 
@@ -130,6 +130,7 @@ class CronScheduler {
       runId,
       isManual,
       triggeredBy,
+      mode,
     });
 
     // Create run record
@@ -139,6 +140,7 @@ class CronScheduler {
         id: runId,
         jobName: cronJob.name,
         status: 'running',
+        mode,
         startedAt,
         triggeredBy: triggeredBy || null,
       })
@@ -151,6 +153,7 @@ class CronScheduler {
         jobName: cronJob.name,
         triggeredBy,
         isManual,
+        mode,
       });
 
       // Update run as successful
@@ -195,7 +198,7 @@ class CronScheduler {
     }
   }
 
-  async manualRun(jobName: string, triggeredBy?: string): Promise<void> {
+  async manualRun(jobName: string, triggeredBy?: string, mode: "live" | "test" = "live"): Promise<void> {
     const [job] = await db
       .select()
       .from(cronJobs)
@@ -221,7 +224,7 @@ class CronScheduler {
       );
     }
 
-    await this.executeJob(job, true, triggeredBy);
+    await this.executeJob(job, true, triggeredBy, mode);
   }
 
   isJobScheduled(jobName: string): boolean {

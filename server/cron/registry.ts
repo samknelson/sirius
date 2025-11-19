@@ -5,6 +5,7 @@ export interface CronJobContext {
   jobName: string;
   triggeredBy?: string;
   isManual: boolean;
+  mode: "live" | "test"; // "live" for production runs, "test" for dry-run (no DB changes)
 }
 
 export interface CronJobHandler {
