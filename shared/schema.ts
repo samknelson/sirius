@@ -822,6 +822,7 @@ export const cronJobRuns = pgTable("cron_job_runs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   jobName: text("job_name").notNull().references(() => cronJobs.name, { onDelete: 'cascade' }),
   status: varchar("status").notNull(), // 'running', 'success', 'error'
+  mode: varchar("mode").notNull().default("live"), // 'live' or 'test'
   output: text("output"),
   error: text("error"),
   startedAt: timestamp("started_at").default(sql`now()`).notNull(),
