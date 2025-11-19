@@ -2,7 +2,7 @@ import { db } from "../../db";
 import { cronJobRuns } from "@shared/schema";
 import { lt } from "drizzle-orm";
 import { logger } from "../../logger";
-import type { CronJobHandler, CronJobContext } from "../registry";
+import type { CronJobHandler, CronJobContext, CronJobSummary } from "../registry";
 
 const RETENTION_DAYS = 30;
 
@@ -15,7 +15,7 @@ function getCutoffDate(retentionDays: number): Date {
 export const deleteOldCronLogsHandler: CronJobHandler = {
   description: 'Deletes cron job run logs that are older than 30 days',
   
-  async execute(context: CronJobContext): Promise<void> {
+  async execute(context: CronJobContext): Promise<CronJobSummary> {
     logger.info('Starting old cron logs cleanup', {
       service: 'cron-delete-old-logs',
       jobId: context.jobId,
@@ -61,6 +61,13 @@ export const deleteOldCronLogsHandler: CronJobHandler = {
           retentionDays: RETENTION_DAYS,
         });
       }
+
+      return {
+        totalDeleted,
+        retentionDays: RETENTION_DAYS,
+        cutoffDate: cutoffDate.toISOString(),
+        mode: context.mode,
+      };
 
     } catch (error) {
       logger.error('Failed to delete old cron logs', {
