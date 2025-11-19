@@ -103,7 +103,13 @@ export function registerCronJobRoutes(
   app.post("/api/cron-jobs/:name/run", requireAccess(policies.admin), async (req, res) => {
     try {
       const { name } = req.params;
+      const { mode = "live" } = req.body; // Accept mode from request body, default to "live"
       const user = req.user as any;
+      
+      // Validate mode parameter
+      if (mode !== "live" && mode !== "test") {
+        return res.status(400).json({ message: "Invalid mode. Must be 'live' or 'test'" });
+      }
       
       const job = await storage.cronJobs.getByName(name);
       if (!job) {
@@ -119,7 +125,7 @@ export function registerCronJobRoutes(
       }
 
       // Execute the job via the scheduler (which handles run creation and logging)
-      await cronScheduler.manualRun(name, dbUser.id);
+      await cronScheduler.manualRun(name, dbUser.id, mode);
 
       // Get the latest run for this job to return to the client
       const latestRun = await storage.cronJobRuns.getLatestByJobName(name);
