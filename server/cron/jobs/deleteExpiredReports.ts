@@ -39,7 +39,8 @@ export const deleteExpiredReportsHandler: CronJobHandler = {
       mode: context.mode,
     });
 
-    let totalDeleted = 0;
+    let totalRecordsDeleted = 0;
+    let wizardsWithExpiredData = 0;
     const reportsByRetention: Record<string, number> = {};
 
     try {
@@ -93,7 +94,8 @@ export const deleteExpiredReportsHandler: CronJobHandler = {
             );
 
           if (toDelete.length > 0) {
-            totalDeleted += toDelete.length;
+            totalRecordsDeleted += toDelete.length;
+            wizardsWithExpiredData++;
             reportsByRetention[retention] = (reportsByRetention[retention] || 0) + toDelete.length;
             
             logger.info(`[TEST MODE] Would delete ${toDelete.length} expired records from wizard ${wizard.id}`, {
@@ -118,7 +120,8 @@ export const deleteExpiredReportsHandler: CronJobHandler = {
             .returning();
 
           if (deleted.length > 0) {
-            totalDeleted += deleted.length;
+            totalRecordsDeleted += deleted.length;
+            wizardsWithExpiredData++;
             reportsByRetention[retention] = (reportsByRetention[retention] || 0) + deleted.length;
             
             logger.info(`Deleted ${deleted.length} expired records from wizard ${wizard.id}`, {
@@ -146,15 +149,17 @@ export const deleteExpiredReportsHandler: CronJobHandler = {
         service: 'cron-delete-expired-reports',
         jobId: context.jobId,
         mode: context.mode,
-        totalDeleted,
-        reportsByRetention,
+        totalRecordsDeleted,
+        wizardsWithExpiredData,
         totalWizardsChecked: reportWizards.length,
+        reportsByRetention,
       });
 
       return {
-        totalDeleted,
-        reportsByRetention,
+        totalRecordsDeleted,
+        wizardsWithExpiredData,
         totalWizardsChecked: reportWizards.length,
+        reportsByRetention,
         mode: context.mode,
       };
 
