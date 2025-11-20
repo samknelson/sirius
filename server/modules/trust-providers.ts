@@ -1,7 +1,9 @@
 import type { Express } from "express";
 import { storage } from "../storage/database";
-import { insertTrustProviderSchema, type InsertTrustProvider } from "@shared/schema";
+import { db } from "../db";
+import { insertTrustProviderSchema, type InsertTrustProvider, winstonLogs } from "@shared/schema";
 import { policies } from "../policies";
+import { eq, and, gte, lte, desc } from "drizzle-orm";
 
 export function registerTrustProvidersRoutes(
   app: Express,
@@ -103,20 +105,43 @@ export function registerTrustProvidersRoutes(
 
   // GET /api/trust/provider/:id/logs - Get all logs related to a trust provider (requires staff permission)
   app.get("/api/trust/provider/:id/logs", requireAuth, requireAccess(policies.staff), async (req, res) => {
-    const { id } = req.params;
-    const { module, operation, startDate, endDate } = req.query;
-
     try {
-      const logs = await storage.logs.getLogsByHostEntityId(id, {
-        module: module as string,
-        operation: operation as string,
-        startDate: startDate as string,
-        endDate: endDate as string,
-      });
+      const { id } = req.params;
+      const { module, operation, startDate, endDate } = req.query;
+
+      // Get the provider to ensure it exists
+      const provider = await storage.trustProviders.getTrustProvider(id);
+      if (!provider) {
+        return res.status(404).json({ message: "Trust provider not found" });
+      }
+
+      // Build query conditions
+      const conditions = [eq(winstonLogs.hostEntityId, id)];
+      
+      if (module && typeof module === 'string') {
+        conditions.push(eq(winstonLogs.module, module));
+      }
+      if (operation && typeof operation === 'string') {
+        conditions.push(eq(winstonLogs.operation, operation));
+      }
+      if (startDate && typeof startDate === 'string') {
+        conditions.push(gte(winstonLogs.timestamp, new Date(startDate)));
+      }
+      if (endDate && typeof endDate === 'string') {
+        conditions.push(lte(winstonLogs.timestamp, new Date(endDate)));
+      }
+
+      // Execute query with all conditions and order by timestamp descending (newest first)
+      const logs = await db
+        .select()
+        .from(winstonLogs)
+        .where(and(...conditions))
+        .orderBy(desc(winstonLogs.timestamp));
 
       res.json(logs);
     } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to fetch logs" });
+      console.error("Failed to fetch trust provider logs:", error);
+      res.status(500).json({ message: "Failed to fetch trust provider logs" });
     }
   });
 }
