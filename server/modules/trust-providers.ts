@@ -1,11 +1,13 @@
 import type { Express } from "express";
 import { storage } from "../storage/database";
 import { insertTrustProviderSchema, type InsertTrustProvider } from "@shared/schema";
+import { policies } from "../policies";
 
 export function registerTrustProvidersRoutes(
   app: Express,
   requireAuth: any,
-  requirePermission: any
+  requirePermission: any,
+  requireAccess: any
 ) {
   // GET /api/trust/providers - Get all trust providers (requires workers.view permission)
   app.get("/api/trust/providers", requireAuth, requirePermission("workers.view"), async (req, res) => {
@@ -96,6 +98,25 @@ export function registerTrustProvidersRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete trust provider" });
+    }
+  });
+
+  // GET /api/trust/provider/:id/logs - Get all logs related to a trust provider (requires staff permission)
+  app.get("/api/trust/provider/:id/logs", requireAuth, requireAccess(policies.staff), async (req, res) => {
+    const { id } = req.params;
+    const { module, operation, startDate, endDate } = req.query;
+
+    try {
+      const logs = await storage.logs.getLogsByHostEntityId(id, {
+        module: module as string,
+        operation: operation as string,
+        startDate: startDate as string,
+        endDate: endDate as string,
+      });
+
+      res.json(logs);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to fetch logs" });
     }
   });
 }

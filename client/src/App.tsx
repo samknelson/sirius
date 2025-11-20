@@ -66,6 +66,7 @@ import TrustBenefitEdit from "@/pages/trust-benefit-edit";
 import TrustProvidersPage from "@/pages/trust-providers";
 import TrustProviderViewPage from "@/pages/trust-provider-view";
 import TrustProviderEditPage from "@/pages/trust-provider-edit";
+import TrustProviderLogsPage from "@/pages/trust-provider-logs";
 import AdminUsersPage from "@/pages/admin/users";
 import UserAccountPage from "@/pages/admin/user-account";
 import UserLogs from "@/pages/admin/user-logs";
@@ -564,6 +565,14 @@ function Router() {
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
             <TrustBenefits />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/provider/:id/logs">
+        <ProtectedRoute policy="staff">
+          <AuthenticatedLayout>
+            <TrustProviderLogsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

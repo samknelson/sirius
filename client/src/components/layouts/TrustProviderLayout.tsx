@@ -25,7 +25,7 @@ export function useTrustProviderLayout() {
 
 interface TrustProviderLayoutProps {
   children: React.ReactNode;
-  activeTab: "view" | "edit";
+  activeTab: "view" | "edit" | "logs";
 }
 
 export default function TrustProviderLayout({ children, activeTab }: TrustProviderLayoutProps) {
@@ -123,6 +123,7 @@ export default function TrustProviderLayout({ children, activeTab }: TrustProvid
   const mainTabs = [
     { id: "view", label: "View", href: `/trust/provider/${provider.id}` },
     { id: "edit", label: "Edit", href: `/trust/provider/${provider.id}/edit` },
+    { id: "logs", label: "Logs", href: `/trust/provider/${provider.id}/logs` },
   ];
 
   const contextValue: TrustProviderLayoutContextValue = {

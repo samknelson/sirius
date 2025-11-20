@@ -249,7 +249,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerTrustBenefitsRoutes(app, requireAuth, requirePermission);
   
   // Register trust providers routes
-  registerTrustProvidersRoutes(app, requireAuth, requirePermission);
+  registerTrustProvidersRoutes(app, requireAuth, requirePermission, requireAccess);
   
   // Register options routes (worker-id-types, employer-contact-types, worker-work-statuses, employment-statuses)
   registerOptionsRoutes(app, requireAuth, requirePermission);
