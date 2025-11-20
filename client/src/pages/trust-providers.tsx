@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,8 +32,6 @@ export default function TrustProvidersPage() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
   
   // Form state
   const [formName, setFormName] = useState("");
@@ -74,50 +72,6 @@ export default function TrustProvidersPage() {
     },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: async (data: { id: string; name: string }) => {
-      return apiRequest("PATCH", `/api/trust/provider/${data.id}`, {
-        name: data.name,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trust/providers"] });
-      setEditingId(null);
-      resetForm();
-      toast({
-        title: "Success",
-        description: "Trust provider updated successfully.",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update trust provider.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/trust/provider/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trust/providers"] });
-      setDeleteId(null);
-      toast({
-        title: "Success",
-        description: "Trust provider deleted successfully.",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete trust provider.",
-        variant: "destructive",
-      });
-    },
-  });
 
   const resetForm = () => {
     setFormName("");
@@ -126,11 +80,6 @@ export default function TrustProvidersPage() {
   const handleAddClick = () => {
     resetForm();
     setIsAddDialogOpen(true);
-  };
-
-  const handleEditClick = (provider: TrustProvider) => {
-    setFormName(provider.name);
-    setEditingId(provider.id);
   };
 
   const handleSave = () => {
@@ -143,21 +92,7 @@ export default function TrustProvidersPage() {
       return;
     }
 
-    if (editingId) {
-      updateMutation.mutate({ id: editingId, name: formName.trim() });
-    } else {
-      createMutation.mutate({ name: formName.trim() });
-    }
-  };
-
-  const handleDeleteClick = (id: string) => {
-    setDeleteId(id);
-  };
-
-  const handleDeleteConfirm = () => {
-    if (deleteId) {
-      deleteMutation.mutate(deleteId);
-    }
+    createMutation.mutate({ name: formName.trim() });
   };
 
   if (isLoading) {
@@ -214,32 +149,20 @@ export default function TrustProvidersPage() {
               <TableBody>
                 {filteredProviders.map((provider) => (
                   <TableRow key={provider.id} data-testid={`row-provider-${provider.id}`}>
-                    <TableCell>
-                      <Link href={`/trust/provider/${provider.id}`}>
-                        <span className="text-primary hover:underline cursor-pointer" data-testid={`link-provider-${provider.id}`}>
-                          {provider.name}
-                        </span>
-                      </Link>
+                    <TableCell data-testid={`text-provider-name-${provider.id}`}>
+                      {provider.name}
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
+                      <Link href={`/trust/provider/${provider.id}`}>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleEditClick(provider)}
-                          data-testid={`button-edit-${provider.id}`}
+                          data-testid={`button-view-${provider.id}`}
                         >
-                          <Pencil className="h-4 w-4" />
+                          <Eye className="h-4 w-4 mr-2" />
+                          View
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteClick(provider.id)}
-                          data-testid={`button-delete-${provider.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      </Link>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -249,19 +172,18 @@ export default function TrustProvidersPage() {
         </CardContent>
       </Card>
 
-      {/* Add/Edit Dialog */}
-      <Dialog open={isAddDialogOpen || editingId !== null} onOpenChange={(open) => {
+      {/* Add Dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
         if (!open) {
           setIsAddDialogOpen(false);
-          setEditingId(null);
           resetForm();
         }
       }}>
         <DialogContent data-testid="dialog-provider-form">
           <DialogHeader>
-            <DialogTitle>{editingId ? "Edit Provider" : "Add Provider"}</DialogTitle>
+            <DialogTitle>Add Provider</DialogTitle>
             <DialogDescription>
-              {editingId ? "Update the provider information." : "Create a new trust provider."}
+              Create a new trust provider.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -283,7 +205,6 @@ export default function TrustProvidersPage() {
               variant="outline"
               onClick={() => {
                 setIsAddDialogOpen(false);
-                setEditingId(null);
                 resetForm();
               }}
               data-testid="button-cancel"
@@ -292,36 +213,14 @@ export default function TrustProvidersPage() {
             </Button>
             <Button
               onClick={handleSave}
-              disabled={createMutation.isPending || updateMutation.isPending}
+              disabled={createMutation.isPending}
               data-testid="button-save"
             >
-              {editingId ? "Update" : "Create"}
+              Create
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteId !== null} onOpenChange={(open) => !open && setDeleteId(null)}>
-        <AlertDialogContent data-testid="dialog-delete-confirm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete this trust provider. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteConfirm}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              data-testid="button-confirm-delete"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
