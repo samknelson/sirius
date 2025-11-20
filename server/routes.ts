@@ -11,6 +11,7 @@ import { registerPostalAddressRoutes } from "./modules/postal-addresses";
 import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerEmployerContactRoutes } from "./modules/employer-contacts";
 import { registerTrustBenefitsRoutes } from "./modules/trust-benefits";
+import { registerTrustProvidersRoutes } from "./modules/trust-providers";
 import { registerOptionsRoutes } from "./modules/options";
 import { registerWorkerIdsRoutes } from "./modules/worker-ids";
 import { registerAddressValidationRoutes } from "./modules/address-validation";
@@ -246,6 +247,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register trust benefits routes
   registerTrustBenefitsRoutes(app, requireAuth, requirePermission);
+  
+  // Register trust providers routes
+  registerTrustProvidersRoutes(app, requireAuth, requirePermission);
   
   // Register options routes (worker-id-types, employer-contact-types, worker-work-statuses, employment-statuses)
   registerOptionsRoutes(app, requireAuth, requirePermission);
