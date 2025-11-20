@@ -18,7 +18,7 @@ import { type FileStorage, createFileStorage, fileLoggingConfig } from "./files"
 import { type CronJobStorage, createCronJobStorage, type CronJobRunStorage, createCronJobRunStorage } from "./cron_jobs";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "../db";
-import { optionsWorkerIdType, optionsEmploymentStatus, employers, workers, contacts } from "@shared/schema";
+import { optionsWorkerIdType, optionsEmploymentStatus, employers, workers, contacts, trustProviderContacts, employerContacts } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { wizardRegistry } from "../wizards";
 
@@ -232,9 +232,41 @@ function calculateAddressChanges(before: any, after: any): Record<string, { from
 }
 
 /**
+ * Helper function to find the parent entity (trust provider or employer) for a contact
+ * Returns the provider/employer ID if found, otherwise returns the contact ID
+ */
+async function getParentEntityForContact(contactId: string): Promise<string> {
+  // Check if contact belongs to a trust provider contact
+  const [providerContact] = await db
+    .select({ providerId: trustProviderContacts.providerId })
+    .from(trustProviderContacts)
+    .where(eq(trustProviderContacts.contactId, contactId))
+    .limit(1);
+  
+  if (providerContact) {
+    return providerContact.providerId;
+  }
+  
+  // Check if contact belongs to an employer contact
+  const [employerContact] = await db
+    .select({ employerId: employerContacts.employerId })
+    .from(employerContacts)
+    .where(eq(employerContacts.contactId, contactId))
+    .limit(1);
+  
+  if (employerContact) {
+    return employerContact.employerId;
+  }
+  
+  // Fall back to contact ID if no parent entity found
+  return contactId;
+}
+
+/**
  * Logging configuration for address storage operations
  * 
  * Logs all postal address mutations with full argument capture and change tracking.
+ * Associates logs with parent entity (trust provider or employer) when applicable.
  */
 export const addressLoggingConfig: StorageLoggingConfig<AddressStorage> = {
   module: 'contacts.addresses',
@@ -242,7 +274,10 @@ export const addressLoggingConfig: StorageLoggingConfig<AddressStorage> = {
     createPostalAddress: {
       enabled: true,
       getEntityId: (args) => args[0]?.contactId || 'new address',
-      getHostEntityId: (args, result) => result?.contactId || args[0]?.contactId, // Contact ID is the host
+      getHostEntityId: async (args, result) => {
+        const contactId = result?.contactId || args[0]?.contactId;
+        return await getParentEntityForContact(contactId);
+      },
       after: async (args, result, storage) => {
         return result; // Capture created address
       },
@@ -254,7 +289,10 @@ export const addressLoggingConfig: StorageLoggingConfig<AddressStorage> = {
     updatePostalAddress: {
       enabled: true,
       getEntityId: (args) => args[0], // Address ID
-      getHostEntityId: (args, result, beforeState) => result?.contactId || beforeState?.contactId, // Contact ID is the host
+      getHostEntityId: async (args, result, beforeState) => {
+        const contactId = result?.contactId || beforeState?.contactId;
+        return await getParentEntityForContact(contactId);
+      },
       before: async (args, storage) => {
         return await storage.getPostalAddress(args[0]); // Current state
       },
@@ -277,7 +315,10 @@ export const addressLoggingConfig: StorageLoggingConfig<AddressStorage> = {
     deletePostalAddress: {
       enabled: true,
       getEntityId: (args) => args[0], // Address ID
-      getHostEntityId: (args, result, beforeState) => beforeState?.contactId, // Contact ID is the host
+      getHostEntityId: async (args, result, beforeState) => {
+        const contactId = beforeState?.contactId;
+        return await getParentEntityForContact(contactId);
+      },
       before: async (args, storage) => {
         return await storage.getPostalAddress(args[0]); // Capture what's being deleted
       },
@@ -289,7 +330,10 @@ export const addressLoggingConfig: StorageLoggingConfig<AddressStorage> = {
     setAddressAsPrimary: {
       enabled: true,
       getEntityId: (args) => args[0], // Address ID
-      getHostEntityId: (args, result, beforeState) => result?.contactId || beforeState?.contactId, // Contact ID is the host
+      getHostEntityId: async (args, result, beforeState) => {
+        const contactId = result?.contactId || beforeState?.contactId;
+        return await getParentEntityForContact(contactId);
+      },
       before: async (args, storage) => {
         return await storage.getPostalAddress(args[0]); // Current state
       },
@@ -355,6 +399,7 @@ function calculatePhoneNumberChanges(before: any, after: any): Record<string, { 
  * Logging configuration for phone number storage operations
  * 
  * Logs all phone number mutations with full argument capture and change tracking.
+ * Associates logs with parent entity (trust provider or employer) when applicable.
  */
 export const phoneNumberLoggingConfig: StorageLoggingConfig<PhoneNumberStorage> = {
   module: 'contacts.phoneNumbers',
@@ -362,7 +407,10 @@ export const phoneNumberLoggingConfig: StorageLoggingConfig<PhoneNumberStorage> 
     createPhoneNumber: {
       enabled: true,
       getEntityId: (args) => args[0]?.contactId || 'new phone',
-      getHostEntityId: (args, result) => result?.contactId || args[0]?.contactId, // Contact ID is the host
+      getHostEntityId: async (args, result) => {
+        const contactId = result?.contactId || args[0]?.contactId;
+        return await getParentEntityForContact(contactId);
+      },
       after: async (args, result, storage) => {
         return result; // Capture created phone number
       },
@@ -374,7 +422,10 @@ export const phoneNumberLoggingConfig: StorageLoggingConfig<PhoneNumberStorage> 
     updatePhoneNumber: {
       enabled: true,
       getEntityId: (args) => args[0], // Phone number ID
-      getHostEntityId: (args, result, beforeState) => result?.contactId || beforeState?.contactId, // Contact ID is the host
+      getHostEntityId: async (args, result, beforeState) => {
+        const contactId = result?.contactId || beforeState?.contactId;
+        return await getParentEntityForContact(contactId);
+      },
       before: async (args, storage) => {
         return await storage.getPhoneNumber(args[0]); // Current state
       },
@@ -397,7 +448,10 @@ export const phoneNumberLoggingConfig: StorageLoggingConfig<PhoneNumberStorage> 
     deletePhoneNumber: {
       enabled: true,
       getEntityId: (args) => args[0], // Phone number ID
-      getHostEntityId: (args, result, beforeState) => beforeState?.contactId, // Contact ID is the host
+      getHostEntityId: async (args, result, beforeState) => {
+        const contactId = beforeState?.contactId;
+        return await getParentEntityForContact(contactId);
+      },
       before: async (args, storage) => {
         return await storage.getPhoneNumber(args[0]); // Capture what's being deleted
       },
@@ -409,7 +463,10 @@ export const phoneNumberLoggingConfig: StorageLoggingConfig<PhoneNumberStorage> 
     setPhoneNumberAsPrimary: {
       enabled: true,
       getEntityId: (args) => args[0], // Phone number ID
-      getHostEntityId: (args, result, beforeState) => result?.contactId || beforeState?.contactId, // Contact ID is the host
+      getHostEntityId: async (args, result, beforeState) => {
+        const contactId = result?.contactId || beforeState?.contactId;
+        return await getParentEntityForContact(contactId);
+      },
       before: async (args, storage) => {
         return await storage.getPhoneNumber(args[0]); // Current state
       },
