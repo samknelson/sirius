@@ -394,7 +394,7 @@ export function registerTrustProviderContactRoutes(
             userId: user.id,
             roleId,
           });
-          const role = await storage.getRole(roleId);
+          const role = await storage.users.getRole(roleId);
           if (role) {
             rolesAssigned.push(role.name);
           }
@@ -409,7 +409,7 @@ export function registerTrustProviderContactRoutes(
             userId: user.id,
             roleId,
           });
-          const role = await storage.getRole(roleId);
+          const role = await storage.users.getRole(roleId);
           if (role) {
             rolesAssigned.push(role.name);
           }
