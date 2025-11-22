@@ -70,6 +70,25 @@ export function registerLedgerAccountRoutes(app: Express) {
     }
   });
 
+  // PATCH /api/ledger/accounts/:id - Update account data field only
+  app.patch("/api/ledger/accounts/:id", requireAccess(policies.ledgerStaff), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { data } = req.body;
+      
+      const account = await storage.ledger.accounts.update(id, { data });
+      
+      if (!account) {
+        res.status(404).json({ message: "Ledger account not found" });
+        return;
+      }
+      
+      res.json(account);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update ledger account settings" });
+    }
+  });
+
   // DELETE /api/ledger/accounts/:id - Delete a ledger account
   app.delete("/api/ledger/accounts/:id", requireAccess(policies.ledgerStaff), async (req, res) => {
     try {
