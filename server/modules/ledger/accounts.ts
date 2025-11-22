@@ -86,4 +86,24 @@ export function registerLedgerAccountRoutes(app: Express) {
       res.status(500).json({ message: "Failed to delete ledger account" });
     }
   });
+
+  // GET /api/ledger/accounts/:id/transactions - Get ledger entries for an account
+  app.get("/api/ledger/accounts/:id/transactions", requireAccess(policies.ledgerStaff), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Check if account exists
+      const account = await storage.ledger.accounts.get(id);
+      if (!account) {
+        res.status(404).json({ message: "Ledger account not found" });
+        return;
+      }
+
+      // Get all transactions for this account
+      const transactions = await storage.ledger.entries.getByAccountId(id);
+      res.json(transactions);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch ledger transactions" });
+    }
+  });
 }
