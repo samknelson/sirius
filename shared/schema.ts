@@ -297,6 +297,16 @@ export const ledgerEa = pgTable("ledger_ea", {
   uniqueAccountEntity: unique().on(table.accountId, table.entityId),
 }));
 
+export const ledger = pgTable("ledger", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  eaId: varchar("ea_id").notNull().references(() => ledgerEa.id, { onDelete: 'cascade' }),
+  referenceType: varchar("reference_type"),
+  referenceId: varchar("reference_id"),
+  memo: text("memo"),
+  data: jsonb("data"),
+});
+
 export const wizards = pgTable("wizards", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   date: timestamp("date").default(sql`now()`).notNull(),
@@ -495,6 +505,13 @@ export const insertLedgerEaSchema = createInsertSchema(ledgerEa).omit({
 
 export type InsertLedgerEa = z.infer<typeof insertLedgerEaSchema>;
 export type SelectLedgerEa = typeof ledgerEa.$inferSelect;
+
+export const insertLedgerSchema = createInsertSchema(ledger).omit({
+  id: true,
+});
+
+export type InsertLedger = z.infer<typeof insertLedgerSchema>;
+export type Ledger = typeof ledger.$inferSelect;
 
 export const insertWizardSchema = createInsertSchema(wizards).omit({
   id: true,
