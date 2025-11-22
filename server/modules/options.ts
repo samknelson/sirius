@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { storage } from "../storage";
-import { insertWorkerWsSchema, updateWorkerWsSchema, insertEmploymentStatusSchema, updateEmploymentStatusSchema, insertTrustBenefitTypeSchema } from "@shared/schema";
+import { insertWorkerWsSchema, updateWorkerWsSchema, insertEmploymentStatusSchema, updateEmploymentStatusSchema, insertTrustBenefitTypeSchema, insertTrustProviderTypeSchema } from "@shared/schema";
 import { requireAccess } from "../accessControl";
 import { policies } from "../policies";
 
@@ -222,6 +222,110 @@ export function registerOptionsRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete employer contact type" });
+    }
+  });
+
+  // Provider Contact Type routes
+
+  // GET /api/provider-contact-types - Get all provider contact types (requires admin permission)
+  app.get("/api/provider-contact-types", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const contactTypes = await storage.options.trustProviderTypes.getAll();
+      res.json(contactTypes);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch provider contact types" });
+    }
+  });
+
+  // GET /api/provider-contact-types/:id - Get a specific provider contact type (requires admin permission)
+  app.get("/api/provider-contact-types/:id", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const contactType = await storage.options.trustProviderTypes.get(id);
+      
+      if (!contactType) {
+        res.status(404).json({ message: "Provider contact type not found" });
+        return;
+      }
+      
+      res.json(contactType);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch provider contact type" });
+    }
+  });
+
+  // POST /api/provider-contact-types - Create a new provider contact type (requires admin permission)
+  app.post("/api/provider-contact-types", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { name, description } = req.body;
+      
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ message: "Name is required" });
+      }
+      
+      const contactType = await storage.options.trustProviderTypes.create({
+        name: name.trim(),
+        description: description && typeof description === 'string' ? description.trim() : null,
+      });
+      
+      res.status(201).json(contactType);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to create provider contact type" });
+    }
+  });
+
+  // PUT /api/provider-contact-types/:id - Update a provider contact type (requires admin permission)
+  app.put("/api/provider-contact-types/:id", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, description } = req.body;
+      
+      const updates: any = {};
+      
+      if (name !== undefined) {
+        if (typeof name !== 'string' || !name.trim()) {
+          return res.status(400).json({ message: "Name must be a non-empty string" });
+        }
+        updates.name = name.trim();
+      }
+      
+      if (description !== undefined) {
+        if (description === null || description === '') {
+          updates.description = null;
+        } else if (typeof description === 'string') {
+          updates.description = description.trim();
+        } else {
+          return res.status(400).json({ message: "Description must be a string or null" });
+        }
+      }
+      
+      const contactType = await storage.options.trustProviderTypes.update(id, updates);
+      
+      if (!contactType) {
+        res.status(404).json({ message: "Provider contact type not found" });
+        return;
+      }
+      
+      res.json(contactType);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to update provider contact type" });
+    }
+  });
+
+  // DELETE /api/provider-contact-types/:id - Delete a provider contact type (requires admin permission)
+  app.delete("/api/provider-contact-types/:id", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id} = req.params;
+      const deleted = await storage.options.trustProviderTypes.delete(id);
+      
+      if (!deleted) {
+        res.status(404).json({ message: "Provider contact type not found" });
+        return;
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete provider contact type" });
     }
   });
 

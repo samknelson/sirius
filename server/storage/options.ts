@@ -5,6 +5,7 @@ import {
   optionsTrustBenefitType, 
   optionsLedgerPaymentType,
   optionsEmployerContactType,
+  optionsTrustProviderType,
   optionsWorkerWs,
   optionsEmploymentStatus,
   type GenderOption, 
@@ -17,6 +18,8 @@ import {
   type InsertLedgerPaymentType,
   type EmployerContactType,
   type InsertEmployerContactType,
+  type TrustProviderType,
+  type InsertTrustProviderType,
   type WorkerWs,
   type InsertWorkerWs,
   type EmploymentStatus,
@@ -68,6 +71,14 @@ export interface EmployerContactTypeStorage {
   delete(id: string): Promise<boolean>;
 }
 
+export interface TrustProviderTypeStorage {
+  getAll(): Promise<TrustProviderType[]>;
+  get(id: string): Promise<TrustProviderType | undefined>;
+  create(providerType: InsertTrustProviderType): Promise<TrustProviderType>;
+  update(id: string, providerType: Partial<InsertTrustProviderType>): Promise<TrustProviderType | undefined>;
+  delete(id: string): Promise<boolean>;
+}
+
 export interface WorkerWsStorage {
   getAll(): Promise<WorkerWs[]>;
   get(id: string): Promise<WorkerWs | undefined>;
@@ -92,6 +103,7 @@ export interface OptionsStorage {
   trustBenefitTypes: TrustBenefitTypeStorage;
   ledgerPaymentTypes: LedgerPaymentTypeStorage;
   employerContactTypes: EmployerContactTypeStorage;
+  trustProviderTypes: TrustProviderTypeStorage;
   workerWs: WorkerWsStorage;
   employmentStatus: EmploymentStatusStorage;
 }
@@ -275,6 +287,39 @@ export function createOptionsStorage(): OptionsStorage {
 
       async delete(id: string): Promise<boolean> {
         const result = await db.delete(optionsEmployerContactType).where(eq(optionsEmployerContactType.id, id)).returning();
+        return result.length > 0;
+      }
+    },
+
+    trustProviderTypes: {
+      async getAll(): Promise<TrustProviderType[]> {
+        return db.select().from(optionsTrustProviderType);
+      },
+
+      async get(id: string): Promise<TrustProviderType | undefined> {
+        const [providerType] = await db.select().from(optionsTrustProviderType).where(eq(optionsTrustProviderType.id, id));
+        return providerType || undefined;
+      },
+
+      async create(insertProviderType: InsertTrustProviderType): Promise<TrustProviderType> {
+        const [providerType] = await db
+          .insert(optionsTrustProviderType)
+          .values(insertProviderType)
+          .returning();
+        return providerType;
+      },
+
+      async update(id: string, providerTypeUpdate: Partial<InsertTrustProviderType>): Promise<TrustProviderType | undefined> {
+        const [providerType] = await db
+          .update(optionsTrustProviderType)
+          .set(providerTypeUpdate)
+          .where(eq(optionsTrustProviderType.id, id))
+          .returning();
+        return providerType || undefined;
+      },
+
+      async delete(id: string): Promise<boolean> {
+        const result = await db.delete(optionsTrustProviderType).where(eq(optionsTrustProviderType.id, id)).returning();
         return result.length > 0;
       }
     },

@@ -92,6 +92,13 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       testId: "nav-config-trust-benefit-types",
       permission: "admin",
     },
+    {
+      path: "/config/provider-contact-types",
+      label: "Provider Contact Types",
+      icon: List,
+      testId: "nav-config-provider-contact-types",
+      permission: "admin",
+    },
   ];
 
   const themeItems = [
