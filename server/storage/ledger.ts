@@ -366,6 +366,11 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
     },
 
     async getTransactions(filter: { accountId: string } | { eaId: string }): Promise<LedgerEntryWithDetails[]> {
+      const refEmployers = employers.as('ref_employers');
+      const refTrustProviders = trustProviders.as('ref_trust_providers');
+      const refWorkers = workers.as('ref_workers');
+      const refContacts = contacts.as('ref_contacts');
+
       const query = db
         .select({
           entry: ledger,
@@ -376,6 +381,10 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
           workerSiriusId: workers.siriusId,
           workerContact: contacts,
           payment: ledgerPayments,
+          refEmployer: refEmployers,
+          refTrustProvider: refTrustProviders,
+          refWorkerSiriusId: refWorkers.siriusId,
+          refWorkerContact: refContacts,
         })
         .from(ledger)
         .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
@@ -414,6 +423,34 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
             eq(ledger.referenceType, 'payment'),
             eq(ledger.referenceId, ledgerPayments.id)
           )
+        )
+        .leftJoin(
+          refEmployers,
+          and(
+            eq(ledger.referenceType, 'employer'),
+            eq(ledger.referenceId, refEmployers.id)
+          )
+        )
+        .leftJoin(
+          refTrustProviders,
+          and(
+            eq(ledger.referenceType, 'trustProvider'),
+            eq(ledger.referenceId, refTrustProviders.id)
+          )
+        )
+        .leftJoin(
+          refWorkers,
+          and(
+            eq(ledger.referenceType, 'worker'),
+            eq(ledger.referenceId, refWorkers.id)
+          )
+        )
+        .leftJoin(
+          refContacts,
+          and(
+            eq(ledger.referenceType, 'worker'),
+            eq(refWorkers.contactId, refContacts.id)
+          )
         );
 
       const whereClause = 'accountId' in filter
@@ -451,8 +488,21 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
             } else {
               referenceName = `Payment: $${amount}`;
             }
+          } else if (row.entry.referenceType === 'employer' && row.refEmployer) {
+            referenceName = `Employer: ${row.refEmployer.name}`;
+          } else if (row.entry.referenceType === 'trustProvider' && row.refTrustProvider) {
+            referenceName = `Trust Provider: ${row.refTrustProvider.name}`;
+          } else if (row.entry.referenceType === 'worker') {
+            if (row.refWorkerContact) {
+              referenceName = `Worker: ${row.refWorkerContact.given} ${row.refWorkerContact.family}`;
+            } else if (row.refWorkerSiriusId) {
+              referenceName = `Worker #${row.refWorkerSiriusId}`;
+            } else {
+              referenceName = `Worker (${row.entry.referenceId.substring(0, 8)}...)`;
+            }
           } else if (row.entry.referenceType && row.entry.referenceId) {
-            referenceName = `${row.entry.referenceType} ${row.entry.referenceId.substring(0, 8)}`;
+            const capitalizedType = row.entry.referenceType.charAt(0).toUpperCase() + row.entry.referenceType.slice(1);
+            referenceName = `${capitalizedType} (${row.entry.referenceId.substring(0, 8)}...)`;
           }
 
           return {

@@ -17,10 +17,12 @@ interface LedgerEntryWithDetails {
   eaId: string;
   referenceType: string | null;
   referenceId: string | null;
+  referenceName: string | null;
   entityType: string;
   entityId: string;
   entityName: string | null;
   eaAccountId: string;
+  eaAccountName: string | null;
 }
 
 type SortField = "amount" | "date" | "entityName" | "description";
@@ -195,8 +197,8 @@ export function LedgerTransactionsView({ queryKey, title, csvFilename }: LedgerT
       "Entity Name": transaction.entityName || "",
       Description: transaction.description || "",
       "Reference Type": transaction.referenceType || "",
-      "Reference ID": transaction.referenceId || "",
-      "EA Account ID": transaction.eaAccountId,
+      "Reference": transaction.referenceName || "",
+      "EA Account": transaction.eaAccountName || "",
       "Transaction ID": transaction.id,
     }));
 
@@ -209,8 +211,8 @@ export function LedgerTransactionsView({ queryKey, title, csvFilename }: LedgerT
         "Entity Name",
         "Description",
         "Reference Type",
-        "Reference ID",
-        "EA Account ID",
+        "Reference",
+        "EA Account",
         "Transaction ID",
       ],
     });
@@ -457,7 +459,7 @@ export function LedgerTransactionsView({ queryKey, title, csvFilename }: LedgerT
                   </Button>
                 </TableHead>
                 <TableHead>Reference Type</TableHead>
-                <TableHead>Reference ID</TableHead>
+                <TableHead>Reference</TableHead>
                 <TableHead>EA Account</TableHead>
               </TableRow>
             </TableHeader>
@@ -498,11 +500,11 @@ export function LedgerTransactionsView({ queryKey, title, csvFilename }: LedgerT
                     <TableCell data-testid={`cell-reference-type-${transaction.id}`}>
                       {transaction.referenceType || "—"}
                     </TableCell>
-                    <TableCell data-testid={`cell-reference-id-${transaction.id}`}>
-                      {transaction.referenceId || "—"}
+                    <TableCell data-testid={`cell-reference-${transaction.id}`}>
+                      {transaction.referenceName || "—"}
                     </TableCell>
                     <TableCell data-testid={`cell-ea-account-${transaction.id}`}>
-                      {transaction.eaAccountId || "—"}
+                      {transaction.eaAccountName || "—"}
                     </TableCell>
                   </TableRow>
                 ))
