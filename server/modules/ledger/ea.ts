@@ -97,4 +97,24 @@ export function registerLedgerEaRoutes(app: Express) {
       res.status(500).json({ message: "Failed to delete ledger EA entry" });
     }
   });
+
+  // GET /api/ledger/ea/:id/transactions - Get ledger entries for an EA
+  app.get("/api/ledger/ea/:id/transactions", requireAccess(policies.ledgerStaff), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Check if EA exists
+      const ea = await storage.ledger.ea.get(id);
+      if (!ea) {
+        res.status(404).json({ message: "Ledger EA entry not found" });
+        return;
+      }
+
+      // Get all transactions for this EA
+      const transactions = await storage.ledger.entries.getTransactions({ eaId: id });
+      res.json(transactions);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch ledger transactions" });
+    }
+  });
 }

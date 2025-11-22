@@ -63,6 +63,7 @@ export interface LedgerEntryStorage {
   get(id: string): Promise<Ledger | undefined>;
   getByEaId(eaId: string): Promise<Ledger[]>;
   getByReference(referenceType: string, referenceId: string): Promise<Ledger[]>;
+  getTransactions(filter: { accountId: string } | { eaId: string }): Promise<LedgerEntryWithDetails[]>;
   getByAccountId(accountId: string): Promise<LedgerEntryWithDetails[]>;
   create(entry: InsertLedger): Promise<Ledger>;
   update(id: string, entry: Partial<InsertLedger>): Promise<Ledger | undefined>;
@@ -362,8 +363,8 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         ));
     },
 
-    async getByAccountId(accountId: string): Promise<LedgerEntryWithDetails[]> {
-      const results = await db
+    async getTransactions(filter: { accountId: string } | { eaId: string }): Promise<LedgerEntryWithDetails[]> {
+      const query = db
         .select({
           entry: ledger,
           ea: ledgerEa,
@@ -401,12 +402,17 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
             eq(ledgerEa.entityType, 'worker'),
             eq(workers.contactId, contacts.id)
           )
-        )
-        .where(eq(ledgerEa.accountId, accountId))
+        );
+
+      const whereClause = 'accountId' in filter
+        ? eq(ledgerEa.accountId, filter.accountId)
+        : eq(ledger.eaId, filter.eaId);
+
+      const results = await query
+        .where(whereClause)
         .orderBy(desc(ledger.date), desc(ledger.id));
 
       return results.map(row => {
-          // Determine entity name based on entity type
           let entityName: string | null = null;
           const entityType = row.ea.entityType;
           const entityId = row.ea.entityId;
@@ -419,11 +425,9 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
             if (row.workerContact) {
               entityName = `${row.workerContact.given} ${row.workerContact.family}`;
             } else if (row.workerSiriusId) {
-              // Fallback to worker ID if contact is missing
               entityName = `Worker #${row.workerSiriusId}`;
             }
           } else {
-            // Fallback for other entity types not explicitly handled
             entityName = `${entityType} ${entityId.substring(0, 8)}`;
           }
 
@@ -435,6 +439,10 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
             eaAccountId: row.ea.accountId,
           };
         });
+    },
+
+    async getByAccountId(accountId: string): Promise<LedgerEntryWithDetails[]> {
+      return this.getTransactions({ accountId });
     },
 
     async create(insertEntry: InsertLedger): Promise<Ledger> {
