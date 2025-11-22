@@ -271,6 +271,7 @@ export const ledgerAccounts = pgTable("ledger_accounts", {
   name: text("name").notNull(),
   description: text("description"),
   isActive: boolean("is_active").default(true).notNull(),
+  data: jsonb("data"),
 });
 
 export const ledgerPayments = pgTable("ledger_payments", {
