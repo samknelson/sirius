@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledger, employers } from "@shared/schema";
+import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledger, employers, workers } from "@shared/schema";
 import type { 
   LedgerAccount, 
   InsertLedgerAccount,
@@ -63,10 +63,18 @@ export interface LedgerEntryStorage {
   get(id: string): Promise<Ledger | undefined>;
   getByEaId(eaId: string): Promise<Ledger[]>;
   getByReference(referenceType: string, referenceId: string): Promise<Ledger[]>;
+  getByAccountId(accountId: string): Promise<LedgerEntryWithDetails[]>;
   create(entry: InsertLedger): Promise<Ledger>;
   update(id: string, entry: Partial<InsertLedger>): Promise<Ledger | undefined>;
   delete(id: string): Promise<boolean>;
   deleteByReference(referenceType: string, referenceId: string): Promise<number>;
+}
+
+export interface LedgerEntryWithDetails extends Ledger {
+  entityType: string;
+  entityId: string;
+  entityName: string | null;
+  eaAccountId: string;
 }
 
 export interface LedgerStorage {
@@ -352,6 +360,42 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
           eq(ledger.referenceType, referenceType),
           eq(ledger.referenceId, referenceId)
         ));
+    },
+
+    async getByAccountId(accountId: string): Promise<LedgerEntryWithDetails[]> {
+      const results = await db
+        .select({
+          entry: ledger,
+          ea: ledgerEa,
+          employer: employers,
+          workerId: workers.id,
+        })
+        .from(ledger)
+        .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+        .leftJoin(
+          employers,
+          and(
+            eq(ledgerEa.entityType, 'employer'),
+            eq(ledgerEa.entityId, employers.id)
+          )
+        )
+        .leftJoin(
+          workers,
+          and(
+            eq(ledgerEa.entityType, 'worker'),
+            eq(ledgerEa.entityId, workers.id)
+          )
+        )
+        .where(eq(ledgerEa.accountId, accountId))
+        .orderBy(desc(ledger.date), desc(ledger.id));
+
+      return results.map(row => ({
+        ...row.entry,
+        entityType: row.ea.entityType,
+        entityId: row.ea.entityId,
+        entityName: row.employer?.name || (row.workerId ? 'Worker' : null),
+        eaAccountId: row.ea.accountId,
+      }));
     },
 
     async create(insertEntry: InsertLedger): Promise<Ledger> {
