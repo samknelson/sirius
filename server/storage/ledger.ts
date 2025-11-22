@@ -76,6 +76,7 @@ export interface LedgerEntryWithDetails extends Ledger {
   entityId: string;
   entityName: string | null;
   eaAccountId: string;
+  referenceName: string | null;
 }
 
 export interface LedgerStorage {
@@ -372,6 +373,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
           trustProvider: trustProviders,
           workerSiriusId: workers.siriusId,
           workerContact: contacts,
+          payment: ledgerPayments,
         })
         .from(ledger)
         .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
@@ -402,6 +404,13 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
             eq(ledgerEa.entityType, 'worker'),
             eq(workers.contactId, contacts.id)
           )
+        )
+        .leftJoin(
+          ledgerPayments,
+          and(
+            eq(ledger.referenceType, 'payment'),
+            eq(ledger.referenceId, ledgerPayments.id)
+          )
         );
 
       const whereClause = 'accountId' in filter
@@ -431,12 +440,25 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
             entityName = `${entityType} ${entityId.substring(0, 8)}`;
           }
 
+          let referenceName: string | null = null;
+          if (row.entry.referenceType === 'payment' && row.payment) {
+            const amount = parseFloat(row.payment.amount).toFixed(2);
+            if (row.payment.memo) {
+              referenceName = `Payment: $${amount} - ${row.payment.memo}`;
+            } else {
+              referenceName = `Payment: $${amount}`;
+            }
+          } else if (row.entry.referenceType && row.entry.referenceId) {
+            referenceName = `${row.entry.referenceType} ${row.entry.referenceId.substring(0, 8)}`;
+          }
+
           return {
             ...row.entry,
             entityType,
             entityId,
             entityName,
             eaAccountId: row.ea.accountId,
+            referenceName,
           };
         });
     },
