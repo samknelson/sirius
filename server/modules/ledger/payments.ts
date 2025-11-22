@@ -81,10 +81,17 @@ export function registerLedgerPaymentRoutes(app: Express) {
       
       res.status(201).json(payment);
     } catch (error) {
+      console.error("Error creating payment:", error);
       if (error instanceof Error && error.name === "ZodError") {
-        res.status(400).json({ message: "Invalid payment data" });
+        res.status(400).json({ 
+          message: "Invalid payment data", 
+          error: error.message 
+        });
       } else {
-        res.status(500).json({ message: "Failed to create payment" });
+        res.status(500).json({ 
+          message: "Failed to create payment", 
+          error: error instanceof Error ? error.message : "Unknown error" 
+        });
       }
     }
   });
@@ -115,10 +122,17 @@ export function registerLedgerPaymentRoutes(app: Express) {
       
       res.json(payment);
     } catch (error) {
+      console.error("Error updating payment:", error);
       if (error instanceof Error && error.name === "ZodError") {
-        res.status(400).json({ message: "Invalid payment data" });
+        res.status(400).json({ 
+          message: "Invalid payment data", 
+          error: error.message 
+        });
       } else {
-        res.status(500).json({ message: "Failed to update payment" });
+        res.status(500).json({ 
+          message: "Failed to update payment", 
+          error: error instanceof Error ? error.message : "Unknown error" 
+        });
       }
     }
   });
