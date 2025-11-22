@@ -4,6 +4,7 @@ import { insertContactSchema, type InsertContact } from "@shared/schema";
 import { requireAccess } from "../accessControl";
 import { policies } from "../policies";
 import { z } from "zod";
+import { storageLogger } from "../logger";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -301,6 +302,7 @@ export function registerTrustProviderContactRoutes(
       
       // Check if user already exists
       let user = await storage.users.getUserByEmail(providerContact.contact.email);
+      const isNewUser = !user;
       
       if (!user) {
         // Create new user
@@ -311,18 +313,79 @@ export function registerTrustProviderContactRoutes(
           isActive: isActive !== undefined ? isActive : true,
           accountStatus: 'active',
         });
+        
+        // Log user creation for trust provider
+        storageLogger.info('Storage operation: trust-provider-user.create', {
+          module: 'trust-provider-contacts',
+          operation: 'createUser',
+          entity_id: user.email,
+          host_entity_id: providerContact.providerId,
+          description: `Created user account "${user.email}" for trust provider contact "${providerContact.contact.displayName}"`,
+          meta: {
+            userId: user.id,
+            contactId: providerContact.id,
+            providerId: providerContact.providerId,
+            after: {
+              email: user.email,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              isActive: user.isActive,
+              accountStatus: user.accountStatus,
+            }
+          }
+        });
       } else {
+        const beforeState = {
+          firstName: user.firstName,
+          lastName: user.lastName,
+          isActive: user.isActive,
+        };
+        
         // Update existing user
         await storage.users.updateUser(user.id, {
           firstName: firstName !== undefined ? firstName : user.firstName,
           lastName: lastName !== undefined ? lastName : user.lastName,
           isActive: isActive !== undefined ? isActive : user.isActive,
         });
+        
+        // Log user update for trust provider
+        const changes: Record<string, { from: any; to: any }> = {};
+        if (firstName !== undefined && firstName !== beforeState.firstName) {
+          changes.firstName = { from: beforeState.firstName, to: firstName };
+        }
+        if (lastName !== undefined && lastName !== beforeState.lastName) {
+          changes.lastName = { from: beforeState.lastName, to: lastName };
+        }
+        if (isActive !== undefined && isActive !== beforeState.isActive) {
+          changes.isActive = { from: beforeState.isActive, to: isActive };
+        }
+        
+        if (Object.keys(changes).length > 0) {
+          const changedFields = Object.keys(changes).join(', ');
+          storageLogger.info('Storage operation: trust-provider-user.update', {
+            module: 'trust-provider-contacts',
+            operation: 'updateUser',
+            entity_id: user.email,
+            host_entity_id: providerContact.providerId,
+            description: `Updated user account "${user.email}" for trust provider contact "${providerContact.contact.displayName}" (changed: ${changedFields})`,
+            meta: {
+              userId: user.id,
+              contactId: providerContact.id,
+              providerId: providerContact.providerId,
+              before: beforeState,
+              changes,
+            }
+          });
+        }
       }
       
       // Get user's current roles
       const currentRoles = await storage.users.getUserRoles(user.id);
       const currentRoleIds = currentRoles.map(r => r.id);
+      
+      // Track roles assigned/removed for logging
+      const rolesAssigned: string[] = [];
+      const rolesRemoved: string[] = [];
       
       // Assign all required roles (idempotent)
       for (const roleId of requiredRoleIds) {
@@ -331,6 +394,10 @@ export function registerTrustProviderContactRoutes(
             userId: user.id,
             roleId,
           });
+          const role = await storage.getRole(roleId);
+          if (role) {
+            rolesAssigned.push(role.name);
+          }
         }
       }
       
@@ -342,6 +409,10 @@ export function registerTrustProviderContactRoutes(
             userId: user.id,
             roleId,
           });
+          const role = await storage.getRole(roleId);
+          if (role) {
+            rolesAssigned.push(role.name);
+          }
         }
       }
       
@@ -358,7 +429,44 @@ export function registerTrustProviderContactRoutes(
         
         if (isOptional && !isRequired && !isStillSelected) {
           await storage.users.unassignRoleFromUser(user.id, currentRoleId);
+          const role = await storage.getRole(currentRoleId);
+          if (role) {
+            rolesRemoved.push(role.name);
+          }
         }
+      }
+      
+      // Log role changes for trust provider
+      if (rolesAssigned.length > 0) {
+        storageLogger.info('Storage operation: trust-provider-user.assignRoles', {
+          module: 'trust-provider-contacts',
+          operation: 'assignRoles',
+          entity_id: user.email,
+          host_entity_id: providerContact.providerId,
+          description: `Assigned role(s) to "${user.email}" for trust provider contact "${providerContact.contact.displayName}": ${rolesAssigned.join(', ')}`,
+          meta: {
+            userId: user.id,
+            contactId: providerContact.id,
+            providerId: providerContact.providerId,
+            rolesAssigned,
+          }
+        });
+      }
+      
+      if (rolesRemoved.length > 0) {
+        storageLogger.info('Storage operation: trust-provider-user.removeRoles', {
+          module: 'trust-provider-contacts',
+          operation: 'removeRoles',
+          entity_id: user.email,
+          host_entity_id: providerContact.providerId,
+          description: `Removed role(s) from "${user.email}" for trust provider contact "${providerContact.contact.displayName}": ${rolesRemoved.join(', ')}`,
+          meta: {
+            userId: user.id,
+            contactId: providerContact.id,
+            providerId: providerContact.providerId,
+            rolesRemoved,
+          }
+        });
       }
       
       res.json({ 
