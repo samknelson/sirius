@@ -185,6 +185,19 @@ export const employerUserManage: AccessPolicy = {
 };
 
 /**
+ * Trust provider user management policy
+ */
+export const trustProviderUserManage: AccessPolicy = {
+  name: 'Trust Provider User Management',
+  description: 'Requires trustprovider.login component and trustprovider.usermanage permission',
+  requirements: [
+    { type: 'authenticated' },
+    { type: 'component', componentId: 'trustprovider.login' },
+    { type: 'permission', key: 'trustprovider.usermanage' },
+  ],
+};
+
+/**
  * Worker access policy
  * Grants access if user has staff permission, or if they have worker permission
  * and their email matches the worker's contact email
@@ -645,6 +658,7 @@ export const policies = {
   employerUser,
   workersViewOrManage,
   employerUserManage,
+  trustProviderUserManage,
   filesUpload,
   filesRead,
   filesUpdate,
