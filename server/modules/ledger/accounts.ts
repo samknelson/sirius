@@ -118,6 +118,20 @@ export function registerLedgerAccountRoutes(app: Express) {
     }
   });
 
+  // GET /api/ledger/accounts/:id/participants - Get account participants with pagination
+  app.get("/api/ledger/accounts/:id/participants", requireAccess(policies.ledgerStaff), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      const result = await storage.ledger.accounts.getParticipants(id, limit, offset);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch account participants" });
+    }
+  });
+
   // GET /api/ledger/accounts/:id/transactions - Get ledger entries for an account
   app.get("/api/ledger/accounts/:id/transactions", requireAccess(policies.ledgerStaff), async (req, res) => {
     try {

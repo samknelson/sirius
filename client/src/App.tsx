@@ -117,6 +117,7 @@ import LedgerAccountView from "@/pages/config/ledger/account-view";
 import LedgerAccountEdit from "@/pages/config/ledger/account-edit";
 import AccountPayments from "@/pages/config/ledger/account-payments";
 import AccountTransactions from "@/pages/config/ledger/account-transactions";
+import AccountParticipants from "@/pages/account-participants";
 import AccountSettings from "@/pages/config/ledger/account-settings";
 import EaTransactions from "@/pages/config/ledger/ea-transactions";
 import SiteInformation from "@/pages/site-information";
@@ -956,6 +957,14 @@ function Router() {
         <ProtectedRoute policy="ledgerStaff">
           <AuthenticatedLayout>
             <AccountTransactions />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ledger/accounts/:id/participants">
+        <ProtectedRoute policy="ledgerStaff">
+          <AuthenticatedLayout>
+            <AccountParticipants />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

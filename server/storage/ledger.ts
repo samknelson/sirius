@@ -13,17 +13,9 @@ import type {
   Ledger,
   InsertLedger
 } from "@shared/schema";
-import { eq, and, desc, or, isNull, asc } from "drizzle-orm";
+import { eq, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray } from "drizzle-orm";
 import { alias as pgAlias } from "drizzle-orm/pg-core";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
-
-export interface LedgerAccountStorage {
-  getAll(): Promise<LedgerAccount[]>;
-  get(id: string): Promise<LedgerAccount | undefined>;
-  create(account: InsertLedgerAccount): Promise<LedgerAccount>;
-  update(id: string, account: Partial<InsertLedgerAccount>): Promise<LedgerAccount | undefined>;
-  delete(id: string): Promise<boolean>;
-}
 
 export interface StripePaymentMethodStorage {
   getAll(): Promise<LedgerStripePaymentMethod[]>;
@@ -102,6 +94,26 @@ export interface LedgerInvoiceStorage {
   getDetails(eaId: string, month: number, year: number): Promise<InvoiceDetails | undefined>;
 }
 
+export interface AccountParticipant {
+  eaId: string;
+  entityType: string;
+  entityId: string;
+  entityName: string | null;
+  totalBalance: number;
+  firstEntryDate: Date | null;
+  lastEntryDate: Date | null;
+  entryCount: number;
+}
+
+export interface LedgerAccountStorage {
+  getAll(): Promise<LedgerAccount[]>;
+  get(id: string): Promise<LedgerAccount | undefined>;
+  create(account: InsertLedgerAccount): Promise<LedgerAccount>;
+  update(id: string, account: Partial<InsertLedgerAccount>): Promise<LedgerAccount | undefined>;
+  delete(id: string): Promise<boolean>;
+  getParticipants(accountId: string, limit: number, offset: number): Promise<{ data: AccountParticipant[]; total: number }>;
+}
+
 export interface LedgerStorage {
   accounts: LedgerAccountStorage;
   stripePaymentMethods: StripePaymentMethodStorage;
@@ -139,6 +151,115 @@ export function createLedgerAccountStorage(): LedgerAccountStorage {
     async delete(id: string): Promise<boolean> {
       const result = await db.delete(ledgerAccounts).where(eq(ledgerAccounts.id, id));
       return result.rowCount ? result.rowCount > 0 : false;
+    },
+
+    async getParticipants(accountId: string, limit: number, offset: number): Promise<{ data: AccountParticipant[]; total: number }> {
+      // Build aggregation subquery with aliases
+      const participantAgg = db
+        .select({
+          eaId: ledgerEa.id,
+          entityType: ledgerEa.entityType,
+          entityId: ledgerEa.entityId,
+          totalBalance: sum(ledger.amount).as('totalBalance'),
+          firstEntryDate: min(ledger.date).as('firstEntryDate'),
+          lastEntryDate: max(ledger.date).as('lastEntryDate'),
+          entryCount: count(ledger.id).as('entryCount'),
+        })
+        .from(ledgerEa)
+        .innerJoin(ledger, eq(ledger.eaId, ledgerEa.id))
+        .where(eq(ledgerEa.accountId, accountId))
+        .groupBy(ledgerEa.id, ledgerEa.entityType, ledgerEa.entityId)
+        .as('participantAgg');
+
+      // Get total count of EAs with entries
+      const [totalRow] = await db
+        .select({ total: sqlRaw<number>`COUNT(DISTINCT ${ledgerEa.id})` })
+        .from(ledgerEa)
+        .innerJoin(ledger, eq(ledger.eaId, ledgerEa.id))
+        .where(eq(ledgerEa.accountId, accountId));
+      
+      const total = totalRow?.total || 0;
+
+      // Select from subquery with proper ordering by aliases
+      const participants = await db
+        .select({
+          eaId: participantAgg.eaId,
+          entityType: participantAgg.entityType,
+          entityId: participantAgg.entityId,
+          totalBalance: participantAgg.totalBalance,
+          firstEntryDate: participantAgg.firstEntryDate,
+          lastEntryDate: participantAgg.lastEntryDate,
+          entryCount: participantAgg.entryCount,
+        })
+        .from(participantAgg)
+        .orderBy(
+          desc(participantAgg.totalBalance),
+          desc(participantAgg.lastEntryDate),
+          desc(participantAgg.eaId)
+        )
+        .limit(limit)
+        .offset(offset);
+
+      // Batch entity name lookups to avoid N+1 queries
+      const employerIds = participants.filter(p => p.entityType === 'employer').map(p => p.entityId);
+      const workerIds = participants.filter(p => p.entityType === 'worker').map(p => p.entityId);
+      const providerIds = participants.filter(p => p.entityType === 'trust_provider').map(p => p.entityId);
+
+      // Fetch all employers
+      const employersData = employerIds.length > 0
+        ? await db.select({ id: employers.id, name: employers.name })
+            .from(employers)
+            .where(inArray(employers.id, employerIds))
+        : [];
+      const employerMap = new Map(employersData.map(e => [e.id, e.name]));
+
+      // Fetch all workers and their contacts
+      const workersData = workerIds.length > 0
+        ? await db.select({ 
+            id: workers.id, 
+            contactId: workers.contactId,
+            given: contacts.given,
+            family: contacts.family 
+          })
+            .from(workers)
+            .innerJoin(contacts, eq(contacts.id, workers.contactId))
+            .where(inArray(workers.id, workerIds))
+        : [];
+      const workerMap = new Map(workersData.map(w => [w.id, `${w.given} ${w.family}`]));
+
+      // Fetch all trust providers
+      const providersData = providerIds.length > 0
+        ? await db.select({ id: trustProviders.id, name: trustProviders.name })
+            .from(trustProviders)
+            .where(inArray(trustProviders.id, providerIds))
+        : [];
+      const providerMap = new Map(providersData.map(p => [p.id, p.name]));
+
+      // Enrich with entity names using cached lookups
+      const enrichedParticipants = participants.map(p => {
+        let entityName: string | null = null;
+        
+        if (p.entityType === 'employer') {
+          entityName = employerMap.get(p.entityId) || null;
+        } else if (p.entityType === 'worker') {
+          entityName = workerMap.get(p.entityId) || null;
+        } else if (p.entityType === 'trust_provider') {
+          entityName = providerMap.get(p.entityId) || null;
+        }
+
+        return {
+          eaId: p.eaId,
+          entityType: p.entityType,
+          entityId: p.entityId,
+          entityName,
+          totalBalance: Number(p.totalBalance ?? 0),
+          firstEntryDate: p.firstEntryDate ?? null,
+          lastEntryDate: p.lastEntryDate ?? null,
+          entryCount: Number(p.entryCount ?? 0),
+        };
+      });
+
+      return { data: enrichedParticipants, total };
     }
   };
 }

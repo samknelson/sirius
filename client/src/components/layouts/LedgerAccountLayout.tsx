@@ -34,7 +34,7 @@ export function useLedgerAccountLayout() {
 }
 
 interface LedgerAccountLayoutProps {
-  activeTab: "view" | "edit" | "payments" | "transactions" | "settings";
+  activeTab: "view" | "edit" | "payments" | "transactions" | "participants" | "settings";
   children: ReactNode;
 }
 
@@ -146,6 +146,7 @@ export function LedgerAccountLayout({ activeTab, children }: LedgerAccountLayout
     { id: "edit", label: "Edit", href: `/ledger/accounts/${account.id}/edit` },
     { id: "payments", label: "Payments", href: `/ledger/accounts/${account.id}/payments` },
     { id: "transactions", label: "Transactions", href: `/ledger/accounts/${account.id}/transactions` },
+    { id: "participants", label: "Participants", href: `/ledger/accounts/${account.id}/participants` },
     { id: "settings", label: "Settings", href: `/ledger/accounts/${account.id}/settings` },
   ];
 
