@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, ChevronRight, Clock, BarChart3 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -23,6 +24,7 @@ interface WizardType {
   description?: string;
   isFeed?: boolean;
   entityType?: string;
+  category?: string;
 }
 
 export default function Reports() {
@@ -39,6 +41,10 @@ export default function Reports() {
   });
 
   const reportWizards = allWizards?.filter(w => w.type.startsWith('report_')) || [];
+
+  // Get unique categories
+  const categories = Array.from(new Set(reportTypes.map(rt => rt.category).filter(Boolean))) as string[];
+  const defaultCategory = categories[0] || 'All';
 
   // Group reports by type
   const reportsByType = reportTypes.map(reportType => {
@@ -95,8 +101,22 @@ export default function Reports() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2">
-          {reportsByType.map(({ type, count, mostRecent }) => (
+        <Tabs defaultValue={defaultCategory} className="w-full">
+          <TabsList className="mb-6">
+            {categories.map(category => (
+              <TabsTrigger key={category} value={category} data-testid={`tab-${category.toLowerCase()}`}>
+                {category}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          {categories.map(category => {
+            const categoryReports = reportsByType.filter(({ type }) => type.category === category);
+            
+            return (
+              <TabsContent key={category} value={category}>
+                <div className="grid gap-6 md:grid-cols-2">
+                  {categoryReports.map(({ type, count, mostRecent }) => (
             <Card 
               key={type.name}
               className="hover:shadow-md transition-shadow"
@@ -181,8 +201,12 @@ export default function Reports() {
                 )}
               </CardContent>
             </Card>
-          ))}
-        </div>
+                  ))}
+                </div>
+              </TabsContent>
+            );
+          })}
+        </Tabs>
       )}
     </div>
   );
