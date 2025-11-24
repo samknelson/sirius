@@ -248,9 +248,6 @@ function InvoiceDetailsModal({ eaId, month, year }: InvoiceDetailsModalProps) {
         <DialogTitle>
           Invoice: {MONTH_NAMES[invoiceDetails.month - 1]} {invoiceDetails.year}
         </DialogTitle>
-        <DialogDescription>
-          Detailed invoice with ledger entries for this month
-        </DialogDescription>
       </DialogHeader>
 
       {invoiceDetails.invoiceHeader && (
