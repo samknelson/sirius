@@ -195,10 +195,7 @@ export default function PermissionsManagement() {
                 <SelectContent>
                   {getAvailablePermissions().map((permission: Permission) => (
                     <SelectItem key={permission.key} value={permission.key}>
-                      <div className="flex items-center gap-2">
-                        <code className="text-xs">{permission.key}</code>
-                        <span className="text-muted-foreground">- {permission.description}</span>
-                      </div>
+                      {permission.key} - {permission.description}
                     </SelectItem>
                   ))}
                 </SelectContent>
