@@ -371,6 +371,8 @@ export function registerUserRoutes(
         res.status(400).json({ message: "Invalid assignment data" });
       } else if (error instanceof Error && error.message.includes("does not exist in the registry")) {
         res.status(400).json({ message: error.message });
+      } else if (error instanceof Error && error.message.includes("duplicate key value")) {
+        res.status(409).json({ message: "This permission is already assigned to this role" });
       } else {
         res.status(500).json({ message: "Failed to assign permission" });
       }

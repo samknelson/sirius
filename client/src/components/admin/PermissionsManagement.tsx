@@ -165,7 +165,10 @@ export default function PermissionsManagement() {
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label>Select Role</Label>
-              <Select value={selectedRoleId} onValueChange={setSelectedRoleId}>
+              <Select value={selectedRoleId} onValueChange={(value) => {
+                setSelectedRoleId(value);
+                setSelectedPermissionKey('');
+              }}>
                 <SelectTrigger data-testid="select-permission-role">
                   <SelectValue placeholder="Choose a role..." />
                 </SelectTrigger>
@@ -181,9 +184,13 @@ export default function PermissionsManagement() {
 
             <div className="space-y-2">
               <Label>Select Permission</Label>
-              <Select value={selectedPermissionKey} onValueChange={setSelectedPermissionKey}>
+              <Select 
+                value={selectedPermissionKey} 
+                onValueChange={setSelectedPermissionKey}
+                disabled={!selectedRoleId}
+              >
                 <SelectTrigger data-testid="select-permission-key">
-                  <SelectValue placeholder="Choose a permission..." />
+                  <SelectValue placeholder={selectedRoleId ? "Choose a permission..." : "Select a role first..."} />
                 </SelectTrigger>
                 <SelectContent>
                   {getAvailablePermissions().map((permission: Permission) => (
