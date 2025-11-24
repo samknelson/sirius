@@ -238,14 +238,6 @@ export default function EmployerLedgerAccounts() {
                       {account?.description && (
                         <p className="text-sm text-muted-foreground mt-1">{account.description}</p>
                       )}
-                      {entry.data && (() => {
-                        const dataString = JSON.stringify(entry.data, null, 2);
-                        return (
-                          <pre className="bg-muted mt-3 p-3 rounded-md overflow-x-auto text-sm">
-                            <code>{dataString}</code>
-                          </pre>
-                        );
-                      })()}
                     </Link>
                     <Button
                       variant="ghost"
