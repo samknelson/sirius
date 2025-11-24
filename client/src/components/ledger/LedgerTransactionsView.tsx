@@ -41,13 +41,13 @@ function getReferenceLink(referenceType: string | null, referenceId: string | nu
   
   switch (referenceType) {
     case "employer":
-      return `/employers/${referenceId}/view`;
+      return `/employers/${referenceId}`;
     case "worker":
-      return `/workers/${referenceId}/view`;
+      return `/workers/${referenceId}`;
     case "trustProvider":
-      return `/trust-providers/${referenceId}/view`;
+      return `/trust/provider/${referenceId}`;
     case "payment":
-      return `/ledger/payments/${referenceId}/view`;
+      return `/ledger/payment/${referenceId}`;
     default:
       return null;
   }
@@ -544,7 +544,7 @@ export function LedgerTransactionsView({ queryKey, title, csvFilename }: LedgerT
                             </Link>
                           ) : null;
                         })()}
-                        <Link href={`/ledger/ea/${transaction.eaId}/view`}>
+                        <Link href={`/ledger/ea/${transaction.eaId}`}>
                           <Button
                             variant="ghost"
                             size="sm"
