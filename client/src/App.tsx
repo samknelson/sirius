@@ -328,6 +328,22 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/reports/workers">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <Reports activeCategory="Workers" />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/reports/employers">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <Reports activeCategory="Employers" />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/reports/:reportType">
         <ProtectedRoute policy="admin">
           <AuthenticatedLayout>

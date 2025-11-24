@@ -4,7 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, ChevronRight, Clock, BarChart3 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -27,7 +26,11 @@ interface WizardType {
   category?: string;
 }
 
-export default function Reports() {
+interface ReportsProps {
+  activeCategory?: string;
+}
+
+export default function Reports({ activeCategory }: ReportsProps = {}) {
   const [, setLocation] = useLocation();
 
   const { data: allWizardTypes, isLoading: typesLoading } = useQuery<WizardType[]>({
@@ -44,7 +47,7 @@ export default function Reports() {
 
   // Get unique categories
   const categories = Array.from(new Set(reportTypes.map(rt => rt.category).filter(Boolean))) as string[];
-  const defaultCategory = categories[0] || 'All';
+  const defaultCategory = activeCategory || categories[0] || 'All';
 
   // Group reports by type
   const reportsByType = reportTypes.map(reportType => {
@@ -62,61 +65,84 @@ export default function Reports() {
   });
 
   const isLoading = typesLoading || wizardsLoading;
+  
+  // Filter reports by active category
+  const categoryReports = reportsByType.filter(({ type }) => type.category === defaultCategory);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-6">
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-            <FileText className="text-primary-foreground" size={20} />
+    <div className="bg-background text-foreground min-h-screen">
+      {/* Header */}
+      <header className="bg-card border-b border-border">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                <FileText className="text-primary-foreground" size={16} />
+              </div>
+              <h1 className="text-xl font-semibold text-foreground" data-testid="text-reports-title">
+                Reports
+              </h1>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-semibold text-foreground" data-testid="text-reports-title">
-              Reports
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Generate and view worker data reports
-            </p>
+        </div>
+      </header>
+
+      {/* Category Tab Navigation */}
+      <div className="bg-card border-b border-border">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center space-x-2 py-3">
+            {categories.map((category) => {
+              const isActive = category === defaultCategory;
+              const categorySlug = category.toLowerCase();
+              return isActive ? (
+                <Button
+                  key={category}
+                  variant="default"
+                  size="sm"
+                  data-testid={`button-reports-${categorySlug}`}
+                >
+                  {category}
+                </Button>
+              ) : (
+                <Link key={category} href={`/reports/${categorySlug}`}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-testid={`button-reports-${categorySlug}`}
+                  >
+                    {category}
+                  </Button>
+                </Link>
+              );
+            })}
           </div>
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="space-y-4">
-          <Skeleton className="h-48 w-full" />
-          <Skeleton className="h-48 w-full" />
-        </div>
-      ) : reportTypes.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                <FileText className="text-muted-foreground" size={32} />
+      {/* Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {isLoading ? (
+          <div className="space-y-4">
+            <Skeleton className="h-48 w-full" />
+            <Skeleton className="h-48 w-full" />
+          </div>
+        ) : reportTypes.length === 0 ? (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center py-12">
+                <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                  <FileText className="text-muted-foreground" size={32} />
+                </div>
+                <h3 className="text-lg font-medium text-foreground mb-2">No Report Types Available</h3>
+                <p className="text-muted-foreground">
+                  No report types have been configured yet
+                </p>
               </div>
-              <h3 className="text-lg font-medium text-foreground mb-2">No Report Types Available</h3>
-              <p className="text-muted-foreground">
-                No report types have been configured yet
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Tabs defaultValue={defaultCategory} className="w-full">
-          <TabsList className="mb-6">
-            {categories.map(category => (
-              <TabsTrigger key={category} value={category} data-testid={`tab-${category.toLowerCase()}`}>
-                {category}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          {categories.map(category => {
-            const categoryReports = reportsByType.filter(({ type }) => type.category === category);
-            
-            return (
-              <TabsContent key={category} value={category}>
-                <div className="grid gap-6 md:grid-cols-2">
-                  {categoryReports.map(({ type, count, mostRecent }) => (
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2">
+            {categoryReports.map(({ type, count, mostRecent }) => (
             <Card 
               key={type.name}
               className="hover:shadow-md transition-shadow"
@@ -201,13 +227,10 @@ export default function Reports() {
                 )}
               </CardContent>
             </Card>
-                  ))}
-                </div>
-              </TabsContent>
-            );
-          })}
-        </Tabs>
-      )}
+            ))}
+          </div>
+        )}
+      </main>
     </div>
   );
 }
