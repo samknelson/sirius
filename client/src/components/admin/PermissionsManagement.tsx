@@ -132,9 +132,11 @@ export default function PermissionsManagement() {
   };
 
   const getAvailablePermissions = (): Permission[] => {
-    const assignedKeys = rolePermissions.map(rp => rp.permissionKey);
-    return permissions.filter(p => !assignedKeys.includes(p.key) || 
-      (selectedRoleId && !getPermissionsForRole(selectedRoleId).includes(p.key)));
+    if (!selectedRoleId) {
+      return permissions;
+    }
+    const rolePermissionKeys = getPermissionsForRole(selectedRoleId);
+    return permissions.filter(p => !rolePermissionKeys.includes(p.key));
   };
 
   if (permissionsLoading || rolesLoading || assignmentsLoading) {
