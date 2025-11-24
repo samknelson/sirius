@@ -154,8 +154,8 @@ export function createLedgerAccountStorage(): LedgerAccountStorage {
     },
 
     async getParticipants(accountId: string, limit: number, offset: number): Promise<{ data: AccountParticipant[]; total: number }> {
-      // Build aggregation subquery with entity name joins for sorting
-      const participantAgg = db
+      // First, get all participants with aggregated data (no pagination yet)
+      const allParticipants = await db
         .select({
           eaId: ledgerEa.id,
           entityType: ledgerEa.entityType,
@@ -164,86 +164,59 @@ export function createLedgerAccountStorage(): LedgerAccountStorage {
           firstEntryDate: min(ledger.date).as('firstEntryDate'),
           lastEntryDate: max(ledger.date).as('lastEntryDate'),
           entryCount: count(ledger.id).as('entryCount'),
-          employerName: employers.name,
-          workerGiven: contacts.given,
-          workerFamily: contacts.family,
-          providerName: trustProviders.name,
         })
         .from(ledgerEa)
         .innerJoin(ledger, eq(ledger.eaId, ledgerEa.id))
-        .leftJoin(employers, and(
-          eq(ledgerEa.entityType, 'employer'),
-          eq(ledgerEa.entityId, employers.id)
-        ))
-        .leftJoin(workers, and(
-          eq(ledgerEa.entityType, 'worker'),
-          eq(ledgerEa.entityId, workers.id)
-        ))
-        .leftJoin(contacts, eq(workers.contactId, contacts.id))
-        .leftJoin(trustProviders, and(
-          eq(ledgerEa.entityType, 'trust_provider'),
-          eq(ledgerEa.entityId, trustProviders.id)
-        ))
         .where(eq(ledgerEa.accountId, accountId))
-        .groupBy(
-          ledgerEa.id,
-          ledgerEa.entityType,
-          ledgerEa.entityId,
-          employers.name,
-          contacts.given,
-          contacts.family,
-          trustProviders.name
-        )
-        .as('participantAgg');
+        .groupBy(ledgerEa.id, ledgerEa.entityType, ledgerEa.entityId);
 
-      // Get total count of EAs with entries
-      const [totalRow] = await db
-        .select({ total: sqlRaw<number>`COUNT(DISTINCT ${ledgerEa.id})` })
-        .from(ledgerEa)
-        .innerJoin(ledger, eq(ledger.eaId, ledgerEa.id))
-        .where(eq(ledgerEa.accountId, accountId));
-      
-      const total = totalRow?.total || 0;
+      const total = allParticipants.length;
 
-      // Select from subquery with alphabetical ordering by entity name
-      const participants = await db
-        .select({
-          eaId: participantAgg.eaId,
-          entityType: participantAgg.entityType,
-          entityId: participantAgg.entityId,
-          totalBalance: participantAgg.totalBalance,
-          firstEntryDate: participantAgg.firstEntryDate,
-          lastEntryDate: participantAgg.lastEntryDate,
-          entryCount: participantAgg.entryCount,
-          employerName: participantAgg.employerName,
-          workerGiven: participantAgg.workerGiven,
-          workerFamily: participantAgg.workerFamily,
-          providerName: participantAgg.providerName,
-        })
-        .from(participantAgg)
-        .orderBy(
-          asc(sqlRaw`COALESCE(
-            ${participantAgg.employerName},
-            ${participantAgg.workerGiven} || ' ' || ${participantAgg.workerFamily},
-            ${participantAgg.providerName},
-            ''
-          )`)
-        )
-        .limit(limit)
-        .offset(offset);
+      // Batch entity name lookups for ALL participants
+      const employerIds = allParticipants.filter(p => p.entityType === 'employer').map(p => p.entityId);
+      const workerIds = allParticipants.filter(p => p.entityType === 'worker').map(p => p.entityId);
+      const providerIds = allParticipants.filter(p => p.entityType === 'trust_provider').map(p => p.entityId);
 
-      // Map to final format with entity names already resolved
-      const enrichedParticipants = participants.map(p => {
+      // Fetch all employers
+      const employersData = employerIds.length > 0
+        ? await db.select({ id: employers.id, name: employers.name })
+            .from(employers)
+            .where(inArray(employers.id, employerIds))
+        : [];
+      const employerMap = new Map(employersData.map(e => [e.id, e.name]));
+
+      // Fetch all workers and their contacts
+      const workersData = workerIds.length > 0
+        ? await db.select({ 
+            id: workers.id, 
+            contactId: workers.contactId,
+            given: contacts.given,
+            family: contacts.family 
+          })
+            .from(workers)
+            .innerJoin(contacts, eq(contacts.id, workers.contactId))
+            .where(inArray(workers.id, workerIds))
+        : [];
+      const workerMap = new Map(workersData.map(w => [w.id, `${w.given} ${w.family}`]));
+
+      // Fetch all trust providers
+      const providersData = providerIds.length > 0
+        ? await db.select({ id: trustProviders.id, name: trustProviders.name })
+            .from(trustProviders)
+            .where(inArray(trustProviders.id, providerIds))
+        : [];
+      const providerMap = new Map(providersData.map(p => [p.id, p.name]));
+
+      // Enrich with entity names
+      const enrichedParticipants = allParticipants.map(p => {
         let entityName: string | null = null;
         
         if (p.entityType === 'employer') {
-          entityName = p.employerName || null;
+          entityName = employerMap.get(p.entityId) || null;
         } else if (p.entityType === 'worker') {
-          entityName = p.workerGiven && p.workerFamily 
-            ? `${p.workerGiven} ${p.workerFamily}` 
-            : null;
+          entityName = workerMap.get(p.entityId) || null;
         } else if (p.entityType === 'trust_provider') {
-          entityName = p.providerName || null;
+          entityName = providerMap.get(p.entityId) || null;
         }
 
         return {
@@ -258,7 +231,17 @@ export function createLedgerAccountStorage(): LedgerAccountStorage {
         };
       });
 
-      return { data: enrichedParticipants, total };
+      // Sort alphabetically by entity name
+      enrichedParticipants.sort((a, b) => {
+        const nameA = (a.entityName || '').toLowerCase();
+        const nameB = (b.entityName || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+
+      // Apply pagination after sorting
+      const paginatedParticipants = enrichedParticipants.slice(offset, offset + limit);
+
+      return { data: paginatedParticipants, total };
     }
   };
 }
