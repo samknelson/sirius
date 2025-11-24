@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { EALayout } from "@/components/layouts/EALayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
+import { JsonDataViewer } from "@/components/ui/json-data-viewer";
 
 type LedgerEA = {
   id: string;
@@ -89,17 +90,17 @@ function EAViewContent() {
           </div>
         </div>
 
-        {ea.data && (() => {
-          const dataString = JSON.stringify(ea.data, null, 2);
-          return (
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Additional Data</label>
-              <pre className="bg-muted p-4 rounded-md overflow-x-auto text-sm" data-testid="text-data">
-                <code>{dataString}</code>
-              </pre>
-            </div>
-          );
-        })()}
+        {ea.data ? (
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-muted-foreground">Additional Data</label>
+            <JsonDataViewer
+              data={ea.data}
+              title="Additional Data"
+              description="View additional JSON data for this account entry"
+              iconOnly
+            />
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
