@@ -321,9 +321,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await db.execute(sql`
         SELECT 
           w.id as worker_id,
-          array_agg(DISTINCT e.id ORDER BY e.id) as employer_ids,
-          array_agg(DISTINCT e.name ORDER BY e.id) as employer_names,
-          array_agg(DISTINCT wh.home ORDER BY e.id) as home_flags
+          COALESCE(
+            json_agg(
+              DISTINCT jsonb_build_object(
+                'id', e.id,
+                'name', e.name,
+                'isHome', COALESCE(wh.home, false)
+              )
+            ) FILTER (WHERE e.id IS NOT NULL),
+            '[]'::json
+          ) as employers
         FROM workers w
         LEFT JOIN worker_hours wh ON w.id = wh.worker_id
         LEFT JOIN employers e ON wh.employer_id = e.id
@@ -331,25 +338,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       `);
       
       // Transform the result into a more usable format
-      const workerEmployers = result.rows.map((row: any) => {
-        const employerIds = row.employer_ids || [];
-        const employerNames = row.employer_names || [];
-        const homeFlags = row.home_flags || [];
-        
-        // Find the home employer
-        const homeIndex = homeFlags.indexOf(true);
-        const homeEmployerId = homeIndex >= 0 ? employerIds[homeIndex] : null;
-        
-        return {
-          workerId: row.worker_id,
-          employers: employerIds.map((id: string, index: number) => ({
-            id: id,
-            name: employerNames[index],
-            isHome: homeFlags[index] === true
-          })).filter((e: any) => e.id !== null), // Filter out null employers
-          homeEmployerId: homeEmployerId
-        };
-      });
+      const workerEmployers = result.rows.map((row: any) => ({
+        workerId: row.worker_id,
+        employers: row.employers || []
+      }));
       
       res.json(workerEmployers);
     } catch (error) {
