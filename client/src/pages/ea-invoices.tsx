@@ -310,9 +310,9 @@ function InvoiceDetailsModal({ eaId, month, year }: InvoiceDetailsModalProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Ledger Entries</CardTitle>
+          <CardTitle>Transactions</CardTitle>
           <CardDescription>
-            {invoiceDetails.entryCount} {invoiceDetails.entryCount === 1 ? 'entry' : 'entries'} for this month
+            {invoiceDetails.entryCount} {invoiceDetails.entryCount === 1 ? 'transaction' : 'transactions'} for this month
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -320,7 +320,7 @@ function InvoiceDetailsModal({ eaId, month, year }: InvoiceDetailsModalProps) {
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <FileText className="h-10 w-10 text-muted-foreground mb-3" />
               <p className="text-muted-foreground" data-testid="text-no-entries">
-                No ledger entries found for this invoice
+                No transactions found for this invoice
               </p>
             </div>
           ) : (
