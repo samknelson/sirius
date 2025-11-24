@@ -13,7 +13,7 @@ import type {
   Ledger,
   InsertLedger
 } from "@shared/schema";
-import { eq, and, desc, or, isNull } from "drizzle-orm";
+import { eq, and, desc, or, isNull, asc } from "drizzle-orm";
 import { alias as pgAlias } from "drizzle-orm/pg-core";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 
@@ -81,12 +81,29 @@ export interface LedgerEntryWithDetails extends Ledger {
   referenceName: string | null;
 }
 
+export interface InvoiceSummary {
+  month: number;
+  year: number;
+  totalAmount: string;
+  entryCount: number;
+}
+
+export interface InvoiceDetails extends InvoiceSummary {
+  entries: LedgerEntryWithDetails[];
+}
+
+export interface LedgerInvoiceStorage {
+  listForEa(eaId: string): Promise<InvoiceSummary[]>;
+  getDetails(eaId: string, month: number, year: number): Promise<InvoiceDetails | undefined>;
+}
+
 export interface LedgerStorage {
   accounts: LedgerAccountStorage;
   stripePaymentMethods: StripePaymentMethodStorage;
   ea: LedgerEaStorage;
   payments: LedgerPaymentStorage;
   entries: LedgerEntryStorage;
+  invoices: LedgerInvoiceStorage;
 }
 
 export function createLedgerAccountStorage(): LedgerAccountStorage {
@@ -595,6 +612,92 @@ export async function allocatePayment(
   }
 }
 
+function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
+  return {
+    async listForEa(eaId: string): Promise<InvoiceSummary[]> {
+      // Get all ledger entries for this EA with details
+      const entries = await db.select({
+        id: ledger.id,
+        amount: ledger.amount,
+        date: ledger.date,
+        eaId: ledger.eaId,
+      })
+      .from(ledger)
+      .where(eq(ledger.eaId, eaId))
+      .orderBy(asc(ledger.date));
+
+      if (entries.length === 0) {
+        return [];
+      }
+
+      // Group entries by month/year
+      type LedgerEntry = { id: string; amount: string; date: Date | null; eaId: string };
+      const grouped = new Map<string, { month: number; year: number; entries: LedgerEntry[] }>();
+      
+      for (const entry of entries) {
+        if (!entry.date) continue;
+        
+        const date = new Date(entry.date);
+        const month = date.getMonth() + 1; // 1-12
+        const year = date.getFullYear();
+        const key = `${year}-${month}`;
+        
+        if (!grouped.has(key)) {
+          grouped.set(key, { month, year, entries: [] as LedgerEntry[] });
+        }
+        grouped.get(key)!.entries.push(entry);
+      }
+
+      // Calculate summaries
+      const summaries: InvoiceSummary[] = [];
+      for (const group of Array.from(grouped.values())) {
+        const totalAmount = group.entries.reduce((sum: number, e: { amount: string }) => sum + parseFloat(e.amount), 0);
+        summaries.push({
+          month: group.month,
+          year: group.year,
+          totalAmount: totalAmount.toFixed(2),
+          entryCount: group.entries.length
+        });
+      }
+
+      // Sort by year desc, month desc (most recent first)
+      summaries.sort((a, b) => {
+        if (a.year !== b.year) return b.year - a.year;
+        return b.month - a.month;
+      });
+
+      return summaries;
+    },
+
+    async getDetails(eaId: string, month: number, year: number): Promise<InvoiceDetails | undefined> {
+      // Get detailed entries for this month
+      const entryStorage = createLedgerEntryStorage();
+      const allEntries = await entryStorage.getTransactions({ eaId });
+      
+      // Filter to specific month/year
+      const monthEntries = allEntries.filter(entry => {
+        if (!entry.date) return false;
+        const date = new Date(entry.date);
+        return date.getMonth() + 1 === month && date.getFullYear() === year;
+      });
+
+      if (monthEntries.length === 0) {
+        return undefined;
+      }
+
+      const totalAmount = monthEntries.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+
+      return {
+        month,
+        year,
+        totalAmount: totalAmount.toFixed(2),
+        entryCount: monthEntries.length,
+        entries: monthEntries
+      };
+    }
+  };
+}
+
 export function createLedgerStorage(
   accountLoggingConfig?: StorageLoggingConfig<LedgerAccountStorage>,
   stripePaymentMethodLoggingConfig?: StorageLoggingConfig<StripePaymentMethodStorage>,
@@ -622,12 +725,15 @@ export function createLedgerStorage(
   const entryStorage = entryLoggingConfig
     ? withStorageLogging(createLedgerEntryStorage(), entryLoggingConfig)
     : createLedgerEntryStorage();
+
+  const invoiceStorage = createLedgerInvoiceStorage();
   
   return {
     accounts: accountStorage,
     stripePaymentMethods: stripePaymentMethodStorage,
     ea: eaStorage,
     payments: paymentStorage,
-    entries: entryStorage
+    entries: entryStorage,
+    invoices: invoiceStorage
   };
 }

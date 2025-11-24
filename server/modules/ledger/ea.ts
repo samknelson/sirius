@@ -117,4 +117,54 @@ export function registerLedgerEaRoutes(app: Express) {
       res.status(500).json({ message: "Failed to fetch ledger transactions" });
     }
   });
+
+  // GET /api/ledger/ea/:id/invoices - Get invoice list for an EA
+  app.get("/api/ledger/ea/:id/invoices", requireAccess(policies.ledgerStaff), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Check if EA exists
+      const ea = await storage.ledger.ea.get(id);
+      if (!ea) {
+        res.status(404).json({ message: "Ledger EA entry not found" });
+        return;
+      }
+
+      // Get invoice summaries
+      const invoices = await storage.ledger.invoices.listForEa(id);
+      res.json(invoices);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch invoices" });
+    }
+  });
+
+  // GET /api/ledger/ea/:id/invoices/:month/:year - Get invoice details
+  app.get("/api/ledger/ea/:id/invoices/:month/:year", requireAccess(policies.ledgerStaff), async (req, res) => {
+    try {
+      const { id, month, year } = req.params;
+      
+      // Check if EA exists
+      const ea = await storage.ledger.ea.get(id);
+      if (!ea) {
+        res.status(404).json({ message: "Ledger EA entry not found" });
+        return;
+      }
+
+      // Get invoice details
+      const invoice = await storage.ledger.invoices.getDetails(
+        id,
+        parseInt(month, 10),
+        parseInt(year, 10)
+      );
+
+      if (!invoice) {
+        res.status(404).json({ message: "Invoice not found" });
+        return;
+      }
+
+      res.json(invoice);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch invoice details" });
+    }
+  });
 }
