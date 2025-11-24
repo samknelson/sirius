@@ -86,6 +86,9 @@ export interface InvoiceSummary {
   year: number;
   totalAmount: string;
   entryCount: number;
+  incomingBalance: string;
+  invoiceBalance: string;
+  outgoingBalance: string;
 }
 
 export interface InvoiceDetails extends InvoiceSummary {
@@ -612,15 +615,79 @@ export async function allocatePayment(
   }
 }
 
+// Cents-based arithmetic helpers for precise decimal calculations
+function toCents(amount: string): bigint {
+  const num = parseFloat(amount);
+  return BigInt(Math.round(num * 100));
+}
+
+function fromCents(cents: bigint): string {
+  const dollars = Number(cents) / 100;
+  return dollars.toFixed(2);
+}
+
+// Build invoices with running balances for an EA
+type SimpleLedgerEntry = { id: string; amount: string; date: Date | null };
+interface InvoiceBucket {
+  month: number;
+  year: number;
+  entries: SimpleLedgerEntry[];
+  incomingBalanceCents: bigint;
+}
+
+function buildInvoicesForEa(entries: SimpleLedgerEntry[]): Map<string, InvoiceBucket> {
+  const invoiceMap = new Map<string, InvoiceBucket>();
+  
+  // Sort entries by date (nulls last), then by id for deterministic ordering
+  const sortedEntries = [...entries].sort((a, b) => {
+    if (!a.date && !b.date) return a.id.localeCompare(b.id);
+    if (!a.date) return 1;
+    if (!b.date) return -1;
+    const dateCompare = a.date.getTime() - b.date.getTime();
+    if (dateCompare !== 0) return dateCompare;
+    return a.id.localeCompare(b.id);
+  });
+
+  let runningBalanceCents = BigInt(0);
+
+  for (const entry of sortedEntries) {
+    // Skip null-dated entries (can't be assigned to a month)
+    if (!entry.date) continue;
+
+    const date = new Date(entry.date);
+    const month = date.getMonth() + 1; // 1-12
+    const year = date.getFullYear();
+    const key = `${year}-${month}`;
+
+    // Create bucket if it doesn't exist
+    if (!invoiceMap.has(key)) {
+      invoiceMap.set(key, {
+        month,
+        year,
+        entries: [],
+        incomingBalanceCents: runningBalanceCents
+      });
+    }
+
+    // Add entry to bucket
+    const bucket = invoiceMap.get(key)!;
+    bucket.entries.push(entry);
+
+    // Update running balance
+    runningBalanceCents += toCents(entry.amount);
+  }
+
+  return invoiceMap;
+}
+
 function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
   return {
     async listForEa(eaId: string): Promise<InvoiceSummary[]> {
-      // Get all ledger entries for this EA with details
+      // Get all ledger entries for this EA
       const entries = await db.select({
         id: ledger.id,
         amount: ledger.amount,
         date: ledger.date,
-        eaId: ledger.eaId,
       })
       .from(ledger)
       .where(eq(ledger.eaId, eaId))
@@ -630,33 +697,26 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         return [];
       }
 
-      // Group entries by month/year
-      type LedgerEntry = { id: string; amount: string; date: Date | null; eaId: string };
-      const grouped = new Map<string, { month: number; year: number; entries: LedgerEntry[] }>();
-      
-      for (const entry of entries) {
-        if (!entry.date) continue;
-        
-        const date = new Date(entry.date);
-        const month = date.getMonth() + 1; // 1-12
-        const year = date.getFullYear();
-        const key = `${year}-${month}`;
-        
-        if (!grouped.has(key)) {
-          grouped.set(key, { month, year, entries: [] as LedgerEntry[] });
-        }
-        grouped.get(key)!.entries.push(entry);
-      }
+      // Build invoices with running balances
+      const invoiceMap = buildInvoicesForEa(entries);
 
-      // Calculate summaries
+      // Convert to summaries
       const summaries: InvoiceSummary[] = [];
-      for (const group of Array.from(grouped.values())) {
-        const totalAmount = group.entries.reduce((sum: number, e: { amount: string }) => sum + parseFloat(e.amount), 0);
+      for (const bucket of invoiceMap.values()) {
+        const invoiceBalanceCents = bucket.entries.reduce(
+          (sum, e) => sum + toCents(e.amount),
+          BigInt(0)
+        );
+        const outgoingBalanceCents = bucket.incomingBalanceCents + invoiceBalanceCents;
+
         summaries.push({
-          month: group.month,
-          year: group.year,
-          totalAmount: totalAmount.toFixed(2),
-          entryCount: group.entries.length
+          month: bucket.month,
+          year: bucket.year,
+          totalAmount: fromCents(invoiceBalanceCents),
+          entryCount: bucket.entries.length,
+          incomingBalance: fromCents(bucket.incomingBalanceCents),
+          invoiceBalance: fromCents(invoiceBalanceCents),
+          outgoingBalance: fromCents(outgoingBalanceCents)
         });
       }
 
@@ -670,28 +730,51 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
     },
 
     async getDetails(eaId: string, month: number, year: number): Promise<InvoiceDetails | undefined> {
-      // Get detailed entries for this month
-      const entryStorage = createLedgerEntryStorage();
-      const allEntries = await entryStorage.getTransactions({ eaId });
-      
-      // Filter to specific month/year
-      const monthEntries = allEntries.filter(entry => {
-        if (!entry.date) return false;
-        const date = new Date(entry.date);
-        return date.getMonth() + 1 === month && date.getFullYear() === year;
-      });
+      // Get all ledger entries for this EA (need all for running balance)
+      const simpleEntries = await db.select({
+        id: ledger.id,
+        amount: ledger.amount,
+        date: ledger.date,
+      })
+      .from(ledger)
+      .where(eq(ledger.eaId, eaId))
+      .orderBy(asc(ledger.date));
 
-      if (monthEntries.length === 0) {
+      if (simpleEntries.length === 0) {
         return undefined;
       }
 
-      const totalAmount = monthEntries.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+      // Build invoices with running balances
+      const invoiceMap = buildInvoicesForEa(simpleEntries);
+      const key = `${year}-${month}`;
+      const bucket = invoiceMap.get(key);
+
+      if (!bucket) {
+        return undefined;
+      }
+
+      // Get detailed entries for this month
+      const entryStorage = createLedgerEntryStorage();
+      const allDetailedEntries = await entryStorage.getTransactions({ eaId });
+      
+      // Filter to specific month/year and match the entry IDs
+      const entryIds = new Set(bucket.entries.map(e => e.id));
+      const monthEntries = allDetailedEntries.filter(entry => entryIds.has(entry.id));
+
+      const invoiceBalanceCents = bucket.entries.reduce(
+        (sum, e) => sum + toCents(e.amount),
+        BigInt(0)
+      );
+      const outgoingBalanceCents = bucket.incomingBalanceCents + invoiceBalanceCents;
 
       return {
-        month,
-        year,
-        totalAmount: totalAmount.toFixed(2),
-        entryCount: monthEntries.length,
+        month: bucket.month,
+        year: bucket.year,
+        totalAmount: fromCents(invoiceBalanceCents),
+        entryCount: bucket.entries.length,
+        incomingBalance: fromCents(bucket.incomingBalanceCents),
+        invoiceBalance: fromCents(invoiceBalanceCents),
+        outgoingBalance: fromCents(outgoingBalanceCents),
         entries: monthEntries
       };
     }
