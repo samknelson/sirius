@@ -2,7 +2,8 @@ import { EALayout } from "@/components/layouts/EALayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { FileText, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { FileText, Loader2, Eye } from "lucide-react";
 import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -117,6 +118,7 @@ function EAInvoicesContent() {
                 <TableHead className="text-right">Invoice Balance</TableHead>
                 <TableHead className="text-right">Outgoing Balance</TableHead>
                 <TableHead className="text-right">Entries</TableHead>
+                <TableHead>Tools</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -124,8 +126,6 @@ function EAInvoicesContent() {
                 <TableRow 
                   key={`${invoice.year}-${invoice.month}`}
                   data-testid={`row-invoice-${invoice.year}-${invoice.month}`}
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => setSelectedInvoice({ month: invoice.month, year: invoice.year })}
                 >
                   <TableCell data-testid={`cell-period-${invoice.year}-${invoice.month}`}>
                     {MONTH_NAMES[invoice.month - 1]} {invoice.year}
@@ -153,6 +153,16 @@ function EAInvoicesContent() {
                     data-testid={`cell-count-${invoice.year}-${invoice.month}`}
                   >
                     {invoice.entryCount}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedInvoice({ month: invoice.month, year: invoice.year })}
+                      data-testid={`button-view-${invoice.year}-${invoice.month}`}
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
