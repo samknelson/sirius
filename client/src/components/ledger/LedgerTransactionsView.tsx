@@ -544,7 +544,7 @@ export function LedgerTransactionsView({ queryKey, title, csvFilename }: LedgerT
                             </Link>
                           ) : null;
                         })()}
-                        <Link href={`/ledger/ea/${transaction.eaId}`}>
+                        <Link href={`/ea/${transaction.eaId}`}>
                           <Button
                             variant="ghost"
                             size="sm"
