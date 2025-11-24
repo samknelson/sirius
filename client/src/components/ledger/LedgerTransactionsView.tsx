@@ -499,7 +499,7 @@ export function LedgerTransactionsView({
                 </TableHead>
                 <TableHead>Reference Type</TableHead>
                 <TableHead>Reference</TableHead>
-                {showEaAccount && <TableHead>EA Account</TableHead>}
+                {showEaAccount && <TableHead>Account</TableHead>}
                 <TableHead>Links</TableHead>
               </TableRow>
             </TableHeader>
