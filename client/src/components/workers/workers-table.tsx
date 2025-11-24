@@ -1,9 +1,10 @@
 import { useState, useMemo } from "react";
-import { ArrowUpDown, User, Eye, Search } from "lucide-react";
+import { ArrowUpDown, User, Eye, Search, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Worker, Contact, PhoneNumber } from "@shared/schema";
 import { formatSSN } from "@shared/schema";
 import { Link } from "wouter";
@@ -19,6 +20,19 @@ interface WorkerWithContact extends Worker {
   contactName?: string;
   email?: string;
   phoneNumber?: string;
+  employers?: EmployerInfo[];
+}
+
+interface EmployerInfo {
+  id: string;
+  name: string;
+  isHome: boolean;
+}
+
+interface WorkerEmployerSummary {
+  workerId: string;
+  employers: EmployerInfo[];
+  homeEmployerId: string | null;
 }
 
 const avatarColors = [
@@ -69,6 +83,12 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     enabled: contactIds.length > 0,
   });
 
+  // Fetch worker-employer summary
+  const { data: workerEmployers = [] } = useQuery<WorkerEmployerSummary[]>({
+    queryKey: ["/api/workers/employers/summary"],
+    enabled: workers.length > 0,
+  });
+
   // Create maps for contact data
   const contactMap = new Map(contacts.map(c => [c.id, c]));
   const phoneMap = new Map<string, PhoneNumber>();
@@ -87,10 +107,14 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     }
   });
 
+  // Create map for worker employers
+  const employerMap = new Map(workerEmployers.map(we => [we.workerId, we.employers]));
+
   // Add contact names and details to workers
   const workersWithNames: WorkerWithContact[] = workers.map(worker => {
     const contact = contactMap.get(worker.contactId);
     const phone = phoneMap.get(worker.contactId);
+    const employers = employerMap.get(worker.id) || [];
     
     let formattedPhone = '';
     if (phone?.phoneNumber) {
@@ -107,6 +131,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
       contactName: contact?.displayName || 'Unknown',
       email: contact?.email || '',
       phoneNumber: formattedPhone,
+      employers,
     };
   });
 
@@ -219,6 +244,9 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                   <span>Phone</span>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <span>Employers</span>
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Actions</span>
                 </th>
               </tr>
@@ -257,6 +285,25 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                     >
                       {worker.phoneNumber || <span className="text-muted-foreground italic">No phone</span>}
                     </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-wrap gap-1" data-testid={`text-worker-employers-${worker.id}`}>
+                      {worker.employers && worker.employers.length > 0 ? (
+                        worker.employers.map((employer) => (
+                          <Badge
+                            key={employer.id}
+                            variant={employer.isHome ? "default" : "secondary"}
+                            className="text-xs"
+                            data-testid={`badge-employer-${employer.id}`}
+                          >
+                            {employer.isHome && <Home size={10} className="mr-1" />}
+                            {employer.name}
+                          </Badge>
+                        ))
+                      ) : (
+                        <span className="text-sm text-muted-foreground italic">No employers</span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <div className="flex items-center space-x-2">

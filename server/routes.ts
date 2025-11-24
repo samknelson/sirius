@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import { insertWorkerSchema, type InsertEmployer, winstonLogs, type WorkerId, type PostalAddress, type PhoneNumber } from "@shared/schema";
-import { eq, and, inArray, gte, lte, desc } from "drizzle-orm";
+import { eq, and, inArray, gte, lte, desc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { registerUserRoutes } from "./modules/users";
 import { registerVariableRoutes } from "./modules/variables";
@@ -311,6 +311,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(workers);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch workers" });
+    }
+  });
+
+  // GET /api/workers/employers/summary - Get employer summary for all workers (requires workers.view permission)
+  app.get("/api/workers/employers/summary", requireAuth, requirePermission("workers.view"), async (req, res) => {
+    try {
+      // Query to get unique employers for each worker from worker_hours
+      const result = await db.execute(sql`
+        SELECT 
+          w.id as worker_id,
+          array_agg(DISTINCT e.id ORDER BY e.id) as employer_ids,
+          array_agg(DISTINCT e.name ORDER BY e.id) as employer_names,
+          array_agg(DISTINCT wh.home ORDER BY e.id) as home_flags
+        FROM workers w
+        LEFT JOIN worker_hours wh ON w.id = wh.worker_id
+        LEFT JOIN employers e ON wh.employer_id = e.id
+        GROUP BY w.id
+      `);
+      
+      // Transform the result into a more usable format
+      const workerEmployers = result.rows.map((row: any) => {
+        const employerIds = row.employer_ids || [];
+        const employerNames = row.employer_names || [];
+        const homeFlags = row.home_flags || [];
+        
+        // Find the home employer
+        const homeIndex = homeFlags.indexOf(true);
+        const homeEmployerId = homeIndex >= 0 ? employerIds[homeIndex] : null;
+        
+        return {
+          workerId: row.worker_id,
+          employers: employerIds.map((id: string, index: number) => ({
+            id: id,
+            name: employerNames[index],
+            isHome: homeFlags[index] === true
+          })).filter((e: any) => e.id !== null), // Filter out null employers
+          homeEmployerId: homeEmployerId
+        };
+      });
+      
+      res.json(workerEmployers);
+    } catch (error) {
+      console.error("Failed to fetch worker employers:", error);
+      res.status(500).json({ message: "Failed to fetch worker employers" });
     }
   });
 
