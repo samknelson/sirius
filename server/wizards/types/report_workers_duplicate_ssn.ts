@@ -4,6 +4,7 @@ export class ReportWorkersDuplicateSSN extends WizardReport {
   name = 'report_workers_duplicate_ssn';
   displayName = 'Workers with Duplicate SSN';
   description = 'Generate a report of Social Security Numbers that are associated with more than one worker';
+  category = 'Workers';
 
   /**
    * Override to use SSN as the primary key instead of workerId

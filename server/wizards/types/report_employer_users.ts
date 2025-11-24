@@ -4,6 +4,7 @@ export class ReportEmployerUsers extends WizardReport {
   name = 'report_employer_users';
   displayName = 'Employer Users';
   description = 'Lists all users associated with employer contacts, showing employer, user details, roles, and activity status';
+  category = 'Employers';
 
   getPrimaryKeyField(): string {
     return 'employerContactId';
