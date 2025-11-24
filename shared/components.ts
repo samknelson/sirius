@@ -63,14 +63,14 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "authentication"
   },
   {
-    id: "trustprovider.login",
+    id: "trust.providers.login",
     name: "Trust Provider Login",
     description: "Ability for trust provider contacts to log in",
     enabledByDefault: false,
     category: "authentication"
   },
   {
-    id: "trust_providers",
+    id: "trust.providers",
     name: "Trust Providers",
     description: "Management and tracking of trust providers",
     enabledByDefault: false,

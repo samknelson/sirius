@@ -189,10 +189,10 @@ export const employerUserManage: AccessPolicy = {
  */
 export const trustProviderUserManage: AccessPolicy = {
   name: 'Trust Provider User Management',
-  description: 'Requires trustprovider.login component and trustprovider.usermanage permission',
+  description: 'Requires trust.providers.login component and trustprovider.usermanage permission',
   requirements: [
     { type: 'authenticated' },
-    { type: 'component', componentId: 'trustprovider.login' },
+    { type: 'component', componentId: 'trust.providers.login' },
     { type: 'permission', key: 'trustprovider.usermanage' },
   ],
 };
