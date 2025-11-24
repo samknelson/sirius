@@ -195,7 +195,7 @@ function AccountParticipantsContent() {
                           {participant.entryCount}
                         </TableCell>
                         <TableCell data-testid={`cell-links-${participant.eaId}`}>
-                          <div className="flex gap-1">
+                          <div className="flex gap-2">
                             <Link href={`/ea/${participant.eaId}`}>
                               <Button
                                 variant="ghost"
@@ -204,7 +204,7 @@ function AccountParticipantsContent() {
                                 title="View EA record"
                                 data-testid={`button-link-ea-${participant.eaId}`}
                               >
-                                <ExternalLink className="h-4 w-4" />
+                                Acct
                               </Button>
                             </Link>
                             {entityLink && (
@@ -216,7 +216,7 @@ function AccountParticipantsContent() {
                                   title={`View ${participant.entityType}`}
                                   data-testid={`button-link-entity-${participant.eaId}`}
                                 >
-                                  <ExternalLink className="h-4 w-4" />
+                                  Participant
                                 </Button>
                               </Link>
                             )}
