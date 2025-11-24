@@ -508,8 +508,15 @@ export const insertLedgerPaymentSchema = createInsertSchema(ledgerPayments).omit
   dateCreated: true,
 });
 
+export const ledgerEaDataSchema = z.object({
+  invoiceHeader: z.string().optional(),
+  invoiceFooter: z.string().optional(),
+}).strict();
+
 export const insertLedgerEaSchema = createInsertSchema(ledgerEa).omit({
   id: true,
+}).extend({
+  data: ledgerEaDataSchema.optional().nullable(),
 });
 
 export type InsertLedgerEa = z.infer<typeof insertLedgerEaSchema>;
