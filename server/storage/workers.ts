@@ -548,7 +548,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null }): Promise<WorkerHours> {
-      const [hours] = await db
+      const [savedHours] = await db
         .insert(workerHours)
         .values({
           ...data,
@@ -562,7 +562,37 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           },
         })
         .returning();
-      return hours;
+
+      // Execute charge plugins after hours are saved
+      if (savedHours && data.hours !== null && data.hours > 0) {
+        try {
+          const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+          
+          const context = {
+            trigger: TriggerType.HOURS_SAVED,
+            hoursId: savedHours.id,
+            workerId: savedHours.workerId,
+            employerId: savedHours.employerId,
+            year: savedHours.year,
+            month: savedHours.month,
+            day: savedHours.day,
+            hours: savedHours.hours || 0,
+            employmentStatusId: savedHours.employmentStatusId,
+            home: savedHours.home,
+          };
+
+          await executeChargePlugins(context);
+        } catch (error) {
+          // Log error but don't fail the hours save
+          logger.error("Failed to execute charge plugins for hours save", {
+            service: "workers-storage",
+            hoursId: savedHours.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      return savedHours;
     },
 
     // Worker work status history methods

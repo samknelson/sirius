@@ -874,6 +874,30 @@ export const employerMonthlyPluginConfigSchema = z.record(
 
 export type EmployerMonthlyPluginConfig = z.infer<typeof employerMonthlyPluginConfigSchema>;
 
+// Charge Plugin Configs
+export const chargePluginConfigs = pgTable("charge_plugin_configs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  pluginId: text("plugin_id").notNull(), // e.g., "hour-fixed", "payment-percentage"
+  enabled: boolean("enabled").default(false).notNull(),
+  scope: varchar("scope").notNull(), // 'global' or 'employer'
+  employerId: varchar("employer_id").references(() => employers.id, { onDelete: 'cascade' }),
+  settings: jsonb("settings").notNull().default('{}'),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+}, (table) => ({
+  // Unique constraint: one config per plugin per employer (or one global per plugin)
+  uniquePluginScope: unique().on(table.pluginId, table.scope, table.employerId),
+}));
+
+export const insertChargePluginConfigSchema = createInsertSchema(chargePluginConfigs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertChargePluginConfig = z.infer<typeof insertChargePluginConfigSchema>;
+export type ChargePluginConfig = typeof chargePluginConfigs.$inferSelect;
+
 // Cron Jobs
 export const cronJobs = pgTable("cron_jobs", {
   name: text("name").primaryKey(),
