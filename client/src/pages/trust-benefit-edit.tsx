@@ -30,8 +30,7 @@ function TrustBenefitEditContent() {
 
   const updateBenefitMutation = useMutation({
     mutationFn: async (data: { name: string; benefitType?: string; isActive: boolean; description?: string }) => {
-      const response = await apiRequest("PUT", `/api/trust-benefits/${benefit.id}`, data);
-      return response.json();
+      return await apiRequest("PUT", `/api/trust-benefits/${benefit.id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trust-benefits", benefit.id] });

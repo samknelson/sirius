@@ -28,8 +28,7 @@ export function AddTrustBenefitForm() {
 
   const addBenefitMutation = useMutation({
     mutationFn: async (benefitData: { name: string; benefitType?: string; isActive: boolean; description?: string }) => {
-      const response = await apiRequest("POST", "/api/trust-benefits", benefitData);
-      return response.json();
+      return await apiRequest("POST", "/api/trust-benefits", benefitData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trust-benefits"] });
