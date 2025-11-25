@@ -327,7 +327,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         INNER JOIN contacts c ON w.contact_id = c.id
         LEFT JOIN LATERAL (
           SELECT phone_number, is_primary
-          FROM phone_numbers
+          FROM contact_phone
           WHERE contact_id = c.id
           ORDER BY is_primary DESC NULLS LAST, created_at ASC
           LIMIT 1
