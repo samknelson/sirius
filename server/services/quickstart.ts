@@ -19,12 +19,13 @@ export interface QuickstartData {
 }
 
 // Current schema version for compatibility checking
-const SCHEMA_VERSION = '1.0';
+// Bump this when adding new tables to ensure old exports are flagged as incompatible
+const SCHEMA_VERSION = '1.1';
 
 // Define table order for export/import (respects foreign key dependencies)
 // Tables are ordered from least dependent to most dependent
 const TABLE_ORDER = [
-  // Level 1: No dependencies
+  // Level 1: No dependencies (options, roles, base entities)
   'variables',
   'roles',
   'users',
@@ -35,8 +36,11 @@ const TABLE_ORDER = [
   'optionsEmployerContactType',
   'optionsWorkerWs',
   'optionsEmploymentStatus',
+  'optionsTrustProviderType',
   'ledgerAccounts',
   'employers',
+  'trustProviders',
+  'cronJobs',
   
   // Level 2: Depends on level 1
   'contacts',
@@ -47,20 +51,26 @@ const TABLE_ORDER = [
   'ledgerStripePaymentMethods',
   'ledgerPayments',
   'wizards',
+  'chargePluginConfigs',
+  'cronJobRuns',
   
   // Level 3: Depends on level 2
   'workers',
   'employerContacts',
+  'trustProviderContacts',
   'postalAddresses',
   'phoneNumbers',
   'wizardEmployerMonthly',
   'wizardFeedMappings',
   'wizardReportData',
+  'ledgerEa',
   
   // Level 4: Depends on level 3
   'workerIds',
   'workerHours',
+  'workerWsh',
   'trustWmb',
+  'ledger',
 ] as const;
 
 // Tables to exclude from export/import (runtime/audit data, or stored in object storage)
