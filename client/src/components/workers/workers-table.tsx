@@ -41,6 +41,7 @@ interface WorkerWithContact extends Worker {
   employers?: EmployerInfo[];
   address?: PostalAddress | null;
   benefitTypes?: string[];
+  benefitIds?: string[];
 }
 
 interface EmployerInfo {
@@ -154,6 +155,18 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
       }
     }
     
+    // Parse benefit IDs from JSON array
+    let benefitIds: string[] = [];
+    if (worker.benefit_ids) {
+      try {
+        benefitIds = Array.isArray(worker.benefit_ids) 
+          ? worker.benefit_ids 
+          : JSON.parse(worker.benefit_ids);
+      } catch {
+        benefitIds = [];
+      }
+    }
+    
     return {
       ...worker,
       contactId: worker.contact_id,
@@ -167,17 +180,9 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
       employers,
       address,
       benefitTypes,
+      benefitIds,
     };
   });
-
-  // Create a map of workers to their benefit IDs
-  const workerBenefitMap = useMemo(() => {
-    const map = new Map<string, Set<string>>();
-    
-    // We need to fetch worker benefits to map workers to benefit IDs
-    // For now, we'll use the benefit type names to filter
-    return map;
-  }, []);
 
   // Filter workers based on search query, employer, and benefit
   const filteredWorkers = useMemo(() => {
@@ -190,14 +195,11 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
       );
     }
     
-    // Filter by benefit if selected
+    // Filter by specific benefit if selected (using benefit IDs)
     if (selectedBenefitId !== "all") {
-      const selectedBenefit = trustBenefits.find(b => b.id === selectedBenefitId);
-      if (selectedBenefit && selectedBenefit.benefitTypeName) {
-        filtered = filtered.filter(worker => 
-          worker.benefitTypes?.includes(selectedBenefit.benefitTypeName)
-        );
-      }
+      filtered = filtered.filter(worker => 
+        worker.benefitIds?.includes(selectedBenefitId)
+      );
     }
     
     // Filter by search query
@@ -217,7 +219,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     }
     
     return filtered;
-  }, [workersWithNames, searchQuery, selectedEmployerId, selectedBenefitId, trustBenefits]);
+  }, [workersWithNames, searchQuery, selectedEmployerId, selectedBenefitId]);
 
   const sortedWorkers = [...filteredWorkers].sort((a, b) => {
     const nameA = a.contactName || '';
