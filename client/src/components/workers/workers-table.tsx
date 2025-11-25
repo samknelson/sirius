@@ -249,12 +249,22 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
   }, [workersWithNames, searchQuery, selectedEmployerId, selectedBenefitId]);
 
   const sortedWorkers = [...filteredWorkers].sort((a, b) => {
-    const nameA = a.contactName || '';
-    const nameB = b.contactName || '';
+    const familyA = a.family || '';
+    const familyB = b.family || '';
+    const givenA = a.given || '';
+    const givenB = b.given || '';
+    
     if (sortOrder === "asc") {
-      return nameA.localeCompare(nameB);
+      // Sort by family name first, then by given name
+      const familyCompare = familyA.localeCompare(familyB);
+      if (familyCompare !== 0) return familyCompare;
+      return givenA.localeCompare(givenB);
+    } else {
+      // Sort by family name first (descending), then by given name (descending)
+      const familyCompare = familyB.localeCompare(familyA);
+      if (familyCompare !== 0) return familyCompare;
+      return givenB.localeCompare(givenA);
     }
-    return nameB.localeCompare(nameA);
   });
 
   const toggleSort = () => {
