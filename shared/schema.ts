@@ -902,6 +902,19 @@ export const insertChargePluginConfigSchema = createInsertSchema(chargePluginCon
 export type InsertChargePluginConfig = z.infer<typeof insertChargePluginConfigSchema>;
 export type ChargePluginConfig = typeof chargePluginConfigs.$inferSelect;
 
+// Base Rate History Schema - for use in charge plugins
+export const baseRateHistoryEntrySchema = z.object({
+  effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
+  rate: z.number().positive("Rate must be positive"),
+});
+
+export type BaseRateHistoryEntry = z.infer<typeof baseRateHistoryEntrySchema>;
+
+// Helper function to create rate history schema with validation
+export const createRateHistorySchema = (minEntries = 1) => {
+  return z.array(baseRateHistoryEntrySchema).min(minEntries, `At least ${minEntries} rate entry is required`);
+};
+
 // Cron Jobs
 export const cronJobs = pgTable("cron_jobs", {
   name: text("name").primaryKey(),

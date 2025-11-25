@@ -1,23 +1,24 @@
 import { useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Trash2, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowLeft } from "lucide-react";
 import { Link, useParams, useLocation } from "wouter";
+import { RateHistorySection } from "@/components/charge-plugins/RateHistorySection";
+import { baseRateHistoryEntrySchema, BaseRateHistoryEntry } from "@shared/schema";
 
-const rateHistoryEntrySchema = z.object({
-  effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
+// Use base schema from shared with coerce for number input
+const rateHistoryEntrySchema = baseRateHistoryEntrySchema.extend({
   rate: z.coerce.number().positive("Rate must be positive"),
 });
 
@@ -139,10 +140,6 @@ export default function HourFixedConfigFormPage() {
     }
   }, [isEditMode, existingConfig, form]);
 
-  const { fields, append, remove } = useFieldArray({
-    control: form.control,
-    name: "rateHistory",
-  });
 
   const saveMutation = useMutation({
     mutationFn: async (data: FormData) => {
@@ -403,76 +400,17 @@ export default function HourFixedConfigFormPage() {
               />
 
               {/* Rate history */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label className="text-base font-semibold">Rate History</Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => append({ effectiveDate: "", rate: 0 })}
-                    data-testid="button-add-rate"
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Rate
-                  </Button>
-                </div>
-
-                <div className="space-y-3">
-                  {fields.map((field, index) => (
-                    <div key={field.id} className="grid grid-cols-[1fr_1fr_auto] gap-3 items-start p-3 border rounded-md">
-                      <FormField
-                        control={form.control}
-                        name={`rateHistory.${index}.effectiveDate`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Effective Date</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="date"
-                                {...field}
-                                data-testid={`input-date-${index}`}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`rateHistory.${index}.rate`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Rate</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                {...field}
-                                onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                                data-testid={`input-rate-${index}`}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <div className="flex items-end h-full pb-2">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => remove(index)}
-                          disabled={fields.length === 1}
-                          data-testid={`button-remove-${index}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <RateHistorySection
+                control={form.control}
+                name="rateHistory"
+                title="Rate History"
+                columns={[
+                  { key: "effectiveDate", label: "Effective Date", type: "date" },
+                  { key: "rate", label: "Rate", type: "number", step: "0.01" },
+                ]}
+                defaultEntry={{ effectiveDate: "", rate: 0 }}
+                testIdPrefix="rate"
+              />
 
               {/* Action buttons */}
               <div className="flex items-center justify-between pt-4 border-t">

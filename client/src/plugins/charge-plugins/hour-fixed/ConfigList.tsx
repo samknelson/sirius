@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Plus, Edit } from "lucide-react";
 import type { ChargePluginConfigProps } from "../registry";
+import { getCurrentRateValue } from "@/lib/rateHistory";
 
 interface LedgerAccount {
   id: string;
@@ -63,27 +64,6 @@ export default function HourFixedConfigList({ pluginId }: ChargePluginConfigProp
     return account ? account.name : accountId;
   };
 
-  const getCurrentRate = (rateHistory?: Array<{ effectiveDate: string; rate: number }>) => {
-    if (!rateHistory || rateHistory.length === 0) return null;
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Normalize to start of day
-    
-    // Sort by parsed date descending and find the first one <= today
-    const sortedRates = [...rateHistory].sort((a, b) => {
-      const dateA = new Date(a.effectiveDate).getTime();
-      const dateB = new Date(b.effectiveDate).getTime();
-      return dateB - dateA; // Descending order
-    });
-    
-    const currentRate = sortedRates.find(r => {
-      const rateDate = new Date(r.effectiveDate);
-      if (isNaN(rateDate.getTime())) return false; // Guard against invalid dates
-      rateDate.setHours(0, 0, 0, 0); // Normalize to start of day
-      return rateDate <= today;
-    });
-    return currentRate?.rate ?? null;
-  };
 
   if (isLoadingConfigs) {
     return (
@@ -141,7 +121,7 @@ export default function HourFixedConfigList({ pluginId }: ChargePluginConfigProp
                     <span className="font-medium">Current Rate:</span>
                     <span className="text-sm">
                       {(() => {
-                        const rate = getCurrentRate(globalConfig.settings?.rateHistory);
+                        const rate = getCurrentRateValue(globalConfig.settings?.rateHistory || []);
                         return rate !== null ? `$${rate.toFixed(2)}/hour` : "Not set";
                       })()}
                     </span>
@@ -198,7 +178,7 @@ export default function HourFixedConfigList({ pluginId }: ChargePluginConfigProp
                         <span>•</span>
                         <span>
                           {(() => {
-                            const rate = getCurrentRate(config.settings?.rateHistory);
+                            const rate = getCurrentRateValue(config.settings?.rateHistory || []);
                             return rate !== null ? `Current: $${rate.toFixed(2)}/hour` : "No current rate";
                           })()}
                         </span>

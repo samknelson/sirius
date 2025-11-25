@@ -9,6 +9,7 @@ import {
 import { registerChargePlugin } from "../registry";
 import { z } from "zod";
 import { logger } from "../../logger";
+import { getCurrentEffectiveRate } from "../../utils/rateHistory";
 
 // Settings schema for Hour - Fixed plugin
 const rateHistoryEntrySchema = z.object({
@@ -69,7 +70,7 @@ class HourFixedPlugin extends ChargePlugin {
 
       // Find applicable rate for the hours date
       const hoursDate = new Date(hoursContext.year, hoursContext.month - 1, hoursContext.day);
-      const applicableRate = this.findApplicableRate(settings.rateHistory, hoursDate);
+      const applicableRate = getCurrentEffectiveRate(settings.rateHistory, hoursDate);
 
       if (!applicableRate) {
         logger.warn("No applicable rate found for hours entry", {
@@ -138,25 +139,6 @@ class HourFixedPlugin extends ChargePlugin {
     }
   }
 
-  private findApplicableRate(
-    rateHistory: RateHistoryEntry[],
-    targetDate: Date
-  ): RateHistoryEntry | null {
-    // Sort rate history by effective date descending (newest first)
-    const sortedRates = [...rateHistory].sort((a, b) => {
-      return new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime();
-    });
-
-    // Find the first rate where effective date <= target date
-    for (const rate of sortedRates) {
-      const effectiveDate = new Date(rate.effectiveDate);
-      if (effectiveDate <= targetDate) {
-        return rate;
-      }
-    }
-
-    return null;
-  }
 }
 
 // Register the plugin
