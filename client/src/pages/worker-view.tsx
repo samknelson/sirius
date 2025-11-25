@@ -1,13 +1,26 @@
 import { Mail, Phone, MapPin, Calendar, IdCard, Gift, Building2, Home, Briefcase } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { PostalAddress, PhoneNumber as PhoneNumberType, WorkerId, WorkerIdType, TrustWmb, TrustBenefit, Employer, WorkerWs } from "@shared/schema";
+import { PostalAddress, PhoneNumber as PhoneNumberType, WorkerId, WorkerIdType, TrustWmb, TrustBenefit, Employer, WorkerWs, EmploymentStatus } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
 import { GoogleMap } from "@/components/ui/google-map";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+
+interface CurrentEmploymentEntry {
+  id: string;
+  month: number;
+  year: number;
+  workerId: string;
+  employerId: string;
+  employmentStatusId: string;
+  home: boolean;
+  employer: Employer;
+  employmentStatus: EmploymentStatus;
+}
 
 interface WorkerBenefit extends TrustWmb {
   benefit: TrustBenefit;
@@ -66,7 +79,7 @@ function WorkerDetailsContent() {
   });
 
   // Fetch worker benefits
-  const { data: allBenefits = [] } = useQuery<WorkerBenefit[]>({
+  const { data: allBenefits = [], isLoading: isLoadingBenefits } = useQuery<WorkerBenefit[]>({
     queryKey: ["/api/workers", worker.id, "benefits"],
     queryFn: async () => {
       const response = await fetch(`/api/workers/${worker.id}/benefits`);
@@ -77,21 +90,19 @@ function WorkerDetailsContent() {
     },
   });
 
-  // Fetch all employers
-  const { data: allEmployers = [] } = useQuery<Employer[]>({
-    queryKey: ["/api/employers"],
-    queryFn: async () => {
-      const response = await fetch("/api/employers");
-      if (!response.ok) {
-        throw new Error("Failed to fetch employers");
-      }
-      return response.json();
-    },
-  });
-
   // Fetch work statuses
   const { data: workStatuses = [] } = useQuery<WorkerWs[]>({
     queryKey: ["/api/worker-work-statuses"],
+  });
+
+  // Fetch current employment
+  const { data: currentEmployment = [], isLoading: isLoadingEmployment } = useQuery<CurrentEmploymentEntry[]>({
+    queryKey: ["/api/workers", worker.id, "hours", "current"],
+    queryFn: async () => {
+      const response = await fetch(`/api/workers/${worker.id}/hours?view=current`);
+      if (!response.ok) throw new Error("Failed to fetch current employment");
+      return response.json();
+    },
   });
 
   // Get current month and year
@@ -103,17 +114,6 @@ function WorkerDetailsContent() {
   const currentBenefits = allBenefits.filter(
     (benefit) => benefit.month === currentMonth && benefit.year === currentYear
   );
-
-  // Get home employer and other employers from denormalized fields
-  const homeEmployer = worker.denormHomeEmployerId 
-    ? allEmployers.find(emp => emp.id === worker.denormHomeEmployerId)
-    : null;
-  
-  const otherEmployers = worker.denormEmployerIds && worker.denormEmployerIds.length > 0
-    ? allEmployers.filter(emp => 
-        worker.denormEmployerIds?.includes(emp.id) && emp.id !== worker.denormHomeEmployerId
-      )
-    : [];
 
   // Find primary address (prefer primary+active, then just primary, then just active)
   const primaryAddress = addresses.find(addr => addr.isPrimary && addr.isActive) 
@@ -221,83 +221,124 @@ function WorkerDetailsContent() {
           </div>
         </div>
 
-        {/* Employers */}
-        {(homeEmployer || otherEmployers.length > 0) && (
-          <div className="pt-4 border-t border-border">
-            <h3 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
-              <Building2 size={18} />
-              Employers
-            </h3>
-            <div className="space-y-3">
-              {homeEmployer && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Home size={14} />
-                    Home Employer
-                  </label>
-                  <Link href={`/employers/${homeEmployer.id}`}>
-                    <Badge 
-                      variant="default" 
-                      className="text-sm py-1.5 px-3 cursor-pointer hover:bg-primary/90"
-                      data-testid={`badge-home-employer-${homeEmployer.id}`}
-                    >
-                      {homeEmployer.name}
-                    </Badge>
-                  </Link>
-                </div>
-              )}
-              {otherEmployers.length > 0 && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Building2 size={14} />
-                    Other Employers
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {otherEmployers.map((employer) => (
-                      <Link key={employer.id} href={`/employers/${employer.id}`}>
-                        <Badge 
-                          variant="secondary" 
-                          className="text-sm py-1.5 px-3 cursor-pointer hover:bg-secondary/80"
-                          data-testid={`badge-employer-${employer.id}`}
-                        >
-                          {employer.name}
-                        </Badge>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              )}
+        {/* Current Employment */}
+        <div className="pt-4 border-t border-border">
+          <h3 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
+            <Building2 size={18} />
+            Current Employment
+          </h3>
+          {isLoadingEmployment ? (
+            <div className="space-y-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
             </div>
-          </div>
-        )}
+          ) : currentEmployment.length === 0 ? (
+            <p className="text-sm text-muted-foreground" data-testid="text-no-current-employment">
+              No current employment records
+            </p>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground mb-3">
+                Current as of {new Date(currentYear, currentMonth - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              </p>
+              <div className="space-y-2">
+                {currentEmployment.map((entry) => (
+                  <div 
+                    key={entry.id}
+                    className="flex items-center justify-between p-3 rounded-md bg-muted/30"
+                    data-testid={`current-employment-${entry.id}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      {entry.employer ? (
+                        <Link href={`/employers/${entry.employer.id}`}>
+                          <span className="font-medium text-foreground hover:underline cursor-pointer">
+                            {entry.employer.name}
+                          </span>
+                        </Link>
+                      ) : (
+                        <span className="font-medium text-muted-foreground">
+                          Unknown Employer
+                        </span>
+                      )}
+                      {entry.employmentStatus && (
+                        <Badge 
+                          variant={entry.employmentStatus.employed ? "default" : "secondary"}
+                          data-testid={`badge-employment-status-${entry.id}`}
+                        >
+                          {entry.employmentStatus.name}
+                        </Badge>
+                      )}
+                      {entry.home && (
+                        <Badge variant="default" data-testid={`badge-home-employer-${entry.id}`}>
+                          <Home size={12} className="mr-1" />
+                          Home
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Current Benefits */}
-        {currentBenefits.length > 0 && (
-          <div className="pt-4 border-t border-border">
-            <h3 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
-              <Gift size={18} />
-              Current Benefits
-            </h3>
+        <div className="pt-4 border-t border-border">
+          <h3 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
+            <Gift size={18} />
+            Current Benefits
+          </h3>
+          {isLoadingBenefits ? (
+            <div className="space-y-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ) : currentBenefits.length === 0 ? (
+            <p className="text-sm text-muted-foreground" data-testid="text-no-current-benefits">
+              No current benefit records
+            </p>
+          ) : (
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground mb-3">
                 Benefits received this month ({new Date(currentYear, currentMonth - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })})
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="space-y-2">
                 {currentBenefits.map((benefit) => (
-                  <Badge 
-                    key={benefit.id} 
-                    variant="default"
-                    className="text-sm py-1.5 px-3"
-                    data-testid={`badge-current-benefit-${benefit.id}`}
+                  <div 
+                    key={benefit.id}
+                    className="flex items-center justify-between p-3 rounded-md bg-muted/30"
+                    data-testid={`current-benefit-${benefit.id}`}
                   >
-                    <Gift size={14} className="mr-1.5" />
-                    {benefit.benefit.name} - {benefit.employer.name}
-                  </Badge>
+                    <div className="flex items-center gap-3">
+                      <Gift size={16} className="text-muted-foreground" />
+                      {benefit.benefit ? (
+                        <span className="font-medium text-foreground">
+                          {benefit.benefit.name}
+                        </span>
+                      ) : (
+                        <span className="font-medium text-muted-foreground">
+                          Unknown Benefit
+                        </span>
+                      )}
+                      <span className="text-sm text-muted-foreground">-</span>
+                      {benefit.employer ? (
+                        <Link href={`/employers/${benefit.employer.id}`}>
+                          <span className="text-sm text-foreground hover:underline cursor-pointer">
+                            {benefit.employer.name}
+                          </span>
+                        </Link>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">
+                          Unknown Employer
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Contact Information */}
         <div className="pt-4 border-t border-border">
