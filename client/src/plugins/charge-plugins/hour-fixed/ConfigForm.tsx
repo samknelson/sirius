@@ -44,8 +44,9 @@ type FormData = z.infer<typeof formSchema>;
 
 interface LedgerAccount {
   id: string;
-  accountNumber: string;
-  accountName: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
 }
 
 interface Employer {
@@ -432,9 +433,9 @@ export default function HourFixedConfigForm({ pluginId }: ChargePluginConfigProp
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {accounts.map((account) => (
+                                {accounts.filter(a => a.isActive).map((account) => (
                                   <SelectItem key={account.id} value={account.id}>
-                                    {account.accountNumber} - {account.accountName}
+                                    {account.name}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
