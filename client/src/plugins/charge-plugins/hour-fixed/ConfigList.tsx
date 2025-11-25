@@ -63,6 +63,28 @@ export default function HourFixedConfigList({ pluginId }: ChargePluginConfigProp
     return account ? account.name : accountId;
   };
 
+  const getCurrentRate = (rateHistory?: Array<{ effectiveDate: string; rate: number }>) => {
+    if (!rateHistory || rateHistory.length === 0) return null;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalize to start of day
+    
+    // Sort by parsed date descending and find the first one <= today
+    const sortedRates = [...rateHistory].sort((a, b) => {
+      const dateA = new Date(a.effectiveDate).getTime();
+      const dateB = new Date(b.effectiveDate).getTime();
+      return dateB - dateA; // Descending order
+    });
+    
+    const currentRate = sortedRates.find(r => {
+      const rateDate = new Date(r.effectiveDate);
+      if (isNaN(rateDate.getTime())) return false; // Guard against invalid dates
+      rateDate.setHours(0, 0, 0, 0); // Normalize to start of day
+      return rateDate <= today;
+    });
+    return currentRate?.rate ?? null;
+  };
+
   if (isLoadingConfigs) {
     return (
       <div className="p-8">
@@ -115,6 +137,15 @@ export default function HourFixedConfigList({ pluginId }: ChargePluginConfigProp
                     <span className="font-medium">Rate Entries:</span>
                     <span className="text-sm">{globalConfig.settings?.rateHistory?.length || 0}</span>
                   </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-medium">Current Rate:</span>
+                    <span className="text-sm">
+                      {(() => {
+                        const rate = getCurrentRate(globalConfig.settings?.rateHistory);
+                        return rate !== null ? `$${rate.toFixed(2)}/hour` : "Not set";
+                      })()}
+                    </span>
+                  </div>
                 </div>
                 <Link href={`/config/ledger/charge-plugins/${pluginId}/edit/${globalConfig.id}`}>
                   <Button variant="outline" size="sm" data-testid="button-edit-global">
@@ -164,6 +195,13 @@ export default function HourFixedConfigList({ pluginId }: ChargePluginConfigProp
                         <span>Account: {getAccountName(config.settings?.accountId)}</span>
                         <span>•</span>
                         <span>{config.settings?.rateHistory?.length || 0} rate(s)</span>
+                        <span>•</span>
+                        <span>
+                          {(() => {
+                            const rate = getCurrentRate(config.settings?.rateHistory);
+                            return rate !== null ? `Current: $${rate.toFixed(2)}/hour` : "No current rate";
+                          })()}
+                        </span>
                       </div>
                     </div>
                     <Link href={`/config/ledger/charge-plugins/${pluginId}/edit/${config.id}`}>

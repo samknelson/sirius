@@ -18,6 +18,7 @@ const rateHistoryEntrySchema = z.object({
 
 const hourFixedSettingsSchema = z.object({
   accountId: z.string().uuid("Account ID must be a valid UUID"),
+  employmentStatusIds: z.array(z.string()).optional(),
   rateHistory: z.array(rateHistoryEntrySchema).min(1, "At least one rate entry is required"),
 });
 

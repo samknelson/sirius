@@ -23,7 +23,7 @@ const rateHistoryEntrySchema = z.object({
 
 const formSchema = z.object({
   accountId: z.string().uuid("Please select an account"),
-  employmentStatusIds: z.array(z.string()).min(1, "At least one employment status must be selected"),
+  employmentStatusIds: z.array(z.string()).optional(),
   rateHistory: z.array(rateHistoryEntrySchema).min(1, "At least one rate entry is required"),
   scope: z.enum(["global", "employer"]),
   employerId: z.string().optional(),
@@ -130,7 +130,7 @@ export default function HourFixedConfigFormPage() {
     if (isEditMode && existingConfig) {
       form.reset({
         accountId: existingConfig.settings?.accountId || "",
-        employmentStatusIds: existingConfig.settings?.employmentStatusIds || [],
+        employmentStatusIds: existingConfig.settings?.employmentStatusIds || undefined,
         rateHistory: existingConfig.settings?.rateHistory || [{ effectiveDate: "", rate: 0 }],
         scope: existingConfig.scope as "global" | "employer",
         employerId: existingConfig.employerId || "",
@@ -159,10 +159,20 @@ export default function HourFixedConfigFormPage() {
       };
 
       if (isEditMode) {
-        // Update existing config
+        // Update existing config - only send defined fields in settings
+        const updateSettings: any = {
+          accountId: data.accountId,
+          rateHistory: data.rateHistory,
+        };
+        
+        // Only include employmentStatusIds if it's defined (not undefined)
+        if (data.employmentStatusIds !== undefined) {
+          updateSettings.employmentStatusIds = data.employmentStatusIds;
+        }
+        
         return apiRequest("PUT", `/api/charge-plugin-configs/${configId}`, {
           enabled: data.enabled,
-          settings: payload.settings,
+          settings: updateSettings,
         });
       } else {
         // Create new config
