@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -100,13 +101,7 @@ export default function HourFixedConfigFormPage() {
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
-    defaultValues: isEditMode && existingConfig ? {
-      accountId: existingConfig.settings?.accountId || "",
-      rateHistory: existingConfig.settings?.rateHistory || [{ effectiveDate: "", rate: 0 }],
-      scope: existingConfig.scope as "global" | "employer",
-      employerId: existingConfig.employerId || "",
-      enabled: existingConfig.enabled,
-    } : {
+    defaultValues: {
       accountId: "",
       rateHistory: [{ effectiveDate: "", rate: 0 }],
       scope: "global",
@@ -116,15 +111,17 @@ export default function HourFixedConfigFormPage() {
   });
 
   // Update form when existing config loads
-  if (isEditMode && existingConfig && !form.formState.isDirty) {
-    form.reset({
-      accountId: existingConfig.settings?.accountId || "",
-      rateHistory: existingConfig.settings?.rateHistory || [{ effectiveDate: "", rate: 0 }],
-      scope: existingConfig.scope as "global" | "employer",
-      employerId: existingConfig.employerId || "",
-      enabled: existingConfig.enabled,
-    });
-  }
+  useEffect(() => {
+    if (isEditMode && existingConfig) {
+      form.reset({
+        accountId: existingConfig.settings?.accountId || "",
+        rateHistory: existingConfig.settings?.rateHistory || [{ effectiveDate: "", rate: 0 }],
+        scope: existingConfig.scope as "global" | "employer",
+        employerId: existingConfig.employerId || "",
+        enabled: existingConfig.enabled,
+      });
+    }
+  }, [isEditMode, existingConfig, form]);
 
   const { fields, append, remove } = useFieldArray({
     control: form.control,
