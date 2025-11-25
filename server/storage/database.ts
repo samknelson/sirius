@@ -16,6 +16,7 @@ import { type WizardFeedMappingStorage, createWizardFeedMappingStorage } from ".
 import { type WizardEmployerMonthlyStorage, createWizardEmployerMonthlyStorage } from "./wizard_employer_monthly";
 import { type FileStorage, createFileStorage, fileLoggingConfig } from "./files";
 import { type CronJobStorage, createCronJobStorage, type CronJobRunStorage, createCronJobRunStorage } from "./cron_jobs";
+import { type ChargePluginConfigStorage, createChargePluginConfigStorage } from "./charge-plugins";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "../db";
 import { optionsWorkerIdType, optionsEmploymentStatus, employers, workers, contacts, trustProviderContacts, employerContacts } from "@shared/schema";
@@ -42,6 +43,7 @@ export interface IStorage {
   files: FileStorage;
   cronJobs: CronJobStorage;
   cronJobRuns: CronJobRunStorage;
+  chargePluginConfigs: ChargePluginConfigStorage;
 }
 
 /**
@@ -1011,6 +1013,7 @@ export class DatabaseStorage implements IStorage {
   files: FileStorage;
   cronJobs: CronJobStorage;
   cronJobRuns: CronJobRunStorage;
+  chargePluginConfigs: ChargePluginConfigStorage;
 
   constructor() {
     this.variables = withStorageLogging(createVariableStorage(), variableLoggingConfig);
@@ -1049,6 +1052,7 @@ export class DatabaseStorage implements IStorage {
     this.files = withStorageLogging(createFileStorage(), fileLoggingConfig);
     this.cronJobs = createCronJobStorage();
     this.cronJobRuns = createCronJobRunStorage();
+    this.chargePluginConfigs = createChargePluginConfigStorage();
   }
 }
 

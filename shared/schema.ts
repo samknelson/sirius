@@ -881,7 +881,7 @@ export const chargePluginConfigs = pgTable("charge_plugin_configs", {
   enabled: boolean("enabled").default(false).notNull(),
   scope: varchar("scope").notNull(), // 'global' or 'employer'
   employerId: varchar("employer_id").references(() => employers.id, { onDelete: 'cascade' }),
-  settings: jsonb("settings").notNull().default('{}'),
+  settings: jsonb("settings").default('{}'),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
 }, (table) => ({
@@ -889,11 +889,15 @@ export const chargePluginConfigs = pgTable("charge_plugin_configs", {
   uniquePluginScope: unique().on(table.pluginId, table.scope, table.employerId),
 }));
 
-export const insertChargePluginConfigSchema = createInsertSchema(chargePluginConfigs).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+export const insertChargePluginConfigSchema = createInsertSchema(chargePluginConfigs)
+  .omit({
+    id: true,
+    createdAt: true,
+    updatedAt: true,
+  })
+  .extend({
+    settings: z.unknown().optional().default({}),
+  });
 
 export type InsertChargePluginConfig = z.infer<typeof insertChargePluginConfigSchema>;
 export type ChargePluginConfig = typeof chargePluginConfigs.$inferSelect;

@@ -112,6 +112,7 @@ import StripeTestPage from "@/pages/config/ledger/stripe/test";
 import StripeSettingsPage from "@/pages/config/ledger/stripe/settings";
 import PaymentTypesPage from "@/pages/config/ledger/stripe/payment-types";
 import LedgerPaymentTypesPage from "@/pages/config/ledger-payment-types";
+import ChargePluginsPage from "@/pages/config/ledger/charge-plugins";
 import LedgerAccountsPage from "@/pages/config/ledger/accounts";
 import LedgerAccountView from "@/pages/config/ledger/account-view";
 import LedgerAccountEdit from "@/pages/config/ledger/account-edit";
@@ -955,6 +956,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <LedgerPaymentTypesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/ledger/charge-plugins">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <ChargePluginsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
