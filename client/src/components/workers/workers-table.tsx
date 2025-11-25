@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle } from "lucide-react";
+import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle, Scale, Stethoscope, Smile, Eye as EyeIcon, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,6 +22,12 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface WorkersTableProps {
   workers: Worker[];
@@ -34,6 +40,7 @@ interface WorkerWithContact extends Worker {
   phoneNumber?: string;
   employers?: EmployerInfo[];
   address?: PostalAddress | null;
+  benefitTypes?: string[];
 }
 
 interface EmployerInfo {
@@ -55,6 +62,24 @@ const avatarColors = [
   "bg-purple-100 text-purple-600",
   "bg-red-100 text-red-600",
 ];
+
+// Map benefit types to icons and colors
+const getBenefitIcon = (benefitType: string) => {
+  const type = benefitType.toLowerCase();
+  if (type.includes('legal')) {
+    return { Icon: Scale, color: 'text-blue-600', label: 'Legal' };
+  }
+  if (type.includes('medical') || type.includes('health')) {
+    return { Icon: Stethoscope, color: 'text-red-600', label: 'Medical' };
+  }
+  if (type.includes('dental')) {
+    return { Icon: Smile, color: 'text-green-600', label: 'Dental' };
+  }
+  if (type.includes('vision')) {
+    return { Icon: EyeIcon, color: 'text-purple-600', label: 'Vision' };
+  }
+  return { Icon: Star, color: 'text-yellow-600', label: benefitType };
+};
 
 export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
@@ -111,6 +136,18 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
       };
     }
     
+    // Parse benefit types from JSON array
+    let benefitTypes: string[] = [];
+    if (worker.benefit_types) {
+      try {
+        benefitTypes = Array.isArray(worker.benefit_types) 
+          ? worker.benefit_types 
+          : JSON.parse(worker.benefit_types);
+      } catch {
+        benefitTypes = [];
+      }
+    }
+    
     return {
       ...worker,
       contactId: worker.contact_id,
@@ -123,6 +160,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
       phoneNumber: formattedPhone,
       employers,
       address,
+      benefitTypes,
     };
   });
 
@@ -283,6 +321,9 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                   <span>Address</span>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <span>Benefits</span>
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Employers</span>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -369,6 +410,31 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                         <span className="text-sm text-muted-foreground italic">No address</span>
                       </div>
                     )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <TooltipProvider>
+                      <div className="flex items-center gap-2" data-testid={`benefits-icons-${worker.id}`}>
+                        {worker.benefitTypes && worker.benefitTypes.length > 0 ? (
+                          worker.benefitTypes.map((benefitType, index) => {
+                            const { Icon, color, label } = getBenefitIcon(benefitType);
+                            return (
+                              <Tooltip key={index}>
+                                <TooltipTrigger asChild>
+                                  <div className="cursor-help">
+                                    <Icon size={16} className={color} />
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{label}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            );
+                          })
+                        ) : (
+                          <span className="text-sm text-muted-foreground italic">None</span>
+                        )}
+                      </div>
+                    </TooltipProvider>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex flex-wrap gap-1" data-testid={`text-worker-employers-${worker.id}`}>

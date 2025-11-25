@@ -307,7 +307,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/workers/with-details - Get all workers with contact and phone data (optimized for list view)
   app.get("/api/workers/with-details", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {
-      // Optimized query that joins workers, contacts, phone numbers, and addresses in a single query
+      // Optimized query that joins workers, contacts, phone numbers, addresses, and benefit types in a single query
       const result = await db.execute(sql`
         SELECT 
           w.id,
@@ -330,7 +330,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           a.state as address_state,
           a.postal_code as address_postal_code,
           a.country as address_country,
-          a.is_primary as address_is_primary
+          a.is_primary as address_is_primary,
+          COALESCE(
+            (
+              SELECT json_agg(DISTINCT bt.name)
+              FROM trust_wmb wmb
+              INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
+              INNER JOIN options_trust_benefit_type bt ON tb.benefit_type = bt.id
+              WHERE wmb.worker_id = w.id
+                AND tb.is_active = true
+            ),
+            '[]'::json
+          ) as benefit_types
         FROM workers w
         INNER JOIN contacts c ON w.contact_id = c.id
         LEFT JOIN LATERAL (
