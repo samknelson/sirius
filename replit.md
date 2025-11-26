@@ -6,6 +6,15 @@ Sirius is a full-stack web application for comprehensive worker management, prov
 
 Preferred communication style: Simple, everyday language.
 
+# Recent Changes
+
+## November 26, 2025 - Initial Replit Setup
+- Configured Vite dev server for Replit environment with conditional HMR settings (wss://443 when REPL_ID is present)
+- Modified object storage service to allow app startup without DEFAULT_OBJECT_STORAGE_BUCKET_ID (throws error only when storage methods are called)
+- Set up deployment configuration (autoscale with build and start commands)
+- Created PostgreSQL database and ran initial migrations
+- Note: Object storage features require DEFAULT_OBJECT_STORAGE_BUCKET_ID environment variable to be configured before use
+
 # System Architecture
 
 ## UI/UX Decisions
