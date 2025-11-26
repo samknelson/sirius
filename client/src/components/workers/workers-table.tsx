@@ -116,6 +116,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEmployerId, setSelectedEmployerId] = useState<string>("all");
   const [selectedBenefitId, setSelectedBenefitId] = useState<string>("all");
+  const [contactStatusFilter, setContactStatusFilter] = useState<string>("all");
 
   // Fetch worker-employer summary
   const { data: workerEmployers = [] } = useQuery<WorkerEmployerSummary[]>({
@@ -256,6 +257,36 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
       );
     }
     
+    // Filter by contact status
+    if (contactStatusFilter !== "all") {
+      filtered = filtered.filter(worker => {
+        const hasEmail = Boolean(worker.email);
+        const hasPhone = Boolean(worker.phoneNumber);
+        const hasAddress = Boolean(worker.address);
+        
+        switch (contactStatusFilter) {
+          case "has_email":
+            return hasEmail;
+          case "missing_email":
+            return !hasEmail;
+          case "has_phone":
+            return hasPhone;
+          case "missing_phone":
+            return !hasPhone;
+          case "has_address":
+            return hasAddress;
+          case "missing_address":
+            return !hasAddress;
+          case "complete":
+            return hasEmail && hasPhone && hasAddress;
+          case "incomplete":
+            return !hasEmail || !hasPhone || !hasAddress;
+          default:
+            return true;
+        }
+      });
+    }
+    
     // Filter by search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
@@ -273,7 +304,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     }
     
     return filtered;
-  }, [workersWithNames, searchQuery, selectedEmployerId, selectedBenefitId]);
+  }, [workersWithNames, searchQuery, selectedEmployerId, selectedBenefitId, contactStatusFilter]);
 
   const sortedWorkers = [...filteredWorkers].sort((a, b) => {
     const familyA = a.family || '';
@@ -484,6 +515,72 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                         </SelectItem>
                       );
                     })}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {/* Contact Status Filter */}
+            <div className="w-56">
+              <Select
+                value={contactStatusFilter}
+                onValueChange={setContactStatusFilter}
+              >
+                <SelectTrigger data-testid="select-contact-status-filter">
+                  <div className="flex items-center gap-2">
+                    <User size={16} className="text-muted-foreground" />
+                    <SelectValue placeholder="Contact Status" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Contact Status</SelectItem>
+                  <SelectItem value="has_email">
+                    <div className="flex items-center gap-2">
+                      <Mail size={14} className="text-green-600" />
+                      <span>Has Email</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="missing_email">
+                    <div className="flex items-center gap-2">
+                      <Mail size={14} className="text-muted-foreground" />
+                      <span>Missing Email</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="has_phone">
+                    <div className="flex items-center gap-2">
+                      <Phone size={14} className="text-green-600" />
+                      <span>Has Phone</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="missing_phone">
+                    <div className="flex items-center gap-2">
+                      <Phone size={14} className="text-muted-foreground" />
+                      <span>Missing Phone</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="has_address">
+                    <div className="flex items-center gap-2">
+                      <Home size={14} className="text-green-600" />
+                      <span>Has Address</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="missing_address">
+                    <div className="flex items-center gap-2">
+                      <Home size={14} className="text-muted-foreground" />
+                      <span>Missing Address</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="complete">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={14} className="text-green-600" />
+                      <span>Complete Contact Info</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="incomplete">
+                    <div className="flex items-center gap-2">
+                      <XCircle size={14} className="text-orange-500" />
+                      <span>Incomplete Contact Info</span>
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
