@@ -24,8 +24,12 @@ export interface PaymentSavedContext {
   paymentId: string;
   amount: string;
   status: string;
-  entityType: string | null;
-  entityId: string | null;
+  ledgerEaId: string;
+  accountId: string;
+  entityType: string;
+  entityId: string;
+  dateCleared: Date | null;
+  memo: string | null;
 }
 
 export interface CronContext {
@@ -37,6 +41,8 @@ export interface CronContext {
 export type PluginContext = HoursSavedContext | PaymentSavedContext | CronContext;
 
 export interface LedgerTransaction {
+  chargePlugin: string;
+  chargePluginKey: string;
   accountId: string;
   entityType: string; // "employer", "worker", "trust_provider"
   entityId: string;

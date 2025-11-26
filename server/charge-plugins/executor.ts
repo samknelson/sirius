@@ -212,6 +212,8 @@ async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<v
 
       // Create ledger entry (outside the EA transaction)
       await storage.ledger.entries.create({
+        chargePlugin: transaction.chargePlugin,
+        chargePluginKey: transaction.chargePluginKey,
         amount: transaction.amount,
         eaId,
         referenceType: transaction.referenceType || "charge_plugin",
