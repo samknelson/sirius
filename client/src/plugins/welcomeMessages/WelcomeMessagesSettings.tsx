@@ -25,12 +25,14 @@ export function WelcomeMessagesSettings({ plugin, queryClient, onConfigSaved, lo
   });
 
   const [editedMessages, setEditedMessages] = useState<WelcomeMessagesSettings>({});
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
-    if (welcomeMessages) {
+    if (welcomeMessages && !isInitialized && !messagesLoading) {
       setEditedMessages(welcomeMessages);
+      setIsInitialized(true);
     }
-  }, [welcomeMessages]);
+  }, [welcomeMessages, isInitialized, messagesLoading]);
 
   const updateMessagesMutation = useMutation({
     mutationFn: async (messages: WelcomeMessagesSettings) => {

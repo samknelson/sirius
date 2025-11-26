@@ -35,8 +35,7 @@ export default function SiteInformation() {
 
   const updateMutation = useMutation({
     mutationFn: async (updates: { siteName?: string; footer?: string }) => {
-      const res = await apiRequest("PUT", "/api/site-settings", updates);
-      return await res.json();
+      return await apiRequest("PUT", "/api/site-settings", updates);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/site-settings"] });

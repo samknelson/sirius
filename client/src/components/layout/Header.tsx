@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
@@ -15,6 +16,7 @@ import {
   FileText,
   BookOpen,
   Shield,
+  Menu,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -25,6 +27,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 interface SiteSettings {
   siteName: string;
@@ -35,6 +44,7 @@ export default function Header() {
   const { user, logout, hasPermission, masquerade, stopMasquerade } = useAuth();
   const [location] = useLocation();
   const { toast } = useToast();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const { data: settings } = useQuery<SiteSettings>({
     queryKey: ["/api/site-settings"],
@@ -109,19 +119,145 @@ export default function Header() {
         </div>
       )}
 
-      <div className="flex items-center justify-between h-16 px-6">
-        <div className="flex items-center space-x-6">
+      <div className="flex items-center justify-between h-16 px-4 md:px-6">
+        <div className="flex items-center space-x-4 md:space-x-6">
+          {/* Mobile hamburger menu */}
+          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+            <SheetTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden"
+                data-testid="button-mobile-menu"
+                aria-label="Open navigation menu"
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-72">
+              <SheetHeader>
+                <SheetTitle>{settings?.siteName || "Sirius"}</SheetTitle>
+              </SheetHeader>
+              <nav className="flex flex-col space-y-2 mt-6">
+                <Link href="/" onClick={() => setMobileMenuOpen(false)}>
+                  <Button
+                    variant={location === "/" ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    data-testid="mobile-nav-home"
+                  >
+                    <Home className="h-4 w-4 mr-2" />
+                    Home
+                  </Button>
+                </Link>
+
+                <Link href="/workers" onClick={() => setMobileMenuOpen(false)}>
+                  <Button
+                    variant={location === "/workers" ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    data-testid="mobile-nav-workers"
+                  >
+                    <Users className="h-4 w-4 mr-2" />
+                    Workers
+                  </Button>
+                </Link>
+
+                <Link href="/employers" onClick={() => setMobileMenuOpen(false)}>
+                  <Button
+                    variant={location.startsWith("/employers") ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    data-testid="mobile-nav-employers"
+                  >
+                    <Building2 className="h-4 w-4 mr-2" />
+                    Employers
+                  </Button>
+                </Link>
+
+                <Link href="/employer-contacts/all" onClick={() => setMobileMenuOpen(false)}>
+                  <Button
+                    variant={location.startsWith("/employer-contacts") ? "default" : "ghost"}
+                    className="w-full justify-start pl-8"
+                    data-testid="mobile-nav-employer-contacts"
+                  >
+                    <Users className="h-4 w-4 mr-2" />
+                    Employer Contacts
+                  </Button>
+                </Link>
+
+                <Link href="/employers/monthly-uploads" onClick={() => setMobileMenuOpen(false)}>
+                  <Button
+                    variant={location === "/employers/monthly-uploads" ? "default" : "ghost"}
+                    className="w-full justify-start pl-8"
+                    data-testid="mobile-nav-monthly-uploads"
+                  >
+                    <Calendar className="h-4 w-4 mr-2" />
+                    Monthly Uploads
+                  </Button>
+                </Link>
+
+                <Link href="/trust/providers" onClick={() => setMobileMenuOpen(false)}>
+                  <Button
+                    variant={location.startsWith("/trust/provider") ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    data-testid="mobile-nav-providers"
+                  >
+                    <Shield className="h-4 w-4 mr-2" />
+                    Providers
+                  </Button>
+                </Link>
+
+                {ledgerStaffPolicy?.allowed && (
+                  <Link href="/ledger/accounts" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location.startsWith("/ledger/accounts") ? "default" : "ghost"}
+                      className="w-full justify-start"
+                      data-testid="mobile-nav-accounts"
+                    >
+                      <BookOpen className="h-4 w-4 mr-2" />
+                      Accounts
+                    </Button>
+                  </Link>
+                )}
+
+                {hasPermission("admin") && (
+                  <Link href="/reports" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location === "/reports" ? "default" : "ghost"}
+                      className="w-full justify-start"
+                      data-testid="mobile-nav-reports"
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      Reports
+                    </Button>
+                  </Link>
+                )}
+
+                {hasPermission("admin") && (
+                  <Link href="/config" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location.startsWith("/config") ? "default" : "ghost"}
+                      className="w-full justify-start"
+                      data-testid="mobile-nav-config"
+                    >
+                      <Settings className="h-4 w-4 mr-2" />
+                      Configuration
+                    </Button>
+                  </Link>
+                )}
+              </nav>
+            </SheetContent>
+          </Sheet>
+
           <div className="flex items-center space-x-4">
             <h1
-              className="text-xl font-bold text-gray-900 dark:text-gray-100"
+              className="text-lg md:text-xl font-bold text-gray-900 dark:text-gray-100"
               data-testid="text-site-name"
             >
               {settings?.siteName || "Sirius"}
             </h1>
           </div>
 
-          {/* Navigation Links */}
-          <nav className="flex items-center space-x-4">
+          {/* Desktop Navigation Links - hidden on mobile */}
+          <nav className="hidden md:flex items-center space-x-4">
             <Link href="/">
               <Button
                 variant={location === "/" ? "default" : "ghost"}

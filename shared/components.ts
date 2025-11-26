@@ -42,6 +42,13 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "site-specific"
   },
   {
+    id: "sitespecific.gbhet.legal",
+    name: "GBHET Legal Benefit",
+    description: "Custom legal benefit functionality for GBHET",
+    enabledByDefault: false,
+    category: "sitespecific.gbhet"
+  },
+  {
     id: "sitespecific.btu",
     name: "BTU Customization",
     description: "Custom functionality for BTU",
@@ -63,14 +70,14 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "authentication"
   },
   {
-    id: "trustprovider.login",
+    id: "trust.providers.login",
     name: "Trust Provider Login",
     description: "Ability for trust provider contacts to log in",
     enabledByDefault: false,
     category: "authentication"
   },
   {
-    id: "trust_providers",
+    id: "trust.providers",
     name: "Trust Providers",
     description: "Management and tracking of trust providers",
     enabledByDefault: false,
@@ -97,4 +104,35 @@ export function getComponentById(id: string): ComponentDefinition | undefined {
  */
 export function getComponentsByCategory(category: string): ComponentDefinition[] {
   return componentRegistry.filter(component => component.category === category);
+}
+
+/**
+ * Get the parent component ID from a component ID
+ * For example: "trust.providers.login" -> "trust.providers"
+ *              "ledger.stripe" -> "ledger"
+ *              "ledger" -> null
+ */
+export function getParentComponentId(componentId: string): string | null {
+  const lastDotIndex = componentId.lastIndexOf('.');
+  if (lastDotIndex === -1) {
+    return null;
+  }
+  return componentId.substring(0, lastDotIndex);
+}
+
+/**
+ * Get all ancestor component IDs for a component
+ * For example: "a.b.c" -> ["a.b", "a"]
+ *              "ledger.stripe" -> ["ledger"]
+ */
+export function getAncestorComponentIds(componentId: string): string[] {
+  const ancestors: string[] = [];
+  let current = getParentComponentId(componentId);
+  
+  while (current !== null) {
+    ancestors.push(current);
+    current = getParentComponentId(current);
+  }
+  
+  return ancestors;
 }

@@ -32,6 +32,7 @@ import { registerAccessPolicyRoutes } from "./modules/access-policies";
 import { registerLogRoutes } from "./modules/logs";
 import { registerQuickstartRoutes } from "./modules/quickstart";
 import { registerCronJobRoutes } from "./modules/cron_jobs";
+import { registerChargePluginRoutes } from "./modules/charge-plugins";
 import { requireAccess } from "./accessControl";
 import { policies } from "./policies";
 import { addressValidationService } from "./services/address-validation";
@@ -301,6 +302,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register cron job management routes
   registerCronJobRoutes(app, requireAuth, requirePermission);
+
+  // Register charge plugin configuration routes
+  registerChargePluginRoutes(app, requireAuth, requirePermission);
 
   // Worker routes (protected with authentication and permissions)
   

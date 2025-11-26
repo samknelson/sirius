@@ -19,12 +19,13 @@ export interface QuickstartData {
 }
 
 // Current schema version for compatibility checking
-const SCHEMA_VERSION = '1.0';
+// Bump this when adding new tables to ensure old exports are flagged as incompatible
+const SCHEMA_VERSION = '1.1';
 
 // Define table order for export/import (respects foreign key dependencies)
 // Tables are ordered from least dependent to most dependent
 const TABLE_ORDER = [
-  // Level 1: No dependencies
+  // Level 1: No dependencies (options, roles, base entities)
   'variables',
   'roles',
   'users',
@@ -35,8 +36,11 @@ const TABLE_ORDER = [
   'optionsEmployerContactType',
   'optionsWorkerWs',
   'optionsEmploymentStatus',
+  'optionsTrustProviderType',
   'ledgerAccounts',
   'employers',
+  'trustProviders',
+  'cronJobs',
   
   // Level 2: Depends on level 1
   'contacts',
@@ -45,22 +49,28 @@ const TABLE_ORDER = [
   'trustBenefits',
   'bookmarks',
   'ledgerStripePaymentMethods',
-  'ledgerPayments',
+  'ledgerEa',
   'wizards',
+  'chargePluginConfigs',
+  'cronJobRuns',
   
   // Level 3: Depends on level 2
   'workers',
   'employerContacts',
+  'trustProviderContacts',
   'postalAddresses',
   'phoneNumbers',
   'wizardEmployerMonthly',
   'wizardFeedMappings',
   'wizardReportData',
+  'ledgerPayments',
   
   // Level 4: Depends on level 3
   'workerIds',
   'workerHours',
+  'workerWsh',
   'trustWmb',
+  'ledger',
 ] as const;
 
 // Tables to exclude from export/import (runtime/audit data, or stored in object storage)
@@ -135,17 +145,18 @@ function validateQuickstartData(data: any): void {
   }
   
   if (data.metadata.schemaVersion !== SCHEMA_VERSION) {
-    console.warn(`Schema version mismatch: file is ${data.metadata.schemaVersion}, current is ${SCHEMA_VERSION}`);
+    console.warn(`Schema version mismatch: file is ${data.metadata.schemaVersion}, current is ${SCHEMA_VERSION}. Missing tables will be skipped.`);
   }
   
   if (typeof data.data !== 'object') {
     throw new Error('Invalid quickstart file format: data is not an object');
   }
   
-  // Verify all expected tables are present
+  // Check tables - warn about missing ones but don't fail (for backward compatibility)
   for (const tableName of TABLE_ORDER) {
     if (!(tableName in data.data)) {
-      throw new Error(`Invalid quickstart file: missing table "${tableName}"`);
+      console.warn(`Quickstart file missing table "${tableName}" - will be skipped`);
+      continue;
     }
     
     if (!Array.isArray(data.data[tableName])) {

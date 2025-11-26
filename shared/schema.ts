@@ -301,6 +301,8 @@ export const ledgerEa = pgTable("ledger_ea", {
 
 export const ledger = pgTable("ledger", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  chargePlugin: varchar("charge_plugin").notNull(),
+  chargePluginKey: varchar("charge_plugin_key").notNull(),
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
   eaId: varchar("ea_id").notNull().references(() => ledgerEa.id, { onDelete: 'cascade' }),
   referenceType: varchar("reference_type"),
@@ -308,7 +310,9 @@ export const ledger = pgTable("ledger", {
   date: timestamp("date"),
   memo: text("memo"),
   data: jsonb("data"),
-});
+}, (table) => ({
+  uniqueChargePluginKey: unique().on(table.chargePlugin, table.chargePluginKey),
+}));
 
 export const wizards = pgTable("wizards", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -874,6 +878,47 @@ export const employerMonthlyPluginConfigSchema = z.record(
 );
 
 export type EmployerMonthlyPluginConfig = z.infer<typeof employerMonthlyPluginConfigSchema>;
+
+// Charge Plugin Configs
+export const chargePluginConfigs = pgTable("charge_plugin_configs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  pluginId: text("plugin_id").notNull(), // e.g., "hour-fixed", "payment-percentage"
+  enabled: boolean("enabled").default(false).notNull(),
+  scope: varchar("scope").notNull(), // 'global' or 'employer'
+  employerId: varchar("employer_id").references(() => employers.id, { onDelete: 'cascade' }),
+  settings: jsonb("settings").default('{}'),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+}, (table) => ({
+  // Unique constraint: one config per plugin per employer (or one global per plugin)
+  uniquePluginScope: unique().on(table.pluginId, table.scope, table.employerId),
+}));
+
+export const insertChargePluginConfigSchema = createInsertSchema(chargePluginConfigs)
+  .omit({
+    id: true,
+    createdAt: true,
+    updatedAt: true,
+  })
+  .extend({
+    settings: z.unknown().optional().default({}),
+  });
+
+export type InsertChargePluginConfig = z.infer<typeof insertChargePluginConfigSchema>;
+export type ChargePluginConfig = typeof chargePluginConfigs.$inferSelect;
+
+// Base Rate History Schema - for use in charge plugins
+export const baseRateHistoryEntrySchema = z.object({
+  effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
+  rate: z.number().positive("Rate must be positive"),
+});
+
+export type BaseRateHistoryEntry = z.infer<typeof baseRateHistoryEntrySchema>;
+
+// Helper function to create rate history schema with validation
+export const createRateHistorySchema = (minEntries = 1) => {
+  return z.array(baseRateHistoryEntrySchema).min(minEntries, `At least ${minEntries} rate entry is required`);
+};
 
 // Cron Jobs
 export const cronJobs = pgTable("cron_jobs", {

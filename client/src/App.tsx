@@ -112,6 +112,13 @@ import StripeTestPage from "@/pages/config/ledger/stripe/test";
 import StripeSettingsPage from "@/pages/config/ledger/stripe/settings";
 import PaymentTypesPage from "@/pages/config/ledger/stripe/payment-types";
 import LedgerPaymentTypesPage from "@/pages/config/ledger-payment-types";
+import ChargePluginsListPage from "@/pages/config/ledger/charge-plugins-list";
+import ChargePluginConfigPage from "@/pages/config/ledger/charge-plugin-config";
+import ChargePluginFormPage from "@/pages/config/ledger/charge-plugin-form";
+import ConfigurationLandingPage from "@/pages/config/index";
+
+// Import charge plugin UIs to register them
+import "@/plugins/charge-plugins";
 import LedgerAccountsPage from "@/pages/config/ledger/accounts";
 import LedgerAccountView from "@/pages/config/ledger/account-view";
 import LedgerAccountEdit from "@/pages/config/ledger/account-edit";
@@ -324,6 +331,22 @@ function Router() {
         <ProtectedRoute policy="bookmark">
           <AuthenticatedLayout>
             <Bookmarks />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/reports/workers">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <Reports activeCategory="Workers" />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/reports/employers">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <Reports activeCategory="Employers" />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -944,6 +967,46 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/ledger/charge-plugins">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <ChargePluginsListPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/ledger/charge-plugins/:pluginId/new">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <ChargePluginFormPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/ledger/charge-plugins/:pluginId/edit/:configId">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <ChargePluginFormPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/ledger/charge-plugins/:pluginId">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <ChargePluginConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       {/* Ledger account detail pages */}
       <Route path="/ledger/accounts/:id/payments">
         <ProtectedRoute policy="ledgerStaff">
@@ -1127,7 +1190,7 @@ function Router() {
 
       {/* Legacy admin route - redirect to configuration */}
       <Route path="/admin">
-        <Redirect to="/config/users/list" />
+        <Redirect to="/config" />
       </Route>
 
       {/* Dashboard route */}
@@ -1144,9 +1207,15 @@ function Router() {
         <Redirect to="/dashboard" />
       </Route>
 
-      {/* Configuration fallback - redirect to users page */}
+      {/* Configuration landing page */}
       <Route path="/config">
-        <Redirect to="/config/users/list" />
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <ConfigurationLandingPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
       </Route>
 
       {/* 404 for unmatched routes */}

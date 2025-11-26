@@ -21,6 +21,7 @@ import {
 import { eq, sql, and, desc } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
+import { storageLogger as logger } from "../logger";
 
 export interface WorkerStorage {
   getAllWorkers(): Promise<Worker[]>;
@@ -522,21 +523,83 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       });
     },
 
-    async createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null }): Promise<WorkerHours> {
-      const [hours] = await db
+    async createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHours> {
+      const [savedHours] = await db
         .insert(workerHours)
         .values(data)
         .returning();
-      return hours;
+
+      // Execute charge plugins after hours are created
+      if (savedHours && data.hours !== null && data.hours > 0) {
+        try {
+          const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+          
+          const context = {
+            trigger: TriggerType.HOURS_SAVED as typeof TriggerType.HOURS_SAVED,
+            hoursId: savedHours.id,
+            workerId: savedHours.workerId,
+            employerId: savedHours.employerId,
+            year: savedHours.year,
+            month: savedHours.month,
+            day: savedHours.day,
+            hours: savedHours.hours || 0,
+            employmentStatusId: savedHours.employmentStatusId,
+            home: savedHours.home,
+          };
+
+          await executeChargePlugins(context);
+        } catch (error) {
+          logger.error("Failed to execute charge plugins for hours create", {
+            service: "workers-storage",
+            hoursId: savedHours.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      return savedHours;
     },
 
-    async updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null }): Promise<WorkerHours | undefined> {
+    async updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean }): Promise<WorkerHours | undefined> {
       const [updated] = await db
         .update(workerHours)
         .set(data)
         .where(eq(workerHours.id, id))
         .returning();
-      return updated || undefined;
+      
+      if (!updated) {
+        return undefined;
+      }
+
+      // Execute charge plugins after hours are updated (if hours > 0)
+      if (updated.hours !== null && updated.hours > 0) {
+        try {
+          const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+          
+          const context = {
+            trigger: TriggerType.HOURS_SAVED as typeof TriggerType.HOURS_SAVED,
+            hoursId: updated.id,
+            workerId: updated.workerId,
+            employerId: updated.employerId,
+            year: updated.year,
+            month: updated.month,
+            day: updated.day,
+            hours: updated.hours,
+            employmentStatusId: updated.employmentStatusId,
+            home: updated.home,
+          };
+
+          await executeChargePlugins(context);
+        } catch (error) {
+          logger.error("Failed to execute charge plugins for hours update", {
+            service: "workers-storage",
+            hoursId: updated.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      return updated;
     },
 
     async deleteWorkerHours(id: string): Promise<boolean> {
@@ -548,7 +611,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null }): Promise<WorkerHours> {
-      const [hours] = await db
+      const [savedHours] = await db
         .insert(workerHours)
         .values({
           ...data,
@@ -562,7 +625,36 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           },
         })
         .returning();
-      return hours;
+
+      // Execute charge plugins after hours are saved
+      if (savedHours && data.hours !== null && data.hours > 0) {
+        try {
+          const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+          
+          const context = {
+            trigger: TriggerType.HOURS_SAVED as typeof TriggerType.HOURS_SAVED,
+            hoursId: savedHours.id,
+            workerId: savedHours.workerId,
+            employerId: savedHours.employerId,
+            year: savedHours.year,
+            month: savedHours.month,
+            day: savedHours.day,
+            hours: savedHours.hours || 0,
+            employmentStatusId: savedHours.employmentStatusId,
+            home: savedHours.home,
+          };
+
+          await executeChargePlugins(context);
+        } catch (error) {
+          logger.error("Failed to execute charge plugins for hours save", {
+            service: "workers-storage",
+            hoursId: savedHours.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      return savedHours;
     },
 
     // Worker work status history methods

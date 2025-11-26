@@ -10,6 +10,21 @@ Sirius is a full-stack web application for comprehensive worker management, prov
 
 Preferred communication style: Simple, everyday language.
 
+# Recent Changes
+
+## November 26, 2025 - Ledger Charge Plugin Fields
+- Added `charge_plugin` (varchar, NOT NULL) and `charge_plugin_key` (varchar, NOT NULL) columns to the `ledger` table
+- Added unique constraint on (charge_plugin, charge_plugin_key) combination
+- Created migration helper script: `scripts/db-clear-ledger.ts` - must be run before `db:push` on existing databases
+- **Migration Note**: When deploying to other environments, run `npx tsx scripts/db-clear-ledger.ts` before `npm run db:push` to avoid NOT NULL column addition failures
+
+## November 26, 2025 - Initial Replit Setup
+- Configured Vite dev server for Replit environment with conditional HMR settings (wss://443 when REPL_ID is present)
+- Modified object storage service to allow app startup without DEFAULT_OBJECT_STORAGE_BUCKET_ID (throws error only when storage methods are called)
+- Set up deployment configuration (autoscale with build and start commands)
+- Created PostgreSQL database and ran initial migrations
+- Note: Object storage features require DEFAULT_OBJECT_STORAGE_BUCKET_ID environment variable to be configured before use
+
 # System Architecture
 
 ## UI/UX Decisions

@@ -5,6 +5,7 @@ export class ReportWorkersMissingSSN extends WizardReport {
   name = 'report_workers_missing_ssn';
   displayName = 'Workers Missing SSN';
   description = 'Generate a report of all workers with missing or empty Social Security Numbers';
+  category = 'Workers';
 
   getColumns(): ReportColumn[] {
     return [

@@ -18,6 +18,7 @@ export interface ReportResults {
 
 export abstract class WizardReport extends BaseWizard {
   isReport: boolean = true;
+  abstract category: string;
 
   /**
    * Get column definitions for this report
