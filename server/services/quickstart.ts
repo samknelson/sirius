@@ -49,7 +49,7 @@ const TABLE_ORDER = [
   'trustBenefits',
   'bookmarks',
   'ledgerStripePaymentMethods',
-  'ledgerPayments',
+  'ledgerEa',
   'wizards',
   'chargePluginConfigs',
   'cronJobRuns',
@@ -63,7 +63,7 @@ const TABLE_ORDER = [
   'wizardEmployerMonthly',
   'wizardFeedMappings',
   'wizardReportData',
-  'ledgerEa',
+  'ledgerPayments',
   
   // Level 4: Depends on level 3
   'workerIds',
