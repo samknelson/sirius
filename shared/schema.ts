@@ -300,6 +300,8 @@ export const ledgerEa = pgTable("ledger_ea", {
 
 export const ledger = pgTable("ledger", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  chargePlugin: varchar("charge_plugin").notNull(),
+  chargePluginKey: varchar("charge_plugin_key").notNull(),
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
   eaId: varchar("ea_id").notNull().references(() => ledgerEa.id, { onDelete: 'cascade' }),
   referenceType: varchar("reference_type"),
@@ -307,7 +309,9 @@ export const ledger = pgTable("ledger", {
   date: timestamp("date"),
   memo: text("memo"),
   data: jsonb("data"),
-});
+}, (table) => ({
+  uniqueChargePluginKey: unique().on(table.chargePlugin, table.chargePluginKey),
+}));
 
 export const wizards = pgTable("wizards", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
