@@ -101,30 +101,15 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
         };
       }
 
-      const existingEntries = await storage.ledger.entries.getByReference("hours", hoursContext.hoursId);
-      
-      const existingPluginEntry = existingEntries.find(entry => {
-        const data = entry.data as any;
-        return data?.pluginConfigId === config.id;
-      });
-
-      if (existingPluginEntry) {
-        logger.debug("Charge already exists for this hours entry, skipping", {
-          service: "charge-plugin-gbhet-legal-hourly",
-          hoursId: hoursContext.hoursId,
-          existingEntryId: existingPluginEntry.id,
-        });
-        return {
-          success: true,
-          transactions: [],
-          message: "Charge already exists for this hours entry",
-        };
-      }
+      // Duplicate prevention is now handled by the unique constraint on (charge_plugin, charge_plugin_key)
+      // The executor will catch any duplicate key violations and log them without failing
 
       const charge = hoursContext.hours * applicableRate.rate;
       const description = `GBHET Legal: ${hoursContext.hours} hours @ $${applicableRate.rate}/hr`;
 
       const transaction: LedgerTransaction = {
+        chargePlugin: this.metadata.id,
+        chargePluginKey: `${config.id}:${hoursContext.hoursId}`,
         accountId: settings.accountId,
         entityType: "worker",
         entityId: hoursContext.workerId,
