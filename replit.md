@@ -2,6 +2,10 @@
 
 Sirius is a full-stack web application for comprehensive worker management, providing robust CRUD operations and configurable organizational settings. It aims to streamline worker administration, enhance user experience, and deliver significant business value through efficiency and reliability.
 
+# Recent Changes (November 26, 2025)
+
+-   **Worker Benefits CSV Export**: Added current benefits to workers list CSV export. Created new `/api/workers/benefits/current` endpoint that efficiently fetches current month benefits for all workers using PostgreSQL DISTINCT ON with ORDER BY for deduplication. Backend uses double null-safety (SQL COALESCE + Array.isArray guard) to ensure reliable empty arrays for workers without benefits. CSV export includes "Current Benefits" column showing benefit names with employer names, gracefully handling null values.
+
 # User Preferences
 
 Preferred communication style: Simple, everyday language.
