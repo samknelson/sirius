@@ -1,8 +1,45 @@
 import type { Express } from "express";
 import { storage } from "../../storage";
-import { insertLedgerPaymentSchema } from "@shared/schema";
+import { insertLedgerPaymentSchema, LedgerPayment } from "@shared/schema";
 import { policies } from "../../policies";
 import { requireAccess } from "../../accessControl";
+import { executeChargePlugins, TriggerType, PaymentSavedContext } from "../../charge-plugins";
+import { logger } from "../../logger";
+
+async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<void> {
+  try {
+    const ea = await storage.ledger.ea.get(payment.ledgerEaId);
+    if (!ea) {
+      logger.warn("Cannot trigger charge plugins - EA not found", {
+        service: "ledger-payments",
+        paymentId: payment.id,
+        ledgerEaId: payment.ledgerEaId,
+      });
+      return;
+    }
+
+    const context: PaymentSavedContext = {
+      trigger: TriggerType.PAYMENT_SAVED,
+      paymentId: payment.id,
+      amount: payment.amount,
+      status: payment.status,
+      ledgerEaId: payment.ledgerEaId,
+      accountId: ea.accountId,
+      entityType: ea.entityType,
+      entityId: ea.entityId,
+      dateCleared: payment.dateCleared,
+      memo: payment.memo,
+    };
+
+    await executeChargePlugins(context);
+  } catch (error) {
+    logger.error("Failed to execute charge plugins for payment", {
+      service: "ledger-payments",
+      paymentId: payment.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 export function registerLedgerPaymentRoutes(app: Express) {
   // GET /api/ledger/payment-types - Get all payment types
@@ -75,6 +112,9 @@ export function registerLedgerPaymentRoutes(app: Express) {
       const validatedData = insertLedgerPaymentSchema.parse(processedBody);
       const payment = await storage.ledger.payments.create(validatedData);
       
+      // Trigger charge plugins after payment is saved
+      await triggerPaymentChargePlugins(payment);
+      
       res.status(201).json(payment);
     } catch (error) {
       console.error("Error creating payment:", error);
@@ -112,6 +152,9 @@ export function registerLedgerPaymentRoutes(app: Express) {
         res.status(404).json({ message: "Payment not found" });
         return;
       }
+      
+      // Trigger charge plugins after payment is updated
+      await triggerPaymentChargePlugins(payment);
       
       res.json(payment);
     } catch (error) {
