@@ -44,7 +44,8 @@ export function registerWizardRoutes(
         isFeed: type.isFeed,
         isMonthly: type.isMonthly,
         isReport: (type as any).isReport || false,
-        entityType: type.entityType
+        entityType: type.entityType,
+        category: type.category
       }));
       res.json(types);
     } catch (error) {

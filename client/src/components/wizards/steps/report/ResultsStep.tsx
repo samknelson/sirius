@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Download, FileText, AlertCircle } from "lucide-react";
+import { Download, FileText, AlertCircle, Eye } from "lucide-react";
 import { format } from "date-fns";
 
 interface ResultsStepProps {
@@ -34,7 +34,8 @@ export function ResultsStep({ wizardId, wizardType, data }: ResultsStepProps) {
     const { columns, records } = reportData;
     
     // For duplicate SSN report, export ungrouped data with all columns
-    const exportColumns = columns;
+    // Filter out action columns like 'viewLink' from CSV export
+    const exportColumns = columns.filter(col => col.id !== 'viewLink');
     const exportRecords = records;
     
     // Convert to CSV
@@ -173,7 +174,15 @@ export function ResultsStep({ wizardId, wizardType, data }: ResultsStepProps) {
                     <TableRow key={idx} data-testid={`row-record-${idx}`}>
                       {columns.map((col: any) => (
                         <TableCell key={col.id}>
-                          {col.id === 'workers' && record.workerDetails ? (
+                          {col.id === 'viewLink' && record.employerContactId ? (
+                            <Link 
+                              href={`/employer-contacts/${record.employerContactId}`}
+                              className="inline-flex items-center text-primary hover:text-primary/80"
+                              data-testid={`link-view-${record.employerContactId}`}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Link>
+                          ) : col.id === 'workers' && record.workerDetails ? (
                             <div className="space-y-1">
                               {record.workerDetails.map((worker: any) => (
                                 <div key={worker.workerId}>
@@ -189,6 +198,8 @@ export function ResultsStep({ wizardId, wizardType, data }: ResultsStepProps) {
                             </div>
                           ) : col.type === 'date' && record[col.id] ? (
                             format(new Date(record[col.id]), 'PP')
+                          ) : col.type === 'boolean' ? (
+                            record[col.id] ? 'Yes' : 'No'
                           ) : (
                             record[col.id] || '-'
                           )}

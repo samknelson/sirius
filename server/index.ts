@@ -10,6 +10,9 @@ import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
 import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler } from "./cron";
 
+// Import charge plugins to trigger registration
+import "./charge-plugins/plugins/hourFixed";
+
 // Helper function to redact sensitive data from responses before logging
 function redactSensitiveData(data: any): any {
   if (!data || typeof data !== 'object') return data;

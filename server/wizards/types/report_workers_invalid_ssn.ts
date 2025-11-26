@@ -6,6 +6,7 @@ export class ReportWorkersInvalidSSN extends WizardReport {
   name = 'report_workers_invalid_ssn';
   displayName = 'Workers with Invalid SSN';
   description = 'Generate a report of all workers with invalid Social Security Numbers (fails SSA validation rules)';
+  category = 'Workers';
 
   getColumns(): ReportColumn[] {
     return [
