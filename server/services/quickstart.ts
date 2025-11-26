@@ -135,17 +135,18 @@ function validateQuickstartData(data: any): void {
   }
   
   if (data.metadata.schemaVersion !== SCHEMA_VERSION) {
-    console.warn(`Schema version mismatch: file is ${data.metadata.schemaVersion}, current is ${SCHEMA_VERSION}`);
+    console.warn(`Schema version mismatch: file is ${data.metadata.schemaVersion}, current is ${SCHEMA_VERSION}. Missing tables will be skipped.`);
   }
   
   if (typeof data.data !== 'object') {
     throw new Error('Invalid quickstart file format: data is not an object');
   }
   
-  // Verify all expected tables are present
+  // Check tables - warn about missing ones but don't fail (for backward compatibility)
   for (const tableName of TABLE_ORDER) {
     if (!(tableName in data.data)) {
-      throw new Error(`Invalid quickstart file: missing table "${tableName}"`);
+      console.warn(`Quickstart file missing table "${tableName}" - will be skipped`);
+      continue;
     }
     
     if (!Array.isArray(data.data[tableName])) {
