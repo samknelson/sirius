@@ -7,3 +7,4 @@ vite.config.ts.*
 replit.nix
 .cache/
 __replit_disk_meta.json
+.replit
