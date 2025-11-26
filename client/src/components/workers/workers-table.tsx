@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle, Scale, Stethoscope, Smile, Eye as EyeIcon, Star, Download, GraduationCap, Heart, Laptop, ShoppingBag, type LucideIcon } from "lucide-react";
+import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle, Scale, Stethoscope, Smile, Eye as EyeIcon, Star, Download, GraduationCap, Heart, Laptop, ShoppingBag, Mail, Phone, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -549,20 +549,70 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span 
-                      className="text-sm text-foreground"
-                      data-testid={`text-worker-email-${worker.id}`}
-                    >
-                      {worker.email || <span className="text-muted-foreground italic">No email</span>}
-                    </span>
+                    {worker.email ? (
+                      <HoverCard>
+                        <HoverCardTrigger asChild>
+                          <div 
+                            className="cursor-pointer"
+                            data-testid={`email-indicator-${worker.id}`}
+                            aria-label={`Email for ${worker.contactName}`}
+                          >
+                            <Mail size={16} className="text-green-600" />
+                          </div>
+                        </HoverCardTrigger>
+                        <HoverCardContent className="w-80" data-testid={`email-hover-${worker.id}`}>
+                          <div className="space-y-2">
+                            <p className="text-sm font-semibold text-foreground">
+                              {worker.contactName}
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <Mail size={16} className="text-muted-foreground" />
+                              <span className="text-sm text-foreground">{worker.email}</span>
+                            </div>
+                          </div>
+                        </HoverCardContent>
+                      </HoverCard>
+                    ) : (
+                      <div 
+                        data-testid={`email-indicator-${worker.id}`}
+                        aria-label={`No email for ${worker.contactName}`}
+                      >
+                        <Mail size={16} className="text-muted-foreground" />
+                      </div>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span 
-                      className="text-sm text-foreground"
-                      data-testid={`text-worker-phone-${worker.id}`}
-                    >
-                      {worker.phoneNumber || <span className="text-muted-foreground italic">No phone</span>}
-                    </span>
+                    {worker.phoneNumber ? (
+                      <HoverCard>
+                        <HoverCardTrigger asChild>
+                          <div 
+                            className="cursor-pointer"
+                            data-testid={`phone-indicator-${worker.id}`}
+                            aria-label={`Phone for ${worker.contactName}`}
+                          >
+                            <Phone size={16} className="text-green-600" />
+                          </div>
+                        </HoverCardTrigger>
+                        <HoverCardContent className="w-80" data-testid={`phone-hover-${worker.id}`}>
+                          <div className="space-y-2">
+                            <p className="text-sm font-semibold text-foreground">
+                              {worker.contactName}
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <Phone size={16} className="text-muted-foreground" />
+                              <span className="text-sm text-foreground">{worker.phoneNumber}</span>
+                            </div>
+                          </div>
+                        </HoverCardContent>
+                      </HoverCard>
+                    ) : (
+                      <div 
+                        data-testid={`phone-indicator-${worker.id}`}
+                        aria-label={`No phone for ${worker.contactName}`}
+                      >
+                        <Phone size={16} className="text-muted-foreground" />
+                      </div>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {worker.address ? (
