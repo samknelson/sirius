@@ -25,6 +25,7 @@ const rateHistoryEntrySchema = baseRateHistoryEntrySchema.extend({
 
 const formSchema = z.object({
   accountId: z.string().uuid("Please select an account"),
+  chargeTo: z.enum(["worker", "employer"]),
   employmentStatusIds: z.array(z.string()).optional(),
   rateHistory: z.array(rateHistoryEntrySchema).min(1, "At least one rate entry is required"),
   scope: z.enum(["global", "employer"]),
@@ -73,6 +74,7 @@ interface ChargePluginConfig {
   employerId: string | null;
   settings: {
     accountId?: string;
+    chargeTo?: "worker" | "employer";
     employmentStatusIds?: string[];
     rateHistory?: Array<{
       effectiveDate: string;
@@ -119,6 +121,7 @@ export default function HourFixedConfigFormPage() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       accountId: "",
+      chargeTo: "worker",
       employmentStatusIds: [],
       rateHistory: [{ effectiveDate: "", rate: 0 }],
       scope: "global",
@@ -132,6 +135,7 @@ export default function HourFixedConfigFormPage() {
     if (isEditMode && existingConfig) {
       form.reset({
         accountId: existingConfig.settings?.accountId || "",
+        chargeTo: existingConfig.settings?.chargeTo || "worker",
         employmentStatusIds: existingConfig.settings?.employmentStatusIds || undefined,
         rateHistory: existingConfig.settings?.rateHistory 
           ? sortRatesDescending(existingConfig.settings.rateHistory) 
@@ -153,6 +157,7 @@ export default function HourFixedConfigFormPage() {
         enabled: data.enabled,
         settings: {
           accountId: data.accountId,
+          chargeTo: data.chargeTo,
           employmentStatusIds: data.employmentStatusIds,
           rateHistory: data.rateHistory,
         },
@@ -162,6 +167,7 @@ export default function HourFixedConfigFormPage() {
         // Update existing config - only send defined fields in settings
         const updateSettings: any = {
           accountId: data.accountId,
+          chargeTo: data.chargeTo,
           rateHistory: data.rateHistory,
         };
         
@@ -354,6 +360,29 @@ export default function HourFixedConfigFormPage() {
                             {account.name}
                           </SelectItem>
                         ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Charge To selection */}
+              <FormField
+                control={form.control}
+                name="chargeTo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Charge To</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-charge-to">
+                          <SelectValue placeholder="Select who to charge..." />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="worker">Worker</SelectItem>
+                        <SelectItem value="employer">Employer</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
