@@ -115,6 +115,7 @@ import LedgerPaymentTypesPage from "@/pages/config/ledger-payment-types";
 import ChargePluginsListPage from "@/pages/config/ledger/charge-plugins-list";
 import ChargePluginConfigPage from "@/pages/config/ledger/charge-plugin-config";
 import ChargePluginFormPage from "@/pages/config/ledger/charge-plugin-form";
+import ConfigurationLandingPage from "@/pages/config/index";
 
 // Import charge plugin UIs to register them
 import "@/plugins/charge-plugins";
@@ -1189,7 +1190,7 @@ function Router() {
 
       {/* Legacy admin route - redirect to configuration */}
       <Route path="/admin">
-        <Redirect to="/config/users/list" />
+        <Redirect to="/config" />
       </Route>
 
       {/* Dashboard route */}
@@ -1206,9 +1207,15 @@ function Router() {
         <Redirect to="/dashboard" />
       </Route>
 
-      {/* Configuration fallback - redirect to users page */}
+      {/* Configuration landing page */}
       <Route path="/config">
-        <Redirect to="/config/users/list" />
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <ConfigurationLandingPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
       </Route>
 
       {/* 404 for unmatched routes */}
