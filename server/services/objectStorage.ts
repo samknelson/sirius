@@ -4,8 +4,11 @@ const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
 const publicPaths = process.env.PUBLIC_OBJECT_SEARCH_PATHS?.split(',') || ['public'];
 const privateDir = process.env.PRIVATE_OBJECT_DIR || '.private';
 
-if (!bucketId) {
-  throw new Error('DEFAULT_OBJECT_STORAGE_BUCKET_ID environment variable is not set');
+function ensureBucketId(): string {
+  if (!bucketId) {
+    throw new Error('DEFAULT_OBJECT_STORAGE_BUCKET_ID environment variable is not set. Object storage features will not be available.');
+  }
+  return bucketId;
 }
 
 export interface UploadFileOptions {
@@ -85,7 +88,7 @@ export class ObjectStorageService {
     const storagePath = customPath || `${directory}/${Date.now()}-${fileName}`;
 
     // Get signed URL for upload
-    const fullPath = `/${bucketId}/${storagePath}`;
+    const fullPath = `/${ensureBucketId()}/${storagePath}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
     
     const signedUrl = await signObjectURL({
@@ -115,7 +118,7 @@ export class ObjectStorageService {
   }
 
   async downloadFile(storagePath: string): Promise<Buffer> {
-    const fullPath = `/${bucketId}/${storagePath}`;
+    const fullPath = `/${ensureBucketId()}/${storagePath}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
     const signedUrl = await signObjectURL({
@@ -136,7 +139,7 @@ export class ObjectStorageService {
   }
 
   async deleteFile(storagePath: string): Promise<void> {
-    const fullPath = `/${bucketId}/${storagePath}`;
+    const fullPath = `/${ensureBucketId()}/${storagePath}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
     const signedUrl = await signObjectURL({
@@ -156,7 +159,7 @@ export class ObjectStorageService {
   }
 
   async getFileMetadata(storagePath: string): Promise<FileMetadata> {
-    const fullPath = `/${bucketId}/${storagePath}`;
+    const fullPath = `/${ensureBucketId()}/${storagePath}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
     const signedUrl = await signObjectURL({
@@ -188,7 +191,7 @@ export class ObjectStorageService {
   }
 
   async generateSignedUrl(storagePath: string, expiresIn: number = 3600): Promise<string> {
-    const fullPath = `/${bucketId}/${storagePath}`;
+    const fullPath = `/${ensureBucketId()}/${storagePath}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
     return await signObjectURL({
