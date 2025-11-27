@@ -2,6 +2,15 @@
 
 Sirius is a full-stack web application for comprehensive worker management, providing robust CRUD operations and configurable organizational settings. It aims to streamline worker administration, enhance user experience, and deliver significant business value through efficiency and reliability.
 
+# Recent Changes (November 27, 2025)
+
+-   **GBHET Legal Hourly Plugin - Monthly Rate Model**: Refactored the GBHET Legal Hourly charge plugin to use per-month billing instead of per-hour. The plugin now:
+    - Charges a flat monthly rate when there are nonzero qualifying hours in a month
+    - Uses chargePluginKey format `{configId}:{eaId}:{workerId}:{year}:{month}` to constrain one entry per employer/account/worker/year/month
+    - Aggregates hours across all daily entries for a worker/employer/year/month combination
+    - Added new storage methods: `getByEntityAndAccount`, `getOrCreate` (for EA), and `getMonthlyHoursTotal` (for worker hours)
+    - Charge plugins now trigger on all hours operations (create, update, delete) for proper monthly reconciliation
+
 # Recent Changes (November 26, 2025)
 
 -   **Worker Benefits CSV Export**: Added current benefits to workers list CSV export. Created new `/api/workers/benefits/current` endpoint that efficiently fetches current month benefits for all workers using PostgreSQL DISTINCT ON with ORDER BY for deduplication. Backend uses double null-safety (SQL COALESCE + Array.isArray guard) to ensure reliable empty arrays for workers without benefits. CSV export includes "Current Benefits" column showing benefit names with employer names, gracefully handling null values.

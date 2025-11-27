@@ -53,6 +53,7 @@ export interface WorkerStorage {
   getWorkerHoursCurrent(workerId: string): Promise<any[]>;
   getWorkerHoursHistory(workerId: string): Promise<any[]>;
   getWorkerHoursMonthly(workerId: string): Promise<any[]>;
+  getMonthlyHoursTotal(workerId: string, employerId: string, year: number, month: number, employmentStatusIds?: string[]): Promise<number>;
   createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHours>;
   updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean }): Promise<WorkerHours | undefined>;
   deleteWorkerHours(id: string): Promise<boolean>;
@@ -523,14 +524,43 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       });
     },
 
+    async getMonthlyHoursTotal(workerId: string, employerId: string, year: number, month: number, employmentStatusIds?: string[]): Promise<number> {
+      let query = db
+        .select({ totalHours: sql<number>`COALESCE(SUM(${workerHours.hours}), 0)` })
+        .from(workerHours)
+        .where(and(
+          eq(workerHours.workerId, workerId),
+          eq(workerHours.employerId, employerId),
+          eq(workerHours.year, year),
+          eq(workerHours.month, month)
+        ));
+
+      if (employmentStatusIds && employmentStatusIds.length > 0) {
+        const { inArray } = await import("drizzle-orm");
+        query = db
+          .select({ totalHours: sql<number>`COALESCE(SUM(${workerHours.hours}), 0)` })
+          .from(workerHours)
+          .where(and(
+            eq(workerHours.workerId, workerId),
+            eq(workerHours.employerId, employerId),
+            eq(workerHours.year, year),
+            eq(workerHours.month, month),
+            inArray(workerHours.employmentStatusId, employmentStatusIds)
+          ));
+      }
+
+      const [result] = await query;
+      return Number(result?.totalHours || 0);
+    },
+
     async createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHours> {
       const [savedHours] = await db
         .insert(workerHours)
         .values(data)
         .returning();
 
-      // Execute charge plugins after hours are created
-      if (savedHours && data.hours !== null && data.hours > 0) {
+      // Execute charge plugins after hours are created (always trigger for monthly reconciliation)
+      if (savedHours) {
         try {
           const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
           
@@ -571,32 +601,30 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         return undefined;
       }
 
-      // Execute charge plugins after hours are updated (if hours > 0)
-      if (updated.hours !== null && updated.hours > 0) {
-        try {
-          const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
-          
-          const context = {
-            trigger: TriggerType.HOURS_SAVED as typeof TriggerType.HOURS_SAVED,
-            hoursId: updated.id,
-            workerId: updated.workerId,
-            employerId: updated.employerId,
-            year: updated.year,
-            month: updated.month,
-            day: updated.day,
-            hours: updated.hours,
-            employmentStatusId: updated.employmentStatusId,
-            home: updated.home,
-          };
+      // Execute charge plugins after hours are updated (always trigger for monthly reconciliation)
+      try {
+        const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+        
+        const context = {
+          trigger: TriggerType.HOURS_SAVED as typeof TriggerType.HOURS_SAVED,
+          hoursId: updated.id,
+          workerId: updated.workerId,
+          employerId: updated.employerId,
+          year: updated.year,
+          month: updated.month,
+          day: updated.day,
+          hours: updated.hours || 0,
+          employmentStatusId: updated.employmentStatusId,
+          home: updated.home,
+        };
 
-          await executeChargePlugins(context);
-        } catch (error) {
-          logger.error("Failed to execute charge plugins for hours update", {
-            service: "workers-storage",
-            hoursId: updated.id,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
+        await executeChargePlugins(context);
+      } catch (error) {
+        logger.error("Failed to execute charge plugins for hours update", {
+          service: "workers-storage",
+          hoursId: updated.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
 
       return updated;
@@ -607,6 +635,36 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .delete(workerHours)
         .where(eq(workerHours.id, id))
         .returning();
+      
+      const deleted = result[0];
+      if (deleted) {
+        // Execute charge plugins after hours are deleted (for monthly reconciliation)
+        try {
+          const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+          
+          const context = {
+            trigger: TriggerType.HOURS_SAVED as typeof TriggerType.HOURS_SAVED,
+            hoursId: deleted.id,
+            workerId: deleted.workerId,
+            employerId: deleted.employerId,
+            year: deleted.year,
+            month: deleted.month,
+            day: deleted.day,
+            hours: 0, // Treat deleted as 0 hours for recalculation
+            employmentStatusId: deleted.employmentStatusId,
+            home: deleted.home,
+          };
+
+          await executeChargePlugins(context);
+        } catch (error) {
+          logger.error("Failed to execute charge plugins for hours delete", {
+            service: "workers-storage",
+            hoursId: deleted.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      
       return result.length > 0;
     },
 
@@ -626,8 +684,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         })
         .returning();
 
-      // Execute charge plugins after hours are saved
-      if (savedHours && data.hours !== null && data.hours > 0) {
+      // Execute charge plugins after hours are saved (always trigger for monthly reconciliation)
+      if (savedHours) {
         try {
           const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
           

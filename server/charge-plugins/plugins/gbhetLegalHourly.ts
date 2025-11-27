@@ -31,6 +31,7 @@ interface ExpectedEntry {
   amount: string;
   description: string;
   transactionDate: Date;
+  eaId: string;
   referenceType: string;
   referenceId: string;
   metadata: Record<string, any>;
@@ -40,30 +41,34 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
   readonly metadata = {
     id: "gbhet-legal-hourly",
     name: "GBHET Legal Hourly",
-    description: "Charges an hourly rate for GBHET Legal benefits based on worker hours.",
+    description: "Charges a monthly rate for GBHET Legal benefits when there are qualifying hours in a month.",
     triggers: [TriggerType.HOURS_SAVED],
     defaultScope: "global" as const,
     settingsSchema: gbhetLegalHourlySettingsSchema,
     requiredComponent: "sitespecific.gbhet.legal",
   };
 
-  private computeExpectedEntry(
+  private async computeExpectedEntry(
     hoursContext: HoursSavedContext,
     config: any,
     settings: GbhetLegalHourlySettings
-  ): ExpectedEntry | null {
-    if (settings.employmentStatusIds && settings.employmentStatusIds.length > 0) {
-      if (!settings.employmentStatusIds.includes(hoursContext.employmentStatusId)) {
-        return null;
-      }
-    }
+  ): Promise<ExpectedEntry | null> {
+    const totalHours = await storage.workers.getMonthlyHoursTotal(
+      hoursContext.workerId,
+      hoursContext.employerId,
+      hoursContext.year,
+      hoursContext.month,
+      settings.employmentStatusIds && settings.employmentStatusIds.length > 0 
+        ? settings.employmentStatusIds 
+        : undefined
+    );
 
-    if (hoursContext.hours === 0) {
+    if (totalHours <= 0) {
       return null;
     }
 
-    const hoursDate = new Date(hoursContext.year, hoursContext.month - 1, hoursContext.day);
-    const applicableRate = getCurrentEffectiveRate(settings.rateHistory, hoursDate);
+    const monthDate = new Date(hoursContext.year, hoursContext.month - 1, 1);
+    const applicableRate = getCurrentEffectiveRate(settings.rateHistory, monthDate);
 
     if (!applicableRate) {
       return null;
@@ -73,27 +78,34 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
       return null;
     }
 
-    const charge = hoursContext.hours * applicableRate.rate;
-    const description = `GBHET Legal: ${hoursContext.hours} hours @ $${applicableRate.rate}/hr`;
+    const ea = await storage.ledger.ea.getOrCreate(
+      "worker",
+      hoursContext.workerId,
+      settings.accountId
+    );
+
+    const chargePluginKey = `${config.id}:${ea.id}:${hoursContext.workerId}:${hoursContext.year}:${hoursContext.month}`;
+    const monthName = monthDate.toLocaleString('default', { month: 'long' });
+    const description = `GBHET Legal: ${monthName} ${hoursContext.year} (${totalHours} qualifying hours)`;
 
     return {
-      chargePluginKey: `${config.id}:${hoursContext.hoursId}`,
-      amount: charge.toFixed(2),
+      chargePluginKey,
+      amount: applicableRate.rate.toFixed(2),
       description,
-      transactionDate: hoursDate,
-      referenceType: "hours",
-      referenceId: hoursContext.hoursId,
+      transactionDate: monthDate,
+      eaId: ea.id,
+      referenceType: "hours_monthly",
+      referenceId: `${hoursContext.workerId}:${hoursContext.employerId}:${hoursContext.year}:${hoursContext.month}`,
       metadata: {
         pluginId: this.metadata.id,
         pluginConfigId: config.id,
         workerId: hoursContext.workerId,
         employerId: hoursContext.employerId,
-        hours: hoursContext.hours,
-        rate: applicableRate.rate,
-        effectiveDate: applicableRate.effectiveDate,
         year: hoursContext.year,
         month: hoursContext.month,
-        day: hoursContext.day,
+        totalHours,
+        rate: applicableRate.rate,
+        effectiveDate: applicableRate.effectiveDate,
       },
     };
   }
@@ -128,9 +140,16 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
       }
 
       const settings = config.settings as GbhetLegalHourlySettings;
-      const chargePluginKey = `${config.id}:${hoursContext.hoursId}`;
 
-      const expectedEntry = this.computeExpectedEntry(hoursContext, config, settings);
+      const ea = await storage.ledger.ea.getOrCreate(
+        "worker",
+        hoursContext.workerId,
+        settings.accountId
+      );
+
+      const chargePluginKey = `${config.id}:${ea.id}:${hoursContext.workerId}:${hoursContext.year}:${hoursContext.month}`;
+
+      const expectedEntry = await this.computeExpectedEntry(hoursContext, config, settings);
 
       const existingEntry = await storage.ledger.entries.getByChargePluginKey(
         this.metadata.id,
@@ -141,12 +160,12 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
         logger.debug("No entry expected and none exists, nothing to do", {
           service: "charge-plugin-gbhet-legal-hourly",
           hoursId: hoursContext.hoursId,
-          reason: this.getSkipReason(hoursContext, settings),
+          reason: "No qualifying hours in month",
         });
         return {
           success: true,
           transactions: [],
-          message: this.getSkipReason(hoursContext, settings),
+          message: "No qualifying hours in month",
         };
       }
 
@@ -156,18 +175,20 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
           chargePluginKey
         );
         
-        logger.info("Deleted ledger entry - hours entry no longer qualifies", {
+        logger.info("Deleted ledger entry - no longer qualifying hours in month", {
           service: "charge-plugin-gbhet-legal-hourly",
           hoursId: hoursContext.hoursId,
           deletedEntryId: existingEntry.id,
           previousAmount: existingEntry.amount,
-          reason: this.getSkipReason(hoursContext, settings),
+          workerId: hoursContext.workerId,
+          year: hoursContext.year,
+          month: hoursContext.month,
         });
 
         return {
           success: true,
           transactions: [],
-          message: `Deleted ledger entry - ${this.getSkipReason(hoursContext, settings)}`,
+          message: "Deleted ledger entry - no longer qualifying hours in month",
         };
       }
 
@@ -186,27 +207,28 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
           metadata: expectedEntry.metadata,
         };
 
-        logger.info("Creating new ledger entry for hours", {
+        logger.info("Creating new monthly ledger entry", {
           service: "charge-plugin-gbhet-legal-hourly",
           hoursId: hoursContext.hoursId,
           amount: expectedEntry.amount,
-          hours: hoursContext.hours,
-          rate: (expectedEntry.metadata as any).rate,
+          workerId: hoursContext.workerId,
+          year: hoursContext.year,
+          month: hoursContext.month,
+          totalHours: (expectedEntry.metadata as any).totalHours,
         });
 
         return {
           success: true,
           transactions: [transaction],
-          message: `Created entry for $${expectedEntry.amount} - ${expectedEntry.description}`,
+          message: `Created monthly entry for $${expectedEntry.amount} - ${expectedEntry.description}`,
         };
       }
 
       if (expectedEntry && existingEntry) {
         const amountChanged = existingEntry.amount !== expectedEntry.amount;
         const memoChanged = existingEntry.memo !== expectedEntry.description;
-        const dateChanged = existingEntry.date?.getTime() !== expectedEntry.transactionDate.getTime();
 
-        if (!amountChanged && !memoChanged && !dateChanged) {
+        if (!amountChanged && !memoChanged) {
           logger.debug("Ledger entry matches expected state, no update needed", {
             service: "charge-plugin-gbhet-legal-hourly",
             hoursId: hoursContext.hoursId,
@@ -222,11 +244,10 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
         await storage.ledger.entries.update(existingEntry.id, {
           amount: expectedEntry.amount,
           memo: expectedEntry.description,
-          date: expectedEntry.transactionDate,
           data: expectedEntry.metadata,
         });
 
-        logger.info("Updated ledger entry to match hours", {
+        logger.info("Updated monthly ledger entry", {
           service: "charge-plugin-gbhet-legal-hourly",
           hoursId: hoursContext.hoursId,
           entryId: existingEntry.id,
@@ -234,13 +255,12 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
           newAmount: expectedEntry.amount,
           amountChanged,
           memoChanged,
-          dateChanged,
         });
 
         return {
           success: true,
           transactions: [],
-          message: `Updated entry: ${amountChanged ? 'amount' : ''}${memoChanged ? ' memo' : ''}${dateChanged ? ' date' : ''} changed`,
+          message: `Updated entry: ${amountChanged ? 'amount' : ''}${memoChanged ? ' memo' : ''} changed`,
         };
       }
 
@@ -263,31 +283,6 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
         error: error instanceof Error ? error.message : "Unknown error occurred",
       };
     }
-  }
-
-  private getSkipReason(hoursContext: HoursSavedContext, settings: GbhetLegalHourlySettings): string {
-    if (hoursContext.hours === 0) {
-      return "Hours is zero";
-    }
-    
-    if (settings.employmentStatusIds && settings.employmentStatusIds.length > 0) {
-      if (!settings.employmentStatusIds.includes(hoursContext.employmentStatusId)) {
-        return "Employment status not in configured list";
-      }
-    }
-    
-    const hoursDate = new Date(hoursContext.year, hoursContext.month - 1, hoursContext.day);
-    const applicableRate = getCurrentEffectiveRate(settings.rateHistory, hoursDate);
-    
-    if (!applicableRate) {
-      return "No applicable rate found for this date";
-    }
-    
-    if (applicableRate.rate === 0) {
-      return "Rate is zero";
-    }
-    
-    return "Unknown reason";
   }
 }
 

@@ -31,6 +31,8 @@ export interface LedgerEaStorage {
   getAll(): Promise<SelectLedgerEa[]>;
   get(id: string): Promise<SelectLedgerEa | undefined>;
   getByEntity(entityType: string, entityId: string): Promise<SelectLedgerEa[]>;
+  getByEntityAndAccount(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa | undefined>;
+  getOrCreate(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa>;
   create(entry: InsertLedgerEa): Promise<SelectLedgerEa>;
   update(id: string, entry: Partial<InsertLedgerEa>): Promise<SelectLedgerEa | undefined>;
   delete(id: string): Promise<boolean>;
@@ -338,6 +340,28 @@ export function createLedgerEaStorage(): LedgerEaStorage {
           eq(ledgerEa.entityType, entityType),
           eq(ledgerEa.entityId, entityId)
         ));
+    },
+
+    async getByEntityAndAccount(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa | undefined> {
+      const [entry] = await db.select().from(ledgerEa)
+        .where(and(
+          eq(ledgerEa.entityType, entityType),
+          eq(ledgerEa.entityId, entityId),
+          eq(ledgerEa.accountId, accountId)
+        ));
+      return entry || undefined;
+    },
+
+    async getOrCreate(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa> {
+      const existing = await this.getByEntityAndAccount(entityType, entityId, accountId);
+      if (existing) {
+        return existing;
+      }
+      return await this.create({
+        entityType,
+        entityId,
+        accountId,
+      });
     },
 
     async create(insertEntry: InsertLedgerEa): Promise<SelectLedgerEa> {
