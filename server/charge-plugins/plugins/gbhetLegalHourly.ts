@@ -94,7 +94,7 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
       description,
       transactionDate: monthDate,
       eaId: ea.id,
-      referenceType: "hours_monthly",
+      referenceType: "hour",
       referenceId: `${hoursContext.workerId}:${hoursContext.employerId}:${hoursContext.year}:${hoursContext.month}`,
       metadata: {
         pluginId: this.metadata.id,
