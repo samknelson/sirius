@@ -5,6 +5,7 @@ import {
   PluginExecutionResult, 
   PaymentSavedContext,
   LedgerTransaction,
+  LedgerNotification,
 } from "../types";
 import { registerChargePlugin } from "../registry";
 import { z } from "zod";
@@ -152,9 +153,16 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
           previousAmount: existingEntry.amount,
         });
 
+        const notification: LedgerNotification = {
+          type: "deleted",
+          amount: existingEntry.amount,
+          description: `Ledger entry deleted: -$${Math.abs(parseFloat(existingEntry.amount)).toFixed(2)}`,
+        };
+
         return {
           success: true,
           transactions: [],
+          notifications: [notification],
           message: "Deleted ledger entry - payment status changed from cleared",
         };
       }
@@ -180,9 +188,16 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
           amount: expectedEntry.amount,
         });
 
+        const notification: LedgerNotification = {
+          type: "created",
+          amount: expectedEntry.amount,
+          description: `Ledger entry created: -$${Math.abs(parseFloat(expectedEntry.amount)).toFixed(2)}`,
+        };
+
         return {
           success: true,
           transactions: [transaction],
+          notifications: [notification],
           message: `Created entry for $${Math.abs(parseFloat(expectedEntry.amount)).toFixed(2)} allocation`,
         };
       }
@@ -223,9 +238,19 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
           dateChanged,
         });
 
+        const notification: LedgerNotification = {
+          type: "updated",
+          amount: expectedEntry.amount,
+          previousAmount: existingEntry.amount,
+          description: amountChanged
+            ? `Ledger entry updated: -$${Math.abs(parseFloat(existingEntry.amount)).toFixed(2)} → -$${Math.abs(parseFloat(expectedEntry.amount)).toFixed(2)}`
+            : `Ledger entry updated: -$${Math.abs(parseFloat(expectedEntry.amount)).toFixed(2)}`,
+        };
+
         return {
           success: true,
           transactions: [],
+          notifications: [notification],
           message: `Updated entry: ${amountChanged ? 'amount' : ''}${memoChanged ? ' memo' : ''}${dateChanged ? ' date' : ''} changed`,
         };
       }
