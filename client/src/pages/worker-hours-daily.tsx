@@ -599,25 +599,65 @@ function WorkerHoursContent() {
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto" data-testid="dialog-view-hours">
           <DialogHeader>
-            <DialogTitle>Hours Entry Transactions</DialogTitle>
+            <DialogTitle>Hours Entry Details</DialogTitle>
             <DialogDescription>
-              {viewingEntry && (
-                <>
-                  {getMonthName(viewingEntry.month)} {viewingEntry.day}, {viewingEntry.year} - {viewingEntry.employer?.name || "Unknown"} - {viewingEntry.hours?.toFixed(2) || "0"} hours
-                </>
-              )}
+              View details and associated transactions for this hours entry
             </DialogDescription>
           </DialogHeader>
           {viewingEntry && (
-            <LedgerTransactionsView
-              queryKey={[`/api/worker-hours/${viewingEntry.id}/transactions`]}
-              title="Associated Transactions"
-              csvFilename={`hours-${viewingEntry.id}-transactions`}
-              showEntityType={false}
-              showEntityName={false}
-              showEaAccount={true}
-              showEaLink={true}
-            />
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-muted-foreground text-sm">Date</Label>
+                  <p className="font-medium" data-testid="text-view-date">
+                    {getMonthName(viewingEntry.month)} {viewingEntry.day}, {viewingEntry.year}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-muted-foreground text-sm">Employer</Label>
+                  <p className="font-medium" data-testid="text-view-employer">
+                    {viewingEntry.employer?.name || "Unknown"}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-muted-foreground text-sm">Employment Status</Label>
+                  <p className="font-medium" data-testid="text-view-status">
+                    {viewingEntry.employmentStatus?.name || "Unknown"}
+                    {viewingEntry.employmentStatus?.code && (
+                      <span className="text-muted-foreground ml-2">({viewingEntry.employmentStatus.code})</span>
+                    )}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-muted-foreground text-sm">Hours</Label>
+                  <p className="font-medium" data-testid="text-view-hours">
+                    {viewingEntry.hours !== null ? viewingEntry.hours.toFixed(2) : "-"}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-muted-foreground text-sm">Home</Label>
+                  <p data-testid="text-view-home">
+                    {viewingEntry.home ? (
+                      <Badge variant="default">Yes</Badge>
+                    ) : (
+                      <span className="text-muted-foreground">No</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="border-t pt-4">
+                <LedgerTransactionsView
+                  queryKey={[`/api/worker-hours/${viewingEntry.id}/transactions`]}
+                  title="Associated Transactions"
+                  csvFilename={`hours-${viewingEntry.id}-transactions`}
+                  showEntityType={false}
+                  showEntityName={false}
+                  showEaAccount={true}
+                  showEaLink={true}
+                />
+              </div>
+            </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
