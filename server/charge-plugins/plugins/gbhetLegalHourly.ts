@@ -6,6 +6,7 @@ import {
   HoursSavedContext,
   LedgerTransaction,
   LedgerNotification,
+  LedgerEntryVerification,
 } from "../types";
 import { registerChargePlugin } from "../registry";
 import { z } from "zod";
@@ -13,6 +14,7 @@ import { logger } from "../../logger";
 import { getCurrentEffectiveRate } from "../../utils/rateHistory";
 import { storage } from "../../storage/database";
 import { isComponentEnabled } from "../../modules/components";
+import type { Ledger, ChargePluginConfig } from "@shared/schema";
 
 const rateHistoryEntrySchema = z.object({
   effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
@@ -319,6 +321,118 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
         success: false,
         transactions: [],
         error: error instanceof Error ? error.message : "Unknown error occurred",
+      };
+    }
+  }
+
+  async verifyEntry(
+    entry: Ledger,
+    config: ChargePluginConfig
+  ): Promise<LedgerEntryVerification> {
+    const baseResult: LedgerEntryVerification = {
+      entryId: entry.id,
+      chargePlugin: entry.chargePlugin,
+      chargePluginKey: entry.chargePluginKey,
+      isValid: true,
+      discrepancies: [],
+      actualAmount: entry.amount,
+      expectedAmount: null,
+      actualDescription: entry.memo,
+      expectedDescription: null,
+      referenceType: entry.referenceType,
+      referenceId: entry.referenceId,
+      transactionDate: entry.date,
+    };
+
+    try {
+      const validationResult = this.validateSettings(config.settings);
+      if (!validationResult.valid) {
+        return {
+          ...baseResult,
+          isValid: false,
+          discrepancies: [`Invalid plugin configuration: ${validationResult.errors?.join(", ")}`],
+        };
+      }
+
+      const settings = config.settings as GbhetLegalHourlySettings;
+
+      if (!entry.referenceId) {
+        return {
+          ...baseResult,
+          isValid: false,
+          discrepancies: ["Entry has no referenceId - cannot verify"],
+        };
+      }
+
+      const parts = entry.referenceId.split(":");
+      if (parts.length !== 4) {
+        return {
+          ...baseResult,
+          isValid: false,
+          discrepancies: [`Invalid referenceId format: expected workerId:employerId:year:month, got ${entry.referenceId}`],
+        };
+      }
+
+      const [workerId, employerId, yearStr, monthStr] = parts;
+      const year = parseInt(yearStr, 10);
+      const month = parseInt(monthStr, 10);
+
+      if (isNaN(year) || isNaN(month)) {
+        return {
+          ...baseResult,
+          isValid: false,
+          discrepancies: [`Invalid year/month in referenceId: ${yearStr}/${monthStr}`],
+        };
+      }
+
+      const hoursContext: HoursSavedContext = {
+        trigger: TriggerType.HOURS_SAVED,
+        hoursId: "",
+        workerId,
+        employerId,
+        year,
+        month,
+        day: 1,
+        hours: 0,
+        employmentStatusId: "",
+        home: false,
+      };
+
+      const expectedEntry = await this.computeExpectedEntry(hoursContext, config, settings);
+
+      if (!expectedEntry) {
+        return {
+          ...baseResult,
+          isValid: false,
+          expectedAmount: "0.00",
+          expectedDescription: null,
+          discrepancies: ["Entry exists but no qualifying hours found in the month - entry should be deleted"],
+        };
+      }
+
+      const discrepancies: string[] = [];
+
+      if (entry.amount !== expectedEntry.amount) {
+        discrepancies.push(`Amount mismatch: expected ${expectedEntry.amount}, found ${entry.amount}`);
+      }
+
+      if (entry.memo !== expectedEntry.description) {
+        discrepancies.push(`Description mismatch: expected "${expectedEntry.description}", found "${entry.memo}"`);
+      }
+
+      return {
+        ...baseResult,
+        isValid: discrepancies.length === 0,
+        expectedAmount: expectedEntry.amount,
+        expectedDescription: expectedEntry.description,
+        discrepancies,
+      };
+
+    } catch (error) {
+      return {
+        ...baseResult,
+        isValid: false,
+        discrepancies: [`Verification error: ${error instanceof Error ? error.message : String(error)}`],
       };
     }
   }

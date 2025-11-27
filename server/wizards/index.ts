@@ -5,6 +5,7 @@ import { ReportWorkersMissingSSN } from './types/report_workers_missing_ssn.js';
 import { ReportWorkersInvalidSSN } from './types/report_workers_invalid_ssn.js';
 import { ReportWorkersDuplicateSSN } from './types/report_workers_duplicate_ssn.js';
 import { ReportEmployerUsers } from './types/report_employer_users.js';
+import { ReportLedgerIntegrity } from './types/report_ledger_integrity.js';
 
 wizardRegistry.register(gbhetLegalWorkersMonthly);
 wizardRegistry.register(gbhetLegalWorkersCorrections);
@@ -12,6 +13,7 @@ wizardRegistry.register(new ReportWorkersMissingSSN());
 wizardRegistry.register(new ReportWorkersInvalidSSN());
 wizardRegistry.register(new ReportWorkersDuplicateSSN());
 wizardRegistry.register(new ReportEmployerUsers());
+wizardRegistry.register(new ReportLedgerIntegrity());
 
 export { wizardRegistry, getWizardType, getAllWizardTypes, registerWizardType } from './registry.js';
 export { BaseWizard, type WizardTypeDefinition, type WizardStep, type WizardStatus } from './base.js';

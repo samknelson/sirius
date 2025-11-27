@@ -6,11 +6,13 @@ import {
   PaymentSavedContext,
   LedgerTransaction,
   LedgerNotification,
+  LedgerEntryVerification,
 } from "../types";
 import { registerChargePlugin } from "../registry";
 import { z } from "zod";
 import { logger } from "../../logger";
 import { storage } from "../../storage";
+import type { Ledger, ChargePluginConfig } from "@shared/schema";
 
 const paymentSimpleAllocationSettingsSchema = z.object({
   accountIds: z.array(z.string().uuid("Account ID must be a valid UUID")).min(1, "At least one account is required"),
@@ -272,6 +274,124 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
         success: false,
         transactions: [],
         error: error instanceof Error ? error.message : "Unknown error occurred",
+      };
+    }
+  }
+
+  async verifyEntry(
+    entry: Ledger,
+    config: ChargePluginConfig
+  ): Promise<LedgerEntryVerification> {
+    const baseResult: LedgerEntryVerification = {
+      entryId: entry.id,
+      chargePlugin: entry.chargePlugin,
+      chargePluginKey: entry.chargePluginKey,
+      isValid: true,
+      discrepancies: [],
+      actualAmount: entry.amount,
+      expectedAmount: null,
+      actualDescription: entry.memo,
+      expectedDescription: null,
+      referenceType: entry.referenceType,
+      referenceId: entry.referenceId,
+      transactionDate: entry.date,
+    };
+
+    try {
+      const validationResult = this.validateSettings(config.settings);
+      if (!validationResult.valid) {
+        return {
+          ...baseResult,
+          isValid: false,
+          discrepancies: [`Invalid plugin configuration: ${validationResult.errors?.join(", ")}`],
+        };
+      }
+
+      const settings = config.settings as PaymentSimpleAllocationSettings;
+
+      if (!entry.referenceId) {
+        return {
+          ...baseResult,
+          isValid: false,
+          discrepancies: ["Entry has no referenceId - cannot verify"],
+        };
+      }
+
+      const payment = await storage.ledger.payments.get(entry.referenceId);
+      
+      if (!payment) {
+        return {
+          ...baseResult,
+          isValid: false,
+          discrepancies: [`Referenced payment ${entry.referenceId} no longer exists - orphaned entry`],
+        };
+      }
+
+      const ea = await storage.ledger.ea.get(payment.ledgerEaId);
+      if (!ea) {
+        return {
+          ...baseResult,
+          isValid: false,
+          discrepancies: [`Payment's EA ${payment.ledgerEaId} no longer exists`],
+        };
+      }
+
+      if (!settings.accountIds.includes(ea.accountId)) {
+        return {
+          ...baseResult,
+          isValid: false,
+          discrepancies: [`Payment account ${ea.accountId} is not in the configured account list - entry should not exist`],
+        };
+      }
+
+      const paymentContext: PaymentSavedContext = {
+        trigger: TriggerType.PAYMENT_SAVED,
+        paymentId: payment.id,
+        amount: payment.amount,
+        status: payment.status,
+        ledgerEaId: payment.ledgerEaId,
+        accountId: ea.accountId,
+        entityType: ea.entityType,
+        entityId: ea.entityId,
+        dateCleared: payment.dateCleared,
+        memo: payment.memo,
+      };
+
+      const expectedEntry = this.computeExpectedEntry(paymentContext, config.id);
+
+      if (!expectedEntry) {
+        return {
+          ...baseResult,
+          isValid: false,
+          expectedAmount: "0.00",
+          expectedDescription: null,
+          discrepancies: [`Entry exists but payment status is "${payment.status}" (not "cleared") - entry should be deleted`],
+        };
+      }
+
+      const discrepancies: string[] = [];
+
+      if (entry.amount !== expectedEntry.amount) {
+        discrepancies.push(`Amount mismatch: expected ${expectedEntry.amount}, found ${entry.amount}`);
+      }
+
+      if (entry.memo !== expectedEntry.description) {
+        discrepancies.push(`Description mismatch: expected "${expectedEntry.description}", found "${entry.memo}"`);
+      }
+
+      return {
+        ...baseResult,
+        isValid: discrepancies.length === 0,
+        expectedAmount: expectedEntry.amount,
+        expectedDescription: expectedEntry.description,
+        discrepancies,
+      };
+
+    } catch (error) {
+      return {
+        ...baseResult,
+        isValid: false,
+        discrepancies: [`Verification error: ${error instanceof Error ? error.message : String(error)}`],
       };
     }
   }

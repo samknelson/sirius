@@ -3,8 +3,9 @@ import type {
   PluginExecutionResult, 
   ChargePluginMetadata,
   TriggerType,
+  LedgerEntryVerification,
 } from "./types";
-import type { ChargePluginConfig } from "@shared/schema";
+import type { ChargePluginConfig, Ledger } from "@shared/schema";
 
 export abstract class ChargePlugin {
   abstract readonly metadata: ChargePluginMetadata;
@@ -13,6 +14,11 @@ export abstract class ChargePlugin {
     context: PluginContext,
     config: ChargePluginConfig
   ): Promise<PluginExecutionResult>;
+
+  abstract verifyEntry(
+    entry: Ledger,
+    config: ChargePluginConfig
+  ): Promise<LedgerEntryVerification>;
 
   canHandle(trigger: TriggerType): boolean {
     return this.metadata.triggers.includes(trigger);

@@ -58,12 +58,19 @@ export type TransactionFilter =
   | { eaId: string } 
   | { referenceType: string; referenceId: string };
 
+export interface LedgerEntryFilter {
+  chargePlugins?: string[];
+  dateFrom?: Date;
+  dateTo?: Date;
+}
+
 export interface LedgerEntryStorage {
   getAll(): Promise<Ledger[]>;
   get(id: string): Promise<Ledger | undefined>;
   getByEaId(eaId: string): Promise<Ledger[]>;
   getByReference(referenceType: string, referenceId: string): Promise<Ledger[]>;
   getByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<Ledger | undefined>;
+  getByFilter(filter: LedgerEntryFilter): Promise<Ledger[]>;
   getTransactions(filter: TransactionFilter): Promise<LedgerEntryWithDetails[]>;
   getByAccountId(accountId: string): Promise<LedgerEntryWithDetails[]>;
   create(entry: InsertLedger): Promise<Ledger>;
@@ -725,6 +732,30 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         ))
         .limit(1);
       return entry || undefined;
+    },
+
+    async getByFilter(filter: LedgerEntryFilter): Promise<Ledger[]> {
+      const conditions: any[] = [];
+
+      if (filter.chargePlugins && filter.chargePlugins.length > 0) {
+        conditions.push(inArray(ledger.chargePlugin, filter.chargePlugins));
+      }
+
+      if (filter.dateFrom) {
+        conditions.push(sqlRaw`${ledger.date} >= ${filter.dateFrom}`);
+      }
+
+      if (filter.dateTo) {
+        conditions.push(sqlRaw`${ledger.date} <= ${filter.dateTo}`);
+      }
+
+      const query = db.select().from(ledger);
+      
+      if (conditions.length > 0) {
+        return await query.where(and(...conditions)).orderBy(desc(ledger.date));
+      }
+
+      return await query.orderBy(desc(ledger.date));
     },
 
     async deleteByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<boolean> {

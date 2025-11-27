@@ -79,3 +79,18 @@ export interface ChargePluginMetadata {
   defaultScope: "global" | "employer";
   settingsSchema?: any; // Zod schema for validating settings
 }
+
+export interface LedgerEntryVerification {
+  entryId: string;
+  chargePlugin: string;
+  chargePluginKey: string;
+  isValid: boolean;
+  discrepancies: string[];
+  actualAmount: string;
+  expectedAmount: string | null;
+  actualDescription: string | null;
+  expectedDescription: string | null;
+  referenceType: string | null;
+  referenceId: string | null;
+  transactionDate: Date | null;
+}
