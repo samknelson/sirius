@@ -227,8 +227,10 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
       if (expectedEntry && existingEntry) {
         const amountChanged = existingEntry.amount !== expectedEntry.amount;
         const memoChanged = existingEntry.memo !== expectedEntry.description;
+        const referenceTypeChanged = existingEntry.referenceType !== expectedEntry.referenceType;
+        const referenceIdChanged = existingEntry.referenceId !== expectedEntry.referenceId;
 
-        if (!amountChanged && !memoChanged) {
+        if (!amountChanged && !memoChanged && !referenceTypeChanged && !referenceIdChanged) {
           logger.debug("Ledger entry matches expected state, no update needed", {
             service: "charge-plugin-gbhet-legal-hourly",
             hoursId: hoursContext.hoursId,
@@ -244,8 +246,17 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
         await storage.ledger.entries.update(existingEntry.id, {
           amount: expectedEntry.amount,
           memo: expectedEntry.description,
+          referenceType: expectedEntry.referenceType,
+          referenceId: expectedEntry.referenceId,
           data: expectedEntry.metadata,
         });
+
+        const changes = [
+          amountChanged && 'amount',
+          memoChanged && 'memo',
+          referenceTypeChanged && 'referenceType',
+          referenceIdChanged && 'referenceId',
+        ].filter(Boolean).join(', ');
 
         logger.info("Updated monthly ledger entry", {
           service: "charge-plugin-gbhet-legal-hourly",
@@ -255,12 +266,14 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
           newAmount: expectedEntry.amount,
           amountChanged,
           memoChanged,
+          referenceTypeChanged,
+          referenceIdChanged,
         });
 
         return {
           success: true,
           transactions: [],
-          message: `Updated entry: ${amountChanged ? 'amount' : ''}${memoChanged ? ' memo' : ''} changed`,
+          message: `Updated entry: ${changes} changed`,
         };
       }
 
