@@ -22,6 +22,17 @@ import { eq, sql, and, desc } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { storageLogger as logger } from "../logger";
+import type { LedgerNotification } from "../charge-plugins/types";
+
+export interface WorkerHoursResult {
+  data: WorkerHours;
+  notifications?: LedgerNotification[];
+}
+
+export interface WorkerHoursDeleteResult {
+  success: boolean;
+  notifications?: LedgerNotification[];
+}
 
 export interface WorkerStorage {
   getAllWorkers(): Promise<Worker[]>;
@@ -54,10 +65,10 @@ export interface WorkerStorage {
   getWorkerHoursHistory(workerId: string): Promise<any[]>;
   getWorkerHoursMonthly(workerId: string): Promise<any[]>;
   getMonthlyHoursTotal(workerId: string, employerId: string, year: number, month: number, employmentStatusIds?: string[]): Promise<number>;
-  createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHours>;
-  updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean }): Promise<WorkerHours | undefined>;
-  deleteWorkerHours(id: string): Promise<boolean>;
-  upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHours>;
+  createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult>;
+  updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean }): Promise<WorkerHoursResult | undefined>;
+  deleteWorkerHours(id: string): Promise<WorkerHoursDeleteResult>;
+  upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult>;
   // Worker work status history methods
   getWorkerWsh(workerId: string): Promise<any[]>;
   createWorkerWsh(data: { workerId: string; date: string; wsId: string; data?: any }): Promise<WorkerWsh>;
@@ -553,11 +564,13 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return Number(result?.totalHours || 0);
     },
 
-    async createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHours> {
+    async createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult> {
       const [savedHours] = await db
         .insert(workerHours)
         .values(data)
         .returning();
+
+      let notifications: LedgerNotification[] = [];
 
       // Execute charge plugins after hours are created (always trigger for monthly reconciliation)
       if (savedHours) {
@@ -577,7 +590,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
             home: savedHours.home,
           };
 
-          await executeChargePlugins(context);
+          const result = await executeChargePlugins(context);
+          notifications = result.notifications;
         } catch (error) {
           logger.error("Failed to execute charge plugins for hours create", {
             service: "workers-storage",
@@ -587,10 +601,10 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         }
       }
 
-      return savedHours;
+      return { data: savedHours, notifications };
     },
 
-    async updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean }): Promise<WorkerHours | undefined> {
+    async updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean }): Promise<WorkerHoursResult | undefined> {
       const [updated] = await db
         .update(workerHours)
         .set(data)
@@ -600,6 +614,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       if (!updated) {
         return undefined;
       }
+
+      let notifications: LedgerNotification[] = [];
 
       // Execute charge plugins after hours are updated (always trigger for monthly reconciliation)
       try {
@@ -618,7 +634,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           home: updated.home,
         };
 
-        await executeChargePlugins(context);
+        const result = await executeChargePlugins(context);
+        notifications = result.notifications;
       } catch (error) {
         logger.error("Failed to execute charge plugins for hours update", {
           service: "workers-storage",
@@ -627,16 +644,18 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         });
       }
 
-      return updated;
+      return { data: updated, notifications };
     },
 
-    async deleteWorkerHours(id: string): Promise<boolean> {
+    async deleteWorkerHours(id: string): Promise<WorkerHoursDeleteResult> {
       const result = await db
         .delete(workerHours)
         .where(eq(workerHours.id, id))
         .returning();
       
       const deleted = result[0];
+      let notifications: LedgerNotification[] = [];
+
       if (deleted) {
         // Execute charge plugins after hours are deleted (for monthly reconciliation)
         try {
@@ -655,7 +674,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
             home: deleted.home,
           };
 
-          await executeChargePlugins(context);
+          const pluginResult = await executeChargePlugins(context);
+          notifications = pluginResult.notifications;
         } catch (error) {
           logger.error("Failed to execute charge plugins for hours delete", {
             service: "workers-storage",
@@ -665,10 +685,10 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         }
       }
       
-      return result.length > 0;
+      return { success: result.length > 0, notifications };
     },
 
-    async upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null }): Promise<WorkerHours> {
+    async upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult> {
       const [savedHours] = await db
         .insert(workerHours)
         .values({
@@ -683,6 +703,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           },
         })
         .returning();
+
+      let notifications: LedgerNotification[] = [];
 
       // Execute charge plugins after hours are saved (always trigger for monthly reconciliation)
       if (savedHours) {
@@ -702,7 +724,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
             home: savedHours.home,
           };
 
-          await executeChargePlugins(context);
+          const result = await executeChargePlugins(context);
+          notifications = result.notifications;
         } catch (error) {
           logger.error("Failed to execute charge plugins for hours save", {
             service: "workers-storage",
@@ -712,7 +735,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         }
       }
 
-      return savedHours;
+      return { data: savedHours, notifications };
     },
 
     // Worker work status history methods
