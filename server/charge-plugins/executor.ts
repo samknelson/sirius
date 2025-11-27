@@ -6,6 +6,7 @@ import {
   TriggerType, 
   PluginContext, 
   LedgerTransaction,
+  LedgerNotification,
 } from "./types";
 import { getChargePluginsByTrigger } from "./registry";
 import { storage } from "../storage/database";
@@ -14,6 +15,7 @@ export interface PluginExecutionSummary {
   pluginId: string;
   success: boolean;
   transactionCount: number;
+  notificationCount: number;
   message?: string;
   error?: string;
 }
@@ -21,6 +23,7 @@ export interface PluginExecutionSummary {
 export interface ChargePluginExecutionResult {
   executed: PluginExecutionSummary[];
   totalTransactions: LedgerTransaction[];
+  notifications: LedgerNotification[];
 }
 
 /**
@@ -47,6 +50,7 @@ export async function executeChargePlugins(
     return {
       executed: [],
       totalTransactions: [],
+      notifications: [],
     };
   }
 
@@ -58,6 +62,7 @@ export async function executeChargePlugins(
 
   const executed: PluginExecutionSummary[] = [];
   const totalTransactions: LedgerTransaction[] = [];
+  const notifications: LedgerNotification[] = [];
 
   // Execute each plugin
   for (const plugin of applicablePlugins) {
@@ -89,12 +94,17 @@ export async function executeChargePlugins(
           pluginId: plugin.metadata.id,
           success: result.success,
           transactionCount: result.transactions.length,
+          notificationCount: result.notifications?.length || 0,
           message: result.message,
           error: result.error,
         });
 
         if (result.success && result.transactions.length > 0) {
           totalTransactions.push(...result.transactions);
+        }
+
+        if (result.success && result.notifications && result.notifications.length > 0) {
+          notifications.push(...result.notifications);
         }
       }
     } catch (error) {
@@ -108,6 +118,7 @@ export async function executeChargePlugins(
         pluginId: plugin.metadata.id,
         success: false,
         transactionCount: 0,
+        notificationCount: 0,
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }
@@ -135,11 +146,13 @@ export async function executeChargePlugins(
     trigger,
     executedCount: executed.length,
     totalTransactions: totalTransactions.length,
+    notificationsCount: notifications.length,
   });
 
   return {
     executed,
     totalTransactions,
+    notifications,
   };
 }
 
