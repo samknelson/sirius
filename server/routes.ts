@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { insertWorkerSchema, type InsertEmployer, winstonLogs, type WorkerId, type PostalAddress, type PhoneNumber } from "@shared/schema";
+import { insertWorkerSchema, type InsertEmployer, winstonLogs, type WorkerId, type PostalAddress, type PhoneNumber, workerHours } from "@shared/schema";
 import { eq, and, inArray, gte, lte, desc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { registerUserRoutes } from "./modules/users";
@@ -1153,9 +1153,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/worker-hours/:id/transactions", requireAuth, requirePermission("workers.manage"), async (req, res) => {
     try {
       const { id } = req.params;
+      
+      // Get the hours entry to build the correct reference format
+      const [hoursEntry] = await db.select().from(workerHours).where(eq(workerHours.id, id));
+      
+      if (!hoursEntry) {
+        return res.json([]);
+      }
+      
+      // Build the composite reference ID used by the GBHET plugin
+      // Format: workerId:employerId:year:month
+      const compositeReferenceId = `${hoursEntry.workerId}:${hoursEntry.employerId}:${hoursEntry.year}:${hoursEntry.month}`;
+      
       const transactions = await storage.ledger.entries.getTransactions({
-        referenceType: "hours",
-        referenceId: id,
+        referenceType: "hour",
+        referenceId: compositeReferenceId,
       });
       res.json(transactions);
     } catch (error) {
