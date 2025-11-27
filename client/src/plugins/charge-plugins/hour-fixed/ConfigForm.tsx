@@ -18,7 +18,7 @@ import type { ChargePluginConfigProps } from "../registry";
 
 const rateHistoryEntrySchema = z.object({
   effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
-  rate: z.coerce.number().positive("Rate must be positive"),
+  rate: z.coerce.number({ invalid_type_error: "Rate is required" }),
 });
 
 const formSchema = z.object({

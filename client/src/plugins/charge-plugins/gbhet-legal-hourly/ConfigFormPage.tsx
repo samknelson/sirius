@@ -19,7 +19,7 @@ const formSchema = z.object({
   employmentStatusIds: z.array(z.string()).default([]),
   rateHistory: z.array(z.object({
     effectiveDate: z.string().min(1, "Effective date is required"),
-    rate: z.number().positive("Rate must be positive"),
+    rate: z.number({ invalid_type_error: "Rate is required" }),
   })).min(1, "At least one rate entry is required"),
 });
 

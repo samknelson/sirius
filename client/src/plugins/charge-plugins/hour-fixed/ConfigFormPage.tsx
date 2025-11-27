@@ -20,7 +20,7 @@ import { baseRateHistoryEntrySchema, BaseRateHistoryEntry } from "@shared/schema
 
 // Use base schema from shared with coerce for number input
 const rateHistoryEntrySchema = baseRateHistoryEntrySchema.extend({
-  rate: z.coerce.number().positive("Rate must be positive"),
+  rate: z.coerce.number({ invalid_type_error: "Rate is required" }),
 });
 
 const formSchema = z.object({
