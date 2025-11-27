@@ -18,7 +18,7 @@ export interface ReportMeta {
 export interface ReportColumn {
   id: string;
   header: string;
-  type: 'string' | 'number' | 'date' | 'boolean';
+  type: 'string' | 'number' | 'date' | 'boolean' | 'link';
   width?: number;
 }
 

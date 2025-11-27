@@ -34,8 +34,8 @@ export function ResultsStep({ wizardId, wizardType, data }: ResultsStepProps) {
     const { columns, records } = reportData;
     
     // For duplicate SSN report, export ungrouped data with all columns
-    // Filter out action columns like 'viewLink' from CSV export
-    const exportColumns = columns.filter(col => col.id !== 'viewLink');
+    // Filter out action columns like 'viewLink' and link-type columns from CSV export
+    const exportColumns = columns.filter(col => col.id !== 'viewLink' && col.type !== 'link');
     const exportRecords = records;
     
     // Convert to CSV
@@ -196,6 +196,15 @@ export function ResultsStep({ wizardId, wizardType, data }: ResultsStepProps) {
                                 </div>
                               ))}
                             </div>
+                          ) : col.type === 'link' && record[col.id] ? (
+                            <Link 
+                              href={record[col.id].url}
+                              className="inline-flex items-center gap-1 text-primary hover:text-primary/80 hover:underline"
+                              data-testid={`link-reference-${idx}`}
+                            >
+                              <Eye className="h-4 w-4" />
+                              <span className="text-sm">{record[col.id].label}</span>
+                            </Link>
                           ) : col.type === 'date' && record[col.id] ? (
                             format(new Date(record[col.id]), 'PP')
                           ) : col.type === 'boolean' ? (

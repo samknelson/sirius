@@ -52,9 +52,40 @@ export class ReportLedgerIntegrity extends WizardReport {
         id: 'discrepancy',
         header: 'Discrepancy',
         type: 'string',
-        width: 400
+        width: 300
+      },
+      {
+        id: 'referenceLink',
+        header: 'Reference',
+        type: 'link',
+        width: 120
       }
     ];
+  }
+
+  private buildReferenceLink(referenceType: string | null, referenceId: string | null): { url: string; label: string } | null {
+    if (!referenceType || !referenceId) return null;
+
+    switch (referenceType) {
+      case 'hour': {
+        const parts = referenceId.split(':');
+        if (parts.length >= 2) {
+          const workerId = parts[0];
+          return {
+            url: `/workers/${workerId}/hours`,
+            label: 'View Hours'
+          };
+        }
+        break;
+      }
+      case 'payment': {
+        return {
+          url: `/ledger/payments/${referenceId}`,
+          label: 'View Payment'
+        };
+      }
+    }
+    return null;
   }
 
   getPrimaryKeyField(): string {
@@ -99,6 +130,8 @@ export class ReportLedgerIntegrity extends WizardReport {
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i];
       
+      const referenceLink = this.buildReferenceLink(entry.referenceType, entry.referenceId);
+      
       const plugin = getChargePlugin(entry.chargePlugin);
       if (!plugin) {
         records.push({
@@ -107,7 +140,8 @@ export class ReportLedgerIntegrity extends WizardReport {
           transactionDate: entry.date,
           actualAmount: entry.amount,
           expectedAmount: null,
-          discrepancy: `Unknown charge plugin: ${entry.chargePlugin}`
+          discrepancy: `Unknown charge plugin: ${entry.chargePlugin}`,
+          referenceLink
         });
         continue;
       }
@@ -129,7 +163,8 @@ export class ReportLedgerIntegrity extends WizardReport {
           transactionDate: entry.date,
           actualAmount: entry.amount,
           expectedAmount: null,
-          discrepancy: `No matching plugin configuration found for entry`
+          discrepancy: `No matching plugin configuration found for entry`,
+          referenceLink
         });
         continue;
       }
@@ -144,7 +179,8 @@ export class ReportLedgerIntegrity extends WizardReport {
             transactionDate: entry.date,
             actualAmount: verification.actualAmount,
             expectedAmount: verification.expectedAmount,
-            discrepancy: verification.discrepancies.join('; ')
+            discrepancy: verification.discrepancies.join('; '),
+            referenceLink
           });
         }
       } catch (error) {
@@ -154,7 +190,8 @@ export class ReportLedgerIntegrity extends WizardReport {
           transactionDate: entry.date,
           actualAmount: entry.amount,
           expectedAmount: null,
-          discrepancy: `Verification error: ${error instanceof Error ? error.message : String(error)}`
+          discrepancy: `Verification error: ${error instanceof Error ? error.message : String(error)}`,
+          referenceLink
         });
       }
 
