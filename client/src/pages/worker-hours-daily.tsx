@@ -45,9 +45,38 @@ interface WorkerHoursEntry {
   employmentStatus: EmploymentStatus;
 }
 
+interface LedgerNotification {
+  type: "created" | "updated" | "deleted";
+  amount: string;
+  description: string;
+}
+
+function formatCurrency(amount: string | number): string {
+  const num = typeof amount === "string" ? parseFloat(amount) : amount;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(num);
+}
+
 function WorkerHoursContent() {
   const { worker } = useWorkerLayout();
   const { toast } = useToast();
+  
+  const showLedgerNotifications = (notifications: LedgerNotification[] | undefined) => {
+    if (!notifications || notifications.length === 0) return;
+    
+    for (const notification of notifications) {
+      const typeLabel = notification.type === "created" ? "Ledger Entry Created" :
+                        notification.type === "updated" ? "Ledger Entry Updated" :
+                        "Ledger Entry Deleted";
+      
+      toast({
+        title: typeLabel,
+        description: `${formatCurrency(notification.amount)} - ${notification.description}`,
+      });
+    }
+  };
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -95,9 +124,10 @@ function WorkerHoursContent() {
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/workers", worker.id, "hours"] });
       toast({ title: "Success", description: "Hours entry created successfully" });
+      showLedgerNotifications(data.ledgerNotifications);
       setIsAddDialogOpen(false);
       resetForm();
     },
@@ -124,9 +154,10 @@ function WorkerHoursContent() {
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/workers", worker.id, "hours"] });
       toast({ title: "Success", description: "Hours entry updated successfully" });
+      showLedgerNotifications(data.ledgerNotifications);
       setIsEditDialogOpen(false);
       resetForm();
     },
@@ -151,9 +182,12 @@ function WorkerHoursContent() {
       }
       return response.status === 204 ? null : response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/workers", worker.id, "hours"] });
       toast({ title: "Success", description: "Hours entry deleted successfully" });
+      if (data) {
+        showLedgerNotifications(data.ledgerNotifications);
+      }
     },
     onError: (error: any) => {
       toast({
