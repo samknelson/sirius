@@ -1081,7 +1081,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Month, year, day, employer ID, and employment status ID are required" });
       }
 
-      const hoursEntry = await storage.workers.createWorkerHours({
+      const result = await storage.workers.createWorkerHours({
         workerId,
         month,
         year,
@@ -1092,7 +1092,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         home: home ?? false,
       });
 
-      res.status(201).json(hoursEntry);
+      res.status(201).json({
+        ...result.data,
+        ledgerNotifications: result.notifications || [],
+      });
     } catch (error: any) {
       console.error("Failed to create worker hours:", error);
       if (error.message?.includes("duplicate key") || error.code === "23505") {
@@ -1108,7 +1111,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { id } = req.params;
       const { year, month, day, employerId, employmentStatusId, hours, home } = req.body;
 
-      const updated = await storage.workers.updateWorkerHours(id, {
+      const result = await storage.workers.updateWorkerHours(id, {
         year,
         month,
         day,
@@ -1118,11 +1121,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         home,
       });
 
-      if (!updated) {
+      if (!result) {
         return res.status(404).json({ message: "Worker hours entry not found" });
       }
 
-      res.json(updated);
+      res.json({
+        ...result.data,
+        ledgerNotifications: result.notifications || [],
+      });
     } catch (error: any) {
       console.error("Failed to update worker hours:", error);
       if (error.message?.includes("duplicate key") || error.code === "23505") {
@@ -1136,13 +1142,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/worker-hours/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.workers.deleteWorkerHours(id);
+      const result = await storage.workers.deleteWorkerHours(id);
 
-      if (!deleted) {
+      if (!result.success) {
         return res.status(404).json({ message: "Worker hours entry not found" });
       }
 
-      res.status(204).send();
+      // Return notifications if any, otherwise 204 No Content
+      if (result.notifications && result.notifications.length > 0) {
+        res.json({ ledgerNotifications: result.notifications });
+      } else {
+        res.status(204).send();
+      }
     } catch (error) {
       console.error("Failed to delete worker hours:", error);
       res.status(500).json({ message: "Failed to delete worker hours" });
