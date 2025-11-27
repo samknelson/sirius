@@ -351,6 +351,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/reports/ledger">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <Reports activeCategory="Ledger" />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/reports/:reportType">
         <ProtectedRoute policy="admin">
           <AuthenticatedLayout>
