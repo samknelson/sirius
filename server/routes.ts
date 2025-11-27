@@ -1149,6 +1149,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/worker-hours/:id/transactions - Get ledger entries for an hours entry
+  app.get("/api/worker-hours/:id/transactions", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const transactions = await storage.ledger.entries.getTransactions({
+        referenceType: "hours",
+        referenceId: id,
+      });
+      res.json(transactions);
+    } catch (error) {
+      console.error("Failed to fetch hours transactions:", error);
+      res.status(500).json({ message: "Failed to fetch hours transactions" });
+    }
+  });
+
   // Worker Work Status History routes
   
   // GET /api/workers/:workerId/wsh - Get work status history for a worker (requires worker policy: staff or worker with matching email)

@@ -4,7 +4,8 @@ import { Employer } from "@shared/schema";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, Pencil } from "lucide-react";
+import { Plus, Trash2, Pencil, Eye } from "lucide-react";
+import { LedgerTransactionsView } from "@/components/ledger/LedgerTransactionsView";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -49,6 +50,8 @@ function WorkerHoursContent() {
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [viewingEntry, setViewingEntry] = useState<WorkerHoursEntry | null>(null);
   const [selectedYear, setSelectedYear] = useState<string>("");
   const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [selectedDay, setSelectedDay] = useState<string>("");
@@ -191,6 +194,11 @@ function WorkerHoursContent() {
       hours: selectedHours ? parseFloat(selectedHours) : null,
       home: selectedHome,
     });
+  };
+
+  const handleView = (entry: WorkerHoursEntry) => {
+    setViewingEntry(entry);
+    setIsViewDialogOpen(true);
   };
 
   const handleEdit = (entry: WorkerHoursEntry) => {
@@ -441,6 +449,14 @@ function WorkerHoursContent() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        onClick={() => handleView(entry)}
+                        data-testid={`button-view-hours-${entry.id}`}
+                      >
+                        <Eye size={16} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => handleEdit(entry)}
                         data-testid={`button-edit-hours-${entry.id}`}
                       >
@@ -575,6 +591,37 @@ function WorkerHoursContent() {
             </Button>
             <Button onClick={handleUpdate} disabled={updateMutation.isPending} data-testid="button-update-hours">
               {updateMutation.isPending ? "Updating..." : "Update"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto" data-testid="dialog-view-hours">
+          <DialogHeader>
+            <DialogTitle>Hours Entry Transactions</DialogTitle>
+            <DialogDescription>
+              {viewingEntry && (
+                <>
+                  {getMonthName(viewingEntry.month)} {viewingEntry.day}, {viewingEntry.year} - {viewingEntry.employer?.name || "Unknown"} - {viewingEntry.hours?.toFixed(2) || "0"} hours
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {viewingEntry && (
+            <LedgerTransactionsView
+              queryKey={[`/api/worker-hours/${viewingEntry.id}/transactions`]}
+              title="Associated Transactions"
+              csvFilename={`hours-${viewingEntry.id}-transactions`}
+              showEntityType={false}
+              showEntityName={false}
+              showEaAccount={true}
+              showEaLink={true}
+            />
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
