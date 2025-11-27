@@ -3,10 +3,10 @@ import { storage } from "../../storage";
 import { insertLedgerPaymentSchema, LedgerPayment } from "@shared/schema";
 import { policies } from "../../policies";
 import { requireAccess } from "../../accessControl";
-import { executeChargePlugins, TriggerType, PaymentSavedContext } from "../../charge-plugins";
+import { executeChargePlugins, TriggerType, PaymentSavedContext, LedgerNotification } from "../../charge-plugins";
 import { logger } from "../../logger";
 
-async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<void> {
+async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<LedgerNotification[]> {
   try {
     const ea = await storage.ledger.ea.get(payment.ledgerEaId);
     if (!ea) {
@@ -15,7 +15,7 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<void
         paymentId: payment.id,
         ledgerEaId: payment.ledgerEaId,
       });
-      return;
+      return [];
     }
 
     const context: PaymentSavedContext = {
@@ -31,13 +31,15 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<void
       memo: payment.memo,
     };
 
-    await executeChargePlugins(context);
+    const result = await executeChargePlugins(context);
+    return result.notifications;
   } catch (error) {
     logger.error("Failed to execute charge plugins for payment", {
       service: "ledger-payments",
       paymentId: payment.id,
       error: error instanceof Error ? error.message : String(error),
     });
+    return [];
   }
 }
 
@@ -127,9 +129,12 @@ export function registerLedgerPaymentRoutes(app: Express) {
       const payment = await storage.ledger.payments.create(validatedData);
       
       // Trigger charge plugins - they handle their own reconciliation
-      await triggerPaymentChargePlugins(payment);
+      const notifications = await triggerPaymentChargePlugins(payment);
       
-      res.status(201).json(payment);
+      res.status(201).json({
+        ...payment,
+        ledgerNotifications: notifications,
+      });
     } catch (error) {
       console.error("Error creating payment:", error);
       if (error instanceof Error && error.name === "ZodError") {
@@ -168,9 +173,12 @@ export function registerLedgerPaymentRoutes(app: Express) {
       }
       
       // Trigger charge plugins - they handle their own reconciliation
-      await triggerPaymentChargePlugins(payment);
+      const notifications = await triggerPaymentChargePlugins(payment);
       
-      res.json(payment);
+      res.json({
+        ...payment,
+        ledgerNotifications: notifications,
+      });
     } catch (error) {
       console.error("Error updating payment:", error);
       if (error instanceof Error && error.name === "ZodError") {
