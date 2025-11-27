@@ -31,8 +31,6 @@ export interface LedgerEaStorage {
   getAll(): Promise<SelectLedgerEa[]>;
   get(id: string): Promise<SelectLedgerEa | undefined>;
   getByEntity(entityType: string, entityId: string): Promise<SelectLedgerEa[]>;
-  getByEntityAndAccount(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa | undefined>;
-  getOrCreate(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa>;
   create(entry: InsertLedgerEa): Promise<SelectLedgerEa>;
   update(id: string, entry: Partial<InsertLedgerEa>): Promise<SelectLedgerEa | undefined>;
   delete(id: string): Promise<boolean>;
