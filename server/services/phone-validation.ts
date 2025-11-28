@@ -133,9 +133,11 @@ export class PhoneValidationService {
       }
 
       if (!phoneNumber.isValid()) {
+        // Provide more detailed error messages based on what we can determine
+        const errorDetails = this.getValidationErrorDetails(phoneNumber, countryCode);
         return {
           isValid: false,
-          error: 'Phone number is not valid for the given country'
+          error: errorDetails
         };
       }
 
@@ -153,6 +155,46 @@ export class PhoneValidationService {
         error: error instanceof Error ? error.message : 'Failed to parse phone number'
       };
     }
+  }
+
+  private getValidationErrorDetails(phoneNumber: PhoneNumber, countryCode: CountryCode): string {
+    const nationalNumber = phoneNumber.nationalNumber;
+    const isPossible = phoneNumber.isPossible();
+    const detectedCountry = phoneNumber.country;
+    
+    // For US/NANP numbers, check specific issues
+    if (countryCode === 'US' || detectedCountry === 'US') {
+      // NANP format: NPA-NXX-XXXX where N=2-9, X=0-9
+      if (nationalNumber && nationalNumber.length === 10) {
+        const areaCode = nationalNumber.substring(0, 3);
+        const exchange = nationalNumber.substring(3, 6);
+        
+        // Check if exchange starts with 0 or 1 (invalid in NANP)
+        if (exchange.startsWith('0') || exchange.startsWith('1')) {
+          return `Invalid exchange code "${exchange}". US phone numbers cannot have an exchange (middle 3 digits) starting with 0 or 1.`;
+        }
+        
+        // Check if area code starts with 0 or 1 (invalid in NANP)
+        if (areaCode.startsWith('0') || areaCode.startsWith('1')) {
+          return `Invalid area code "${areaCode}". US area codes cannot start with 0 or 1.`;
+        }
+        
+        // The number format is correct but doesn't match allocated patterns
+        return `Phone number ${phoneNumber.formatNational()} is not a valid US phone number. The number pattern is not allocated or does not exist.`;
+      }
+    }
+    
+    // Check if it's a length issue
+    if (!isPossible) {
+      return `Phone number has incorrect length for ${countryCode} format.`;
+    }
+    
+    // Generic message for other cases
+    if (detectedCountry && detectedCountry !== countryCode) {
+      return `Phone number appears to be from ${detectedCountry}, not ${countryCode}. Please verify the country code.`;
+    }
+    
+    return `Phone number is not valid for ${countryCode}. The number pattern may not be allocated or does not exist.`;
   }
 
   formatForDisplay(e164PhoneNumber: string): string {

@@ -78,21 +78,21 @@ export class TwilioSmsProvider implements SmsTransport {
 
   async validatePhone(phoneNumber: string): Promise<PhoneValidationResult> {
     try {
-      if (!isValidPhoneNumber(phoneNumber, 'US')) {
-        const parsed = parsePhoneNumber(phoneNumber, 'US');
-        if (!parsed || !parsed.isValid()) {
-          return {
-            valid: false,
-            error: 'Invalid phone number format',
-          };
-        }
-      }
-
       const parsed = parsePhoneNumber(phoneNumber, 'US');
+      
       if (!parsed) {
         return {
           valid: false,
-          error: 'Could not parse phone number',
+          error: 'Could not parse phone number. Please check the format.',
+        };
+      }
+
+      if (!parsed.isValid()) {
+        // Provide detailed error message before even calling Twilio
+        const errorDetails = this.getValidationErrorDetails(parsed);
+        return {
+          valid: false,
+          error: errorDetails,
         };
       }
 
@@ -123,9 +123,10 @@ export class TwilioSmsProvider implements SmsTransport {
         if (twilioError?.code === 20404) {
           return {
             valid: false,
-            error: 'Phone number not found',
+            error: 'Phone number not found in carrier database. The number may not exist or be disconnected.',
           };
         }
+        // Fallback to local validation result on other Twilio errors
         return {
           valid: true,
           formatted: e164,
@@ -139,6 +140,45 @@ export class TwilioSmsProvider implements SmsTransport {
         error: error?.message || 'Validation failed',
       };
     }
+  }
+
+  private getValidationErrorDetails(phoneNumber: ReturnType<typeof parsePhoneNumber>): string {
+    if (!phoneNumber) {
+      return 'Invalid phone number format';
+    }
+
+    const nationalNumber = phoneNumber.nationalNumber;
+    const isPossible = phoneNumber.isPossible();
+    const detectedCountry = phoneNumber.country;
+    
+    // For US/NANP numbers, check specific issues
+    if (detectedCountry === 'US' || (!detectedCountry && nationalNumber?.length === 10)) {
+      // NANP format: NPA-NXX-XXXX where N=2-9, X=0-9
+      if (nationalNumber && nationalNumber.length === 10) {
+        const areaCode = nationalNumber.substring(0, 3);
+        const exchange = nationalNumber.substring(3, 6);
+        
+        // Check if exchange starts with 0 or 1 (invalid in NANP)
+        if (exchange.startsWith('0') || exchange.startsWith('1')) {
+          return `Invalid exchange code "${exchange}". US phone numbers cannot have an exchange (middle 3 digits) starting with 0 or 1.`;
+        }
+        
+        // Check if area code starts with 0 or 1 (invalid in NANP)
+        if (areaCode.startsWith('0') || areaCode.startsWith('1')) {
+          return `Invalid area code "${areaCode}". US area codes cannot start with 0 or 1.`;
+        }
+        
+        // The number format is correct but doesn't match allocated patterns
+        return `Phone number (${areaCode}) ${exchange}-${nationalNumber.substring(6)} is not a valid US phone number. The number pattern is not allocated or does not exist.`;
+      }
+    }
+    
+    // Check if it's a length issue
+    if (!isPossible) {
+      return 'Phone number has incorrect length for US format.';
+    }
+    
+    return 'Phone number is not valid for US. The number pattern may not be allocated or does not exist.';
   }
 
   supportsSms(): boolean {
