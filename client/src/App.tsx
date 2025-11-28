@@ -336,7 +336,7 @@ function Router() {
       </Route>
 
       <Route path="/reports/workers">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <Reports activeCategory="Workers" />
           </AuthenticatedLayout>
@@ -344,7 +344,7 @@ function Router() {
       </Route>
 
       <Route path="/reports/employers">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <Reports activeCategory="Employers" />
           </AuthenticatedLayout>
@@ -352,7 +352,7 @@ function Router() {
       </Route>
 
       <Route path="/reports/ledger">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <Reports activeCategory="Ledger" />
           </AuthenticatedLayout>
@@ -360,7 +360,7 @@ function Router() {
       </Route>
 
       <Route path="/reports/:reportType">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ReportType />
           </AuthenticatedLayout>
@@ -368,7 +368,7 @@ function Router() {
       </Route>
 
       <Route path="/reports">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <Reports />
           </AuthenticatedLayout>
@@ -376,7 +376,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/monthly-uploads">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <EmployersMonthlyUploads />
           </AuthenticatedLayout>
@@ -416,7 +416,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/wizards">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <EmployerWizards />
           </AuthenticatedLayout>
@@ -424,7 +424,7 @@ function Router() {
       </Route>
 
       <Route path="/wizards/:id">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <WizardView />
           </AuthenticatedLayout>
@@ -721,7 +721,7 @@ function Router() {
 
       {/* Configuration routes with nested navigation */}
       <Route path="/config/users/list">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <UsersListPage />
@@ -731,7 +731,7 @@ function Router() {
       </Route>
 
       <Route path="/config/users/roles">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <RolesPage />
@@ -741,7 +741,7 @@ function Router() {
       </Route>
 
       <Route path="/config/users/permissions">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PermissionsPage />
@@ -751,7 +751,7 @@ function Router() {
       </Route>
 
       <Route path="/config/users/policies">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PoliciesPage />
@@ -786,7 +786,7 @@ function Router() {
       </Route>
 
       <Route path="/config/addresses">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PostalAddressesConfigPage />
@@ -796,7 +796,7 @@ function Router() {
       </Route>
 
       <Route path="/config/phone-numbers">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PhoneNumbersConfigPage />
@@ -926,7 +926,7 @@ function Router() {
       </Route>
 
       <Route path="/config/logs">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <LogsPage />
@@ -976,7 +976,7 @@ function Router() {
       </Route>
 
       <Route path="/config/ledger/charge-plugins">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <ChargePluginsListPage />
@@ -986,7 +986,7 @@ function Router() {
       </Route>
 
       <Route path="/config/ledger/charge-plugins/:pluginId/new">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <ChargePluginFormPage />
@@ -996,7 +996,7 @@ function Router() {
       </Route>
 
       <Route path="/config/ledger/charge-plugins/:pluginId/edit/:configId">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <ChargePluginFormPage />
@@ -1006,7 +1006,7 @@ function Router() {
       </Route>
 
       <Route path="/config/ledger/charge-plugins/:pluginId">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <ChargePluginConfigPage />
@@ -1083,7 +1083,7 @@ function Router() {
 
       {/* User detail page */}
       <Route path="/users/:id">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <UserAccountPage />
           </AuthenticatedLayout>
@@ -1129,7 +1129,7 @@ function Router() {
       </Route>
 
       <Route path="/admin/roles">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <AdminLayout>
               <AdminRolesPage />
@@ -1139,7 +1139,7 @@ function Router() {
       </Route>
 
       <Route path="/admin/permissions">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <AdminLayout>
               <AdminPermissionsPage />
@@ -1149,7 +1149,7 @@ function Router() {
       </Route>
 
       <Route path="/admin/quickstarts">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <AdminQuickstarts />
           </AuthenticatedLayout>
@@ -1157,7 +1157,7 @@ function Router() {
       </Route>
 
       <Route path="/cron-jobs/:name/view">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <CronJobView />
           </AuthenticatedLayout>
@@ -1165,7 +1165,7 @@ function Router() {
       </Route>
 
       <Route path="/cron-jobs/:name/settings">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <CronJobSettings />
           </AuthenticatedLayout>
@@ -1173,7 +1173,7 @@ function Router() {
       </Route>
 
       <Route path="/cron-jobs/:name/history">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <CronJobHistory />
           </AuthenticatedLayout>
@@ -1185,7 +1185,7 @@ function Router() {
       </Route>
 
       <Route path="/cron-jobs">
-        <ProtectedRoute policy="admin">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <CronJobs />
           </AuthenticatedLayout>
