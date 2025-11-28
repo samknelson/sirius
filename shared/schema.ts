@@ -956,3 +956,21 @@ export type InsertCronJob = z.infer<typeof insertCronJobSchema>;
 export type CronJob = typeof cronJobs.$inferSelect;
 export type InsertCronJobRun = z.infer<typeof insertCronJobRunSchema>;
 export type CronJobRun = typeof cronJobRuns.$inferSelect;
+
+// Communications
+export const comm = pgTable("comm", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  medium: varchar("medium"),
+  contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
+  status: varchar("status"),
+  sent: timestamp("sent"),
+  received: timestamp("received"),
+  data: jsonb("data"),
+});
+
+export const insertCommSchema = createInsertSchema(comm).omit({
+  id: true,
+});
+
+export type InsertComm = z.infer<typeof insertCommSchema>;
+export type Comm = typeof comm.$inferSelect;
