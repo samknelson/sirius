@@ -220,7 +220,7 @@ export const workerWsh = pgTable("worker_wsh", {
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
-export const postalAddresses = pgTable("postal_addresses", {
+export const contactPostal = pgTable("contact_postal", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
   friendlyName: text("friendly_name"),
@@ -477,7 +477,7 @@ export const insertVariableSchema = createInsertSchema(variables).omit({
   id: true,
 });
 
-export const insertPostalAddressSchema = createInsertSchema(postalAddresses).omit({
+export const insertContactPostalSchema = createInsertSchema(contactPostal).omit({
   id: true,
   createdAt: true,
 });
@@ -658,8 +658,8 @@ export type TrustWmb = typeof trustWmb.$inferSelect;
 export type InsertVariable = z.infer<typeof insertVariableSchema>;
 export type Variable = typeof variables.$inferSelect;
 
-export type InsertPostalAddress = z.infer<typeof insertPostalAddressSchema>;
-export type PostalAddress = typeof postalAddresses.$inferSelect;
+export type InsertContactPostal = z.infer<typeof insertContactPostalSchema>;
+export type ContactPostal = typeof contactPostal.$inferSelect;
 
 export type InsertPhoneNumber = z.infer<typeof insertPhoneNumberSchema>;
 export type PhoneNumber = typeof phoneNumbers.$inferSelect;
