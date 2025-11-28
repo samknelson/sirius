@@ -1,6 +1,7 @@
 import { serviceRegistry } from './service-registry';
 import { getSystemMode } from './system-mode';
 import { createCommStorage, createCommSmsStorage, createCommSmsOptinStorage } from '../storage/comm';
+import { buildStatusCallbackUrl } from './comm-status/url-builder';
 import type { SmsTransport } from './providers/sms';
 import type { Comm, CommSms } from '@shared/schema';
 
@@ -110,13 +111,7 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
     try {
       const fromNumber = await smsTransport.getDefaultFromNumber();
 
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : process.env.REPLIT_DEPLOYMENT_DOMAIN
-          ? `https://${process.env.REPLIT_DEPLOYMENT_DOMAIN}`
-          : '';
-
-      const statusCallbackUrl = baseUrl ? `${baseUrl}/api/webhooks/twilio/sms-status` : undefined;
+      const statusCallbackUrl = buildStatusCallbackUrl(comm.id);
 
       const sendResult = await smsTransport.sendSms({
         to: normalizedPhone,
@@ -200,67 +195,5 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
       error: error?.message || 'Unknown error occurred while sending SMS',
       errorCode: 'UNKNOWN_ERROR',
     };
-  }
-}
-
-export async function handleTwilioStatusCallback(payload: {
-  MessageSid: string;
-  MessageStatus: string;
-  ErrorCode?: string;
-  ErrorMessage?: string;
-  To?: string;
-  From?: string;
-}): Promise<{ success: boolean; commId?: string; error?: string }> {
-  const { MessageSid, MessageStatus, ErrorCode, ErrorMessage } = payload;
-
-  try {
-    const found = await commSmsStorage.getCommSmsByTwilioSid(MessageSid);
-    
-    if (!found) {
-      console.warn(`No comm record found for Twilio message SID: ${MessageSid}`);
-      return { success: false, error: 'Comm record not found' };
-    }
-
-    const { comm, commSms } = found;
-
-    const statusMap: Record<string, string> = {
-      'queued': 'sending',
-      'sending': 'sending',
-      'sent': 'sent',
-      'delivered': 'delivered',
-      'undelivered': 'failed',
-      'failed': 'failed',
-    };
-
-    const newStatus = statusMap[MessageStatus] || 'unknown';
-
-    const existingData = commSms.data as object || {};
-    await commSmsStorage.updateCommSms(commSms.id, {
-      data: {
-        ...existingData,
-        twilioStatus: MessageStatus,
-        twilioErrorCode: ErrorCode,
-        twilioErrorMessage: ErrorMessage,
-        lastWebhookAt: new Date().toISOString(),
-      },
-    });
-
-    const commData = comm.data as object || {};
-    await commStorage.updateComm(comm.id, {
-      status: newStatus,
-      data: {
-        ...commData,
-        lastTwilioStatus: MessageStatus,
-        lastWebhookAt: new Date().toISOString(),
-        ...(ErrorCode && { twilioErrorCode: ErrorCode }),
-        ...(ErrorMessage && { twilioErrorMessage: ErrorMessage }),
-      },
-    });
-
-    return { success: true, commId: comm.id };
-
-  } catch (error: any) {
-    console.error('Error handling Twilio status callback:', error);
-    return { success: false, error: error?.message || 'Unknown error' };
   }
 }

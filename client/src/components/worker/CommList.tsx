@@ -187,6 +187,14 @@ export function CommList({
 
   const getStatusBadge = (status: string) => {
     switch (status.toLowerCase()) {
+      case "queued":
+      case "sending":
+        return (
+          <Badge variant="outline" className="gap-1">
+            <Clock className="h-3 w-3 animate-pulse" />
+            Sending
+          </Badge>
+        );
       case "sent":
         return (
           <Badge variant="outline" className="gap-1">
@@ -215,6 +223,7 @@ export function CommList({
             Pending
           </Badge>
         );
+      case "undelivered":
       case "failed":
         return (
           <Badge variant="destructive" className="gap-1">

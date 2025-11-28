@@ -1,7 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { createCommStorage, createCommSmsOptinStorage } from "../storage";
-import { sendSms, handleTwilioStatusCallback } from "../services/sms-sender";
+import { sendSms } from "../services/sms-sender";
+import { handleStatusCallback } from "../services/comm-status/handler";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -90,7 +91,7 @@ export function registerCommRoutes(
         message: "SMS sent successfully",
         comm: result.comm,
         commSms: result.commSms,
-        twilioMessageSid: result.twilioMessageSid,
+        messageId: result.messageId,
       });
 
     } catch (error) {
@@ -125,47 +126,8 @@ export function registerCommRoutes(
     }
   });
 
-  app.post("/api/webhooks/twilio/sms-status", async (req, res) => {
-    try {
-      const { 
-        MessageSid, 
-        MessageStatus, 
-        ErrorCode, 
-        ErrorMessage,
-        To,
-        From 
-      } = req.body;
-
-      if (!MessageSid || !MessageStatus) {
-        console.warn("Invalid Twilio webhook payload - missing MessageSid or MessageStatus");
-        return res.status(400).send("Missing required fields");
-      }
-
-      console.log(`Twilio SMS status callback: ${MessageSid} -> ${MessageStatus}`, {
-        errorCode: ErrorCode,
-        errorMessage: ErrorMessage,
-        to: To,
-        from: From,
-      });
-
-      const result = await handleTwilioStatusCallback({
-        MessageSid,
-        MessageStatus,
-        ErrorCode,
-        ErrorMessage,
-        To,
-        From,
-      });
-
-      if (!result.success) {
-        console.warn(`Failed to process Twilio callback for ${MessageSid}: ${result.error}`);
-      }
-
-      res.status(200).send("OK");
-
-    } catch (error) {
-      console.error("Error processing Twilio webhook:", error);
-      res.status(500).send("Internal server error");
-    }
+  app.post("/api/comm/statuscallback/:commId", async (req, res) => {
+    const { commId } = req.params;
+    await handleStatusCallback(req, res, commId);
   });
 }
