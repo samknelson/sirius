@@ -84,11 +84,10 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess }: CommSmsProps
 
   const sendSmsMutation = useMutation({
     mutationFn: async ({ phoneNumber, message }: { phoneNumber: string; message: string }) => {
-      const response = await apiRequest("POST", `/api/contacts/${contactId}/sms`, {
+      return await apiRequest("POST", `/api/contacts/${contactId}/sms`, {
         phoneNumber,
         message,
       });
-      return response.json();
     },
     onSuccess: () => {
       toast({
