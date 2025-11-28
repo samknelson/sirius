@@ -628,7 +628,7 @@ export function PhoneNumberManagement({ contactId }: PhoneNumberManagementProps)
                       <div className="space-y-0.5">
                         <Label htmlFor="allowlist-switch">Allowlist</Label>
                         <p className="text-sm text-muted-foreground">
-                          Add to SMS allowlist for priority messaging
+                          Allow sending even when the system is in dev or test mode
                         </p>
                       </div>
                       <Switch
