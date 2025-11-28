@@ -8,6 +8,8 @@ export interface PhoneValidationResult {
   type?: string;
   carrier?: string;
   error?: string;
+  smsPossible?: boolean;
+  voicePossible?: boolean;
 }
 
 export interface SmsSendResult {

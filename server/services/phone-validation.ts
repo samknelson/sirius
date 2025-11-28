@@ -11,6 +11,8 @@ export interface PhoneValidationResult {
   type?: string;
   error?: string;
   twilioData?: any;
+  smsPossible?: boolean;
+  voicePossible?: boolean;
 }
 
 interface PhoneValidationSettings {
@@ -99,6 +101,8 @@ export class PhoneValidationService {
         internationalFormat: parsed.formatInternational(),
         country: result.countryCode,
         type: result.type || parsed.getType(),
+        smsPossible: result.smsPossible,
+        voicePossible: result.voicePossible,
         twilioData: {
           carrier: result.carrier,
         }

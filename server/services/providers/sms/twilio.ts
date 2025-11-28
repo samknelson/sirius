@@ -104,6 +104,11 @@ export class TwilioSmsProvider implements SmsTransport {
           fields: 'line_type_intelligence',
         });
 
+        // Derive SMS and voice capabilities from line type
+        const lineType = lookupResult.lineTypeIntelligence?.type?.toLowerCase();
+        const smsPossible = lineType !== 'landline' && lineType !== 'unknown';
+        const voicePossible = lineType !== 'unknown';
+
         return {
           valid: lookupResult.valid,
           formatted: lookupResult.phoneNumber,
@@ -111,6 +116,8 @@ export class TwilioSmsProvider implements SmsTransport {
           nationalNumber: parsed.formatNational(),
           type: lookupResult.lineTypeIntelligence?.type,
           carrier: lookupResult.lineTypeIntelligence?.carrierName,
+          smsPossible,
+          voicePossible,
         };
       } catch (twilioError: any) {
         if (twilioError?.code === 20404) {

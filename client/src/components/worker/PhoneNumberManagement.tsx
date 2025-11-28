@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertPhoneNumberSchema } from "@shared/schema";
-import { Phone, Plus, Edit, Trash2, Star, Copy, FileJson, Eye, MessageSquare, User, Globe, Calendar, Link, ExternalLink } from "lucide-react";
+import { Phone, Plus, Edit, Trash2, Star, Copy, FileJson, Eye, MessageSquare, User, Globe, Calendar, Link, ExternalLink, RefreshCw, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
@@ -33,6 +33,10 @@ interface SmsOptinResponse {
     optinDate: string | null;
     optinIp: string | null;
     allowlist: boolean;
+    smsPossible: boolean | null;
+    voicePossible: boolean | null;
+    validatedAt: string | null;
+    validationResponse: Record<string, unknown> | null;
     optinUserDetails: {
       id: string;
       email: string;
@@ -40,6 +44,18 @@ interface SmsOptinResponse {
       lastName: string | null;
     } | null;
   } | null;
+}
+
+interface RevalidateResponse {
+  phoneNumber: PhoneNumber;
+  validation: {
+    smsPossible?: boolean;
+    voicePossible?: boolean;
+    validatedAt: string;
+    type?: string;
+    carrier?: string;
+  };
+  optinRecord: SmsOptinResponse['optin'];
 }
 
 // Form schema that omits contactId since it's provided as a prop and adds client-side validation
@@ -225,6 +241,32 @@ export function PhoneNumberManagement({ contactId }: PhoneNumberManagementProps)
       toast({
         title: "Error",
         description: error.message || "Failed to update SMS opt-in status",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Re-validate phone number mutation
+  const revalidateMutation = useMutation<RevalidateResponse, Error, string>({
+    mutationFn: async (id: string) => {
+      return await apiRequest("POST", `/api/phone-numbers/${id}/revalidate`, {});
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactId, "phone-numbers"] });
+      if (viewingPhoneNumber) {
+        setViewingPhoneNumber(data.phoneNumber);
+      }
+      toast({
+        title: "Phone Number Re-validated",
+        description: data.validation.smsPossible !== undefined 
+          ? `SMS ${data.validation.smsPossible ? 'is' : 'is not'} possible, Voice ${data.validation.voicePossible ? 'is' : 'is not'} possible`
+          : "Phone number validation has been updated.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Re-validation Failed",
+        description: error.message || "Failed to re-validate phone number",
         variant: "destructive",
       });
     },
@@ -480,7 +522,19 @@ export function PhoneNumberManagement({ contactId }: PhoneNumberManagementProps)
 
                 {/* Right Column: Validation Data */}
                 <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Validation Info</h4>
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Validation Info</h4>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => revalidateMutation.mutate(viewingPhoneNumber.id)}
+                      disabled={revalidateMutation.isPending}
+                      data-testid="button-revalidate-phone"
+                    >
+                      <RefreshCw size={14} className={revalidateMutation.isPending ? "animate-spin mr-2" : "mr-2"} />
+                      {revalidateMutation.isPending ? "Validating..." : "Re-validate"}
+                    </Button>
+                  </div>
                   
                   {viewingPhoneNumber.validationResponse ? (
                     <div className="space-y-3 divide-y">
@@ -512,6 +566,44 @@ export function PhoneNumberManagement({ contactId }: PhoneNumberManagementProps)
                           <code className="font-mono text-sm">{(viewingPhoneNumber.validationResponse as any).type}</code>
                         </div>
                       )}
+
+                      {/* SMS and Voice Capabilities */}
+                      {((viewingPhoneNumber.validationResponse as any)?.smsPossible !== undefined || 
+                        (viewingPhoneNumber.validationResponse as any)?.voicePossible !== undefined) && (
+                        <div className="py-2 space-y-2">
+                          <span className="text-sm text-muted-foreground font-medium">Capabilities</span>
+                          <div className="flex gap-3 flex-wrap">
+                            {(viewingPhoneNumber.validationResponse as any)?.smsPossible !== undefined && (
+                              <div className="flex items-center gap-1.5">
+                                {(viewingPhoneNumber.validationResponse as any).smsPossible ? (
+                                  <CheckCircle size={14} className="text-green-600" />
+                                ) : (
+                                  <XCircle size={14} className="text-red-600" />
+                                )}
+                                <span className="text-sm">SMS</span>
+                              </div>
+                            )}
+                            {(viewingPhoneNumber.validationResponse as any)?.voicePossible !== undefined && (
+                              <div className="flex items-center gap-1.5">
+                                {(viewingPhoneNumber.validationResponse as any).voicePossible ? (
+                                  <CheckCircle size={14} className="text-green-600" />
+                                ) : (
+                                  <XCircle size={14} className="text-red-600" />
+                                )}
+                                <span className="text-sm">Voice</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Carrier Info */}
+                      {(viewingPhoneNumber.validationResponse as any)?.twilioData?.carrier && (
+                        <div className="flex justify-between items-center py-2">
+                          <span className="text-sm text-muted-foreground font-medium">Carrier</span>
+                          <code className="font-mono text-sm">{(viewingPhoneNumber.validationResponse as any).twilioData.carrier}</code>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground">No validation data available</p>
@@ -520,22 +612,22 @@ export function PhoneNumberManagement({ contactId }: PhoneNumberManagementProps)
               </div>
 
               {/* Footer Actions */}
-              <div className="flex justify-between items-center pt-4 border-t">
-                {viewingPhoneNumber.validationResponse ? (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setJsonViewPhoneNumber(viewingPhoneNumber);
-                      setViewingPhoneNumber(null);
-                    }}
-                    data-testid="button-view-json"
-                  >
-                    <FileJson size={16} className="mr-2" />
-                    View Full API Response
-                  </Button>
-                ) : (
-                  <div />
-                )}
+              <div className="flex justify-between items-center gap-2 pt-4 border-t flex-wrap">
+                <div className="flex gap-2 flex-wrap">
+                  {viewingPhoneNumber.validationResponse && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setJsonViewPhoneNumber(viewingPhoneNumber);
+                        setViewingPhoneNumber(null);
+                      }}
+                      data-testid="button-view-json"
+                    >
+                      <FileJson size={16} className="mr-2" />
+                      View Full API Response
+                    </Button>
+                  )}
+                </div>
                 <Button onClick={() => setViewingPhoneNumber(null)} data-testid="button-close-view">
                   Close
                 </Button>

@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage, createCommSmsOptinStorage } from "../storage";
 import { insertPhoneNumberSchema, insertCommSmsOptinSchema } from "@shared/schema";
-import { phoneValidationService } from "../services/phone-validation";
+import { phoneValidationService, type PhoneValidationResult } from "../services/phone-validation";
 import { policies } from "../policies";
 import { z } from "zod";
 
@@ -16,6 +16,38 @@ type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Respo
 type PolicyMiddleware = (policy: any) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
 const smsOptinStorage = createCommSmsOptinStorage();
+
+// Helper function to ensure comm_sms_optin record exists and has validation data
+async function ensureSmsOptinWithValidation(phoneNumber: string, validationResult: PhoneValidationResult): Promise<void> {
+  const e164Phone = validationResult.e164Format || phoneNumber;
+  
+  try {
+    const existingOptin = await smsOptinStorage.getSmsOptinByPhoneNumber(e164Phone);
+    
+    const validationData = {
+      smsPossible: validationResult.smsPossible ?? null,
+      voicePossible: validationResult.voicePossible ?? null,
+      validatedAt: new Date(),
+      validationResponse: validationResult as unknown as Record<string, unknown>,
+    };
+    
+    if (existingOptin) {
+      // Update existing record with validation data
+      await smsOptinStorage.updateSmsOptin(existingOptin.id, validationData);
+    } else {
+      // Create new record with validation data
+      await smsOptinStorage.createSmsOptin({
+        phoneNumber: e164Phone,
+        optin: false,
+        allowlist: false,
+        ...validationData,
+      });
+    }
+  } catch (error) {
+    // Log error but don't fail the phone number operation
+    console.error('Failed to create/update SMS opt-in record with validation:', error);
+  }
+}
 
 export function registerPhoneNumberRoutes(
   app: Express, 
@@ -74,6 +106,10 @@ export function registerPhoneNumberRoutes(
       });
       
       const newPhoneNumber = await storage.contacts.phoneNumbers.createPhoneNumber(phoneNumberData);
+      
+      // Auto-create/update comm_sms_optin record with validation data
+      await ensureSmsOptinWithValidation(req.body.phoneNumber, validationResult);
+      
       res.status(201).json(newPhoneNumber);
     } catch (error) {
       if (error instanceof Error && error.name === 'ZodError') {
@@ -93,8 +129,10 @@ export function registerPhoneNumberRoutes(
       
       // If phone number is being updated, validate and format it
       let updateData: any = { ...req.body };
+      let validationResult: PhoneValidationResult | null = null;
+      
       if (req.body.phoneNumber) {
-        const validationResult = await phoneValidationService.validateAndFormat(req.body.phoneNumber);
+        validationResult = await phoneValidationService.validateAndFormat(req.body.phoneNumber);
         
         if (!validationResult.isValid) {
           return res.status(400).json({ 
@@ -114,6 +152,11 @@ export function registerPhoneNumberRoutes(
       
       if (!updatedPhoneNumber) {
         return res.status(404).json({ message: "Phone number not found" });
+      }
+      
+      // Auto-create/update comm_sms_optin record with validation data if phone number changed
+      if (validationResult) {
+        await ensureSmsOptinWithValidation(req.body.phoneNumber, validationResult);
       }
       
       res.json(updatedPhoneNumber);
@@ -167,6 +210,58 @@ export function registerPhoneNumberRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete phone number" });
+    }
+  });
+
+  // POST /api/phone-numbers/:id/revalidate - Re-validate phone number and update sms_optin record
+  app.post("/api/phone-numbers/:id/revalidate", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Get the phone number record
+      const phoneNumber = await storage.contacts.phoneNumbers.getPhoneNumber(id);
+      if (!phoneNumber) {
+        return res.status(404).json({ message: "Phone number not found" });
+      }
+      
+      // Re-validate the phone number
+      const validationResult = await phoneValidationService.validateAndFormat(phoneNumber.phoneNumber);
+      
+      if (!validationResult.isValid) {
+        return res.status(400).json({ 
+          message: validationResult.error || "Phone number is no longer valid",
+          error: validationResult.error
+        });
+      }
+      
+      // Update the phone number record with new validation response
+      const updatedPhoneNumber = await storage.contacts.phoneNumbers.updatePhoneNumber(id, {
+        validationResponse: validationResult
+      });
+      
+      // Update the comm_sms_optin record with validation data
+      await ensureSmsOptinWithValidation(phoneNumber.phoneNumber, validationResult);
+      
+      // Return the opt-in record with updated validation data
+      const optinRecord = await smsOptinStorage.getSmsOptinByPhoneNumber(validationResult.e164Format || phoneNumber.phoneNumber);
+      
+      res.json({
+        phoneNumber: updatedPhoneNumber,
+        validation: {
+          smsPossible: validationResult.smsPossible,
+          voicePossible: validationResult.voicePossible,
+          validatedAt: new Date(),
+          type: validationResult.type,
+          carrier: validationResult.twilioData?.carrier,
+        },
+        optinRecord
+      });
+    } catch (error) {
+      console.error('Failed to revalidate phone number:', error);
+      if (error instanceof Error) {
+        return res.status(400).json({ message: error.message });
+      }
+      res.status(500).json({ message: "Failed to revalidate phone number" });
     }
   });
 
