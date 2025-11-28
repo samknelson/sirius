@@ -990,3 +990,26 @@ export const insertCommSmsSchema = createInsertSchema(commSms).omit({
 
 export type InsertCommSms = z.infer<typeof insertCommSmsSchema>;
 export type CommSms = typeof commSms.$inferSelect;
+
+// Communications - SMS Opt-in
+export const commSmsOptin = pgTable("comm_sms_optin", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  phoneNumber: text("phone_number").notNull().unique(),
+  optin: boolean("optin").default(false).notNull(),
+  optinUser: varchar("optin_user").references(() => users.id, { onDelete: 'set null' }),
+  optinDate: timestamp("optin_date"),
+  optinIp: varchar("optin_ip"),
+  allowlist: boolean("allowlist").default(false).notNull(),
+});
+
+const ipAddressRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^(?:[a-fA-F0-9]{1,4}:){7}[a-fA-F0-9]{1,4}$/;
+
+export const insertCommSmsOptinSchema = createInsertSchema(commSmsOptin, {
+  phoneNumber: z.string().min(1, "Phone number is required"),
+  optinIp: z.string().regex(ipAddressRegex, "Invalid IP address format").optional().nullable(),
+}).omit({
+  id: true,
+});
+
+export type InsertCommSmsOptin = z.infer<typeof insertCommSmsOptinSchema>;
+export type CommSmsOptin = typeof commSmsOptin.$inferSelect;
