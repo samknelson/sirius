@@ -39,6 +39,7 @@ import { requireAccess } from "./accessControl";
 import { policies } from "./policies";
 import { addressValidationService } from "./services/address-validation";
 import { phoneValidationService } from "./services/phone-validation";
+import { serviceRegistry } from "./services/service-registry";
 import { isAuthenticated } from "./replitAuth";
 
 // Authentication middleware
@@ -844,55 +845,110 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GET /api/variables/phone_validation_config - Get phone validation configuration
+  // Now derived from SMS provider selection, with stored settings for each provider
   app.get("/api/variables/phone_validation_config", requireAuth, async (req, res) => {
     try {
-      const config = await phoneValidationService.loadConfig();
-      res.json(config);
+      const smsConfig = await serviceRegistry.getCategoryConfig('sms');
+      const isTwilioMode = smsConfig.defaultProvider === 'twilio';
+      
+      // Get stored validation settings from both providers
+      const localSettings = await serviceRegistry.getProviderSettings('sms', 'local');
+      const twilioSettings = await serviceRegistry.getProviderSettings('sms', 'twilio');
+      const localValidation = (localSettings as any)?.phoneValidation || {};
+      const twilioValidation = (twilioSettings as any)?.phoneValidation || {};
+      
+      // Return config in the legacy format for backward compatibility
+      // Fallback settings are stored with twilio provider since they control Twilio failure behavior
+      res.json({
+        mode: isTwilioMode ? 'twilio' : 'local',
+        local: {
+          enabled: !isTwilioMode,
+          defaultCountry: localValidation.defaultCountry || 'US',
+          strictValidation: localValidation.strictValidation ?? true
+        },
+        twilio: {
+          enabled: isTwilioMode,
+          lookupType: twilioValidation.lookupType || ['line_type_intelligence', 'caller_name']
+        },
+        fallback: {
+          useLocalOnTwilioFailure: twilioValidation.useLocalOnTwilioFailure ?? true,
+          logValidationAttempts: twilioValidation.logValidationAttempts ?? true
+        }
+      });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch phone validation configuration" });
     }
   });
 
   // PUT /api/variables/phone_validation_config - Update phone validation configuration
+  // Now updates the SMS provider selection and stores validation settings for each provider
   app.put("/api/variables/phone_validation_config", requireAuth, requireAccess(policies.admin), async (req, res) => {
     try {
       const { mode, local, twilio, fallback } = req.body;
-      
-      console.log('Received phone validation config update:', JSON.stringify(req.body, null, 2));
       
       if (!mode || (mode !== "local" && mode !== "twilio")) {
         return res.status(400).json({ message: "Invalid validation mode. Must be 'local' or 'twilio'." });
       }
       
-      if (!local || typeof local.enabled !== "boolean") {
-        return res.status(400).json({ message: "Invalid local configuration." });
-      }
-      
-      if (!twilio || typeof twilio.enabled !== "boolean") {
-        return res.status(400).json({ message: "Invalid twilio configuration." });
-      }
-      
-      if (!fallback || typeof fallback.useLocalOnTwilioFailure !== "boolean") {
-        return res.status(400).json({ message: "Invalid fallback configuration." });
-      }
-      
-      const configVar = await storage.variables.getByName('phone_validation_config');
-      if (configVar) {
-        console.log('Updating existing config variable:', configVar.id);
-        await storage.variables.update(configVar.id, {
-          value: req.body,
-        });
-      } else {
-        console.log('Creating new config variable');
-        await storage.variables.create({
-          name: 'phone_validation_config',
-          value: req.body,
+      // Store local-specific settings in the local provider
+      if (local) {
+        const localCurrentSettings = await serviceRegistry.getProviderSettings('sms', 'local');
+        const existingLocalValidation = (localCurrentSettings as any)?.phoneValidation || {};
+        const localValidationSettings = {
+          ...existingLocalValidation,
+          defaultCountry: local.defaultCountry ?? existingLocalValidation.defaultCountry ?? 'US',
+          strictValidation: local.strictValidation ?? existingLocalValidation.strictValidation ?? true
+        };
+        await serviceRegistry.saveProviderSettings('sms', 'local', {
+          ...localCurrentSettings,
+          phoneValidation: localValidationSettings
         });
       }
       
-      const updatedConfig = await phoneValidationService.loadConfig();
-      console.log('Loaded config after update:', JSON.stringify(updatedConfig, null, 2));
-      res.json(updatedConfig);
+      // Store twilio-specific settings and fallback settings in the twilio provider
+      // Fallback settings belong with twilio since they control Twilio failure behavior
+      const twilioCurrentSettings = await serviceRegistry.getProviderSettings('sms', 'twilio');
+      const existingTwilioValidation = (twilioCurrentSettings as any)?.phoneValidation || {};
+      const twilioValidationSettings = {
+        ...existingTwilioValidation,
+        lookupType: twilio?.lookupType ?? existingTwilioValidation.lookupType ?? ['line_type_intelligence', 'caller_name'],
+        useLocalOnTwilioFailure: fallback?.useLocalOnTwilioFailure ?? existingTwilioValidation.useLocalOnTwilioFailure ?? true,
+        logValidationAttempts: fallback?.logValidationAttempts ?? existingTwilioValidation.logValidationAttempts ?? true
+      };
+      await serviceRegistry.saveProviderSettings('sms', 'twilio', {
+        ...twilioCurrentSettings,
+        phoneValidation: twilioValidationSettings
+      });
+      
+      // Update the SMS provider selection
+      await serviceRegistry.setDefaultProvider('sms', mode);
+      
+      // Fetch updated config from both providers for response
+      const localSettings = await serviceRegistry.getProviderSettings('sms', 'local');
+      const twilioSettings = await serviceRegistry.getProviderSettings('sms', 'twilio');
+      const localValidation = (localSettings as any)?.phoneValidation || {};
+      const twilioValidation = (twilioSettings as any)?.phoneValidation || {};
+      
+      const smsConfig = await serviceRegistry.getCategoryConfig('sms');
+      const isTwilioMode = smsConfig.defaultProvider === 'twilio';
+      
+      // Return config in the legacy format
+      res.json({
+        mode: isTwilioMode ? 'twilio' : 'local',
+        local: {
+          enabled: !isTwilioMode,
+          defaultCountry: localValidation.defaultCountry || 'US',
+          strictValidation: localValidation.strictValidation ?? true
+        },
+        twilio: {
+          enabled: isTwilioMode,
+          lookupType: twilioValidation.lookupType || ['line_type_intelligence', 'caller_name']
+        },
+        fallback: {
+          useLocalOnTwilioFailure: twilioValidation.useLocalOnTwilioFailure ?? true,
+          logValidationAttempts: twilioValidation.logValidationAttempts ?? true
+        }
+      });
     } catch (error) {
       console.error('Error updating phone validation config:', error);
       res.status(500).json({ 

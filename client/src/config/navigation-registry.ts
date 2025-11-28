@@ -90,7 +90,6 @@ export const configSections: NavSection[] = [
     icon: Phone,
     items: [
       { path: "/config/addresses", label: "Postal Addresses", icon: MapPin, testId: "nav-config-addresses", permission: "admin" },
-      { path: "/config/phone-numbers", label: "Phone Numbers", icon: Phone, testId: "nav-config-phone-numbers", permission: "admin" },
       { path: "/config/gender-options", label: "Gender Options", icon: List, testId: "nav-config-gender-options", permission: "admin" },
     ],
   },

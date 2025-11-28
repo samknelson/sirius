@@ -1,24 +1,6 @@
 import { parsePhoneNumber, CountryCode, PhoneNumber } from 'libphonenumber-js';
 import { serviceRegistry } from './service-registry';
-import { storage } from '../storage';
 import type { SmsTransport } from './providers/sms';
-
-export interface PhoneValidationConfig {
-  mode: "local" | "twilio";
-  local: {
-    enabled: boolean;
-    defaultCountry: string;
-    strictValidation: boolean;
-  };
-  twilio: {
-    enabled: boolean;
-    lookupType: string[];
-  };
-  fallback: {
-    useLocalOnTwilioFailure: boolean;
-    logValidationAttempts: boolean;
-  };
-}
 
 export interface PhoneValidationResult {
   isValid: boolean;
@@ -31,6 +13,13 @@ export interface PhoneValidationResult {
   twilioData?: any;
 }
 
+interface PhoneValidationSettings {
+  defaultCountry?: string;
+  strictValidation?: boolean;
+  useLocalOnTwilioFailure?: boolean;
+  logValidationAttempts?: boolean;
+}
+
 export class PhoneValidationService {
   private defaultCountry: CountryCode = 'US';
 
@@ -38,54 +27,60 @@ export class PhoneValidationService {
     this.defaultCountry = defaultCountry;
   }
 
-  async loadConfig(): Promise<PhoneValidationConfig> {
-    const configVar = await storage.variables.getByName('phone_validation_config');
-    if (configVar && configVar.value) {
-      return configVar.value as PhoneValidationConfig;
+  private async getValidationSettings(): Promise<PhoneValidationSettings> {
+    try {
+      // Always read local settings (defaultCountry, strictValidation) from local provider
+      // These are provider-agnostic and apply regardless of which SMS provider is active
+      const localSettings = await serviceRegistry.getProviderSettings('sms', 'local');
+      const localValidation = (localSettings as any)?.phoneValidation || {};
+      
+      // Read fallback settings from twilio provider (since they control Twilio failure behavior)
+      const twilioSettings = await serviceRegistry.getProviderSettings('sms', 'twilio');
+      const twilioValidation = (twilioSettings as any)?.phoneValidation || {};
+      
+      return {
+        defaultCountry: localValidation.defaultCountry || 'US',
+        strictValidation: localValidation.strictValidation ?? true,
+        useLocalOnTwilioFailure: twilioValidation.useLocalOnTwilioFailure ?? true,
+        logValidationAttempts: twilioValidation.logValidationAttempts ?? true
+      };
+    } catch {
+      return {};
     }
-
-    return {
-      mode: 'local',
-      local: {
-        enabled: true,
-        defaultCountry: 'US',
-        strictValidation: true
-      },
-      twilio: {
-        enabled: false,
-        lookupType: ['line_type_intelligence', 'caller_name']
-      },
-      fallback: {
-        useLocalOnTwilioFailure: true,
-        logValidationAttempts: true
-      }
-    };
   }
 
   async validateAndFormat(phoneNumberInput: string, country?: CountryCode): Promise<PhoneValidationResult> {
-    const config = await this.loadConfig();
-
-    if (config.mode === 'twilio' && config.twilio.enabled) {
-      try {
-        return await this.validateWithProvider(phoneNumberInput);
-      } catch (error) {
-        console.error('Provider validation failed:', error);
-        if (config.fallback.useLocalOnTwilioFailure) {
-          console.log('Falling back to local validation');
-          return this.validateLocally(phoneNumberInput, country);
+    try {
+      const settings = await this.getValidationSettings();
+      const defaultCountry = (settings.defaultCountry as CountryCode) || this.defaultCountry;
+      const useLocalOnFailure = settings.useLocalOnTwilioFailure ?? true;
+      
+      const smsTransport = await serviceRegistry.resolve<SmsTransport>('sms');
+      
+      if (smsTransport.id === 'twilio') {
+        try {
+          return await this.validateWithProvider(phoneNumberInput, defaultCountry);
+        } catch (error) {
+          console.error('Provider validation failed, falling back to local:', error);
+          if (useLocalOnFailure) {
+            return this.validateLocally(phoneNumberInput, country || defaultCountry);
+          }
+          return {
+            isValid: false,
+            error: error instanceof Error ? error.message : 'Provider validation failed'
+          };
         }
-        return {
-          isValid: false,
-          error: error instanceof Error ? error.message : 'Provider validation failed'
-        };
       }
+      
+      return this.validateLocally(phoneNumberInput, country || defaultCountry);
+    } catch (error) {
+      console.error('Failed to resolve SMS provider, using local validation:', error);
+      return this.validateLocally(phoneNumberInput, country);
     }
-
-    return this.validateLocally(phoneNumberInput, country);
   }
 
-  private async validateWithProvider(phoneNumberInput: string): Promise<PhoneValidationResult> {
-    const parsed = parsePhoneNumber(phoneNumberInput, this.defaultCountry);
+  private async validateWithProvider(phoneNumberInput: string, country: CountryCode = 'US'): Promise<PhoneValidationResult> {
+    const parsed = parsePhoneNumber(phoneNumberInput, country);
     if (!parsed || !parsed.isValid()) {
       return {
         isValid: false,
