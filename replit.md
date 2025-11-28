@@ -38,6 +38,7 @@ The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI),
 -   **Work Status History Auto-Sync**: Automatically synchronizes worker's current work status based on historical entries.
 -   **Database Quickstarts**: Admin-only feature for exporting and importing complete database snapshots as JSON files for rapid environment setup.
 -   **Cron Job System**: Complete scheduled task execution framework with registry pattern, database-backed job configuration, and node-cron scheduler. Supports "live" and "test" execution modes and includes default jobs for data cleanup.
+-   **System Mode**: Application-wide environment mode setting (dev/test/live) stored in the Variables table. Accessible via `getSystemMode()` utility function on the backend. Displays a badge indicator in the navbar (gray for dev, yellow for test, hidden for live) and configurable via admin-only settings page.
 
 # External Dependencies
 
