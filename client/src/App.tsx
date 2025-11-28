@@ -104,6 +104,7 @@ import TrustBenefitTypesPage from "@/pages/config/trust-benefit-types";
 import EmployerContactTypesPage from "@/pages/config/employer-contact-types";
 import ProviderContactTypesPage from "@/pages/config/provider-contact-types";
 import MasqueradePage from "@/pages/config/masquerade";
+import SystemModePage from "@/pages/config/system-mode";
 import LogsPage from "@/pages/config/logs";
 import DashboardPluginsConfigPage from "@/pages/config/dashboard-plugins";
 import PluginSettingsPage from "@/pages/config/plugin-settings";
@@ -920,6 +921,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <MasqueradePage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/system-mode">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <SystemModePage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

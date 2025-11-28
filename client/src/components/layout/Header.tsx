@@ -17,7 +17,9 @@ import {
   BookOpen,
   Shield,
   Menu,
+  Server,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -40,6 +42,10 @@ interface SiteSettings {
   footer: string;
 }
 
+interface SystemModeResponse {
+  mode: "dev" | "test" | "live";
+}
+
 export default function Header() {
   const { user, logout, hasPermission, masquerade, stopMasquerade } = useAuth();
   const [location] = useLocation();
@@ -48,6 +54,10 @@ export default function Header() {
 
   const { data: settings } = useQuery<SiteSettings>({
     queryKey: ["/api/site-settings"],
+  });
+
+  const { data: systemMode } = useQuery<SystemModeResponse>({
+    queryKey: ["/api/system-mode"],
   });
 
   // Check ledgerStaff policy for Accounts navigation
@@ -247,13 +257,27 @@ export default function Header() {
             </SheetContent>
           </Sheet>
 
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center gap-3">
             <h1
               className="text-lg md:text-xl font-bold text-gray-900 dark:text-gray-100"
               data-testid="text-site-name"
             >
               {settings?.siteName || "Sirius"}
             </h1>
+            {systemMode?.mode && systemMode.mode !== "live" && (
+              <Badge
+                variant="secondary"
+                className={`text-xs uppercase font-medium ${
+                  systemMode.mode === "dev"
+                    ? "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+                    : "bg-yellow-200 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200"
+                }`}
+                data-testid="badge-system-mode"
+              >
+                <Server className="h-3 w-3 mr-1" />
+                {systemMode.mode}
+              </Badge>
+            )}
           </div>
 
           {/* Desktop Navigation Links - hidden on mobile */}
