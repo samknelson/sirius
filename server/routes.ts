@@ -34,6 +34,7 @@ import { registerLogRoutes } from "./modules/logs";
 import { registerQuickstartRoutes } from "./modules/quickstart";
 import { registerCronJobRoutes } from "./modules/cron_jobs";
 import { registerChargePluginRoutes } from "./modules/charge-plugins";
+import { registerTwilioRoutes } from "./modules/twilio";
 import { requireAccess } from "./accessControl";
 import { policies } from "./policies";
 import { addressValidationService } from "./services/address-validation";
@@ -309,6 +310,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register charge plugin configuration routes
   registerChargePluginRoutes(app, requireAuth, requirePermission);
+
+  // Register Twilio configuration routes
+  registerTwilioRoutes(app);
 
   // Worker routes (protected with authentication and permissions)
   

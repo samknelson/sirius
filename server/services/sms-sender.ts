@@ -1,4 +1,5 @@
-import { getTwilioClient, getTwilioFromPhoneNumber } from '../lib/twilio-client';
+import { getTwilioClient } from '../lib/twilio-client';
+import { getDefaultTwilioPhoneNumber } from './twilio-config';
 import { getSystemMode } from './system-mode';
 import { createCommStorage, createCommSmsStorage, createCommSmsOptinStorage } from '../storage/comm';
 import { phoneValidationService } from './phone-validation';
@@ -99,7 +100,7 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
 
     try {
       const twilioClient = await getTwilioClient();
-      const fromNumber = await getTwilioFromPhoneNumber();
+      const fromNumber = await getDefaultTwilioPhoneNumber();
 
       const baseUrl = process.env.REPLIT_DEV_DOMAIN 
         ? `https://${process.env.REPLIT_DEV_DOMAIN}`

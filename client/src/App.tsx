@@ -108,6 +108,7 @@ import EmployerContactTypesPage from "@/pages/config/employer-contact-types";
 import ProviderContactTypesPage from "@/pages/config/provider-contact-types";
 import MasqueradePage from "@/pages/config/masquerade";
 import SystemModePage from "@/pages/config/system-mode";
+import TwilioConfigPage from "@/pages/config/twilio";
 import LogsPage from "@/pages/config/logs";
 import DashboardPluginsConfigPage from "@/pages/config/dashboard-plugins";
 import PluginSettingsPage from "@/pages/config/plugin-settings";
@@ -951,6 +952,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <SystemModePage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/twilio">
+        <ProtectedRoute policy="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <TwilioConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
