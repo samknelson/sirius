@@ -17,11 +17,18 @@ export interface CommStorage {
   deleteComm(id: string): Promise<boolean>;
 }
 
+export interface CommSmsWithComm {
+  commSms: CommSms;
+  comm: Comm;
+}
+
 export interface CommSmsStorage {
   getCommSms(id: string): Promise<CommSms | undefined>;
   getCommSmsByComm(commId: string): Promise<CommSms | undefined>;
+  getCommSmsByTwilioSid(twilioSid: string): Promise<CommSmsWithComm | undefined>;
   createCommSms(data: InsertCommSms): Promise<CommSms>;
   updateCommSms(id: string, data: Partial<InsertCommSms>): Promise<CommSms | undefined>;
+  updateCommSmsByTwilioSid(twilioSid: string, data: Partial<InsertCommSms>): Promise<CommSms | undefined>;
   deleteCommSms(id: string): Promise<boolean>;
 }
 
@@ -90,6 +97,44 @@ export function createCommSmsStorage(): CommSmsStorage {
 
     async getCommSmsByComm(commId: string): Promise<CommSms | undefined> {
       const [result] = await db.select().from(commSms).where(eq(commSms.commId, commId));
+      return result || undefined;
+    },
+
+    async getCommSmsByTwilioSid(twilioSid: string): Promise<CommSmsWithComm | undefined> {
+      const allSmsRecords = await db.select().from(commSms);
+      
+      for (const sms of allSmsRecords) {
+        const data = sms.data as { twilioMessageSid?: string } | null;
+        if (data?.twilioMessageSid === twilioSid) {
+          const [commRecord] = await db.select().from(comm).where(eq(comm.id, sms.commId));
+          if (commRecord) {
+            return { commSms: sms, comm: commRecord };
+          }
+        }
+      }
+      
+      return undefined;
+    },
+
+    async updateCommSmsByTwilioSid(twilioSid: string, data: Partial<InsertCommSms>): Promise<CommSms | undefined> {
+      const found = await this.getCommSmsByTwilioSid(twilioSid);
+      if (!found) return undefined;
+      
+      let updateData = { ...data };
+      
+      if (data.to !== undefined) {
+        if (data.to) {
+          const validationResult = await phoneValidationService.validateAndFormat(data.to);
+          if (!validationResult.isValid) {
+            throw new Error(`Invalid phone number: ${validationResult.error}`);
+          }
+          updateData.to = validationResult.e164Format || data.to;
+        } else {
+          updateData.to = null;
+        }
+      }
+
+      const [result] = await db.update(commSms).set(updateData).where(eq(commSms.id, found.commSms.id)).returning();
       return result || undefined;
     },
 
