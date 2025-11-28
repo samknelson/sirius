@@ -1,11 +1,17 @@
 import { db } from "../db";
 import { comm, commSms, commSmsOptin, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { phoneValidationService } from "../services/phone-validation";
+
+export interface CommWithSms extends Comm {
+  smsDetails?: CommSms | null;
+}
 
 export interface CommStorage {
   getComm(id: string): Promise<Comm | undefined>;
   getCommsByContact(contactId: string): Promise<Comm[]>;
+  getCommsByContactWithSms(contactId: string): Promise<CommWithSms[]>;
+  getCommWithSms(id: string): Promise<CommWithSms | undefined>;
   createComm(data: InsertComm): Promise<Comm>;
   updateComm(id: string, data: Partial<InsertComm>): Promise<Comm | undefined>;
   deleteComm(id: string): Promise<boolean>;
@@ -27,7 +33,35 @@ export function createCommStorage(): CommStorage {
     },
 
     async getCommsByContact(contactId: string): Promise<Comm[]> {
-      return await db.select().from(comm).where(eq(comm.contactId, contactId));
+      return await db.select().from(comm).where(eq(comm.contactId, contactId)).orderBy(desc(comm.sent));
+    },
+
+    async getCommsByContactWithSms(contactId: string): Promise<CommWithSms[]> {
+      const comms = await db.select().from(comm).where(eq(comm.contactId, contactId)).orderBy(desc(comm.sent));
+      
+      const result: CommWithSms[] = await Promise.all(
+        comms.map(async (c) => {
+          if (c.medium === 'sms') {
+            const [smsDetails] = await db.select().from(commSms).where(eq(commSms.commId, c.id));
+            return { ...c, smsDetails: smsDetails || null };
+          }
+          return { ...c, smsDetails: null };
+        })
+      );
+      
+      return result;
+    },
+
+    async getCommWithSms(id: string): Promise<CommWithSms | undefined> {
+      const [c] = await db.select().from(comm).where(eq(comm.id, id));
+      if (!c) return undefined;
+      
+      if (c.medium === 'sms') {
+        const [smsDetails] = await db.select().from(commSms).where(eq(commSms.commId, c.id));
+        return { ...c, smsDetails: smsDetails || null };
+      }
+      
+      return { ...c, smsDetails: null };
     },
 
     async createComm(data: InsertComm): Promise<Comm> {
