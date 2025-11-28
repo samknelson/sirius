@@ -974,3 +974,19 @@ export const insertCommSchema = createInsertSchema(comm).omit({
 
 export type InsertComm = z.infer<typeof insertCommSchema>;
 export type Comm = typeof comm.$inferSelect;
+
+// Communications - SMS
+export const commSms = pgTable("comm_sms", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  commId: varchar("comm_id").notNull().references(() => comm.id, { onDelete: 'cascade' }),
+  to: varchar("to"),
+  body: text("body"),
+  data: jsonb("data"),
+});
+
+export const insertCommSmsSchema = createInsertSchema(commSms).omit({
+  id: true,
+});
+
+export type InsertCommSms = z.infer<typeof insertCommSmsSchema>;
+export type CommSms = typeof commSms.$inferSelect;
