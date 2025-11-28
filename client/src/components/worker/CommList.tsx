@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +31,8 @@ import {
   Send,
   Inbox,
   Phone,
-  Mail
+  Mail,
+  Eye
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
@@ -412,6 +414,7 @@ export function CommList({
                   </TableHead>
                   <TableHead>To</TableHead>
                   <TableHead>Message</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -436,6 +439,19 @@ export function CommList({
                       <span className="text-sm text-muted-foreground">
                         {truncateBody(record.smsDetails?.body || null)}
                       </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        asChild
+                        data-testid={`button-view-comm-${record.id}`}
+                      >
+                        <Link href={`/comm/${record.id}`}>
+                          <Eye className="h-4 w-4 mr-1" />
+                          View
+                        </Link>
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
