@@ -137,10 +137,10 @@ export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
                 </h1>
               </div>
               {payment.ledgerEaId && (
-                <Link href={`/ledger/ea/${payment.ledgerEaId}/payments`}>
+                <Link href={`/ea/${payment.ledgerEaId}/payments`}>
                   <Button variant="ghost" size="sm" data-testid="link-ea-payments">
                     <ArrowLeft size={16} className="mr-2" />
-                    EA Payments
+                    Back to payments
                   </Button>
                 </Link>
               )}
