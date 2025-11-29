@@ -70,6 +70,7 @@ export interface LedgerEntryStorage {
   getByEaId(eaId: string): Promise<Ledger[]>;
   getByReference(referenceType: string, referenceId: string): Promise<Ledger[]>;
   getByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<Ledger | undefined>;
+  getByReferenceAndConfig(referenceId: string, chargePluginConfigId: string): Promise<Ledger[]>;
   getByFilter(filter: LedgerEntryFilter): Promise<Ledger[]>;
   getTransactions(filter: TransactionFilter): Promise<LedgerEntryWithDetails[]>;
   getByAccountId(accountId: string): Promise<LedgerEntryWithDetails[]>;
@@ -732,6 +733,15 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         ))
         .limit(1);
       return entry || undefined;
+    },
+
+    async getByReferenceAndConfig(referenceId: string, chargePluginConfigId: string): Promise<Ledger[]> {
+      return await db.select()
+        .from(ledger)
+        .where(and(
+          eq(ledger.referenceId, referenceId),
+          eq(ledger.chargePluginConfigId, chargePluginConfigId)
+        ));
     },
 
     async getByFilter(filter: LedgerEntryFilter): Promise<Ledger[]> {
