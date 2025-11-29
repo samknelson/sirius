@@ -46,7 +46,7 @@ export function useEmployerContactLayout() {
 }
 
 interface EmployerContactLayoutProps {
-  activeTab: "view" | "edit" | "email" | "name" | "phone-numbers" | "addresses" | "user";
+  activeTab: "view" | "edit" | "email" | "name" | "phone-numbers" | "addresses" | "user" | "comm" | "comm-history" | "send-sms" | "send-email";
   children: ReactNode;
 }
 
@@ -104,15 +104,25 @@ export function EmployerContactLayout({ activeTab, children }: EmployerContactLa
   }
 
   // Success state - render layout with tabs
-  const tabs = [
+  const mainTabs = [
     { id: "view", label: "View", href: `/employer-contacts/${employerContact.id}` },
     { id: "edit", label: "Edit", href: `/employer-contacts/${employerContact.id}/edit` },
     { id: "name", label: "Name", href: `/employer-contacts/${employerContact.id}/name` },
     { id: "email", label: "Email", href: `/employer-contacts/${employerContact.id}/email` },
     { id: "phone-numbers", label: "Phone Numbers", href: `/employer-contacts/${employerContact.id}/phone-numbers` },
     { id: "addresses", label: "Addresses", href: `/employer-contacts/${employerContact.id}/addresses` },
+    { id: "comm", label: "Comm", href: `/employer-contacts/${employerContact.id}/comm/history` },
     { id: "user", label: "User", href: `/employer-contacts/${employerContact.id}/user` },
   ];
+
+  const commSubTabs = [
+    { id: "comm-history", label: "History", href: `/employer-contacts/${employerContact.id}/comm/history` },
+    { id: "send-sms", label: "Send SMS", href: `/employer-contacts/${employerContact.id}/comm/send-sms` },
+    { id: "send-email", label: "Send Email", href: `/employer-contacts/${employerContact.id}/comm/send-email` },
+  ];
+
+  const isCommSubTab = ["comm-history", "send-sms", "send-email"].includes(activeTab);
+  const showCommSubTabs = isCommSubTab;
 
   const contextValue: EmployerContactLayoutContextValue = {
     employerContact,
@@ -150,8 +160,8 @@ export function EmployerContactLayout({ activeTab, children }: EmployerContactLa
       <section className="bg-card border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center space-x-2 py-3">
-            {tabs.map((tab) => {
-              const isActive = tab.id === activeTab;
+            {mainTabs.map((tab) => {
+              const isActive = tab.id === activeTab || (tab.id === "comm" && isCommSubTab);
               return isActive ? (
                 <Button
                   key={tab.id}
@@ -176,6 +186,38 @@ export function EmployerContactLayout({ activeTab, children }: EmployerContactLa
           </div>
         </div>
       </section>
+
+      {/* Comm Sub-Tab Navigation */}
+      {showCommSubTabs && (
+        <div className="bg-muted/30 border-b border-border">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center space-x-2 py-2 pl-4">
+              {commSubTabs.map((tab) => (
+                tab.id === activeTab ? (
+                  <Button
+                    key={tab.id}
+                    variant="secondary"
+                    size="sm"
+                    data-testid={`button-contact-${tab.id}`}
+                  >
+                    {tab.label}
+                  </Button>
+                ) : (
+                  <Link key={tab.id} href={tab.href}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      data-testid={`button-contact-${tab.id}`}
+                    >
+                      {tab.label}
+                    </Button>
+                  </Link>
+                )
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

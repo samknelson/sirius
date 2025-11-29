@@ -57,6 +57,9 @@ import EmployerContactEmail from "@/pages/employer-contact-email";
 import EmployerContactPhoneNumbers from "@/pages/employer-contact-phone-numbers";
 import EmployerContactAddresses from "@/pages/employer-contact-addresses";
 import EmployerContactUser from "@/pages/employer-contact-user";
+import EmployerContactCommHistory from "@/pages/employer-contact-comm-history";
+import EmployerContactSendSms from "@/pages/employer-contact-send-sms";
+import EmployerContactSendEmail from "@/pages/employer-contact-send-email";
 import EmployerLogs from "@/pages/employer-logs";
 import WizardView from "@/pages/wizard-view";
 import StripeCustomerPage from "@/pages/employers/stripe-customer";
@@ -83,6 +86,9 @@ import TrustProviderContactEmail from "@/pages/trust-provider-contact-email";
 import TrustProviderContactPhoneNumbers from "@/pages/trust-provider-contact-phone-numbers";
 import TrustProviderContactAddresses from "@/pages/trust-provider-contact-addresses";
 import TrustProviderContactUser from "@/pages/trust-provider-contact-user";
+import TrustProviderContactCommHistory from "@/pages/trust-provider-contact-comm-history";
+import TrustProviderContactSendSms from "@/pages/trust-provider-contact-send-sms";
+import TrustProviderContactSendEmail from "@/pages/trust-provider-contact-send-email";
 import TrustProviderLogsPage from "@/pages/trust-provider-logs";
 import AdminUsersPage from "@/pages/admin/users";
 import UserAccountPage from "@/pages/admin/user-account";
@@ -605,6 +611,30 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/employer-contacts/:id/comm/history">
+        <ProtectedRoute permission="workers.view">
+          <AuthenticatedLayout>
+            <EmployerContactCommHistory />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/employer-contacts/:id/comm/send-sms">
+        <ProtectedRoute permission="workers.view">
+          <AuthenticatedLayout>
+            <EmployerContactSendSms />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/employer-contacts/:id/comm/send-email">
+        <ProtectedRoute permission="workers.view">
+          <AuthenticatedLayout>
+            <EmployerContactSendEmail />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/employers/:id/ledger/stripe/customer">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
@@ -737,6 +767,30 @@ function Router() {
         <ProtectedRoute policy="staff">
           <AuthenticatedLayout>
             <TrustProviderContactEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust-provider-contacts/:id/comm/history">
+        <ProtectedRoute policy="staff">
+          <AuthenticatedLayout>
+            <TrustProviderContactCommHistory />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust-provider-contacts/:id/comm/send-sms">
+        <ProtectedRoute policy="staff">
+          <AuthenticatedLayout>
+            <TrustProviderContactSendSms />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust-provider-contacts/:id/comm/send-email">
+        <ProtectedRoute policy="staff">
+          <AuthenticatedLayout>
+            <TrustProviderContactSendEmail />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

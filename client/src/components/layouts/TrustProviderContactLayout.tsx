@@ -62,7 +62,7 @@ export function useTrustProviderContactLayout() {
 
 interface TrustProviderContactLayoutProps {
   children: React.ReactNode;
-  activeTab: "view" | "edit" | "name" | "email" | "phone-numbers" | "addresses" | "user";
+  activeTab: "view" | "edit" | "name" | "email" | "phone-numbers" | "addresses" | "user" | "comm" | "comm-history" | "send-sms" | "send-email";
 }
 
 export function TrustProviderContactLayout({ children, activeTab }: TrustProviderContactLayoutProps) {
@@ -110,15 +110,25 @@ export function TrustProviderContactLayout({ children, activeTab }: TrustProvide
     );
   }
 
-  const tabs = [
+  const mainTabs = [
     { id: "view", label: "View", href: `/trust-provider-contacts/${id}` },
     { id: "edit", label: "Edit", href: `/trust-provider-contacts/${id}/edit` },
     { id: "name", label: "Name", href: `/trust-provider-contacts/${id}/name` },
     { id: "email", label: "Email", href: `/trust-provider-contacts/${id}/email` },
     { id: "phone-numbers", label: "Phone Numbers", href: `/trust-provider-contacts/${id}/phone-numbers` },
     { id: "addresses", label: "Addresses", href: `/trust-provider-contacts/${id}/addresses` },
+    { id: "comm", label: "Comm", href: `/trust-provider-contacts/${id}/comm/history` },
     { id: "user", label: "User", href: `/trust-provider-contacts/${id}/user` },
   ];
+
+  const commSubTabs = [
+    { id: "comm-history", label: "History", href: `/trust-provider-contacts/${id}/comm/history` },
+    { id: "send-sms", label: "Send SMS", href: `/trust-provider-contacts/${id}/comm/send-sms` },
+    { id: "send-email", label: "Send Email", href: `/trust-provider-contacts/${id}/comm/send-email` },
+  ];
+
+  const isCommSubTab = ["comm-history", "send-sms", "send-email"].includes(activeTab);
+  const showCommSubTabs = isCommSubTab;
 
   return (
     <TrustProviderContactContext.Provider value={{ trustProviderContact, provider, isLoading }}>
@@ -157,8 +167,8 @@ export function TrustProviderContactLayout({ children, activeTab }: TrustProvide
       <section className="bg-card border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center space-x-2 py-3">
-            {tabs.map((tab) => {
-              const isActive = tab.id === activeTab;
+            {mainTabs.map((tab) => {
+              const isActive = tab.id === activeTab || (tab.id === "comm" && isCommSubTab);
               return isActive ? (
                 <Button
                   key={tab.id}
@@ -183,6 +193,38 @@ export function TrustProviderContactLayout({ children, activeTab }: TrustProvide
           </div>
         </div>
       </section>
+
+      {/* Comm Sub-Tab Navigation */}
+      {showCommSubTabs && (
+        <div className="bg-muted/30 border-b border-border">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center space-x-2 py-2 pl-4">
+              {commSubTabs.map((tab) => (
+                tab.id === activeTab ? (
+                  <Button
+                    key={tab.id}
+                    variant="secondary"
+                    size="sm"
+                    data-testid={`button-contact-${tab.id}`}
+                  >
+                    {tab.label}
+                  </Button>
+                ) : (
+                  <Link key={tab.id} href={tab.href}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      data-testid={`button-contact-${tab.id}`}
+                    >
+                      {tab.label}
+                    </Button>
+                  </Link>
+                )
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
