@@ -1,16 +1,20 @@
 import type { Request, Response } from 'express';
 import { TwilioStatusHandler } from './twilio';
+import { SendGridStatusHandler } from './sendgrid';
 import type { CommStatusHandler, CommStatusUpdate } from './index';
-import { createCommStorage, createCommSmsStorage } from '../../storage/comm';
+import { createCommStorage, createCommSmsStorage, createCommEmailStorage } from '../../storage/comm';
 import { storageLogger } from '../../logger';
 
 const commStorage = createCommStorage();
 const commSmsStorage = createCommSmsStorage();
+const commEmailStorage = createCommEmailStorage();
 
 const twilioHandler = new TwilioStatusHandler();
+const sendgridHandler = new SendGridStatusHandler();
 
 const handlersByMediumProvider: Record<string, CommStatusHandler> = {
   'sms:twilio': twilioHandler,
+  'email:sendgrid': sendgridHandler,
 };
 
 function getHandler(medium: string, providerId: string): CommStatusHandler | undefined {
@@ -29,6 +33,10 @@ function inferProviderFromComm(comm: { medium: string; data: unknown }): string 
   
   if (comm.medium === 'sms') {
     return 'twilio';
+  }
+  
+  if (comm.medium === 'email') {
+    return 'sendgrid';
   }
   
   return 'unknown';
@@ -100,6 +108,20 @@ export async function handleStatusCallback(
       await commSmsStorage.updateCommSms(comm.smsDetails.id, {
         data: {
           ...smsData,
+          providerStatus: statusUpdate.providerStatus,
+          lastWebhookAt: statusUpdate.timestamp.toISOString(),
+          ...(providerMessageId && { messageId: providerMessageId }),
+          ...(statusUpdate.errorCode && { errorCode: statusUpdate.errorCode }),
+          ...(statusUpdate.errorMessage && { errorMessage: statusUpdate.errorMessage }),
+        },
+      });
+    }
+
+    if (comm.emailDetails) {
+      const emailData = comm.emailDetails.data as Record<string, unknown> || {};
+      await commEmailStorage.updateCommEmail(comm.emailDetails.id, {
+        data: {
+          ...emailData,
           providerStatus: statusUpdate.providerStatus,
           lastWebhookAt: statusUpdate.timestamp.toISOString(),
           ...(providerMessageId && { messageId: providerMessageId }),
