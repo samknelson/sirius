@@ -303,6 +303,7 @@ export const ledger = pgTable("ledger", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   chargePlugin: varchar("charge_plugin").notNull(),
   chargePluginKey: varchar("charge_plugin_key").notNull(),
+  chargePluginConfigId: varchar("charge_plugin_config_id"),
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
   eaId: varchar("ea_id").notNull().references(() => ledgerEa.id, { onDelete: 'cascade' }),
   referenceType: varchar("reference_type"),
