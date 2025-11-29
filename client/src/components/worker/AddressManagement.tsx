@@ -3,14 +3,48 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ContactPostal, InsertContactPostal } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2, MapPin, Star, Eye, Code, CheckCircle, AlertCircle, Copy } from "lucide-react";
+import { Plus, Edit, Trash2, MapPin, Star, Eye, Code, CheckCircle, AlertCircle, Copy, XCircle, Loader2, Mail } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { UnifiedAddressInput } from "@/components/ui/unified-address-input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+interface PostalOptinResponse {
+  exists: boolean;
+  optin: boolean;
+  allowlist: boolean;
+  record: {
+    id: string;
+    canonicalAddress: string;
+    optin: boolean;
+    optinUser: string | null;
+    optinDate: string | null;
+    optinIp: string | null;
+    allowlist: boolean;
+  } | null;
+}
+
+interface VerifyAddressResult {
+  valid: boolean;
+  deliverable: boolean;
+  canonicalAddress?: string;
+  normalizedAddress?: {
+    addressLine1: string;
+    addressLine2?: string;
+    city: string;
+    state: string;
+    zip: string;
+    country: string;
+  };
+  error?: string;
+}
 
 interface AddressManagementProps {
   workerId: string;
@@ -24,6 +58,8 @@ export default function AddressManagement({ workerId, contactId }: AddressManage
   const [editingAddress, setEditingAddress] = useState<ContactPostal | null>(null);
   const [viewingAddress, setViewingAddress] = useState<ContactPostal | null>(null);
   const [jsonViewAddress, setJsonViewAddress] = useState<ContactPostal | null>(null);
+  const [postalOptinAddress, setPostalOptinAddress] = useState<ContactPostal | null>(null);
+  const [verificationResult, setVerificationResult] = useState<VerifyAddressResult | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -128,6 +164,123 @@ export default function AddressManagement({ workerId, contactId }: AddressManage
       });
     },
   });
+
+  // Verify address mutation for postal opt-in
+  const verifyAddressMutation = useMutation({
+    mutationFn: async (address: ContactPostal) => {
+      const response = await apiRequest("POST", "/api/postal/verify-address", {
+        addressLine1: address.street,
+        city: address.city,
+        state: address.state,
+        zip: address.postalCode,
+        country: address.country || "US",
+      });
+      return response as VerifyAddressResult;
+    },
+    onSuccess: (result) => {
+      setVerificationResult(result);
+      if (result.valid && result.canonicalAddress) {
+        queryClient.invalidateQueries({ queryKey: ["/api/postal-optin", result.canonicalAddress] });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Address Verification Failed",
+        description: error.message || "Failed to verify address",
+        variant: "destructive",
+      });
+      setVerificationResult(null);
+    },
+  });
+
+  // Fetch postal opt-in status for verified address
+  const { data: postalOptinData, isLoading: isLoadingOptin } = useQuery<PostalOptinResponse>({
+    queryKey: ["/api/postal-optin", verificationResult?.canonicalAddress],
+    queryFn: async () => {
+      if (!verificationResult?.canonicalAddress) return null;
+      const response = await fetch(`/api/postal-optin/${encodeURIComponent(verificationResult.canonicalAddress)}`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to fetch postal opt-in status");
+      }
+      return response.json();
+    },
+    enabled: !!postalOptinAddress && !!verificationResult?.valid && !!verificationResult?.canonicalAddress,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+
+  // Update postal opt-in mutation
+  const updatePostalOptinMutation = useMutation({
+    mutationFn: async ({ canonicalAddress, optin, allowlist }: { canonicalAddress: string; optin?: boolean; allowlist?: boolean }) => {
+      return await apiRequest("PUT", `/api/postal-optin/${encodeURIComponent(canonicalAddress)}`, { optin, allowlist });
+    },
+    onSuccess: () => {
+      if (verificationResult?.canonicalAddress) {
+        queryClient.invalidateQueries({ queryKey: ["/api/postal-optin", verificationResult.canonicalAddress] });
+      }
+      toast({
+        title: "Postal Opt-in Updated",
+        description: "The postal opt-in status has been updated successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update postal opt-in status",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Verify and register address mutation
+  const verifyAndRegisterMutation = useMutation({
+    mutationFn: async (address: ContactPostal) => {
+      const response = await apiRequest("POST", "/api/postal/verify-and-register", {
+        addressLine1: address.street,
+        city: address.city,
+        state: address.state,
+        zip: address.postalCode,
+        country: address.country || "US",
+      });
+      return response as { verified: boolean; canonicalAddress: string; optin: any };
+    },
+    onSuccess: (result) => {
+      if (result.canonicalAddress) {
+        setVerificationResult({ 
+          valid: result.verified, 
+          deliverable: true, 
+          canonicalAddress: result.canonicalAddress 
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/postal-optin", result.canonicalAddress] });
+      }
+      toast({
+        title: "Address Verified and Registered",
+        description: "The address has been verified and is now ready for opt-in.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Verification Failed",
+        description: error.message || "Failed to verify and register address",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Handle opening postal opt-in dialog
+  const handleOpenPostalOptin = (address: ContactPostal) => {
+    setPostalOptinAddress(address);
+    setVerificationResult(null);
+    verifyAddressMutation.mutate(address);
+  };
+
+  // Handle closing postal opt-in dialog
+  const handleClosePostalOptin = () => {
+    setPostalOptinAddress(null);
+    setVerificationResult(null);
+  };
 
   const handleAddSubmit = (data: AddressFormData) => {
     addAddressMutation.mutate(data);
@@ -281,6 +434,15 @@ export default function AddressManagement({ workerId, contactId }: AddressManage
                       data-testid={`button-view-address-${address.id}`}
                     >
                       <Eye size={14} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleOpenPostalOptin(address)}
+                      data-testid={`button-postal-optin-${address.id}`}
+                      title="Postal Opt-in Settings"
+                    >
+                      <Mail size={14} />
                     </Button>
                     <Button
                       variant="ghost"
@@ -485,6 +647,181 @@ export default function AddressManagement({ workerId, contactId }: AddressManage
               
               <div className="flex justify-end pt-4 border-t">
                 <Button onClick={() => setJsonViewAddress(null)} data-testid="button-close-json">
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Postal Opt-in Dialog */}
+      <Dialog open={postalOptinAddress !== null} onOpenChange={handleClosePostalOptin}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5" />
+              Postal Opt-in Settings
+            </DialogTitle>
+            <DialogDescription>
+              Manage opt-in and allowlist settings for this address.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {postalOptinAddress && (
+            <div className="space-y-4">
+              {/* Address display */}
+              <div className="space-y-1">
+                <Label className="text-muted-foreground">Address</Label>
+                <p className="font-medium">{postalOptinAddress.street}</p>
+                <p className="text-sm text-muted-foreground">
+                  {postalOptinAddress.city}, {postalOptinAddress.state} {postalOptinAddress.postalCode}
+                </p>
+              </div>
+
+              <Separator />
+
+              {/* Verification status */}
+              {verifyAddressMutation.isPending ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <span className="ml-2 text-muted-foreground">Verifying address...</span>
+                </div>
+              ) : verificationResult && !verificationResult.valid ? (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Address Verification Failed</AlertTitle>
+                  <AlertDescription>
+                    {verificationResult.error || "The address could not be verified. Please check the address details."}
+                  </AlertDescription>
+                </Alert>
+              ) : verificationResult?.valid && verificationResult?.canonicalAddress ? (
+                <>
+                  {/* Canonical address */}
+                  <div className="space-y-1">
+                    <Label className="text-muted-foreground">Canonical Address</Label>
+                    <p className="font-medium text-sm break-all">{verificationResult.canonicalAddress}</p>
+                  </div>
+
+                  <Separator />
+
+                  {/* Opt-in status loading */}
+                  {isLoadingOptin ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span className="ml-2 text-sm text-muted-foreground">Loading opt-in status...</span>
+                    </div>
+                  ) : !postalOptinData?.exists ? (
+                    /* Address not registered */
+                    <div className="space-y-4">
+                      <Alert>
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertTitle>Address Not Registered</AlertTitle>
+                        <AlertDescription>
+                          This address needs to be registered before it can receive postal mail.
+                        </AlertDescription>
+                      </Alert>
+                      <Button 
+                        onClick={() => {
+                          if (postalOptinAddress) {
+                            verifyAndRegisterMutation.mutate(postalOptinAddress);
+                          }
+                        }}
+                        disabled={verifyAndRegisterMutation.isPending}
+                        className="w-full"
+                        data-testid="button-register-address"
+                      >
+                        {verifyAndRegisterMutation.isPending ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Registering...
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                            Register Address
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  ) : (
+                    /* Opt-in controls */
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label htmlFor="postal-optin" className="text-base font-medium">Opted In</Label>
+                          <p className="text-sm text-muted-foreground">
+                            Allow sending mail to this address
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {postalOptinData?.optin ? (
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <XCircle className="h-4 w-4 text-muted-foreground" />
+                          )}
+                          <Switch
+                            id="postal-optin"
+                            checked={postalOptinData?.optin ?? false}
+                            onCheckedChange={(checked) => {
+                              if (verificationResult?.canonicalAddress) {
+                                updatePostalOptinMutation.mutate({ 
+                                  canonicalAddress: verificationResult.canonicalAddress, 
+                                  optin: checked 
+                                });
+                              }
+                            }}
+                            disabled={updatePostalOptinMutation.isPending}
+                            data-testid="switch-postal-optin"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label htmlFor="postal-allowlist" className="text-base font-medium">Allowlisted</Label>
+                          <p className="text-sm text-muted-foreground">
+                            Allow sending in dev/test modes
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {postalOptinData?.allowlist ? (
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <XCircle className="h-4 w-4 text-muted-foreground" />
+                          )}
+                          <Switch
+                            id="postal-allowlist"
+                            checked={postalOptinData?.allowlist ?? false}
+                            onCheckedChange={(checked) => {
+                              if (verificationResult?.canonicalAddress) {
+                                updatePostalOptinMutation.mutate({ 
+                                  canonicalAddress: verificationResult.canonicalAddress, 
+                                  allowlist: checked 
+                                });
+                              }
+                            }}
+                            disabled={updatePostalOptinMutation.isPending}
+                            data-testid="switch-postal-allowlist"
+                          />
+                        </div>
+                      </div>
+
+                      {postalOptinData?.record?.optinDate && (
+                        <>
+                          <Separator />
+                          <div className="text-sm text-muted-foreground">
+                            <p>Opted in on: {new Date(postalOptinData.record.optinDate).toLocaleString()}</p>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : null}
+
+              <div className="flex justify-end pt-4">
+                <Button onClick={handleClosePostalOptin} data-testid="button-close-postal-optin">
                   Close
                 </Button>
               </div>
