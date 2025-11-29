@@ -72,9 +72,9 @@ function getReferenceLink(
         if (referenceType === "hours") {
           return `/workers/${data.workerId}/hours/${referenceId}`;
         }
-        // For "hour" type (gbhet plugin), we need to find the hour entry differently
-        // The referenceId is a composite key, so we link to the worker's hours page
-        return `/workers/${data.workerId}/hours/daily`;
+        // For "hour" type (gbhet plugin), the referenceId is a composite key
+        // Link to the worker's daily hours page
+        return `/workers/${data.workerId}/employment/daily`;
       }
       return null;
     default:
