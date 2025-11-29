@@ -329,19 +329,19 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/workers/:id/hours/:hoursId">
+      <Route path="/hours/:hoursId">
         <ProtectedRoute permission="workers.view">
           <WorkerHoursView />
         </ProtectedRoute>
       </Route>
 
-      <Route path="/workers/:id/hours/:hoursId/edit">
+      <Route path="/hours/:hoursId/edit">
         <ProtectedRoute permission="workers.manage">
           <WorkerHoursEdit />
         </ProtectedRoute>
       </Route>
 
-      <Route path="/workers/:id/hours/:hoursId/delete">
+      <Route path="/hours/:hoursId/delete">
         <ProtectedRoute permission="workers.manage">
           <WorkerHoursDelete />
         </ProtectedRoute>

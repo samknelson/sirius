@@ -56,7 +56,7 @@ function getMonthName(month: number): string {
 }
 
 export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProps) {
-  const { id: workerId, hoursId } = useParams<{ id: string; hoursId: string }>();
+  const { hoursId } = useParams<{ hoursId: string }>();
 
   const { data: hoursEntry, isLoading, error } = useQuery<WorkerHoursEntry>({
     queryKey: ["/api/worker-hours", hoursId],
@@ -97,10 +97,10 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
               <p className="text-muted-foreground text-center mb-4">
                 The hours entry you're looking for doesn't exist or has been removed.
               </p>
-              <Link href={`/workers/${workerId}/employment/daily`}>
+              <Link href="/workers">
                 <Button variant="outline" data-testid="link-back-hours-list">
                   <ArrowLeft size={16} className="mr-2" />
-                  Back to Hours List
+                  Back to Workers
                 </Button>
               </Link>
             </CardContent>
@@ -142,9 +142,9 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
   const hoursTitle = `${getMonthName(hoursEntry.month)} ${hoursEntry.day}, ${hoursEntry.year} - ${hoursEntry.employer?.name || "Unknown Employer"}`;
 
   const mainTabs = [
-    { id: "view", label: "View", href: `/workers/${workerId}/hours/${hoursId}` },
-    { id: "edit", label: "Edit", href: `/workers/${workerId}/hours/${hoursId}/edit` },
-    { id: "delete", label: "Delete", href: `/workers/${workerId}/hours/${hoursId}/delete` },
+    { id: "view", label: "View", href: `/hours/${hoursId}` },
+    { id: "edit", label: "Edit", href: `/hours/${hoursId}/edit` },
+    { id: "delete", label: "Delete", href: `/hours/${hoursId}/delete` },
   ];
 
   const contextValue: WorkerHoursLayoutContextValue = {
@@ -167,7 +167,7 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
                   {hoursTitle}
                 </h1>
               </div>
-              <Link href={`/workers/${workerId}/employment/daily`}>
+              <Link href={`/workers/${hoursEntry.workerId}/employment/daily`}>
                 <Button variant="ghost" size="sm" data-testid="link-back-hours-list">
                   <ArrowLeft size={16} className="mr-2" />
                   Back to hours list
