@@ -102,6 +102,7 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
       metadata: {
         pluginId: this.metadata.id,
         pluginConfigId: config.id,
+        hoursId: hoursContext.hoursId,
         workerId: hoursContext.workerId,
         employerId: hoursContext.employerId,
         year: hoursContext.year,
