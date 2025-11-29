@@ -96,6 +96,7 @@ function WorkerHoursEditContent() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/worker-hours", hoursEntry.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/workers", hoursEntry.workerId, "hours"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/worker-hours/${hoursEntry.id}/transactions`] });
       toast({ title: "Success", description: "Hours entry updated successfully" });
       showLedgerNotifications(data.ledgerNotifications);
     },
