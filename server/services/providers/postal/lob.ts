@@ -158,15 +158,25 @@ export class LobPostalProvider implements PostalTransport {
         };
       }
 
-      const response = await fetch(`${this.baseUrl}/accounts`, {
-        method: 'GET',
+      const response = await fetch(`${this.baseUrl}/us_verifications`, {
+        method: 'POST',
         headers: {
           Authorization: `Basic ${Buffer.from(`${apiKey}:`).toString('base64')}`,
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          primary_line: 'deliverable',
+          zip_code: '11111',
+        }),
       });
 
       if (response.ok) {
-        return { success: true, message: 'Successfully connected to Lob API' };
+        const isTestMode = apiKey.startsWith('test_');
+        return { 
+          success: true, 
+          message: `Successfully connected to Lob API${isTestMode ? ' (test mode)' : ''}`,
+          details: { isTestMode },
+        };
       } else {
         const errorData = await response.json().catch(() => ({}));
         return {
@@ -183,8 +193,15 @@ export class LobPostalProvider implements PostalTransport {
   }
 
   async getConfiguration(): Promise<Record<string, unknown>> {
+    const apiKey = await this.getApiKey();
+    const hasApiKey = !!apiKey;
+    const isTestMode = apiKey?.startsWith('test_') ?? false;
+    
     return {
-      hasApiKey: !!(await this.getApiKey()),
+      hasApiKey,
+      apiKeyConfigured: hasApiKey,
+      isTestMode,
+      connected: hasApiKey,
       defaultReturnAddress: this.settings.defaultReturnAddress,
     };
   }
