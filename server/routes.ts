@@ -1207,6 +1207,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/worker-hours/:id - Get a single worker hours entry (requires workers.view permission)
+  app.get("/api/worker-hours/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const hoursEntry = await storage.workers.getWorkerHoursById(id);
+
+      if (!hoursEntry) {
+        return res.status(404).json({ message: "Hours entry not found" });
+      }
+
+      res.json(hoursEntry);
+    } catch (error) {
+      console.error("Failed to fetch hours entry:", error);
+      res.status(500).json({ message: "Failed to fetch hours entry" });
+    }
+  });
+
   // PATCH /api/worker-hours/:id - Update a worker hours entry (requires workers.manage permission)
   app.patch("/api/worker-hours/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
     try {

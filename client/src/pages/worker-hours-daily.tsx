@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Employer } from "@shared/schema";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, Pencil, Eye } from "lucide-react";
-import { LedgerTransactionsView } from "@/components/ledger/LedgerTransactionsView";
+import { Plus, Pencil, Eye, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -78,9 +78,6 @@ function WorkerHoursContent() {
     }
   };
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [viewingEntry, setViewingEntry] = useState<WorkerHoursEntry | null>(null);
   const [selectedYear, setSelectedYear] = useState<string>("");
   const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [selectedDay, setSelectedDay] = useState<string>("");
@@ -88,7 +85,6 @@ function WorkerHoursContent() {
   const [selectedEmploymentStatusId, setSelectedEmploymentStatusId] = useState<string>("");
   const [selectedHours, setSelectedHours] = useState<string>("");
   const [selectedHome, setSelectedHome] = useState<boolean>(false);
-  const [editingEntry, setEditingEntry] = useState<WorkerHoursEntry | null>(null);
 
   // Fetch worker hours
   const { data: hoursEntries = [], isLoading } = useQuery<WorkerHoursEntry[]>({
@@ -140,64 +136,6 @@ function WorkerHoursContent() {
     },
   });
 
-  // Update mutation
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: { year: number; month: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home: boolean } }) => {
-      const response = await fetch(`/api/worker-hours/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to update hours entry");
-      }
-      return response.json();
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/workers", worker.id, "hours"] });
-      toast({ title: "Success", description: "Hours entry updated successfully" });
-      showLedgerNotifications(data.ledgerNotifications);
-      setIsEditDialogOpen(false);
-      resetForm();
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update hours entry",
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Delete mutation
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const response = await fetch(`/api/worker-hours/${id}`, {
-        method: "DELETE",
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to delete hours entry");
-      }
-      return response.status === 204 ? null : response.json();
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/workers", worker.id, "hours"] });
-      toast({ title: "Success", description: "Hours entry deleted successfully" });
-      if (data) {
-        showLedgerNotifications(data.ledgerNotifications);
-      }
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete hours entry",
-        variant: "destructive",
-      });
-    },
-  });
-
   const resetForm = () => {
     setSelectedYear("");
     setSelectedMonth("");
@@ -206,7 +144,6 @@ function WorkerHoursContent() {
     setSelectedEmploymentStatusId("");
     setSelectedHours("");
     setSelectedHome(false);
-    setEditingEntry(null);
   };
 
   const handleCreate = () => {
@@ -228,53 +165,6 @@ function WorkerHoursContent() {
       hours: selectedHours ? parseFloat(selectedHours) : null,
       home: selectedHome,
     });
-  };
-
-  const handleView = (entry: WorkerHoursEntry) => {
-    setViewingEntry(entry);
-    setIsViewDialogOpen(true);
-  };
-
-  const handleEdit = (entry: WorkerHoursEntry) => {
-    setEditingEntry(entry);
-    setSelectedYear(entry.year.toString());
-    setSelectedMonth(entry.month.toString());
-    setSelectedDay(entry.day.toString());
-    setSelectedEmployerId(entry.employerId);
-    setSelectedEmploymentStatusId(entry.employmentStatusId);
-    setSelectedHours(entry.hours?.toString() || "");
-    setSelectedHome(entry.home);
-    setIsEditDialogOpen(true);
-  };
-
-  const handleUpdate = () => {
-    if (!editingEntry || !selectedYear || !selectedMonth || !selectedDay || !selectedEmployerId || !selectedEmploymentStatusId) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    updateMutation.mutate({
-      id: editingEntry.id,
-      data: {
-        year: parseInt(selectedYear),
-        month: parseInt(selectedMonth),
-        day: parseInt(selectedDay),
-        employerId: selectedEmployerId,
-        employmentStatusId: selectedEmploymentStatusId,
-        hours: selectedHours ? parseFloat(selectedHours) : null,
-        home: selectedHome,
-      },
-    });
-  };
-
-  const handleDelete = (id: string) => {
-    if (confirm("Are you sure you want to delete this hours entry?")) {
-      deleteMutation.mutate(id);
-    }
   };
 
   // Generate year options (current year + 5 years back)
@@ -480,30 +370,33 @@ function WorkerHoursContent() {
                   <TableCell className="text-right">{entry.hours?.toFixed(2) || "-"}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleView(entry)}
-                        data-testid={`button-view-hours-${entry.id}`}
-                      >
-                        <Eye size={16} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(entry)}
-                        data-testid={`button-edit-hours-${entry.id}`}
-                      >
-                        <Pencil size={16} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(entry.id)}
-                        data-testid={`button-delete-hours-${entry.id}`}
-                      >
-                        <Trash2 size={16} className="text-destructive" />
-                      </Button>
+                      <Link href={`/workers/${worker.id}/hours/${entry.id}`}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          data-testid={`button-view-hours-${entry.id}`}
+                        >
+                          <Eye size={16} />
+                        </Button>
+                      </Link>
+                      <Link href={`/workers/${worker.id}/hours/${entry.id}/edit`}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          data-testid={`button-edit-hours-${entry.id}`}
+                        >
+                          <Pencil size={16} />
+                        </Button>
+                      </Link>
+                      <Link href={`/workers/${worker.id}/hours/${entry.id}/delete`}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          data-testid={`button-delete-hours-${entry.id}`}
+                        >
+                          <Trash2 size={16} className="text-destructive" />
+                        </Button>
+                      </Link>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -512,194 +405,6 @@ function WorkerHoursContent() {
           </Table>
         )}
       </CardContent>
-
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent data-testid="dialog-edit-hours">
-          <DialogHeader>
-            <DialogTitle>Edit Hours Entry</DialogTitle>
-            <DialogDescription>
-              Update hours entry details
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="edit-year">Year *</Label>
-              <Select value={selectedYear} onValueChange={setSelectedYear}>
-                <SelectTrigger id="edit-year" data-testid="select-edit-year">
-                  <SelectValue placeholder="Select year" />
-                </SelectTrigger>
-                <SelectContent>
-                  {years.map((year) => (
-                    <SelectItem key={year} value={year.toString()}>
-                      {year}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="edit-month">Month *</Label>
-              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                <SelectTrigger id="edit-month" data-testid="select-edit-month">
-                  <SelectValue placeholder="Select month" />
-                </SelectTrigger>
-                <SelectContent>
-                  {months.map((month) => (
-                    <SelectItem key={month.value} value={month.value}>
-                      {month.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="edit-day">Day *</Label>
-              <Select value={selectedDay} onValueChange={setSelectedDay} disabled={!selectedYear || !selectedMonth}>
-                <SelectTrigger id="edit-day" data-testid="select-edit-day">
-                  <SelectValue placeholder={validDays.length > 0 ? "Select day" : "Select year and month first"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {validDays.map((day) => (
-                    <SelectItem key={day} value={day.toString()}>
-                      {day}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="edit-employer">Employer *</Label>
-              <Select value={selectedEmployerId} onValueChange={setSelectedEmployerId}>
-                <SelectTrigger id="edit-employer" data-testid="select-edit-employer">
-                  <SelectValue placeholder="Select employer" />
-                </SelectTrigger>
-                <SelectContent>
-                  {employers.map((employer) => (
-                    <SelectItem key={employer.id} value={employer.id}>
-                      {employer.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="edit-employment-status">Employment Status *</Label>
-              <Select value={selectedEmploymentStatusId} onValueChange={setSelectedEmploymentStatusId}>
-                <SelectTrigger id="edit-employment-status" data-testid="select-edit-employment-status">
-                  <SelectValue placeholder="Select employment status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {employmentStatuses.map((status) => (
-                    <SelectItem key={status.id} value={status.id}>
-                      {status.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="edit-hours">Hours</Label>
-              <Input
-                id="edit-hours"
-                type="number"
-                step="0.01"
-                placeholder="Enter hours"
-                value={selectedHours}
-                onChange={(e) => setSelectedHours(e.target.value)}
-                data-testid="input-edit-hours"
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="edit-home">Home</Label>
-              <Switch
-                id="edit-home"
-                checked={selectedHome}
-                onCheckedChange={setSelectedHome}
-                data-testid="switch-edit-home"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setIsEditDialogOpen(false); resetForm(); }}>
-              Cancel
-            </Button>
-            <Button onClick={handleUpdate} disabled={updateMutation.isPending} data-testid="button-update-hours">
-              {updateMutation.isPending ? "Updating..." : "Update"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto" data-testid="dialog-view-hours">
-          <DialogHeader>
-            <DialogTitle>Hours Entry Details</DialogTitle>
-            <DialogDescription>
-              View details and associated transactions for this hours entry
-            </DialogDescription>
-          </DialogHeader>
-          {viewingEntry && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label className="text-muted-foreground text-sm">Date</Label>
-                  <p className="font-medium" data-testid="text-view-date">
-                    {getMonthName(viewingEntry.month)} {viewingEntry.day}, {viewingEntry.year}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-muted-foreground text-sm">Employer</Label>
-                  <p className="font-medium" data-testid="text-view-employer">
-                    {viewingEntry.employer?.name || "Unknown"}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-muted-foreground text-sm">Employment Status</Label>
-                  <p className="font-medium" data-testid="text-view-status">
-                    {viewingEntry.employmentStatus?.name || "Unknown"}
-                    {viewingEntry.employmentStatus?.code && (
-                      <span className="text-muted-foreground ml-2">({viewingEntry.employmentStatus.code})</span>
-                    )}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-muted-foreground text-sm">Hours</Label>
-                  <p className="font-medium" data-testid="text-view-hours">
-                    {viewingEntry.hours !== null ? viewingEntry.hours.toFixed(2) : "-"}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-muted-foreground text-sm">Home</Label>
-                  <p data-testid="text-view-home">
-                    {viewingEntry.home ? (
-                      <Badge variant="default">Yes</Badge>
-                    ) : (
-                      <span className="text-muted-foreground">No</span>
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              <div className="border-t pt-4">
-                <LedgerTransactionsView
-                  queryKey={[`/api/worker-hours/${viewingEntry.id}/transactions`]}
-                  title="Associated Transactions"
-                  csvFilename={`hours-${viewingEntry.id}-transactions`}
-                  showEntityType={false}
-                  showEntityName={false}
-                  showEaAccount={true}
-                  showEaLink={true}
-                />
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Card>
   );
 }

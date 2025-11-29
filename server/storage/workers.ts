@@ -60,6 +60,7 @@ export interface WorkerStorage {
   createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb>;
   deleteWorkerBenefit(id: string): Promise<boolean>;
   // Worker hours methods
+  getWorkerHoursById(id: string): Promise<any | undefined>;
   getWorkerHours(workerId: string): Promise<any[]>;
   getWorkerHoursCurrent(workerId: string): Promise<any[]>;
   getWorkerHoursHistory(workerId: string): Promise<any[]>;
@@ -321,6 +322,29 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     // Worker hours methods
+    async getWorkerHoursById(id: string): Promise<any | undefined> {
+      const [result] = await db
+        .select({
+          id: workerHours.id,
+          month: workerHours.month,
+          year: workerHours.year,
+          day: workerHours.day,
+          workerId: workerHours.workerId,
+          employerId: workerHours.employerId,
+          employmentStatusId: workerHours.employmentStatusId,
+          hours: workerHours.hours,
+          home: workerHours.home,
+          employer: employers,
+          employmentStatus: optionsEmploymentStatus,
+        })
+        .from(workerHours)
+        .leftJoin(employers, eq(workerHours.employerId, employers.id))
+        .leftJoin(optionsEmploymentStatus, eq(workerHours.employmentStatusId, optionsEmploymentStatus.id))
+        .where(eq(workerHours.id, id));
+
+      return result || undefined;
+    },
+
     async getWorkerHours(workerId: string): Promise<any[]> {
       const results = await db
         .select({

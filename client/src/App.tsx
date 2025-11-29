@@ -30,6 +30,9 @@ import WorkerCurrentEmployment from "@/pages/worker-current-employment";
 import WorkerEmploymentHistory from "@/pages/worker-employment-history";
 import WorkerHoursMonthly from "@/pages/worker-hours-monthly";
 import WorkerHoursDaily from "@/pages/worker-hours-daily";
+import WorkerHoursView from "@/pages/worker-hours-view";
+import WorkerHoursEdit from "@/pages/worker-hours-edit";
+import WorkerHoursDelete from "@/pages/worker-hours-delete";
 import WorkerLogs from "@/pages/worker-logs";
 import WorkerAddresses from "@/pages/worker-addresses";
 import WorkerPhoneNumbers from "@/pages/worker-phone-numbers";
@@ -323,6 +326,24 @@ function Router() {
           <AuthenticatedLayout>
             <WorkerHoursDaily />
           </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/hours/:hoursId">
+        <ProtectedRoute permission="workers.view">
+          <WorkerHoursView />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/hours/:hoursId/edit">
+        <ProtectedRoute permission="workers.manage">
+          <WorkerHoursEdit />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/hours/:hoursId/delete">
+        <ProtectedRoute permission="workers.manage">
+          <WorkerHoursDelete />
         </ProtectedRoute>
       </Route>
 
