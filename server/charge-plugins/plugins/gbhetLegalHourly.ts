@@ -98,11 +98,10 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
       transactionDate: monthDate,
       eaId: ea.id,
       referenceType: "hour",
-      referenceId: `${hoursContext.workerId}:${hoursContext.employerId}:${hoursContext.year}:${hoursContext.month}`,
+      referenceId: hoursContext.hoursId,
       metadata: {
         pluginId: this.metadata.id,
         pluginConfigId: config.id,
-        hoursId: hoursContext.hoursId,
         workerId: hoursContext.workerId,
         employerId: hoursContext.employerId,
         year: hoursContext.year,
@@ -365,30 +364,49 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
         };
       }
 
+      // Support both new format (hoursId) and legacy format (workerId:employerId:year:month)
+      let workerId: string;
+      let employerId: string;
+      let year: number;
+      let month: number;
+      let hoursId: string = "";
+
       const parts = entry.referenceId.split(":");
-      if (parts.length !== 4) {
-        return {
-          ...baseResult,
-          isValid: false,
-          discrepancies: [`Invalid referenceId format: expected workerId:employerId:year:month, got ${entry.referenceId}`],
-        };
-      }
+      if (parts.length === 4) {
+        // Legacy format: workerId:employerId:year:month
+        [workerId, employerId] = parts;
+        const yearStr = parts[2];
+        const monthStr = parts[3];
+        year = parseInt(yearStr, 10);
+        month = parseInt(monthStr, 10);
 
-      const [workerId, employerId, yearStr, monthStr] = parts;
-      const year = parseInt(yearStr, 10);
-      const month = parseInt(monthStr, 10);
-
-      if (isNaN(year) || isNaN(month)) {
-        return {
-          ...baseResult,
-          isValid: false,
-          discrepancies: [`Invalid year/month in referenceId: ${yearStr}/${monthStr}`],
-        };
+        if (isNaN(year) || isNaN(month)) {
+          return {
+            ...baseResult,
+            isValid: false,
+            discrepancies: [`Invalid year/month in referenceId: ${yearStr}/${monthStr}`],
+          };
+        }
+      } else {
+        // New format: referenceId is the hoursId, get context from metadata
+        const data = entry.data as { workerId?: string; employerId?: string; year?: number; month?: number } | null;
+        if (!data?.workerId || !data?.employerId || !data?.year || !data?.month) {
+          return {
+            ...baseResult,
+            isValid: false,
+            discrepancies: ["Entry has hoursId referenceId but missing required metadata (workerId, employerId, year, month)"],
+          };
+        }
+        hoursId = entry.referenceId;
+        workerId = data.workerId;
+        employerId = data.employerId;
+        year = data.year;
+        month = data.month;
       }
 
       const hoursContext: HoursSavedContext = {
         trigger: TriggerType.HOURS_SAVED,
-        hoursId: "",
+        hoursId,
         workerId,
         employerId,
         year,

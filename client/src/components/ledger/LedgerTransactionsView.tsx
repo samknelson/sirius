@@ -66,15 +66,17 @@ function getReferenceLink(
     case "hour":
     case "hours":
       // For hour entries, we need the workerId from the data field
-      // referenceId is the hour entry ID (for "hours" type) or composite key (for "hour" type)
+      // referenceId is the hour entry ID
       if (data?.workerId) {
-        // For "hours" type, referenceId is the hour entry ID directly
-        if (referenceType === "hours") {
-          return `/workers/${data.workerId}/hours/${referenceId}`;
+        // Check if referenceId is a legacy composite key (workerId:employerId:year:month)
+        // or the new format (hoursId UUID)
+        const isLegacyFormat = referenceId.split(":").length === 4;
+        if (isLegacyFormat) {
+          // Legacy format - link to the worker's daily hours page
+          return `/workers/${data.workerId}/employment/daily`;
         }
-        // For "hour" type (gbhet plugin), the referenceId is a composite key
-        // Link to the worker's daily hours page
-        return `/workers/${data.workerId}/employment/daily`;
+        // New format - referenceId is the hour entry ID directly
+        return `/workers/${data.workerId}/hours/${referenceId}`;
       }
       return null;
     default:
