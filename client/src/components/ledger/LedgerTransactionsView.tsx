@@ -3,8 +3,15 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useQuery } from "@tanstack/react-query";
-import { Download, ArrowUpDown, Filter, X } from "lucide-react";
+import { Download, ArrowUpDown, Filter, X, Eye } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { stringify } from "csv-stringify/browser/esm/sync";
@@ -92,6 +99,9 @@ export function LedgerTransactionsView({
   showEaLink = true,
 }: LedgerTransactionsViewProps) {
   const { toast } = useToast();
+  
+  // Modal state for viewing transaction details
+  const [selectedTransaction, setSelectedTransaction] = useState<LedgerEntryWithDetails | null>(null);
   
   // Filter state
   const [showFilters, setShowFilters] = useState(false);
@@ -579,6 +589,17 @@ export function LedgerTransactionsView({
                     )}
                     <TableCell data-testid={`cell-links-${transaction.id}`}>
                       <div className="flex gap-2 items-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2"
+                          title="View transaction details"
+                          onClick={() => setSelectedTransaction(transaction)}
+                          data-testid={`button-view-transaction-${transaction.id}`}
+                        >
+                          <Eye size={14} className="mr-1" />
+                          View
+                        </Button>
                         {(() => {
                           const refLink = getReferenceLink(transaction.referenceType, transaction.referenceId, transaction.data);
                           return refLink ? (
@@ -617,6 +638,155 @@ export function LedgerTransactionsView({
           </Table>
         </div>
       </CardContent>
+
+      <Dialog open={!!selectedTransaction} onOpenChange={(open) => !open && setSelectedTransaction(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Transaction Details</DialogTitle>
+            <DialogDescription>
+              Complete information for this ledger transaction
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedTransaction && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Transaction ID</label>
+                  <p className="mt-1 font-mono text-sm break-all" data-testid="modal-transaction-id">
+                    {selectedTransaction.id}
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Date</label>
+                  <p className="mt-1" data-testid="modal-transaction-date">
+                    {selectedTransaction.date 
+                      ? new Date(selectedTransaction.date).toLocaleDateString() 
+                      : "—"}
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Amount</label>
+                  <p 
+                    className={`mt-1 font-semibold ${parseFloat(selectedTransaction.amount) < 0 ? "text-red-600 dark:text-red-400" : ""}`}
+                    data-testid="modal-transaction-amount"
+                  >
+                    {formatAmount(selectedTransaction.amount)}
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Entity Type</label>
+                  <p className="mt-1" data-testid="modal-transaction-entity-type">
+                    {selectedTransaction.entityType}
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Entity Name</label>
+                  <p className="mt-1" data-testid="modal-transaction-entity-name">
+                    {selectedTransaction.entityName || "—"}
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Entity ID</label>
+                  <p className="mt-1 font-mono text-sm break-all" data-testid="modal-transaction-entity-id">
+                    {selectedTransaction.entityId}
+                  </p>
+                </div>
+                
+                <div className="md:col-span-2">
+                  <label className="text-sm font-medium text-muted-foreground">Memo</label>
+                  <p className="mt-1" data-testid="modal-transaction-memo">
+                    {selectedTransaction.memo || "—"}
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Reference Type</label>
+                  <p className="mt-1" data-testid="modal-transaction-reference-type">
+                    {selectedTransaction.referenceType || "—"}
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Reference ID</label>
+                  <p className="mt-1 font-mono text-sm break-all" data-testid="modal-transaction-reference-id">
+                    {selectedTransaction.referenceId || "—"}
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Reference Name</label>
+                  <p className="mt-1" data-testid="modal-transaction-reference-name">
+                    {selectedTransaction.referenceName || "—"}
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">EA ID</label>
+                  <p className="mt-1 font-mono text-sm break-all" data-testid="modal-transaction-ea-id">
+                    {selectedTransaction.eaId}
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Account Name</label>
+                  <p className="mt-1" data-testid="modal-transaction-account-name">
+                    {selectedTransaction.eaAccountName || "—"}
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Account ID</label>
+                  <p className="mt-1 font-mono text-sm break-all" data-testid="modal-transaction-account-id">
+                    {selectedTransaction.eaAccountId}
+                  </p>
+                </div>
+              </div>
+              
+              {selectedTransaction.data && Object.keys(selectedTransaction.data).length > 0 && (
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Additional Data</label>
+                  <div className="mt-2 p-3 bg-muted rounded-md">
+                    <pre className="text-sm overflow-x-auto whitespace-pre-wrap break-all" data-testid="modal-transaction-data">
+                      {JSON.stringify(selectedTransaction.data, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+              
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                {(() => {
+                  const refLink = getReferenceLink(
+                    selectedTransaction.referenceType, 
+                    selectedTransaction.referenceId, 
+                    selectedTransaction.data
+                  );
+                  return refLink ? (
+                    <Link href={refLink}>
+                      <Button variant="outline" data-testid="modal-button-view-reference">
+                        View Reference
+                      </Button>
+                    </Link>
+                  ) : null;
+                })()}
+                <Link href={`/ea/${selectedTransaction.eaId}`}>
+                  <Button variant="outline" data-testid="modal-button-view-ea">
+                    View Account
+                  </Button>
+                </Link>
+                <Button onClick={() => setSelectedTransaction(null)} data-testid="modal-button-close">
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
