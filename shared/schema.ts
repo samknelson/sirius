@@ -1066,3 +1066,81 @@ export const insertCommEmailOptinSchema = createInsertSchema(commEmailOptin, {
 
 export type InsertCommEmailOptin = z.infer<typeof insertCommEmailOptinSchema>;
 export type CommEmailOptin = typeof commEmailOptin.$inferSelect;
+
+// Communications - Postal
+export const commPostal = pgTable("comm_postal", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  commId: varchar("comm_id").notNull().references(() => comm.id, { onDelete: 'cascade' }),
+  toName: varchar("to_name"),
+  toCompany: varchar("to_company"),
+  toAddressLine1: text("to_address_line1").notNull(),
+  toAddressLine2: text("to_address_line2"),
+  toCity: text("to_city").notNull(),
+  toState: text("to_state").notNull(),
+  toZip: text("to_zip").notNull(),
+  toCountry: text("to_country").notNull().default('US'),
+  fromName: varchar("from_name"),
+  fromCompany: varchar("from_company"),
+  fromAddressLine1: text("from_address_line1"),
+  fromAddressLine2: text("from_address_line2"),
+  fromCity: text("from_city"),
+  fromState: text("from_state"),
+  fromZip: text("from_zip"),
+  fromCountry: text("from_country").default('US'),
+  description: text("description"),
+  fileUrl: text("file_url"),
+  templateId: varchar("template_id"),
+  mergeVariables: jsonb("merge_variables"),
+  color: boolean("color").default(false).notNull(),
+  doubleSided: boolean("double_sided").default(false).notNull(),
+  mailType: varchar("mail_type").default('usps_first_class').notNull(),
+  extraService: varchar("extra_service"),
+  lobLetterId: varchar("lob_letter_id"),
+  lobTrackingEvents: jsonb("lob_tracking_events"),
+  expectedDeliveryDate: timestamp("expected_delivery_date"),
+  data: jsonb("data"),
+});
+
+export const insertCommPostalSchema = createInsertSchema(commPostal).omit({
+  id: true,
+});
+
+export type InsertCommPostal = z.infer<typeof insertCommPostalSchema>;
+export type CommPostal = typeof commPostal.$inferSelect;
+
+// Communications - Postal Opt-in
+export const commPostalOptin = pgTable("comm_postal_optin", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  canonicalAddress: text("canonical_address").notNull().unique(),
+  addressLine1: text("address_line1").notNull(),
+  addressLine2: text("address_line2"),
+  city: text("city").notNull(),
+  state: text("state").notNull(),
+  zip: text("zip").notNull(),
+  country: text("country").notNull().default('US'),
+  optin: boolean("optin").default(false).notNull(),
+  optinUser: varchar("optin_user").references(() => users.id, { onDelete: 'set null' }),
+  optinDate: timestamp("optin_date"),
+  optinIp: varchar("optin_ip"),
+  allowlist: boolean("allowlist").default(false).notNull(),
+  publicToken: varchar("public_token").unique(),
+  deliverable: boolean("deliverable"),
+  deliverabilityAnalysis: jsonb("deliverability_analysis"),
+  validatedAt: timestamp("validated_at"),
+  validationResponse: jsonb("validation_response"),
+});
+
+export const insertCommPostalOptinSchema = createInsertSchema(commPostalOptin, {
+  canonicalAddress: z.string().min(1, "Canonical address is required"),
+  addressLine1: z.string().min(1, "Address line 1 is required"),
+  city: z.string().min(1, "City is required"),
+  state: z.string().min(1, "State is required"),
+  zip: z.string().min(1, "ZIP code is required"),
+  country: z.string().min(1, "Country is required"),
+  optinIp: z.string().regex(ipAddressRegex, "Invalid IP address format").optional().nullable(),
+}).omit({
+  id: true,
+});
+
+export type InsertCommPostalOptin = z.infer<typeof insertCommPostalOptinSchema>;
+export type CommPostalOptin = typeof commPostalOptin.$inferSelect;
