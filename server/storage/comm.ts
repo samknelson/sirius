@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin, type CommEmail, type InsertCommEmail, type CommEmailOptin, type InsertCommEmailOptin } from "@shared/schema";
+import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, commPostal, commPostalOptin, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin, type CommEmail, type InsertCommEmail, type CommEmailOptin, type InsertCommEmailOptin, type CommPostal, type InsertCommPostal, type CommPostalOptin, type InsertCommPostalOptin } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 import { phoneValidationService } from "../services/phone-validation";
 
@@ -11,9 +11,14 @@ export interface CommWithEmail extends Comm {
   emailDetails?: CommEmail | null;
 }
 
+export interface CommWithPostal extends Comm {
+  postalDetails?: CommPostal | null;
+}
+
 export interface CommWithDetails extends Comm {
   smsDetails?: CommSms | null;
   emailDetails?: CommEmail | null;
+  postalDetails?: CommPostal | null;
 }
 
 export interface CommStorage {
@@ -103,12 +108,15 @@ export function createCommStorage(): CommStorage {
         comms.map(async (c) => {
           if (c.medium === 'sms') {
             const [smsDetails] = await db.select().from(commSms).where(eq(commSms.commId, c.id));
-            return { ...c, smsDetails: smsDetails || null, emailDetails: null };
+            return { ...c, smsDetails: smsDetails || null, emailDetails: null, postalDetails: null };
           } else if (c.medium === 'email') {
             const [emailDetails] = await db.select().from(commEmail).where(eq(commEmail.commId, c.id));
-            return { ...c, smsDetails: null, emailDetails: emailDetails || null };
+            return { ...c, smsDetails: null, emailDetails: emailDetails || null, postalDetails: null };
+          } else if (c.medium === 'postal') {
+            const [postalDetails] = await db.select().from(commPostal).where(eq(commPostal.commId, c.id));
+            return { ...c, smsDetails: null, emailDetails: null, postalDetails: postalDetails || null };
           }
-          return { ...c, smsDetails: null, emailDetails: null };
+          return { ...c, smsDetails: null, emailDetails: null, postalDetails: null };
         })
       );
       
@@ -121,13 +129,16 @@ export function createCommStorage(): CommStorage {
       
       if (c.medium === 'sms') {
         const [smsDetails] = await db.select().from(commSms).where(eq(commSms.commId, c.id));
-        return { ...c, smsDetails: smsDetails || null, emailDetails: null };
+        return { ...c, smsDetails: smsDetails || null, emailDetails: null, postalDetails: null };
       } else if (c.medium === 'email') {
         const [emailDetails] = await db.select().from(commEmail).where(eq(commEmail.commId, c.id));
-        return { ...c, smsDetails: null, emailDetails: emailDetails || null };
+        return { ...c, smsDetails: null, emailDetails: emailDetails || null, postalDetails: null };
+      } else if (c.medium === 'postal') {
+        const [postalDetails] = await db.select().from(commPostal).where(eq(commPostal.commId, c.id));
+        return { ...c, smsDetails: null, emailDetails: null, postalDetails: postalDetails || null };
       }
       
-      return { ...c, smsDetails: null, emailDetails: null };
+      return { ...c, smsDetails: null, emailDetails: null, postalDetails: null };
     },
 
     async createComm(data: InsertComm): Promise<Comm> {
@@ -512,6 +523,139 @@ export function createCommEmailOptinStorage(): CommEmailOptinStorage {
 
     async deleteEmailOptin(id: string): Promise<boolean> {
       const result = await db.delete(commEmailOptin).where(eq(commEmailOptin.id, id)).returning();
+      return result.length > 0;
+    },
+  };
+}
+
+export interface CommPostalWithComm {
+  commPostal: CommPostal;
+  comm: Comm;
+}
+
+export interface CommPostalStorage {
+  getCommPostal(id: string): Promise<CommPostal | undefined>;
+  getCommPostalByComm(commId: string): Promise<CommPostal | undefined>;
+  getCommPostalByLobLetterId(lobLetterId: string): Promise<CommPostalWithComm | undefined>;
+  createCommPostal(data: InsertCommPostal): Promise<CommPostal>;
+  updateCommPostal(id: string, data: Partial<InsertCommPostal>): Promise<CommPostal | undefined>;
+  deleteCommPostal(id: string): Promise<boolean>;
+}
+
+export function createCommPostalStorage(): CommPostalStorage {
+  return {
+    async getCommPostal(id: string): Promise<CommPostal | undefined> {
+      const [result] = await db.select().from(commPostal).where(eq(commPostal.id, id));
+      return result || undefined;
+    },
+
+    async getCommPostalByComm(commId: string): Promise<CommPostal | undefined> {
+      const [result] = await db.select().from(commPostal).where(eq(commPostal.commId, commId));
+      return result || undefined;
+    },
+
+    async getCommPostalByLobLetterId(lobLetterId: string): Promise<CommPostalWithComm | undefined> {
+      const allPostalRecords = await db.select().from(commPostal).where(eq(commPostal.lobLetterId, lobLetterId));
+      
+      if (allPostalRecords.length > 0) {
+        const postal = allPostalRecords[0];
+        const [commRecord] = await db.select().from(comm).where(eq(comm.id, postal.commId));
+        if (commRecord) {
+          return { commPostal: postal, comm: commRecord };
+        }
+      }
+      
+      return undefined;
+    },
+
+    async createCommPostal(data: InsertCommPostal): Promise<CommPostal> {
+      const [result] = await db.insert(commPostal).values(data).returning();
+      return result;
+    },
+
+    async updateCommPostal(id: string, data: Partial<InsertCommPostal>): Promise<CommPostal | undefined> {
+      const [result] = await db.update(commPostal).set(data).where(eq(commPostal.id, id)).returning();
+      return result || undefined;
+    },
+
+    async deleteCommPostal(id: string): Promise<boolean> {
+      const result = await db.delete(commPostal).where(eq(commPostal.id, id)).returning();
+      return result.length > 0;
+    },
+  };
+}
+
+export interface CommPostalOptinStorage {
+  getPostalOptinByCanonicalAddress(canonicalAddress: string): Promise<CommPostalOptin | undefined>;
+  getPostalOptinByPublicToken(token: string): Promise<CommPostalOptin | undefined>;
+  getPostalOptin(id: string): Promise<CommPostalOptin | undefined>;
+  getAllPostalOptins(): Promise<CommPostalOptin[]>;
+  createPostalOptin(data: InsertCommPostalOptin): Promise<CommPostalOptin>;
+  updatePostalOptin(id: string, data: Partial<InsertCommPostalOptin>): Promise<CommPostalOptin | undefined>;
+  updatePostalOptinByCanonicalAddress(canonicalAddress: string, data: Partial<InsertCommPostalOptin>): Promise<CommPostalOptin | undefined>;
+  updatePostalOptinByPublicToken(token: string, data: Partial<InsertCommPostalOptin>): Promise<CommPostalOptin | undefined>;
+  getOrCreatePublicToken(canonicalAddress: string): Promise<string>;
+  deletePostalOptin(id: string): Promise<boolean>;
+}
+
+export function createCommPostalOptinStorage(): CommPostalOptinStorage {
+  return {
+    async getPostalOptinByCanonicalAddress(canonicalAddress: string): Promise<CommPostalOptin | undefined> {
+      const [result] = await db.select().from(commPostalOptin).where(eq(commPostalOptin.canonicalAddress, canonicalAddress));
+      return result || undefined;
+    },
+
+    async getPostalOptinByPublicToken(token: string): Promise<CommPostalOptin | undefined> {
+      const [result] = await db.select().from(commPostalOptin).where(eq(commPostalOptin.publicToken, token));
+      return result || undefined;
+    },
+
+    async getPostalOptin(id: string): Promise<CommPostalOptin | undefined> {
+      const [result] = await db.select().from(commPostalOptin).where(eq(commPostalOptin.id, id));
+      return result || undefined;
+    },
+
+    async getAllPostalOptins(): Promise<CommPostalOptin[]> {
+      return await db.select().from(commPostalOptin);
+    },
+
+    async createPostalOptin(data: InsertCommPostalOptin): Promise<CommPostalOptin> {
+      const [result] = await db.insert(commPostalOptin).values(data).returning();
+      return result;
+    },
+
+    async updatePostalOptin(id: string, data: Partial<InsertCommPostalOptin>): Promise<CommPostalOptin | undefined> {
+      const [result] = await db.update(commPostalOptin).set(data).where(eq(commPostalOptin.id, id)).returning();
+      return result || undefined;
+    },
+
+    async updatePostalOptinByCanonicalAddress(canonicalAddress: string, data: Partial<InsertCommPostalOptin>): Promise<CommPostalOptin | undefined> {
+      const [result] = await db.update(commPostalOptin).set(data).where(eq(commPostalOptin.canonicalAddress, canonicalAddress)).returning();
+      return result || undefined;
+    },
+
+    async updatePostalOptinByPublicToken(token: string, data: Partial<InsertCommPostalOptin>): Promise<CommPostalOptin | undefined> {
+      const [result] = await db.update(commPostalOptin).set(data).where(eq(commPostalOptin.publicToken, token)).returning();
+      return result || undefined;
+    },
+
+    async getOrCreatePublicToken(canonicalAddress: string): Promise<string> {
+      const [existing] = await db.select().from(commPostalOptin).where(eq(commPostalOptin.canonicalAddress, canonicalAddress));
+      
+      if (existing) {
+        if (existing.publicToken) {
+          return existing.publicToken;
+        }
+        const newToken = crypto.randomUUID();
+        await db.update(commPostalOptin).set({ publicToken: newToken }).where(eq(commPostalOptin.id, existing.id));
+        return newToken;
+      }
+      
+      throw new Error('Postal opt-in record not found for canonical address');
+    },
+
+    async deletePostalOptin(id: string): Promise<boolean> {
+      const result = await db.delete(commPostalOptin).where(eq(commPostalOptin.id, id)).returning();
       return result.length > 0;
     },
   };
