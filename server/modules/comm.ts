@@ -6,6 +6,7 @@ import { eq, and, gte, lte, desc, or } from "drizzle-orm";
 import { createCommStorage, createCommSmsOptinStorage, createCommEmailOptinStorage, createCommPostalOptinStorage } from "../storage";
 import { sendSms } from "../services/sms-sender";
 import { sendEmail } from "../services/email-sender";
+import { sendPostal } from "../services/postal-sender";
 import { handleStatusCallback } from "../services/comm-status/handler";
 import { serviceRegistry } from "../services/service-registry";
 import type { PostalTransport, PostalAddress } from "../services/providers/postal";
@@ -33,6 +34,31 @@ const sendEmailSchema = z.object({
   replyTo: z.string().email().optional(),
 }).refine(data => data.bodyText || data.bodyHtml, {
   message: "Either bodyText or bodyHtml is required",
+});
+
+const postalAddressSchema = z.object({
+  name: z.string().optional(),
+  company: z.string().optional(),
+  addressLine1: z.string().min(1, "Address line 1 is required"),
+  addressLine2: z.string().optional(),
+  city: z.string().min(1, "City is required"),
+  state: z.string().min(1, "State is required"),
+  zip: z.string().min(1, "ZIP code is required"),
+  country: z.string().min(1, "Country is required").default("US"),
+});
+
+const sendPostalSchema = z.object({
+  toAddress: postalAddressSchema,
+  fromAddress: postalAddressSchema.optional(),
+  description: z.string().optional(),
+  file: z.string().optional(),
+  templateId: z.string().optional(),
+  mergeVariables: z.record(z.string()).optional(),
+  mailType: z.enum(['usps_first_class', 'usps_standard']).optional(),
+  color: z.boolean().optional(),
+  doubleSided: z.boolean().optional(),
+}).refine(data => data.file || data.templateId, {
+  message: "Either file or templateId is required",
 });
 
 export function registerCommRoutes(
@@ -168,6 +194,63 @@ export function registerCommRoutes(
     } catch (error) {
       console.error("Failed to send email:", error);
       res.status(500).json({ message: "Failed to send email" });
+    }
+  });
+
+  app.post("/api/contacts/:contactId/postal", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+    try {
+      const { contactId } = req.params;
+      
+      const parsed = sendPostalSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ 
+          message: "Invalid request body", 
+          errors: parsed.error.flatten() 
+        });
+      }
+
+      const { toAddress, fromAddress, description, file, templateId, mergeVariables, mailType, color, doubleSided } = parsed.data;
+      const user = (req as any).user;
+
+      const result = await sendPostal({
+        contactId,
+        toAddress,
+        fromAddress,
+        description,
+        file,
+        templateId,
+        mergeVariables,
+        mailType,
+        color,
+        doubleSided,
+        userId: user?.id,
+      });
+
+      if (!result.success) {
+        const statusCode = result.errorCode === 'NOT_OPTED_IN' || result.errorCode === 'NOT_ALLOWLISTED' 
+          ? 403 
+          : result.errorCode === 'VALIDATION_ERROR' || result.errorCode === 'NO_RETURN_ADDRESS'
+            ? 400 
+            : 500;
+        
+        return res.status(statusCode).json({
+          message: result.error,
+          errorCode: result.errorCode,
+          comm: result.comm,
+          commPostal: result.commPostal,
+        });
+      }
+
+      res.status(201).json({
+        message: "Postal mail sent successfully",
+        comm: result.comm,
+        commPostal: result.commPostal,
+        letterId: result.letterId,
+      });
+
+    } catch (error) {
+      console.error("Failed to send postal mail:", error);
+      res.status(500).json({ message: "Failed to send postal mail" });
     }
   });
 

@@ -46,7 +46,7 @@ export function useEmployerContactLayout() {
 }
 
 interface EmployerContactLayoutProps {
-  activeTab: "view" | "edit" | "email" | "name" | "phone-numbers" | "addresses" | "user" | "comm" | "comm-history" | "send-sms" | "send-email";
+  activeTab: "view" | "edit" | "email" | "name" | "phone-numbers" | "addresses" | "user" | "comm" | "comm-history" | "send-sms" | "send-email" | "send-postal";
   children: ReactNode;
 }
 
@@ -119,9 +119,10 @@ export function EmployerContactLayout({ activeTab, children }: EmployerContactLa
     { id: "comm-history", label: "History", href: `/employer-contacts/${employerContact.id}/comm/history` },
     { id: "send-sms", label: "Send SMS", href: `/employer-contacts/${employerContact.id}/comm/send-sms` },
     { id: "send-email", label: "Send Email", href: `/employer-contacts/${employerContact.id}/comm/send-email` },
+    { id: "send-postal", label: "Send Postal", href: `/employer-contacts/${employerContact.id}/comm/send-postal` },
   ];
 
-  const isCommSubTab = ["comm-history", "send-sms", "send-email"].includes(activeTab);
+  const isCommSubTab = ["comm-history", "send-sms", "send-email", "send-postal"].includes(activeTab);
   const showCommSubTabs = isCommSubTab;
 
   const contextValue: EmployerContactLayoutContextValue = {
