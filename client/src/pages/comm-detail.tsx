@@ -219,9 +219,6 @@ export default function CommDetail() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => window.history.back()} data-testid="button-back">
-          <ArrowLeft className="w-4 h-4" />
-        </Button>
         <h1 className="text-2xl font-bold" data-testid="text-page-title">Communication Details</h1>
       </div>
 

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { LedgerPayment, LedgerPaymentType } from "@shared/schema";
-import { ArrowLeft, CreditCard } from "lucide-react";
+import { CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getPaymentTitle } from "@/lib/payment-utils";
@@ -57,17 +57,6 @@ export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
                 <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
                 <span className="text-muted-foreground text-sm font-medium">Payment Not Found</span>
               </div>
-              <div className="flex items-center space-x-4">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => window.history.back()}
-                  data-testid="button-back"
-                >
-                  <ArrowLeft size={16} className="mr-2" />
-                  Back
-                </Button>
-              </div>
             </div>
           </div>
         </header>
@@ -82,13 +71,6 @@ export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
               <p className="text-muted-foreground text-center">
                 The payment you're looking for doesn't exist or has been removed.
               </p>
-              <Button
-                className="mt-4"
-                onClick={() => window.history.back()}
-                data-testid="button-go-back"
-              >
-                Go Back
-              </Button>
             </CardContent>
           </Card>
         </main>
@@ -107,17 +89,6 @@ export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
                   <CreditCard className="text-primary-foreground" size={16} />
                 </div>
                 <Skeleton className="h-6 w-48" />
-              </div>
-              <div className="flex items-center space-x-4">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => window.history.back()}
-                  data-testid="button-back"
-                >
-                  <ArrowLeft size={16} className="mr-2" />
-                  Back
-                </Button>
               </div>
             </div>
           </div>
@@ -164,17 +135,6 @@ export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
                 <h1 className="text-xl font-semibold text-foreground" data-testid="text-payment-title">
                   {paymentTitle}
                 </h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => window.history.back()}
-                  data-testid="button-back"
-                >
-                  <ArrowLeft size={16} className="mr-2" />
-                  Back
-                </Button>
               </div>
             </div>
           </div>
