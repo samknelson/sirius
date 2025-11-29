@@ -10,8 +10,7 @@ import {
   Mail, 
   Send, 
   Loader2, 
-  AlertCircle,
-  Info
+  AlertCircle
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -25,10 +24,10 @@ interface CommEmailProps {
 
 export function CommEmail({ contactId, email, contactName, onSendSuccess }: CommEmailProps) {
   const { toast } = useToast();
-  const [toEmail, setToEmail] = useState(email || "");
-  const [toName, setToName] = useState(contactName || "");
   const [subject, setSubject] = useState("");
   const [bodyText, setBodyText] = useState("");
+  
+  const hasEmail = !!email && email.trim().length > 0;
 
   const sendEmailMutation = useMutation({
     mutationFn: async (data: { email: string; name?: string; subject: string; bodyText: string }) => {
@@ -55,26 +54,44 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
   });
 
   const handleSend = () => {
-    if (!toEmail.trim() || !subject.trim() || !bodyText.trim()) return;
+    if (!hasEmail || !subject.trim() || !bodyText.trim()) return;
     sendEmailMutation.mutate({
-      email: toEmail.trim(),
-      name: toName.trim() || undefined,
+      email: email!.trim(),
+      name: contactName?.trim() || undefined,
       subject: subject.trim(),
       bodyText: bodyText.trim(),
     });
   };
 
-  const isValidEmail = (email: string) => {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  };
-
   const canSend = 
-    toEmail.trim().length > 0 && 
-    isValidEmail(toEmail.trim()) &&
+    hasEmail &&
     subject.trim().length > 0 && 
     bodyText.trim().length > 0;
 
-  const hasEmail = !!email;
+  if (!hasEmail) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Mail className="h-5 w-5" />
+            Send Email
+          </CardTitle>
+          <CardDescription>
+            Send an email to this contact
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>No Email Address</AlertTitle>
+            <AlertDescription>
+              This contact does not have an email address on file. Please add an email address to their contact record before sending an email.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -84,43 +101,30 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
           Send Email
         </CardTitle>
         <CardDescription>
-          Send an email to this worker
+          Send an email to this contact
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!hasEmail && (
-          <Alert>
-            <Info className="h-4 w-4" />
-            <AlertTitle>No Email Address</AlertTitle>
-            <AlertDescription>
-              This contact does not have an email address on file. You can still enter one manually below.
-            </AlertDescription>
-          </Alert>
-        )}
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="to-email">To Email</Label>
             <Input
               id="to-email"
               type="email"
-              placeholder="recipient@example.com"
-              value={toEmail}
-              onChange={(e) => setToEmail(e.target.value)}
+              value={email}
+              disabled
+              className="bg-muted"
               data-testid="input-email-to"
             />
-            {toEmail && !isValidEmail(toEmail) && (
-              <p className="text-xs text-destructive">Please enter a valid email address</p>
-            )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="to-name">Recipient Name (optional)</Label>
+            <Label htmlFor="to-name">Recipient Name</Label>
             <Input
               id="to-name"
               type="text"
-              placeholder="Recipient name"
-              value={toName}
-              onChange={(e) => setToName(e.target.value)}
+              value={contactName || ""}
+              disabled
+              className="bg-muted"
               data-testid="input-email-name"
             />
           </div>
@@ -160,8 +164,6 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
         <Button
           variant="ghost"
           onClick={() => {
-            setToEmail(email || "");
-            setToName(contactName || "");
             setSubject("");
             setBodyText("");
           }}
