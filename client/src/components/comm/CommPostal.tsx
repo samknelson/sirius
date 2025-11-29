@@ -34,11 +34,10 @@ interface Address {
   id: string;
   contactId: string;
   friendlyName: string | null;
-  addressLine1: string;
-  addressLine2: string | null;
+  street: string;
   city: string;
   state: string;
-  zip: string;
+  postalCode: string;
   country: string;
   isPrimary: boolean;
   isActive: boolean;
@@ -103,11 +102,10 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
   const verifyAddressMutation = useMutation({
     mutationFn: async (address: Address) => {
       const response = await apiRequest("POST", "/api/postal/verify-address", {
-        addressLine1: address.addressLine1,
-        addressLine2: address.addressLine2 || undefined,
+        addressLine1: address.street,
         city: address.city,
         state: address.state,
-        zip: address.zip,
+        zip: address.postalCode,
         country: address.country || "US",
         name: contactName,
       });
@@ -171,11 +169,10 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
   const verifyAndRegisterMutation = useMutation({
     mutationFn: async (address: Address) => {
       const response = await apiRequest("POST", "/api/postal/verify-and-register", {
-        addressLine1: address.addressLine1,
-        addressLine2: address.addressLine2 || undefined,
+        addressLine1: address.street,
         city: address.city,
         state: address.state,
-        zip: address.zip,
+        zip: address.postalCode,
         country: address.country || "US",
         name: contactName,
       });
@@ -247,11 +244,11 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
     
     const toAddress = {
       name: contactName,
-      addressLine1: verificationResult?.normalizedAddress?.addressLine1 || selectedAddress.addressLine1,
-      addressLine2: verificationResult?.normalizedAddress?.addressLine2 || selectedAddress.addressLine2 || undefined,
+      addressLine1: verificationResult?.normalizedAddress?.addressLine1 || selectedAddress.street,
+      addressLine2: verificationResult?.normalizedAddress?.addressLine2 || undefined,
       city: verificationResult?.normalizedAddress?.city || selectedAddress.city,
       state: verificationResult?.normalizedAddress?.state || selectedAddress.state,
-      zip: verificationResult?.normalizedAddress?.zip || selectedAddress.zip,
+      zip: verificationResult?.normalizedAddress?.zip || selectedAddress.postalCode,
       country: verificationResult?.normalizedAddress?.country || selectedAddress.country || "US",
     };
 
@@ -327,9 +324,8 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
   const activeAddresses = addresses.filter(a => a.isActive);
 
   const formatAddress = (addr: Address) => {
-    const parts = [addr.addressLine1];
-    if (addr.addressLine2) parts.push(addr.addressLine2);
-    parts.push(`${addr.city}, ${addr.state} ${addr.zip}`);
+    const parts = [addr.street];
+    parts.push(`${addr.city}, ${addr.state} ${addr.postalCode}`);
     return parts.join(", ");
   };
 

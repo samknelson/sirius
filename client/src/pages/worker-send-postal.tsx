@@ -10,11 +10,10 @@ interface Address {
   id: string;
   contactId: string;
   friendlyName: string | null;
-  addressLine1: string;
-  addressLine2: string | null;
+  street: string;
   city: string;
   state: string;
-  zip: string;
+  postalCode: string;
   country: string;
   isPrimary: boolean;
   isActive: boolean;
