@@ -93,6 +93,7 @@ function PaymentEditContent() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/ledger/payments", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/ledger/payments/ea", payment?.ledgerEaId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/ledger/payments/${id}/transactions`] });
       toast({
         title: "Payment updated",
         description: "The payment has been updated successfully.",
