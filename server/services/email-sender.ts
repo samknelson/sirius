@@ -4,6 +4,7 @@ import { createCommStorage, createCommEmailStorage } from '../storage/comm';
 import type { EmailTransport, EmailRecipient } from './providers/email';
 import type { Comm, CommEmail } from '@shared/schema';
 import { logger } from '../logger';
+import { buildStatusCallbackUrl } from './comm-status/url-builder';
 
 export interface SendEmailRequest {
   contactId: string;
@@ -99,6 +100,8 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
       systemMode,
     });
 
+    const statusCallbackUrl = buildStatusCallbackUrl(comm.id);
+
     try {
       const sendResult = await emailTransport.sendEmail({
         to: toRecipient,
@@ -107,6 +110,7 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
         subject,
         text: bodyText,
         html: bodyHtml,
+        statusCallbackUrl,
       });
 
       if (!sendResult.success) {

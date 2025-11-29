@@ -188,6 +188,12 @@ export class SendGridEmailProvider implements EmailTransport {
         }));
       }
 
+      if (params.statusCallbackUrl) {
+        msg.customArgs = {
+          callback_url: params.statusCallbackUrl,
+        };
+      }
+
       logger.info('Sending email via SendGrid', {
         service: 'email-provider-sendgrid',
         to: toRecipients.map(r => r.email),
