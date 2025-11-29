@@ -26,6 +26,7 @@ import {
   Send,
   Inbox,
   Phone,
+  Mail,
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
@@ -38,7 +39,21 @@ interface CommSmsDetails {
   data: Record<string, unknown> | null;
 }
 
-interface CommWithSms {
+interface CommEmailDetails {
+  id: string;
+  commId: string;
+  to: string | null;
+  toName: string | null;
+  from: string | null;
+  fromName: string | null;
+  replyTo: string | null;
+  subject: string | null;
+  bodyText: string | null;
+  bodyHtml: string | null;
+  data: Record<string, unknown> | null;
+}
+
+interface CommWithDetails {
   id: string;
   medium: string;
   contactId: string;
@@ -47,6 +62,7 @@ interface CommWithSms {
   received: string | null;
   data: Record<string, unknown> | null;
   smsDetails?: CommSmsDetails | null;
+  emailDetails?: CommEmailDetails | null;
 }
 
 interface WinstonLog {
@@ -71,7 +87,7 @@ export default function CommDetail() {
   const [selectedLog, setSelectedLog] = useState<WinstonLog | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
-  const { data: comm, isLoading: commLoading, error: commError } = useQuery<CommWithSms>({
+  const { data: comm, isLoading: commLoading, error: commError } = useQuery<CommWithDetails>({
     queryKey: ["/api/comm", commId],
     enabled: !!commId,
   });
@@ -235,6 +251,7 @@ export default function CommDetail() {
               <Label className="text-muted-foreground">Medium</Label>
               <div className="flex items-center gap-2 mt-1">
                 {comm.medium === "sms" && <Phone className="w-4 h-4" />}
+                {comm.medium === "email" && <Mail className="w-4 h-4" />}
                 <span className="capitalize font-medium" data-testid="text-comm-medium">{comm.medium}</span>
               </div>
             </div>
@@ -253,9 +270,11 @@ export default function CommDetail() {
             <div>
               <Label className="text-muted-foreground">To</Label>
               <div className="font-mono text-sm mt-1" data-testid="text-comm-to">
-                {comm.smsDetails?.to 
+                {comm.medium === 'sms' && comm.smsDetails?.to 
                   ? formatPhoneNumberForDisplay(comm.smsDetails.to)
-                  : "-"}
+                  : comm.medium === 'email' && comm.emailDetails?.to
+                    ? comm.emailDetails.to
+                    : "-"}
               </div>
             </div>
           </div>
@@ -272,6 +291,30 @@ export default function CommDetail() {
             </div>
           )}
 
+          {comm.emailDetails?.subject && (
+            <div>
+              <Label className="text-muted-foreground">Subject</Label>
+              <div 
+                className="mt-2 p-4 bg-muted rounded-md text-sm"
+                data-testid="text-comm-subject"
+              >
+                {comm.emailDetails.subject}
+              </div>
+            </div>
+          )}
+
+          {comm.emailDetails?.bodyText && (
+            <div>
+              <Label className="text-muted-foreground">Email Body</Label>
+              <div 
+                className="mt-2 p-4 bg-muted rounded-md whitespace-pre-wrap text-sm"
+                data-testid="text-comm-email-body"
+              >
+                {comm.emailDetails.bodyText}
+              </div>
+            </div>
+          )}
+
           {comm.smsDetails?.data && Object.keys(comm.smsDetails.data).length > 0 && (
             <div>
               <Label className="text-muted-foreground">SMS Data</Label>
@@ -280,6 +323,18 @@ export default function CommDetail() {
                 data-testid="text-comm-sms-data"
               >
                 {JSON.stringify(comm.smsDetails.data, null, 2)}
+              </pre>
+            </div>
+          )}
+
+          {comm.emailDetails?.data && Object.keys(comm.emailDetails.data).length > 0 && (
+            <div>
+              <Label className="text-muted-foreground">Email Data</Label>
+              <pre 
+                className="mt-2 p-4 bg-muted rounded-md text-xs overflow-x-auto"
+                data-testid="text-comm-email-data"
+              >
+                {JSON.stringify(comm.emailDetails.data, null, 2)}
               </pre>
             </div>
           )}
