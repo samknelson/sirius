@@ -189,7 +189,7 @@ export class SendGridEmailProvider implements EmailTransport {
       }
 
       if (params.statusCallbackUrl) {
-        msg.customArgs = {
+        msg.custom_args = {
           callback_url: params.statusCallbackUrl,
         };
       }
