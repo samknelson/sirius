@@ -227,6 +227,7 @@ async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<v
       await storage.ledger.entries.create({
         chargePlugin: transaction.chargePlugin,
         chargePluginKey: transaction.chargePluginKey,
+        chargePluginConfigId: transaction.chargePluginConfigId,
         amount: transaction.amount,
         eaId,
         referenceType: transaction.referenceType || "charge_plugin",

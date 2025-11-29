@@ -43,6 +43,7 @@ export type PluginContext = HoursSavedContext | PaymentSavedContext | CronContex
 export interface LedgerTransaction {
   chargePlugin: string;
   chargePluginKey: string;
+  chargePluginConfigId: string;
   accountId: string;
   entityType: string; // "employer", "worker", "trust_provider"
   entityId: string;
