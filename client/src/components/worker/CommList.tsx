@@ -45,7 +45,21 @@ interface CommSmsDetails {
   data: Record<string, unknown> | null;
 }
 
-interface CommWithSms {
+interface CommEmailDetails {
+  id: string;
+  commId: string;
+  to: string | null;
+  toName: string | null;
+  from: string | null;
+  fromName: string | null;
+  replyTo: string | null;
+  subject: string | null;
+  bodyText: string | null;
+  bodyHtml: string | null;
+  data: Record<string, unknown> | null;
+}
+
+interface CommWithDetails {
   id: string;
   medium: string;
   contactId: string;
@@ -54,13 +68,14 @@ interface CommWithSms {
   received: string | null;
   data: Record<string, unknown> | null;
   smsDetails?: CommSmsDetails | null;
+  emailDetails?: CommEmailDetails | null;
 }
 
 type SortField = "sent" | "medium" | "status";
 type SortDirection = "asc" | "desc";
 
 interface CommListProps {
-  records: CommWithSms[];
+  records: CommWithDetails[];
   isLoading?: boolean;
   title?: string;
   emptyMessage?: string;
@@ -431,13 +446,17 @@ export function CommList({
                       {formatDate(record.sent)}
                     </TableCell>
                     <TableCell>
-                      {record.smsDetails?.to 
+                      {record.medium === 'sms' && record.smsDetails?.to 
                         ? formatPhoneNumberForDisplay(record.smsDetails.to)
-                        : "-"}
+                        : record.medium === 'email' && record.emailDetails?.to
+                          ? record.emailDetails.to
+                          : "-"}
                     </TableCell>
                     <TableCell className="max-w-[300px]">
                       <span className="text-sm text-muted-foreground">
-                        {truncateBody(record.smsDetails?.body || null)}
+                        {record.medium === 'email' && record.emailDetails?.subject
+                          ? truncateBody(record.emailDetails.subject)
+                          : truncateBody(record.smsDetails?.body || null)}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
