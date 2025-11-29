@@ -37,6 +37,9 @@ interface LedgerEntryWithDetails {
   entityName: string | null;
   eaAccountId: string;
   eaAccountName: string | null;
+  chargePlugin: string | null;
+  chargePluginKey: string | null;
+  chargePluginConfigId: string | null;
   data?: LedgerEntryData | null;
 }
 
@@ -748,8 +751,53 @@ export function LedgerTransactionsView({
                 </div>
               </div>
               
+              {selectedTransaction.chargePlugin && (
+                <div className="border-t pt-4">
+                  <h4 className="text-sm font-semibold mb-3">Charge Plugin Details</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Plugin Type</label>
+                      <p className="mt-1 font-mono text-sm" data-testid="modal-transaction-charge-plugin">
+                        {selectedTransaction.chargePlugin}
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Configuration ID</label>
+                      <p className="mt-1 font-mono text-sm break-all" data-testid="modal-transaction-charge-plugin-config-id">
+                        {selectedTransaction.chargePluginConfigId || "—"}
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Plugin Key</label>
+                      <p className="mt-1 font-mono text-sm break-all" data-testid="modal-transaction-charge-plugin-key">
+                        {selectedTransaction.chargePluginKey || "—"}
+                      </p>
+                    </div>
+                    
+                    {selectedTransaction.chargePluginConfigId && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Configuration</label>
+                        <div className="mt-1">
+                          <Link href={`/config/ledger/charge-plugins/${selectedTransaction.chargePlugin}/edit/${selectedTransaction.chargePluginConfigId}`}>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              data-testid="modal-button-view-charge-plugin-config"
+                            >
+                              View Configuration
+                            </Button>
+                          </Link>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {selectedTransaction.data && Object.keys(selectedTransaction.data).length > 0 && (
-                <div>
+                <div className="border-t pt-4">
                   <label className="text-sm font-medium text-muted-foreground">Additional Data</label>
                   <div className="mt-2 p-3 bg-muted rounded-md">
                     <pre className="text-sm overflow-x-auto whitespace-pre-wrap break-all" data-testid="modal-transaction-data">
