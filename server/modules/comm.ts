@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { winstonLogs } from "@shared/schema";
 import { eq, and, gte, lte, desc, or } from "drizzle-orm";
-import { createCommStorage, createCommSmsOptinStorage } from "../storage";
+import { createCommStorage, createCommSmsOptinStorage, createCommEmailOptinStorage } from "../storage";
 import { sendSms } from "../services/sms-sender";
 import { sendEmail } from "../services/email-sender";
 import { handleStatusCallback } from "../services/comm-status/handler";
@@ -14,6 +14,7 @@ type PolicyMiddleware = (policy: any) => (req: Request, res: Response, next: Nex
 
 const commStorage = createCommStorage();
 const smsOptinStorage = createCommSmsOptinStorage();
+const emailOptinStorage = createCommEmailOptinStorage();
 
 const sendSmsSchema = z.object({
   phoneNumber: z.string().min(1, "Phone number is required"),
@@ -238,6 +239,107 @@ export function registerCommRoutes(
     } catch (error) {
       console.error("Failed to fetch comm logs:", error);
       res.status(500).json({ message: "Failed to fetch communication logs" });
+    }
+  });
+
+  const updateEmailOptinSchema = z.object({
+    optin: z.boolean().optional(),
+    allowlist: z.boolean().optional(),
+  }).refine(data => data.optin !== undefined || data.allowlist !== undefined, {
+    message: "At least one of optin or allowlist must be provided",
+  });
+
+  app.get("/api/email-optin/:email", requireAuth, requirePermission("workers.view"), async (req, res) => {
+    try {
+      const { email } = req.params;
+      const optin = await emailOptinStorage.getEmailOptinByEmail(email);
+      
+      if (!optin) {
+        return res.json({ 
+          exists: false, 
+          optin: false, 
+          allowlist: false,
+          record: null 
+        });
+      }
+      
+      res.json({ 
+        exists: true, 
+        optin: optin.optin, 
+        allowlist: optin.allowlist,
+        record: optin 
+      });
+    } catch (error) {
+      console.error("Failed to fetch email opt-in status:", error);
+      res.status(500).json({ message: "Failed to fetch email opt-in status" });
+    }
+  });
+
+  app.put("/api/email-optin/:email", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+    try {
+      const { email } = req.params;
+      
+      const parsed = updateEmailOptinSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+      }
+      
+      const { optin, allowlist } = parsed.data;
+      const user = (req as any).user;
+      
+      const clientIp = req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || 'unknown';
+      const ip = clientIp.split(',')[0].trim();
+      
+      const existingOptin = await emailOptinStorage.getEmailOptinByEmail(email);
+      
+      if (existingOptin) {
+        const updateData: any = {};
+        
+        if (optin !== undefined) {
+          updateData.optin = optin;
+          if (optin) {
+            updateData.optinUser = user?.id || null;
+            updateData.optinDate = new Date();
+            updateData.optinIp = ip;
+          }
+        }
+        
+        if (allowlist !== undefined) {
+          updateData.allowlist = allowlist;
+        }
+        
+        const updated = await emailOptinStorage.updateEmailOptinByEmail(email, updateData);
+        
+        if (!updated) {
+          return res.status(404).json({ message: "Failed to update email opt-in" });
+        }
+        
+        res.json({ 
+          exists: true, 
+          optin: updated.optin, 
+          allowlist: updated.allowlist,
+          record: updated 
+        });
+      } else {
+        const newOptin = await emailOptinStorage.createEmailOptin({
+          email: email.trim().toLowerCase(),
+          optin: optin ?? false,
+          optinUser: optin ? (user?.id || null) : null,
+          optinDate: optin ? new Date() : null,
+          optinIp: optin ? ip : null,
+          allowlist: allowlist ?? false,
+        });
+        
+        res.status(201).json({ 
+          exists: true, 
+          optin: newOptin.optin, 
+          allowlist: newOptin.allowlist,
+          record: newOptin 
+        });
+      }
+    } catch (error) {
+      console.error("Failed to update email opt-in:", error);
+      res.status(500).json({ message: "Failed to update email opt-in status" });
     }
   });
 }
