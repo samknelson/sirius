@@ -257,14 +257,30 @@ export class LobPostalProvider implements PostalTransport {
       const components = data.components || {};
       const deliverabilityAnalysis = data.deliverability_analysis || {};
       
-      const normalizedAddress: PostalAddress = {
+      // In test mode, Lob returns empty components for real addresses.
+      // It only works with specific test patterns like primary_line='deliverable' and zip_code='11111'.
+      // For testing the opt-in workflow with real addresses, we use the original input.
+      const hasValidLobComponents = components.city && components.state && components.zip_code;
+      
+      // Use Lob's normalized data if available, otherwise fall back to original input
+      const normalizedAddress: PostalAddress = hasValidLobComponents ? {
         name: address.name,
         company: address.company,
-        addressLine1: data.primary_line || address.addressLine1,
+        addressLine1: data.primary_line,
         addressLine2: data.secondary_line || undefined,
-        city: components.city || address.city,
-        state: components.state || address.state,
-        zip: (components.zip_code || address.zip) + (components.zip_code_plus_4 ? `-${components.zip_code_plus_4}` : ''),
+        city: components.city,
+        state: components.state,
+        zip: components.zip_code + (components.zip_code_plus_4 ? `-${components.zip_code_plus_4}` : ''),
+        country: 'US',
+      } : {
+        // Fall back to original input for test mode with real addresses
+        name: address.name,
+        company: address.company,
+        addressLine1: address.addressLine1,
+        addressLine2: address.addressLine2,
+        city: address.city,
+        state: address.state,
+        zip: address.zip,
         country: 'US',
       };
 
@@ -276,13 +292,12 @@ export class LobPostalProvider implements PostalTransport {
         data.deliverability === 'deliverable_missing_unit';
 
       // In test mode, Lob doesn't actually verify real addresses - it only works with 
-      // specific test addresses. For real addresses in test mode, we accept the address
-      // as valid if it has the required fields and Lob returned a response with components.
-      // This allows testing the opt-in workflow without needing Lob's live API key.
-      const hasAddressComponents = components.city && components.state && components.zip_code;
-      const isValidInTestMode = isTestMode && hasAddressComponents;
+      // specific test addresses. For real addresses, accept them if the original input
+      // has the required fields. This allows testing the opt-in workflow without a live API key.
+      const hasOriginalAddressFields = address.addressLine1 && address.city && address.state && address.zip;
+      const isValidInTestMode = isTestMode && hasOriginalAddressFields;
       
-      console.log('[Lob] isTestMode:', isTestMode, 'hasComponents:', hasAddressComponents, 'valid_address:', data.valid_address);
+      console.log('[Lob] isTestMode:', isTestMode, 'hasLobComponents:', hasValidLobComponents, 'hasOriginalFields:', hasOriginalAddressFields, 'valid_address:', data.valid_address);
 
       return {
         valid: data.valid_address === true || isValidInTestMode,
