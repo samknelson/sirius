@@ -146,7 +146,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
   const [selectedAddressId, setSelectedAddressId] = useState<string>("");
   const [description, setDescription] = useState("");
   const [templateId, setTemplateId] = useState("");
-  const [contentMode, setContentMode] = useState<ContentMode>("template");
+  const [contentMode, setContentMode] = useState<ContentMode>("compose");
   const [composeBody, setComposeBody] = useState("");
   const [rawHtml, setRawHtml] = useState("");
   const [mailType, setMailType] = useState<"usps_first_class" | "usps_standard">("usps_first_class");
@@ -694,13 +694,6 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
                     disabled={!selectedAddress}
                   >
                     <div className="flex items-center gap-2">
-                      <RadioGroupItem value="template" id="mode-template" data-testid="radio-mode-template" />
-                      <Label htmlFor="mode-template" className="flex items-center gap-1 cursor-pointer font-normal">
-                        <FileText className="h-4 w-4" />
-                        Template ID
-                      </Label>
-                    </div>
-                    <div className="flex items-center gap-2">
                       <RadioGroupItem value="compose" id="mode-compose" data-testid="radio-mode-compose" />
                       <Label htmlFor="mode-compose" className="flex items-center gap-1 cursor-pointer font-normal">
                         <FileCode className="h-4 w-4" />
@@ -714,63 +707,44 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
                         Raw HTML
                       </Label>
                     </div>
+                    {templatesData?.templates && templatesData.templates.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="template" id="mode-template" data-testid="radio-mode-template" />
+                        <Label htmlFor="mode-template" className="flex items-center gap-1 cursor-pointer font-normal">
+                          <FileText className="h-4 w-4" />
+                          Template
+                        </Label>
+                      </div>
+                    )}
                   </RadioGroup>
                 </div>
 
-                {contentMode === "template" && (
+                {contentMode === "template" && templatesData?.templates && templatesData.templates.length > 0 && (
                   <div className="space-y-2">
                     <Label htmlFor="template-select">Template</Label>
-                    {isLoadingTemplates ? (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Loading templates...
-                      </div>
-                    ) : templatesData?.templates && templatesData.templates.length > 0 ? (
-                      <>
-                        <Select 
-                          value={templateId} 
-                          onValueChange={setTemplateId}
-                          disabled={!selectedAddress}
-                        >
-                          <SelectTrigger id="template-select" data-testid="select-postal-template">
-                            <SelectValue placeholder="Select a template" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {templatesData.templates.map((template) => (
-                              <SelectItem 
-                                key={template.id} 
-                                value={template.id}
-                                data-testid={`select-template-${template.id}`}
-                              >
-                                {template.description} ({template.id})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                          Select a Lob template for the letter content
-                        </p>
-                      </>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="relative">
-                          <FileText className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            id="template-id"
-                            type="text"
-                            placeholder="tmpl_xxxxx (Lob template ID)"
-                            value={templateId}
-                            onChange={(e) => setTemplateId(e.target.value)}
-                            className="pl-10"
-                            disabled={!selectedAddress}
-                            data-testid="input-postal-template"
-                          />
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          No templates found. Enter a Lob template ID manually.
-                        </p>
-                      </div>
-                    )}
+                    <Select 
+                      value={templateId} 
+                      onValueChange={setTemplateId}
+                      disabled={!selectedAddress}
+                    >
+                      <SelectTrigger id="template-select" data-testid="select-postal-template">
+                        <SelectValue placeholder="Select a template" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {templatesData.templates.map((template) => (
+                          <SelectItem 
+                            key={template.id} 
+                            value={template.id}
+                            data-testid={`select-template-${template.id}`}
+                          >
+                            {template.description} ({template.id})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Select a Lob template for the letter content
+                    </p>
                   </div>
                 )}
 
