@@ -9,6 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { 
   Select, 
   SelectContent, 
@@ -25,10 +26,54 @@ import {
   CheckCircle,
   XCircle,
   MapPin,
-  FileText
+  FileText,
+  Code,
+  FileCode
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+
+type ContentMode = "template" | "compose" | "rawHtml";
+
+const DEFAULT_HTML_WRAPPER = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    @page {
+      size: letter;
+      margin: 1in;
+    }
+    body {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 12pt;
+      line-height: 1.5;
+      color: #333;
+      margin: 0;
+      padding: 0;
+    }
+    p {
+      margin: 0 0 1em 0;
+    }
+    .date {
+      margin-bottom: 2em;
+    }
+    .greeting {
+      margin-bottom: 1em;
+    }
+    .closing {
+      margin-top: 2em;
+    }
+  </style>
+</head>
+<body>
+{{BODY}}
+</body>
+</html>`;
+
+function wrapBodyWithHtml(body: string): string {
+  return DEFAULT_HTML_WRAPPER.replace("{{BODY}}", body);
+}
 
 interface Address {
   id: string;
@@ -89,6 +134,9 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
   const [selectedAddressId, setSelectedAddressId] = useState<string>("");
   const [description, setDescription] = useState("");
   const [templateId, setTemplateId] = useState("");
+  const [contentMode, setContentMode] = useState<ContentMode>("template");
+  const [composeBody, setComposeBody] = useState("");
+  const [rawHtml, setRawHtml] = useState("");
   const [mailType, setMailType] = useState<"usps_first_class" | "usps_standard">("usps_first_class");
   const [isOptinDialogOpen, setIsOptinDialogOpen] = useState(false);
   const [verificationResult, setVerificationResult] = useState<VerifyAddressResult | null>(null);
@@ -206,6 +254,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
       toAddress: any; 
       description?: string; 
       templateId?: string;
+      file?: string;
       mailType?: string;
     }) => {
       return await apiRequest("POST", `/api/contacts/${contactId}/postal`, data);
@@ -217,6 +266,8 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
       });
       setDescription("");
       setTemplateId("");
+      setComposeBody("");
+      setRawHtml("");
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactId, "comm"] });
       onSendSuccess?.();
     },
@@ -240,7 +291,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
   };
 
   const handleSend = () => {
-    if (!selectedAddress || !templateId.trim()) return;
+    if (!selectedAddress) return;
     
     const toAddress = {
       name: contactName,
@@ -252,17 +303,40 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
       country: verificationResult?.normalizedAddress?.country || selectedAddress.country || "US",
     };
 
-    sendPostalMutation.mutate({
+    const payload: {
+      toAddress: typeof toAddress;
+      description?: string;
+      templateId?: string;
+      file?: string;
+      mailType: string;
+    } = {
       toAddress,
       description: description.trim() || undefined,
-      templateId: templateId.trim(),
       mailType,
-    });
+    };
+
+    if (contentMode === "template") {
+      if (!templateId.trim()) return;
+      payload.templateId = templateId.trim();
+    } else if (contentMode === "compose") {
+      if (!composeBody.trim()) return;
+      payload.file = wrapBodyWithHtml(composeBody.trim());
+    } else if (contentMode === "rawHtml") {
+      if (!rawHtml.trim()) return;
+      payload.file = rawHtml.trim();
+    }
+
+    sendPostalMutation.mutate(payload);
   };
+
+  const hasContent = 
+    (contentMode === "template" && templateId.trim().length > 0) ||
+    (contentMode === "compose" && composeBody.trim().length > 0) ||
+    (contentMode === "rawHtml" && rawHtml.trim().length > 0);
 
   const canSend = 
     selectedAddress && 
-    templateId.trim().length > 0 &&
+    hasContent &&
     verificationResult?.valid &&
     !isLoadingOptin &&
     postalOptinData?.optin === true &&
@@ -593,26 +667,100 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
                 </Alert>
               )}
 
-              <div className="space-y-2">
-                <Label htmlFor="template-id">Template ID</Label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <FileText className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="template-id"
-                      type="text"
-                      placeholder="tmpl_xxxxx (Lob template ID)"
-                      value={templateId}
-                      onChange={(e) => setTemplateId(e.target.value)}
-                      className="pl-10"
-                      disabled={!selectedAddress}
-                      data-testid="input-postal-template"
-                    />
-                  </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Letter Content</Label>
+                  <RadioGroup
+                    value={contentMode}
+                    onValueChange={(v) => setContentMode(v as ContentMode)}
+                    className="flex flex-wrap gap-4"
+                    disabled={!selectedAddress}
+                  >
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="template" id="mode-template" data-testid="radio-mode-template" />
+                      <Label htmlFor="mode-template" className="flex items-center gap-1 cursor-pointer font-normal">
+                        <FileText className="h-4 w-4" />
+                        Template ID
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="compose" id="mode-compose" data-testid="radio-mode-compose" />
+                      <Label htmlFor="mode-compose" className="flex items-center gap-1 cursor-pointer font-normal">
+                        <FileCode className="h-4 w-4" />
+                        Compose
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="rawHtml" id="mode-raw" data-testid="radio-mode-raw" />
+                      <Label htmlFor="mode-raw" className="flex items-center gap-1 cursor-pointer font-normal">
+                        <Code className="h-4 w-4" />
+                        Raw HTML
+                      </Label>
+                    </div>
+                  </RadioGroup>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Enter a Lob template ID for the letter content
-                </p>
+
+                {contentMode === "template" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="template-id">Template ID</Label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <FileText className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          id="template-id"
+                          type="text"
+                          placeholder="tmpl_xxxxx (Lob template ID)"
+                          value={templateId}
+                          onChange={(e) => setTemplateId(e.target.value)}
+                          className="pl-10"
+                          disabled={!selectedAddress}
+                          data-testid="input-postal-template"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Enter a Lob template ID for the letter content
+                    </p>
+                  </div>
+                )}
+
+                {contentMode === "compose" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="compose-body">Letter Body</Label>
+                    <Textarea
+                      id="compose-body"
+                      placeholder="Enter the body of your letter here. You can use HTML tags like <p>, <strong>, <em>, etc."
+                      value={composeBody}
+                      onChange={(e) => setComposeBody(e.target.value)}
+                      rows={10}
+                      disabled={!selectedAddress}
+                      className="font-mono text-sm"
+                      data-testid="textarea-compose-body"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Your content will be wrapped in a default HTML template with 1-inch margins and standard letter formatting.
+                    </p>
+                  </div>
+                )}
+
+                {contentMode === "rawHtml" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="raw-html">Full HTML</Label>
+                    <Textarea
+                      id="raw-html"
+                      placeholder="<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    @page { margin: 1in; }\n    body { font-family: Arial; }\n  </style>\n</head>\n<body>\n  Your letter content here...\n</body>\n</html>"
+                      value={rawHtml}
+                      onChange={(e) => setRawHtml(e.target.value)}
+                      rows={12}
+                      disabled={!selectedAddress}
+                      className="font-mono text-sm"
+                      data-testid="textarea-raw-html"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Enter complete HTML for the letter. Use @page CSS rules to control margins and page layout.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -655,6 +803,8 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
                 setSelectedAddressId("");
                 setDescription("");
                 setTemplateId("");
+                setComposeBody("");
+                setRawHtml("");
                 setVerificationResult(null);
               }}
               disabled={sendPostalMutation.isPending}
