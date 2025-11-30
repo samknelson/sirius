@@ -228,6 +228,12 @@ export function CommList({
   const getStatusBadge = (status: string) => {
     switch (status.toLowerCase()) {
       case "queued":
+        return (
+          <Badge variant="secondary" className="gap-1">
+            <Clock className="h-3 w-3" />
+            Queued
+          </Badge>
+        );
       case "sending":
         return (
           <Badge variant="outline" className="gap-1">
