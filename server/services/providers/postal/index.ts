@@ -64,6 +64,7 @@ export interface LetterDeliveryOptions {
   returnEnvelope?: boolean;
   perforatedPage?: number;
   customEnvelope?: string;
+  useType?: 'marketing' | 'operational';
 }
 
 export interface SendLetterParams {

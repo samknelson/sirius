@@ -388,6 +388,7 @@ export class LobPostalProvider implements PostalTransport {
         color: params.options?.color || false,
         double_sided: params.options?.doubleSided || false,
         mail_type: mailType,
+        use_type: params.options?.useType || 'operational',
       };
 
       if (params.options?.extraService) {
