@@ -294,7 +294,7 @@ export class LobPostalProvider implements PostalTransport {
       // In test mode, Lob doesn't actually verify real addresses - it only works with 
       // specific test addresses. For real addresses, accept them if the original input
       // has the required fields. This allows testing the opt-in workflow without a live API key.
-      const hasOriginalAddressFields = address.addressLine1 && address.city && address.state && address.zip;
+      const hasOriginalAddressFields = Boolean(address.addressLine1 && address.city && address.state && address.zip);
       const isValidInTestMode = isTestMode && hasOriginalAddressFields;
       
       console.log('[Lob] isTestMode:', isTestMode, 'hasLobComponents:', hasValidLobComponents, 'hasOriginalFields:', hasOriginalAddressFields, 'valid_address:', data.valid_address);
