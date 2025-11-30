@@ -59,6 +59,28 @@ interface CommEmailDetails {
   data: Record<string, unknown> | null;
 }
 
+interface CommPostalDetails {
+  id: string;
+  commId: string;
+  toName: string | null;
+  toAddressLine1: string | null;
+  toAddressLine2: string | null;
+  toCity: string | null;
+  toState: string | null;
+  toZip: string | null;
+  toCountry: string | null;
+  fromName: string | null;
+  fromAddressLine1: string | null;
+  fromAddressLine2: string | null;
+  fromCity: string | null;
+  fromState: string | null;
+  fromZip: string | null;
+  fromCountry: string | null;
+  description: string | null;
+  mailType: string | null;
+  data: Record<string, unknown> | null;
+}
+
 interface CommWithDetails {
   id: string;
   medium: string;
@@ -69,6 +91,7 @@ interface CommWithDetails {
   data: Record<string, unknown> | null;
   smsDetails?: CommSmsDetails | null;
   emailDetails?: CommEmailDetails | null;
+  postalDetails?: CommPostalDetails | null;
 }
 
 type SortField = "sent" | "medium" | "status";
@@ -450,13 +473,17 @@ export function CommList({
                         ? formatPhoneNumberForDisplay(record.smsDetails.to)
                         : record.medium === 'email' && record.emailDetails?.to
                           ? record.emailDetails.to
-                          : "-"}
+                          : record.medium === 'postal' && record.postalDetails
+                            ? `${record.postalDetails.toName || ''} - ${record.postalDetails.toCity || ''}, ${record.postalDetails.toState || ''}`.replace(/^[\s-]+|[\s-]+$/g, '') || "-"
+                            : "-"}
                     </TableCell>
                     <TableCell className="max-w-[300px]">
                       <span className="text-sm text-muted-foreground">
                         {record.medium === 'email' && record.emailDetails?.subject
                           ? truncateBody(record.emailDetails.subject)
-                          : truncateBody(record.smsDetails?.body || null)}
+                          : record.medium === 'postal' && record.postalDetails?.description
+                            ? truncateBody(record.postalDetails.description)
+                            : truncateBody(record.smsDetails?.body || null)}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
