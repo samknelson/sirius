@@ -165,7 +165,6 @@ export const optionsWorkerIdType = pgTable("options_worker_id_type", {
 export const optionsTrustBenefitType = pgTable("options_trust_benefit_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
-  icon: text("icon"),
   sequence: integer("sequence").notNull().default(0),
   data: jsonb("data"),
 });

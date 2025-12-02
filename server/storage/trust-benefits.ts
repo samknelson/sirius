@@ -19,24 +19,28 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
           name: trustBenefits.name,
           benefitType: trustBenefits.benefitType,
           benefitTypeName: optionsTrustBenefitType.name,
-          benefitTypeIcon: optionsTrustBenefitType.icon,
+          benefitTypeData: optionsTrustBenefitType.data,
           isActive: trustBenefits.isActive,
           description: trustBenefits.description,
         })
         .from(trustBenefits)
         .leftJoin(optionsTrustBenefitType, eq(trustBenefits.benefitType, optionsTrustBenefitType.id));
       
-      return results;
+      return results.map(r => ({
+        ...r,
+        benefitTypeIcon: (r.benefitTypeData as any)?.icon || null,
+        benefitTypeData: undefined,
+      }));
     },
 
     async getTrustBenefit(id: string): Promise<any | undefined> {
-      const [benefit] = await db
+      const [result] = await db
         .select({
           id: trustBenefits.id,
           name: trustBenefits.name,
           benefitType: trustBenefits.benefitType,
           benefitTypeName: optionsTrustBenefitType.name,
-          benefitTypeIcon: optionsTrustBenefitType.icon,
+          benefitTypeData: optionsTrustBenefitType.data,
           isActive: trustBenefits.isActive,
           description: trustBenefits.description,
         })
@@ -44,7 +48,13 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
         .leftJoin(optionsTrustBenefitType, eq(trustBenefits.benefitType, optionsTrustBenefitType.id))
         .where(eq(trustBenefits.id, id));
       
-      return benefit || undefined;
+      if (!result) return undefined;
+      
+      return {
+        ...result,
+        benefitTypeIcon: (result.benefitTypeData as any)?.icon || null,
+        benefitTypeData: undefined,
+      };
     },
 
     async createTrustBenefit(benefit: InsertTrustBenefit): Promise<TrustBenefit> {

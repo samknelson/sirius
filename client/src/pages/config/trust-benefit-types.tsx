@@ -34,7 +34,7 @@ import {
 interface TrustBenefitType {
   id: string;
   name: string;
-  icon?: string;
+  data?: { icon?: string } | null;
   sequence: number;
 }
 
@@ -67,12 +67,13 @@ export default function TrustBenefitTypesPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: { name: string; icon: string }) => {
+    mutationFn: async (formData: { name: string; icon: string }) => {
       // Find the highest sequence number
       const maxSequence = trustBenefitTypes.reduce((max, option) => Math.max(max, option.sequence), -1);
       return apiRequest("POST", "/api/trust-benefit-types", { 
-        ...data, 
-        sequence: maxSequence + 1 
+        name: formData.name,
+        sequence: maxSequence + 1,
+        data: { icon: formData.icon }
       });
     },
     onSuccess: () => {
@@ -94,10 +95,10 @@ export default function TrustBenefitTypesPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { id: string; name: string; icon: string }) => {
-      return apiRequest("PUT", `/api/trust-benefit-types/${data.id}`, {
-        name: data.name,
-        icon: data.icon,
+    mutationFn: async (formData: { id: string; name: string; icon: string }) => {
+      return apiRequest("PUT", `/api/trust-benefit-types/${formData.id}`, {
+        name: formData.name,
+        data: { icon: formData.icon },
       });
     },
     onSuccess: () => {
@@ -158,7 +159,7 @@ export default function TrustBenefitTypesPage() {
   const handleEdit = (option: TrustBenefitType) => {
     setEditingId(option.id);
     setFormName(option.name);
-    setFormIcon(option.icon || "Star");
+    setFormIcon(option.data?.icon || "Star");
   };
 
   const handleCancelEdit = () => {
@@ -301,7 +302,7 @@ export default function TrustBenefitTypesPage() {
                         </Select>
                       ) : (
                         (() => {
-                          const selectedIcon = availableIcons.find(i => i.name === option.icon);
+                          const selectedIcon = availableIcons.find(i => i.name === option.data?.icon);
                           const IconComponent = selectedIcon?.Icon || Star;
                           return <IconComponent size={20} className="text-muted-foreground" />;
                         })()
