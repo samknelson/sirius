@@ -8,7 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Loader2, Plus, Edit, Trash2, Save, X } from "lucide-react";
+import { 
+  Loader2, Plus, Edit, Trash2, Save, X,
+  User, Phone, Mail, Building, Briefcase, 
+  FileText, CreditCard, Truck, HardHat, Users,
+  type LucideIcon
+} from "lucide-react";
 import {
   Table,
   TableBody,
@@ -33,13 +38,35 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { insertEmployerContactTypeSchema, type EmployerContactType, type InsertEmployerContactType } from "@shared/schema";
+
+const availableIcons: { name: string; Icon: LucideIcon }[] = [
+  { name: 'User', Icon: User },
+  { name: 'Phone', Icon: Phone },
+  { name: 'Mail', Icon: Mail },
+  { name: 'Building', Icon: Building },
+  { name: 'Briefcase', Icon: Briefcase },
+  { name: 'FileText', Icon: FileText },
+  { name: 'CreditCard', Icon: CreditCard },
+  { name: 'Truck', Icon: Truck },
+  { name: 'HardHat', Icon: HardHat },
+  { name: 'Users', Icon: Users },
+];
 
 export default function EmployerContactTypesPage() {
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [formIcon, setFormIcon] = useState<string>("User");
   
   const { data: contactTypes = [], isLoading } = useQuery<EmployerContactType[]>({
     queryKey: ["/api/employer-contact-types"],
@@ -63,12 +90,16 @@ export default function EmployerContactTypesPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertEmployerContactType) => {
-      return apiRequest("POST", "/api/employer-contact-types", data);
+      return apiRequest("POST", "/api/employer-contact-types", {
+        ...data,
+        data: { icon: formIcon }
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employer-contact-types"] });
       setIsAddDialogOpen(false);
       addForm.reset();
+      setFormIcon("User");
       toast({
         title: "Success",
         description: "Employer contact type created successfully.",
@@ -85,12 +116,16 @@ export default function EmployerContactTypesPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; updates: InsertEmployerContactType }) => {
-      return apiRequest("PUT", `/api/employer-contact-types/${data.id}`, data.updates);
+      return apiRequest("PUT", `/api/employer-contact-types/${data.id}`, {
+        ...data.updates,
+        data: { icon: formIcon }
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employer-contact-types"] });
       setEditingId(null);
       editForm.reset();
+      setFormIcon("User");
       toast({
         title: "Success",
         description: "Employer contact type updated successfully.",
@@ -128,6 +163,8 @@ export default function EmployerContactTypesPage() {
 
   const handleEdit = (type: EmployerContactType) => {
     setEditingId(type.id);
+    const data = type.data as { icon?: string } | null;
+    setFormIcon(data?.icon || "User");
     editForm.reset({
       name: type.name,
       description: type.description || "",
@@ -136,6 +173,7 @@ export default function EmployerContactTypesPage() {
 
   const handleCancelEdit = () => {
     setEditingId(null);
+    setFormIcon("User");
     editForm.reset();
   };
 
@@ -183,6 +221,7 @@ export default function EmployerContactTypesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-16">Icon</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -193,26 +232,46 @@ export default function EmployerContactTypesPage() {
                   <TableRow key={type.id} data-testid={`row-type-${type.id}`}>
                     {editingId === type.id ? (
                       <>
-                        <TableCell colSpan={3}>
+                        <TableCell colSpan={4}>
                           <Form {...editForm}>
                             <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
-                              <FormField
-                                control={editForm.control}
-                                name="name"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Name *</FormLabel>
-                                    <FormControl>
-                                      <Input
-                                        placeholder="e.g., Primary Contact"
-                                        data-testid="input-edit-name"
-                                        {...field}
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                  <Label>Icon</Label>
+                                  <Select value={formIcon} onValueChange={setFormIcon}>
+                                    <SelectTrigger data-testid={`select-edit-icon-${type.id}`}>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {availableIcons.map(({ name, Icon }) => (
+                                        <SelectItem key={name} value={name}>
+                                          <div className="flex items-center gap-2">
+                                            <Icon size={16} />
+                                            <span>{name}</span>
+                                          </div>
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <FormField
+                                  control={editForm.control}
+                                  name="name"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Name *</FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          placeholder="e.g., Primary Contact"
+                                          data-testid="input-edit-name"
+                                          {...field}
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
                               <FormField
                                 control={editForm.control}
                                 name="description"
@@ -265,6 +324,14 @@ export default function EmployerContactTypesPage() {
                       </>
                     ) : (
                       <>
+                        <TableCell data-testid={`icon-${type.id}`}>
+                          {(() => {
+                            const data = type.data as { icon?: string } | null;
+                            const selectedIcon = availableIcons.find(i => i.name === data?.icon);
+                            const IconComponent = selectedIcon?.Icon || User;
+                            return <IconComponent size={20} className="text-muted-foreground" />;
+                          })()}
+                        </TableCell>
                         <TableCell data-testid={`text-name-${type.id}`}>{type.name}</TableCell>
                         <TableCell data-testid={`text-description-${type.id}`}>
                           {type.description || <span className="text-muted-foreground">—</span>}
@@ -298,7 +365,13 @@ export default function EmployerContactTypesPage() {
       </Card>
 
       {/* Add Dialog */}
-      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+      <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+        setIsAddDialogOpen(open);
+        if (!open) {
+          setFormIcon("User");
+          addForm.reset();
+        }
+      }}>
         <DialogContent data-testid="dialog-add">
           <DialogHeader>
             <DialogTitle>Add Employer Contact Type</DialogTitle>
@@ -308,6 +381,24 @@ export default function EmployerContactTypesPage() {
           </DialogHeader>
           <Form {...addForm}>
             <form onSubmit={addForm.handleSubmit(onAddSubmit)} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="add-icon">Icon</Label>
+                <Select value={formIcon} onValueChange={setFormIcon}>
+                  <SelectTrigger id="add-icon" data-testid="select-add-icon">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableIcons.map(({ name, Icon }) => (
+                      <SelectItem key={name} value={name}>
+                        <div className="flex items-center gap-2">
+                          <Icon size={16} />
+                          <span>{name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <FormField
                 control={addForm.control}
                 name="name"
