@@ -483,6 +483,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     'id', tb.id,
                     'name', tb.name,
                     'typeName', tbt.name,
+                    'typeIcon', tbt.data->>'icon',
                     'employerName', e.name
                   ) as benefit_data
                 FROM trust_wmb wmb
