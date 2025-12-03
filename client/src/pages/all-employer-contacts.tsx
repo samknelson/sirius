@@ -7,8 +7,35 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Eye, Search } from "lucide-react";
+import { 
+  Eye, 
+  Search, 
+  User, 
+  Phone, 
+  Mail, 
+  Building, 
+  Briefcase, 
+  FileText, 
+  CreditCard, 
+  Truck, 
+  HardHat, 
+  Users,
+  type LucideIcon 
+} from "lucide-react";
 import type { Employer, Contact, EmployerContact, EmployerContactType } from "@shared/schema";
+
+const iconMap: Record<string, LucideIcon> = {
+  User,
+  Phone,
+  Mail,
+  Building,
+  Briefcase,
+  FileText,
+  CreditCard,
+  Truck,
+  HardHat,
+  Users,
+};
 
 interface EmployerContactWithDetails extends EmployerContact {
   contact: Contact;
@@ -17,6 +44,7 @@ interface EmployerContactWithDetails extends EmployerContact {
     id: string;
     name: string;
     description: string | null;
+    data?: { icon?: string } | null;
   } | null;
 }
 
@@ -198,7 +226,16 @@ export default function AllEmployerContacts() {
                       <TableCell>{ec.contact.displayName || "—"}</TableCell>
                       <TableCell>{ec.contact.email || "—"}</TableCell>
                       <TableCell>
-                        {ec.contactType?.name || "—"}
+                        {ec.contactType ? (
+                          <div className="flex items-center gap-2">
+                            {(() => {
+                              const iconName = ec.contactType.data?.icon;
+                              const IconComponent = iconName && iconMap[iconName] ? iconMap[iconName] : User;
+                              return <IconComponent className="h-4 w-4 text-muted-foreground" />;
+                            })()}
+                            <span>{ec.contactType.name}</span>
+                          </div>
+                        ) : "—"}
                       </TableCell>
                       <TableCell className="text-right">
                         <Link href={`/employer-contacts/${ec.id}`}>

@@ -69,7 +69,7 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
       }));
     },
 
-    async getAll(filters?: { employerId?: string; contactName?: string; contactTypeId?: string }): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null } | null }>> {
+    async getAll(filters?: { employerId?: string; contactName?: string; contactTypeId?: string }): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null; data: unknown } | null }>> {
       let query = db
         .select({
           employerContact: employerContacts,
