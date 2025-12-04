@@ -35,6 +35,8 @@ import { registerChargePluginRoutes } from "./modules/charge-plugins";
 import { registerTwilioRoutes } from "./modules/twilio";
 import { registerEmailConfigRoutes } from "./modules/email-config";
 import { registerPostalConfigRoutes } from "./modules/postal-config";
+import { registerSiteSettingsRoutes } from "./modules/site-settings";
+import { registerSystemModeRoutes } from "./modules/system-mode";
 import { requireAccess } from "./accessControl";
 import { policies } from "./policies";
 import { addressValidationService } from "./services/address-validation";
@@ -320,6 +322,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register Postal configuration routes
   registerPostalConfigRoutes(app);
+
+  // Register site settings routes
+  registerSiteSettingsRoutes(app, requireAuth, requirePermission, requireAccess, policies);
+
+  // Register system mode routes
+  registerSystemModeRoutes(app, requireAuth, requirePermission, requireAccess, policies);
 
   // Worker routes (protected with authentication and permissions)
   
@@ -820,108 +828,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: false, 
         error: "Failed to geocode address" 
       });
-    }
-  });
-
-  // Site Settings routes - Simple API for common site configuration
-  // GET /api/site-settings - Get site settings (no auth required for public settings)
-  app.get("/api/site-settings", async (req, res) => {
-    try {
-      const siteNameVar = await storage.variables.getByName("site_name");
-      const siteName = siteNameVar ? (siteNameVar.value as string) : "Sirius";
-      
-      const siteFooterVar = await storage.variables.getByName("site_footer");
-      const footer = siteFooterVar ? (siteFooterVar.value as string) : "";
-      
-      res.json({ siteName, footer });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch site settings" });
-    }
-  });
-
-  // PUT /api/site-settings - Update site settings (requires admin permissions)
-  app.put("/api/site-settings", requireAccess(policies.admin), async (req, res) => {
-    try {
-      const { siteName, footer } = req.body;
-      
-      // Update siteName if provided
-      if (siteName !== undefined) {
-        if (typeof siteName !== "string") {
-          res.status(400).json({ message: "Invalid site name" });
-          return;
-        }
-        
-        const existingVariable = await storage.variables.getByName("site_name");
-        if (existingVariable) {
-          await storage.variables.update(existingVariable.id, { value: siteName });
-        } else {
-          await storage.variables.create({ name: "site_name", value: siteName });
-        }
-      }
-      
-      // Update footer if provided
-      if (footer !== undefined) {
-        if (typeof footer !== "string") {
-          res.status(400).json({ message: "Invalid footer content" });
-          return;
-        }
-        
-        const existingFooter = await storage.variables.getByName("site_footer");
-        if (existingFooter) {
-          await storage.variables.update(existingFooter.id, { value: footer });
-        } else {
-          await storage.variables.create({ name: "site_footer", value: footer });
-        }
-      }
-      
-      // Return updated values
-      const siteNameVar = await storage.variables.getByName("site_name");
-      const finalSiteName = siteNameVar ? (siteNameVar.value as string) : "Sirius";
-      
-      const siteFooterVar = await storage.variables.getByName("site_footer");
-      const finalFooter = siteFooterVar ? (siteFooterVar.value as string) : "";
-      
-      res.json({ siteName: finalSiteName, footer: finalFooter });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update site settings" });
-    }
-  });
-
-  // System Mode routes - Control application mode (dev/test/live)
-  // GET /api/system-mode - Get current system mode (no auth required for indicator display)
-  app.get("/api/system-mode", async (req, res) => {
-    try {
-      const modeVar = await storage.variables.getByName("system_mode");
-      const mode = modeVar ? (modeVar.value as string) : "dev";
-      res.json({ mode });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch system mode" });
-    }
-  });
-
-  // PUT /api/system-mode - Update system mode (requires admin policy)
-  app.put("/api/system-mode", requireAccess(policies.admin), async (req, res) => {
-    try {
-      const { mode } = req.body;
-      
-      // Validate mode
-      const validModes = ["dev", "test", "live"];
-      if (!validModes.includes(mode)) {
-        res.status(400).json({ message: "Invalid mode. Must be 'dev', 'test', or 'live'" });
-        return;
-      }
-      
-      // Update or create system_mode variable
-      const existingVariable = await storage.variables.getByName("system_mode");
-      if (existingVariable) {
-        await storage.variables.update(existingVariable.id, { value: mode });
-      } else {
-        await storage.variables.create({ name: "system_mode", value: mode });
-      }
-      
-      res.json({ mode });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update system mode" });
     }
   });
 
