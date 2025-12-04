@@ -29,6 +29,7 @@ The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI),
 -   **Logs Storage** (`server/storage/logs.ts`): Centralized log queries with `getLogs()`, `getLogFilters()`, `getLogById()`, `getLogsByHostEntityIds()` supporting filters, pagination, and OR conditions for entityId/hostEntityId.
 -   **Wizard Storage** (`server/storage/wizards.ts`): Includes `createMonthlyWizard()` and `createCorrectionsWizard()` with transaction-based race condition prevention.
 -   **Exception**: Services in `server/services/` may use storage functions but should not use `db` directly unless absolutely necessary.
+-   **Logging Config Co-location**: Each storage module (`variables.ts`, `contacts.ts`, `employers.ts`, etc.) exports its own `StorageLoggingConfig`. The `database.ts` file is a thin orchestrator (~116 lines) that imports configs and composes the `DatabaseStorage` class.
 
 ## Feature Specifications
 -   **Worker Management**: Full CRUD operations for workers with sequential `sirius_id`.
