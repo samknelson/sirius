@@ -16,6 +16,7 @@ import {
 } from "@shared/schema";
 import { permissionRegistry, type PermissionDefinition } from "@shared/permissions";
 import { eq, and, sql } from "drizzle-orm";
+import { type StorageLoggingConfig } from "./middleware/logging";
 
 export interface UserStorage {
   // User operations
@@ -403,3 +404,177 @@ export function createUserStorage(): UserStorage {
     },
   };
 }
+
+/**
+ * Logging configuration for user storage operations
+ * 
+ * Logs all user, role, and permission management operations with full argument capture and change tracking.
+ */
+export const userLoggingConfig: StorageLoggingConfig<UserStorage> = {
+  module: 'users',
+  methods: {
+    createUser: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.email || 'new user',
+      getHostEntityId: (args, result) => result?.id, // User ID is the host
+      after: async (args, result, storage) => {
+        return result; // Capture created user
+      }
+    },
+    updateUser: {
+      enabled: true,
+      getEntityId: (args) => args[0], // User ID
+      getHostEntityId: (args) => args[0], // User ID is the host
+      before: async (args, storage) => {
+        return await storage.getUser(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      },
+      getDescription: async (args, result, beforeState, afterState) => {
+        const user = afterState || beforeState;
+        if (!user) return `Updated user ${args[0]}`;
+        const userName = user.firstName && user.lastName
+          ? `${user.firstName} ${user.lastName}`
+          : user.email;
+        
+        // Calculate what changed
+        const changes: string[] = [];
+        if (beforeState && afterState) {
+          const allKeys = Array.from(new Set([...Object.keys(beforeState), ...Object.keys(afterState)]));
+          for (const key of allKeys) {
+            if (JSON.stringify(beforeState[key]) !== JSON.stringify(afterState[key])) {
+              changes.push(key);
+            }
+          }
+        }
+        
+        if (changes.length === 0) {
+          return `Updated user "${userName}" (no changes detected)`;
+        }
+        
+        return `Updated user "${userName}" (changed: ${changes.join(', ')})`;
+      }
+    },
+    deleteUser: {
+      enabled: true,
+      getEntityId: (args) => args[0], // User ID
+      getHostEntityId: (args, result, beforeState) => beforeState?.id || args[0], // User ID is the host
+      before: async (args, storage) => {
+        return await storage.getUser(args[0]); // Capture what's being deleted
+      },
+      getDescription: async (args, result, beforeState) => {
+        const user = beforeState;
+        if (!user) return `Deleted user ${args[0]}`;
+        const userName = user.firstName && user.lastName
+          ? `${user.firstName} ${user.lastName}`
+          : user.email;
+        return `Deleted user "${userName}"`;
+      }
+    },
+    linkReplitAccount: {
+      enabled: true,
+      getEntityId: (args) => args[0], // User ID
+      getHostEntityId: (args) => args[0], // User ID is the host
+      before: async (args, storage) => {
+        return await storage.getUser(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      },
+      getDescription: async (args, result, beforeState, afterState) => {
+        const user = afterState || beforeState;
+        if (!user) return `Linked Replit account for user ${args[0]}`;
+        const userName = user.firstName && user.lastName
+          ? `${user.firstName} ${user.lastName}`
+          : user.email;
+        return `Linked Replit account for "${userName}"`;
+      }
+    },
+    createRole: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.name || 'new role',
+      after: async (args, result, storage) => {
+        return result; // Capture created role
+      }
+    },
+    updateRole: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Role ID
+      before: async (args, storage) => {
+        return await storage.getRole(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    deleteRole: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Role ID
+      before: async (args, storage) => {
+        return await storage.getRole(args[0]); // Capture what's being deleted
+      }
+    },
+    updateRoleSequence: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Role ID
+      before: async (args, storage) => {
+        return await storage.getRole(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    assignRoleToUser: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.userId || 'user',
+      getHostEntityId: (args, result) => result?.userId || args[0]?.userId, // User ID is the host
+      after: async (args, result, storage) => {
+        return result; // Capture role assignment
+      },
+      getDescription: async (args, result, beforeState, afterState, storage) => {
+        const assignment = args[0];
+        const user = await storage.getUser(assignment.userId);
+        const role = await storage.getRole(assignment.roleId);
+        const userName = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email : 'Unknown user';
+        const roleName = role?.name || 'Unknown role';
+        return `Assigned "${roleName}" to ${userName}`;
+      }
+    },
+    unassignRoleFromUser: {
+      enabled: true,
+      getEntityId: (args) => args[0], // User ID
+      getHostEntityId: (args) => args[0], // User ID is the host
+      before: async (args, storage) => {
+        // Capture the roles before removal
+        const roles = await storage.getUserRoles(args[0]);
+        return { userId: args[0], roleId: args[1], roles };
+      },
+      getDescription: async (args, result, beforeState, afterState, storage) => {
+        const userId = args[0];
+        const roleId = args[1];
+        const user = await storage.getUser(userId);
+        const role = await storage.getRole(roleId);
+        const userName = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email : 'Unknown user';
+        const roleName = role?.name || 'Unknown role';
+        return `Unassigned "${roleName}" from ${userName}`;
+      }
+    },
+    assignPermissionToRole: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.roleId || 'role',
+      after: async (args, result, storage) => {
+        return result; // Capture permission assignment
+      }
+    },
+    unassignPermissionFromRole: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Role ID
+      before: async (args, storage) => {
+        // Capture the permissions before removal
+        const permissions = await storage.getRolePermissions(args[0]);
+        return { roleId: args[0], permissionKey: args[1], permissions };
+      }
+    }
+  }
+};

@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { trustBenefits, optionsTrustBenefitType, type TrustBenefit, type InsertTrustBenefit } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { type StorageLoggingConfig } from "./middleware/logging";
 
 export interface TrustBenefitStorage {
   getAllTrustBenefits(): Promise<any[]>;
@@ -94,3 +95,33 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
     }
   };
 }
+
+export const trustBenefitLoggingConfig: StorageLoggingConfig<TrustBenefitStorage> = {
+  module: 'trustBenefits',
+  methods: {
+    createTrustBenefit: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.name || 'new trust benefit',
+      after: async (args, result, storage) => {
+        return result; // Capture created trust benefit
+      }
+    },
+    updateTrustBenefit: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Trust benefit ID
+      before: async (args, storage) => {
+        return await storage.getTrustBenefit(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    deleteTrustBenefit: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Trust benefit ID
+      before: async (args, storage) => {
+        return await storage.getTrustBenefit(args[0]); // Capture what's being deleted
+      }
+    }
+  }
+};

@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { contacts, contactPostal, phoneNumbers, optionsGender, type Contact, type InsertContact, type ContactPostal, type InsertContactPostal, type PhoneNumber, type InsertPhoneNumber } from "@shared/schema";
+import { contacts, contactPostal, phoneNumbers, optionsGender, trustProviderContacts, employerContacts, type Contact, type InsertContact, type ContactPostal, type InsertContactPostal, type PhoneNumber, type InsertPhoneNumber } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 
@@ -573,3 +573,391 @@ export function createContactsStorage(
     phoneNumbers: phoneNumberStorage
   };
 }
+
+/**
+ * Helper function to format address for display in logs
+ */
+function formatAddressForLog(address: any): string {
+  if (!address) return 'Unknown';
+  
+  const parts: string[] = [];
+  
+  // Add street address
+  if (address.line1) {
+    parts.push(address.line1);
+  }
+  if (address.line2) {
+    parts.push(address.line2);
+  }
+  
+  // Add city, state, postal code
+  const cityStateZip: string[] = [];
+  if (address.city) cityStateZip.push(address.city);
+  if (address.state) cityStateZip.push(address.state);
+  if (address.postalCode) cityStateZip.push(address.postalCode);
+  
+  if (cityStateZip.length > 0) {
+    parts.push(cityStateZip.join(', '));
+  }
+  
+  return parts.length > 0 ? parts.join(', ') : 'Unknown';
+}
+
+/**
+ * Helper function to calculate changes between before and after address states
+ */
+function calculateAddressChanges(before: any, after: any): Record<string, { from: any; to: any }> {
+  if (before === null || before === undefined || after === null || after === undefined) {
+    return {};
+  }
+
+  if (typeof before !== 'object' || typeof after !== 'object') {
+    return before !== after ? { value: { from: before, to: after } } : {};
+  }
+
+  const changes: Record<string, { from: any; to: any }> = {};
+  const allKeys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]));
+
+  for (const key of allKeys) {
+    const beforeValue = before[key];
+    const afterValue = after[key];
+
+    if (JSON.stringify(beforeValue) !== JSON.stringify(afterValue)) {
+      changes[key] = { from: beforeValue, to: afterValue };
+    }
+  }
+
+  return changes;
+}
+
+/**
+ * Helper function to find the parent entity (trust provider or employer) for a contact
+ * Returns the provider/employer ID if found, otherwise returns the contact ID
+ */
+async function getParentEntityForContact(contactId: string): Promise<string> {
+  // Check if contact belongs to a trust provider contact
+  const [providerContact] = await db
+    .select({ providerId: trustProviderContacts.providerId })
+    .from(trustProviderContacts)
+    .where(eq(trustProviderContacts.contactId, contactId))
+    .limit(1);
+  
+  if (providerContact) {
+    return providerContact.providerId;
+  }
+  
+  // Check if contact belongs to an employer contact
+  const [employerContact] = await db
+    .select({ employerId: employerContacts.employerId })
+    .from(employerContacts)
+    .where(eq(employerContacts.contactId, contactId))
+    .limit(1);
+  
+  if (employerContact) {
+    return employerContact.employerId;
+  }
+  
+  // Fall back to contact ID if no parent entity found
+  return contactId;
+}
+
+/**
+ * Helper function to format phone number for display in logs
+ */
+function formatPhoneNumberForLog(phoneNumber: any): string {
+  if (!phoneNumber) return 'Unknown';
+  
+  const parts: string[] = [];
+  if (phoneNumber.formattedNumber) {
+    parts.push(phoneNumber.formattedNumber);
+  } else if (phoneNumber.number) {
+    parts.push(phoneNumber.number);
+  }
+  
+  if (phoneNumber.friendlyName) {
+    parts.push(`(${phoneNumber.friendlyName})`);
+  }
+  
+  return parts.length > 0 ? parts.join(' ') : 'Unknown';
+}
+
+/**
+ * Helper function to calculate changes between before and after states
+ */
+function calculatePhoneNumberChanges(before: any, after: any): Record<string, { from: any; to: any }> {
+  if (before === null || before === undefined || after === null || after === undefined) {
+    return {};
+  }
+
+  if (typeof before !== 'object' || typeof after !== 'object') {
+    return before !== after ? { value: { from: before, to: after } } : {};
+  }
+
+  const changes: Record<string, { from: any; to: any }> = {};
+  const allKeys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]));
+
+  for (const key of allKeys) {
+    const beforeValue = before[key];
+    const afterValue = after[key];
+
+    if (JSON.stringify(beforeValue) !== JSON.stringify(afterValue)) {
+      changes[key] = { from: beforeValue, to: afterValue };
+    }
+  }
+
+  return changes;
+}
+
+/**
+ * Logging configuration for contact storage operations
+ * 
+ * Logs all contact mutations with full argument capture and change tracking.
+ */
+export const contactLoggingConfig: StorageLoggingConfig<ContactsStorage> = {
+  module: 'contacts',
+  methods: {
+    createContact: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.displayName || args[0]?.given || args[0]?.family || 'new contact',
+      getHostEntityId: (args, result) => result?.id,
+      after: async (args, result, storage) => {
+        return result; // Capture created contact
+      }
+    },
+    updateName: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Contact ID
+      getHostEntityId: (args) => args[0], // Contact ID
+      before: async (args, storage) => {
+        return await storage.getContact(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    updateNameComponents: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Contact ID
+      getHostEntityId: (args) => args[0], // Contact ID
+      before: async (args, storage) => {
+        return await storage.getContact(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    updateEmail: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Contact ID
+      getHostEntityId: (args) => args[0], // Contact ID
+      before: async (args, storage) => {
+        return await storage.getContact(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    updateBirthDate: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Contact ID
+      getHostEntityId: (args) => args[0], // Contact ID
+      before: async (args, storage) => {
+        return await storage.getContact(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    updateGender: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Contact ID
+      getHostEntityId: (args) => args[0], // Contact ID
+      before: async (args, storage) => {
+        return await storage.getContact(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    deleteContact: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Contact ID
+      getHostEntityId: (args) => args[0], // Contact ID
+      before: async (args, storage) => {
+        return await storage.getContact(args[0]); // Capture what's being deleted
+      }
+    }
+  }
+};
+
+/**
+ * Logging configuration for address storage operations
+ * 
+ * Logs all postal address mutations with full argument capture and change tracking.
+ * Associates logs with parent entity (trust provider or employer) when applicable.
+ */
+export const addressLoggingConfig: StorageLoggingConfig<AddressStorage> = {
+  module: 'contacts.addresses',
+  methods: {
+    createContactPostal: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.contactId || 'new address',
+      getHostEntityId: async (args, result) => {
+        const contactId = result?.contactId || args[0]?.contactId;
+        return await getParentEntityForContact(contactId);
+      },
+      after: async (args, result, storage) => {
+        return result; // Capture created address
+      },
+      getDescription: (args, result, beforeState, afterState) => {
+        const addressDisplay = formatAddressForLog(afterState);
+        return `Created address "${addressDisplay}"`;
+      }
+    },
+    updateContactPostal: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Address ID
+      getHostEntityId: async (args, result, beforeState) => {
+        const contactId = result?.contactId || beforeState?.contactId;
+        return await getParentEntityForContact(contactId);
+      },
+      before: async (args, storage) => {
+        return await storage.getContactPostal(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      },
+      getDescription: (args, result, beforeState, afterState) => {
+        const addressDisplay = formatAddressForLog(afterState || beforeState);
+        const changes = calculateAddressChanges(beforeState, afterState);
+        const changedFields = Object.keys(changes);
+        
+        if (changedFields.length === 0) {
+          return `Updated address "${addressDisplay}" (no changes detected)`;
+        }
+        
+        const fieldList = changedFields.join(', ');
+        return `Updated address "${addressDisplay}" (changed: ${fieldList})`;
+      }
+    },
+    deleteContactPostal: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Address ID
+      getHostEntityId: async (args, result, beforeState) => {
+        const contactId = beforeState?.contactId;
+        return await getParentEntityForContact(contactId);
+      },
+      before: async (args, storage) => {
+        return await storage.getContactPostal(args[0]); // Capture what's being deleted
+      },
+      getDescription: (args, result, beforeState, afterState) => {
+        const addressDisplay = formatAddressForLog(beforeState);
+        return `Deleted address "${addressDisplay}"`;
+      }
+    },
+    setAddressAsPrimary: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Address ID
+      getHostEntityId: async (args, result, beforeState) => {
+        const contactId = result?.contactId || beforeState?.contactId;
+        return await getParentEntityForContact(contactId);
+      },
+      before: async (args, storage) => {
+        return await storage.getContactPostal(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      },
+      getDescription: (args, result, beforeState, afterState) => {
+        const addressDisplay = formatAddressForLog(afterState || beforeState);
+        return `Set address "${addressDisplay}" as primary`;
+      }
+    }
+  }
+};
+
+/**
+ * Logging configuration for phone number storage operations
+ * 
+ * Logs all phone number mutations with full argument capture and change tracking.
+ * Associates logs with parent entity (trust provider or employer) when applicable.
+ */
+export const phoneNumberLoggingConfig: StorageLoggingConfig<PhoneNumberStorage> = {
+  module: 'contacts.phoneNumbers',
+  methods: {
+    createPhoneNumber: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.contactId || 'new phone',
+      getHostEntityId: async (args, result) => {
+        const contactId = result?.contactId || args[0]?.contactId;
+        return await getParentEntityForContact(contactId);
+      },
+      after: async (args, result, storage) => {
+        return result; // Capture created phone number
+      },
+      getDescription: (args, result, beforeState, afterState) => {
+        const phoneDisplay = formatPhoneNumberForLog(afterState);
+        return `Created phone number "${phoneDisplay}"`;
+      }
+    },
+    updatePhoneNumber: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Phone number ID
+      getHostEntityId: async (args, result, beforeState) => {
+        const contactId = result?.contactId || beforeState?.contactId;
+        return await getParentEntityForContact(contactId);
+      },
+      before: async (args, storage) => {
+        return await storage.getPhoneNumber(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      },
+      getDescription: (args, result, beforeState, afterState) => {
+        const phoneDisplay = formatPhoneNumberForLog(afterState || beforeState);
+        const changes = calculatePhoneNumberChanges(beforeState, afterState);
+        const changedFields = Object.keys(changes);
+        
+        if (changedFields.length === 0) {
+          return `Updated phone number "${phoneDisplay}" (no changes detected)`;
+        }
+        
+        const fieldList = changedFields.join(', ');
+        return `Updated phone number "${phoneDisplay}" (changed: ${fieldList})`;
+      }
+    },
+    deletePhoneNumber: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Phone number ID
+      getHostEntityId: async (args, result, beforeState) => {
+        const contactId = beforeState?.contactId;
+        return await getParentEntityForContact(contactId);
+      },
+      before: async (args, storage) => {
+        return await storage.getPhoneNumber(args[0]); // Capture what's being deleted
+      },
+      getDescription: (args, result, beforeState, afterState) => {
+        const phoneDisplay = formatPhoneNumberForLog(beforeState);
+        return `Deleted phone number "${phoneDisplay}"`;
+      }
+    },
+    setPhoneNumberAsPrimary: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Phone number ID
+      getHostEntityId: async (args, result, beforeState) => {
+        const contactId = result?.contactId || beforeState?.contactId;
+        return await getParentEntityForContact(contactId);
+      },
+      before: async (args, storage) => {
+        return await storage.getPhoneNumber(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      },
+      getDescription: (args, result, beforeState, afterState) => {
+        const phoneDisplay = formatPhoneNumberForLog(afterState || beforeState);
+        return `Set phone number "${phoneDisplay}" as primary`;
+      }
+    }
+  }
+};

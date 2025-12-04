@@ -26,6 +26,7 @@ import {
   type InsertEmploymentStatus
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { type StorageLoggingConfig } from "./middleware/logging";
 
 export interface GenderOptionStorage {
   getAllGenderOptions(): Promise<GenderOption[]>;
@@ -70,6 +71,41 @@ export interface EmployerContactTypeStorage {
   update(id: string, contactType: Partial<InsertEmployerContactType>): Promise<EmployerContactType | undefined>;
   delete(id: string): Promise<boolean>;
 }
+
+/**
+ * Logging configuration for employer contact type storage operations
+ * 
+ * Logs all create/update/delete operations on employer contact types with full argument capture and change tracking.
+ */
+export const employerContactTypeLoggingConfig: StorageLoggingConfig<EmployerContactTypeStorage> = {
+  module: 'options.employerContactTypes',
+  methods: {
+    create: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.name || 'new employer contact type',
+      after: async (args, result, storage) => {
+        return result; // Capture created contact type
+      }
+    },
+    update: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Contact type ID
+      before: async (args, storage) => {
+        return await storage.get(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    delete: {
+      enabled: true,
+      getEntityId: (args) => args[0], // Contact type ID
+      before: async (args, storage) => {
+        return await storage.get(args[0]); // Capture what's being deleted
+      }
+    }
+  }
+};
 
 export interface TrustProviderTypeStorage {
   getAll(): Promise<TrustProviderType[]>;

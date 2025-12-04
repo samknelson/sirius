@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { employers, type Employer, type InsertEmployer } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
+import { type StorageLoggingConfig } from "./middleware/logging";
 
 export interface EmployerWorker {
   workerId: string;
@@ -95,3 +96,36 @@ export function createEmployerStorage(): EmployerStorage {
     }
   };
 }
+
+export const employerLoggingConfig: StorageLoggingConfig<EmployerStorage> = {
+  module: 'employers',
+  methods: {
+    createEmployer: {
+      enabled: true,
+      getEntityId: (args, result) => result?.id || args[0]?.name || 'new employer',
+      getHostEntityId: (args, result) => result?.id,
+      after: async (args, result, storage) => {
+        return result;
+      }
+    },
+    updateEmployer: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        return await storage.getEmployer(args[0]);
+      },
+      after: async (args, result, storage) => {
+        return result;
+      }
+    },
+    deleteEmployer: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args, result, beforeState) => beforeState?.id || args[0],
+      before: async (args, storage) => {
+        return await storage.getEmployer(args[0]);
+      }
+    }
+  }
+};

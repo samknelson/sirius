@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { variables, type Variable, type InsertVariable } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { type StorageLoggingConfig } from "./middleware/logging";
 
 export interface VariableStorage {
   getAll(): Promise<Variable[]>;
@@ -52,3 +53,33 @@ export function createVariableStorage(): VariableStorage {
     }
   };
 }
+
+export const variableLoggingConfig: StorageLoggingConfig<VariableStorage> = {
+  module: 'variables',
+  methods: {
+    create: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.name,
+      after: async (args, result, storage) => {
+        return result;
+      }
+    },
+    update: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        return await storage.get(args[0]);
+      },
+      after: async (args, result, storage) => {
+        return result;
+      }
+    },
+    delete: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        return await storage.get(args[0]);
+      }
+    }
+  }
+};
