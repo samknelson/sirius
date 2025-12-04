@@ -34,8 +34,37 @@ export interface WorkerHoursDeleteResult {
   notifications?: LedgerNotification[];
 }
 
+export interface WorkerWithDetails {
+  id: string;
+  sirius_id: number | null;
+  contact_id: string;
+  ssn: string | null;
+  denorm_ws_id: string | null;
+  denorm_home_employer_id: string | null;
+  denorm_employer_ids: string[] | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  given: string | null;
+  middle: string | null;
+  family: string | null;
+  phone_number: string | null;
+  is_primary: boolean | null;
+  address_id: string | null;
+  address_friendly_name: string | null;
+  address_street: string | null;
+  address_city: string | null;
+  address_state: string | null;
+  address_postal_code: string | null;
+  address_country: string | null;
+  address_is_primary: boolean | null;
+  benefit_types: string[] | null;
+  benefit_ids: string[] | null;
+  benefits: Array<{ id: string; name: string; typeName: string; typeIcon: string | null }> | null;
+}
+
 export interface WorkerStorage {
   getAllWorkers(): Promise<Worker[]>;
+  getWorkersWithDetails(): Promise<WorkerWithDetails[]>;
   getWorker(id: string): Promise<Worker | undefined>;
   getWorkerBySSN(ssn: string): Promise<Worker | undefined>;
   createWorker(name: string): Promise<Worker>;
@@ -81,6 +110,90 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
   const storage = {
     async getAllWorkers(): Promise<Worker[]> {
       return await db.select().from(workers);
+    },
+
+    async getWorkersWithDetails(): Promise<WorkerWithDetails[]> {
+      const result = await db.execute(sql`
+        SELECT 
+          w.id,
+          w.sirius_id,
+          w.contact_id,
+          w.ssn,
+          w.denorm_ws_id,
+          w.denorm_home_employer_id,
+          w.denorm_employer_ids,
+          c.display_name as contact_name,
+          c.email as contact_email,
+          c.given,
+          c.middle,
+          c.family,
+          p.phone_number,
+          p.is_primary,
+          a.id as address_id,
+          a.friendly_name as address_friendly_name,
+          a.street as address_street,
+          a.city as address_city,
+          a.state as address_state,
+          a.postal_code as address_postal_code,
+          a.country as address_country,
+          a.is_primary as address_is_primary,
+          COALESCE(
+            (
+              SELECT json_agg(DISTINCT bt.name)
+              FROM trust_wmb wmb
+              INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
+              INNER JOIN options_trust_benefit_type bt ON tb.benefit_type = bt.id
+              WHERE wmb.worker_id = w.id
+                AND tb.is_active = true
+            ),
+            '[]'::json
+          ) as benefit_types,
+          COALESCE(
+            (
+              SELECT json_agg(DISTINCT wmb.benefit_id)
+              FROM trust_wmb wmb
+              INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
+              WHERE wmb.worker_id = w.id
+                AND tb.is_active = true
+            ),
+            '[]'::json
+          ) as benefit_ids,
+          COALESCE(
+            (
+              SELECT json_agg(DISTINCT jsonb_build_object(
+                'id', tb.id,
+                'name', tb.name,
+                'typeName', bt.name,
+                'typeIcon', bt.data->>'icon'
+              ))
+              FROM trust_wmb wmb
+              INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
+              INNER JOIN options_trust_benefit_type bt ON tb.benefit_type = bt.id
+              WHERE wmb.worker_id = w.id
+                AND tb.is_active = true
+            ),
+            '[]'::json
+          ) as benefits
+        FROM workers w
+        INNER JOIN contacts c ON w.contact_id = c.id
+        LEFT JOIN LATERAL (
+          SELECT phone_number, is_primary
+          FROM contact_phone
+          WHERE contact_id = c.id
+          ORDER BY is_primary DESC NULLS LAST, created_at ASC
+          LIMIT 1
+        ) p ON true
+        LEFT JOIN LATERAL (
+          SELECT id, friendly_name, street, city, state, postal_code, country, is_primary
+          FROM contact_postal
+          WHERE contact_id = c.id AND is_active = true
+          ORDER BY is_primary DESC NULLS LAST, created_at ASC
+          LIMIT 1
+        ) a ON true
+        ORDER BY c.family, c.given
+      `);
+      
+      return result.rows as unknown as WorkerWithDetails[];
     },
 
     async getWorker(id: string): Promise<Worker | undefined> {
