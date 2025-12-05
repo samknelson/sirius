@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle, Scale, Stethoscope, Smile, Eye as EyeIcon, Star, Download, GraduationCap, Heart, Laptop, ShoppingBag, Mail, Phone, type LucideIcon } from "lucide-react";
+import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle, Scale, Stethoscope, Smile, Eye as EyeIcon, Star, Download, GraduationCap, Heart, Laptop, ShoppingBag, Mail, Phone, MailX, PhoneOff, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -543,7 +543,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                   </SelectItem>
                   <SelectItem value="missing_email">
                     <div className="flex items-center gap-2">
-                      <Mail size={14} className="text-muted-foreground" />
+                      <MailX size={14} className="text-red-500" />
                       <span>Missing Email</span>
                     </div>
                   </SelectItem>
@@ -555,7 +555,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                   </SelectItem>
                   <SelectItem value="missing_phone">
                     <div className="flex items-center gap-2">
-                      <Phone size={14} className="text-muted-foreground" />
+                      <PhoneOff size={14} className="text-red-500" />
                       <span>Missing Phone</span>
                     </div>
                   </SelectItem>
@@ -567,7 +567,12 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                   </SelectItem>
                   <SelectItem value="missing_address">
                     <div className="flex items-center gap-2">
-                      <Home size={14} className="text-muted-foreground" />
+                      <span className="relative inline-flex">
+                        <Home size={14} className="text-red-500" />
+                        <span className="absolute inset-0 flex items-center justify-center">
+                          <span className="w-[140%] h-[2px] bg-red-500 rotate-[-45deg]" />
+                        </span>
+                      </span>
                       <span>Missing Address</span>
                     </div>
                   </SelectItem>
@@ -676,7 +681,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                         data-testid={`email-indicator-${worker.id}`}
                         aria-label={`No email for ${worker.contactName}`}
                       >
-                        <Mail size={16} className="text-muted-foreground" />
+                        <MailX size={16} className="text-red-500" />
                       </div>
                     )}
                   </td>
@@ -709,7 +714,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                         data-testid={`phone-indicator-${worker.id}`}
                         aria-label={`No phone for ${worker.contactName}`}
                       >
-                        <Phone size={16} className="text-muted-foreground" />
+                        <PhoneOff size={16} className="text-red-500" />
                       </div>
                     )}
                   </td>
@@ -758,8 +763,12 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                       <div 
                         data-testid={`address-indicator-${worker.id}`}
                         aria-label={`No address for ${worker.contactName}`}
+                        className="relative inline-flex"
                       >
-                        <Home size={16} className="text-muted-foreground" />
+                        <Home size={16} className="text-red-500" />
+                        <span className="absolute inset-0 flex items-center justify-center">
+                          <span className="w-[140%] h-[2px] bg-red-500 rotate-[-45deg]" />
+                        </span>
                       </div>
                     )}
                   </td>
