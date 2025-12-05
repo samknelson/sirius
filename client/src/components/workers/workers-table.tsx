@@ -677,12 +677,15 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                         </HoverCardContent>
                       </HoverCard>
                     ) : (
-                      <div 
-                        data-testid={`email-indicator-${worker.id}`}
-                        aria-label={`No email for ${worker.contactName}`}
-                      >
-                        <MailX size={16} className="text-red-500" />
-                      </div>
+                      <Link href={`/workers/${worker.id}/email`}>
+                        <div 
+                          data-testid={`email-indicator-${worker.id}`}
+                          aria-label={`Add email for ${worker.contactName}`}
+                          className="cursor-pointer hover:opacity-70 transition-opacity"
+                        >
+                          <MailX size={16} className="text-red-500" />
+                        </div>
+                      </Link>
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -710,12 +713,15 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                         </HoverCardContent>
                       </HoverCard>
                     ) : (
-                      <div 
-                        data-testid={`phone-indicator-${worker.id}`}
-                        aria-label={`No phone for ${worker.contactName}`}
-                      >
-                        <PhoneOff size={16} className="text-red-500" />
-                      </div>
+                      <Link href={`/workers/${worker.id}/phone-numbers`}>
+                        <div 
+                          data-testid={`phone-indicator-${worker.id}`}
+                          aria-label={`Add phone for ${worker.contactName}`}
+                          className="cursor-pointer hover:opacity-70 transition-opacity"
+                        >
+                          <PhoneOff size={16} className="text-red-500" />
+                        </div>
+                      </Link>
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -760,16 +766,18 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                         </HoverCardContent>
                       </HoverCard>
                     ) : (
-                      <div 
-                        data-testid={`address-indicator-${worker.id}`}
-                        aria-label={`No address for ${worker.contactName}`}
-                        className="relative inline-flex"
-                      >
-                        <Home size={16} className="text-red-500" />
-                        <span className="absolute inset-0 flex items-center justify-center">
-                          <span className="w-[140%] h-[2px] bg-red-500 rotate-[-45deg]" />
-                        </span>
-                      </div>
+                      <Link href={`/workers/${worker.id}/addresses`}>
+                        <div 
+                          data-testid={`address-indicator-${worker.id}`}
+                          aria-label={`Add address for ${worker.contactName}`}
+                          className="relative inline-flex cursor-pointer hover:opacity-70 transition-opacity"
+                        >
+                          <Home size={16} className="text-red-500" />
+                          <span className="absolute inset-0 flex items-center justify-center">
+                            <span className="w-[140%] h-[2px] bg-red-500 rotate-[-45deg]" />
+                          </span>
+                        </div>
+                      </Link>
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
