@@ -500,7 +500,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
             )
           );
 
-        if (remaining.count === 0) {
+        if (Number(remaining.count) === 0) {
           await tx
             .update(trustWmbScanStatus)
             .set({
