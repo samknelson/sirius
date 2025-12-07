@@ -323,9 +323,9 @@ function WorkerBenefitsContent() {
   );
 }
 
-export default function WorkerBenefitsPage() {
+export default function WorkerBenefitsHistory() {
   return (
-    <WorkerLayout activeTab="benefits">
+    <WorkerLayout activeTab="benefits-history">
       <WorkerBenefitsContent />
     </WorkerLayout>
   );

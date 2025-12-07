@@ -25,7 +25,8 @@ import WorkerIDs from "@/pages/worker-ids";
 import WorkerBirthDate from "@/pages/worker-birth-date";
 import WorkerGender from "@/pages/worker-gender";
 import WorkerWorkStatus from "@/pages/worker-work-status";
-import WorkerBenefits from "@/pages/worker-benefits";
+import WorkerBenefitsHistory from "@/pages/worker-benefits-history";
+import WorkerBenefitsEligibility from "@/pages/worker-benefits-eligibility";
 import WorkerCurrentEmployment from "@/pages/worker-current-employment";
 import WorkerEmploymentHistory from "@/pages/worker-employment-history";
 import WorkerHoursMonthly from "@/pages/worker-hours-monthly";
@@ -323,10 +324,18 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/workers/:id/benefits">
+      <Route path="/workers/:id/benefits/history">
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
-            <WorkerBenefits />
+            <WorkerBenefitsHistory />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/benefits/eligibility">
+        <ProtectedRoute permission="workers.view">
+          <AuthenticatedLayout>
+            <WorkerBenefitsEligibility />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

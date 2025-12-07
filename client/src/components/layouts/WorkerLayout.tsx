@@ -26,7 +26,7 @@ export function useWorkerLayout() {
 }
 
 interface WorkerLayoutProps {
-  activeTab: "details" | "identity" | "name" | "email" | "ids" | "addresses" | "phone-numbers" | "birth-date" | "gender" | "work-status" | "employment" | "current" | "history" | "monthly" | "daily" | "comm" | "comm-history" | "send-sms" | "send-email" | "send-postal" | "benefits" | "logs" | "delete";
+  activeTab: "details" | "identity" | "name" | "email" | "ids" | "addresses" | "phone-numbers" | "birth-date" | "gender" | "work-status" | "employment" | "current" | "history" | "monthly" | "daily" | "comm" | "comm-history" | "send-sms" | "send-email" | "send-postal" | "benefits" | "benefits-history" | "benefits-eligibility" | "logs" | "delete";
   children: ReactNode;
 }
 
@@ -152,7 +152,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     { id: "contact", label: "Contact", href: `/workers/${worker.id}/email` },
     { id: "comm", label: "Comm", href: `/workers/${worker.id}/comm/history` },
     { id: "employment", label: "Employment", href: `/workers/${worker.id}/employment/current` },
-    { id: "benefits", label: "Benefits", href: `/workers/${worker.id}/benefits` },
+    { id: "benefits", label: "Benefits", href: `/workers/${worker.id}/benefits/history` },
     { id: "logs", label: "Logs", href: `/workers/${worker.id}/logs` },
     { id: "delete", label: "Delete", href: `/workers/${worker.id}/delete` },
   ];
@@ -185,15 +185,22 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     { id: "daily", label: "Daily", href: `/workers/${worker.id}/employment/daily` },
   ];
 
+  const benefitsSubTabs = [
+    { id: "benefits-history", label: "History", href: `/workers/${worker.id}/benefits/history` },
+    { id: "benefits-eligibility", label: "Eligibility", href: `/workers/${worker.id}/benefits/eligibility` },
+  ];
+
   // Determine if we're in a sub-tab
   const isIdentitySubTab = ["name", "ids", "birth-date", "gender", "work-status"].includes(activeTab);
   const isContactSubTab = ["email", "addresses", "phone-numbers"].includes(activeTab);
   const isCommSubTab = ["comm-history", "send-sms", "send-email", "send-postal"].includes(activeTab);
   const isEmploymentSubTab = ["current", "history", "monthly", "daily"].includes(activeTab);
+  const isBenefitsSubTab = ["benefits-history", "benefits-eligibility"].includes(activeTab);
   const showIdentitySubTabs = isIdentitySubTab;
   const showContactSubTabs = isContactSubTab;
   const showCommSubTabs = isCommSubTab;
   const showEmploymentSubTabs = isEmploymentSubTab;
+  const showBenefitsSubTabs = isBenefitsSubTab;
 
   const contextValue: WorkerLayoutContextValue = {
     worker,
@@ -235,7 +242,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center space-x-2 py-3">
               {mainTabs.map((tab) => {
-                const isActive = tab.id === activeTab || (tab.id === "identity" && isIdentitySubTab) || (tab.id === "contact" && isContactSubTab) || (tab.id === "comm" && isCommSubTab) || (tab.id === "employment" && isEmploymentSubTab);
+                const isActive = tab.id === activeTab || (tab.id === "identity" && isIdentitySubTab) || (tab.id === "contact" && isContactSubTab) || (tab.id === "comm" && isCommSubTab) || (tab.id === "employment" && isEmploymentSubTab) || (tab.id === "benefits" && isBenefitsSubTab);
                 return isActive ? (
                   <Button
                     key={tab.id}
@@ -363,6 +370,38 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex items-center space-x-2 py-2 pl-4">
                 {employmentSubTabs.map((tab) => (
+                  tab.id === activeTab ? (
+                    <Button
+                      key={tab.id}
+                      variant="secondary"
+                      size="sm"
+                      data-testid={`button-worker-${tab.id}`}
+                    >
+                      {tab.label}
+                    </Button>
+                  ) : (
+                    <Link key={tab.id} href={tab.href}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid={`button-worker-${tab.id}`}
+                      >
+                        {tab.label}
+                      </Button>
+                    </Link>
+                  )
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Benefits Sub-Tab Navigation */}
+        {showBenefitsSubTabs && (
+          <div className="bg-muted/30 border-b border-border">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex items-center space-x-2 py-2 pl-4">
+                {benefitsSubTabs.map((tab) => (
                   tab.id === activeTab ? (
                     <Button
                       key={tab.id}
