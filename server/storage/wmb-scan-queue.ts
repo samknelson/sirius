@@ -104,44 +104,53 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
             .insert(trustWmbScanStatus)
             .values({ month, year, status: "queued" })
             .returning();
+        } else {
+          // Reset status counters for re-queue
+          [status] = await tx
+            .update(trustWmbScanStatus)
+            .set({
+              status: "queued",
+              totalQueued: 0,
+              processedSuccess: 0,
+              processedFailed: 0,
+              startedAt: null,
+              completedAt: null,
+            })
+            .where(eq(trustWmbScanStatus.id, status.id))
+            .returning();
         }
+
+        // Reset all existing queue entries for this month to pending
+        await tx
+          .update(trustWmbScanQueue)
+          .set({
+            status: "pending",
+            triggerSource: "monthly_batch",
+            attempts: 0,
+            lastError: null,
+            pickedAt: null,
+            completedAt: null,
+            resultSummary: null,
+          })
+          .where(eq(trustWmbScanQueue.statusId, status.id));
 
         // Get all active workers
         const activeWorkers = await tx
           .select({ id: workers.id })
           .from(workers);
 
-        // Insert queue entries for each worker (upsert to handle existing entries)
-        let queuedCount = 0;
-        for (const worker of activeWorkers) {
-          const [existing] = await tx
-            .select()
-            .from(trustWmbScanQueue)
-            .where(
-              and(
-                eq(trustWmbScanQueue.workerId, worker.id),
-                eq(trustWmbScanQueue.month, month),
-                eq(trustWmbScanQueue.year, year)
-              )
-            );
+        // Get existing queue entries for this month
+        const existingEntries = await tx
+          .select({ workerId: trustWmbScanQueue.workerId })
+          .from(trustWmbScanQueue)
+          .where(eq(trustWmbScanQueue.statusId, status.id));
+        
+        const existingWorkerIds = new Set(existingEntries.map(e => e.workerId));
 
-          if (existing) {
-            // Reset to pending if not already completed
-            if (existing.status !== "success") {
-              await tx
-                .update(trustWmbScanQueue)
-                .set({
-                  status: "pending",
-                  triggerSource: "monthly_batch",
-                  attempts: 0,
-                  lastError: null,
-                  pickedAt: null,
-                  completedAt: null,
-                })
-                .where(eq(trustWmbScanQueue.id, existing.id));
-              queuedCount++;
-            }
-          } else {
+        // Insert queue entries only for workers not already in queue
+        let newCount = 0;
+        for (const worker of activeWorkers) {
+          if (!existingWorkerIds.has(worker.id)) {
             await tx
               .insert(trustWmbScanQueue)
               .values({
@@ -152,20 +161,18 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
                 status: "pending",
                 triggerSource: "monthly_batch",
               });
-            queuedCount++;
+            newCount++;
           }
         }
 
-        // Update status totals
+        // Set totalQueued to actual count of workers in queue
+        const totalQueued = existingEntries.length + newCount;
         await tx
           .update(trustWmbScanStatus)
-          .set({
-            totalQueued: sql`${trustWmbScanStatus.totalQueued} + ${queuedCount}`,
-            status: "queued",
-          })
+          .set({ totalQueued })
           .where(eq(trustWmbScanStatus.id, status.id));
 
-        return { statusId: status.id, queuedCount };
+        return { statusId: status.id, queuedCount: totalQueued };
       });
     },
 
