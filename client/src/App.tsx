@@ -153,6 +153,7 @@ import EaTransactions from "@/pages/config/ledger/ea-transactions";
 import SiteInformation from "@/pages/site-information";
 import PolicyView from "@/pages/policy-view";
 import PolicyEdit from "@/pages/policy-edit";
+import PolicyBenefits from "@/pages/policy-benefits";
 import PoliciesConfigPage from "@/pages/config/policies";
 import NotFound from "@/pages/not-found";
 
@@ -752,6 +753,14 @@ function Router() {
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <PolicyEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/policies/:id/benefits">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <PolicyBenefits />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

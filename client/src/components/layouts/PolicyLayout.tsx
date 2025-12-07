@@ -24,7 +24,7 @@ export function usePolicyLayout() {
 }
 
 interface PolicyLayoutProps {
-  activeTab: "details" | "edit";
+  activeTab: "details" | "edit" | "benefits";
   children: ReactNode;
 }
 
@@ -132,6 +132,7 @@ export function PolicyLayout({ activeTab, children }: PolicyLayoutProps) {
   const tabs = [
     { id: "details", label: "Details", href: `/policies/${policy.id}` },
     { id: "edit", label: "Edit", href: `/policies/${policy.id}/edit` },
+    { id: "benefits", label: "Benefits", href: `/policies/${policy.id}/benefits` },
   ];
 
   const contextValue: PolicyLayoutContextValue = {
