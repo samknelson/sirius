@@ -6,6 +6,7 @@ import { EmployerMonthlyUploadsPlugin } from "./employerMonthlyUploads/EmployerM
 import { EmployerMonthlySettings } from "./employerMonthlyUploads/EmployerMonthlySettings";
 import { ReportsPlugin } from "./reports/ReportsPlugin";
 import { ReportsSettings } from "./reports/ReportsSettings";
+import { WmbScanStatusPlugin } from "./wmbScanStatus/WmbScanStatusPlugin";
 
 export const pluginRegistry: DashboardPlugin[] = [
   {
@@ -45,6 +46,15 @@ export const pluginRegistry: DashboardPlugin[] = [
     requiredPermissions: ["admin"],
     enabledByDefault: true,
     settingsComponent: EmployerMonthlySettings,
+  },
+  {
+    id: "wmb-scan-status",
+    name: "Benefits Scan Status",
+    description: "Display running and upcoming monthly benefits scans with links to details",
+    order: 5,
+    component: WmbScanStatusPlugin,
+    requiredPermissions: ["admin"],
+    enabledByDefault: true,
   },
 ];
 
