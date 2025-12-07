@@ -14,6 +14,10 @@ import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReports
 // Note: Individual plugins are registered in ./charge-plugins/index.ts
 import "./charge-plugins";
 
+// Import eligibility plugins module to trigger registration
+// Note: Individual plugins are registered in ./eligibility-plugins/index.ts
+import "./eligibility-plugins";
+
 // Import service providers module to trigger registration
 // Note: SMS, Email, and other providers are registered here
 import "./services/providers";

@@ -27,6 +27,7 @@ export interface WorkerHoursStorage {
   getWorkerHoursHistory(workerId: string): Promise<any[]>;
   getWorkerHoursMonthly(workerId: string): Promise<any[]>;
   getMonthlyHoursTotal(workerId: string, employerId: string, year: number, month: number, employmentStatusIds?: string[]): Promise<number>;
+  getWorkerMonthlyHoursAllEmployers(workerId: string, year: number, month: number): Promise<number>;
   createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult>;
   updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean }): Promise<WorkerHoursResult | undefined>;
   deleteWorkerHours(id: string): Promise<WorkerHoursDeleteResult>;
@@ -298,6 +299,19 @@ export function createWorkerHoursStorage(): WorkerHoursStorage {
       }
 
       const [result] = await query;
+      return Number(result?.totalHours || 0);
+    },
+
+    async getWorkerMonthlyHoursAllEmployers(workerId: string, year: number, month: number): Promise<number> {
+      const [result] = await db
+        .select({ totalHours: sql<number>`COALESCE(SUM(${workerHours.hours}), 0)` })
+        .from(workerHours)
+        .where(and(
+          eq(workerHours.workerId, workerId),
+          eq(workerHours.year, year),
+          eq(workerHours.month, month)
+        ));
+
       return Number(result?.totalHours || 0);
     },
 
