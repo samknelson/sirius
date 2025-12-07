@@ -48,7 +48,7 @@ class WorkStatusPlugin extends EligibilityPlugin<WorkStatusConfig> {
     }
 
     const statusId = effectiveEntry.wsId;
-    const statusName = effectiveEntry.wsName || "Unknown";
+    const statusName = effectiveEntry.ws?.name || "Unknown";
     const isAllowed = config.allowedStatusIds.includes(statusId);
     
     if (isAllowed) {
