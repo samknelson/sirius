@@ -14,6 +14,19 @@ export interface QueueEntryWithWorker extends TrustWmbScanQueue {
   workerDisplayName: string | null;
 }
 
+export interface QueueEntriesFilter {
+  search?: string;
+  outcome?: "started" | "continued" | "terminated" | null;
+  status?: string;
+}
+
+export interface PagedQueueEntriesResult {
+  data: QueueEntryWithWorker[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
 export interface WmbScanQueueStorage {
   // Status methods
   getMonthStatus(month: number, year: number): Promise<TrustWmbScanStatus | undefined>;
@@ -25,6 +38,7 @@ export interface WmbScanQueueStorage {
   // Queue methods
   getQueuedWorkers(statusId: string): Promise<TrustWmbScanQueue[]>;
   getQueueEntriesWithWorkerInfo(statusId: string): Promise<QueueEntryWithWorker[]>;
+  getQueueEntriesPaged(statusId: string, page: number, pageSize: number, filter?: QueueEntriesFilter): Promise<PagedQueueEntriesResult>;
   getWorkerQueueEntry(workerId: string, month: number, year: number): Promise<TrustWmbScanQueue | undefined>;
   
   // Bulk operations
@@ -121,6 +135,97 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
         .where(eq(trustWmbScanQueue.statusId, statusId))
         .orderBy(asc(workers.siriusId), asc(trustWmbScanQueue.id));
       return results;
+    },
+
+    async getQueueEntriesPaged(statusId: string, page: number, pageSize: number, filter?: QueueEntriesFilter): Promise<PagedQueueEntriesResult> {
+      const offset = (page - 1) * pageSize;
+      
+      // Build WHERE conditions
+      const conditions: any[] = [eq(trustWmbScanQueue.statusId, statusId)];
+      
+      // Search filter on worker name or sirius ID
+      if (filter?.search) {
+        const searchTerm = `%${filter.search}%`;
+        conditions.push(
+          or(
+            sql`${contacts.displayName} ILIKE ${searchTerm}`,
+            sql`CAST(${workers.siriusId} AS TEXT) LIKE ${searchTerm}`
+          )
+        );
+      }
+      
+      // Status filter
+      if (filter?.status) {
+        conditions.push(eq(trustWmbScanQueue.status, filter.status));
+      }
+      
+      // Outcome filter - uses JSONB queries
+      if (filter?.outcome === "started") {
+        // Has at least one action with scanType=start AND eligible=true
+        conditions.push(
+          sql`EXISTS (
+            SELECT 1 FROM jsonb_array_elements(${trustWmbScanQueue.resultSummary}->'actions') AS action
+            WHERE action->>'scanType' = 'start' AND (action->>'eligible')::boolean = true
+          )`
+        );
+      } else if (filter?.outcome === "continued") {
+        // Has at least one action with scanType=continue AND eligible=true AND action != delete
+        conditions.push(
+          sql`EXISTS (
+            SELECT 1 FROM jsonb_array_elements(${trustWmbScanQueue.resultSummary}->'actions') AS action
+            WHERE action->>'scanType' = 'continue' AND (action->>'eligible')::boolean = true AND action->>'action' != 'delete'
+          )`
+        );
+      } else if (filter?.outcome === "terminated") {
+        // Has at least one action with scanType=continue AND action=delete
+        conditions.push(
+          sql`EXISTS (
+            SELECT 1 FROM jsonb_array_elements(${trustWmbScanQueue.resultSummary}->'actions') AS action
+            WHERE action->>'scanType' = 'continue' AND action->>'action' = 'delete'
+          )`
+        );
+      }
+      
+      const whereClause = and(...conditions);
+      
+      // Get total count
+      const [countResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(trustWmbScanQueue)
+        .leftJoin(workers, eq(trustWmbScanQueue.workerId, workers.id))
+        .leftJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(whereClause);
+      
+      const total = Number(countResult?.count) || 0;
+      
+      // Get paged data
+      const results = await db
+        .select({
+          id: trustWmbScanQueue.id,
+          statusId: trustWmbScanQueue.statusId,
+          workerId: trustWmbScanQueue.workerId,
+          month: trustWmbScanQueue.month,
+          year: trustWmbScanQueue.year,
+          status: trustWmbScanQueue.status,
+          triggerSource: trustWmbScanQueue.triggerSource,
+          resultSummary: trustWmbScanQueue.resultSummary,
+          scheduledFor: trustWmbScanQueue.scheduledFor,
+          pickedAt: trustWmbScanQueue.pickedAt,
+          completedAt: trustWmbScanQueue.completedAt,
+          attempts: trustWmbScanQueue.attempts,
+          lastError: trustWmbScanQueue.lastError,
+          workerSiriusId: workers.siriusId,
+          workerDisplayName: contacts.displayName,
+        })
+        .from(trustWmbScanQueue)
+        .leftJoin(workers, eq(trustWmbScanQueue.workerId, workers.id))
+        .leftJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(whereClause)
+        .orderBy(asc(workers.siriusId), asc(trustWmbScanQueue.id))
+        .offset(offset)
+        .limit(pageSize);
+      
+      return { data: results, page, pageSize, total };
     },
 
     async getWorkerQueueEntry(workerId: string, month: number, year: number): Promise<TrustWmbScanQueue | undefined> {
