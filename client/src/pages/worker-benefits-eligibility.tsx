@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Policy, TrustBenefit } from "@shared/schema";
+import { Policy, TrustBenefit, Employer, Variable } from "@shared/schema";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -74,6 +74,41 @@ function WorkerBenefitsEligibilityContent() {
   const { data: workStatuses = [] } = useQuery<WorkerWs[]>({
     queryKey: ["/api/worker-work-statuses"],
   });
+
+  const { data: homeEmployer } = useQuery<Employer>({
+    queryKey: ["/api/employers", worker.denormHomeEmployerId],
+    enabled: !!worker.denormHomeEmployerId,
+  });
+
+  const { data: defaultPolicyVariable } = useQuery<Variable | null>({
+    queryKey: ["/api/variables/by-name", "policy_default"],
+    queryFn: async () => {
+      try {
+        const response = await fetch("/api/variables/by-name/policy_default");
+        if (response.status === 404) return null;
+        if (!response.ok) throw new Error("Failed to fetch");
+        return response.json();
+      } catch {
+        return null;
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (selectedPolicyId || policies.length === 0) return;
+    
+    let workerPolicyId: string | null = null;
+    
+    if (homeEmployer?.denormPolicyId) {
+      workerPolicyId = homeEmployer.denormPolicyId;
+    } else if (defaultPolicyVariable?.value) {
+      workerPolicyId = defaultPolicyVariable.value as string;
+    }
+    
+    if (workerPolicyId) {
+      setSelectedPolicyId(workerPolicyId);
+    }
+  }, [policies, homeEmployer, defaultPolicyVariable, selectedPolicyId]);
 
   const selectedPolicy = policies.find((p) => p.id === selectedPolicyId);
   const policyData = (selectedPolicy?.data as PolicyData) || {};
