@@ -20,7 +20,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Scan, Loader2, Calendar, CheckCircle, XCircle, AlertCircle, ArrowRight, Play, FlaskConical } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface PluginResult {
@@ -98,6 +98,9 @@ function WorkerBenefitsScanContent() {
     },
     onSuccess: (result: ScanResult) => {
       setScanResult(result);
+      if (result.mode === "live") {
+        queryClient.invalidateQueries({ queryKey: ["/api/workers", worker.id, "benefits"] });
+      }
       toast({
         title: result.mode === "live" ? "Scan Completed" : "Test Scan Completed",
         description: `Evaluated ${result.summary.totalEvaluated} benefits. ${result.summary.created} created, ${result.summary.deleted} deleted.`,
