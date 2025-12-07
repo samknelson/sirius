@@ -18,6 +18,7 @@ import {
   Shield,
   Menu,
   Server,
+  ScanLine,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -204,16 +205,29 @@ export default function Header() {
                   </Button>
                 </Link>
 
+                <div className="text-sm font-medium text-muted-foreground px-4 py-2">Trust</div>
                 <Link href="/trust/providers" onClick={() => setMobileMenuOpen(false)}>
                   <Button
                     variant={location.startsWith("/trust/provider") ? "default" : "ghost"}
-                    className="w-full justify-start"
+                    className="w-full justify-start pl-8"
                     data-testid="mobile-nav-providers"
                   >
                     <Shield className="h-4 w-4 mr-2" />
                     Providers
                   </Button>
                 </Link>
+                {hasPermission("admin") && (
+                  <Link href="/admin/wmb-scan-queue" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location === "/admin/wmb-scan-queue" ? "default" : "ghost"}
+                      className="w-full justify-start pl-8"
+                      data-testid="mobile-nav-benefit-scan"
+                    >
+                      <ScanLine className="h-4 w-4 mr-2" />
+                      Benefit Scan
+                    </Button>
+                  </Link>
+                )}
 
                 {ledgerStaffPolicy?.allowed && (
                   <Link href="/ledger/accounts" onClick={() => setMobileMenuOpen(false)}>
@@ -344,16 +358,39 @@ export default function Header() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Link href="/trust/providers">
-              <Button
-                variant={location.startsWith("/trust/provider") ? "default" : "ghost"}
-                size="sm"
-                data-testid="nav-trust-providers"
-              >
-                <Shield className="h-4 w-4 mr-2" />
-                Providers
-              </Button>
-            </Link>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant={location.startsWith("/trust/") || location === "/admin/wmb-scan-queue" ? "default" : "ghost"}
+                  size="sm"
+                  data-testid="nav-trust"
+                >
+                  <Shield className="h-4 w-4 mr-2" />
+                  Trust
+                  <ChevronDown className="h-4 w-4 ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem asChild>
+                  <Link href="/trust/providers" className="w-full">
+                    <div className="flex items-center cursor-pointer" data-testid="menu-trust-providers">
+                      <Shield className="h-4 w-4 mr-2" />
+                      Providers
+                    </div>
+                  </Link>
+                </DropdownMenuItem>
+                {hasPermission("admin") && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/admin/wmb-scan-queue" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-benefit-scan">
+                        <ScanLine className="h-4 w-4 mr-2" />
+                        Benefit Scan
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {ledgerStaffPolicy?.allowed && (
               <Link href="/ledger/accounts">
