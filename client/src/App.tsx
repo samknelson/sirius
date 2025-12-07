@@ -149,6 +149,9 @@ import AccountParticipants from "@/pages/account-participants";
 import AccountSettings from "@/pages/config/ledger/account-settings";
 import EaTransactions from "@/pages/config/ledger/ea-transactions";
 import SiteInformation from "@/pages/site-information";
+import PolicyView from "@/pages/policy-view";
+import PolicyEdit from "@/pages/policy-edit";
+import PoliciesConfigPage from "@/pages/config/policies";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
@@ -735,6 +738,22 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/policies/:id/edit">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <PolicyEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/policies/:id">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <PolicyView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/trust/provider/:id/logs">
         <ProtectedRoute policy="staff">
           <AuthenticatedLayout>
@@ -1074,6 +1093,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <SystemModePage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/policies">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <PoliciesConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

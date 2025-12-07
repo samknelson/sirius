@@ -40,6 +40,7 @@ import { registerPostalConfigRoutes } from "./modules/postal-config";
 import { registerSiteSettingsRoutes } from "./modules/site-settings";
 import { registerSystemModeRoutes } from "./modules/system-mode";
 import { registerBootstrapRoutes } from "./modules/bootstrap";
+import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./accessControl";
 import { policies } from "./policies";
 import { addressValidationService } from "./services/address-validation";
@@ -259,6 +260,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register bootstrap routes (no auth required - intentionally public for initial setup)
   registerBootstrapRoutes(app);
+
+  // Register policies configuration routes
+  registerPoliciesRoutes(app, requireAuth, requireAccess, storage);
 
   // Worker routes (protected with authentication and permissions)
   
