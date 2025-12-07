@@ -159,12 +159,12 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
         conditions.push(eq(trustWmbScanQueue.status, filter.status));
       }
       
-      // Outcome filter - uses JSONB queries
+      // Outcome filter - uses JSONB queries with COALESCE to handle null resultSummary
       if (filter?.outcome === "started") {
         // Has at least one action with scanType=start AND eligible=true
         conditions.push(
           sql`EXISTS (
-            SELECT 1 FROM jsonb_array_elements(${trustWmbScanQueue.resultSummary}->'actions') AS action
+            SELECT 1 FROM jsonb_array_elements(COALESCE(${trustWmbScanQueue.resultSummary}->'actions', '[]'::jsonb)) AS action
             WHERE action->>'scanType' = 'start' AND (action->>'eligible')::boolean = true
           )`
         );
@@ -172,7 +172,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
         // Has at least one action with scanType=continue AND eligible=true AND action != delete
         conditions.push(
           sql`EXISTS (
-            SELECT 1 FROM jsonb_array_elements(${trustWmbScanQueue.resultSummary}->'actions') AS action
+            SELECT 1 FROM jsonb_array_elements(COALESCE(${trustWmbScanQueue.resultSummary}->'actions', '[]'::jsonb)) AS action
             WHERE action->>'scanType' = 'continue' AND (action->>'eligible')::boolean = true AND action->>'action' != 'delete'
           )`
         );
@@ -180,7 +180,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
         // Has at least one action with scanType=continue AND action=delete
         conditions.push(
           sql`EXISTS (
-            SELECT 1 FROM jsonb_array_elements(${trustWmbScanQueue.resultSummary}->'actions') AS action
+            SELECT 1 FROM jsonb_array_elements(COALESCE(${trustWmbScanQueue.resultSummary}->'actions', '[]'::jsonb)) AS action
             WHERE action->>'scanType' = 'continue' AND action->>'action' = 'delete'
           )`
         );
