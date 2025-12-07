@@ -34,7 +34,17 @@ export interface WorkerHoursStorage {
   upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult>;
 }
 
-export function createWorkerHoursStorage(): WorkerHoursStorage {
+export function createWorkerHoursStorage(
+  onWorkerDataChanged?: (workerId: string) => Promise<void>
+): WorkerHoursStorage {
+  async function notifyWorkerDataChanged(workerId: string): Promise<void> {
+    if (onWorkerDataChanged) {
+      await onWorkerDataChanged(workerId).catch(err => {
+        console.error("Failed to trigger scan invalidation for worker", workerId, err);
+      });
+    }
+  }
+
   const storage: WorkerHoursStorage = {
     async getWorkerHoursById(id: string): Promise<any | undefined> {
       const [result] = await db
@@ -351,6 +361,7 @@ export function createWorkerHoursStorage(): WorkerHoursStorage {
         }
       }
 
+      await notifyWorkerDataChanged(savedHours.workerId);
       return { data: savedHours, notifications };
     },
 
@@ -393,6 +404,7 @@ export function createWorkerHoursStorage(): WorkerHoursStorage {
         });
       }
 
+      await notifyWorkerDataChanged(updated.workerId);
       return { data: updated, notifications };
     },
 
@@ -431,6 +443,7 @@ export function createWorkerHoursStorage(): WorkerHoursStorage {
             error: error instanceof Error ? error.message : String(error),
           });
         }
+        await notifyWorkerDataChanged(deleted.workerId);
       }
       
       return { success: result.length > 0, notifications };
@@ -482,6 +495,7 @@ export function createWorkerHoursStorage(): WorkerHoursStorage {
         }
       }
 
+      await notifyWorkerDataChanged(savedHours.workerId);
       return { data: savedHours, notifications };
     },
   };

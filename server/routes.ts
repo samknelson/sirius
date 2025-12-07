@@ -44,6 +44,7 @@ import { registerBootstrapRoutes } from "./modules/bootstrap";
 import { registerPoliciesRoutes } from "./modules/policies";
 import { registerEmployerPolicyHistoryRoutes } from "./modules/employer-policy-history";
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
+import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
 import { requireAccess } from "./accessControl";
 import { policies } from "./policies";
 import { addressValidationService } from "./services/address-validation";
@@ -275,6 +276,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register worker benefits scan routes
   registerWorkerBenefitsScanRoutes(app, requireAuth, requireAccess, storage);
+
+  // Register WMB scan queue routes (admin only)
+  registerWmbScanQueueRoutes(app, requireAuth, requireAccess, storage);
 
   // Worker routes (protected with authentication and permissions)
   

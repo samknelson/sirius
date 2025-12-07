@@ -22,6 +22,7 @@ import { type WorkerWshStorage, createWorkerWshStorage, workerWshLoggingConfig }
 import { type WorkerHoursStorage, createWorkerHoursStorage, workerHoursLoggingConfig } from "./worker-hours";
 import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./policies";
 import { type EmployerPolicyHistoryStorage, createEmployerPolicyHistoryStorage, employerPolicyHistoryLoggingConfig } from "./employer-policy-history";
+import { type WmbScanQueueStorage, createWmbScanQueueStorage, wmbScanQueueLoggingConfig } from "./wmb-scan-queue";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "../db";
 import { optionsEmploymentStatus, employers, workers, contacts } from "@shared/schema";
@@ -53,6 +54,7 @@ export interface IStorage {
   workerHours: WorkerHoursStorage;
   policies: PolicyStorage;
   employerPolicyHistory: EmployerPolicyHistoryStorage;
+  wmbScanQueue: WmbScanQueueStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -81,6 +83,7 @@ export class DatabaseStorage implements IStorage {
   workerHours: WorkerHoursStorage;
   policies: PolicyStorage;
   employerPolicyHistory: EmployerPolicyHistoryStorage;
+  wmbScanQueue: WmbScanQueueStorage;
 
   constructor() {
     this.variables = withStorageLogging(createVariableStorage(), variableLoggingConfig);
@@ -121,12 +124,27 @@ export class DatabaseStorage implements IStorage {
     this.cronJobRuns = createCronJobRunStorage();
     this.chargePluginConfigs = createChargePluginConfigStorage();
     this.logs = createLogsStorage();
+    
+    this.wmbScanQueue = withStorageLogging(
+      createWmbScanQueueStorage(),
+      wmbScanQueueLoggingConfig
+    );
+    
     this.workerWsh = withStorageLogging(
-      createWorkerWshStorage(this.workers.updateWorkerStatus.bind(this.workers)),
+      createWorkerWshStorage(
+        this.workers.updateWorkerStatus.bind(this.workers),
+        async (workerId: string) => {
+          await this.wmbScanQueue.invalidateWorkerScans(workerId);
+        }
+      ),
       workerWshLoggingConfig
     );
     this.workerHours = withStorageLogging(
-      createWorkerHoursStorage(),
+      createWorkerHoursStorage(
+        async (workerId: string) => {
+          await this.wmbScanQueue.invalidateWorkerScans(workerId);
+        }
+      ),
       workerHoursLoggingConfig
     );
     this.policies = withStorageLogging(

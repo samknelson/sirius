@@ -15,7 +15,8 @@ export interface WorkerWshStorage {
 }
 
 export function createWorkerWshStorage(
-  updateWorkerStatus: (workerId: string, denormWsId: string | null) => Promise<any>
+  updateWorkerStatus: (workerId: string, denormWsId: string | null) => Promise<any>,
+  onWorkerDataChanged?: (workerId: string) => Promise<void>
 ): WorkerWshStorage {
   async function syncWorkerCurrentWorkStatus(workerId: string): Promise<void> {
     const [mostRecent] = await db
@@ -26,6 +27,12 @@ export function createWorkerWshStorage(
       .limit(1);
 
     await updateWorkerStatus(workerId, mostRecent?.wsId || null);
+    
+    if (onWorkerDataChanged) {
+      await onWorkerDataChanged(workerId).catch(err => {
+        console.error("Failed to trigger scan invalidation for worker", workerId, err);
+      });
+    }
   }
 
   const storage: WorkerWshStorage = {

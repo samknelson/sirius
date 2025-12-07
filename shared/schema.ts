@@ -156,6 +156,42 @@ export const trustWmb = pgTable("trust_wmb", {
   uniqueWorkerEmployerBenefitMonthYear: unique().on(table.workerId, table.employerId, table.benefitId, table.month, table.year),
 }));
 
+// WMB Scan Status - tracks scan status per month/year
+export const trustWmbScanStatus = pgTable("trust_wmb_scan_status", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  month: integer("month").notNull(),
+  year: integer("year").notNull(),
+  status: varchar("status").notNull().default("queued"), // queued, running, completed, failed, stale
+  totalQueued: integer("total_queued").notNull().default(0),
+  processedSuccess: integer("processed_success").notNull().default(0),
+  processedFailed: integer("processed_failed").notNull().default(0),
+  queuedAt: timestamp("queued_at").default(sql`now()`).notNull(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  lastError: text("last_error"),
+}, (table) => ({
+  uniqueMonthYear: unique().on(table.month, table.year),
+}));
+
+// WMB Scan Queue - tracks individual worker scan jobs
+export const trustWmbScanQueue = pgTable("trust_wmb_scan_queue", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  statusId: varchar("status_id").notNull().references(() => trustWmbScanStatus.id, { onDelete: 'cascade' }),
+  workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
+  month: integer("month").notNull(),
+  year: integer("year").notNull(),
+  status: varchar("status").notNull().default("pending"), // pending, processing, success, failed, invalidated, skipped
+  triggerSource: varchar("trigger_source").notNull().default("monthly_batch"), // monthly_batch, manual, worker_update
+  resultSummary: jsonb("result_summary"),
+  scheduledFor: timestamp("scheduled_for"),
+  pickedAt: timestamp("picked_at"),
+  completedAt: timestamp("completed_at"),
+  attempts: integer("attempts").notNull().default(0),
+  lastError: text("last_error"),
+}, (table) => ({
+  uniqueWorkerYearMonth: unique().on(table.workerId, table.year, table.month),
+}));
+
 export const variables = pgTable("variables", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull().unique(),
@@ -502,6 +538,15 @@ export const insertTrustWmbSchema = createInsertSchema(trustWmb).omit({
   id: true,
 });
 
+export const insertTrustWmbScanStatusSchema = createInsertSchema(trustWmbScanStatus).omit({
+  id: true,
+  queuedAt: true,
+});
+
+export const insertTrustWmbScanQueueSchema = createInsertSchema(trustWmbScanQueue).omit({
+  id: true,
+});
+
 export const insertVariableSchema = createInsertSchema(variables).omit({
   id: true,
 });
@@ -690,6 +735,12 @@ export type TrustBenefit = typeof trustBenefits.$inferSelect;
 
 export type InsertTrustWmb = z.infer<typeof insertTrustWmbSchema>;
 export type TrustWmb = typeof trustWmb.$inferSelect;
+
+export type InsertTrustWmbScanStatus = z.infer<typeof insertTrustWmbScanStatusSchema>;
+export type TrustWmbScanStatus = typeof trustWmbScanStatus.$inferSelect;
+
+export type InsertTrustWmbScanQueue = z.infer<typeof insertTrustWmbScanQueueSchema>;
+export type TrustWmbScanQueue = typeof trustWmbScanQueue.$inferSelect;
 
 export type InsertVariable = z.infer<typeof insertVariableSchema>;
 export type Variable = typeof variables.$inferSelect;
