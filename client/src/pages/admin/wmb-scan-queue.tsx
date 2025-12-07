@@ -383,58 +383,11 @@ export default function WmbScanQueue() {
         </Card>
       </div>
 
-      {summary.length > 0 && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Queue Summary by Month</CardTitle>
-            <CardDescription>
-              Overview of pending scans grouped by month
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Month</TableHead>
-                  <TableHead className="text-right">Pending</TableHead>
-                  <TableHead className="text-right">Processing</TableHead>
-                  <TableHead className="text-right">Success</TableHead>
-                  <TableHead className="text-right">Failed</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead>Progress</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {summary.map((s) => {
-                  const total = s.pending + s.processing + s.success + s.failed;
-                  const progress = total > 0 ? ((s.success + s.failed) / total) * 100 : 0;
-                  return (
-                    <TableRow key={`${s.year}-${s.month}`}>
-                      <TableCell className="font-medium" data-testid={`text-month-${s.year}-${s.month}`}>
-                        {MonthName(s.month)} {s.year}
-                      </TableCell>
-                      <TableCell className="text-right">{s.pending}</TableCell>
-                      <TableCell className="text-right">{s.processing}</TableCell>
-                      <TableCell className="text-right text-green-600">{s.success}</TableCell>
-                      <TableCell className="text-right text-red-600">{s.failed}</TableCell>
-                      <TableCell className="text-right font-medium">{total}</TableCell>
-                      <TableCell className="w-32">
-                        <Progress value={progress} className="h-2" />
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
-
       <Card>
         <CardHeader>
-          <CardTitle>Month Statuses</CardTitle>
+          <CardTitle>Scan Status by Month</CardTitle>
           <CardDescription>
-            Detailed status of each month's scan process
+            Status and progress of monthly worker benefit scans
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -452,47 +405,62 @@ export default function WmbScanQueue() {
                 <TableRow>
                   <TableHead>Month</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Queued</TableHead>
-                  <TableHead className="text-right">Success</TableHead>
-                  <TableHead className="text-right">Failed</TableHead>
+                  <TableHead>Progress</TableHead>
                   <TableHead className="text-right text-green-600 dark:text-green-400">Started</TableHead>
                   <TableHead className="text-right text-blue-600 dark:text-blue-400">Continued</TableHead>
                   <TableHead className="text-right text-red-600 dark:text-red-400">Terminated</TableHead>
                   <TableHead>Queued At</TableHead>
                   <TableHead>Completed At</TableHead>
-                  <TableHead className="w-20"></TableHead>
+                  <TableHead className="w-12"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {statuses.map((status) => (
-                  <TableRow key={status.id}>
-                    <TableCell className="font-medium" data-testid={`text-status-month-${status.id}`}>
-                      {MonthName(status.month)} {status.year}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={status.status} />
-                    </TableCell>
-                    <TableCell className="text-right">{status.totalQueued}</TableCell>
-                    <TableCell className="text-right text-green-600 dark:text-green-400">{status.processedSuccess}</TableCell>
-                    <TableCell className="text-right text-red-600 dark:text-red-400">{status.processedFailed}</TableCell>
-                    <TableCell className="text-right text-green-600 dark:text-green-400" data-testid={`text-benefits-started-${status.id}`}>{status.benefitsStarted}</TableCell>
-                    <TableCell className="text-right text-blue-600 dark:text-blue-400" data-testid={`text-benefits-continued-${status.id}`}>{status.benefitsContinued}</TableCell>
-                    <TableCell className="text-right text-red-600 dark:text-red-400" data-testid={`text-benefits-terminated-${status.id}`}>{status.benefitsTerminated}</TableCell>
-                    <TableCell>
-                      {status.queuedAt ? format(new Date(status.queuedAt), "MMM d, yyyy HH:mm") : "-"}
-                    </TableCell>
-                    <TableCell>
-                      {status.completedAt ? format(new Date(status.completedAt), "MMM d, yyyy HH:mm") : "-"}
-                    </TableCell>
-                    <TableCell>
-                      <Link href={`/admin/wmb-scan/${status.id}`}>
-                        <Button variant="ghost" size="icon" data-testid={`button-view-${status.id}`}>
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </Link>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {statuses.map((status) => {
+                  // Find matching summary for this status
+                  const matchingSummary = summary.find(s => s.month === status.month && s.year === status.year);
+                  const pending = matchingSummary?.pending ?? 0;
+                  const processing = matchingSummary?.processing ?? 0;
+                  const success = status.processedSuccess;
+                  const failed = status.processedFailed;
+                  const total = status.totalQueued;
+                  const processed = success + failed;
+                  const progress = total > 0 ? (processed / total) * 100 : 0;
+                  
+                  return (
+                    <TableRow key={status.id}>
+                      <TableCell className="font-medium" data-testid={`text-status-month-${status.id}`}>
+                        {MonthName(status.month)} {status.year}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={status.status} />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Progress value={progress} className="h-2 w-20" />
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">
+                            {processed}/{total}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right text-green-600 dark:text-green-400" data-testid={`text-benefits-started-${status.id}`}>{status.benefitsStarted}</TableCell>
+                      <TableCell className="text-right text-blue-600 dark:text-blue-400" data-testid={`text-benefits-continued-${status.id}`}>{status.benefitsContinued}</TableCell>
+                      <TableCell className="text-right text-red-600 dark:text-red-400" data-testid={`text-benefits-terminated-${status.id}`}>{status.benefitsTerminated}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {status.queuedAt ? format(new Date(status.queuedAt), "MMM d, HH:mm") : "-"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {status.completedAt ? format(new Date(status.completedAt), "MMM d, HH:mm") : "-"}
+                      </TableCell>
+                      <TableCell>
+                        <Link href={`/admin/wmb-scan/${status.id}`}>
+                          <Button variant="ghost" size="icon" data-testid={`button-view-${status.id}`}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
