@@ -21,6 +21,14 @@ const processBatchSchema = z.object({
   batchSize: z.number().min(1).max(100).optional().default(10),
 });
 
+const pagedEntriesQuerySchema = z.object({
+  page: z.coerce.number().min(1).optional().default(1),
+  pageSize: z.coerce.number().min(1).max(100).optional().default(50),
+  search: z.string().optional(),
+  outcome: z.enum(["started", "continued", "terminated"]).optional(),
+  status: z.string().optional(),
+});
+
 export function registerWmbScanQueueRoutes(
   app: Express,
   requireAuth: RequireAuth,
@@ -96,11 +104,46 @@ export function registerWmbScanQueueRoutes(
           return res.status(404).json({ message: "Scan status not found" });
         }
         
-        const queueEntries = await storage.wmbScanQueue.getQueueEntriesWithWorkerInfo(id);
-        res.json({ status, queueEntries });
+        res.json({ status });
       } catch (error: any) {
         console.error("Error fetching WMB scan detail:", error);
         res.status(500).json({ message: error.message || "Failed to fetch scan detail" });
+      }
+    }
+  );
+
+  app.get(
+    "/api/wmb-scan/detail/:id/entries",
+    requireAuth,
+    requireAccess(policies.admin),
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const validation = pagedEntriesQuerySchema.safeParse(req.query);
+        if (!validation.success) {
+          return res.status(400).json({
+            message: "Validation error",
+            errors: validation.error.errors,
+          });
+        }
+        
+        const { page, pageSize, search, outcome, status: queueStatus } = validation.data;
+        
+        const status = await storage.wmbScanQueue.getStatusById(id);
+        if (!status) {
+          return res.status(404).json({ message: "Scan status not found" });
+        }
+        
+        const result = await storage.wmbScanQueue.getQueueEntriesPaged(id, page, pageSize, {
+          search,
+          outcome,
+          status: queueStatus,
+        });
+        
+        res.json(result);
+      } catch (error: any) {
+        console.error("Error fetching paged WMB scan entries:", error);
+        res.status(500).json({ message: error.message || "Failed to fetch scan entries" });
       }
     }
   );
@@ -112,17 +155,33 @@ export function registerWmbScanQueueRoutes(
     async (req, res) => {
       try {
         const { id } = req.params;
+        const validation = pagedEntriesQuerySchema.safeParse(req.query);
+        if (!validation.success) {
+          return res.status(400).json({
+            message: "Validation error",
+            errors: validation.error.errors,
+          });
+        }
+        
+        const { search, outcome, status: queueStatus } = validation.data;
+        
         const status = await storage.wmbScanQueue.getStatusById(id);
         if (!status) {
           return res.status(404).json({ message: "Scan status not found" });
         }
         
-        const queueEntries = await storage.wmbScanQueue.getQueueEntriesWithWorkerInfo(id);
+        // Get all filtered entries (no pagination limit for export)
+        const result = await storage.wmbScanQueue.getQueueEntriesPaged(id, 1, 100000, {
+          search,
+          outcome,
+          status: queueStatus,
+        });
         
         // Build CSV
         const headers = [
           "Sirius ID",
           "Worker Name",
+          "Worker ID",
           "Status",
           "Trigger Source",
           "Attempts",
@@ -133,7 +192,7 @@ export function registerWmbScanQueueRoutes(
           "Error",
         ];
         
-        const rows = queueEntries.map(entry => {
+        const rows = result.data.map(entry => {
           const summary = entry.resultSummary as any;
           let started = 0, continued = 0, terminated = 0;
           
@@ -150,6 +209,7 @@ export function registerWmbScanQueueRoutes(
           return [
             entry.workerSiriusId || "",
             entry.workerDisplayName || "",
+            entry.workerId || "",
             entry.status,
             entry.triggerSource,
             entry.attempts,
@@ -162,7 +222,12 @@ export function registerWmbScanQueueRoutes(
         });
         
         const csv = [headers.join(","), ...rows].join("\n");
-        const filename = `wmb-scan-${status.year}-${String(status.month).padStart(2, "0")}.csv`;
+        
+        // Build filename with filter info
+        let filename = `wmb-scan-${status.year}-${String(status.month).padStart(2, "0")}`;
+        if (search) filename += `-search-${search.replace(/[^a-zA-Z0-9]/g, "")}`;
+        if (outcome) filename += `-${outcome}`;
+        filename += ".csv";
         
         res.setHeader("Content-Type", "text/csv");
         res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);

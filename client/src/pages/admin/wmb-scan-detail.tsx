@@ -1,11 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -26,17 +34,17 @@ import {
   Download, 
   Calendar,
   AlertCircle,
-  CheckCircle2,
-  Clock,
-  XCircle,
-  Loader2,
   User,
   TrendingUp,
   TrendingDown,
   Minus,
   Eye,
   ShieldCheck,
-  ShieldX
+  ShieldX,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -70,9 +78,15 @@ interface QueueEntry {
   workerDisplayName: string | null;
 }
 
-interface ScanDetailResponse {
+interface ScanStatusResponse {
   status: MonthStatus;
-  queueEntries: QueueEntry[];
+}
+
+interface PagedEntriesResponse {
+  data: QueueEntry[];
+  page: number;
+  pageSize: number;
+  total: number;
 }
 
 interface PluginResult {
@@ -103,6 +117,7 @@ function StatusBadge({ status }: { status: string }) {
     success: { variant: "outline", label: "Success" },
     invalidated: { variant: "secondary", label: "Invalidated" },
     skipped: { variant: "secondary", label: "Skipped" },
+    canceled: { variant: "secondary", label: "Canceled" },
   };
   
   const c = config[status] || { variant: "outline", label: status };
@@ -267,17 +282,59 @@ function BenefitDetailsModal({
 export default function WmbScanDetail() {
   const { id } = useParams<{ id: string }>();
   const [selectedEntry, setSelectedEntry] = useState<QueueEntry | null>(null);
+  
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(50);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [outcome, setOutcome] = useState<string>("all");
 
-  const { data, isLoading, error } = useQuery<ScanDetailResponse>({
+  const { data: statusData, isLoading: statusLoading, error: statusError } = useQuery<ScanStatusResponse>({
     queryKey: ["/api/wmb-scan/detail", id],
     enabled: !!id,
   });
 
-  const handleExport = () => {
-    window.location.href = `/api/wmb-scan/detail/${id}/export`;
+  const queryParams = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("pageSize", String(pageSize));
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (outcome && outcome !== "all") params.set("outcome", outcome);
+    return params.toString();
+  }, [page, pageSize, debouncedSearch, outcome]);
+
+  const { data: entriesData, isLoading: entriesLoading } = useQuery<PagedEntriesResponse>({
+    queryKey: ["/api/wmb-scan/detail", id, "entries", queryParams],
+    queryFn: async () => {
+      const res = await fetch(`/api/wmb-scan/detail/${id}/entries?${queryParams}`);
+      if (!res.ok) throw new Error("Failed to fetch entries");
+      return res.json();
+    },
+    enabled: !!id,
+  });
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    setTimeout(() => {
+      setDebouncedSearch(value);
+      setPage(1);
+    }, 300);
   };
 
-  if (isLoading) {
+  const handleOutcomeChange = (value: string) => {
+    setOutcome(value);
+    setPage(1);
+  };
+
+  const handleExport = () => {
+    const exportParams = new URLSearchParams();
+    if (debouncedSearch) exportParams.set("search", debouncedSearch);
+    if (outcome && outcome !== "all") exportParams.set("outcome", outcome);
+    const queryString = exportParams.toString();
+    window.location.href = `/api/wmb-scan/detail/${id}/export${queryString ? `?${queryString}` : ""}`;
+  };
+
+  if (statusLoading) {
     return (
       <div className="p-6 space-y-6">
         <Skeleton className="h-8 w-64" />
@@ -287,7 +344,7 @@ export default function WmbScanDetail() {
     );
   }
 
-  if (error || !data) {
+  if (statusError || !statusData) {
     return (
       <div className="p-6">
         <Card>
@@ -302,14 +359,12 @@ export default function WmbScanDetail() {
     );
   }
 
-  const { status, queueEntries } = data;
+  const { status } = statusData;
   const totalProcessed = status.processedSuccess + status.processedFailed;
   const progressPercent = status.totalQueued > 0 ? (totalProcessed / status.totalQueued) * 100 : 0;
 
-  const statusCounts = queueEntries.reduce((acc, entry) => {
-    acc[entry.status] = (acc[entry.status] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  const totalPages = entriesData ? Math.ceil(entriesData.total / pageSize) : 0;
+  const entries = entriesData?.data || [];
 
   return (
     <div className="p-6 space-y-6">
@@ -332,10 +387,6 @@ export default function WmbScanDetail() {
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge status={status.status} />
-          <Button onClick={handleExport} variant="outline" data-testid="button-export">
-            <Download className="h-4 w-4 mr-2" />
-            Export CSV
-          </Button>
         </div>
       </div>
 
@@ -454,22 +505,46 @@ export default function WmbScanDetail() {
       )}
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-4">
-          <div>
-            <CardTitle>Worker Results</CardTitle>
-            <CardDescription>
-              {queueEntries.length} workers in this scan
-            </CardDescription>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            {Object.entries(statusCounts).map(([status, count]) => (
-              <Badge key={status} variant="secondary" data-testid={`badge-count-${status}`}>
-                {status}: {count}
-              </Badge>
-            ))}
+        <CardHeader>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <CardTitle>Worker Results</CardTitle>
+              <CardDescription>
+                {entriesData ? `${entriesData.total} workers total` : "Loading..."}
+                {debouncedSearch || outcome !== "all" ? " (filtered)" : ""}
+              </CardDescription>
+            </div>
+            <Button onClick={handleExport} variant="outline" data-testid="button-export">
+              <Download className="h-4 w-4 mr-2" />
+              Export CSV
+            </Button>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name or Sirius ID..."
+                value={search}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="pl-9"
+                data-testid="input-search"
+              />
+            </div>
+            <Select value={outcome} onValueChange={handleOutcomeChange}>
+              <SelectTrigger className="w-[180px]" data-testid="select-outcome">
+                <SelectValue placeholder="Filter by outcome" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All outcomes</SelectItem>
+                <SelectItem value="started">Started benefits</SelectItem>
+                <SelectItem value="continued">Continued benefits</SelectItem>
+                <SelectItem value="terminated">Terminated benefits</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="rounded-md border">
             <Table>
               <TableHeader>
@@ -482,18 +557,29 @@ export default function WmbScanDetail() {
                   <TableHead className="w-20 text-center">Continued</TableHead>
                   <TableHead className="w-20 text-center">Terminated</TableHead>
                   <TableHead className="w-48">Completed</TableHead>
-                  <TableHead className="w-12"></TableHead>
+                  <TableHead className="w-24"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {queueEntries.length === 0 ? (
+                {entriesLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center py-8">
+                      <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                        Loading...
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : entries.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
-                      No workers in this scan
+                      {debouncedSearch || outcome !== "all" 
+                        ? "No workers match the current filters"
+                        : "No workers in this scan"
+                      }
                     </TableCell>
                   </TableRow>
                 ) : (
-                  queueEntries.map((entry) => {
+                  entries.map((entry) => {
                     const counts = getResultCounts(entry.resultSummary);
                     return (
                       <TableRow key={entry.id} data-testid={`row-worker-${entry.workerSiriusId}`}>
@@ -537,16 +623,29 @@ export default function WmbScanDetail() {
                           {entry.completedAt ? format(new Date(entry.completedAt), "MMM d, h:mm a") : "-"}
                         </TableCell>
                         <TableCell>
-                          {entry.status === "success" && entry.resultSummary?.actions && (
-                            <Button 
-                              variant="ghost" 
-                              size="icon"
-                              onClick={() => setSelectedEntry(entry)}
-                              data-testid={`button-view-details-${entry.id}`}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          )}
+                          <div className="flex items-center gap-1">
+                            <Link href={`/workers/${entry.workerId}`}>
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                title="View worker"
+                                data-testid={`button-view-worker-${entry.id}`}
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </Button>
+                            </Link>
+                            {entry.status === "success" && entry.resultSummary?.actions && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                onClick={() => setSelectedEntry(entry)}
+                                title="View benefit details"
+                                data-testid={`button-view-details-${entry.id}`}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -555,6 +654,36 @@ export default function WmbScanDetail() {
               </TableBody>
             </Table>
           </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                Page {page} of {totalPages} ({entriesData?.total || 0} results)
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  data-testid="button-prev-page"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  data-testid="button-next-page"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
