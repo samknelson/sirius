@@ -794,7 +794,7 @@ function Router() {
       </Route>
 
       <Route path="/trust/provider/:id/logs">
-        <ProtectedRoute policy="staff">
+        <ProtectedRoute policy="staff" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderLogsPage />
           </AuthenticatedLayout>
@@ -802,7 +802,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-provider-contacts/:id/user">
-        <ProtectedRoute policy="trustProviderUserManage">
+        <ProtectedRoute policy="trustProviderUserManage" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderContactUser />
           </AuthenticatedLayout>
@@ -810,7 +810,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-provider-contacts/:id/addresses">
-        <ProtectedRoute policy="staff">
+        <ProtectedRoute policy="staff" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderContactAddresses />
           </AuthenticatedLayout>
@@ -818,7 +818,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-provider-contacts/:id/phone-numbers">
-        <ProtectedRoute policy="staff">
+        <ProtectedRoute policy="staff" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderContactPhoneNumbers />
           </AuthenticatedLayout>
@@ -826,7 +826,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-provider-contacts/:id/email">
-        <ProtectedRoute policy="staff">
+        <ProtectedRoute policy="staff" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderContactEmail />
           </AuthenticatedLayout>
@@ -834,7 +834,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-provider-contacts/:id/name">
-        <ProtectedRoute policy="staff">
+        <ProtectedRoute policy="staff" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderContactName />
           </AuthenticatedLayout>
@@ -842,7 +842,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-provider-contacts/:id/edit">
-        <ProtectedRoute policy="staff">
+        <ProtectedRoute policy="staff" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderContactEdit />
           </AuthenticatedLayout>
@@ -850,7 +850,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-provider-contacts/:id/comm/history">
-        <ProtectedRoute policy="staff">
+        <ProtectedRoute policy="staff" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderContactCommHistory />
           </AuthenticatedLayout>
@@ -858,7 +858,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-provider-contacts/:id/comm/send-sms">
-        <ProtectedRoute policy="staff">
+        <ProtectedRoute policy="staff" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderContactSendSms />
           </AuthenticatedLayout>
@@ -866,7 +866,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-provider-contacts/:id/comm/send-email">
-        <ProtectedRoute policy="staff">
+        <ProtectedRoute policy="staff" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderContactSendEmail />
           </AuthenticatedLayout>
@@ -874,7 +874,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-provider-contacts/:id/comm/send-postal">
-        <ProtectedRoute policy="staff">
+        <ProtectedRoute policy="staff" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderContactSendPostal />
           </AuthenticatedLayout>
@@ -882,7 +882,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-provider-contacts/:id">
-        <ProtectedRoute policy="staff">
+        <ProtectedRoute policy="staff" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderContactView />
           </AuthenticatedLayout>
@@ -890,7 +890,7 @@ function Router() {
       </Route>
 
       <Route path="/trust/provider/:id/contacts">
-        <ProtectedRoute policy="staff">
+        <ProtectedRoute policy="staff" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderContactsPage />
           </AuthenticatedLayout>
@@ -898,7 +898,7 @@ function Router() {
       </Route>
 
       <Route path="/trust/provider/:id/edit">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute permission="workers.manage" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderEditPage />
           </AuthenticatedLayout>
@@ -906,7 +906,7 @@ function Router() {
       </Route>
 
       <Route path="/trust/provider/:id">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="workers.view" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderViewPage />
           </AuthenticatedLayout>
@@ -914,7 +914,7 @@ function Router() {
       </Route>
 
       <Route path="/trust/providers">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="workers.view" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProvidersPage />
           </AuthenticatedLayout>
