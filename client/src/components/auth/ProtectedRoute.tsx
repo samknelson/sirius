@@ -8,6 +8,7 @@ interface ProtectedRouteProps {
   children: React.ReactNode;
   permission?: string;
   policy?: string;
+  component?: string;
 }
 
 interface DetailedPolicyResult {
@@ -27,8 +28,8 @@ interface DetailedPolicyResult {
   }>;
 }
 
-export default function ProtectedRoute({ children, permission, policy }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading, authReady, hasPermission } = useAuth();
+export default function ProtectedRoute({ children, permission, policy, component }: ProtectedRouteProps) {
+  const { isAuthenticated, isLoading, authReady, hasPermission, hasComponent } = useAuth();
   const [location] = useLocation();
 
   // Extract resource ID from URL path if present (e.g., /workers/:id)
@@ -73,6 +74,23 @@ export default function ProtectedRoute({ children, permission, policy }: Protect
       sessionStorage.setItem('redirectAfterLogin', location);
     }
     return <Redirect to="/login" />;
+  }
+
+  // Check if required component is enabled
+  if (component && !hasComponent(component)) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="text-center max-w-md p-6">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Feature Not Available</h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            This feature is not currently enabled for this application.
+          </p>
+          <p className="text-sm text-muted-foreground mt-2">
+            Required component: {component}
+          </p>
+        </div>
+      </div>
+    );
   }
 
   // Show loading while checking policy

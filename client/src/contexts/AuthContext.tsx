@@ -24,6 +24,7 @@ interface MasqueradeInfo {
 interface AuthContextType {
   user: User | null;
   permissions: string[];
+  components: string[];
   masquerade: MasqueradeInfo;
   login: () => void;
   logout: () => void;
@@ -32,6 +33,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   authReady: boolean; // True when auth state has been definitively resolved
   hasPermission: (permission: string) => boolean;
+  hasComponent: (componentId: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -47,6 +49,7 @@ export function useAuth() {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [permissions, setPermissions] = useState<string[]>([]);
+  const [components, setComponents] = useState<string[]>([]);
   const [masquerade, setMasquerade] = useState<MasqueradeInfo>({ isMasquerading: false });
 
   // Check if user is authenticated on app start
@@ -76,10 +79,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (authData && (authData as any).user) {
       setUser((authData as any).user);
       setPermissions((authData as any).permissions || []);
+      setComponents((authData as any).components || []);
       setMasquerade((authData as any).masquerade || { isMasquerading: false });
     } else {
       setUser(null);
       setPermissions([]);
+      setComponents([]);
       setMasquerade({ isMasquerading: false });
     }
   }, [authData]);
@@ -112,6 +117,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return permissions.includes(permission);
   };
 
+  const hasComponent = (componentId: string) => {
+    return components.includes(componentId);
+  };
+
   const authReady = !isLoading; // Auth state is ready when loading is complete
 
   return (
@@ -119,6 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         permissions,
+        components,
         masquerade,
         login,
         logout,
@@ -127,6 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: !!user,
         authReady,
         hasPermission,
+        hasComponent,
       }}
     >
       {children}

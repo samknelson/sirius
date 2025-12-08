@@ -18,7 +18,7 @@ import { registerAddressValidationRoutes } from "./modules/address-validation";
 import { registerMasqueradeRoutes, getEffectiveUser } from "./modules/masquerade";
 import { registerDashboardRoutes } from "./modules/dashboard";
 import { registerBookmarkRoutes } from "./modules/bookmarks";
-import { registerComponentRoutes } from "./modules/components";
+import { registerComponentRoutes, getEnabledComponentIds } from "./modules/components";
 import { registerEmployerUserSettingsRoutes } from "./modules/employer-user-settings";
 import { registerTrustProviderUserSettingsRoutes } from "./modules/trust-provider-user-settings";
 import { registerWizardRoutes } from "./modules/wizards";
@@ -135,6 +135,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const userPermissions = await storage.users.getUserPermissions(dbUser.id);
+      const enabledComponents = await getEnabledComponentIds();
       
       res.json({
         user: { 
@@ -146,6 +147,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           isActive: dbUser.isActive 
         },
         permissions: userPermissions.map(p => p.key),
+        components: enabledComponents,
         masquerade: session.masqueradeUserId ? {
           isMasquerading: true,
           originalUser: originalUser ? {

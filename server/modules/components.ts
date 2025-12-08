@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../accessControl";
 import { policies } from "../policies";
-import { getAllComponents, getComponentById, ComponentConfig, getAncestorComponentIds } from "../../shared/components";
+import { getAllComponents, getComponentById, ComponentConfig, getAncestorComponentIds, ComponentDefinition } from "../../shared/components";
 
 // Type for middleware functions
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -26,6 +26,24 @@ async function getComponentConfigs(): Promise<ComponentConfig[]> {
   }
 
   return configs;
+}
+
+/**
+ * Get all enabled component IDs
+ * Returns only components that are fully enabled (including parent checks)
+ */
+export async function getEnabledComponentIds(): Promise<string[]> {
+  const allComponents = getAllComponents();
+  const enabledIds: string[] = [];
+
+  for (const component of allComponents) {
+    const enabled = await isComponentEnabled(component.id);
+    if (enabled) {
+      enabledIds.push(component.id);
+    }
+  }
+
+  return enabledIds;
 }
 
 /**
@@ -60,6 +78,35 @@ export async function isComponentEnabled(componentId: string): Promise<boolean> 
   const variable = await storage.variables.getByName(variableName);
   
   return variable ? variable.value === true : component.enabledByDefault;
+}
+
+/**
+ * Middleware factory to require a component to be enabled
+ * Returns 403 with descriptive error if component is not enabled
+ */
+export function requireComponent(componentId: string) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const enabled = await isComponentEnabled(componentId);
+      
+      if (!enabled) {
+        const component = getComponentById(componentId);
+        const componentName = component?.name || componentId;
+        
+        res.status(403).json({
+          message: `Access denied: The "${componentName}" feature is not enabled`,
+          error: "component_disabled",
+          componentId: componentId,
+          componentName: componentName
+        });
+        return;
+      }
+      
+      next();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to check component status" });
+    }
+  };
 }
 
 /**
