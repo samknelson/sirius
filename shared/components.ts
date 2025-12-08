@@ -82,6 +82,20 @@ export const componentRegistry: ComponentDefinition[] = [
     description: "Management and tracking of trust providers",
     enabledByDefault: false,
     category: "core"
+  },
+  {
+    id: "trust.benefits",
+    name: "Trust Benefits",
+    description: "Management of trust benefits and eligibility",
+    enabledByDefault: false,
+    category: "core"
+  },
+  {
+    id: "trust.benefits.scan",
+    name: "Trust Benefit Scan",
+    description: "Automated scanning for worker benefit eligibility",
+    enabledByDefault: false,
+    category: "trust.benefits"
   }
 ];
 
