@@ -15,6 +15,7 @@ export interface EligibilityContext {
   getWorker: () => Promise<Worker>;
   asOfMonth: number;
   asOfYear: number;
+  benefitId?: string;
 }
 
 export interface EligibilityResult {

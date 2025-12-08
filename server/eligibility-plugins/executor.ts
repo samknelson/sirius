@@ -17,6 +17,7 @@ export interface EligibilityEvaluationInput {
   asOfMonth?: number;
   asOfYear?: number;
   stopAfterIneligible?: boolean;
+  benefitId?: string;
 }
 
 export interface BenefitEligibilityResult {
@@ -97,6 +98,7 @@ export async function evaluateEligibilityRules(
       getWorker,
       asOfMonth,
       asOfYear,
+      benefitId: input.benefitId,
     };
     
     try {
@@ -177,6 +179,7 @@ export async function evaluateBenefitEligibility(
       getWorker,
       asOfMonth,
       asOfYear,
+      benefitId,
     };
     
     try {

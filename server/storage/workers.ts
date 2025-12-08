@@ -12,7 +12,7 @@ import {
   type TrustBenefit,
   type Employer,
 } from "@shared/schema";
-import { eq, sql, desc } from "drizzle-orm";
+import { eq, sql, desc, and } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
@@ -82,6 +82,7 @@ export interface WorkerStorage {
   getWorkerBenefits(workerId: string): Promise<any[]>;
   createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb>;
   deleteWorkerBenefit(id: string): Promise<boolean>;
+  workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean>;
 }
 
 export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerStorage {
@@ -476,6 +477,22 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .delete(trustWmb)
         .where(eq(trustWmb.id, id))
         .returning();
+      return result.length > 0;
+    },
+
+    async workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean> {
+      const result = await db
+        .select({ id: trustWmb.id })
+        .from(trustWmb)
+        .where(
+          and(
+            eq(trustWmb.workerId, workerId),
+            eq(trustWmb.benefitId, benefitId),
+            eq(trustWmb.month, month),
+            eq(trustWmb.year, year)
+          )
+        )
+        .limit(1);
       return result.length > 0;
     },
   };

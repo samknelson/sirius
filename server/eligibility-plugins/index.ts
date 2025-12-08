@@ -5,3 +5,4 @@ export * from "./executor";
 
 import "./plugins/workStatus";
 import "./plugins/gbhetLegal";
+import "./plugins/manual";
