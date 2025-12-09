@@ -185,12 +185,12 @@ export default function CardcheckDefinitionsPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <Link href={`/cardcheck/definition/${definition.id}`}>
+                          <Link href={`/cardcheck-definitions/${definition.id}`}>
                             <Button variant="ghost" size="icon" data-testid={`button-view-${definition.id}`}>
                               <Eye className="h-4 w-4" />
                             </Button>
                           </Link>
-                          <Link href={`/cardcheck/definition/${definition.id}/edit`}>
+                          <Link href={`/cardcheck-definitions/${definition.id}/edit`}>
                             <Button variant="ghost" size="icon" data-testid={`button-edit-${definition.id}`}>
                               <Pencil className="h-4 w-4" />
                             </Button>

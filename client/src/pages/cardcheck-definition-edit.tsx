@@ -49,7 +49,7 @@ export default function CardcheckDefinitionEditPage() {
         title: "Success",
         description: "Cardcheck definition updated successfully.",
       });
-      setLocation(`/cardcheck/definition/${id}`);
+      setLocation(`/cardcheck-definitions/${id}`);
     },
     onError: (error: any) => {
       toast({
@@ -103,7 +103,7 @@ export default function CardcheckDefinitionEditPage() {
         <Card>
           <CardContent className="py-12 text-center">
             <p className="text-destructive">Cardcheck definition not found.</p>
-            <Link href="/cardcheck/definitions">
+            <Link href="/cardcheck-definitions">
               <Button variant="outline" className="mt-4">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back to Definitions
@@ -119,7 +119,7 @@ export default function CardcheckDefinitionEditPage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="space-y-6">
         <div className="flex items-center gap-4">
-          <Link href={`/cardcheck/definition/${id}`}>
+          <Link href={`/cardcheck-definitions/${id}`}>
             <Button variant="ghost" size="icon" data-testid="button-back">
               <ArrowLeft className="h-4 w-4" />
             </Button>
@@ -184,7 +184,7 @@ export default function CardcheckDefinitionEditPage() {
 
             <div className="pt-4 border-t border-border">
               <div className="flex items-center gap-2 flex-wrap">
-                <Link href={`/cardcheck/definition/${id}`}>
+                <Link href={`/cardcheck-definitions/${id}`}>
                   <Button variant="outline" data-testid="button-cancel">
                     Cancel
                   </Button>

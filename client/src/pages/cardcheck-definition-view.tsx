@@ -30,7 +30,7 @@ export default function CardcheckDefinitionViewPage() {
         <Card>
           <CardContent className="py-12 text-center">
             <p className="text-destructive">Cardcheck definition not found.</p>
-            <Link href="/cardcheck/definitions">
+            <Link href="/cardcheck-definitions">
               <Button variant="outline" className="mt-4">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back to Definitions
@@ -47,7 +47,7 @@ export default function CardcheckDefinitionViewPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4">
-            <Link href="/cardcheck/definitions">
+            <Link href="/cardcheck-definitions">
               <Button variant="ghost" size="icon" data-testid="button-back">
                 <ArrowLeft className="h-4 w-4" />
               </Button>
@@ -61,7 +61,7 @@ export default function CardcheckDefinitionViewPage() {
               </p>
             </div>
           </div>
-          <Link href={`/cardcheck/definition/${id}/edit`}>
+          <Link href={`/cardcheck-definitions/${id}/edit`}>
             <Button data-testid="button-edit">
               <Pencil className="h-4 w-4 mr-2" />
               Edit
@@ -120,7 +120,7 @@ export default function CardcheckDefinitionViewPage() {
         </Card>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <Link href="/cardcheck/definitions">
+          <Link href="/cardcheck-definitions">
             <Button variant="outline" data-testid="button-back-to-list">
               Back to List
             </Button>

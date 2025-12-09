@@ -364,7 +364,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/cardcheck/:id">
+      <Route path="/cardchecks/:id">
         <ProtectedRoute permission="workers.view" component="cardcheck">
           <AuthenticatedLayout>
             <CardcheckViewPage />
@@ -814,7 +814,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/cardcheck/definitions">
+      <Route path="/cardcheck-definitions">
         <ProtectedRoute permission="workers.view" component="cardcheck">
           <AuthenticatedLayout>
             <CardcheckDefinitionsPage />
@@ -822,7 +822,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/cardcheck/definition/:id/edit">
+      <Route path="/cardcheck-definitions/:id/edit">
         <ProtectedRoute permission="workers.manage" component="cardcheck">
           <AuthenticatedLayout>
             <CardcheckDefinitionEditPage />
@@ -830,7 +830,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/cardcheck/definition/:id">
+      <Route path="/cardcheck-definitions/:id">
         <ProtectedRoute permission="workers.view" component="cardcheck">
           <AuthenticatedLayout>
             <CardcheckDefinitionViewPage />

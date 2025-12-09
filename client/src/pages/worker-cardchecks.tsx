@@ -184,7 +184,7 @@ function WorkerCardchecksContent() {
                       : "-"}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Link href={`/cardcheck/${cardcheck.id}`}>
+                    <Link href={`/cardchecks/${cardcheck.id}`}>
                       <Button variant="ghost" size="icon" data-testid={`button-view-${cardcheck.id}`}>
                         <Eye className="h-4 w-4" />
                       </Button>

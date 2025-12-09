@@ -175,9 +175,9 @@ export default function Header() {
                   </Button>
                 </Link>
                 {hasComponent("cardcheck") && (
-                  <Link href="/cardcheck/definitions" onClick={() => setMobileMenuOpen(false)}>
+                  <Link href="/cardcheck-definitions" onClick={() => setMobileMenuOpen(false)}>
                     <Button
-                      variant={location.startsWith("/cardcheck/") ? "default" : "ghost"}
+                      variant={location.startsWith("/cardcheck") ? "default" : "ghost"}
                       className="w-full justify-start pl-8"
                       data-testid="mobile-nav-cardcheck-definitions"
                     >
@@ -331,7 +331,7 @@ export default function Header() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant={location === "/workers" || location.startsWith("/cardcheck/") ? "default" : "ghost"}
+                  variant={location === "/workers" || location.startsWith("/cardcheck") ? "default" : "ghost"}
                   size="sm"
                   data-testid="nav-workers"
                 >
@@ -351,7 +351,7 @@ export default function Header() {
                 </DropdownMenuItem>
                 {hasComponent("cardcheck") && (
                   <DropdownMenuItem asChild>
-                    <Link href="/cardcheck/definitions" className="w-full">
+                    <Link href="/cardcheck-definitions" className="w-full">
                       <div className="flex items-center cursor-pointer" data-testid="menu-cardcheck-definitions">
                         <ClipboardCheck className="h-4 w-4 mr-2" />
                         Cardchecks
