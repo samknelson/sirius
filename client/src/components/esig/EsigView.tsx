@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, FileSignature, Calendar, Hash, Shield, FileText, Download, User, Mail, Key, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Loader2, FileSignature, Calendar, Hash, Shield, FileText, Download, User, Mail, Key, AlertTriangle, CheckCircle2, Ban } from "lucide-react";
 import { format } from "date-fns";
 
 async function computeSha256(text: string): Promise<string> {
@@ -19,6 +19,7 @@ async function computeSha256(text: string): Promise<string> {
 
 interface EsigViewProps {
   esigId: string;
+  isRevoked?: boolean;
 }
 
 interface EsigData {
@@ -39,7 +40,7 @@ interface EsigWithSigner extends Esig {
   signer?: EsigSigner;
 }
 
-export function EsigView({ esigId }: EsigViewProps) {
+export function EsigView({ esigId, isRevoked = false }: EsigViewProps) {
   const { data: esig, isLoading, error } = useQuery<EsigWithSigner>({
     queryKey: ["/api/esigs", esigId],
     enabled: !!esigId,
@@ -216,7 +217,7 @@ export function EsigView({ esigId }: EsigViewProps) {
 
           <div className="space-y-3">
             <label className="text-sm font-medium text-muted-foreground">Signature</label>
-            <SignatureDisplay esigData={esigData} />
+            <SignatureDisplay esigData={esigData} isRevoked={isRevoked} />
           </div>
 
           <div className="flex items-center gap-2">
@@ -237,9 +238,28 @@ export function EsigView({ esigId }: EsigViewProps) {
 
 interface SignatureDisplayProps {
   esigData: EsigData | null;
+  isRevoked?: boolean;
 }
 
-function SignatureDisplay({ esigData }: SignatureDisplayProps) {
+function RevokedOverlay() {
+  return (
+    <div 
+      className="absolute inset-0 flex items-center justify-center pointer-events-none"
+      data-testid="overlay-revoked"
+    >
+      <div className="relative w-full h-full flex items-center justify-center">
+        <div className="absolute inset-0 bg-destructive/10 rounded-md" />
+        <Ban className="h-24 w-24 text-destructive/70 absolute" />
+        <div 
+          className="absolute w-full border-t-4 border-destructive/70"
+          style={{ transform: "rotate(-15deg)" }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function SignatureDisplay({ esigData, isRevoked = false }: SignatureDisplayProps) {
   if (!esigData) {
     return (
       <div className="p-4 border rounded-md bg-muted/50">
@@ -250,25 +270,27 @@ function SignatureDisplay({ esigData }: SignatureDisplayProps) {
 
   if (esigData.type === "canvas" && esigData.value) {
     return (
-      <div className="border rounded-md p-4 bg-white dark:bg-zinc-900" data-testid="display-signature-canvas">
+      <div className="relative border rounded-md p-4 bg-white dark:bg-zinc-900" data-testid="display-signature-canvas">
         <img 
           src={esigData.value} 
           alt="Signature" 
           className="max-h-32 object-contain"
         />
+        {isRevoked && <RevokedOverlay />}
       </div>
     );
   }
 
   if (esigData.type === "typed" && esigData.value) {
     return (
-      <div className="border rounded-md p-4 bg-white dark:bg-zinc-900" data-testid="display-signature-typed">
+      <div className="relative border rounded-md p-4 bg-white dark:bg-zinc-900" data-testid="display-signature-typed">
         <p 
           className="text-2xl italic text-foreground"
           style={{ fontFamily: "'Dancing Script', cursive, serif" }}
         >
           {esigData.value}
         </p>
+        {isRevoked && <RevokedOverlay />}
       </div>
     );
   }
@@ -287,7 +309,7 @@ function SignatureDisplay({ esigData }: SignatureDisplayProps) {
     };
 
     return (
-      <div className="border rounded-md p-4 bg-white dark:bg-zinc-900" data-testid="display-signature-upload">
+      <div className="relative border rounded-md p-4 bg-white dark:bg-zinc-900" data-testid="display-signature-upload">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-muted-foreground" />
@@ -303,6 +325,7 @@ function SignatureDisplay({ esigData }: SignatureDisplayProps) {
             Download
           </Button>
         </div>
+        {isRevoked && <RevokedOverlay />}
       </div>
     );
   }

@@ -267,7 +267,7 @@ export default function CardcheckViewPage() {
         </Card>
 
         {cardcheck.esigId ? (
-          <EsigView esigId={cardcheck.esigId} />
+          <EsigView esigId={cardcheck.esigId} isRevoked={cardcheck.status === "revoked"} />
         ) : (
           definition?.body && (
             <Card>
