@@ -339,18 +339,6 @@ export default function CardcheckViewPage() {
             </AlertDialog>
           )}
 
-          {cardcheck.status === "revoked" && (
-            <Button 
-              onClick={() => signMutation.mutate()}
-              disabled={signMutation.isPending}
-              data-testid="button-sign-again"
-            >
-              {signMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Sign Again
-            </Button>
-          )}
-
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="outline" className="text-destructive" data-testid="button-delete">

@@ -58,6 +58,16 @@ export function registerCardchecksRoutes(
     try {
       const { id } = req.params;
       
+      const existing = await storage.cardchecks.getCardcheckById(id);
+      if (!existing) {
+        res.status(404).json({ message: "Cardcheck not found" });
+        return;
+      }
+      
+      if (existing.status === "revoked") {
+        return res.status(400).json({ message: "Cannot modify a revoked cardcheck. Revoked cardchecks are permanently locked." });
+      }
+      
       const parsed = insertCardcheckSchema.partial().safeParse(req.body);
       
       if (!parsed.success) {
