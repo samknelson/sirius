@@ -26,7 +26,7 @@ export function useWorkerLayout() {
 }
 
 interface WorkerLayoutProps {
-  activeTab: "details" | "identity" | "name" | "email" | "ids" | "addresses" | "phone-numbers" | "birth-date" | "gender" | "work-status" | "employment" | "current" | "history" | "monthly" | "daily" | "comm" | "comm-history" | "send-sms" | "send-email" | "send-postal" | "benefits" | "benefits-history" | "benefits-eligibility" | "benefits-scan" | "logs" | "delete";
+  activeTab: "details" | "identity" | "name" | "email" | "ids" | "addresses" | "phone-numbers" | "birth-date" | "gender" | "work-status" | "employment" | "current" | "history" | "monthly" | "daily" | "comm" | "comm-history" | "send-sms" | "send-email" | "send-postal" | "benefits" | "benefits-history" | "benefits-eligibility" | "benefits-scan" | "cardchecks" | "logs" | "delete";
   children: ReactNode;
 }
 
@@ -153,6 +153,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     { id: "comm", label: "Comm", href: `/workers/${worker.id}/comm/history` },
     { id: "employment", label: "Employment", href: `/workers/${worker.id}/employment/current` },
     { id: "benefits", label: "Benefits", href: `/workers/${worker.id}/benefits/history` },
+    { id: "cardchecks", label: "Cardchecks", href: `/workers/${worker.id}/cardchecks` },
     { id: "logs", label: "Logs", href: `/workers/${worker.id}/logs` },
     { id: "delete", label: "Delete", href: `/workers/${worker.id}/delete` },
   ];
