@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useParams, useLocation } from "wouter";
 import { Loader2, ArrowLeft, User, FileText, Calendar, CheckCircle, XCircle, Clock } from "lucide-react";
@@ -20,12 +21,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { SignatureModal } from "@/components/esig/SignatureModal";
 
 export default function CardcheckViewPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const [signModalOpen, setSignModalOpen] = useState(false);
 
   const { data: cardcheck, isLoading, error } = useQuery<Cardcheck>({
     queryKey: ["/api/cardcheck", id],
@@ -47,29 +50,10 @@ export default function CardcheckViewPage() {
     enabled: !!worker?.contactId,
   });
 
-  const signMutation = useMutation({
-    mutationFn: async () => {
-      return apiRequest("PATCH", `/api/cardcheck/${id}`, { 
-        status: "signed",
-        signedDate: new Date().toISOString()
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cardcheck", id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/workers", cardcheck?.workerId, "cardchecks"] });
-      toast({
-        title: "Success",
-        description: "Cardcheck has been signed.",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to sign cardcheck.",
-        variant: "destructive",
-      });
-    },
-  });
+  const handleSignSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/cardcheck", id] });
+    queryClient.invalidateQueries({ queryKey: ["/api/workers", cardcheck?.workerId, "cardchecks"] });
+  };
 
   const revokeMutation = useMutation({
     mutationFn: async () => {
@@ -301,11 +285,9 @@ export default function CardcheckViewPage() {
         <div className="flex items-center gap-2 flex-wrap">
           {cardcheck.status === "pending" && (
             <Button 
-              onClick={() => signMutation.mutate()}
-              disabled={signMutation.isPending}
+              onClick={() => setSignModalOpen(true)}
               data-testid="button-sign"
             >
-              {signMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               <CheckCircle className="h-4 w-4 mr-2" />
               Sign Cardcheck
             </Button>
@@ -365,6 +347,18 @@ export default function CardcheckViewPage() {
           </AlertDialog>
         </div>
       </div>
+
+      {id && definition && (
+        <SignatureModal
+          open={signModalOpen}
+          onOpenChange={setSignModalOpen}
+          docType="cardcheck"
+          docTitle={definition.name}
+          docRender={definition.body || ""}
+          entityId={id}
+          onSuccess={handleSignSuccess}
+        />
+      )}
     </div>
   );
 }

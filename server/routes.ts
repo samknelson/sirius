@@ -47,6 +47,7 @@ import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
 import { registerCardcheckDefinitionsRoutes } from "./modules/cardcheck-definitions";
 import { registerCardchecksRoutes } from "./modules/cardchecks";
+import { registerEsigsRoutes } from "./modules/esigs";
 import { requireAccess } from "./accessControl";
 import { policies } from "./policies";
 import { addressValidationService } from "./services/address-validation";
@@ -289,6 +290,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register cardchecks routes
   registerCardchecksRoutes(app, requireAuth, requirePermission, requireAccess);
+  
+  // Register e-signature routes
+  registerEsigsRoutes(app, requireAuth, requirePermission, storage);
 
   // Worker routes (protected with authentication and permissions)
   

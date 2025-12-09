@@ -25,6 +25,7 @@ import { type EmployerPolicyHistoryStorage, createEmployerPolicyHistoryStorage, 
 import { type WmbScanQueueStorage, createWmbScanQueueStorage } from "./wmb-scan-queue";
 import { type CardcheckDefinitionStorage, createCardcheckDefinitionStorage, cardcheckDefinitionLoggingConfig } from "./cardcheck-definitions";
 import { type CardcheckStorage, createCardcheckStorage, cardcheckLoggingConfig } from "./cardchecks";
+import { type EsigStorage, createEsigStorage, esigLoggingConfig } from "./esigs";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "../db";
 import { optionsEmploymentStatus, employers, workers, contacts } from "@shared/schema";
@@ -59,6 +60,7 @@ export interface IStorage {
   wmbScanQueue: WmbScanQueueStorage;
   cardcheckDefinitions: CardcheckDefinitionStorage;
   cardchecks: CardcheckStorage;
+  esigs: EsigStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -90,6 +92,7 @@ export class DatabaseStorage implements IStorage {
   wmbScanQueue: WmbScanQueueStorage;
   cardcheckDefinitions: CardcheckDefinitionStorage;
   cardchecks: CardcheckStorage;
+  esigs: EsigStorage;
 
   constructor() {
     this.variables = withStorageLogging(createVariableStorage(), variableLoggingConfig);
@@ -167,6 +170,10 @@ export class DatabaseStorage implements IStorage {
     this.cardchecks = withStorageLogging(
       createCardcheckStorage(),
       cardcheckLoggingConfig
+    );
+    this.esigs = withStorageLogging(
+      createEsigStorage(),
+      esigLoggingConfig
     );
   }
 }
