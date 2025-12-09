@@ -11,12 +11,17 @@ export function registerEsigsRoutes(
   app.post("/api/esigs", requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
-      const userId = user?.id;
-      if (!userId) {
+      const replitUserId = user?.claims?.sub;
+      if (!replitUserId) {
         return res.status(401).json({ message: "User not authenticated" });
       }
 
-      const body = { ...req.body, userId };
+      const dbUser = await storage.users.getUserByReplitId(replitUserId);
+      if (!dbUser) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const body = { ...req.body, userId: dbUser.id };
       
       if (body.signedDate && typeof body.signedDate === "string") {
         body.signedDate = new Date(body.signedDate);
@@ -55,10 +60,15 @@ export function registerEsigsRoutes(
     try {
       const { id: cardcheckId } = req.params;
       const user = req.user as any;
-      const userId = user?.id;
+      const replitUserId = user?.claims?.sub;
       
-      if (!userId) {
+      if (!replitUserId) {
         return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const dbUser = await storage.users.getUserByReplitId(replitUserId);
+      if (!dbUser) {
+        return res.status(401).json({ message: "User not found" });
       }
 
       const existingCardcheck = await storage.cardchecks.getCardcheckById(cardcheckId);
@@ -82,7 +92,7 @@ export function registerEsigsRoutes(
 
       const result = await storage.esigs.signCardcheck({
         cardcheckId,
-        userId,
+        userId: dbUser.id,
         docRender,
         docType,
         esigData,
