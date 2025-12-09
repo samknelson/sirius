@@ -116,15 +116,6 @@ export default function CardcheckDefinitionViewPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Data (JSON)</label>
-              <pre 
-                className="bg-muted rounded-md p-4 overflow-x-auto text-sm font-mono"
-                data-testid="text-data"
-              >
-                {definition.data ? JSON.stringify(definition.data, null, 2) : "null"}
-              </pre>
-            </div>
           </CardContent>
         </Card>
 

@@ -23,7 +23,6 @@ export default function CardcheckDefinitionEditPage() {
   const [formName, setFormName] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formBody, setFormBody] = useState("");
-  const [formData, setFormData] = useState("");
 
   const { data: definition, isLoading, error } = useQuery<CardcheckDefinition>({
     queryKey: ["/api/cardcheck/definition", id],
@@ -36,7 +35,6 @@ export default function CardcheckDefinitionEditPage() {
       setFormName(definition.name);
       setFormDescription(definition.description || "");
       setFormBody(definition.body || "");
-      setFormData(definition.data ? JSON.stringify(definition.data, null, 2) : "");
     }
   }, [definition]);
 
@@ -81,26 +79,11 @@ export default function CardcheckDefinitionEditPage() {
       return;
     }
 
-    let parsedData = null;
-    if (formData.trim()) {
-      try {
-        parsedData = JSON.parse(formData);
-      } catch (e) {
-        toast({
-          title: "Validation Error",
-          description: "Data field must be valid JSON.",
-          variant: "destructive",
-        });
-        return;
-      }
-    }
-
     updateMutation.mutate({
       siriusId: formSiriusId.trim(),
       name: formName.trim(),
       description: formDescription.trim() || null,
       body: formBody.trim() || null,
-      data: parsedData,
     });
   };
 
@@ -196,19 +179,6 @@ export default function CardcheckDefinitionEditPage() {
                 onChange={setFormBody}
                 placeholder="Enter body content..."
                 data-testid="input-body"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit-data">Data (JSON)</Label>
-              <Textarea
-                id="edit-data"
-                value={formData}
-                onChange={(e) => setFormData(e.target.value)}
-                placeholder='{"key": "value"}'
-                rows={6}
-                className="font-mono text-sm"
-                data-testid="input-data"
               />
             </div>
 
