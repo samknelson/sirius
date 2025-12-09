@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -189,14 +190,11 @@ export default function CardcheckDefinitionEditPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="edit-body">Body (HTML)</Label>
-              <Textarea
-                id="edit-body"
+              <Label>Body (HTML)</Label>
+              <SimpleHtmlEditor
                 value={formBody}
-                onChange={(e) => setFormBody(e.target.value)}
-                placeholder="Enter HTML body content..."
-                rows={8}
-                className="font-mono text-sm"
+                onChange={setFormBody}
+                placeholder="Enter body content..."
                 data-testid="input-body"
               />
             </div>
