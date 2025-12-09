@@ -472,7 +472,7 @@ export const cardcheckDefinitions = pgTable("cardcheck_definitions", {
 export const cardcheckStatusEnum = pgEnum("cardcheck_status", ["pending", "signed", "revoked"]);
 
 export const esigStatusEnum = pgEnum("esig_status", ["pending", "signed"]);
-export const esigTypeEnum = pgEnum("esig_type", ["online", "offline"]);
+export const esigTypeEnum = pgEnum("esig_type", ["online", "offline", "upload"]);
 
 export const esigs = pgTable("esigs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

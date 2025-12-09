@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Loader2, Pen, Type, Check, X } from "lucide-react";
+import { Loader2, Pen, Type, Check, X, Upload, FileText, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -36,12 +36,52 @@ export function SignatureModal({
   entityId,
   onSuccess,
 }: SignatureModalProps) {
-  const [signatureType, setSignatureType] = useState<"canvas" | "typed">("typed");
+  const [signatureType, setSignatureType] = useState<"canvas" | "typed" | "upload">("typed");
   const [typedName, setTypedName] = useState("");
+  const [uploadedFile, setUploadedFile] = useState<{ fileId: string; fileName: string; docRender: string } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const isDrawingRef = useRef(false);
   const lastPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const { toast } = useToast();
+
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      
+      const response = await fetch("/api/esigs/upload-document", {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to upload document");
+      }
+      
+      return response.json();
+    },
+    onSuccess: (result) => {
+      setUploadedFile({
+        fileId: result.fileId,
+        fileName: result.fileName,
+        docRender: result.docRender,
+      });
+      toast({
+        title: "Document Uploaded",
+        description: "Document uploaded and text extracted successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Upload Failed",
+        description: error.message || "Failed to upload document.",
+        variant: "destructive",
+      });
+    },
+  });
 
   const signMutation = useMutation({
     mutationFn: async (signatureData: { signatureType: string; esigData: any; docRender: string }) => {
@@ -63,6 +103,20 @@ export function SignatureModal({
       });
     },
   });
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      uploadMutation.mutate(file);
+    }
+  };
+
+  const handleRemoveFile = () => {
+    setUploadedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   const clearCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -138,6 +192,7 @@ export function SignatureModal({
 
   const handleSign = () => {
     let esigData: any;
+    let finalDocRender = docRender;
     
     if (signatureType === "typed") {
       if (!typedName.trim()) {
@@ -153,7 +208,7 @@ export function SignatureModal({
         value: typedName.trim(),
         signedAt: new Date().toISOString(),
       };
-    } else {
+    } else if (signatureType === "canvas") {
       const canvas = canvasRef.current;
       if (!canvas) return;
       
@@ -163,12 +218,28 @@ export function SignatureModal({
         value: dataUrl,
         signedAt: new Date().toISOString(),
       };
+    } else if (signatureType === "upload") {
+      if (!uploadedFile) {
+        toast({
+          title: "Document Required",
+          description: "Please upload a document to sign.",
+          variant: "destructive",
+        });
+        return;
+      }
+      esigData = {
+        type: "upload",
+        value: uploadedFile.fileId,
+        fileName: uploadedFile.fileName,
+        signedAt: new Date().toISOString(),
+      };
+      finalDocRender = uploadedFile.docRender;
     }
 
     signMutation.mutate({
       signatureType,
       esigData,
-      docRender,
+      docRender: finalDocRender,
     });
   };
 
@@ -183,19 +254,21 @@ export function SignatureModal({
         </DialogHeader>
         
         <div className="flex-1 min-h-0 space-y-4">
-          <div className="border rounded-md p-4 bg-muted/30">
-            <h3 className="font-semibold text-lg mb-2">{docTitle}</h3>
-            <ScrollArea className="h-48">
-              <div 
-                className="prose prose-sm max-w-none dark:prose-invert"
-                dangerouslySetInnerHTML={{ __html: docRender }}
-                data-testid="text-document-content"
-              />
-            </ScrollArea>
-          </div>
+          {signatureType !== "upload" && (
+            <div className="border rounded-md p-4 bg-muted/30">
+              <h3 className="font-semibold text-lg mb-2">{docTitle}</h3>
+              <ScrollArea className="h-48">
+                <div 
+                  className="prose prose-sm max-w-none dark:prose-invert"
+                  dangerouslySetInnerHTML={{ __html: docRender }}
+                  data-testid="text-document-content"
+                />
+              </ScrollArea>
+            </div>
+          )}
 
-          <Tabs value={signatureType} onValueChange={(v) => setSignatureType(v as "canvas" | "typed")}>
-            <TabsList className="grid w-full grid-cols-2">
+          <Tabs value={signatureType} onValueChange={(v) => setSignatureType(v as "canvas" | "typed" | "upload")}>
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="typed" data-testid="tab-typed">
                 <Type className="h-4 w-4 mr-2" />
                 Type Name
@@ -203,6 +276,10 @@ export function SignatureModal({
               <TabsTrigger value="canvas" data-testid="tab-canvas">
                 <Pen className="h-4 w-4 mr-2" />
                 Draw Signature
+              </TabsTrigger>
+              <TabsTrigger value="upload" data-testid="tab-upload">
+                <Upload className="h-4 w-4 mr-2" />
+                Upload Document
               </TabsTrigger>
             </TabsList>
             
@@ -258,6 +335,79 @@ export function SignatureModal({
                 </div>
               </div>
             </TabsContent>
+
+            <TabsContent value="upload" className="mt-4">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Upload a Word or PDF Document</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Upload a signed document (PDF or Word). The text will be extracted and stored with your signature.
+                  </p>
+                </div>
+                
+                {!uploadedFile ? (
+                  <div className="border-2 border-dashed rounded-md p-6 text-center">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileSelect}
+                      accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      className="hidden"
+                      data-testid="input-file-upload"
+                    />
+                    <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <Button
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadMutation.isPending}
+                      data-testid="button-select-file"
+                    >
+                      {uploadMutation.isPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-4 w-4 mr-2" />
+                          Select File
+                        </>
+                      )}
+                    </Button>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      PDF or Word documents up to 20MB
+                    </p>
+                  </div>
+                ) : (
+                  <div className="border rounded-md p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-muted-foreground" />
+                        <span className="font-medium">{uploadedFile.fileName}</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleRemoveFile}
+                        data-testid="button-remove-file"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="border-t pt-3">
+                      <Label className="text-xs text-muted-foreground">Extracted Content Preview</Label>
+                      <ScrollArea className="h-32 mt-2">
+                        <div 
+                          className="prose prose-sm max-w-none dark:prose-invert text-sm"
+                          dangerouslySetInnerHTML={{ __html: uploadedFile.docRender }}
+                          data-testid="text-extracted-content"
+                        />
+                      </ScrollArea>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
           </Tabs>
         </div>
 
@@ -272,7 +422,12 @@ export function SignatureModal({
           </Button>
           <Button 
             onClick={handleSign}
-            disabled={signMutation.isPending || (signatureType === "typed" && !typedName.trim())}
+            disabled={
+              signMutation.isPending || 
+              uploadMutation.isPending ||
+              (signatureType === "typed" && !typedName.trim()) ||
+              (signatureType === "upload" && !uploadedFile)
+            }
             data-testid="button-confirm-sign"
           >
             {signMutation.isPending ? (

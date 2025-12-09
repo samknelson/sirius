@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { Esig } from "@shared/schema";
+import { Esig, File as FileRecord } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, FileSignature, Calendar, Hash, Shield } from "lucide-react";
+import { Loader2, FileSignature, Calendar, Hash, Shield, FileText, Download } from "lucide-react";
 import { format } from "date-fns";
 
 interface EsigViewProps {
@@ -11,8 +12,9 @@ interface EsigViewProps {
 }
 
 interface EsigData {
-  type: "canvas" | "typed";
+  type: "canvas" | "typed" | "upload";
   value: string;
+  fileName?: string;
   signedAt?: string;
 }
 
@@ -152,6 +154,40 @@ function SignatureDisplay({ esigData }: SignatureDisplayProps) {
         >
           {esigData.value}
         </p>
+      </div>
+    );
+  }
+
+  if (esigData.type === "upload" && esigData.value) {
+    const handleDownload = async () => {
+      try {
+        const response = await fetch(`/api/files/${esigData.value}/url`);
+        const data = await response.json();
+        if (data.url) {
+          window.open(data.url, "_blank");
+        }
+      } catch (error) {
+        console.error("Failed to get download URL:", error);
+      }
+    };
+
+    return (
+      <div className="border rounded-md p-4 bg-white dark:bg-zinc-900" data-testid="display-signature-upload">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-muted-foreground" />
+            <span className="font-medium">{esigData.fileName || "Uploaded Document"}</span>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDownload}
+            data-testid="button-download-signed-document"
+          >
+            <Download className="h-4 w-4 mr-1" />
+            Download
+          </Button>
+        </div>
       </div>
     );
   }

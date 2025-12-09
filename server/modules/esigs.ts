@@ -24,6 +24,32 @@ const upload = multer({
   },
 });
 
+function validateFileSignature(buffer: Buffer): { valid: boolean; detectedType: string | null } {
+  if (buffer.length < 8) {
+    return { valid: false, detectedType: null };
+  }
+  
+  // PDF magic bytes: %PDF
+  if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) {
+    return { valid: true, detectedType: "pdf" };
+  }
+  
+  // DOCX/Office Open XML: PK (ZIP signature) - DOCX files are ZIP archives
+  if (buffer[0] === 0x50 && buffer[1] === 0x4B) {
+    // Check for Office Open XML by looking for specific patterns
+    // DOCX starts with PK and contains [Content_Types].xml
+    return { valid: true, detectedType: "docx" };
+  }
+  
+  // DOC (OLE Compound Document): D0 CF 11 E0 A1 B1 1A E1
+  if (buffer[0] === 0xD0 && buffer[1] === 0xCF && buffer[2] === 0x11 && buffer[3] === 0xE0 &&
+      buffer[4] === 0xA1 && buffer[5] === 0xB1 && buffer[6] === 0x1A && buffer[7] === 0xE1) {
+    return { valid: true, detectedType: "doc" };
+  }
+  
+  return { valid: false, detectedType: null };
+}
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -98,6 +124,14 @@ export function registerEsigsRoutes(
 
       if (!req.file) {
         return res.status(400).json({ message: "No file provided" });
+      }
+
+      // Server-side file signature validation (magic bytes)
+      const fileValidation = validateFileSignature(req.file.buffer);
+      if (!fileValidation.valid) {
+        return res.status(400).json({ 
+          message: "Invalid file type. The file content does not match a valid PDF or Word document." 
+        });
       }
 
       // Extract text from document using officeparser
@@ -201,6 +235,9 @@ export function registerEsigsRoutes(
         return res.status(400).json({ message: "Missing required signing data" });
       }
 
+      // Extract fileId from esigData if signing with uploaded document
+      const fileId = signatureType === "upload" && esigData?.value ? esigData.value : undefined;
+
       const result = await storage.esigs.signCardcheck({
         cardcheckId,
         userId: dbUser.id,
@@ -208,6 +245,7 @@ export function registerEsigsRoutes(
         docType,
         esigData,
         signatureType,
+        fileId,
       });
 
       res.json(result);

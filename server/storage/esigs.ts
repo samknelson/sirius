@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { esigs, cardchecks, type Esig, type InsertEsig, type Cardcheck } from "@shared/schema";
+import { esigs, cardchecks, files, type Esig, type InsertEsig, type Cardcheck } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 import crypto from "crypto";
@@ -11,6 +11,7 @@ export interface SignCardcheckParams {
   docType: string;
   esigData: any;
   signatureType: string;
+  fileId?: string;
 }
 
 export interface SignCardcheckResult {
@@ -53,23 +54,50 @@ export function createEsigStorage(): EsigStorage {
     },
 
     async signCardcheck(params: SignCardcheckParams): Promise<SignCardcheckResult> {
-      const { cardcheckId, userId, docRender, docType, esigData, signatureType } = params;
+      const { cardcheckId, userId, docRender, docType, esigData, signatureType, fileId } = params;
       const docHash = crypto.createHash("sha256").update(docRender).digest("hex");
 
       return db.transaction(async (tx) => {
+        // If signing with an uploaded file, validate file ownership
+        if (fileId && signatureType === "upload") {
+          const [file] = await tx
+            .select()
+            .from(files)
+            .where(eq(files.id, fileId));
+          
+          if (!file) {
+            throw new Error("Referenced file not found");
+          }
+          
+          if (file.uploadedBy !== userId) {
+            throw new Error("You are not authorized to sign with this file");
+          }
+        }
+
         const [newEsig] = await tx
           .insert(esigs)
           .values({
             userId,
             status: "signed",
             signedDate: new Date(),
-            type: signatureType === "canvas" ? "online" : "online",
+            type: signatureType === "upload" ? "upload" : "online",
             docRender,
             docHash,
             esig: esigData,
             docType,
           })
           .returning();
+
+        // Link the file to the esig if present
+        if (fileId && signatureType === "upload") {
+          await tx
+            .update(files)
+            .set({
+              entityType: "esig",
+              entityId: newEsig.id,
+            })
+            .where(eq(files.id, fileId));
+        }
 
         const [updatedCardcheck] = await tx
           .update(cardchecks)
