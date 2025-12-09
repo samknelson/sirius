@@ -138,10 +138,9 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
 
   const updateMutation = useMutation({
     mutationFn: async (values: z.infer<typeof formSchema>) => {
-      // Save wizard data
+      // Save wizard data - only send the fields being updated, let server merge
       const updatedWizard = await apiRequest("PATCH", `/api/wizards/${wizardId}`, {
         data: {
-          ...data,
           mode: values.mode,
           hasHeaders: values.hasHeaders,
           columnMapping: values.columnMapping
@@ -164,7 +163,7 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
       return updatedWizard;
     },
     onSuccess: (updatedWizard) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/wizards", wizardId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
       if (onDataChange) {
         onDataChange(updatedWizard.data);
       }
