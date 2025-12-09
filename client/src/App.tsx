@@ -159,6 +159,9 @@ import PolicyView from "@/pages/policy-view";
 import PolicyEdit from "@/pages/policy-edit";
 import PolicyBenefits from "@/pages/policy-benefits";
 import PoliciesConfigPage from "@/pages/config/policies";
+import CardcheckDefinitionsPage from "@/pages/cardcheck-definitions";
+import CardcheckDefinitionViewPage from "@/pages/cardcheck-definition-view";
+import CardcheckDefinitionEditPage from "@/pages/cardcheck-definition-edit";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
@@ -789,6 +792,30 @@ function Router() {
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <PolicyView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/cardcheck/definitions">
+        <ProtectedRoute permission="workers.view" component="cardcheck">
+          <AuthenticatedLayout>
+            <CardcheckDefinitionsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/cardcheck/definition/:id/edit">
+        <ProtectedRoute permission="workers.manage" component="cardcheck">
+          <AuthenticatedLayout>
+            <CardcheckDefinitionEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/cardcheck/definition/:id">
+        <ProtectedRoute permission="workers.view" component="cardcheck">
+          <AuthenticatedLayout>
+            <CardcheckDefinitionViewPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

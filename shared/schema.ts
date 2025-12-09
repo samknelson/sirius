@@ -460,6 +460,15 @@ export const winstonLogs = pgTable("winston_logs", {
 
 export type WinstonLog = typeof winstonLogs.$inferSelect;
 
+export const cardcheckDefinitions = pgTable("cardcheck_definitions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  siriusId: varchar("sirius_id").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  body: text("body"),
+  data: jsonb("data"),
+});
+
 // Zod schemas for validation
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -502,6 +511,10 @@ export const insertEmployerSchema = createInsertSchema(employers).omit({
 });
 
 export const insertPolicySchema = createInsertSchema(policies).omit({
+  id: true,
+});
+
+export const insertCardcheckDefinitionSchema = createInsertSchema(cardcheckDefinitions).omit({
   id: true,
 });
 
@@ -720,6 +733,9 @@ export type Employer = typeof employers.$inferSelect;
 
 export type InsertPolicy = z.infer<typeof insertPolicySchema>;
 export type Policy = typeof policies.$inferSelect;
+
+export type InsertCardcheckDefinition = z.infer<typeof insertCardcheckDefinitionSchema>;
+export type CardcheckDefinition = typeof cardcheckDefinitions.$inferSelect;
 
 export type InsertEmployerContact = z.infer<typeof insertEmployerContactSchema>;
 export type EmployerContact = typeof employerContacts.$inferSelect;

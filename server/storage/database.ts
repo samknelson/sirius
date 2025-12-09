@@ -23,6 +23,7 @@ import { type WorkerHoursStorage, createWorkerHoursStorage, workerHoursLoggingCo
 import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./policies";
 import { type EmployerPolicyHistoryStorage, createEmployerPolicyHistoryStorage, employerPolicyHistoryLoggingConfig } from "./employer-policy-history";
 import { type WmbScanQueueStorage, createWmbScanQueueStorage } from "./wmb-scan-queue";
+import { type CardcheckDefinitionStorage, createCardcheckDefinitionStorage, cardcheckDefinitionLoggingConfig } from "./cardcheck-definitions";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "../db";
 import { optionsEmploymentStatus, employers, workers, contacts } from "@shared/schema";
@@ -55,6 +56,7 @@ export interface IStorage {
   policies: PolicyStorage;
   employerPolicyHistory: EmployerPolicyHistoryStorage;
   wmbScanQueue: WmbScanQueueStorage;
+  cardcheckDefinitions: CardcheckDefinitionStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -84,6 +86,7 @@ export class DatabaseStorage implements IStorage {
   policies: PolicyStorage;
   employerPolicyHistory: EmployerPolicyHistoryStorage;
   wmbScanQueue: WmbScanQueueStorage;
+  cardcheckDefinitions: CardcheckDefinitionStorage;
 
   constructor() {
     this.variables = withStorageLogging(createVariableStorage(), variableLoggingConfig);
@@ -153,6 +156,10 @@ export class DatabaseStorage implements IStorage {
     this.employerPolicyHistory = withStorageLogging(
       createEmployerPolicyHistoryStorage(this.employers.updateEmployerPolicy.bind(this.employers)),
       employerPolicyHistoryLoggingConfig
+    );
+    this.cardcheckDefinitions = withStorageLogging(
+      createCardcheckDefinitionStorage(),
+      cardcheckDefinitionLoggingConfig
     );
   }
 }
