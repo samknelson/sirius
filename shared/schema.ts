@@ -471,6 +471,22 @@ export const cardcheckDefinitions = pgTable("cardcheck_definitions", {
 
 export const cardcheckStatusEnum = pgEnum("cardcheck_status", ["pending", "signed", "revoked"]);
 
+export const esigStatusEnum = pgEnum("esig_status", ["pending", "signed"]);
+export const esigTypeEnum = pgEnum("esig_type", ["online", "offline"]);
+
+export const esigs = pgTable("esigs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'restrict' }),
+  status: esigStatusEnum("status").notNull().default("pending"),
+  signedDate: timestamp("signed_date"),
+  type: esigTypeEnum("type").notNull(),
+  docFileId: varchar("doc_file_id").references(() => files.id, { onDelete: 'set null' }),
+  docRender: text("doc_render"),
+  docHash: text("doc_hash"),
+  esig: jsonb("esig"),
+  docType: text("doc_type"),
+});
+
 export const cardchecks = pgTable("cardchecks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
@@ -478,6 +494,7 @@ export const cardchecks = pgTable("cardchecks", {
   status: cardcheckStatusEnum("status").notNull().default("pending"),
   signedDate: timestamp("signed_date"),
   data: jsonb("data"),
+  esigId: varchar("esig_id").references(() => esigs.id, { onDelete: 'set null' }),
 });
 
 // Zod schemas for validation
@@ -530,6 +547,10 @@ export const insertCardcheckDefinitionSchema = createInsertSchema(cardcheckDefin
 });
 
 export const insertCardcheckSchema = createInsertSchema(cardchecks).omit({
+  id: true,
+});
+
+export const insertEsigSchema = createInsertSchema(esigs).omit({
   id: true,
 });
 
@@ -754,6 +775,9 @@ export type CardcheckDefinition = typeof cardcheckDefinitions.$inferSelect;
 
 export type InsertCardcheck = z.infer<typeof insertCardcheckSchema>;
 export type Cardcheck = typeof cardchecks.$inferSelect;
+
+export type InsertEsig = z.infer<typeof insertEsigSchema>;
+export type Esig = typeof esigs.$inferSelect;
 
 export type InsertEmployerContact = z.infer<typeof insertEmployerContactSchema>;
 export type EmployerContact = typeof employerContacts.$inferSelect;
