@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Cardcheck, CardcheckDefinition } from "@shared/schema";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +30,7 @@ interface CardcheckWithDefinition extends Cardcheck {
 function WorkerCardchecksContent() {
   const { worker } = useWorkerLayout();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedDefinitionId, setSelectedDefinitionId] = useState<string>("");
 
@@ -77,7 +78,7 @@ function WorkerCardchecksContent() {
     mutationFn: async (data: { cardcheckDefinitionId: string }) => {
       return apiRequest("POST", `/api/workers/${worker.id}/cardchecks`, data);
     },
-    onSuccess: () => {
+    onSuccess: (data: Cardcheck) => {
       queryClient.invalidateQueries({ queryKey: ["/api/workers", worker.id, "cardchecks"] });
       toast({
         title: "Success",
@@ -85,6 +86,7 @@ function WorkerCardchecksContent() {
       });
       setIsCreateOpen(false);
       setSelectedDefinitionId("");
+      setLocation(`/cardchecks/${data.id}`);
     },
     onError: (error: any) => {
       toast({
