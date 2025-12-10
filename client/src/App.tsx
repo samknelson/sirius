@@ -117,6 +117,7 @@ import PoliciesPage from "@/pages/config/users/policies";
 import EmployerUserSettingsPage from "@/pages/config/users/employer-settings";
 import TrustProviderUserSettingsPage from "@/pages/config/users/trust-provider-settings";
 import SessionsPage from "@/pages/sessions";
+import FloodEventsPage from "@/pages/flood-events";
 import PostalAddressesConfigPage from "@/pages/config/addresses";
 import PhoneNumbersConfigPage from "@/pages/config/phone-numbers";
 import GenderOptionsPage from "@/pages/config/gender-options";
@@ -1033,6 +1034,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <SessionsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/users/flood-events">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <FloodEventsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

@@ -48,6 +48,7 @@ export const configSections: NavSection[] = [
       { path: "/config/logs", label: "System Logs", icon: FileText, testId: "nav-config-logs", policy: "admin" },
       { path: "/admin/quickstarts", label: "Quickstarts", icon: Database, testId: "nav-config-quickstarts", policy: "admin" },
       { path: "/admin/cron-jobs", label: "Cron Jobs", icon: Clock, testId: "nav-config-cron-jobs", policy: "admin" },
+      { path: "/config/users/flood-events", label: "Flood Events", icon: Activity, testId: "nav-config-flood-events", policy: "admin" },
     ],
   },
   {

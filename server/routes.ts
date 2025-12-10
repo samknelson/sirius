@@ -49,6 +49,7 @@ import { registerCardcheckDefinitionsRoutes } from "./modules/cardcheck-definiti
 import { registerCardchecksRoutes } from "./modules/cardchecks";
 import { registerEsigsRoutes } from "./modules/esigs";
 import { registerSessionRoutes } from "./modules/sessions";
+import { registerFloodEventRoutes } from "./modules/flood-events";
 import { requireAccess } from "./accessControl";
 import { policies } from "./policies";
 import { addressValidationService } from "./services/address-validation";
@@ -177,6 +178,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register session management routes
   registerSessionRoutes(app, requireAuth, storage);
+  
+  // Register flood events routes
+  registerFloodEventRoutes(app, requireAuth, storage);
   
   // Register user management routes
   registerUserRoutes(app, requireAuth, requirePermission);
