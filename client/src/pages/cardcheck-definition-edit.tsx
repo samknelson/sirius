@@ -24,6 +24,8 @@ export default function CardcheckDefinitionEditPage() {
   const [formDescription, setFormDescription] = useState("");
   const [formBody, setFormBody] = useState("");
   const [formCheckboxes, setFormCheckboxes] = useState<string[]>(["", "", ""]);
+  const [formRateTitle, setFormRateTitle] = useState("");
+  const [formRateDescription, setFormRateDescription] = useState("");
 
   const { data: definition, isLoading, error } = useQuery<CardcheckDefinition>({
     queryKey: ["/api/cardcheck/definition", id],
@@ -42,6 +44,9 @@ export default function CardcheckDefinitionEditPage() {
         existingCheckboxes[1] || "",
         existingCheckboxes[2] || "",
       ]);
+      const rateField = (definition.data as any)?.rateField;
+      setFormRateTitle(rateField?.title || "");
+      setFormRateDescription(rateField?.description || "");
     }
   }, [definition]);
 
@@ -89,6 +94,10 @@ export default function CardcheckDefinitionEditPage() {
     const nonEmptyCheckboxes = formCheckboxes.filter(cb => cb.trim() !== "");
     const existingData = (definition?.data as any) || {};
     
+    const rateField = formRateTitle.trim() 
+      ? { title: formRateTitle.trim(), description: formRateDescription.trim() || undefined }
+      : undefined;
+    
     updateMutation.mutate({
       siriusId: formSiriusId.trim(),
       name: formName.trim(),
@@ -97,6 +106,7 @@ export default function CardcheckDefinitionEditPage() {
       data: {
         ...existingData,
         checkboxes: nonEmptyCheckboxes.length > 0 ? nonEmptyCheckboxes : undefined,
+        rateField,
       },
     });
   };
@@ -221,6 +231,39 @@ export default function CardcheckDefinitionEditPage() {
                   />
                 </div>
               ))}
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <Label>Rate Field (Optional)</Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Configure a required rate/amount field that must be filled before signing.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="rate-title" className="text-sm text-muted-foreground">
+                  Field Title
+                </Label>
+                <Input
+                  id="rate-title"
+                  value={formRateTitle}
+                  onChange={(e) => setFormRateTitle(e.target.value)}
+                  placeholder="e.g., Hourly Rate, Monthly Fee, etc."
+                  data-testid="input-rate-title"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="rate-description" className="text-sm text-muted-foreground">
+                  Field Description
+                </Label>
+                <Input
+                  id="rate-description"
+                  value={formRateDescription}
+                  onChange={(e) => setFormRateDescription(e.target.value)}
+                  placeholder="e.g., Enter the agreed hourly rate in dollars"
+                  data-testid="input-rate-description"
+                />
+              </div>
             </div>
 
             <div className="pt-4 border-t border-border">
