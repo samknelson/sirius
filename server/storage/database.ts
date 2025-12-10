@@ -27,6 +27,7 @@ import { type CardcheckDefinitionStorage, createCardcheckDefinitionStorage, card
 import { type CardcheckStorage, createCardcheckStorage, cardcheckLoggingConfig } from "./cardchecks";
 import { type EsigStorage, createEsigStorage, esigLoggingConfig } from "./esigs";
 import { type SessionStorage, createSessionStorage, sessionLoggingConfig } from "./sessions";
+import { type FloodStorage, createFloodStorage } from "./flood";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "../db";
 import { optionsEmploymentStatus, employers, workers, contacts } from "@shared/schema";
@@ -63,6 +64,7 @@ export interface IStorage {
   cardchecks: CardcheckStorage;
   esigs: EsigStorage;
   sessions: SessionStorage;
+  flood: FloodStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -96,6 +98,7 @@ export class DatabaseStorage implements IStorage {
   cardchecks: CardcheckStorage;
   esigs: EsigStorage;
   sessions: SessionStorage;
+  flood: FloodStorage;
 
   constructor() {
     this.variables = withStorageLogging(createVariableStorage(), variableLoggingConfig);
@@ -182,6 +185,7 @@ export class DatabaseStorage implements IStorage {
       createSessionStorage(),
       sessionLoggingConfig
     );
+    this.flood = createFloodStorage();
   }
 }
 

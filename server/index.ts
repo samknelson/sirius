@@ -22,6 +22,9 @@ import "./eligibility-plugins";
 // Note: SMS, Email, and other providers are registered here
 import "./services/providers";
 
+// Import and register flood events
+import { registerFloodEvents } from "./flood";
+
 // Helper function to redact sensitive data from responses before logging
 function redactSensitiveData(data: any): any {
   if (!data || typeof data !== 'object') return data;
@@ -131,6 +134,10 @@ app.use((req, res, next) => {
   registerCronJob('delete-old-cron-logs', deleteOldCronLogsHandler);
   registerCronJob('process-wmb-batch', processWmbBatchHandler);
   logger.info("Cron job handlers registered", { source: "startup" });
+
+  // Register flood events
+  registerFloodEvents();
+  logger.info("Flood events registered", { source: "startup" });
 
   // Bootstrap default cron jobs
   await bootstrapCronJobs();

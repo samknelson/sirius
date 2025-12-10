@@ -3,6 +3,7 @@ import { storage } from "../storage";
 import { insertBookmarkSchema } from "@shared/schema";
 import { requireAccess } from "../accessControl";
 import { policies } from "../policies";
+import { enforceFloodLimit, FloodError } from "../flood";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -65,6 +66,9 @@ export function registerBookmarkRoutes(
         return res.status(401).json({ message: "User not found" });
       }
 
+      // Check flood limit before creating bookmark
+      await enforceFloodLimit("bookmark", { userId: dbUser.id });
+
       const { entityType, entityId } = req.body;
       const validatedData = insertBookmarkSchema.parse({
         userId: dbUser.id,
@@ -81,6 +85,12 @@ export function registerBookmarkRoutes(
       const bookmark = await storage.bookmarks.createBookmark(validatedData);
       res.status(201).json(bookmark);
     } catch (error) {
+      if (error instanceof FloodError) {
+        return res.status(429).json({ 
+          message: "Too many bookmark actions. Please try again later.",
+          retryAfter: error.windowSeconds,
+        });
+      }
       if (error instanceof Error && error.name === "ZodError") {
         res.status(400).json({ message: "Invalid bookmark data" });
       } else {
