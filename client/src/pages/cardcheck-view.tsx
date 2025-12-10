@@ -320,6 +320,16 @@ export default function CardcheckViewPage() {
                     : "Not signed"}
                 </p>
               </div>
+              {cardcheck.rate !== null && cardcheck.rate !== undefined && (
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-muted-foreground">
+                    {rateField?.title || "Rate"}
+                  </label>
+                  <p className="text-foreground font-medium" data-testid="text-rate-value">
+                    ${Number(cardcheck.rate).toFixed(2)}
+                  </p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
