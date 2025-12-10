@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
-import { Loader2, ArrowLeft, Pencil, CheckSquare } from "lucide-react";
+import { Loader2, ArrowLeft, Pencil, CheckSquare, DollarSign } from "lucide-react";
 import { CardcheckDefinition } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -145,6 +145,39 @@ export default function CardcheckDefinitionViewPage() {
                     <span>{text}</span>
                   </div>
                 ))}
+              </CardContent>
+            </Card>
+          );
+        })()}
+
+        {(() => {
+          const rateField = (definition.data as any)?.rateField;
+          if (!rateField?.title) return null;
+          
+          return (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <DollarSign className="h-5 w-5" />
+                  Rate Field
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  A rate value must be entered before signing:
+                </p>
+                <div className="p-3 bg-muted rounded-md space-y-2">
+                  <div className="flex items-start gap-2">
+                    <span className="text-muted-foreground font-medium">Title:</span>
+                    <span data-testid="text-rate-title">{rateField.title}</span>
+                  </div>
+                  {rateField.description && (
+                    <div className="flex items-start gap-2">
+                      <span className="text-muted-foreground font-medium">Description:</span>
+                      <span data-testid="text-rate-description">{rateField.description}</span>
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
           );
