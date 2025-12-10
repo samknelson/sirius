@@ -614,13 +614,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                   </div>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  <span>Email</span>
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  <span>Phone</span>
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  <span>Address</span>
+                  <span>Contact</span>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Benefits</span>
@@ -653,127 +647,124 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {worker.email ? (
-                      <HoverCard>
-                        <HoverCardTrigger asChild>
-                          <div 
-                            className="cursor-pointer"
-                            data-testid={`email-indicator-${worker.id}`}
-                            aria-label={`Email for ${worker.contactName}`}
-                          >
-                            <Mail size={16} className="text-green-600" />
-                          </div>
-                        </HoverCardTrigger>
-                        <HoverCardContent className="w-80" data-testid={`email-hover-${worker.id}`}>
-                          <div className="space-y-2">
-                            <p className="text-sm font-semibold text-foreground">
-                              {worker.contactName}
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <Mail size={16} className="text-muted-foreground" />
-                              <span className="text-sm text-foreground">{worker.email}</span>
+                    <div className="flex items-center gap-2" data-testid={`contact-indicators-${worker.id}`}>
+                      {worker.email ? (
+                        <HoverCard>
+                          <HoverCardTrigger asChild>
+                            <div 
+                              className="cursor-pointer"
+                              data-testid={`email-indicator-${worker.id}`}
+                              aria-label={`Email for ${worker.contactName}`}
+                            >
+                              <Mail size={16} className="text-green-600" />
                             </div>
-                          </div>
-                        </HoverCardContent>
-                      </HoverCard>
-                    ) : (
-                      <Link href={`/workers/${worker.id}/email`}>
-                        <div 
-                          data-testid={`email-indicator-${worker.id}`}
-                          aria-label={`Add email for ${worker.contactName}`}
-                          className="cursor-pointer hover:opacity-70 transition-opacity"
-                        >
-                          <MailX size={16} className="text-red-500" />
-                        </div>
-                      </Link>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {worker.phoneNumber ? (
-                      <HoverCard>
-                        <HoverCardTrigger asChild>
-                          <div 
-                            className="cursor-pointer"
-                            data-testid={`phone-indicator-${worker.id}`}
-                            aria-label={`Phone for ${worker.contactName}`}
-                          >
-                            <Phone size={16} className="text-green-600" />
-                          </div>
-                        </HoverCardTrigger>
-                        <HoverCardContent className="w-80" data-testid={`phone-hover-${worker.id}`}>
-                          <div className="space-y-2">
-                            <p className="text-sm font-semibold text-foreground">
-                              {worker.contactName}
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <Phone size={16} className="text-muted-foreground" />
-                              <span className="text-sm text-foreground">{worker.phoneNumber}</span>
-                            </div>
-                          </div>
-                        </HoverCardContent>
-                      </HoverCard>
-                    ) : (
-                      <Link href={`/workers/${worker.id}/phone-numbers`}>
-                        <div 
-                          data-testid={`phone-indicator-${worker.id}`}
-                          aria-label={`Add phone for ${worker.contactName}`}
-                          className="cursor-pointer hover:opacity-70 transition-opacity"
-                        >
-                          <PhoneOff size={16} className="text-red-500" />
-                        </div>
-                      </Link>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {worker.address ? (
-                      <HoverCard>
-                        <HoverCardTrigger asChild>
-                          <div 
-                            className="cursor-pointer"
-                            data-testid={`address-indicator-${worker.id}`}
-                            aria-label={`Address for ${worker.contactName}`}
-                          >
-                            <Home size={16} className="text-green-600" />
-                          </div>
-                        </HoverCardTrigger>
-                        <HoverCardContent className="w-80" data-testid={`address-hover-${worker.id}`}>
-                          <div className="space-y-2">
-                            <p className="text-sm font-semibold text-foreground">
-                              {worker.contactName}
-                            </p>
-                            <div className="flex items-start gap-2">
-                              <MapPin size={16} className="text-muted-foreground mt-0.5" />
-                              <div className="flex-1">
-                                <p className="text-sm text-foreground">
-                                  {worker.address.street}
-                                </p>
-                                <p className="text-sm text-foreground">
-                                  {worker.address.city}, {worker.address.state} {worker.address.postalCode}
-                                </p>
-                                {worker.address.country && worker.address.country !== 'US' && (
-                                  <p className="text-sm text-foreground">
-                                    {worker.address.country}
-                                  </p>
-                                )}
+                          </HoverCardTrigger>
+                          <HoverCardContent className="w-80" data-testid={`email-hover-${worker.id}`}>
+                            <div className="space-y-2">
+                              <p className="text-sm font-semibold text-foreground">
+                                {worker.contactName}
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <Mail size={16} className="text-muted-foreground" />
+                                <span className="text-sm text-foreground">{worker.email}</span>
                               </div>
                             </div>
+                          </HoverCardContent>
+                        </HoverCard>
+                      ) : (
+                        <Link href={`/workers/${worker.id}/email`}>
+                          <div 
+                            data-testid={`email-indicator-${worker.id}`}
+                            aria-label={`Add email for ${worker.contactName}`}
+                            className="cursor-pointer hover:opacity-70 transition-opacity"
+                          >
+                            <Mail size={16} className="text-muted-foreground" />
                           </div>
-                        </HoverCardContent>
-                      </HoverCard>
-                    ) : (
-                      <Link href={`/workers/${worker.id}/addresses`}>
-                        <div 
-                          data-testid={`address-indicator-${worker.id}`}
-                          aria-label={`Add address for ${worker.contactName}`}
-                          className="relative inline-flex cursor-pointer hover:opacity-70 transition-opacity"
-                        >
-                          <Home size={16} className="text-red-500" />
-                          <span className="absolute inset-0 flex items-center justify-center">
-                            <span className="w-[140%] h-[2px] bg-red-500 rotate-[-45deg]" />
-                          </span>
-                        </div>
-                      </Link>
-                    )}
+                        </Link>
+                      )}
+                      
+                      {worker.phoneNumber ? (
+                        <HoverCard>
+                          <HoverCardTrigger asChild>
+                            <div 
+                              className="cursor-pointer"
+                              data-testid={`phone-indicator-${worker.id}`}
+                              aria-label={`Phone for ${worker.contactName}`}
+                            >
+                              <Phone size={16} className="text-green-600" />
+                            </div>
+                          </HoverCardTrigger>
+                          <HoverCardContent className="w-80" data-testid={`phone-hover-${worker.id}`}>
+                            <div className="space-y-2">
+                              <p className="text-sm font-semibold text-foreground">
+                                {worker.contactName}
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <Phone size={16} className="text-muted-foreground" />
+                                <span className="text-sm text-foreground">{worker.phoneNumber}</span>
+                              </div>
+                            </div>
+                          </HoverCardContent>
+                        </HoverCard>
+                      ) : (
+                        <Link href={`/workers/${worker.id}/phone-numbers`}>
+                          <div 
+                            data-testid={`phone-indicator-${worker.id}`}
+                            aria-label={`Add phone for ${worker.contactName}`}
+                            className="cursor-pointer hover:opacity-70 transition-opacity"
+                          >
+                            <Phone size={16} className="text-muted-foreground" />
+                          </div>
+                        </Link>
+                      )}
+                      
+                      {worker.address ? (
+                        <HoverCard>
+                          <HoverCardTrigger asChild>
+                            <div 
+                              className="cursor-pointer"
+                              data-testid={`address-indicator-${worker.id}`}
+                              aria-label={`Address for ${worker.contactName}`}
+                            >
+                              <Home size={16} className="text-green-600" />
+                            </div>
+                          </HoverCardTrigger>
+                          <HoverCardContent className="w-80" data-testid={`address-hover-${worker.id}`}>
+                            <div className="space-y-2">
+                              <p className="text-sm font-semibold text-foreground">
+                                {worker.contactName}
+                              </p>
+                              <div className="flex items-start gap-2">
+                                <MapPin size={16} className="text-muted-foreground mt-0.5" />
+                                <div className="flex-1">
+                                  <p className="text-sm text-foreground">
+                                    {worker.address.street}
+                                  </p>
+                                  <p className="text-sm text-foreground">
+                                    {worker.address.city}, {worker.address.state} {worker.address.postalCode}
+                                  </p>
+                                  {worker.address.country && worker.address.country !== 'US' && (
+                                    <p className="text-sm text-foreground">
+                                      {worker.address.country}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </HoverCardContent>
+                        </HoverCard>
+                      ) : (
+                        <Link href={`/workers/${worker.id}/addresses`}>
+                          <div 
+                            data-testid={`address-indicator-${worker.id}`}
+                            aria-label={`Add address for ${worker.contactName}`}
+                            className="cursor-pointer hover:opacity-70 transition-opacity"
+                          >
+                            <Home size={16} className="text-muted-foreground" />
+                          </div>
+                        </Link>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <TooltipProvider>
