@@ -678,7 +678,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                             aria-label={`Add email for ${worker.contactName}`}
                             className="cursor-pointer hover:opacity-70 transition-opacity"
                           >
-                            <Mail size={16} className="text-muted-foreground" />
+                            <Mail size={16} className="text-red-500" />
                           </div>
                         </Link>
                       )}
@@ -713,7 +713,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                             aria-label={`Add phone for ${worker.contactName}`}
                             className="cursor-pointer hover:opacity-70 transition-opacity"
                           >
-                            <Phone size={16} className="text-muted-foreground" />
+                            <Phone size={16} className="text-red-500" />
                           </div>
                         </Link>
                       )}
@@ -760,7 +760,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                             aria-label={`Add address for ${worker.contactName}`}
                             className="cursor-pointer hover:opacity-70 transition-opacity"
                           >
-                            <Home size={16} className="text-muted-foreground" />
+                            <Home size={16} className="text-red-500" />
                           </div>
                         </Link>
                       )}
