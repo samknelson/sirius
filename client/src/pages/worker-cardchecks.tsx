@@ -201,7 +201,7 @@ function WorkerCardchecksContent() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Definition</TableHead>
+                <TableHead>Cardcheck</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Signed Date</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
