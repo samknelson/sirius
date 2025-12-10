@@ -25,19 +25,6 @@ export interface NavSection {
 
 export const configSections: NavSection[] = [
   {
-    id: "user-management",
-    title: "User Management",
-    description: "Manage users, roles, permissions, and access control",
-    icon: Users,
-    items: [
-      { path: "/config/users/list", label: "Users", icon: Users, testId: "nav-config-users-list", permission: "admin" },
-      { path: "/config/users/roles", label: "Roles", icon: Shield, testId: "nav-config-users-roles", permission: "admin" },
-      { path: "/config/users/permissions", label: "Permissions", icon: Key, testId: "nav-config-users-permissions", permission: "admin" },
-      { path: "/config/users/policies", label: "Policies", icon: FileText, testId: "nav-config-users-policies", permission: "admin" },
-      { path: "/config/masquerade", label: "Masquerade", icon: UserCog, testId: "nav-config-masquerade", permission: "admin" },
-    ],
-  },
-  {
     id: "policies",
     title: "Policies",
     description: "Policy configuration and defaults",

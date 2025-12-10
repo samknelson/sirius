@@ -21,6 +21,7 @@ import {
   ScanLine,
   ClipboardCheck,
   List,
+  Key,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -264,6 +265,62 @@ export default function Header() {
                 )}
 
                 {hasPermission("admin") && (
+                  <>
+                    <div className="text-sm font-medium text-muted-foreground px-4 py-2">Users</div>
+                    <Link href="/config/users/list" onClick={() => setMobileMenuOpen(false)}>
+                      <Button
+                        variant={location === "/config/users/list" ? "default" : "ghost"}
+                        className="w-full justify-start pl-8"
+                        data-testid="mobile-nav-users-list"
+                      >
+                        <Users className="h-4 w-4 mr-2" />
+                        Users
+                      </Button>
+                    </Link>
+                    <Link href="/config/users/roles" onClick={() => setMobileMenuOpen(false)}>
+                      <Button
+                        variant={location === "/config/users/roles" ? "default" : "ghost"}
+                        className="w-full justify-start pl-8"
+                        data-testid="mobile-nav-users-roles"
+                      >
+                        <Shield className="h-4 w-4 mr-2" />
+                        Roles
+                      </Button>
+                    </Link>
+                    <Link href="/config/users/permissions" onClick={() => setMobileMenuOpen(false)}>
+                      <Button
+                        variant={location === "/config/users/permissions" ? "default" : "ghost"}
+                        className="w-full justify-start pl-8"
+                        data-testid="mobile-nav-users-permissions"
+                      >
+                        <Key className="h-4 w-4 mr-2" />
+                        Permissions
+                      </Button>
+                    </Link>
+                    <Link href="/config/users/policies" onClick={() => setMobileMenuOpen(false)}>
+                      <Button
+                        variant={location === "/config/users/policies" ? "default" : "ghost"}
+                        className="w-full justify-start pl-8"
+                        data-testid="mobile-nav-users-policies"
+                      >
+                        <FileText className="h-4 w-4 mr-2" />
+                        Policies
+                      </Button>
+                    </Link>
+                    <Link href="/config/masquerade" onClick={() => setMobileMenuOpen(false)}>
+                      <Button
+                        variant={location === "/config/masquerade" ? "default" : "ghost"}
+                        className="w-full justify-start pl-8"
+                        data-testid="mobile-nav-users-masquerade"
+                      >
+                        <UserCog className="h-4 w-4 mr-2" />
+                        Masquerade
+                      </Button>
+                    </Link>
+                  </>
+                )}
+
+                {hasPermission("admin") && (
                   <Link href="/reports" onClick={() => setMobileMenuOpen(false)}>
                     <Button
                       variant={location === "/reports" ? "default" : "ghost"}
@@ -451,6 +508,65 @@ export default function Header() {
                   Accounts
                 </Button>
               </Link>
+            )}
+
+            {hasPermission("admin") && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={location.startsWith("/config/users") || location === "/config/masquerade" ? "default" : "ghost"}
+                    size="sm"
+                    data-testid="nav-users"
+                  >
+                    <UserCog className="h-4 w-4 mr-2" />
+                    Users
+                    <ChevronDown className="h-4 w-4 ml-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem asChild>
+                    <Link href="/config/users/list" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-users-list">
+                        <Users className="h-4 w-4 mr-2" />
+                        Users
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/config/users/roles" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-users-roles">
+                        <Shield className="h-4 w-4 mr-2" />
+                        Roles
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/config/users/permissions" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-users-permissions">
+                        <Key className="h-4 w-4 mr-2" />
+                        Permissions
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/config/users/policies" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-users-policies">
+                        <FileText className="h-4 w-4 mr-2" />
+                        Policies
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/config/masquerade" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-users-masquerade">
+                        <UserCog className="h-4 w-4 mr-2" />
+                        Masquerade
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
 
             {hasPermission("admin") && (
