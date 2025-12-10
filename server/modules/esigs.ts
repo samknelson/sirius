@@ -250,6 +250,15 @@ export function registerEsigsRoutes(
 
       const { docRender, esigData, signatureType, docType = "cardcheck", rate } = req.body;
 
+      console.log("Sign request body:", { 
+        hasDocRender: !!docRender, 
+        docRenderLength: docRender?.length,
+        hasEsigData: !!esigData,
+        esigDataType: esigData?.type,
+        signatureType,
+        bodyKeys: Object.keys(req.body)
+      });
+
       if (!docRender || !esigData) {
         return res.status(400).json({ message: "Missing required signing data" });
       }
