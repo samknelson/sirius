@@ -239,18 +239,23 @@ export default function CardcheckViewPage() {
           </Card>
         </div>
 
-        <Card>
+        <Card className={cardcheck.status === "revoked" ? "border-destructive bg-destructive/5" : ""}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5" />
               Status Details
+              {cardcheck.status === "revoked" && (
+                <Badge variant="destructive" className="ml-2" data-testid="badge-revoked">
+                  Revoked
+                </Badge>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-1">
                 <label className="text-sm font-medium text-muted-foreground">Status</label>
-                <p className="text-foreground capitalize" data-testid="text-status">
+                <p className={`capitalize ${cardcheck.status === "revoked" ? "text-destructive font-medium" : "text-foreground"}`} data-testid="text-status">
                   {cardcheck.status}
                 </p>
               </div>
@@ -267,7 +272,7 @@ export default function CardcheckViewPage() {
         </Card>
 
         {cardcheck.esigId ? (
-          <EsigView esigId={cardcheck.esigId} isRevoked={cardcheck.status === "revoked"} />
+          <EsigView esigId={cardcheck.esigId} />
         ) : (
           definition?.body && (
             <Card>
