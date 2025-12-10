@@ -24,6 +24,7 @@ interface SignatureModalProps {
   docTitle: string;
   docRender: string;
   entityId: string;
+  rate?: number;
   onSuccess: (result: { esig: any; cardcheck: any }) => void;
 }
 
@@ -34,6 +35,7 @@ export function SignatureModal({
   docTitle,
   docRender,
   entityId,
+  rate,
   onSuccess,
 }: SignatureModalProps) {
   const [signatureType, setSignatureType] = useState<"canvas" | "typed" | "upload">("typed");
@@ -83,7 +85,7 @@ export function SignatureModal({
   });
 
   const signMutation = useMutation({
-    mutationFn: async (signatureData: { signatureType: string; esigData: any; docRender: string }) => {
+    mutationFn: async (signatureData: { signatureType: string; esigData: any; docRender: string; rate?: number }) => {
       return apiRequest("POST", `/api/cardcheck/${entityId}/sign`, signatureData);
     },
     onSuccess: (result) => {
@@ -238,6 +240,7 @@ export function SignatureModal({
       signatureType,
       esigData,
       docRender: finalDocRender,
+      rate,
     });
   };
 

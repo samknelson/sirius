@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useParams, useLocation } from "wouter";
-import { Loader2, ArrowLeft, User, FileText, Calendar, CheckCircle, XCircle, Clock, Square, CheckSquare } from "lucide-react";
+import { Loader2, ArrowLeft, User, FileText, Calendar, CheckCircle, XCircle, Clock, Square, CheckSquare, DollarSign } from "lucide-react";
 import { Cardcheck, CardcheckDefinition, Worker, Contact } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,8 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,6 +34,7 @@ export default function CardcheckViewPage() {
   const { toast } = useToast();
   const [signModalOpen, setSignModalOpen] = useState(false);
   const [checkedBoxes, setCheckedBoxes] = useState<Record<number, boolean>>({});
+  const [rateValue, setRateValue] = useState<string>("");
 
   const { data: cardcheck, isLoading, error } = useQuery<Cardcheck>({
     queryKey: ["/api/cardcheck", id],
@@ -62,10 +65,22 @@ export default function CardcheckViewPage() {
     return (definition?.data as any)?.checkboxes || [];
   }, [definition]);
 
+  const rateField = useMemo(() => {
+    return (definition?.data as any)?.rateField as { title: string; description?: string } | undefined;
+  }, [definition]);
+
   const allCheckboxesChecked = useMemo(() => {
     if (requiredCheckboxes.length === 0) return true;
     return requiredCheckboxes.every((_, index) => checkedBoxes[index] === true);
   }, [requiredCheckboxes, checkedBoxes]);
+
+  const isRateValid = useMemo(() => {
+    if (!rateField?.title) return true;
+    const numericValue = parseFloat(rateValue);
+    return !isNaN(numericValue) && numericValue > 0;
+  }, [rateField, rateValue]);
+
+  const canSign = allCheckboxesChecked && isRateValid;
 
   const escapeHtml = (text: string): string => {
     const div = document.createElement("div");
@@ -82,6 +97,13 @@ export default function CardcheckViewPage() {
         .join("");
       
       docRender += `<div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #ddd;"><p style="font-weight: 600; margin-bottom: 8px;">Acknowledged Statements:</p>${checkboxHtml}</div>`;
+    }
+    
+    if (rateField?.title && rateValue) {
+      const numericRate = parseFloat(rateValue);
+      if (!isNaN(numericRate)) {
+        docRender += `<div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #ddd;"><p style="font-weight: 600; margin-bottom: 8px;">${escapeHtml(rateField.title)}:</p><p style="font-size: 1.1em;">$${numericRate.toFixed(2)}</p></div>`;
+      }
     }
     
     return docRender;
@@ -354,6 +376,39 @@ export default function CardcheckViewPage() {
                 </CardContent>
               </Card>
             )}
+
+            {cardcheck.status === "pending" && rateField?.title && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <DollarSign className="h-5 w-5" />
+                    {rateField.title}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {rateField.description && (
+                    <p className="text-sm text-muted-foreground">
+                      {rateField.description}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="rate-input" className="sr-only">{rateField.title}</Label>
+                    <span className="text-lg">$</span>
+                    <Input
+                      id="rate-input"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={rateValue}
+                      onChange={(e) => setRateValue(e.target.value)}
+                      placeholder="0.00"
+                      className="max-w-[200px]"
+                      data-testid="input-rate"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </>
         )}
 
@@ -363,16 +418,19 @@ export default function CardcheckViewPage() {
           {cardcheck.status === "pending" && (
             <Button 
               onClick={() => setSignModalOpen(true)}
-              disabled={!allCheckboxesChecked}
+              disabled={!canSign}
               data-testid="button-sign"
             >
               <CheckCircle className="h-4 w-4 mr-2" />
               Sign Cardcheck
             </Button>
           )}
-          {cardcheck.status === "pending" && !allCheckboxesChecked && requiredCheckboxes.length > 0 && (
+          {cardcheck.status === "pending" && !canSign && (
             <span className="text-sm text-muted-foreground">
-              Please accept all required acknowledgements before signing
+              {!allCheckboxesChecked && requiredCheckboxes.length > 0 && "Please accept all required acknowledgements"}
+              {!allCheckboxesChecked && requiredCheckboxes.length > 0 && !isRateValid && rateField?.title && " and "}
+              {!isRateValid && rateField?.title && "enter a valid rate value"}
+              {" before signing"}
             </span>
           )}
           
@@ -439,6 +497,7 @@ export default function CardcheckViewPage() {
           docTitle={definition.name}
           docRender={buildDocRender()}
           entityId={id}
+          rate={rateField?.title && rateValue ? parseFloat(rateValue) : undefined}
           onSuccess={handleSignSuccess}
         />
       )}
