@@ -38,7 +38,7 @@ export function SignatureModal({
 }: SignatureModalProps) {
   const [signatureType, setSignatureType] = useState<"canvas" | "typed" | "upload">("typed");
   const [typedName, setTypedName] = useState("");
-  const [uploadedFile, setUploadedFile] = useState<{ fileId: string; fileName: string; docRender: string } | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<{ fileId: string; fileName: string } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isDrawingRef = useRef(false);
@@ -67,11 +67,10 @@ export function SignatureModal({
       setUploadedFile({
         fileId: result.fileId,
         fileName: result.fileName,
-        docRender: result.docRender,
       });
       toast({
         title: "Document Uploaded",
-        description: "Document uploaded and text extracted successfully.",
+        description: "Document uploaded successfully.",
       });
     },
     onError: (error: any) => {
@@ -233,7 +232,6 @@ export function SignatureModal({
         fileName: uploadedFile.fileName,
         signedAt: new Date().toISOString(),
       };
-      finalDocRender = uploadedFile.docRender;
     }
 
     signMutation.mutate({
@@ -379,30 +377,35 @@ export function SignatureModal({
                     </p>
                   </div>
                 ) : (
-                  <div className="border rounded-md p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-5 w-5 text-muted-foreground" />
-                        <span className="font-medium">{uploadedFile.fileName}</span>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleRemoveFile}
-                        data-testid="button-remove-file"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <div className="border-t pt-3">
-                      <Label className="text-xs text-muted-foreground">Extracted Content Preview</Label>
-                      <ScrollArea className="h-32 mt-2">
+                  <div className="space-y-4">
+                    <div className="border rounded-md p-4 bg-muted/30">
+                      <h3 className="font-semibold text-lg mb-2">{docTitle}</h3>
+                      <ScrollArea className="h-48">
                         <div 
-                          className="prose prose-sm max-w-none dark:prose-invert text-sm"
-                          dangerouslySetInnerHTML={{ __html: uploadedFile.docRender }}
-                          data-testid="text-extracted-content"
+                          className="prose prose-sm max-w-none dark:prose-invert"
+                          dangerouslySetInnerHTML={{ __html: docRender }}
+                          data-testid="text-document-content-upload"
                         />
                       </ScrollArea>
+                    </div>
+                    <div className="border rounded-md p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-5 w-5 text-muted-foreground" />
+                          <div>
+                            <span className="font-medium">{uploadedFile.fileName}</span>
+                            <p className="text-xs text-muted-foreground">Uploaded document attached as signature</p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleRemoveFile}
+                          data-testid="button-remove-file"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )}

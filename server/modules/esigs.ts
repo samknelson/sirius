@@ -3,7 +3,6 @@ import type { IStorage } from "../storage/database";
 import { insertEsigSchema, insertFileSchema } from "@shared/schema";
 import { objectStorageService, ObjectStorageNotConfiguredError, ObjectStorageConnectionError } from "../services/objectStorage";
 import multer from "multer";
-import officeParser from "officeparser";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -48,25 +47,6 @@ function validateFileSignature(buffer: Buffer): { valid: boolean; detectedType: 
   }
   
   return { valid: false, detectedType: null };
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function textToHtml(text: string): string {
-  const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim());
-  if (paragraphs.length === 0) {
-    return "<p>" + escapeHtml(text) + "</p>";
-  }
-  return paragraphs
-    .map(p => "<p>" + escapeHtml(p.trim()).replace(/\n/g, "<br>") + "</p>")
-    .join("\n");
 }
 
 export function registerEsigsRoutes(
@@ -134,22 +114,6 @@ export function registerEsigsRoutes(
         });
       }
 
-      // Extract text from document using officeparser
-      let extractedText: string;
-      try {
-        extractedText = await officeParser.parseOfficeAsync(req.file.buffer);
-      } catch (parseError) {
-        console.error("Failed to parse document:", parseError);
-        return res.status(400).json({ message: "Failed to extract text from document. Please ensure the file is a valid PDF or Word document." });
-      }
-
-      if (!extractedText || extractedText.trim().length === 0) {
-        return res.status(400).json({ message: "No text content could be extracted from the document." });
-      }
-
-      // Convert extracted text to HTML
-      const docRender = textToHtml(extractedText);
-
       // Upload to object storage in "esigs" folder
       const uploadResult = await objectStorageService.uploadFile({
         fileName: req.file.originalname,
@@ -169,7 +133,7 @@ export function registerEsigsRoutes(
         entityType: "esig",
         entityId: null,
         accessLevel: "private",
-        metadata: { extractedTextLength: extractedText.length },
+        metadata: {},
       };
 
       const validatedFileData = insertFileSchema.parse(fileData);
@@ -178,7 +142,6 @@ export function registerEsigsRoutes(
       res.status(201).json({
         fileId: file.id,
         fileName: file.fileName,
-        docRender,
       });
     } catch (error: any) {
       console.error("Failed to upload document:", error);
