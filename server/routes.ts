@@ -48,6 +48,7 @@ import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
 import { registerCardcheckDefinitionsRoutes } from "./modules/cardcheck-definitions";
 import { registerCardchecksRoutes } from "./modules/cardchecks";
 import { registerEsigsRoutes } from "./modules/esigs";
+import { registerSessionRoutes } from "./modules/sessions";
 import { requireAccess } from "./accessControl";
 import { policies } from "./policies";
 import { addressValidationService } from "./services/address-validation";
@@ -173,6 +174,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register masquerade routes
   registerMasqueradeRoutes(app, requireAuth, requirePermission);
+  
+  // Register session management routes
+  registerSessionRoutes(app, requireAuth, storage);
   
   // Register user management routes
   registerUserRoutes(app, requireAuth, requirePermission);

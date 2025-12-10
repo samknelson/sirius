@@ -116,6 +116,7 @@ import PermissionsPage from "@/pages/config/users/permissions";
 import PoliciesPage from "@/pages/config/users/policies";
 import EmployerUserSettingsPage from "@/pages/config/users/employer-settings";
 import TrustProviderUserSettingsPage from "@/pages/config/users/trust-provider-settings";
+import SessionsPage from "@/pages/sessions";
 import PostalAddressesConfigPage from "@/pages/config/addresses";
 import PhoneNumbersConfigPage from "@/pages/config/phone-numbers";
 import GenderOptionsPage from "@/pages/config/gender-options";
@@ -1022,6 +1023,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <TrustProviderUserSettingsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/users/sessions">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <SessionsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

@@ -7,6 +7,7 @@ import { EmployerMonthlySettings } from "./employerMonthlyUploads/EmployerMonthl
 import { ReportsPlugin } from "./reports/ReportsPlugin";
 import { ReportsSettings } from "./reports/ReportsSettings";
 import { WmbScanStatusPlugin } from "./wmbScanStatus/WmbScanStatusPlugin";
+import { ActiveSessionsPlugin } from "./activeSessions/ActiveSessionsPlugin";
 
 export const pluginRegistry: DashboardPlugin[] = [
   {
@@ -53,6 +54,15 @@ export const pluginRegistry: DashboardPlugin[] = [
     description: "Display running and upcoming monthly benefits scans with links to details",
     order: 5,
     component: WmbScanStatusPlugin,
+    requiredPermissions: ["admin"],
+    enabledByDefault: true,
+  },
+  {
+    id: "active-sessions",
+    name: "Active Sessions",
+    description: "Display count of active users and their sessions",
+    order: 6,
+    component: ActiveSessionsPlugin,
     requiredPermissions: ["admin"],
     enabledByDefault: true,
   },

@@ -22,6 +22,7 @@ import {
   ClipboardCheck,
   List,
   Key,
+  Clock,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -318,6 +319,16 @@ export default function Header() {
                         Masquerade
                       </Button>
                     </Link>
+                    <Link href="/config/users/sessions" onClick={() => setMobileMenuOpen(false)}>
+                      <Button
+                        variant={location === "/config/users/sessions" ? "default" : "ghost"}
+                        className="w-full justify-start pl-8"
+                        data-testid="mobile-nav-users-sessions"
+                      >
+                        <Clock className="h-4 w-4 mr-2" />
+                        Sessions
+                      </Button>
+                    </Link>
                   </>
                 )}
 
@@ -597,6 +608,14 @@ export default function Header() {
                       <div className="flex items-center cursor-pointer" data-testid="menu-users-masquerade">
                         <UserCog className="h-4 w-4 mr-2" />
                         Masquerade
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/config/users/sessions" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-users-sessions">
+                        <Clock className="h-4 w-4 mr-2" />
+                        Sessions
                       </div>
                     </Link>
                   </DropdownMenuItem>
