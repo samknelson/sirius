@@ -3,6 +3,7 @@ import type { IStorage } from "../storage/database";
 import { insertEsigSchema, insertFileSchema } from "@shared/schema";
 import { objectStorageService, ObjectStorageNotConfiguredError, ObjectStorageConnectionError } from "../services/objectStorage";
 import multer from "multer";
+import crypto from "crypto";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -151,13 +152,18 @@ export function registerEsigsRoutes(
         });
       }
 
+      // Generate UUID for storage path (not exposing original filename)
+      const fileUuid = crypto.randomUUID();
+      const fileExtension = req.file.originalname.split('.').pop() || '';
+      const storageName = fileExtension ? `${fileUuid}.${fileExtension}` : fileUuid;
+
       // Upload to object storage in "esigs" folder
       const uploadResult = await objectStorageService.uploadFile({
-        fileName: req.file.originalname,
+        fileName: storageName,
         fileContent: req.file.buffer,
         mimeType: req.file.mimetype,
         accessLevel: "private",
-        customPath: `private/esigs/${Date.now()}-${req.file.originalname}`,
+        customPath: `private/esigs/${storageName}`,
       });
 
       // Create file record in files table
