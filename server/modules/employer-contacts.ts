@@ -56,7 +56,7 @@ export function registerEmployerContactRoutes(
     try {
       const { employerId } = req.params;
       const parsed = insertContactSchema.extend({ 
-        email: z.string().email("Valid email is required"),
+        email: z.string().email("Valid email format").optional().nullable(),
         contactTypeId: z.string().optional().nullable()
       }).safeParse(req.body);
       
@@ -68,15 +68,12 @@ export function registerEmployerContactRoutes(
       
       const result = await storage.employerContacts.create({
         employerId,
-        contactData: contactData as InsertContact & { email: string },
+        contactData: contactData as InsertContact & { email?: string },
         contactTypeId: contactTypeId || null,
       });
       
       res.status(201).json(result);
     } catch (error: any) {
-      if (error.message === "Email is required for employer contacts") {
-        return res.status(400).json({ message: error.message });
-      }
       // Handle duplicate email constraint violation
       if (error.code === '23505' && error.constraint === 'contacts_email_unique') {
         return res.status(409).json({ message: "A contact with this email already exists. Employers cannot add existing contacts, only create new ones." });

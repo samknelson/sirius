@@ -46,7 +46,7 @@ interface EmployerContactResponse {
 }
 
 const createContactSchema = z.object({
-  email: z.string().email("Valid email is required"),
+  email: z.string().email("Valid email format").optional().or(z.literal("")),
   title: z.string().optional(),
   given: z.string().optional(),
   middle: z.string().optional(),

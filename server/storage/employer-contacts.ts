@@ -26,19 +26,7 @@ export interface EmployerContactStorage {
 export function createEmployerContactStorage(contactsStorage: ContactsStorage): EmployerContactStorage {
   return {
     async create(data: { employerId: string; contactData: InsertContact & { email?: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }> {
-      // Check if contact type is "Location" - email not required for Location type
-      let isLocationContactType = false;
-      if (data.contactTypeId) {
-        const contactType = await db.query.optionsEmployerContactType.findFirst({
-          where: eq(optionsEmployerContactType.id, data.contactTypeId),
-        });
-        isLocationContactType = contactType?.name?.toLowerCase() === 'location';
-      }
-
-      // Validate email is provided (except for Location contact type)
-      if (!isLocationContactType && (!data.contactData.email || !data.contactData.email.trim())) {
-        throw new Error("Email is required for employer contacts");
-      }
+      // Email is optional for all contact types
 
       // Create the contact first
       const [contact] = await db
