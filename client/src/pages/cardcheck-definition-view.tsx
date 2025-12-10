@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
-import { Loader2, ArrowLeft, Pencil } from "lucide-react";
+import { Loader2, ArrowLeft, Pencil, CheckSquare } from "lucide-react";
 import { CardcheckDefinition } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -118,6 +118,37 @@ export default function CardcheckDefinitionViewPage() {
 
           </CardContent>
         </Card>
+
+        {(() => {
+          const checkboxes: string[] = (definition.data as any)?.checkboxes || [];
+          if (checkboxes.length === 0) return null;
+          
+          return (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CheckSquare className="h-5 w-5" />
+                  Required Checkboxes
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  These statements must be accepted before signing:
+                </p>
+                {checkboxes.map((text, index) => (
+                  <div 
+                    key={index} 
+                    className="flex items-start gap-3 p-3 bg-muted rounded-md"
+                    data-testid={`text-checkbox-${index + 1}`}
+                  >
+                    <span className="text-muted-foreground font-medium">{index + 1}.</span>
+                    <span>{text}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         <div className="flex items-center gap-2 flex-wrap">
           <Link href="/cardcheck-definitions">
