@@ -248,7 +248,7 @@ export function registerEsigsRoutes(
         return res.status(400).json({ message: "Cannot sign a revoked cardcheck" });
       }
 
-      const { docRender, esigData, signatureType, docType = "cardcheck" } = req.body;
+      const { docRender, esigData, signatureType, docType = "cardcheck", rate } = req.body;
 
       if (!docRender || !esigData) {
         return res.status(400).json({ message: "Missing required signing data" });
@@ -265,6 +265,7 @@ export function registerEsigsRoutes(
         esigData,
         signatureType,
         fileId,
+        rate: rate !== undefined ? Number(rate) : undefined,
       });
 
       res.json(result);

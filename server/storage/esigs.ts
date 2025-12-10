@@ -21,6 +21,7 @@ export interface SignCardcheckParams {
   esigData: any;
   signatureType: string;
   fileId?: string;
+  rate?: number;
 }
 
 export interface SignCardcheckResult {
@@ -84,7 +85,7 @@ export function createEsigStorage(): EsigStorage {
     },
 
     async signCardcheck(params: SignCardcheckParams): Promise<SignCardcheckResult> {
-      const { cardcheckId, userId, docRender, docType, esigData, signatureType, fileId } = params;
+      const { cardcheckId, userId, docRender, docType, esigData, signatureType, fileId, rate } = params;
       const docHash = crypto.createHash("sha256").update(docRender).digest("hex");
 
       return db.transaction(async (tx) => {
@@ -135,6 +136,7 @@ export function createEsigStorage(): EsigStorage {
             status: "signed",
             signedDate: new Date(),
             esigId: newEsig.id,
+            rate: rate,
           })
           .where(eq(cardchecks.id, cardcheckId))
           .returning();
