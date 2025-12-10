@@ -352,7 +352,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     }
 
     // Upsert worker hours using the matched employment status ID
-    await storage.workers.upsertWorkerHours({
+    await storage.workerHours.upsertWorkerHours({
       workerId,
       employerId,
       employmentStatusId: matchingOption.id,
