@@ -969,13 +969,11 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      {/* Admin user management routes */}
+      {/* Admin user management routes - no ConfigurationLayout sidebar */}
       <Route path="/admin/users/list">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <UsersListPage />
-            </ConfigurationLayout>
+            <UsersListPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -983,9 +981,7 @@ function Router() {
       <Route path="/admin/users/roles">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <RolesPage />
-            </ConfigurationLayout>
+            <RolesPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -993,9 +989,7 @@ function Router() {
       <Route path="/admin/users/permissions">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <PermissionsPage />
-            </ConfigurationLayout>
+            <PermissionsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1003,9 +997,7 @@ function Router() {
       <Route path="/admin/users/policies">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <PoliciesPage />
-            </ConfigurationLayout>
+            <PoliciesPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1013,9 +1005,7 @@ function Router() {
       <Route path="/admin/users/employer-settings">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <EmployerUserSettingsPage />
-            </ConfigurationLayout>
+            <EmployerUserSettingsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1023,9 +1013,7 @@ function Router() {
       <Route path="/admin/users/trust-provider-settings">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <TrustProviderUserSettingsPage />
-            </ConfigurationLayout>
+            <TrustProviderUserSettingsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1033,9 +1021,7 @@ function Router() {
       <Route path="/admin/users/sessions">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <SessionsPage />
-            </ConfigurationLayout>
+            <SessionsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1043,9 +1029,7 @@ function Router() {
       <Route path="/admin/users/flood-events">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <FloodEventsPage />
-            </ConfigurationLayout>
+            <FloodEventsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1053,9 +1037,7 @@ function Router() {
       <Route path="/admin/users/flood-events/config">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <FloodEventsConfigPage />
-            </ConfigurationLayout>
+            <FloodEventsConfigPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
