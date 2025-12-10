@@ -5,7 +5,7 @@ import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logg
 import type { ContactsStorage } from "./contacts";
 
 export interface EmployerContactStorage {
-  create(data: { employerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }>;
+  create(data: { employerId: string; contactData: InsertContact & { email?: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }>;
   listByEmployer(employerId: string): Promise<Array<EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>>;
   getAll(filters?: { employerId?: string; contactName?: string; contactTypeId?: string }): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null } | null }>>;
   get(id: string): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
@@ -25,9 +25,18 @@ export interface EmployerContactStorage {
 
 export function createEmployerContactStorage(contactsStorage: ContactsStorage): EmployerContactStorage {
   return {
-    async create(data: { employerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }> {
-      // Validate email is provided
-      if (!data.contactData.email || !data.contactData.email.trim()) {
+    async create(data: { employerId: string; contactData: InsertContact & { email?: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }> {
+      // Check if contact type is "Location" - email not required for Location type
+      let isLocationContactType = false;
+      if (data.contactTypeId) {
+        const contactType = await db.query.optionsEmployerContactType.findFirst({
+          where: eq(optionsEmployerContactType.id, data.contactTypeId),
+        });
+        isLocationContactType = contactType?.name?.toLowerCase() === 'location';
+      }
+
+      // Validate email is provided (except for Location contact type)
+      if (!isLocationContactType && (!data.contactData.email || !data.contactData.email.trim())) {
         throw new Error("Email is required for employer contacts");
       }
 
