@@ -493,6 +493,7 @@ export const cardchecks = pgTable("cardchecks", {
   cardcheckDefinitionId: varchar("cardcheck_definition_id").notNull().references(() => cardcheckDefinitions.id, { onDelete: 'restrict' }),
   status: cardcheckStatusEnum("status").notNull().default("pending"),
   signedDate: timestamp("signed_date"),
+  rate: doublePrecision("rate"),
   data: jsonb("data"),
   esigId: varchar("esig_id").references(() => esigs.id, { onDelete: 'set null' }),
 });
