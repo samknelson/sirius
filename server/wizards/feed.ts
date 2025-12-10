@@ -535,6 +535,8 @@ export abstract class FeedWizard extends BaseWizard {
 
             let hoursProcessed = true;
             let hoursError: string | undefined;
+            let contactInfoProcessed = true;
+            let contactInfoError: string | undefined;
 
             // Process worker hours if this wizard type supports it (for gbhet_legal_workers wizards)
             if (typeof (this as any).processWorkerHours === 'function') {
@@ -546,11 +548,25 @@ export abstract class FeedWizard extends BaseWizard {
               }
             }
 
+            // Process worker contact info if this wizard type supports it (for gbhet_legal_workers wizards)
+            if (typeof (this as any).processWorkerContactInfo === 'function') {
+              try {
+                await (this as any).processWorkerContactInfo(existingWorker.id, row);
+              } catch (err: any) {
+                contactInfoProcessed = false;
+                contactInfoError = err.message || 'Contact info processing failed';
+              }
+            }
+
             updatedCount++;
+            const processingIssues: string[] = [];
+            if (!hoursProcessed) processingIssues.push(`hours: ${hoursError}`);
+            if (!contactInfoProcessed) processingIssues.push(`contact info: ${contactInfoError}`);
+            
             rowResults.push({
               rowIndex,
               status: 'success',
-              message: hoursProcessed ? 'Worker updated' : `Worker updated (hours processing failed: ${hoursError})`
+              message: processingIssues.length === 0 ? 'Worker updated' : `Worker updated (issues: ${processingIssues.join('; ')})`
             });
             
             if (onProgress) {
@@ -609,6 +625,8 @@ export abstract class FeedWizard extends BaseWizard {
 
             let hoursProcessed = true;
             let hoursError: string | undefined;
+            let contactInfoProcessed = true;
+            let contactInfoError: string | undefined;
 
             // Process worker hours if this wizard type supports it (for gbhet_legal_workers wizards)
             if (typeof (this as any).processWorkerHours === 'function') {
@@ -620,6 +638,16 @@ export abstract class FeedWizard extends BaseWizard {
               }
             }
 
+            // Process worker contact info if this wizard type supports it (for gbhet_legal_workers wizards)
+            if (typeof (this as any).processWorkerContactInfo === 'function') {
+              try {
+                await (this as any).processWorkerContactInfo(workerId, row);
+              } catch (err: any) {
+                contactInfoProcessed = false;
+                contactInfoError = err.message || 'Contact info processing failed';
+              }
+            }
+
             // Increment appropriate counter and add row result
             if (isNewWorker) {
               createdCount++;
@@ -628,10 +656,14 @@ export abstract class FeedWizard extends BaseWizard {
             }
 
             const workerAction = isNewWorker ? 'created' : 'updated';
+            const processingIssues: string[] = [];
+            if (!hoursProcessed) processingIssues.push(`hours: ${hoursError}`);
+            if (!contactInfoProcessed) processingIssues.push(`contact info: ${contactInfoError}`);
+            
             rowResults.push({
               rowIndex,
               status: 'success',
-              message: hoursProcessed ? `Worker ${workerAction}` : `Worker ${workerAction} (hours processing failed: ${hoursError})`
+              message: processingIssues.length === 0 ? `Worker ${workerAction}` : `Worker ${workerAction} (issues: ${processingIssues.join('; ')})`
             });
 
             if (onProgress) {

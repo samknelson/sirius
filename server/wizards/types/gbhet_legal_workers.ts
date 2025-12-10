@@ -116,6 +116,73 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         required: true, // Always required
         description: 'Number of hours worked',
         displayOrder: 7
+      },
+      // Optional contact information fields
+      { 
+        id: 'email', 
+        name: 'Email', 
+        type: 'string', 
+        required: false,
+        description: 'Worker email address (optional)',
+        format: 'email',
+        displayOrder: 8
+      },
+      { 
+        id: 'phoneNumber', 
+        name: 'Phone Number', 
+        type: 'string', 
+        required: false,
+        description: 'Worker phone number (optional)',
+        displayOrder: 9
+      },
+      { 
+        id: 'gender', 
+        name: 'Gender', 
+        type: 'string', 
+        required: false,
+        description: 'Worker gender (optional)',
+        displayOrder: 10
+      },
+      // Optional address fields
+      { 
+        id: 'addressLine1', 
+        name: 'Address 1', 
+        type: 'string', 
+        required: false,
+        description: 'Street address line 1 (optional)',
+        displayOrder: 11
+      },
+      { 
+        id: 'addressLine2', 
+        name: 'Address 2', 
+        type: 'string', 
+        required: false,
+        description: 'Street address line 2 (optional)',
+        displayOrder: 12
+      },
+      { 
+        id: 'city', 
+        name: 'City', 
+        type: 'string', 
+        required: false,
+        description: 'City (optional)',
+        displayOrder: 13
+      },
+      { 
+        id: 'state', 
+        name: 'State', 
+        type: 'string', 
+        required: false,
+        description: 'State (optional)',
+        displayOrder: 14
+      },
+      { 
+        id: 'postalCode', 
+        name: 'Postal Code', 
+        type: 'string', 
+        required: false,
+        description: 'Postal/ZIP code (optional)',
+        displayOrder: 15
       }
     ];
   }
@@ -360,6 +427,108 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
       month,
       hours
     });
+  }
+
+  /**
+   * Process optional contact information fields for a worker
+   * Handles email, phone number, gender, and address fields
+   */
+  protected async processWorkerContactInfo(workerId: string, row: Record<string, any>): Promise<void> {
+    // Get the worker to find its contact ID
+    const worker = await storage.workers.getWorker(workerId);
+    if (!worker) {
+      throw new Error(`Worker not found: ${workerId}`);
+    }
+
+    const contactId = worker.contactId;
+
+    // Process email if provided
+    const email = row.email?.toString().trim();
+    if (email) {
+      await storage.workers.updateWorkerContactEmail(workerId, email);
+    }
+
+    // Process gender if provided
+    const genderValue = row.gender?.toString().trim();
+    if (genderValue) {
+      // Look up gender option by name or code
+      const genderOptions = await storage.options.gender.getAllGenderOptions();
+      const normalizedInput = normalizeForComparison(genderValue);
+      
+      const matchingGender = genderOptions.find((option: { id: string; name: string; code: string }) => {
+        if (normalizeForComparison(option.name) === normalizedInput) {
+          return true;
+        }
+        if (option.code && normalizeForComparison(option.code) === normalizedInput) {
+          return true;
+        }
+        return false;
+      });
+
+      if (matchingGender) {
+        await storage.workers.updateWorkerContactGender(workerId, matchingGender.id, null);
+      }
+      // If no match found, skip silently (optional field)
+    }
+
+    // Process phone number if provided
+    const phoneNumber = row.phoneNumber?.toString().trim();
+    if (phoneNumber) {
+      // Check if contact already has phone numbers
+      const existingPhones = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(contactId);
+      
+      if (existingPhones.length > 0) {
+        // Update the primary phone number
+        const primaryPhone = existingPhones.find(p => p.isPrimary) || existingPhones[0];
+        await storage.contacts.phoneNumbers.updatePhoneNumber(primaryPhone.id, {
+          phoneNumber: phoneNumber
+        });
+      } else {
+        // Create a new primary phone number
+        await storage.contacts.phoneNumbers.createPhoneNumber({
+          contactId,
+          phoneNumber: phoneNumber,
+          isPrimary: true
+        });
+      }
+    }
+
+    // Process address if any address fields are provided
+    const addressLine1 = row.addressLine1?.toString().trim();
+    const addressLine2 = row.addressLine2?.toString().trim() || null;
+    const city = row.city?.toString().trim();
+    const state = row.state?.toString().trim();
+    const postalCode = row.postalCode?.toString().trim();
+
+    // Only process address if at least street (addressLine1) and city are provided
+    // These are minimum required fields for a valid address
+    if (addressLine1 && city && state && postalCode) {
+      // Check if contact already has addresses
+      const existingAddresses = await storage.contacts.addresses.getContactPostalByContact(contactId);
+      
+      if (existingAddresses.length > 0) {
+        // Update the primary address
+        const primaryAddress = existingAddresses.find((a: { isPrimary: boolean }) => a.isPrimary) || existingAddresses[0];
+        await storage.contacts.addresses.updateContactPostal(primaryAddress.id, {
+          street: addressLine1,
+          city,
+          state,
+          postalCode,
+          country: 'US' // Default to US
+        });
+      } else {
+        // Create a new primary address
+        await storage.contacts.addresses.createContactPostal({
+          contactId,
+          street: addressLine1,
+          city,
+          state,
+          postalCode,
+          country: 'US', // Default to US
+          isPrimary: true
+        });
+      }
+    }
   }
 
 }
