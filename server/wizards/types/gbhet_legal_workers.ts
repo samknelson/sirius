@@ -45,7 +45,10 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   entityType = 'employer';
   
   // Cache for employment status options to avoid repeated DB queries
-  private employmentStatusCache: Array<{ id: string; name: string; code: string }> | null = null;
+  private employmentStatusCache: Array<{ id: string; name: string; code: string; employed: boolean }> | null = null;
+  
+  // Cache for work status options to avoid repeated DB queries
+  private workStatusCache: Array<{ id: string; name: string }> | null = null;
 
   /**
    * Get the field definitions for the GBHET Legal Workers feed
@@ -257,12 +260,119 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   /**
    * Get employment status options (cached to avoid repeated DB queries)
    */
-  private async getEmploymentStatusOptions(): Promise<Array<{ id: string; name: string; code: string }>> {
+  private async getEmploymentStatusOptions(): Promise<Array<{ id: string; name: string; code: string; employed: boolean }>> {
     if (!this.employmentStatusCache) {
       const statuses = await storage.options.employmentStatus.getAll();
-      this.employmentStatusCache = statuses.map(s => ({ id: s.id, name: s.name, code: s.code }));
+      this.employmentStatusCache = statuses.map(s => ({ id: s.id, name: s.name, code: s.code, employed: s.employed }));
     }
     return this.employmentStatusCache;
+  }
+
+  /**
+   * Get work status options (cached)
+   */
+  private async getWorkStatusOptions(): Promise<Array<{ id: string; name: string }>> {
+    if (!this.workStatusCache) {
+      const statuses = await storage.options.workerWs.getAll();
+      this.workStatusCache = statuses.map(s => ({ id: s.id, name: s.name }));
+    }
+    return this.workStatusCache;
+  }
+
+  /**
+   * Sync work status from employment status
+   * Rules:
+   * - If current work status is "Deceased", never change it
+   * - If employment status is "Deceased", set work status to "Deceased"
+   * - If employment status is active (employed=true), set work status to match
+   * - If employment status is not active (e.g., Terminated), only set if worker has no other active employment records
+   */
+  protected async syncWorkStatusFromEmployment(
+    workerId: string,
+    employmentStatusOption: { id: string; name: string; code: string; employed: boolean },
+    year: number,
+    month: number
+  ): Promise<void> {
+    // Get worker's current work status
+    const worker = await storage.workers.getWorker(workerId);
+    if (!worker) {
+      return;
+    }
+
+    // Get current work status name if it exists
+    let currentWorkStatusName: string | null = null;
+    if (worker.denormWsId) {
+      const currentWs = await storage.options.workerWs.get(worker.denormWsId);
+      currentWorkStatusName = currentWs?.name || null;
+    }
+
+    // Rule: Never change if current status is "Deceased"
+    if (currentWorkStatusName && normalizeForComparison(currentWorkStatusName) === 'deceased') {
+      return;
+    }
+
+    // Find matching work status option by name
+    const workStatusOptions = await this.getWorkStatusOptions();
+    const normalizedEsName = normalizeForComparison(employmentStatusOption.name);
+    
+    const matchingWsOption = workStatusOptions.find(ws => 
+      normalizeForComparison(ws.name) === normalizedEsName
+    );
+
+    if (!matchingWsOption) {
+      // No matching work status option found - skip silently
+      return;
+    }
+
+    const isDeceased = normalizedEsName === 'deceased';
+    const isEmployed = employmentStatusOption.employed;
+
+    // Rule: If employment status is "Deceased", set it
+    if (isDeceased) {
+      await this.createWorkStatusHistoryEntry(workerId, matchingWsOption.id, year, month);
+      return;
+    }
+
+    // Rule: If employment status is active (employed=true), set it
+    if (isEmployed) {
+      await this.createWorkStatusHistoryEntry(workerId, matchingWsOption.id, year, month);
+      return;
+    }
+
+    // Rule: For non-active statuses (e.g., Terminated), only set if no other active employment records
+    const currentEmploymentRecords = await storage.workerHours.getWorkerHoursCurrent(workerId);
+    
+    // Check if any of the current employment records show an active (employed=true) status
+    const hasActiveEmployment = currentEmploymentRecords.some(record => 
+      record.employmentStatus?.employed === true
+    );
+
+    if (!hasActiveEmployment) {
+      // No active employment anywhere - safe to set the non-active status
+      await this.createWorkStatusHistoryEntry(workerId, matchingWsOption.id, year, month);
+    }
+    // If there are active records elsewhere, don't change the work status
+  }
+
+  /**
+   * Create a work status history entry for a worker
+   */
+  private async createWorkStatusHistoryEntry(
+    workerId: string,
+    wsId: string,
+    year: number,
+    month: number
+  ): Promise<void> {
+    // Use the last day of the month as the date
+    const lastDayOfMonth = new Date(year, month, 0).getDate();
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
+
+    await storage.workerWsh.createWorkerWsh({
+      workerId,
+      date: dateStr,
+      wsId,
+      data: { source: 'hours_upload' }
+    });
   }
 
   /**
@@ -427,6 +537,9 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
       month,
       hours
     });
+
+    // Sync work status from employment status
+    await this.syncWorkStatusFromEmployment(workerId, matchingOption, year, month);
   }
 
   /**
