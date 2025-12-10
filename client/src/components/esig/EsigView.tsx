@@ -274,42 +274,88 @@ function SignatureDisplay({ esigData }: SignatureDisplayProps) {
   }
 
   if (esigData.type === "upload" && esigData.value) {
-    const handleDownload = async () => {
-      try {
-        const response = await fetch(`/api/files/${esigData.value}/url`);
-        const data = await response.json();
-        if (data.url) {
-          window.open(data.url, "_blank");
-        }
-      } catch (error) {
-        console.error("Failed to get download URL:", error);
-      }
-    };
-
-    return (
-      <div className="border rounded-md p-4 bg-white dark:bg-zinc-900" data-testid="display-signature-upload">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-muted-foreground" />
-            <span className="font-medium">{esigData.fileName || "Uploaded Document"}</span>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleDownload}
-            data-testid="button-download-signed-document"
-          >
-            <Download className="h-4 w-4 mr-1" />
-            Download
-          </Button>
-        </div>
-      </div>
-    );
+    return <UploadSignatureDisplay fileId={esigData.value} fileName={esigData.fileName} />;
   }
 
   return (
     <div className="p-4 border rounded-md bg-muted/50">
       <p className="text-muted-foreground text-sm">Signature format not recognized.</p>
+    </div>
+  );
+}
+
+function UploadSignatureDisplay({ fileId, fileName }: { fileId: string; fileName?: string }) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isLoadingUrl, setIsLoadingUrl] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const isPdf = fileName?.toLowerCase().endsWith(".pdf");
+
+  useEffect(() => {
+    async function fetchUrl() {
+      try {
+        setIsLoadingUrl(true);
+        const response = await fetch(`/api/files/${fileId}/url`);
+        if (!response.ok) {
+          throw new Error("Failed to get file URL");
+        }
+        const data = await response.json();
+        setPreviewUrl(data.url);
+      } catch (err) {
+        console.error("Failed to get file URL:", err);
+        setError("Could not load preview");
+      } finally {
+        setIsLoadingUrl(false);
+      }
+    }
+    fetchUrl();
+  }, [fileId]);
+
+  const handleDownload = () => {
+    if (previewUrl) {
+      window.open(previewUrl, "_blank");
+    }
+  };
+
+  return (
+    <div className="border rounded-md p-4 bg-white dark:bg-zinc-900 space-y-3" data-testid="display-signature-upload">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <FileText className="h-5 w-5 text-muted-foreground" />
+          <span className="font-medium">{fileName || "Uploaded Document"}</span>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleDownload}
+          disabled={!previewUrl}
+          data-testid="button-download-signed-document"
+        >
+          <Download className="h-4 w-4 mr-1" />
+          Download
+        </Button>
+      </div>
+
+      {isPdf && (
+        <div className="border rounded-md overflow-hidden bg-muted/30">
+          {isLoadingUrl ? (
+            <div className="h-48 flex items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : error ? (
+            <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
+              {error}
+            </div>
+          ) : previewUrl ? (
+            <iframe
+              src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+              className="w-full h-48 border-0"
+              title="PDF Preview"
+              data-testid="iframe-pdf-preview"
+            />
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
