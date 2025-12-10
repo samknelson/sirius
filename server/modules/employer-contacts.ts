@@ -56,7 +56,12 @@ export function registerEmployerContactRoutes(
     try {
       const { employerId } = req.params;
       const parsed = insertContactSchema.extend({ 
-        email: z.string().email("Valid email format").optional().nullable(),
+        email: z.union([
+          z.string().email("Valid email format"),
+          z.literal(""),
+          z.null(),
+          z.undefined()
+        ]).transform(val => val === "" ? null : val),
         contactTypeId: z.string().optional().nullable()
       }).safeParse(req.body);
       
