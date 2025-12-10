@@ -289,7 +289,12 @@ function UploadSignatureDisplay({ fileId, fileName }: { fileId: string; fileName
   const [isLoadingUrl, setIsLoadingUrl] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const isPdf = fileName?.toLowerCase().endsWith(".pdf");
+  const lowerFileName = fileName?.toLowerCase() || "";
+  const isPdf = lowerFileName.endsWith(".pdf");
+  const isImage = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".tif"].some(
+    ext => lowerFileName.endsWith(ext)
+  );
+  const hasPreview = isPdf || isImage;
 
   useEffect(() => {
     async function fetchUrl() {
@@ -336,7 +341,7 @@ function UploadSignatureDisplay({ fileId, fileName }: { fileId: string; fileName
         </Button>
       </div>
 
-      {isPdf && (
+      {hasPreview && (
         <div className="border rounded-md overflow-hidden bg-muted/30">
           {isLoadingUrl ? (
             <div className="h-48 flex items-center justify-center">
@@ -347,12 +352,21 @@ function UploadSignatureDisplay({ fileId, fileName }: { fileId: string; fileName
               {error}
             </div>
           ) : previewUrl ? (
-            <iframe
-              src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-              className="w-full h-48 border-0"
-              title="PDF Preview"
-              data-testid="iframe-pdf-preview"
-            />
+            isPdf ? (
+              <iframe
+                src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+                className="w-full h-48 border-0"
+                title="PDF Preview"
+                data-testid="iframe-pdf-preview"
+              />
+            ) : (
+              <img
+                src={previewUrl}
+                alt="Uploaded document"
+                className="w-full h-48 object-contain"
+                data-testid="img-preview"
+              />
+            )
           ) : null}
         </div>
       )}

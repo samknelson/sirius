@@ -14,11 +14,17 @@ const upload = multer({
       "application/pdf",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "application/msword",
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+      "image/bmp",
+      "image/tiff",
     ];
     if (allowedMimes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error("Only PDF and Word documents are allowed"));
+      cb(new Error("Only PDF, Word documents, and images are allowed"));
     }
   },
 });
@@ -35,8 +41,6 @@ function validateFileSignature(buffer: Buffer): { valid: boolean; detectedType: 
   
   // DOCX/Office Open XML: PK (ZIP signature) - DOCX files are ZIP archives
   if (buffer[0] === 0x50 && buffer[1] === 0x4B) {
-    // Check for Office Open XML by looking for specific patterns
-    // DOCX starts with PK and contains [Content_Types].xml
     return { valid: true, detectedType: "docx" };
   }
   
@@ -44,6 +48,39 @@ function validateFileSignature(buffer: Buffer): { valid: boolean; detectedType: 
   if (buffer[0] === 0xD0 && buffer[1] === 0xCF && buffer[2] === 0x11 && buffer[3] === 0xE0 &&
       buffer[4] === 0xA1 && buffer[5] === 0xB1 && buffer[6] === 0x1A && buffer[7] === 0xE1) {
     return { valid: true, detectedType: "doc" };
+  }
+  
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+    return { valid: true, detectedType: "jpeg" };
+  }
+  
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47 &&
+      buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A) {
+    return { valid: true, detectedType: "png" };
+  }
+  
+  // GIF: 47 49 46 38 (GIF8)
+  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38) {
+    return { valid: true, detectedType: "gif" };
+  }
+  
+  // WebP: 52 49 46 46 ... 57 45 42 50 (RIFF...WEBP)
+  if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+      buffer.length >= 12 && buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) {
+    return { valid: true, detectedType: "webp" };
+  }
+  
+  // BMP: 42 4D (BM)
+  if (buffer[0] === 0x42 && buffer[1] === 0x4D) {
+    return { valid: true, detectedType: "bmp" };
+  }
+  
+  // TIFF: 49 49 2A 00 (little endian) or 4D 4D 00 2A (big endian)
+  if ((buffer[0] === 0x49 && buffer[1] === 0x49 && buffer[2] === 0x2A && buffer[3] === 0x00) ||
+      (buffer[0] === 0x4D && buffer[1] === 0x4D && buffer[2] === 0x00 && buffer[3] === 0x2A)) {
+    return { valid: true, detectedType: "tiff" };
   }
   
   return { valid: false, detectedType: null };
@@ -110,7 +147,7 @@ export function registerEsigsRoutes(
       const fileValidation = validateFileSignature(req.file.buffer);
       if (!fileValidation.valid) {
         return res.status(400).json({ 
-          message: "Invalid file type. The file content does not match a valid PDF or Word document." 
+          message: "Invalid file type. The file content does not match a valid PDF, Word document, or image." 
         });
       }
 

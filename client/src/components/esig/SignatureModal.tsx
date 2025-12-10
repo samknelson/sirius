@@ -339,7 +339,7 @@ export function SignatureModal({
                 <div className="space-y-2">
                   <Label>Upload a Word or PDF Document</Label>
                   <p className="text-sm text-muted-foreground">
-                    Upload a signed document (PDF or Word). The text will be extracted and stored with your signature.
+                    Upload a signed document or image (PDF, Word, or common image formats).
                   </p>
                 </div>
                 
@@ -349,7 +349,7 @@ export function SignatureModal({
                       type="file"
                       ref={fileInputRef}
                       onChange={handleFileSelect}
-                      accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tiff,.tif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
                       className="hidden"
                       data-testid="input-file-upload"
                     />
@@ -373,7 +373,7 @@ export function SignatureModal({
                       )}
                     </Button>
                     <p className="text-xs text-muted-foreground mt-2">
-                      PDF or Word documents up to 20MB
+                      PDF, Word documents, or images up to 20MB
                     </p>
                   </div>
                 ) : (
