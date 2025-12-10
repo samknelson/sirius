@@ -54,6 +54,7 @@ interface WorkerWithContact extends Worker {
   benefitTypes?: string[];
   benefitIds?: string[];
   benefits?: WorkerBenefit[];
+  workStatusName?: string;
 }
 
 interface EmployerInfo {
@@ -236,6 +237,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
       benefitTypes,
       benefitIds,
       benefits,
+      workStatusName: worker.work_status_name || '',
     };
   });
 
@@ -615,7 +617,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                   <span>Benefits</span>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  <span>Employers</span>
+                  <span>Status</span>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Actions</span>
@@ -786,24 +788,59 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                       </div>
                     </TooltipProvider>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-wrap gap-1" data-testid={`text-worker-employers-${worker.id}`}>
-                      {worker.employers && worker.employers.length > 0 ? (
-                        worker.employers.map((employer) => (
-                          <Badge
-                            key={employer.id}
-                            variant={employer.isHome ? "default" : "secondary"}
-                            className="text-xs"
-                            data-testid={`badge-employer-${employer.id}`}
-                          >
-                            {employer.isHome && <Home size={10} className="mr-1" />}
-                            {employer.name}
-                          </Badge>
-                        ))
-                      ) : (
-                        <span className="text-sm text-muted-foreground italic">No employers</span>
-                      )}
-                    </div>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <div 
+                          className="cursor-pointer"
+                          data-testid={`status-indicator-${worker.id}`}
+                        >
+                          {worker.workStatusName ? (
+                            <Badge 
+                              variant={
+                                worker.workStatusName.toLowerCase() === 'active' ? 'default' :
+                                worker.workStatusName.toLowerCase() === 'terminated' ? 'destructive' :
+                                'secondary'
+                              }
+                              className="text-xs"
+                            >
+                              {worker.workStatusName}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs text-muted-foreground">
+                              No Status
+                            </Badge>
+                          )}
+                        </div>
+                      </HoverCardTrigger>
+                      <HoverCardContent className="w-64" data-testid={`employers-hover-${worker.id}`}>
+                        <div className="space-y-2">
+                          <p className="text-sm font-semibold text-foreground">
+                            {worker.contactName}
+                          </p>
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground uppercase">Employers</p>
+                            {worker.employers && worker.employers.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {worker.employers.map((employer) => (
+                                  <Badge
+                                    key={employer.id}
+                                    variant={employer.isHome ? "default" : "secondary"}
+                                    className="text-xs"
+                                    data-testid={`badge-employer-${employer.id}`}
+                                  >
+                                    {employer.isHome && <Home size={10} className="mr-1" />}
+                                    {employer.name}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-sm text-muted-foreground italic">No employers</span>
+                            )}
+                          </div>
+                        </div>
+                      </HoverCardContent>
+                    </HoverCard>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <div className="flex items-center space-x-2">
