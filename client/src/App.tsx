@@ -969,8 +969,8 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      {/* Configuration routes with nested navigation */}
-      <Route path="/config/users/list">
+      {/* Admin user management routes */}
+      <Route path="/admin/users/list">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -980,7 +980,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/users/roles">
+      <Route path="/admin/users/roles">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -990,7 +990,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/users/permissions">
+      <Route path="/admin/users/permissions">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -1000,7 +1000,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/users/policies">
+      <Route path="/admin/users/policies">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -1010,7 +1010,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/users/employer-settings">
+      <Route path="/admin/users/employer-settings">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -1020,7 +1020,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/users/trust-provider-settings">
+      <Route path="/admin/users/trust-provider-settings">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -1030,7 +1030,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/users/sessions">
+      <Route path="/admin/users/sessions">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -1040,7 +1040,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/users/flood-events">
+      <Route path="/admin/users/flood-events">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -1050,7 +1050,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/users/flood-events/config">
+      <Route path="/admin/users/flood-events/config">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -1060,9 +1060,32 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      {/* Redirect old /config/users to new structure */}
+      {/* Redirect /admin/users to list */}
+      <Route path="/admin/users">
+        <Redirect to="/admin/users/list" />
+      </Route>
+
+      {/* Redirect old /config/users paths to new /admin/users paths */}
+      <Route path="/config/users/list">
+        <Redirect to="/admin/users/list" />
+      </Route>
+      <Route path="/config/users/roles">
+        <Redirect to="/admin/users/roles" />
+      </Route>
+      <Route path="/config/users/permissions">
+        <Redirect to="/admin/users/permissions" />
+      </Route>
+      <Route path="/config/users/policies">
+        <Redirect to="/admin/users/policies" />
+      </Route>
+      <Route path="/config/users/sessions">
+        <Redirect to="/admin/users/sessions" />
+      </Route>
+      <Route path="/config/users/flood-events">
+        <Redirect to="/admin/users/flood-events" />
+      </Route>
       <Route path="/config/users">
-        <Redirect to="/config/users/list" />
+        <Redirect to="/admin/users/list" />
       </Route>
 
       <Route path="/config/addresses">
@@ -1438,13 +1461,9 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      {/* Legacy admin routes - redirect to configuration */}
+      {/* Legacy admin routes - redirect user detail to /users/:id */}
       <Route path="/admin/users/:id">
         <Redirect to="/users/:id" />
-      </Route>
-
-      <Route path="/admin/users">
-        <Redirect to="/config/users/list" />
       </Route>
 
       <Route path="/config/users/:id">

@@ -98,7 +98,7 @@ export function ActiveSessionsPlugin({ userPermissions }: DashboardPluginProps) 
         )}
       </CardContent>
       <CardFooter>
-        <Link href="/config/users/sessions" className="w-full">
+        <Link href="/admin/users/sessions" className="w-full">
           <Button variant="outline" size="sm" className="w-full" data-testid="link-view-all-sessions">
             View All Sessions
             <ArrowRight className="h-4 w-4 ml-2" />

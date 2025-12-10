@@ -119,7 +119,7 @@ export default function SessionsPage() {
                       <div className="flex items-center gap-2">
                         <User className="h-4 w-4 text-muted-foreground" />
                         {session.userId ? (
-                          <Link href={`/config/users/${session.userId}`}>
+                          <Link href={`/users/${session.userId}`}>
                             <span className="text-primary hover:underline cursor-pointer" data-testid={`link-user-${session.userId}`}>
                               {getUserName(session)}
                             </span>

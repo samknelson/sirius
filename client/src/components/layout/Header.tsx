@@ -270,9 +270,9 @@ export default function Header() {
                 {hasPermission("admin") && (
                   <>
                     <div className="text-sm font-medium text-muted-foreground px-4 py-2">Users</div>
-                    <Link href="/config/users/list" onClick={() => setMobileMenuOpen(false)}>
+                    <Link href="/admin/users/list" onClick={() => setMobileMenuOpen(false)}>
                       <Button
-                        variant={location === "/config/users/list" ? "default" : "ghost"}
+                        variant={location === "/admin/users/list" ? "default" : "ghost"}
                         className="w-full justify-start pl-8"
                         data-testid="mobile-nav-users-list"
                       >
@@ -280,9 +280,9 @@ export default function Header() {
                         Users
                       </Button>
                     </Link>
-                    <Link href="/config/users/roles" onClick={() => setMobileMenuOpen(false)}>
+                    <Link href="/admin/users/roles" onClick={() => setMobileMenuOpen(false)}>
                       <Button
-                        variant={location === "/config/users/roles" ? "default" : "ghost"}
+                        variant={location === "/admin/users/roles" ? "default" : "ghost"}
                         className="w-full justify-start pl-8"
                         data-testid="mobile-nav-users-roles"
                       >
@@ -290,9 +290,9 @@ export default function Header() {
                         Roles
                       </Button>
                     </Link>
-                    <Link href="/config/users/permissions" onClick={() => setMobileMenuOpen(false)}>
+                    <Link href="/admin/users/permissions" onClick={() => setMobileMenuOpen(false)}>
                       <Button
-                        variant={location === "/config/users/permissions" ? "default" : "ghost"}
+                        variant={location === "/admin/users/permissions" ? "default" : "ghost"}
                         className="w-full justify-start pl-8"
                         data-testid="mobile-nav-users-permissions"
                       >
@@ -300,9 +300,9 @@ export default function Header() {
                         Permissions
                       </Button>
                     </Link>
-                    <Link href="/config/users/policies" onClick={() => setMobileMenuOpen(false)}>
+                    <Link href="/admin/users/policies" onClick={() => setMobileMenuOpen(false)}>
                       <Button
-                        variant={location === "/config/users/policies" ? "default" : "ghost"}
+                        variant={location === "/admin/users/policies" ? "default" : "ghost"}
                         className="w-full justify-start pl-8"
                         data-testid="mobile-nav-users-policies"
                       >
@@ -320,9 +320,9 @@ export default function Header() {
                         Masquerade
                       </Button>
                     </Link>
-                    <Link href="/config/users/sessions" onClick={() => setMobileMenuOpen(false)}>
+                    <Link href="/admin/users/sessions" onClick={() => setMobileMenuOpen(false)}>
                       <Button
-                        variant={location === "/config/users/sessions" ? "default" : "ghost"}
+                        variant={location === "/admin/users/sessions" ? "default" : "ghost"}
                         className="w-full justify-start pl-8"
                         data-testid="mobile-nav-users-sessions"
                       >
@@ -330,9 +330,9 @@ export default function Header() {
                         Sessions
                       </Button>
                     </Link>
-                    <Link href="/config/users/flood-events" onClick={() => setMobileMenuOpen(false)}>
+                    <Link href="/admin/users/flood-events" onClick={() => setMobileMenuOpen(false)}>
                       <Button
-                        variant={location === "/config/users/flood-events" ? "default" : "ghost"}
+                        variant={location === "/admin/users/flood-events" ? "default" : "ghost"}
                         className="w-full justify-start pl-8"
                         data-testid="mobile-nav-users-flood-events"
                       >
@@ -571,7 +571,7 @@ export default function Header() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    variant={location.startsWith("/config/users") || location === "/config/masquerade" ? "default" : "ghost"}
+                    variant={location.startsWith("/admin/users") || location === "/config/masquerade" ? "default" : "ghost"}
                     size="sm"
                     data-testid="nav-users"
                   >
@@ -582,7 +582,7 @@ export default function Header() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
                   <DropdownMenuItem asChild>
-                    <Link href="/config/users/list" className="w-full">
+                    <Link href="/admin/users/list" className="w-full">
                       <div className="flex items-center cursor-pointer" data-testid="menu-users-list">
                         <Users className="h-4 w-4 mr-2" />
                         Users
@@ -590,7 +590,7 @@ export default function Header() {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/config/users/roles" className="w-full">
+                    <Link href="/admin/users/roles" className="w-full">
                       <div className="flex items-center cursor-pointer" data-testid="menu-users-roles">
                         <Shield className="h-4 w-4 mr-2" />
                         Roles
@@ -598,7 +598,7 @@ export default function Header() {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/config/users/permissions" className="w-full">
+                    <Link href="/admin/users/permissions" className="w-full">
                       <div className="flex items-center cursor-pointer" data-testid="menu-users-permissions">
                         <Key className="h-4 w-4 mr-2" />
                         Permissions
@@ -606,7 +606,7 @@ export default function Header() {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/config/users/policies" className="w-full">
+                    <Link href="/admin/users/policies" className="w-full">
                       <div className="flex items-center cursor-pointer" data-testid="menu-users-policies">
                         <FileText className="h-4 w-4 mr-2" />
                         Policies
@@ -623,7 +623,7 @@ export default function Header() {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/config/users/sessions" className="w-full">
+                    <Link href="/admin/users/sessions" className="w-full">
                       <div className="flex items-center cursor-pointer" data-testid="menu-users-sessions">
                         <Clock className="h-4 w-4 mr-2" />
                         Sessions
@@ -631,7 +631,7 @@ export default function Header() {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/config/users/flood-events" className="w-full">
+                    <Link href="/admin/users/flood-events" className="w-full">
                       <div className="flex items-center cursor-pointer" data-testid="menu-users-flood-events">
                         <Droplets className="h-4 w-4 mr-2" />
                         Flood Events

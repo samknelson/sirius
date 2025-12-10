@@ -131,7 +131,7 @@ export default function FloodEventsConfigPage() {
           <Tabs value="config" className="w-full">
             <TabsList>
               <TabsTrigger value="events" asChild>
-                <Link href="/config/users/flood-events" data-testid="tab-flood-events">
+                <Link href="/admin/users/flood-events" data-testid="tab-flood-events">
                   Events
                 </Link>
               </TabsTrigger>
