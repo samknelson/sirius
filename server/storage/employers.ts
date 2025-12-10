@@ -43,16 +43,17 @@ export function createEmployerStorage(): EmployerStorage {
           w.sirius_id as "workerSiriusId",
           c.display_name as "contactName",
           wh.id as "employmentHistoryId",
-          NULL as "employmentStatusId",
-          NULL as "employmentStatusName",
+          wh.employment_status_id as "employmentStatusId",
+          es.name as "employmentStatusName",
           NULL as position,
-          NULL as date,
+          make_date(wh.year, wh.month, wh.day)::text as date,
           wh.home
         FROM workers w
         INNER JOIN worker_hours wh ON w.id = wh.worker_id
         INNER JOIN contacts c ON w.contact_id = c.id
+        LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
         WHERE wh.employer_id = ${employerId}
-        ORDER BY w.id, c.family, c.given
+        ORDER BY w.id, wh.year DESC, wh.month DESC, wh.day DESC
       `);
       
       return result.rows as unknown as EmployerWorker[];
