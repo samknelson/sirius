@@ -283,7 +283,7 @@ export const workerWsh = pgTable("worker_wsh", {
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
-export const contactPostal = pgTable("postal_addresses", {
+export const contactPostal = pgTable("contact_postal", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
   friendlyName: text("friendly_name"),
