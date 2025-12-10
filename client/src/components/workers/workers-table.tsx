@@ -821,16 +821,16 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground uppercase">Employers</p>
                             {worker.employers && worker.employers.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
+                              <div className="flex flex-col gap-1">
                                 {worker.employers.map((employer) => (
                                   <Badge
                                     key={employer.id}
                                     variant={employer.isHome ? "default" : "secondary"}
-                                    className="text-xs"
+                                    className="text-xs whitespace-normal break-words max-w-full inline-flex items-start"
                                     data-testid={`badge-employer-${employer.id}`}
                                   >
-                                    {employer.isHome && <Home size={10} className="mr-1" />}
-                                    {employer.name}
+                                    {employer.isHome && <Home size={10} className="mr-1 mt-0.5 flex-shrink-0" />}
+                                    <span className="break-words">{employer.name}</span>
                                   </Badge>
                                 ))}
                               </div>
