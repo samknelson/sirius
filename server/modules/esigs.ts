@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { IStorage } from "../storage/database";
 import { insertEsigSchema, insertFileSchema } from "@shared/schema";
-import { objectStorageService } from "../services/objectStorage";
+import { objectStorageService, ObjectStorageNotConfiguredError, ObjectStorageConnectionError } from "../services/objectStorage";
 import multer from "multer";
 import officeParser from "officeparser";
 
@@ -182,6 +182,19 @@ export function registerEsigsRoutes(
       });
     } catch (error: any) {
       console.error("Failed to upload document:", error);
+      
+      if (error instanceof ObjectStorageNotConfiguredError) {
+        return res.status(503).json({ 
+          message: "Document storage is not configured. Please contact an administrator to set up Object Storage in the Replit workspace." 
+        });
+      }
+      
+      if (error instanceof ObjectStorageConnectionError) {
+        return res.status(503).json({ 
+          message: error.message 
+        });
+      }
+      
       res.status(500).json({ message: error.message || "Failed to upload document" });
     }
   });

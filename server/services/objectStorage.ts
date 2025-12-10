@@ -4,11 +4,62 @@ const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
 const publicPaths = process.env.PUBLIC_OBJECT_SEARCH_PATHS?.split(',') || ['public'];
 const privateDir = process.env.PRIVATE_OBJECT_DIR || '.private';
 
+export class ObjectStorageNotConfiguredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ObjectStorageNotConfiguredError';
+  }
+}
+
+export class ObjectStorageConnectionError extends Error {
+  constructor(message: string, public readonly statusCode?: number) {
+    super(message);
+    this.name = 'ObjectStorageConnectionError';
+  }
+}
+
 function ensureBucketId(): string {
   if (!bucketId) {
-    throw new Error('DEFAULT_OBJECT_STORAGE_BUCKET_ID environment variable is not set. Object storage features will not be available.');
+    throw new ObjectStorageNotConfiguredError(
+      'Object Storage is not configured. Please open the "Object Storage" tool in your Replit workspace and create a storage bucket, then set the DEFAULT_OBJECT_STORAGE_BUCKET_ID environment variable.'
+    );
   }
   return bucketId;
+}
+
+async function checkStorageServiceAvailable(): Promise<{ available: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${REPLIT_SIDECAR_ENDPOINT}/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(5000),
+    });
+    if (response.ok) {
+      return { available: true };
+    }
+    return { 
+      available: false, 
+      error: `Storage service returned status ${response.status}` 
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.name === 'AbortError' || error.message.includes('timeout')) {
+        return { 
+          available: false, 
+          error: 'Storage service connection timed out' 
+        };
+      }
+      if (error.message.includes('ECONNREFUSED') || error.message.includes('fetch failed')) {
+        return { 
+          available: false, 
+          error: 'Cannot connect to storage service - the Replit storage sidecar is not running' 
+        };
+      }
+    }
+    return { 
+      available: false, 
+      error: 'Storage service is unavailable' 
+    };
+  }
 }
 
 export interface UploadFileOptions {
@@ -59,20 +110,68 @@ async function signObjectURL({
     method,
     expires_at: new Date(Date.now() + ttlSec * 1000).toISOString(),
   };
-  const response = await fetch(
-    `${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(request),
+  
+  let response: Response;
+  try {
+    response = await fetch(
+      `${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(request),
+        signal: AbortSignal.timeout(10000),
+      }
+    );
+  } catch (error) {
+    const serviceCheck = await checkStorageServiceAvailable();
+    if (!serviceCheck.available) {
+      throw new ObjectStorageConnectionError(
+        `Object Storage is not available: ${serviceCheck.error}. ` +
+        `Please ensure Object Storage is configured in your Replit workspace by opening the "Object Storage" tool in the sidebar.`
+      );
     }
-  );
+    throw new ObjectStorageConnectionError(
+      `Failed to connect to Object Storage service: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+  
   if (!response.ok) {
-    throw new Error(
-      `Failed to sign object URL, errorcode: ${response.status}, ` +
-        `make sure you're running on Replit`
+    let errorDetails = '';
+    try {
+      const errorBody = await response.text();
+      if (errorBody) {
+        errorDetails = `: ${errorBody}`;
+      }
+    } catch {}
+    
+    if (response.status === 401) {
+      throw new ObjectStorageConnectionError(
+        `Object Storage authentication failed. The storage bucket "${bucketName}" may not exist or is not accessible. ` +
+        `Please open the "Object Storage" tool in your Replit workspace and verify that a bucket named "${bucketName}" exists and is properly configured.`,
+        401
+      );
+    }
+    
+    if (response.status === 404) {
+      throw new ObjectStorageConnectionError(
+        `Object Storage bucket "${bucketName}" was not found. ` +
+        `Please open the "Object Storage" tool in your Replit workspace and create a bucket, then update the DEFAULT_OBJECT_STORAGE_BUCKET_ID environment variable.`,
+        404
+      );
+    }
+    
+    if (response.status >= 500) {
+      throw new ObjectStorageConnectionError(
+        `Object Storage service error (${response.status}). This may be a temporary issue with Replit's storage infrastructure. Please try again in a few moments.`,
+        response.status
+      );
+    }
+    
+    throw new ObjectStorageConnectionError(
+      `Object Storage request failed with status ${response.status}${errorDetails}`,
+      response.status
     );
   }
 
