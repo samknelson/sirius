@@ -86,8 +86,9 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
     );
 
     const chargePluginKey = `${config.id}:${ea.id}:${wmbContext.workerId}:${wmbContext.year}:${wmbContext.month}`;
-    const billingMonthName = billingDate.toLocaleString('default', { month: 'long' });
-    const description = `GBHET Legal: ${billingMonthName} ${billingYear}`;
+    const benefitYearMonth = `${wmbContext.year}-${String(wmbContext.month).padStart(2, '0')}`;
+    const wmbShortId = wmbContext.wmbId.slice(0, 8).toUpperCase();
+    const description = `GBHET Legal - ${benefitYearMonth} | WMB-${wmbShortId}`;
 
     return {
       chargePluginKey,
