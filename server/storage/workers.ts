@@ -94,6 +94,10 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async getWorkersWithDetails(): Promise<WorkerWithDetails[]> {
+      const now = new Date();
+      const currentMonth = now.getMonth() + 1;
+      const currentYear = now.getFullYear();
+      
       const result = await db.execute(sql`
         SELECT 
           w.id,
@@ -127,6 +131,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
               INNER JOIN options_trust_benefit_type bt ON tb.benefit_type = bt.id
               WHERE wmb.worker_id = w.id
                 AND tb.is_active = true
+                AND wmb.month = ${currentMonth}
+                AND wmb.year = ${currentYear}
             ),
             '[]'::json
           ) as benefit_types,
@@ -137,6 +143,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
               INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
               WHERE wmb.worker_id = w.id
                 AND tb.is_active = true
+                AND wmb.month = ${currentMonth}
+                AND wmb.year = ${currentYear}
             ),
             '[]'::json
           ) as benefit_ids,
@@ -153,6 +161,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
               INNER JOIN options_trust_benefit_type bt ON tb.benefit_type = bt.id
               WHERE wmb.worker_id = w.id
                 AND tb.is_active = true
+                AND wmb.month = ${currentMonth}
+                AND wmb.year = ${currentYear}
             ),
             '[]'::json
           ) as benefits
