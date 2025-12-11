@@ -8,6 +8,7 @@ Sirius is a full-stack web application for comprehensive worker management, prov
 -   **ConfigFormPage UI**: Added numeric input field for configuring the billing offset on the charge plugin configuration form.
 -   **ConfigList UI**: Now displays the billing offset setting alongside account, benefit, and rate information.
 -   **Wizard Review Step Summaries**: Enhanced GBHET Legal Workers wizard review step with benefits and charges summaries. After processing, displays "X benefits of type Y generated" for each benefit type, and "N charges for a total of $X.XX" for ledger entries. Backend aggregates benefit counts by type and calculates charge totals from ledger entries linked to created WMBs.
+-   **Workers List Benefits Filter Fix**: Fixed the workers list table to show only current month benefits instead of all historical benefits. The `getWorkersWithDetails` SQL query now filters by current month/year in the benefit_types, benefit_ids, and benefits subqueries.
 
 # Recent Changes (November 26, 2025)
 
