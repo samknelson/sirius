@@ -2,6 +2,12 @@
 
 Sirius is a full-stack web application for comprehensive worker management, providing robust CRUD operations and configurable organizational settings. It aims to streamline worker administration, enhance user experience, and deliver significant business value through efficiency and reliability.
 
+# Recent Changes (December 11, 2025)
+
+-   **GBHET Legal Benefit Charge Plugin - Billing Offset**: Added `billingOffsetMonths` configuration setting (default: -3) that allows billing to occur in the work month rather than the benefit month. For example, when a worker uploads hours in January to receive April benefits (3-month offset), the charge is now billed on January 31st (end of work month) instead of April. The plugin metadata now stores `benefitYear`/`benefitMonth` with backward compatibility for legacy `year`/`month` fields in verification.
+-   **ConfigFormPage UI**: Added numeric input field for configuring the billing offset on the charge plugin configuration form.
+-   **ConfigList UI**: Now displays the billing offset setting alongside account, benefit, and rate information.
+
 # Recent Changes (November 26, 2025)
 
 -   **Worker List Contact Indicators**: Updated workers table to show phone, email, and address as icon indicators instead of full text. Mail icon, Phone icon, and Home icon (green if data exists, gray if not) with hover cards showing the worker name for verification along with the actual contact data. Improves table density while maintaining data accessibility.
