@@ -749,11 +749,16 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     workerId: string, 
     row: Record<string, any>, 
     wizard: any
-  ): Promise<{ created: number; skipped: number; errors: string[] }> {
-    const result = { created: 0, skipped: 0, errors: [] as string[] };
+  ): Promise<{ created: number; skipped: number; errors: string[]; createdBenefits: Array<{ benefitId: string; benefitName: string; wmbId: string }> }> {
+    const result = { 
+      created: 0, 
+      skipped: 0, 
+      errors: [] as string[],
+      createdBenefits: [] as Array<{ benefitId: string; benefitName: string; wmbId: string }>
+    };
     
     const wizardData = wizard.data as any || {};
-    const benefitConfig = wizardData.benefitConfig as Array<{ fieldId: string; benefitId: string }> || [];
+    const benefitConfig = wizardData.benefitConfig as Array<{ fieldId: string; benefitId: string; benefitName?: string }> || [];
     
     // If no benefit configuration, skip
     if (benefitConfig.length === 0) {
@@ -782,7 +787,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     
     // Process each configured benefit field
     for (const config of benefitConfig) {
-      const { fieldId, benefitId } = config;
+      const { fieldId, benefitId, benefitName } = config;
       const eligibilityValue = row[fieldId];
       
       // Check if this worker is eligible for the benefit
@@ -795,7 +800,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
             result.skipped++;
           } else {
             // Create WMB record via storage layer (includes logging and charge plugin execution)
-            await storage.workers.createWorkerBenefit({
+            const wmb = await storage.workers.createWorkerBenefit({
               workerId,
               month: targetMonth,
               year: targetYear,
@@ -803,6 +808,11 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
               benefitId
             });
             result.created++;
+            result.createdBenefits.push({
+              benefitId,
+              benefitName: benefitName || benefitId,
+              wmbId: wmb.id
+            });
           }
         } catch (error) {
           result.errors.push(`Failed to create WMB for benefit ${benefitId}: ${error instanceof Error ? error.message : String(error)}`);

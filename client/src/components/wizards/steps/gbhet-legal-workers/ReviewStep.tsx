@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CheckCircle2, XCircle, FileText, Download, AlertCircle, FileSpreadsheet } from "lucide-react";
+import { CheckCircle2, XCircle, FileText, Download, AlertCircle, FileSpreadsheet, Gift, DollarSign } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 interface ReviewStepProps {
@@ -12,6 +12,17 @@ interface ReviewStepProps {
   wizardType: string;
   data?: any;
   onDataChange?: (data: any) => void;
+}
+
+interface BenefitSummary {
+  benefitId: string;
+  benefitName: string;
+  count: number;
+}
+
+interface ChargesSummary {
+  count: number;
+  totalAmount: string;
 }
 
 interface ProcessResults {
@@ -23,6 +34,8 @@ interface ProcessResults {
   errors: any[];
   resultsFileId?: string;
   completedAt?: string;
+  benefitsSummary?: BenefitSummary[];
+  chargesSummary?: ChargesSummary;
 }
 
 interface File {
@@ -165,6 +178,49 @@ export function ReviewStep({ wizardId, wizardType, data, onDataChange }: ReviewS
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Benefits & Charges Summary */}
+              {(processResults.benefitsSummary || processResults.chargesSummary) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Benefits Summary */}
+                  {processResults.benefitsSummary && processResults.benefitsSummary.length > 0 && (
+                    <Card className="border-purple-200 bg-purple-50/50">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start gap-3">
+                          <Gift className="h-5 w-5 text-purple-600 mt-0.5" />
+                          <div>
+                            <p className="font-medium text-purple-900">Benefits Created</p>
+                            <div className="mt-2 space-y-1">
+                              {processResults.benefitsSummary.map((benefit) => (
+                                <p key={benefit.benefitId} className="text-sm text-purple-700" data-testid={`text-benefit-summary-${benefit.benefitId}`}>
+                                  {benefit.count} {benefit.count === 1 ? 'benefit' : 'benefits'} of type "{benefit.benefitName}"
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Charges Summary */}
+                  {processResults.chargesSummary && (
+                    <Card className="border-emerald-200 bg-emerald-50/50">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start gap-3">
+                          <DollarSign className="h-5 w-5 text-emerald-600 mt-0.5" />
+                          <div>
+                            <p className="font-medium text-emerald-900">Charges Generated</p>
+                            <p className="text-sm text-emerald-700 mt-2" data-testid="text-charges-summary">
+                              {processResults.chargesSummary.count} {processResults.chargesSummary.count === 1 ? 'charge' : 'charges'} for a total of ${processResults.chargesSummary.totalAmount}
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              )}
 
               {/* Completion Info */}
               {processResults.completedAt && (

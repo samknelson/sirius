@@ -87,6 +87,17 @@ export interface RowResult {
   message: string;
 }
 
+export interface BenefitSummary {
+  benefitId: string;
+  benefitName: string;
+  count: number;
+}
+
+export interface ChargesSummary {
+  count: number;
+  totalAmount: string;
+}
+
 export interface ProcessResults {
   totalRows: number;
   createdCount: number;
@@ -97,6 +108,8 @@ export interface ProcessResults {
   rowResults: RowResult[]; // Detailed results for each row
   resultsFileId?: string; // ID of the generated results CSV file
   completedAt?: Date;
+  benefitsSummary?: BenefitSummary[]; // Summary of benefits created by type
+  chargesSummary?: ChargesSummary; // Summary of charges generated
 }
 
 export interface FeedField {
@@ -560,6 +573,9 @@ export abstract class FeedWizard extends BaseWizard {
     let failureCount = 0;
     const allErrors: ProcessError[] = [];
     const rowResults: RowResult[] = [];
+    
+    // Track all created benefits for summary aggregation
+    const allCreatedBenefits: Array<{ benefitId: string; benefitName: string; wmbId: string }> = [];
 
     for (let i = 0; i < totalRows; i += batchSize) {
       const batch = mappedRows.slice(i, Math.min(i + batchSize, totalRows));
@@ -649,6 +665,10 @@ export abstract class FeedWizard extends BaseWizard {
                 benefitsCreated = benefitResult.created || 0;
                 benefitsSkipped = benefitResult.skipped || 0;
                 benefitsErrors = benefitResult.errors || [];
+                // Collect created benefits for summary
+                if (benefitResult.createdBenefits) {
+                  allCreatedBenefits.push(...benefitResult.createdBenefits);
+                }
               } catch (err: any) {
                 benefitsErrors.push(err.message || 'Benefits processing failed');
               }
@@ -755,6 +775,10 @@ export abstract class FeedWizard extends BaseWizard {
                 benefitsCreated = benefitResult.created || 0;
                 benefitsSkipped = benefitResult.skipped || 0;
                 benefitsErrors = benefitResult.errors || [];
+                // Collect created benefits for summary
+                if (benefitResult.createdBenefits) {
+                  allCreatedBenefits.push(...benefitResult.createdBenefits);
+                }
               } catch (err: any) {
                 benefitsErrors.push(err.message || 'Benefits processing failed');
               }
@@ -836,6 +860,49 @@ export abstract class FeedWizard extends BaseWizard {
       // Continue without results file - don't fail the whole process
     }
 
+    // Aggregate benefits by type
+    const benefitsSummary: BenefitSummary[] = [];
+    const benefitCounts = new Map<string, { benefitId: string; benefitName: string; count: number }>();
+    for (const benefit of allCreatedBenefits) {
+      const existing = benefitCounts.get(benefit.benefitId);
+      if (existing) {
+        existing.count++;
+      } else {
+        benefitCounts.set(benefit.benefitId, {
+          benefitId: benefit.benefitId,
+          benefitName: benefit.benefitName,
+          count: 1
+        });
+      }
+    }
+    benefitsSummary.push(...Array.from(benefitCounts.values()));
+
+    // Query ledger for charges created from the WMBs
+    let chargesSummary: ChargesSummary | undefined;
+    if (allCreatedBenefits.length > 0) {
+      try {
+        const wmbIds = allCreatedBenefits.map(b => b.wmbId);
+        // Fetch ledger entries for each WMB
+        const allLedgerEntries: Array<{ amount: string | null }> = [];
+        for (const wmbId of wmbIds) {
+          const entries = await storage.ledger.entries.getByReference('wmb', wmbId);
+          allLedgerEntries.push(...entries);
+        }
+        if (allLedgerEntries.length > 0) {
+          const totalAmount = allLedgerEntries.reduce((sum: number, entry: { amount: string | null }) => {
+            return sum + parseFloat(entry.amount || '0');
+          }, 0);
+          chargesSummary = {
+            count: allLedgerEntries.length,
+            totalAmount: totalAmount.toFixed(2)
+          };
+        }
+      } catch (err) {
+        console.error('Failed to query ledger entries for charges summary:', err);
+        // Continue without charges summary
+      }
+    }
+
     const results: ProcessResults = {
       totalRows,
       createdCount,
@@ -845,7 +912,9 @@ export abstract class FeedWizard extends BaseWizard {
       errors: allErrors,
       rowResults,
       resultsFileId,
-      completedAt: new Date()
+      completedAt: new Date(),
+      benefitsSummary: benefitsSummary.length > 0 ? benefitsSummary : undefined,
+      chargesSummary
     };
 
     // Save processing results to wizard data
