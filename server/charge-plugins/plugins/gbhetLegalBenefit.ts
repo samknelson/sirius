@@ -63,8 +63,9 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
       return null;
     }
 
-    const monthDate = new Date(wmbContext.year, wmbContext.month - 1, 1);
-    const applicableRate = getCurrentEffectiveRate(settings.rateHistory, monthDate);
+    const monthStartDate = new Date(wmbContext.year, wmbContext.month - 1, 1);
+    const lastDayOfMonth = new Date(wmbContext.year, wmbContext.month, 0);
+    const applicableRate = getCurrentEffectiveRate(settings.rateHistory, monthStartDate);
 
     if (!applicableRate) {
       return null;
@@ -81,14 +82,14 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
     );
 
     const chargePluginKey = `${config.id}:${ea.id}:${wmbContext.workerId}:${wmbContext.year}:${wmbContext.month}`;
-    const monthName = monthDate.toLocaleString('default', { month: 'long' });
+    const monthName = monthStartDate.toLocaleString('default', { month: 'long' });
     const description = `GBHET Legal: ${monthName} ${wmbContext.year}`;
 
     return {
       chargePluginKey,
       amount: applicableRate.rate.toFixed(2),
       description,
-      transactionDate: monthDate,
+      transactionDate: lastDayOfMonth,
       eaId: ea.id,
       referenceType: "wmb",
       referenceId: wmbContext.wmbId,
