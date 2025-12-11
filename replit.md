@@ -7,6 +7,7 @@ Sirius is a full-stack web application for comprehensive worker management, prov
 -   **GBHET Legal Benefit Charge Plugin - Billing Offset**: Added `billingOffsetMonths` configuration setting (default: -3) that allows billing to occur in the work month rather than the benefit month. For example, when a worker uploads hours in January to receive April benefits (3-month offset), the charge is now billed on January 31st (end of work month) instead of April. The plugin metadata now stores `benefitYear`/`benefitMonth` with backward compatibility for legacy `year`/`month` fields in verification.
 -   **ConfigFormPage UI**: Added numeric input field for configuring the billing offset on the charge plugin configuration form.
 -   **ConfigList UI**: Now displays the billing offset setting alongside account, benefit, and rate information.
+-   **Wizard Review Step Summaries**: Enhanced GBHET Legal Workers wizard review step with benefits and charges summaries. After processing, displays "X benefits of type Y generated" for each benefit type, and "N charges for a total of $X.XX" for ledger entries. Backend aggregates benefit counts by type and calculates charge totals from ledger entries linked to created WMBs.
 
 # Recent Changes (November 26, 2025)
 
