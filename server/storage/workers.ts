@@ -178,7 +178,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         ) p ON true
         LEFT JOIN LATERAL (
           SELECT id, friendly_name, street, city, state, postal_code, country, is_primary
-          FROM contact_postal
+          FROM postal_addresses
           WHERE contact_id = c.id AND is_active = true
           ORDER BY is_primary DESC NULLS LAST, created_at ASC
           LIMIT 1
