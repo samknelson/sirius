@@ -1296,3 +1296,22 @@ export const insertCommPostalOptinSchema = createInsertSchema(commPostalOptin, {
 
 export type InsertCommPostalOptin = z.infer<typeof insertCommPostalOptinSchema>;
 export type CommPostalOptin = typeof commPostalOptin.$inferSelect;
+
+// Flood control table for rate limiting
+export const flood = pgTable("flood", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  event: varchar("event").notNull(),
+  identifier: varchar("identifier").notNull(),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+}, (table) => ({
+  eventIdentifierIdx: index("flood_event_identifier_idx").on(table.event, table.identifier),
+  expiresAtIdx: index("flood_expires_at_idx").on(table.expiresAt),
+}));
+
+export const insertFloodSchema = createInsertSchema(flood).omit({
+  id: true,
+});
+
+export type InsertFlood = z.infer<typeof insertFloodSchema>;
+export type Flood = typeof flood.$inferSelect;

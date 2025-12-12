@@ -1,5 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardFooter,
+} from "@/components/ui/card";
 import { Users, ArrowRight, Clock, User } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -15,8 +21,10 @@ interface SessionWithUser {
   userLastName: string | null;
 }
 
-export function ActiveSessionsPlugin({ userPermissions }: DashboardPluginProps) {
-  const hasAdminPermission = userPermissions.includes('admin');
+export function ActiveSessionsPlugin({
+  userPermissions,
+}: DashboardPluginProps) {
+  const hasAdminPermission = userPermissions.includes("admin");
 
   const { data: sessions = [], isLoading } = useQuery<SessionWithUser[]>({
     queryKey: ["/api/sessions"],
@@ -27,10 +35,12 @@ export function ActiveSessionsPlugin({ userPermissions }: DashboardPluginProps) 
     return null;
   }
 
-  const activeSessions = sessions.filter(s => new Date(s.expire) > new Date());
+  const activeSessions = sessions.filter(
+    (s) => new Date(s.expire) > new Date(),
+  );
   const uniqueUsers = new Map<string, SessionWithUser>();
-  
-  activeSessions.forEach(session => {
+
+  activeSessions.forEach((session) => {
     if (session.userId && !uniqueUsers.has(session.userId)) {
       uniqueUsers.set(session.userId, session);
     }
@@ -43,7 +53,7 @@ export function ActiveSessionsPlugin({ userPermissions }: DashboardPluginProps) 
 
   const getUserName = (session: SessionWithUser) => {
     if (session.userFirstName || session.userLastName) {
-      return `${session.userFirstName || ''} ${session.userLastName || ''}`.trim();
+      return `${session.userFirstName || ""} ${session.userLastName || ""}`.trim();
     }
     return session.userEmail || "Unknown User";
   };
@@ -59,16 +69,20 @@ export function ActiveSessionsPlugin({ userPermissions }: DashboardPluginProps) 
       <CardContent>
         <div className="flex items-center gap-4 mb-4">
           <div className="flex items-center justify-center h-16 w-16 rounded-full bg-primary/10">
-            <span className="text-2xl font-bold text-primary" data-testid="text-active-user-count">
+            <span
+              className="text-2xl font-bold text-primary"
+              data-testid="text-active-user-count"
+            >
               {activeUserCount}
             </span>
           </div>
           <div>
             <p className="text-sm text-muted-foreground">
-              {activeUserCount === 1 ? 'User' : 'Users'} with active sessions
+              {activeUserCount === 1 ? "User" : "Users"} with active sessions
             </p>
             <p className="text-xs text-muted-foreground">
-              {activeSessions.length} total {activeSessions.length === 1 ? 'session' : 'sessions'}
+              {activeSessions.length} total{" "}
+              {activeSessions.length === 1 ? "session" : "sessions"}
             </p>
           </div>
         </div>
@@ -86,10 +100,14 @@ export function ActiveSessionsPlugin({ userPermissions }: DashboardPluginProps) 
                   data-testid={`session-user-${session.userId?.substring(0, 8)}`}
                 >
                   <User className="h-3 w-3 text-muted-foreground" />
-                  <span className="flex-1 truncate">{getUserName(session)}</span>
+                  <span className="flex-1 truncate">
+                    {getUserName(session)}
+                  </span>
                   <span className="text-xs text-muted-foreground">
                     <Clock className="h-3 w-3 inline mr-1" />
-                    {formatDistanceToNow(new Date(session.expire), { addSuffix: true })}
+                    {formatDistanceToNow(new Date(session.expire), {
+                      addSuffix: true,
+                    })}
                   </span>
                 </div>
               ))}
@@ -99,7 +117,12 @@ export function ActiveSessionsPlugin({ userPermissions }: DashboardPluginProps) 
       </CardContent>
       <CardFooter>
         <Link href="/config/users/sessions" className="w-full">
-          <Button variant="outline" size="sm" className="w-full" data-testid="link-view-all-sessions">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            data-testid="link-view-all-sessions"
+          >
             View All Sessions
             <ArrowRight className="h-4 w-4 ml-2" />
           </Button>

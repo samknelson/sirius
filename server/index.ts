@@ -8,7 +8,7 @@ import { setupAuth } from "./replitAuth";
 import { initAccessControl } from "./accessControl";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
-import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler } from "./cron";
+import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler } from "./cron";
 
 // Import charge plugins module to trigger registration
 // Note: Individual plugins are registered in ./charge-plugins/index.ts
@@ -21,6 +21,9 @@ import "./eligibility-plugins";
 // Import service providers module to trigger registration
 // Note: SMS, Email, and other providers are registered here
 import "./services/providers";
+
+// Import and register flood events
+import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
 
 // Helper function to redact sensitive data from responses before logging
 function redactSensitiveData(data: any): any {
@@ -130,7 +133,16 @@ app.use((req, res, next) => {
   registerCronJob('delete-expired-reports', deleteExpiredReportsHandler);
   registerCronJob('delete-old-cron-logs', deleteOldCronLogsHandler);
   registerCronJob('process-wmb-batch', processWmbBatchHandler);
+  registerCronJob('delete-expired-flood-events', deleteExpiredFloodEventsHandler);
   logger.info("Cron job handlers registered", { source: "startup" });
+
+  // Register flood events
+  registerFloodEvents();
+  logger.info("Flood events registered", { source: "startup" });
+
+  // Load custom flood configurations from variables
+  await loadFloodConfigFromVariables();
+  logger.info("Flood configs loaded from variables", { source: "startup" });
 
   // Bootstrap default cron jobs
   await bootstrapCronJobs();

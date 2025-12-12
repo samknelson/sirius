@@ -41,7 +41,7 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
   const [wizardStatus, setWizardStatus] = useState<string | null>(null);
 
   const { data: wizard } = useQuery<any>({
-    queryKey: ["/api/wizards", wizardId],
+    queryKey: [`/api/wizards/${wizardId}`],
   });
 
   const validationResults = data?.validationResults;
@@ -75,7 +75,7 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
           setIsProcessing(false);
           eventSource.close();
           // Invalidate wizard query to refresh step completion status
-          queryClient.invalidateQueries({ queryKey: ["/api/wizards", wizardId] });
+          queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
         } else if (data.type === 'error') {
           setError(data.message);
           setIsProcessing(false);

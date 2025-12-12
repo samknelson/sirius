@@ -161,6 +161,13 @@ export default function WizardView() {
       return await apiRequest("DELETE", `/api/wizards/${id}`, {});
     },
     onSuccess: () => {
+      // Invalidate wizard list caches before navigating so lists refresh
+      queryClient.invalidateQueries({ queryKey: ['/api/wizards'] });
+      // Also invalidate the employer-specific wizard list if applicable
+      if (wizard?.entityId) {
+        queryClient.invalidateQueries({ queryKey: ['/api/wizards', { entityId: wizard.entityId }] });
+      }
+      
       toast({
         title: "Wizard Deleted",
         description: "The wizard and all associated files have been deleted successfully.",

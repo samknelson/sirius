@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import HourFixedConfigFormPage from "@/plugins/charge-plugins/hour-fixed/ConfigFormPage";
 import GbhetLegalHourlyConfigFormPage from "@/plugins/charge-plugins/gbhet-legal-hourly/ConfigFormPage";
+import GbhetLegalBenefitConfigFormPage from "@/plugins/charge-plugins/gbhet-legal-benefit/ConfigFormPage";
 import PaymentSimpleAllocationConfigFormPage from "@/plugins/charge-plugins/payment-simple-allocation/ConfigFormPage";
 
 interface ChargePluginMetadata {
@@ -59,6 +60,8 @@ export default function ChargePluginFormPage() {
       return <HourFixedConfigFormPage />;
     case "gbhet-legal-hourly":
       return <GbhetLegalHourlyConfigFormPage />;
+    case "gbhet-legal-benefit":
+      return <GbhetLegalBenefitConfigFormPage />;
     case "payment-simple-allocation":
       return <PaymentSimpleAllocationConfigFormPage />;
     default:

@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle, Scale, Stethoscope, Smile, Eye as EyeIcon, Star, Download, GraduationCap, Heart, Laptop, ShoppingBag, Mail, Phone, MailX, PhoneOff, type LucideIcon } from "lucide-react";
+import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle, Scale, Stethoscope, Smile, Eye as EyeIcon, Star, Download, GraduationCap, Heart, Laptop, ShoppingBag, Mail, Phone, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -54,6 +54,7 @@ interface WorkerWithContact extends Worker {
   benefitTypes?: string[];
   benefitIds?: string[];
   benefits?: WorkerBenefit[];
+  workStatusName?: string;
 }
 
 interface EmployerInfo {
@@ -236,6 +237,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
       benefitTypes,
       benefitIds,
       benefits,
+      workStatusName: worker.work_status_name || '',
     };
   });
 
@@ -543,7 +545,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                   </SelectItem>
                   <SelectItem value="missing_email">
                     <div className="flex items-center gap-2">
-                      <MailX size={14} className="text-red-500" />
+                      <Mail size={14} className="text-red-500" />
                       <span>Missing Email</span>
                     </div>
                   </SelectItem>
@@ -555,7 +557,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                   </SelectItem>
                   <SelectItem value="missing_phone">
                     <div className="flex items-center gap-2">
-                      <PhoneOff size={14} className="text-red-500" />
+                      <Phone size={14} className="text-red-500" />
                       <span>Missing Phone</span>
                     </div>
                   </SelectItem>
@@ -567,12 +569,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                   </SelectItem>
                   <SelectItem value="missing_address">
                     <div className="flex items-center gap-2">
-                      <span className="relative inline-flex">
-                        <Home size={14} className="text-red-500" />
-                        <span className="absolute inset-0 flex items-center justify-center">
-                          <span className="w-[140%] h-[2px] bg-red-500 rotate-[-45deg]" />
-                        </span>
-                      </span>
+                      <Home size={14} className="text-red-500" />
                       <span>Missing Address</span>
                     </div>
                   </SelectItem>
@@ -614,19 +611,13 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                   </div>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  <span>Email</span>
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  <span>Phone</span>
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  <span>Address</span>
+                  <span>Contact</span>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Benefits</span>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  <span>Employers</span>
+                  <span>Status</span>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Actions</span>
@@ -653,127 +644,124 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {worker.email ? (
-                      <HoverCard>
-                        <HoverCardTrigger asChild>
-                          <div 
-                            className="cursor-pointer"
-                            data-testid={`email-indicator-${worker.id}`}
-                            aria-label={`Email for ${worker.contactName}`}
-                          >
-                            <Mail size={16} className="text-green-600" />
-                          </div>
-                        </HoverCardTrigger>
-                        <HoverCardContent className="w-80" data-testid={`email-hover-${worker.id}`}>
-                          <div className="space-y-2">
-                            <p className="text-sm font-semibold text-foreground">
-                              {worker.contactName}
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <Mail size={16} className="text-muted-foreground" />
-                              <span className="text-sm text-foreground">{worker.email}</span>
+                    <div className="flex items-center gap-2" data-testid={`contact-indicators-${worker.id}`}>
+                      {worker.email ? (
+                        <HoverCard>
+                          <HoverCardTrigger asChild>
+                            <div 
+                              className="cursor-pointer"
+                              data-testid={`email-indicator-${worker.id}`}
+                              aria-label={`Email for ${worker.contactName}`}
+                            >
+                              <Mail size={16} className="text-green-600" />
                             </div>
-                          </div>
-                        </HoverCardContent>
-                      </HoverCard>
-                    ) : (
-                      <Link href={`/workers/${worker.id}/email`}>
-                        <div 
-                          data-testid={`email-indicator-${worker.id}`}
-                          aria-label={`Add email for ${worker.contactName}`}
-                          className="cursor-pointer hover:opacity-70 transition-opacity"
-                        >
-                          <MailX size={16} className="text-red-500" />
-                        </div>
-                      </Link>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {worker.phoneNumber ? (
-                      <HoverCard>
-                        <HoverCardTrigger asChild>
-                          <div 
-                            className="cursor-pointer"
-                            data-testid={`phone-indicator-${worker.id}`}
-                            aria-label={`Phone for ${worker.contactName}`}
-                          >
-                            <Phone size={16} className="text-green-600" />
-                          </div>
-                        </HoverCardTrigger>
-                        <HoverCardContent className="w-80" data-testid={`phone-hover-${worker.id}`}>
-                          <div className="space-y-2">
-                            <p className="text-sm font-semibold text-foreground">
-                              {worker.contactName}
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <Phone size={16} className="text-muted-foreground" />
-                              <span className="text-sm text-foreground">{worker.phoneNumber}</span>
-                            </div>
-                          </div>
-                        </HoverCardContent>
-                      </HoverCard>
-                    ) : (
-                      <Link href={`/workers/${worker.id}/phone-numbers`}>
-                        <div 
-                          data-testid={`phone-indicator-${worker.id}`}
-                          aria-label={`Add phone for ${worker.contactName}`}
-                          className="cursor-pointer hover:opacity-70 transition-opacity"
-                        >
-                          <PhoneOff size={16} className="text-red-500" />
-                        </div>
-                      </Link>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {worker.address ? (
-                      <HoverCard>
-                        <HoverCardTrigger asChild>
-                          <div 
-                            className="cursor-pointer"
-                            data-testid={`address-indicator-${worker.id}`}
-                            aria-label={`Address for ${worker.contactName}`}
-                          >
-                            <Home size={16} className="text-green-600" />
-                          </div>
-                        </HoverCardTrigger>
-                        <HoverCardContent className="w-80" data-testid={`address-hover-${worker.id}`}>
-                          <div className="space-y-2">
-                            <p className="text-sm font-semibold text-foreground">
-                              {worker.contactName}
-                            </p>
-                            <div className="flex items-start gap-2">
-                              <MapPin size={16} className="text-muted-foreground mt-0.5" />
-                              <div className="flex-1">
-                                <p className="text-sm text-foreground">
-                                  {worker.address.street}
-                                </p>
-                                <p className="text-sm text-foreground">
-                                  {worker.address.city}, {worker.address.state} {worker.address.postalCode}
-                                </p>
-                                {worker.address.country && worker.address.country !== 'US' && (
-                                  <p className="text-sm text-foreground">
-                                    {worker.address.country}
-                                  </p>
-                                )}
+                          </HoverCardTrigger>
+                          <HoverCardContent className="w-80" data-testid={`email-hover-${worker.id}`}>
+                            <div className="space-y-2">
+                              <p className="text-sm font-semibold text-foreground">
+                                {worker.contactName}
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <Mail size={16} className="text-muted-foreground" />
+                                <span className="text-sm text-foreground">{worker.email}</span>
                               </div>
                             </div>
+                          </HoverCardContent>
+                        </HoverCard>
+                      ) : (
+                        <Link href={`/workers/${worker.id}/email`}>
+                          <div 
+                            data-testid={`email-indicator-${worker.id}`}
+                            aria-label={`Add email for ${worker.contactName}`}
+                            className="cursor-pointer hover:opacity-70 transition-opacity"
+                          >
+                            <Mail size={16} className="text-red-500" />
                           </div>
-                        </HoverCardContent>
-                      </HoverCard>
-                    ) : (
-                      <Link href={`/workers/${worker.id}/addresses`}>
-                        <div 
-                          data-testid={`address-indicator-${worker.id}`}
-                          aria-label={`Add address for ${worker.contactName}`}
-                          className="relative inline-flex cursor-pointer hover:opacity-70 transition-opacity"
-                        >
-                          <Home size={16} className="text-red-500" />
-                          <span className="absolute inset-0 flex items-center justify-center">
-                            <span className="w-[140%] h-[2px] bg-red-500 rotate-[-45deg]" />
-                          </span>
-                        </div>
-                      </Link>
-                    )}
+                        </Link>
+                      )}
+                      
+                      {worker.phoneNumber ? (
+                        <HoverCard>
+                          <HoverCardTrigger asChild>
+                            <div 
+                              className="cursor-pointer"
+                              data-testid={`phone-indicator-${worker.id}`}
+                              aria-label={`Phone for ${worker.contactName}`}
+                            >
+                              <Phone size={16} className="text-green-600" />
+                            </div>
+                          </HoverCardTrigger>
+                          <HoverCardContent className="w-80" data-testid={`phone-hover-${worker.id}`}>
+                            <div className="space-y-2">
+                              <p className="text-sm font-semibold text-foreground">
+                                {worker.contactName}
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <Phone size={16} className="text-muted-foreground" />
+                                <span className="text-sm text-foreground">{worker.phoneNumber}</span>
+                              </div>
+                            </div>
+                          </HoverCardContent>
+                        </HoverCard>
+                      ) : (
+                        <Link href={`/workers/${worker.id}/phone-numbers`}>
+                          <div 
+                            data-testid={`phone-indicator-${worker.id}`}
+                            aria-label={`Add phone for ${worker.contactName}`}
+                            className="cursor-pointer hover:opacity-70 transition-opacity"
+                          >
+                            <Phone size={16} className="text-red-500" />
+                          </div>
+                        </Link>
+                      )}
+                      
+                      {worker.address ? (
+                        <HoverCard>
+                          <HoverCardTrigger asChild>
+                            <div 
+                              className="cursor-pointer"
+                              data-testid={`address-indicator-${worker.id}`}
+                              aria-label={`Address for ${worker.contactName}`}
+                            >
+                              <Home size={16} className="text-green-600" />
+                            </div>
+                          </HoverCardTrigger>
+                          <HoverCardContent className="w-80" data-testid={`address-hover-${worker.id}`}>
+                            <div className="space-y-2">
+                              <p className="text-sm font-semibold text-foreground">
+                                {worker.contactName}
+                              </p>
+                              <div className="flex items-start gap-2">
+                                <MapPin size={16} className="text-muted-foreground mt-0.5" />
+                                <div className="flex-1">
+                                  <p className="text-sm text-foreground">
+                                    {worker.address.street}
+                                  </p>
+                                  <p className="text-sm text-foreground">
+                                    {worker.address.city}, {worker.address.state} {worker.address.postalCode}
+                                  </p>
+                                  {worker.address.country && worker.address.country !== 'US' && (
+                                    <p className="text-sm text-foreground">
+                                      {worker.address.country}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </HoverCardContent>
+                        </HoverCard>
+                      ) : (
+                        <Link href={`/workers/${worker.id}/addresses`}>
+                          <div 
+                            data-testid={`address-indicator-${worker.id}`}
+                            aria-label={`Add address for ${worker.contactName}`}
+                            className="cursor-pointer hover:opacity-70 transition-opacity"
+                          >
+                            <Home size={16} className="text-red-500" />
+                          </div>
+                        </Link>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <TooltipProvider>
@@ -800,24 +788,59 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                       </div>
                     </TooltipProvider>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-wrap gap-1" data-testid={`text-worker-employers-${worker.id}`}>
-                      {worker.employers && worker.employers.length > 0 ? (
-                        worker.employers.map((employer) => (
-                          <Badge
-                            key={employer.id}
-                            variant={employer.isHome ? "default" : "secondary"}
-                            className="text-xs"
-                            data-testid={`badge-employer-${employer.id}`}
-                          >
-                            {employer.isHome && <Home size={10} className="mr-1" />}
-                            {employer.name}
-                          </Badge>
-                        ))
-                      ) : (
-                        <span className="text-sm text-muted-foreground italic">No employers</span>
-                      )}
-                    </div>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <div 
+                          className="cursor-pointer"
+                          data-testid={`status-indicator-${worker.id}`}
+                        >
+                          {worker.workStatusName ? (
+                            <Badge 
+                              variant={
+                                worker.workStatusName.toLowerCase() === 'active' ? 'default' :
+                                worker.workStatusName.toLowerCase() === 'terminated' ? 'destructive' :
+                                'secondary'
+                              }
+                              className="text-xs"
+                            >
+                              {worker.workStatusName}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs text-muted-foreground">
+                              No Status
+                            </Badge>
+                          )}
+                        </div>
+                      </HoverCardTrigger>
+                      <HoverCardContent className="w-64" data-testid={`employers-hover-${worker.id}`}>
+                        <div className="space-y-2">
+                          <p className="text-sm font-semibold text-foreground">
+                            {worker.contactName}
+                          </p>
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground uppercase">Employers</p>
+                            {worker.employers && worker.employers.length > 0 ? (
+                              <div className="flex flex-col gap-1">
+                                {worker.employers.map((employer) => (
+                                  <Badge
+                                    key={employer.id}
+                                    variant={employer.isHome ? "default" : "secondary"}
+                                    className="text-xs whitespace-normal break-words max-w-full inline-flex items-start"
+                                    data-testid={`badge-employer-${employer.id}`}
+                                  >
+                                    {employer.isHome && <Home size={10} className="mr-1 mt-0.5 flex-shrink-0" />}
+                                    <span className="break-words">{employer.name}</span>
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-sm text-muted-foreground italic">No employers</span>
+                            )}
+                          </div>
+                        </div>
+                      </HoverCardContent>
+                    </HoverCard>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <div className="flex items-center space-x-2">

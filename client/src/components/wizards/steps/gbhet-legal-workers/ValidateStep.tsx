@@ -40,7 +40,7 @@ export function ValidateStep({ wizardId, wizardType, data, onDataChange }: Valid
   const [error, setError] = useState<string | null>(null);
 
   const { data: wizard } = useQuery<any>({
-    queryKey: ["/api/wizards", wizardId],
+    queryKey: [`/api/wizards/${wizardId}`],
   });
 
   const startValidation = async () => {
@@ -68,7 +68,7 @@ export function ValidateStep({ wizardId, wizardType, data, onDataChange }: Valid
           setIsValidating(false);
           eventSource.close();
           // Invalidate wizard query to refresh step completion status
-          queryClient.invalidateQueries({ queryKey: ["/api/wizards", wizardId] });
+          queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
         } else if (data.type === 'error') {
           setError(data.message);
           setIsValidating(false);

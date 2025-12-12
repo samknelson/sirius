@@ -48,6 +48,7 @@ export interface WorkerWithDetails {
   address_city: string | null;
   address_state: string | null;
   address_postal_code: string | null;
+  work_status_name: string | null;
   address_country: string | null;
   address_is_primary: boolean | null;
   benefit_types: string[] | null;
@@ -93,6 +94,10 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async getWorkersWithDetails(): Promise<WorkerWithDetails[]> {
+      const now = new Date();
+      const currentMonth = now.getMonth() + 1;
+      const currentYear = now.getFullYear();
+      
       const result = await db.execute(sql`
         SELECT 
           w.id,
@@ -117,6 +122,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           a.postal_code as address_postal_code,
           a.country as address_country,
           a.is_primary as address_is_primary,
+          ws.name as work_status_name,
           COALESCE(
             (
               SELECT json_agg(DISTINCT bt.name)
@@ -125,6 +131,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
               INNER JOIN options_trust_benefit_type bt ON tb.benefit_type = bt.id
               WHERE wmb.worker_id = w.id
                 AND tb.is_active = true
+                AND wmb.month = ${currentMonth}
+                AND wmb.year = ${currentYear}
             ),
             '[]'::json
           ) as benefit_types,
@@ -135,6 +143,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
               INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
               WHERE wmb.worker_id = w.id
                 AND tb.is_active = true
+                AND wmb.month = ${currentMonth}
+                AND wmb.year = ${currentYear}
             ),
             '[]'::json
           ) as benefit_ids,
@@ -151,11 +161,14 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
               INNER JOIN options_trust_benefit_type bt ON tb.benefit_type = bt.id
               WHERE wmb.worker_id = w.id
                 AND tb.is_active = true
+                AND wmb.month = ${currentMonth}
+                AND wmb.year = ${currentYear}
             ),
             '[]'::json
           ) as benefits
         FROM workers w
         INNER JOIN contacts c ON w.contact_id = c.id
+        LEFT JOIN options_worker_ws ws ON w.denorm_ws_id = ws.id
         LEFT JOIN LATERAL (
           SELECT phone_number, is_primary
           FROM contact_phone

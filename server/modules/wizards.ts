@@ -879,43 +879,62 @@ export function registerWizardRoutes(
         // Download file from object storage
         const fileBuffer = await objectStorageService.downloadFile(file.storagePath);
 
-        // Parse file based on type
-        let rows: any[][] = [];
+        // Parse file based on type - read ALL rows first to properly detect non-empty columns
+        let allRows: any[][] = [];
         const rowLimit = parseInt(previewRows as string) || 5;
 
         if (file.mimeType === 'text/csv') {
-          // Parse CSV
+          // Parse CSV - read all rows
           const { parse } = await import('csv-parse/sync');
-          rows = parse(fileBuffer, {
+          allRows = parse(fileBuffer, {
             relax_column_count: true,
-            skip_empty_lines: true,
-            to: rowLimit + 1 // +1 to include potential header row
+            skip_empty_lines: true
           });
         } else if (
           file.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
           file.mimeType === 'application/vnd.ms-excel'
         ) {
-          // Parse XLSX
+          // Parse XLSX - read all rows to properly detect non-empty columns
           const XLSX = await import('xlsx');
           const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
           const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
           const jsonData = XLSX.utils.sheet_to_json(firstSheet, { 
             header: 1,
             defval: '',
-            blankrows: false,
-            range: `A1:ZZ${rowLimit + 1}` // Limit to preview rows
+            blankrows: false
           });
-          rows = jsonData as any[][];
+          allRows = jsonData as any[][];
         } else {
           return res.status(400).json({ message: "Unsupported file type for parsing" });
         }
 
-        // Return parsed data
+        // Filter out completely empty columns based on ALL rows (not just preview)
+        // A column is considered empty if all cells in that column are null, undefined, or empty string
+        let filteredRows = allRows;
+        if (allRows.length > 0) {
+          const maxCols = Math.max(...allRows.map(row => row.length));
+          const nonEmptyColIndices: number[] = [];
+          
+          for (let colIdx = 0; colIdx < maxCols; colIdx++) {
+            const hasData = allRows.some(row => {
+              const cell = row[colIdx];
+              return cell !== null && cell !== undefined && cell !== '';
+            });
+            if (hasData) {
+              nonEmptyColIndices.push(colIdx);
+            }
+          }
+          
+          // Filter rows to only include non-empty columns
+          filteredRows = allRows.map(row => nonEmptyColIndices.map(colIdx => row[colIdx] ?? ''));
+        }
+
+        // Return parsed data - only the preview rows but column count reflects filtered columns
         res.json({
           fileName: file.fileName,
-          totalRows: rows.length,
-          previewRows: rows.slice(0, rowLimit + 1),
-          columnCount: rows[0]?.length || 0
+          totalRows: filteredRows.length,
+          previewRows: filteredRows.slice(0, rowLimit + 1),
+          columnCount: filteredRows[0]?.length || 0
         });
       } catch (error) {
         console.error("File parse error:", error);

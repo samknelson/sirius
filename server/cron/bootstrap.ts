@@ -30,6 +30,12 @@ const DEFAULT_CRON_JOBS: DefaultCronJob[] = [
     schedule: '*/5 * * * *', // Every 5 minutes
     isEnabled: false, // Disabled by default - enable when needed
   },
+  {
+    name: 'delete-expired-flood-events',
+    description: 'Deletes flood control events that have expired',
+    schedule: '0 * * * *', // Every hour at minute 0
+    isEnabled: true,
+  },
 ];
 
 export async function bootstrapCronJobs(): Promise<void> {

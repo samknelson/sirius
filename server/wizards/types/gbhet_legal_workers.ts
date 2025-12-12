@@ -45,7 +45,10 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   entityType = 'employer';
   
   // Cache for employment status options to avoid repeated DB queries
-  private employmentStatusCache: Array<{ id: string; name: string; code: string }> | null = null;
+  private employmentStatusCache: Array<{ id: string; name: string; code: string; employed: boolean }> | null = null;
+  
+  // Cache for work status options to avoid repeated DB queries
+  private workStatusCache: Array<{ id: string; name: string }> | null = null;
 
   /**
    * Get the field definitions for the GBHET Legal Workers feed
@@ -116,6 +119,119 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         required: true, // Always required
         description: 'Number of hours worked',
         displayOrder: 7
+      },
+      // Optional contact information fields
+      { 
+        id: 'email', 
+        name: 'Email', 
+        type: 'string', 
+        required: false,
+        description: 'Worker email address (optional)',
+        format: 'email',
+        displayOrder: 8
+      },
+      { 
+        id: 'phoneNumber', 
+        name: 'Phone Number', 
+        type: 'string', 
+        required: false,
+        description: 'Worker phone number (optional)',
+        displayOrder: 9
+      },
+      { 
+        id: 'gender', 
+        name: 'Gender', 
+        type: 'string', 
+        required: false,
+        description: 'Worker gender (optional)',
+        displayOrder: 10
+      },
+      // Optional address fields
+      { 
+        id: 'addressLine1', 
+        name: 'Address 1', 
+        type: 'string', 
+        required: false,
+        description: 'Street address line 1 (optional)',
+        displayOrder: 11
+      },
+      { 
+        id: 'addressLine2', 
+        name: 'Address 2', 
+        type: 'string', 
+        required: false,
+        description: 'Street address line 2 (optional)',
+        displayOrder: 12
+      },
+      { 
+        id: 'city', 
+        name: 'City', 
+        type: 'string', 
+        required: false,
+        description: 'City (optional)',
+        displayOrder: 13
+      },
+      { 
+        id: 'state', 
+        name: 'State', 
+        type: 'string', 
+        required: false,
+        description: 'State (optional)',
+        displayOrder: 14
+      },
+      { 
+        id: 'postalCode', 
+        name: 'Postal Code', 
+        type: 'string', 
+        required: false,
+        description: 'Postal/ZIP code (optional)',
+        displayOrder: 15
+      },
+      // Benefit eligibility fields - can be mapped to file columns to create WMB records
+      { 
+        id: 'benefit_1', 
+        name: 'Benefit Eligibility 1', 
+        type: 'benefit', 
+        required: false,
+        description: 'Benefit eligibility indicator (Yes/Y/1/X = eligible)',
+        displayOrder: 100,
+        isBenefitEligibility: true
+      },
+      { 
+        id: 'benefit_2', 
+        name: 'Benefit Eligibility 2', 
+        type: 'benefit', 
+        required: false,
+        description: 'Benefit eligibility indicator (Yes/Y/1/X = eligible)',
+        displayOrder: 101,
+        isBenefitEligibility: true
+      },
+      { 
+        id: 'benefit_3', 
+        name: 'Benefit Eligibility 3', 
+        type: 'benefit', 
+        required: false,
+        description: 'Benefit eligibility indicator (Yes/Y/1/X = eligible)',
+        displayOrder: 102,
+        isBenefitEligibility: true
+      },
+      { 
+        id: 'benefit_4', 
+        name: 'Benefit Eligibility 4', 
+        type: 'benefit', 
+        required: false,
+        description: 'Benefit eligibility indicator (Yes/Y/1/X = eligible)',
+        displayOrder: 103,
+        isBenefitEligibility: true
+      },
+      { 
+        id: 'benefit_5', 
+        name: 'Benefit Eligibility 5', 
+        type: 'benefit', 
+        required: false,
+        description: 'Benefit eligibility indicator (Yes/Y/1/X = eligible)',
+        displayOrder: 104,
+        isBenefitEligibility: true
       }
     ];
   }
@@ -124,6 +240,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     return [
       { id: 'upload', name: 'Upload', description: 'Upload data file' },
       { id: 'map', name: 'Map', description: 'Map fields to schema' },
+      { id: 'benefits', name: 'Benefits', description: 'Configure benefit eligibility fields' },
       { id: 'validate', name: 'Validate', description: 'Validate data integrity' },
       { id: 'process', name: 'Process', description: 'Process and transform data' },
       { id: 'review', name: 'Review', description: 'Review results' }
@@ -190,12 +307,127 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   /**
    * Get employment status options (cached to avoid repeated DB queries)
    */
-  private async getEmploymentStatusOptions(): Promise<Array<{ id: string; name: string; code: string }>> {
+  private async getEmploymentStatusOptions(): Promise<Array<{ id: string; name: string; code: string; employed: boolean }>> {
     if (!this.employmentStatusCache) {
       const statuses = await storage.options.employmentStatus.getAll();
-      this.employmentStatusCache = statuses.map(s => ({ id: s.id, name: s.name, code: s.code }));
+      this.employmentStatusCache = statuses.map(s => ({ id: s.id, name: s.name, code: s.code, employed: s.employed }));
     }
     return this.employmentStatusCache;
+  }
+
+  /**
+   * Get work status options (cached)
+   */
+  private async getWorkStatusOptions(): Promise<Array<{ id: string; name: string }>> {
+    if (!this.workStatusCache) {
+      const statuses = await storage.options.workerWs.getAll();
+      this.workStatusCache = statuses.map(s => ({ id: s.id, name: s.name }));
+    }
+    return this.workStatusCache;
+  }
+
+  /**
+   * Check if a status name indicates "Deceased" (handles variations like "Deceased - Worker")
+   */
+  private isDeceasedStatus(name: string): boolean {
+    const normalized = normalizeForComparison(name);
+    return normalized.includes('deceased');
+  }
+
+  /**
+   * Sync work status from employment status
+   * Rules:
+   * - If current work status is "Deceased", never change it
+   * - If employment status is "Deceased", set work status to "Deceased"
+   * - If employment status is active (employed=true), set work status to match
+   * - If employment status is not active (e.g., Terminated), only set if worker has no other active employment records
+   */
+  protected async syncWorkStatusFromEmployment(
+    workerId: string,
+    employmentStatusOption: { id: string; name: string; code: string; employed: boolean },
+    year: number,
+    month: number
+  ): Promise<void> {
+    // Get worker's current work status
+    const worker = await storage.workers.getWorker(workerId);
+    if (!worker) {
+      return;
+    }
+
+    // Get current work status name if it exists
+    let currentWorkStatusName: string | null = null;
+    if (worker.denormWsId) {
+      const currentWs = await storage.options.workerWs.get(worker.denormWsId);
+      currentWorkStatusName = currentWs?.name || null;
+    }
+
+    // Rule: Never change if current status is "Deceased" (using robust pattern matching)
+    if (currentWorkStatusName && this.isDeceasedStatus(currentWorkStatusName)) {
+      return;
+    }
+
+    // Find matching work status option by name
+    const workStatusOptions = await this.getWorkStatusOptions();
+    const normalizedEsName = normalizeForComparison(employmentStatusOption.name);
+    
+    const matchingWsOption = workStatusOptions.find(ws => 
+      normalizeForComparison(ws.name) === normalizedEsName
+    );
+
+    if (!matchingWsOption) {
+      // No matching work status option found - skip silently
+      return;
+    }
+
+    const isDeceased = this.isDeceasedStatus(employmentStatusOption.name);
+    const isEmployed = employmentStatusOption.employed;
+
+    // Rule: If employment status is "Deceased", set it
+    if (isDeceased) {
+      await this.createWorkStatusHistoryEntry(workerId, matchingWsOption.id, year, month);
+      return;
+    }
+
+    // Rule: If employment status is active (employed=true), set it
+    if (isEmployed) {
+      await this.createWorkStatusHistoryEntry(workerId, matchingWsOption.id, year, month);
+      return;
+    }
+
+    // Rule: For non-active statuses (e.g., Terminated), only set if no other active employment records
+    const currentEmploymentRecords = await storage.workerHours.getWorkerHoursCurrent(workerId);
+    
+    // Check if any of the current employment records show an active (employed=true) status
+    const hasActiveEmployment = currentEmploymentRecords.some(record => 
+      record.employmentStatus?.employed === true
+    );
+
+    if (!hasActiveEmployment) {
+      // No active employment anywhere - safe to set the non-active status
+      await this.createWorkStatusHistoryEntry(workerId, matchingWsOption.id, year, month);
+    }
+    // If there are active records elsewhere, don't change the work status
+  }
+
+  /**
+   * Create a work status history entry for a worker
+   */
+  private async createWorkStatusHistoryEntry(
+    workerId: string,
+    wsId: string,
+    year: number,
+    month: number
+  ): Promise<void> {
+    // Use the last day of the month as the date
+    const lastDayOfMonth = new Date(year, month, 0).getDate();
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
+
+    await storage.workerWsh.createWorkerWsh({
+      workerId,
+      date: dateStr,
+      wsId,
+      data: { source: 'hours_upload' }
+    });
   }
 
   /**
@@ -352,7 +584,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     }
 
     // Upsert worker hours using the matched employment status ID
-    await storage.workers.upsertWorkerHours({
+    await storage.workerHours.upsertWorkerHours({
       workerId,
       employerId,
       employmentStatusId: matchingOption.id,
@@ -360,6 +592,235 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
       month,
       hours
     });
+
+    // Sync work status from employment status
+    await this.syncWorkStatusFromEmployment(workerId, matchingOption, year, month);
+  }
+
+  /**
+   * Process optional contact information fields for a worker
+   * Handles email, phone number, gender, and address fields
+   */
+  protected async processWorkerContactInfo(workerId: string, row: Record<string, any>): Promise<void> {
+    // Get the worker to find its contact ID
+    const worker = await storage.workers.getWorker(workerId);
+    if (!worker) {
+      throw new Error(`Worker not found: ${workerId}`);
+    }
+
+    const contactId = worker.contactId;
+
+    // Process email if provided
+    const email = row.email?.toString().trim();
+    if (email) {
+      await storage.workers.updateWorkerContactEmail(workerId, email);
+    }
+
+    // Process gender if provided
+    const genderValue = row.gender?.toString().trim();
+    if (genderValue) {
+      // Look up gender option by name or code
+      const genderOptions = await storage.options.gender.getAllGenderOptions();
+      const normalizedInput = normalizeForComparison(genderValue);
+      
+      const matchingGender = genderOptions.find((option: { id: string; name: string; code: string }) => {
+        if (normalizeForComparison(option.name) === normalizedInput) {
+          return true;
+        }
+        if (option.code && normalizeForComparison(option.code) === normalizedInput) {
+          return true;
+        }
+        return false;
+      });
+
+      if (matchingGender) {
+        await storage.workers.updateWorkerContactGender(workerId, matchingGender.id, null);
+      }
+      // If no match found, skip silently (optional field)
+    }
+
+    // Process phone number if provided
+    const phoneNumber = row.phoneNumber?.toString().trim();
+    if (phoneNumber) {
+      // Check if contact already has phone numbers
+      const existingPhones = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(contactId);
+      
+      if (existingPhones.length > 0) {
+        // Update the primary phone number
+        const primaryPhone = existingPhones.find(p => p.isPrimary) || existingPhones[0];
+        await storage.contacts.phoneNumbers.updatePhoneNumber(primaryPhone.id, {
+          phoneNumber: phoneNumber
+        });
+      } else {
+        // Create a new primary phone number
+        await storage.contacts.phoneNumbers.createPhoneNumber({
+          contactId,
+          phoneNumber: phoneNumber,
+          isPrimary: true
+        });
+      }
+    }
+
+    // Process address if any address fields are provided
+    const addressLine1 = row.addressLine1?.toString().trim();
+    const addressLine2 = row.addressLine2?.toString().trim() || null;
+    const city = row.city?.toString().trim();
+    const state = row.state?.toString().trim();
+    const postalCode = row.postalCode?.toString().trim();
+
+    // Only process address if at least street (addressLine1) and city are provided
+    // These are minimum required fields for a valid address
+    if (addressLine1 && city && state && postalCode) {
+      // Check if contact already has addresses
+      const existingAddresses = await storage.contacts.addresses.getContactPostalByContact(contactId);
+      
+      if (existingAddresses.length > 0) {
+        // Update the primary address
+        const primaryAddress = existingAddresses.find((a: { isPrimary: boolean }) => a.isPrimary) || existingAddresses[0];
+        await storage.contacts.addresses.updateContactPostal(primaryAddress.id, {
+          street: addressLine1,
+          city,
+          state,
+          postalCode,
+          country: 'US' // Default to US
+        });
+      } else {
+        // Create a new primary address
+        await storage.contacts.addresses.createContactPostal({
+          contactId,
+          street: addressLine1,
+          city,
+          state,
+          postalCode,
+          country: 'US', // Default to US
+          isPrimary: true
+        });
+      }
+    }
+  }
+
+  /**
+   * Check if a value indicates benefit eligibility (truthy values)
+   * Truthy: Yes, Y, 1, X, True, or any non-empty non-zero value
+   * Falsy: No, N, 0, False, empty, null, undefined
+   */
+  protected isBenefitEligible(value: any): boolean {
+    if (value === null || value === undefined) {
+      return false;
+    }
+    
+    const strValue = String(value).toLowerCase().trim();
+    
+    // Explicit falsy values
+    if (strValue === '' || strValue === '0' || strValue === 'no' || strValue === 'n' || strValue === 'false') {
+      return false;
+    }
+    
+    // Explicit truthy values
+    if (strValue === '1' || strValue === 'yes' || strValue === 'y' || strValue === 'x' || strValue === 'true') {
+      return true;
+    }
+    
+    // Any other non-empty value is considered truthy
+    return strValue.length > 0;
+  }
+
+  /**
+   * Calculate the target month for WMB records (3 months after upload month)
+   * e.g., January 2025 upload -> April 2025 WMB
+   */
+  protected calculateBenefitMonth(uploadYear: number, uploadMonth: number): { year: number; month: number } {
+    let targetMonth = uploadMonth + 3;
+    let targetYear = uploadYear;
+    
+    if (targetMonth > 12) {
+      targetMonth -= 12;
+      targetYear += 1;
+    }
+    
+    return { year: targetYear, month: targetMonth };
+  }
+
+  /**
+   * Process benefit eligibility fields for a worker
+   * Creates WMB records for the target month (3 months after upload) if eligibility is truthy
+   */
+  protected async processWorkerBenefits(
+    workerId: string, 
+    row: Record<string, any>, 
+    wizard: any
+  ): Promise<{ created: number; skipped: number; errors: string[]; createdBenefits: Array<{ benefitId: string; benefitName: string; wmbId: string }> }> {
+    const result = { 
+      created: 0, 
+      skipped: 0, 
+      errors: [] as string[],
+      createdBenefits: [] as Array<{ benefitId: string; benefitName: string; wmbId: string }>
+    };
+    
+    const wizardData = wizard.data as any || {};
+    const benefitConfig = wizardData.benefitConfig as Array<{ fieldId: string; benefitId: string; benefitName?: string }> || [];
+    
+    // If no benefit configuration, skip
+    if (benefitConfig.length === 0) {
+      return result;
+    }
+    
+    // Get upload year/month from wizard launch arguments
+    const launchArguments = wizardData.launchArguments || {};
+    const uploadYear = typeof launchArguments.year === 'number' ? launchArguments.year : parseInt(String(launchArguments.year), 10);
+    const uploadMonth = typeof launchArguments.month === 'number' ? launchArguments.month : parseInt(String(launchArguments.month), 10);
+    
+    if (!isFinite(uploadYear) || !isFinite(uploadMonth)) {
+      result.errors.push('Year and month are required in wizard launch arguments for benefit processing');
+      return result;
+    }
+    
+    // Calculate target month (3 months after upload)
+    const { year: targetYear, month: targetMonth } = this.calculateBenefitMonth(uploadYear, uploadMonth);
+    
+    // Get employer ID from wizard entity
+    const employerId = wizard.entityId;
+    if (!employerId) {
+      result.errors.push('Wizard is not linked to an employer');
+      return result;
+    }
+    
+    // Process each configured benefit field
+    for (const config of benefitConfig) {
+      const { fieldId, benefitId, benefitName } = config;
+      const eligibilityValue = row[fieldId];
+      
+      // Check if this worker is eligible for the benefit
+      if (this.isBenefitEligible(eligibilityValue)) {
+        try {
+          // Check if WMB already exists
+          const exists = await storage.workers.workerBenefitExists(workerId, benefitId, targetMonth, targetYear);
+          
+          if (exists) {
+            result.skipped++;
+          } else {
+            // Create WMB record via storage layer (includes logging and charge plugin execution)
+            const wmb = await storage.workers.createWorkerBenefit({
+              workerId,
+              month: targetMonth,
+              year: targetYear,
+              employerId,
+              benefitId
+            });
+            result.created++;
+            result.createdBenefits.push({
+              benefitId,
+              benefitName: benefitName || benefitId,
+              wmbId: wmb.id
+            });
+          }
+        } catch (error) {
+          result.errors.push(`Failed to create WMB for benefit ${benefitId}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+    
+    return result;
   }
 
 }

@@ -6,6 +6,30 @@ import { stringify as stringifyCSV } from 'csv-stringify/sync';
 import * as XLSX from 'xlsx';
 import { objectStorageService } from '../services/objectStorage.js';
 
+/**
+ * Filter out completely empty columns from parsed rows
+ * A column is considered empty if all cells in that column are null, undefined, or empty string
+ */
+function filterEmptyColumns(rows: any[][]): any[][] {
+  if (rows.length === 0) return rows;
+  
+  const maxCols = Math.max(...rows.map(row => row.length));
+  const nonEmptyColIndices: number[] = [];
+  
+  for (let colIdx = 0; colIdx < maxCols; colIdx++) {
+    const hasData = rows.some(row => {
+      const cell = row[colIdx];
+      return cell !== null && cell !== undefined && cell !== '';
+    });
+    if (hasData) {
+      nonEmptyColIndices.push(colIdx);
+    }
+  }
+  
+  // Filter rows to only include non-empty columns
+  return rows.map(row => nonEmptyColIndices.map(colIdx => row[colIdx] ?? ''));
+}
+
 export interface FeedConfig {
   outputFormat?: 'csv' | 'json' | 'excel';
   includeHeaders?: boolean;
@@ -13,6 +37,12 @@ export interface FeedConfig {
     start: Date;
     end: Date;
   };
+}
+
+export interface BenefitFieldConfig {
+  fieldId: string; // The field ID from the column mapping (e.g., 'benefit_1')
+  benefitId: string; // The trust benefit ID to create WMB records for
+  benefitName?: string; // Display name of the benefit (for UI)
 }
 
 export interface FeedData {
@@ -26,6 +56,7 @@ export interface FeedData {
   mode?: 'create' | 'update'; // Whether this feed creates new records or updates existing ones
   validationResults?: ValidationResults;
   processResults?: ProcessResults;
+  benefitConfig?: BenefitFieldConfig[]; // Configuration for benefit eligibility fields
 }
 
 export interface ValidationError {
@@ -56,6 +87,17 @@ export interface RowResult {
   message: string;
 }
 
+export interface BenefitSummary {
+  benefitId: string;
+  benefitName: string;
+  count: number;
+}
+
+export interface ChargesSummary {
+  count: number;
+  totalAmount: string;
+}
+
 export interface ProcessResults {
   totalRows: number;
   createdCount: number;
@@ -66,12 +108,14 @@ export interface ProcessResults {
   rowResults: RowResult[]; // Detailed results for each row
   resultsFileId?: string; // ID of the generated results CSV file
   completedAt?: Date;
+  benefitsSummary?: BenefitSummary[]; // Summary of benefits created by type
+  chargesSummary?: ChargesSummary; // Summary of charges generated
 }
 
 export interface FeedField {
   id: string;
   name: string;
-  type: 'string' | 'number' | 'date';
+  type: 'string' | 'number' | 'date' | 'benefit';
   required: boolean; // Required in all cases
   requiredForCreate?: boolean; // Required only when creating new records
   requiredForUpdate?: boolean; // Required only when updating existing records
@@ -81,6 +125,7 @@ export interface FeedField {
   maxLength?: number;
   pattern?: string;
   displayOrder?: number;
+  isBenefitEligibility?: boolean; // Whether this field indicates benefit eligibility
 }
 
 export abstract class FeedWizard extends BaseWizard {
@@ -252,6 +297,9 @@ export abstract class FeedWizard extends BaseWizard {
       throw new Error('Unsupported file type');
     }
 
+    // Filter out completely empty columns (must match preview endpoint logic)
+    rawRows = filterEmptyColumns(rawRows);
+
     // Skip header row if present
     const dataRows = hasHeaders ? rawRows.slice(1) : rawRows;
 
@@ -343,13 +391,56 @@ export abstract class FeedWizard extends BaseWizard {
 
   /**
    * Parse various date formats and convert to YYYY-MM-DD
+   * Handles: string dates (M/D/YYYY, MM/DD/YYYY, YYYY-MM-DD, etc.), 
+   * Excel serial numbers (days since 1900-01-01), and Date objects
    */
-  private parseDate(dateStr: string): string | null {
-    if (!dateStr || dateStr.trim() === '') {
+  private parseDate(dateValue: unknown): string | null {
+    if (dateValue === null || dateValue === undefined) {
       return null;
     }
 
-    const trimmed = dateStr.trim();
+    // Handle Date objects directly (XLSX may return these)
+    if (dateValue instanceof Date) {
+      if (isNaN(dateValue.getTime())) {
+        throw new Error(`Invalid date value`);
+      }
+      const year = dateValue.getFullYear();
+      const month = String(dateValue.getMonth() + 1).padStart(2, '0');
+      const day = String(dateValue.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    // Handle Excel serial date numbers
+    // Excel dates are stored as days since 1900-01-01 (with a leap year bug for Feb 29, 1900)
+    if (typeof dateValue === 'number' || (typeof dateValue === 'string' && /^\d+(\.\d+)?$/.test(dateValue.trim()))) {
+      const serial = typeof dateValue === 'number' ? dateValue : parseFloat(dateValue);
+      
+      // Reasonable range for Excel dates (1900-01-01 to ~2100)
+      if (serial >= 1 && serial <= 73050) {
+        // Excel epoch: January 1, 1900 = serial 1
+        // But Excel incorrectly treats 1900 as a leap year, so dates after Feb 28, 1900 need adjustment
+        const excelEpoch = new Date(Date.UTC(1899, 11, 30)); // Dec 30, 1899 (serial 0)
+        const adjustedSerial = serial > 60 ? serial - 1 : serial; // Adjust for Excel's leap year bug
+        const parsed = new Date(excelEpoch.getTime() + adjustedSerial * 24 * 60 * 60 * 1000);
+        
+        if (!isNaN(parsed.getTime())) {
+          const year = parsed.getUTCFullYear();
+          const month = String(parsed.getUTCMonth() + 1).padStart(2, '0');
+          const day = String(parsed.getUTCDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        }
+      }
+    }
+
+    // Handle string date formats
+    if (typeof dateValue !== 'string') {
+      throw new Error(`Invalid date format: ${dateValue}. Expected string, number, or Date.`);
+    }
+
+    const trimmed = dateValue.trim();
+    if (trimmed === '') {
+      return null;
+    }
     
     // Already in YYYY-MM-DD format
     if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
@@ -381,7 +472,7 @@ export abstract class FeedWizard extends BaseWizard {
     }
 
     if (!parsed || isNaN(parsed.getTime())) {
-      throw new Error(`Invalid date format: ${dateStr}. Supported formats: M/D/YYYY, MM/DD/YYYY, YYYY-MM-DD`);
+      throw new Error(`Invalid date format: ${dateValue}. Supported formats: M/D/YYYY, MM/DD/YYYY, YYYY-MM-DD, or Excel serial number`);
     }
 
     // Convert to YYYY-MM-DD
@@ -457,6 +548,9 @@ export abstract class FeedWizard extends BaseWizard {
       throw new Error('Unsupported file type');
     }
 
+    // Filter out completely empty columns (must match preview endpoint logic)
+    rawRows = filterEmptyColumns(rawRows);
+
     // Skip header row if present
     const dataRows = hasHeaders ? rawRows.slice(1) : rawRows;
 
@@ -479,6 +573,9 @@ export abstract class FeedWizard extends BaseWizard {
     let failureCount = 0;
     const allErrors: ProcessError[] = [];
     const rowResults: RowResult[] = [];
+    
+    // Track all created benefits for summary aggregation
+    const allCreatedBenefits: Array<{ benefitId: string; benefitName: string; wmbId: string }> = [];
 
     for (let i = 0; i < totalRows; i += batchSize) {
       const batch = mappedRows.slice(i, Math.min(i + batchSize, totalRows));
@@ -535,6 +632,11 @@ export abstract class FeedWizard extends BaseWizard {
 
             let hoursProcessed = true;
             let hoursError: string | undefined;
+            let contactInfoProcessed = true;
+            let contactInfoError: string | undefined;
+            let benefitsCreated = 0;
+            let benefitsSkipped = 0;
+            let benefitsErrors: string[] = [];
 
             // Process worker hours if this wizard type supports it (for gbhet_legal_workers wizards)
             if (typeof (this as any).processWorkerHours === 'function') {
@@ -546,11 +648,42 @@ export abstract class FeedWizard extends BaseWizard {
               }
             }
 
+            // Process worker contact info if this wizard type supports it (for gbhet_legal_workers wizards)
+            if (typeof (this as any).processWorkerContactInfo === 'function') {
+              try {
+                await (this as any).processWorkerContactInfo(existingWorker.id, row);
+              } catch (err: any) {
+                contactInfoProcessed = false;
+                contactInfoError = err.message || 'Contact info processing failed';
+              }
+            }
+
+            // Process worker benefits if this wizard type supports it (for gbhet_legal_workers wizards)
+            if (typeof (this as any).processWorkerBenefits === 'function') {
+              try {
+                const benefitResult = await (this as any).processWorkerBenefits(existingWorker.id, row, wizard);
+                benefitsCreated = benefitResult.created || 0;
+                benefitsSkipped = benefitResult.skipped || 0;
+                benefitsErrors = benefitResult.errors || [];
+                // Collect created benefits for summary
+                if (benefitResult.createdBenefits) {
+                  allCreatedBenefits.push(...benefitResult.createdBenefits);
+                }
+              } catch (err: any) {
+                benefitsErrors.push(err.message || 'Benefits processing failed');
+              }
+            }
+
             updatedCount++;
+            const processingIssues: string[] = [];
+            if (!hoursProcessed) processingIssues.push(`hours: ${hoursError}`);
+            if (!contactInfoProcessed) processingIssues.push(`contact info: ${contactInfoError}`);
+            if (benefitsErrors.length > 0) processingIssues.push(`benefits: ${benefitsErrors.join(', ')}`);
+            
             rowResults.push({
               rowIndex,
               status: 'success',
-              message: hoursProcessed ? 'Worker updated' : `Worker updated (hours processing failed: ${hoursError})`
+              message: processingIssues.length === 0 ? 'Worker updated' : `Worker updated (issues: ${processingIssues.join('; ')})`
             });
             
             if (onProgress) {
@@ -609,6 +742,11 @@ export abstract class FeedWizard extends BaseWizard {
 
             let hoursProcessed = true;
             let hoursError: string | undefined;
+            let contactInfoProcessed = true;
+            let contactInfoError: string | undefined;
+            let benefitsCreated = 0;
+            let benefitsSkipped = 0;
+            let benefitsErrors: string[] = [];
 
             // Process worker hours if this wizard type supports it (for gbhet_legal_workers wizards)
             if (typeof (this as any).processWorkerHours === 'function') {
@@ -620,6 +758,32 @@ export abstract class FeedWizard extends BaseWizard {
               }
             }
 
+            // Process worker contact info if this wizard type supports it (for gbhet_legal_workers wizards)
+            if (typeof (this as any).processWorkerContactInfo === 'function') {
+              try {
+                await (this as any).processWorkerContactInfo(workerId, row);
+              } catch (err: any) {
+                contactInfoProcessed = false;
+                contactInfoError = err.message || 'Contact info processing failed';
+              }
+            }
+
+            // Process worker benefits if this wizard type supports it (for gbhet_legal_workers wizards)
+            if (typeof (this as any).processWorkerBenefits === 'function') {
+              try {
+                const benefitResult = await (this as any).processWorkerBenefits(workerId, row, wizard);
+                benefitsCreated = benefitResult.created || 0;
+                benefitsSkipped = benefitResult.skipped || 0;
+                benefitsErrors = benefitResult.errors || [];
+                // Collect created benefits for summary
+                if (benefitResult.createdBenefits) {
+                  allCreatedBenefits.push(...benefitResult.createdBenefits);
+                }
+              } catch (err: any) {
+                benefitsErrors.push(err.message || 'Benefits processing failed');
+              }
+            }
+
             // Increment appropriate counter and add row result
             if (isNewWorker) {
               createdCount++;
@@ -628,10 +792,15 @@ export abstract class FeedWizard extends BaseWizard {
             }
 
             const workerAction = isNewWorker ? 'created' : 'updated';
+            const processingIssues: string[] = [];
+            if (!hoursProcessed) processingIssues.push(`hours: ${hoursError}`);
+            if (!contactInfoProcessed) processingIssues.push(`contact info: ${contactInfoError}`);
+            if (benefitsErrors.length > 0) processingIssues.push(`benefits: ${benefitsErrors.join(', ')}`);
+            
             rowResults.push({
               rowIndex,
               status: 'success',
-              message: hoursProcessed ? `Worker ${workerAction}` : `Worker ${workerAction} (hours processing failed: ${hoursError})`
+              message: processingIssues.length === 0 ? `Worker ${workerAction}` : `Worker ${workerAction} (issues: ${processingIssues.join('; ')})`
             });
 
             if (onProgress) {
@@ -691,6 +860,49 @@ export abstract class FeedWizard extends BaseWizard {
       // Continue without results file - don't fail the whole process
     }
 
+    // Aggregate benefits by type
+    const benefitsSummary: BenefitSummary[] = [];
+    const benefitCounts = new Map<string, { benefitId: string; benefitName: string; count: number }>();
+    for (const benefit of allCreatedBenefits) {
+      const existing = benefitCounts.get(benefit.benefitId);
+      if (existing) {
+        existing.count++;
+      } else {
+        benefitCounts.set(benefit.benefitId, {
+          benefitId: benefit.benefitId,
+          benefitName: benefit.benefitName,
+          count: 1
+        });
+      }
+    }
+    benefitsSummary.push(...Array.from(benefitCounts.values()));
+
+    // Query ledger for charges created from the WMBs
+    let chargesSummary: ChargesSummary | undefined;
+    if (allCreatedBenefits.length > 0) {
+      try {
+        const wmbIds = allCreatedBenefits.map(b => b.wmbId);
+        // Fetch ledger entries for each WMB
+        const allLedgerEntries: Array<{ amount: string | null }> = [];
+        for (const wmbId of wmbIds) {
+          const entries = await storage.ledger.entries.getByReference('wmb', wmbId);
+          allLedgerEntries.push(...entries);
+        }
+        // Always set chargesSummary when benefits are created, even if no ledger entries
+        const totalAmount = allLedgerEntries.reduce((sum: number, entry: { amount: string | null }) => {
+          return sum + parseFloat(entry.amount || '0');
+        }, 0);
+        chargesSummary = {
+          count: allLedgerEntries.length,
+          totalAmount: totalAmount.toFixed(2)
+        };
+      } catch (err) {
+        console.error('Failed to query ledger entries for charges summary:', err);
+        // Set zero charges on error so UI doesn't break
+        chargesSummary = { count: 0, totalAmount: '0.00' };
+      }
+    }
+
     const results: ProcessResults = {
       totalRows,
       createdCount,
@@ -700,7 +912,9 @@ export abstract class FeedWizard extends BaseWizard {
       errors: allErrors,
       rowResults,
       resultsFileId,
-      completedAt: new Date()
+      completedAt: new Date(),
+      benefitsSummary: benefitsSummary.length > 0 ? benefitsSummary : undefined,
+      chargesSummary
     };
 
     // Save processing results to wizard data

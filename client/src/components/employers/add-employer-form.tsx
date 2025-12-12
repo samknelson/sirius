@@ -19,8 +19,7 @@ export function AddEmployerForm() {
 
   const addEmployerMutation = useMutation({
     mutationFn: async (employerData: { name: string; isActive: boolean }) => {
-      const response = await apiRequest("POST", "/api/employers", employerData);
-      return response.json();
+      return await apiRequest("POST", "/api/employers", employerData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employers"] });

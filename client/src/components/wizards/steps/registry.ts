@@ -1,5 +1,6 @@
 import { UploadStep } from './gbhet-legal-workers/UploadStep';
 import { MapStep } from './gbhet-legal-workers/MapStep';
+import { BenefitsStep } from './gbhet-legal-workers/BenefitsStep';
 import { ValidateStep } from './gbhet-legal-workers/ValidateStep';
 import { ProcessStep } from './gbhet-legal-workers/ProcessStep';
 import { ReviewStep } from './gbhet-legal-workers/ReviewStep';
@@ -82,6 +83,7 @@ export const stepControllerRegistry: StepControllerRegistry = {
   'gbhet_legal_workers_monthly': {
     'upload': { Component: UploadStep, evaluateCompletion: evaluateUploadComplete },
     'map': { Component: MapStep, evaluateCompletion: evaluateMapComplete },
+    'benefits': { Component: BenefitsStep, evaluateCompletion: alwaysComplete },
     'validate': { Component: ValidateStep, evaluateCompletion: evaluateValidateComplete },
     'process': { Component: ProcessStep, evaluateCompletion: alwaysComplete },
     'review': { Component: ReviewStep, evaluateCompletion: alwaysComplete },
@@ -89,6 +91,7 @@ export const stepControllerRegistry: StepControllerRegistry = {
   'gbhet_legal_workers_corrections': {
     'upload': { Component: UploadStep, evaluateCompletion: evaluateUploadComplete },
     'map': { Component: MapStep, evaluateCompletion: evaluateMapComplete },
+    'benefits': { Component: BenefitsStep, evaluateCompletion: alwaysComplete },
     'validate': { Component: ValidateStep, evaluateCompletion: evaluateValidateComplete },
     'process': { Component: ProcessStep, evaluateCompletion: alwaysComplete },
     'review': { Component: ReviewStep, evaluateCompletion: alwaysComplete },
@@ -124,6 +127,7 @@ export const stepComponentRegistry: StepComponentRegistry = {
   'gbhet_legal_workers_monthly': {
     'upload': UploadStep,
     'map': MapStep,
+    'benefits': BenefitsStep,
     'validate': ValidateStep,
     'process': ProcessStep,
     'review': ReviewStep,
@@ -131,6 +135,7 @@ export const stepComponentRegistry: StepComponentRegistry = {
   'gbhet_legal_workers_corrections': {
     'upload': UploadStep,
     'map': MapStep,
+    'benefits': BenefitsStep,
     'validate': ValidateStep,
     'process': ProcessStep,
     'review': ReviewStep,

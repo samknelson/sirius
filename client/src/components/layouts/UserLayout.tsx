@@ -73,7 +73,7 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
                 <span className="text-muted-foreground text-sm font-medium">User Not Found</span>
               </div>
               <div className="flex items-center space-x-4">
-                <Link href="/config/users/list">
+                <Link href="/admin/users/list">
                   <Button variant="ghost" size="sm" data-testid="button-back-to-users">
                     <ArrowLeft size={16} className="mr-2" />
                     Back to Users
@@ -94,7 +94,7 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
               <p className="text-muted-foreground text-center">
                 The user you're looking for doesn't exist or has been removed.
               </p>
-              <Link href="/config/users/list">
+              <Link href="/admin/users/list">
                 <Button className="mt-4" data-testid="button-return-to-users">
                   Return to Users
                 </Button>
@@ -120,7 +120,7 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
                 <Skeleton className="h-6 w-48" />
               </div>
               <div className="flex items-center space-x-4">
-                <Link href="/config/users/list">
+                <Link href="/admin/users/list">
                   <Button variant="ghost" size="sm" data-testid="button-back-to-users">
                     <ArrowLeft size={16} className="mr-2" />
                     Back to Users
@@ -176,7 +176,7 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
                 </h1>
               </div>
               <div className="flex items-center space-x-4">
-                <Link href="/config/users/list">
+                <Link href="/admin/users/list">
                   <Button variant="ghost" size="sm" data-testid="button-back-to-users">
                     <ArrowLeft size={16} className="mr-2" />
                     Back to Users

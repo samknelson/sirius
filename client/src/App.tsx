@@ -117,6 +117,8 @@ import PoliciesPage from "@/pages/config/users/policies";
 import EmployerUserSettingsPage from "@/pages/config/users/employer-settings";
 import TrustProviderUserSettingsPage from "@/pages/config/users/trust-provider-settings";
 import SessionsPage from "@/pages/sessions";
+import FloodEventsPage from "@/pages/flood-events";
+import FloodEventsConfigPage from "@/pages/flood-events-config";
 import PostalAddressesConfigPage from "@/pages/config/addresses";
 import PhoneNumbersConfigPage from "@/pages/config/phone-numbers";
 import GenderOptionsPage from "@/pages/config/gender-options";
@@ -967,65 +969,102 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      {/* Configuration routes with nested navigation */}
+      {/* Admin user management routes - no ConfigurationLayout sidebar */}
+      <Route path="/admin/users/list">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UsersListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/users/roles">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <RolesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/users/permissions">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <PermissionsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/users/policies">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <PoliciesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/users/employer-settings">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <EmployerUserSettingsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/users/trust-provider-settings">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <TrustProviderUserSettingsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/users/sessions">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <SessionsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/users/flood-events">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <FloodEventsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/users/flood-events/config">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <FloodEventsConfigPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Redirect /admin/users to list */}
+      <Route path="/admin/users">
+        <Redirect to="/admin/users/list" />
+      </Route>
+
+      {/* Redirect old /config/users paths to new /admin/users paths */}
       <Route path="/config/users/list">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <UsersListPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
+        <Redirect to="/admin/users/list" />
       </Route>
-
       <Route path="/config/users/roles">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <RolesPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
+        <Redirect to="/admin/users/roles" />
       </Route>
-
       <Route path="/config/users/permissions">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <PermissionsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
+        <Redirect to="/admin/users/permissions" />
       </Route>
-
       <Route path="/config/users/policies">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <PoliciesPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
+        <Redirect to="/admin/users/policies" />
       </Route>
-
-      <Route path="/config/users/employer-settings">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <EmployerUserSettingsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
+      <Route path="/config/users/sessions">
+        <Redirect to="/admin/users/sessions" />
       </Route>
-
-      <Route path="/config/users/trust-provider-settings">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <TrustProviderUserSettingsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
+      <Route path="/config/users/flood-events">
+        <Redirect to="/admin/users/flood-events" />
       </Route>
 
       <Route path="/config/users/sessions">
@@ -1040,7 +1079,7 @@ function Router() {
 
       {/* Redirect old /config/users to new structure */}
       <Route path="/config/users">
-        <Redirect to="/config/users/list" />
+        <Redirect to="/admin/users/list" />
       </Route>
 
       <Route path="/config/addresses">
@@ -1416,13 +1455,9 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      {/* Legacy admin routes - redirect to configuration */}
+      {/* Legacy admin routes - redirect user detail to /users/:id */}
       <Route path="/admin/users/:id">
         <Redirect to="/users/:id" />
-      </Route>
-
-      <Route path="/admin/users">
-        <Redirect to="/config/users/list" />
       </Route>
 
       <Route path="/config/users/:id">

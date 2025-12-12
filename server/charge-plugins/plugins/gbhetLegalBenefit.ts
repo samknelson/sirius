@@ -24,6 +24,7 @@ const gbhetLegalBenefitSettingsSchema = z.object({
   accountId: z.string().uuid("Account ID must be a valid UUID"),
   benefitId: z.string().uuid("Benefit ID must be a valid UUID"),
   rateHistory: z.array(rateHistoryEntrySchema).min(1, "At least one rate entry is required"),
+  billingOffsetMonths: z.number().int().default(-3),
 });
 
 type GbhetLegalBenefitSettings = z.infer<typeof gbhetLegalBenefitSettingsSchema>;
@@ -63,8 +64,12 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
       return null;
     }
 
-    const monthDate = new Date(wmbContext.year, wmbContext.month - 1, 1);
-    const applicableRate = getCurrentEffectiveRate(settings.rateHistory, monthDate);
+    const billingOffset = settings.billingOffsetMonths ?? -3;
+    const billingDate = new Date(wmbContext.year, wmbContext.month - 1 + billingOffset, 1);
+    const billingYear = billingDate.getFullYear();
+    const billingMonth = billingDate.getMonth() + 1;
+    const lastDayOfBillingMonth = new Date(billingYear, billingMonth, 0);
+    const applicableRate = getCurrentEffectiveRate(settings.rateHistory, billingDate);
 
     if (!applicableRate) {
       return null;
@@ -81,14 +86,15 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
     );
 
     const chargePluginKey = `${config.id}:${ea.id}:${wmbContext.workerId}:${wmbContext.year}:${wmbContext.month}`;
-    const monthName = monthDate.toLocaleString('default', { month: 'long' });
-    const description = `GBHET Legal: ${monthName} ${wmbContext.year}`;
+    const benefitYearMonth = `${wmbContext.year}-${String(wmbContext.month).padStart(2, '0')}`;
+    const wmbShortId = wmbContext.wmbId.slice(0, 8).toUpperCase();
+    const description = `GBHET Legal - ${benefitYearMonth} | WMB-${wmbShortId}`;
 
     return {
       chargePluginKey,
       amount: applicableRate.rate.toFixed(2),
       description,
-      transactionDate: monthDate,
+      transactionDate: lastDayOfBillingMonth,
       eaId: ea.id,
       referenceType: "wmb",
       referenceId: wmbContext.wmbId,
@@ -98,8 +104,11 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
         workerId: wmbContext.workerId,
         employerId: wmbContext.employerId,
         benefitId: wmbContext.benefitId,
-        year: wmbContext.year,
-        month: wmbContext.month,
+        benefitYear: wmbContext.year,
+        benefitMonth: wmbContext.month,
+        billingYear,
+        billingMonth,
+        billingOffset,
         rate: applicableRate.rate,
         effectiveDate: applicableRate.effectiveDate,
       },
@@ -376,14 +385,19 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
         employerId?: string; 
         benefitId?: string;
         year?: number; 
-        month?: number 
+        month?: number;
+        benefitYear?: number;
+        benefitMonth?: number;
       } | null;
       
-      if (!data?.workerId || !data?.employerId || !data?.benefitId || !data?.year || !data?.month) {
+      const benefitYear = data?.benefitYear ?? data?.year;
+      const benefitMonth = data?.benefitMonth ?? data?.month;
+      
+      if (!data?.workerId || !data?.employerId || !data?.benefitId || !benefitYear || !benefitMonth) {
         return {
           ...baseResult,
           isValid: false,
-          discrepancies: ["Entry missing required metadata (workerId, employerId, benefitId, year, month)"],
+          discrepancies: ["Entry missing required metadata (workerId, employerId, benefitId, benefitYear/year, benefitMonth/month)"],
         };
       }
 
@@ -393,8 +407,8 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
         workerId: data.workerId,
         employerId: data.employerId,
         benefitId: data.benefitId,
-        year: data.year,
-        month: data.month,
+        year: benefitYear,
+        month: benefitMonth,
       };
 
       const expectedEntry = await this.computeExpectedEntry(wmbContext, config, settings);

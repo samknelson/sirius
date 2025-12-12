@@ -1,7 +1,20 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Trash2, User, Clock, RefreshCw } from "lucide-react";
 import { Link } from "wouter";
@@ -32,7 +45,11 @@ interface SessionWithUser {
 export default function SessionsPage() {
   const { toast } = useToast();
 
-  const { data: sessions, isLoading, refetch } = useQuery<SessionWithUser[]>({
+  const {
+    data: sessions,
+    isLoading,
+    refetch,
+  } = useQuery<SessionWithUser[]>({
     queryKey: ["/api/sessions"],
   });
 
@@ -58,7 +75,7 @@ export default function SessionsPage() {
 
   const getUserName = (session: SessionWithUser) => {
     if (session.userFirstName || session.userLastName) {
-      return `${session.userFirstName || ''} ${session.userLastName || ''}`.trim();
+      return `${session.userFirstName || ""} ${session.userLastName || ""}`.trim();
     }
     return session.userEmail || "Unknown User";
   };
@@ -80,7 +97,8 @@ export default function SessionsPage() {
               Active Sessions
             </CardTitle>
             <CardDescription>
-              View and manage user sessions. Delete a session to force a user to log out.
+              View and manage user sessions. Delete a session to force a user to
+              log out.
             </CardDescription>
           </div>
           <Button
@@ -90,7 +108,9 @@ export default function SessionsPage() {
             disabled={isLoading}
             data-testid="button-refresh-sessions"
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
+            />
             Refresh
           </Button>
         </CardHeader>
@@ -111,7 +131,10 @@ export default function SessionsPage() {
               </TableHeader>
               <TableBody>
                 {sessions.map((session) => (
-                  <TableRow key={session.sid} data-testid={`row-session-${session.sid.substring(0, 8)}`}>
+                  <TableRow
+                    key={session.sid}
+                    data-testid={`row-session-${session.sid.substring(0, 8)}`}
+                  >
                     <TableCell className="font-mono text-sm text-muted-foreground">
                       {truncateSid(session.sid)}
                     </TableCell>
@@ -120,12 +143,17 @@ export default function SessionsPage() {
                         <User className="h-4 w-4 text-muted-foreground" />
                         {session.userId ? (
                           <Link href={`/config/users/${session.userId}`}>
-                            <span className="text-primary hover:underline cursor-pointer" data-testid={`link-user-${session.userId}`}>
+                            <span
+                              className="text-primary hover:underline cursor-pointer"
+                              data-testid={`link-user-${session.userId}`}
+                            >
                               {getUserName(session)}
                             </span>
                           </Link>
                         ) : (
-                          <span className="text-muted-foreground">No user data</span>
+                          <span className="text-muted-foreground">
+                            No user data
+                          </span>
                         )}
                         {session.userEmail && session.userId && (
                           <Badge variant="secondary" className="text-xs">
@@ -137,10 +165,15 @@ export default function SessionsPage() {
                     <TableCell>
                       <div className="flex flex-col">
                         <span className="text-sm">
-                          {format(new Date(session.expire), "MMM d, yyyy h:mm a")}
+                          {format(
+                            new Date(session.expire),
+                            "MMM d, yyyy h:mm a",
+                          )}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          {formatDistanceToNow(new Date(session.expire), { addSuffix: true })}
+                          {formatDistanceToNow(new Date(session.expire), {
+                            addSuffix: true,
+                          })}
                         </span>
                       </div>
                     </TableCell>
@@ -160,8 +193,9 @@ export default function SessionsPage() {
                           <AlertDialogHeader>
                             <AlertDialogTitle>Delete Session</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Are you sure you want to delete this session? This will force{" "}
-                              <strong>{getUserName(session)}</strong> to log out immediately.
+                              Are you sure you want to delete this session? This
+                              will force <strong>{getUserName(session)}</strong>{" "}
+                              to log out immediately.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>

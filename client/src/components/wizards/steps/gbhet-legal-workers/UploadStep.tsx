@@ -87,7 +87,7 @@ export function UploadStep({ wizardId, wizardType, data, onDataChange }: UploadS
     onSuccess: async () => {
       // First invalidate to get fresh wizard data
       queryClient.invalidateQueries({ queryKey: ["/api/wizards", wizardId, "files"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/wizards", wizardId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
       
       // Wait a bit for queries to refetch
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -105,7 +105,7 @@ export function UploadStep({ wizardId, wizardType, data, onDataChange }: UploadS
       });
 
       // Invalidate again to refresh with the updated progress
-      queryClient.invalidateQueries({ queryKey: ["/api/wizards", wizardId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
       
       form.reset();
       toast({
@@ -128,7 +128,7 @@ export function UploadStep({ wizardId, wizardType, data, onDataChange }: UploadS
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/wizards", wizardId, "files"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/wizards", wizardId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
       toast({
         title: "File Deleted",
         description: "The file has been removed.",
