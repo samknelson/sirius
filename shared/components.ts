@@ -96,6 +96,13 @@ export const componentRegistry: ComponentDefinition[] = [
     description: "Automated scanning for worker benefit eligibility",
     enabledByDefault: false,
     category: "trust.benefits"
+  },
+  {
+    id: "event",
+    name: "Events",
+    description: "In-person and virtual events that contacts can register for",
+    enabledByDefault: false,
+    category: "core"
   }
 ];
 
