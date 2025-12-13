@@ -273,6 +273,26 @@ export const optionsEventType = pgTable("options_event_type", {
   data: jsonb("data"),
 });
 
+export const events = pgTable("events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  eventTypeId: varchar("event_type_id").references(() => optionsEventType.id, { onDelete: 'set null' }),
+  title: text("title").notNull(),
+  description: text("description"),
+  data: jsonb("data"),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+});
+
+export const eventOccurrences = pgTable("event_occurrences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  eventId: varchar("event_id").notNull().references(() => events.id, { onDelete: 'cascade' }),
+  startAt: timestamp("start_at").notNull(),
+  endAt: timestamp("end_at"),
+  status: varchar("status").notNull().default("active"),
+  notes: text("notes"),
+  data: jsonb("data"),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+});
+
 export const workerIds = pgTable("worker_ids", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
@@ -913,6 +933,20 @@ export type TrustProviderType = typeof optionsTrustProviderType.$inferSelect;
 
 export type InsertEventType = z.infer<typeof insertEventTypeSchema>;
 export type EventType = typeof optionsEventType.$inferSelect;
+
+export const insertEventSchema = createInsertSchema(events).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertEvent = z.infer<typeof insertEventSchema>;
+export type Event = typeof events.$inferSelect;
+
+export const insertEventOccurrenceSchema = createInsertSchema(eventOccurrences).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertEventOccurrence = z.infer<typeof insertEventOccurrenceSchema>;
+export type EventOccurrence = typeof eventOccurrences.$inferSelect;
 
 export type InsertWorkerWs = z.infer<typeof insertWorkerWsSchema>;
 export type WorkerWs = typeof optionsWorkerWs.$inferSelect;
