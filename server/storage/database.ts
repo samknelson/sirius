@@ -28,6 +28,7 @@ import { type CardcheckStorage, createCardcheckStorage, cardcheckLoggingConfig }
 import { type EsigStorage, createEsigStorage, esigLoggingConfig } from "./esigs";
 import { type SessionStorage, createSessionStorage, sessionLoggingConfig } from "./sessions";
 import { type FloodStorage, createFloodStorage } from "./flood";
+import { type EventStorage, createEventStorage, eventLoggingConfig, type EventOccurrenceStorage, createEventOccurrenceStorage, eventOccurrenceLoggingConfig } from "./events";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "../db";
 import { optionsEmploymentStatus, employers, workers, contacts } from "@shared/schema";
@@ -65,6 +66,8 @@ export interface IStorage {
   esigs: EsigStorage;
   sessions: SessionStorage;
   flood: FloodStorage;
+  events: EventStorage;
+  eventOccurrences: EventOccurrenceStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -99,6 +102,8 @@ export class DatabaseStorage implements IStorage {
   esigs: EsigStorage;
   sessions: SessionStorage;
   flood: FloodStorage;
+  events: EventStorage;
+  eventOccurrences: EventOccurrenceStorage;
 
   constructor() {
     this.variables = withStorageLogging(createVariableStorage(), variableLoggingConfig);
@@ -186,6 +191,8 @@ export class DatabaseStorage implements IStorage {
       sessionLoggingConfig
     );
     this.flood = createFloodStorage();
+    this.events = withStorageLogging(createEventStorage(), eventLoggingConfig);
+    this.eventOccurrences = withStorageLogging(createEventOccurrenceStorage(), eventOccurrenceLoggingConfig);
   }
 }
 
