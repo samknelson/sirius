@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,6 +10,27 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+
+interface EventCategoryConfigOption {
+  key: string;
+  label: string;
+  type: "number" | "boolean" | "string" | "select";
+  options?: { value: string; label: string }[];
+  defaultValue?: any;
+  description?: string;
+  scope: "type" | "event" | "both";
+}
+
+interface EventCategory {
+  id: string;
+  label: string;
+  description?: string;
+  roles: { id: string; label: string; canManageParticipants?: boolean }[];
+  statuses: { id: string; label: string }[];
+  configOptions: EventCategoryConfigOption[];
+}
 import {
   Form,
   FormControl,
@@ -84,9 +105,16 @@ function EventEditContent() {
 
   const [deleteOccId, setDeleteOccId] = useState<string | null>(null);
   const [showAddOccurrence, setShowAddOccurrence] = useState(false);
+  const [eventConfig, setEventConfig] = useState<Record<string, any>>(
+    (event.config as Record<string, any>) || {}
+  );
 
   const { data: eventTypes = [] } = useQuery<EventType[]>({
     queryKey: ["/api/event-types"],
+  });
+
+  const { data: categories = [] } = useQuery<EventCategory[]>({
+    queryKey: ["/api/event-categories"],
   });
 
   const form = useForm<EventFormValues>({
@@ -98,6 +126,55 @@ function EventEditContent() {
       data: (event.data as Record<string, unknown>) || undefined,
     },
   });
+
+  const watchedEventTypeId = form.watch("eventTypeId");
+
+  const selectedEventType = useMemo(() => 
+    eventTypes.find(t => t.id === watchedEventTypeId),
+    [eventTypes, watchedEventTypeId]
+  );
+
+  const selectedCategory = useMemo(() => 
+    categories.find(c => c.id === selectedEventType?.category),
+    [categories, selectedEventType]
+  );
+
+  const eventConfigOptions = useMemo(() => 
+    selectedCategory?.configOptions.filter(
+      opt => opt.scope === "event" || opt.scope === "both"
+    ) || [],
+    [selectedCategory]
+  );
+
+  // Track the event's original type and config to detect user-initiated type changes
+  const [originalEventTypeId] = useState<string | undefined>(event.eventTypeId || undefined);
+  const [originalConfig] = useState<Record<string, any>>((event.config as Record<string, any>) || {});
+  const prevEventTypeIdRef = useRef<string | undefined>(event.eventTypeId || undefined);
+  
+  // Reset eventConfig only when user actually changes event type (not on React Query refetches)
+  useEffect(() => {
+    const prevTypeId = prevEventTypeIdRef.current;
+    
+    // Only act when type actually changes
+    if (watchedEventTypeId === prevTypeId) return;
+    
+    // Update ref to current value
+    prevEventTypeIdRef.current = watchedEventTypeId;
+    
+    if (watchedEventTypeId === originalEventTypeId) {
+      // Restore original config when returning to original type
+      setEventConfig(originalConfig);
+    } else {
+      // Use defaults for new type
+      const newConfig: Record<string, any> = {};
+      for (const opt of eventConfigOptions) {
+        if (opt.defaultValue !== undefined) {
+          newConfig[opt.key] = opt.defaultValue;
+        }
+      }
+      setEventConfig(newConfig);
+    }
+  }, [watchedEventTypeId, originalEventTypeId, originalConfig, eventConfigOptions]);
 
   const occurrenceForm = useForm<OccurrenceFormValues>({
     resolver: zodResolver(occurrenceFormSchema),
@@ -111,10 +188,19 @@ function EventEditContent() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: EventFormValues) => {
+      // Filter config to only include valid keys for current category
+      const validConfigKeys = new Set(eventConfigOptions.map(o => o.key));
+      const filteredConfig: Record<string, any> = {};
+      for (const key of Object.keys(eventConfig)) {
+        if (validConfigKeys.has(key) && eventConfig[key] !== undefined && eventConfig[key] !== "") {
+          filteredConfig[key] = eventConfig[key];
+        }
+      }
       const payload = {
         title: data.title,
         eventTypeId: data.eventTypeId || undefined,
         description: data.description || undefined,
+        config: Object.keys(filteredConfig).length > 0 ? filteredConfig : null,
         data: data.data || undefined,
       };
       return apiRequest("PUT", `/api/events/${event.id}`, payload);
@@ -210,6 +296,60 @@ function EventEditContent() {
     }
   };
 
+  const renderEventConfigOptions = () => {
+    if (eventConfigOptions.length === 0) return null;
+    
+    return (
+      <div className="space-y-3 border-t pt-4 mt-4">
+        <Label className="text-sm font-medium">Event Configuration</Label>
+        <p className="text-xs text-muted-foreground">
+          Category: {selectedCategory?.label || "Unknown"}
+        </p>
+        {eventConfigOptions.map((opt) => (
+          <div key={opt.key} className="flex items-center justify-between gap-4">
+            <div className="flex-1">
+              <Label className="text-sm">{opt.label}</Label>
+              {opt.description && (
+                <p className="text-xs text-muted-foreground">{opt.description}</p>
+              )}
+            </div>
+            {opt.type === "boolean" ? (
+              <Switch
+                checked={eventConfig[opt.key] ?? opt.defaultValue ?? false}
+                onCheckedChange={(checked) => 
+                  setEventConfig(prev => ({ ...prev, [opt.key]: checked }))
+                }
+                data-testid={`switch-event-config-${opt.key}`}
+              />
+            ) : opt.type === "number" ? (
+              <Input
+                type="number"
+                className="w-24"
+                value={eventConfig[opt.key] ?? opt.defaultValue ?? ""}
+                onChange={(e) => 
+                  setEventConfig(prev => ({ 
+                    ...prev, 
+                    [opt.key]: e.target.value ? Number(e.target.value) : undefined 
+                  }))
+                }
+                data-testid={`input-event-config-${opt.key}`}
+              />
+            ) : (
+              <Input
+                className="w-48"
+                value={eventConfig[opt.key] ?? opt.defaultValue ?? ""}
+                onChange={(e) => 
+                  setEventConfig(prev => ({ ...prev, [opt.key]: e.target.value }))
+                }
+                data-testid={`input-event-config-${opt.key}`}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -284,6 +424,8 @@ function EventEditContent() {
                   </FormItem>
                 )}
               />
+
+              {renderEventConfigOptions()}
 
               <Button
                 type="submit"
@@ -511,9 +653,14 @@ function EventEditContent() {
 function EventCreatePage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const [eventConfig, setEventConfig] = useState<Record<string, any>>({});
 
   const { data: eventTypes = [] } = useQuery<EventType[]>({
     queryKey: ["/api/event-types"],
+  });
+
+  const { data: categories = [] } = useQuery<EventCategory[]>({
+    queryKey: ["/api/event-categories"],
   });
 
   const form = useForm<CreateEventFormValues>({
@@ -529,6 +676,90 @@ function EventCreatePage() {
     },
   });
 
+  const selectedEventTypeId = form.watch("eventTypeId");
+  
+  const selectedEventType = useMemo(() => 
+    eventTypes.find(t => t.id === selectedEventTypeId),
+    [eventTypes, selectedEventTypeId]
+  );
+
+  const selectedCategory = useMemo(() => 
+    categories.find(c => c.id === selectedEventType?.category),
+    [categories, selectedEventType]
+  );
+
+  const eventConfigOptions = useMemo(() => 
+    selectedCategory?.configOptions.filter(
+      opt => opt.scope === "event" || opt.scope === "both"
+    ) || [],
+    [selectedCategory]
+  );
+
+  // Reset eventConfig when event type/category changes
+  useEffect(() => {
+    const newConfig: Record<string, any> = {};
+    for (const opt of eventConfigOptions) {
+      if (opt.defaultValue !== undefined) {
+        newConfig[opt.key] = opt.defaultValue;
+      }
+    }
+    setEventConfig(newConfig);
+  }, [selectedCategory?.id]);
+
+  const renderCreateEventConfigOptions = () => {
+    if (eventConfigOptions.length === 0) return null;
+    
+    return (
+      <div className="space-y-3 border-t pt-4 mt-4">
+        <Label className="text-sm font-medium">Event Configuration</Label>
+        <p className="text-xs text-muted-foreground">
+          Category: {selectedCategory?.label || "Unknown"}
+        </p>
+        {eventConfigOptions.map((opt) => (
+          <div key={opt.key} className="flex items-center justify-between gap-4">
+            <div className="flex-1">
+              <Label className="text-sm">{opt.label}</Label>
+              {opt.description && (
+                <p className="text-xs text-muted-foreground">{opt.description}</p>
+              )}
+            </div>
+            {opt.type === "boolean" ? (
+              <Switch
+                checked={eventConfig[opt.key] ?? opt.defaultValue ?? false}
+                onCheckedChange={(checked) => 
+                  setEventConfig(prev => ({ ...prev, [opt.key]: checked }))
+                }
+                data-testid={`switch-create-config-${opt.key}`}
+              />
+            ) : opt.type === "number" ? (
+              <Input
+                type="number"
+                className="w-24"
+                value={eventConfig[opt.key] ?? opt.defaultValue ?? ""}
+                onChange={(e) => 
+                  setEventConfig(prev => ({ 
+                    ...prev, 
+                    [opt.key]: e.target.value ? Number(e.target.value) : undefined 
+                  }))
+                }
+                data-testid={`input-create-config-${opt.key}`}
+              />
+            ) : (
+              <Input
+                className="w-48"
+                value={eventConfig[opt.key] ?? opt.defaultValue ?? ""}
+                onChange={(e) => 
+                  setEventConfig(prev => ({ ...prev, [opt.key]: e.target.value }))
+                }
+                data-testid={`input-create-config-${opt.key}`}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const createMutation = useMutation({
     mutationFn: async (data: CreateEventFormValues) => {
       const startAt = new Date(`${data.startDate}T${data.startTime}`);
@@ -536,10 +767,19 @@ function EventCreatePage() {
       if (data.endTime) {
         endAt = new Date(`${data.startDate}T${data.endTime}`);
       }
+      // Filter config to only include valid keys for current category
+      const validConfigKeys = new Set(eventConfigOptions.map(o => o.key));
+      const filteredConfig: Record<string, any> = {};
+      for (const key of Object.keys(eventConfig)) {
+        if (validConfigKeys.has(key) && eventConfig[key] !== undefined && eventConfig[key] !== "") {
+          filteredConfig[key] = eventConfig[key];
+        }
+      }
       const payload = {
         title: data.title,
         eventTypeId: data.eventTypeId || undefined,
         description: data.description || undefined,
+        config: Object.keys(filteredConfig).length > 0 ? filteredConfig : null,
         data: data.data || undefined,
         occurrence: {
           startAt: startAt.toISOString(),
@@ -653,6 +893,8 @@ function EventCreatePage() {
                   </FormItem>
                 )}
               />
+
+              {renderCreateEventConfigOptions()}
 
               <FormField
                 control={form.control}

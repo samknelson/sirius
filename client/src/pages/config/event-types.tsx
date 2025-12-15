@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,12 +8,44 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { 
   Loader2, Plus, Edit, Trash2, Save, X,
   Calendar, Users, MapPin, Video, Presentation, 
   Mic, Ticket, Star, Heart, Clock,
   type LucideIcon
 } from "lucide-react";
+
+interface EventCategoryRole {
+  id: string;
+  label: string;
+  canManageParticipants?: boolean;
+}
+
+interface EventCategoryStatus {
+  id: string;
+  label: string;
+}
+
+interface EventCategoryConfigOption {
+  key: string;
+  label: string;
+  type: "number" | "boolean" | "string" | "select";
+  options?: { value: string; label: string }[];
+  defaultValue?: any;
+  description?: string;
+  scope: "type" | "event" | "both";
+}
+
+interface EventCategory {
+  id: string;
+  label: string;
+  description?: string;
+  roles: EventCategoryRole[];
+  statuses: EventCategoryStatus[];
+  configOptions: EventCategoryConfigOption[];
+}
 import {
   Table,
   TableBody,
@@ -67,10 +99,21 @@ export default function EventTypesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [formIcon, setFormIcon] = useState<string>("Calendar");
+  const [formCategory, setFormCategory] = useState<string>("public");
+  const [formConfig, setFormConfig] = useState<Record<string, any>>({});
   
   const { data: eventTypes = [], isLoading } = useQuery<EventType[]>({
     queryKey: ["/api/event-types"],
   });
+
+  const { data: categories = [] } = useQuery<EventCategory[]>({
+    queryKey: ["/api/event-categories"],
+  });
+
+  const selectedCategory = categories.find(c => c.id === formCategory);
+  const typeConfigOptions = selectedCategory?.configOptions.filter(
+    opt => opt.scope === "type" || opt.scope === "both"
+  ) || [];
 
   const addForm = useForm<InsertEventType>({
     resolver: zodResolver(insertEventTypeSchema),
@@ -78,6 +121,7 @@ export default function EventTypesPage() {
       name: "",
       siriusId: "",
       description: "",
+      category: "public",
     },
   });
 
@@ -87,6 +131,7 @@ export default function EventTypesPage() {
       name: "",
       siriusId: "",
       description: "",
+      category: "public",
     },
   });
 
@@ -94,6 +139,8 @@ export default function EventTypesPage() {
     mutationFn: async (data: InsertEventType) => {
       return apiRequest("POST", "/api/event-types", {
         ...data,
+        category: formCategory,
+        config: Object.keys(formConfig).length > 0 ? formConfig : null,
         data: { icon: formIcon }
       });
     },
@@ -102,6 +149,8 @@ export default function EventTypesPage() {
       setIsAddDialogOpen(false);
       addForm.reset();
       setFormIcon("Calendar");
+      setFormCategory("public");
+      setFormConfig({});
       toast({
         title: "Success",
         description: "Event type created successfully.",
@@ -120,6 +169,8 @@ export default function EventTypesPage() {
     mutationFn: async (data: { id: string; updates: InsertEventType }) => {
       return apiRequest("PUT", `/api/event-types/${data.id}`, {
         ...data.updates,
+        category: formCategory,
+        config: Object.keys(formConfig).length > 0 ? formConfig : null,
         data: { icon: formIcon }
       });
     },
@@ -128,6 +179,8 @@ export default function EventTypesPage() {
       setEditingId(null);
       editForm.reset();
       setFormIcon("Calendar");
+      setFormCategory("public");
+      setFormConfig({});
       toast({
         title: "Success",
         description: "Event type updated successfully.",
@@ -167,17 +220,73 @@ export default function EventTypesPage() {
     setEditingId(type.id);
     const data = type.data as { icon?: string } | null;
     setFormIcon(data?.icon || "Calendar");
+    setFormCategory(type.category || "public");
+    setFormConfig((type.config as Record<string, any>) || {});
     editForm.reset({
       name: type.name,
       siriusId: type.siriusId,
       description: type.description || "",
+      category: type.category || "public",
     });
   };
 
   const handleCancelEdit = () => {
     setEditingId(null);
     setFormIcon("Calendar");
+    setFormCategory("public");
+    setFormConfig({});
     editForm.reset();
+  };
+
+  const renderConfigOptions = () => {
+    if (typeConfigOptions.length === 0) return null;
+    
+    return (
+      <div className="space-y-3 border-t pt-4 mt-4">
+        <Label className="text-sm font-medium">Type Configuration</Label>
+        {typeConfigOptions.map((opt) => (
+          <div key={opt.key} className="flex items-center justify-between gap-4">
+            <div className="flex-1">
+              <Label className="text-sm">{opt.label}</Label>
+              {opt.description && (
+                <p className="text-xs text-muted-foreground">{opt.description}</p>
+              )}
+            </div>
+            {opt.type === "boolean" ? (
+              <Switch
+                checked={formConfig[opt.key] ?? opt.defaultValue ?? false}
+                onCheckedChange={(checked) => 
+                  setFormConfig(prev => ({ ...prev, [opt.key]: checked }))
+                }
+                data-testid={`switch-config-${opt.key}`}
+              />
+            ) : opt.type === "number" ? (
+              <Input
+                type="number"
+                className="w-24"
+                value={formConfig[opt.key] ?? opt.defaultValue ?? ""}
+                onChange={(e) => 
+                  setFormConfig(prev => ({ 
+                    ...prev, 
+                    [opt.key]: e.target.value ? Number(e.target.value) : undefined 
+                  }))
+                }
+                data-testid={`input-config-${opt.key}`}
+              />
+            ) : (
+              <Input
+                className="w-48"
+                value={formConfig[opt.key] ?? opt.defaultValue ?? ""}
+                onChange={(e) => 
+                  setFormConfig(prev => ({ ...prev, [opt.key]: e.target.value }))
+                }
+                data-testid={`input-config-${opt.key}`}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    );
   };
 
   const onAddSubmit = (data: InsertEventType) => {
@@ -227,6 +336,7 @@ export default function EventTypesPage() {
                   <TableHead className="w-16">Icon</TableHead>
                   <TableHead>Sirius ID</TableHead>
                   <TableHead>Name</TableHead>
+                  <TableHead>Category</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -236,10 +346,10 @@ export default function EventTypesPage() {
                   <TableRow key={type.id} data-testid={`row-type-${type.id}`}>
                     {editingId === type.id ? (
                       <>
-                        <TableCell colSpan={5}>
+                        <TableCell colSpan={6}>
                           <Form {...editForm}>
                             <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
-                              <div className="grid grid-cols-3 gap-4">
+                              <div className="grid grid-cols-4 gap-4">
                                 <div className="space-y-2">
                                   <Label>Icon</Label>
                                   <Select value={formIcon} onValueChange={setFormIcon}>
@@ -292,6 +402,21 @@ export default function EventTypesPage() {
                                     </FormItem>
                                   )}
                                 />
+                                <div className="space-y-2">
+                                  <Label>Category *</Label>
+                                  <Select value={formCategory} onValueChange={setFormCategory}>
+                                    <SelectTrigger data-testid={`select-edit-category-${type.id}`}>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {categories.map((cat) => (
+                                        <SelectItem key={cat.id} value={cat.id}>
+                                          {cat.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
                               </div>
                               <FormField
                                 control={editForm.control}
@@ -312,6 +437,7 @@ export default function EventTypesPage() {
                                   </FormItem>
                                 )}
                               />
+                              {renderConfigOptions()}
                               <div className="flex gap-2">
                                 <Button
                                   type="submit"
@@ -355,6 +481,16 @@ export default function EventTypesPage() {
                         </TableCell>
                         <TableCell data-testid={`text-siriusId-${type.id}`}>{type.siriusId}</TableCell>
                         <TableCell data-testid={`text-name-${type.id}`}>{type.name}</TableCell>
+                        <TableCell data-testid={`text-category-${type.id}`}>
+                          {(() => {
+                            const cat = categories.find(c => c.id === type.category);
+                            return cat ? (
+                              <Badge variant="outline">{cat.label}</Badge>
+                            ) : (
+                              <span className="text-muted-foreground">{type.category || "-"}</span>
+                            );
+                          })()}
+                        </TableCell>
                         <TableCell data-testid={`text-description-${type.id}`}>
                           {type.description || <span className="text-muted-foreground">-</span>}
                         </TableCell>
@@ -390,10 +526,12 @@ export default function EventTypesPage() {
         setIsAddDialogOpen(open);
         if (!open) {
           setFormIcon("Calendar");
+          setFormCategory("public");
+          setFormConfig({});
           addForm.reset();
         }
       }}>
-        <DialogContent data-testid="dialog-add">
+        <DialogContent data-testid="dialog-add" className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Add Event Type</DialogTitle>
             <DialogDescription>
@@ -402,23 +540,43 @@ export default function EventTypesPage() {
           </DialogHeader>
           <Form {...addForm}>
             <form onSubmit={addForm.handleSubmit(onAddSubmit)} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="add-icon">Icon</Label>
-                <Select value={formIcon} onValueChange={setFormIcon}>
-                  <SelectTrigger id="add-icon" data-testid="select-add-icon">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableIcons.map(({ name, Icon }) => (
-                      <SelectItem key={name} value={name}>
-                        <div className="flex items-center gap-2">
-                          <Icon size={16} />
-                          <span>{name}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="add-icon">Icon</Label>
+                  <Select value={formIcon} onValueChange={setFormIcon}>
+                    <SelectTrigger id="add-icon" data-testid="select-add-icon">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableIcons.map(({ name, Icon }) => (
+                        <SelectItem key={name} value={name}>
+                          <div className="flex items-center gap-2">
+                            <Icon size={16} />
+                            <span>{name}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="add-category">Category *</Label>
+                  <Select value={formCategory} onValueChange={setFormCategory}>
+                    <SelectTrigger id="add-category" data-testid="select-add-category">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id}>
+                          {cat.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedCategory?.description && (
+                    <p className="text-xs text-muted-foreground">{selectedCategory.description}</p>
+                  )}
+                </div>
               </div>
               <FormField
                 control={addForm.control}
@@ -473,6 +631,7 @@ export default function EventTypesPage() {
                   </FormItem>
                 )}
               />
+              {renderConfigOptions()}
               <DialogFooter>
                 <Button
                   type="submit"
