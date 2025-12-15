@@ -1187,7 +1187,7 @@ function Router() {
       </Route>
 
       <Route path="/config/event-types">
-        <ProtectedRoute permission="admin" requiresComponent="event">
+        <ProtectedRoute permission="admin" component="event">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <EventTypesPage />
