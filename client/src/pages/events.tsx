@@ -1,9 +1,19 @@
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
-  Loader2, Plus, Eye, Calendar,
+  Loader2, Plus, Eye, Calendar, X,
   Users, MapPin, Video, Presentation, Mic, Ticket, Star, Heart, Clock,
   type LucideIcon
 } from "lucide-react";
@@ -15,15 +25,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { format } from "date-fns";
-import type { Event, EventType } from "@shared/schema";
+import { format, parseISO, isAfter, isBefore, startOfDay, endOfDay } from "date-fns";
+import type { Event, EventType, EventOccurrence } from "@shared/schema";
 
 const iconMap: Record<string, LucideIcon> = {
   Calendar, Users, MapPin, Video, Presentation, Mic, Ticket, Star, Heart, Clock,
 };
 
+type EventWithOccurrences = Event & { occurrences?: EventOccurrence[] };
+
 export default function EventsListPage() {
-  const { data: events = [], isLoading } = useQuery<Event[]>({
+  const [titleFilter, setTitleFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState("");
+
+  const { data: events = [], isLoading } = useQuery<EventWithOccurrences[]>({
     queryKey: ["/api/events"],
   });
 
@@ -44,6 +60,72 @@ export default function EventsListPage() {
     const iconName = data?.icon || "Calendar";
     return iconMap[iconName] || Calendar;
   };
+
+  const formatOccurrenceDates = (occurrences?: EventOccurrence[]) => {
+    if (!occurrences || occurrences.length === 0) {
+      return <span className="text-muted-foreground">No dates</span>;
+    }
+    
+    const sorted = [...occurrences].sort((a, b) => 
+      new Date(a.startAt).getTime() - new Date(b.startAt).getTime()
+    );
+    
+    if (sorted.length === 1) {
+      return format(new Date(sorted[0].startAt), "MMM d, yyyy h:mm a");
+    }
+    
+    return (
+      <div className="space-y-1">
+        {sorted.slice(0, 3).map((occ, idx) => (
+          <div key={occ.id || idx} className="text-sm">
+            {format(new Date(occ.startAt), "MMM d, yyyy h:mm a")}
+          </div>
+        ))}
+        {sorted.length > 3 && (
+          <div className="text-sm text-muted-foreground">
+            +{sorted.length - 3} more
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const filteredEvents = useMemo(() => {
+    return events.filter((event) => {
+      if (titleFilter && !event.title.toLowerCase().includes(titleFilter.toLowerCase())) {
+        return false;
+      }
+      
+      if (typeFilter && typeFilter !== "all" && event.eventTypeId !== typeFilter) {
+        return false;
+      }
+      
+      if (dateFilter) {
+        const filterDate = parseISO(dateFilter);
+        const dayStart = startOfDay(filterDate);
+        const dayEnd = endOfDay(filterDate);
+        
+        const hasMatchingOccurrence = event.occurrences?.some((occ) => {
+          const occDate = new Date(occ.startAt);
+          return !isBefore(occDate, dayStart) && !isAfter(occDate, dayEnd);
+        });
+        
+        if (!hasMatchingOccurrence) {
+          return false;
+        }
+      }
+      
+      return true;
+    });
+  }, [events, titleFilter, typeFilter, dateFilter]);
+
+  const clearFilters = () => {
+    setTitleFilter("");
+    setTypeFilter("all");
+    setDateFilter("");
+  };
+
+  const hasActiveFilters = titleFilter || (typeFilter && typeFilter !== "all") || dateFilter;
 
   if (isLoading) {
     return (
@@ -73,9 +155,62 @@ export default function EventsListPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {events.length === 0 ? (
+          <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <Label htmlFor="title-filter">Title</Label>
+              <Input
+                id="title-filter"
+                placeholder="Search by title..."
+                value={titleFilter}
+                onChange={(e) => setTitleFilter(e.target.value)}
+                data-testid="input-filter-title"
+              />
+            </div>
+            <div>
+              <Label htmlFor="type-filter">Event Type</Label>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger id="type-filter" data-testid="select-filter-type">
+                  <SelectValue placeholder="All types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All types</SelectItem>
+                  {eventTypes.map((type) => (
+                    <SelectItem key={type.id} value={type.id}>
+                      {type.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="date-filter">Date</Label>
+              <Input
+                id="date-filter"
+                type="date"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                data-testid="input-filter-date"
+              />
+            </div>
+            <div className="flex items-end">
+              {hasActiveFilters && (
+                <Button
+                  variant="outline"
+                  onClick={clearFilters}
+                  data-testid="button-clear-filters"
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Clear Filters
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {filteredEvents.length === 0 ? (
             <div className="text-center text-muted-foreground py-8" data-testid="text-empty-state">
-              No events yet. Click "Add Event" to create one.
+              {events.length === 0 
+                ? 'No events yet. Click "Add Event" to create one.'
+                : "No events match your filters."}
             </div>
           ) : (
             <Table>
@@ -84,12 +219,12 @@ export default function EventsListPage() {
                   <TableHead className="w-12">Type</TableHead>
                   <TableHead>Title</TableHead>
                   <TableHead>Description</TableHead>
-                  <TableHead>Created</TableHead>
+                  <TableHead>Event Dates</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {events.map((event) => {
+                {filteredEvents.map((event) => {
                   const IconComponent = getEventTypeIcon(event.eventTypeId);
                   return (
                     <TableRow key={event.id} data-testid={`row-event-${event.id}`}>
@@ -111,8 +246,8 @@ export default function EventsListPage() {
                           <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
-                      <TableCell data-testid={`text-created-${event.id}`}>
-                        {format(new Date(event.createdAt), "MMM d, yyyy")}
+                      <TableCell data-testid={`text-dates-${event.id}`}>
+                        {formatOccurrenceDates(event.occurrences)}
                       </TableCell>
                       <TableCell className="text-right">
                         <Link href={`/events/${event.id}`}>

@@ -15,7 +15,16 @@ export function registerEventsRoutes(
   app.get("/api/events", eventComponent, requireAccess(policies.admin), async (req, res) => {
     try {
       const events = await storage.events.getAll();
-      res.json(events);
+      
+      // Include occurrences for each event
+      const eventsWithOccurrences = await Promise.all(
+        events.map(async (event) => {
+          const occurrences = await storage.eventOccurrences.getAll(event.id);
+          return { ...event, occurrences };
+        })
+      );
+      
+      res.json(eventsWithOccurrences);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch events" });
     }
