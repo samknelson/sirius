@@ -115,8 +115,7 @@ export default function EventEditPage() {
       };
       return apiRequest("POST", "/api/events", payload);
     },
-    onSuccess: async (response) => {
-      const newEvent = await response.json();
+    onSuccess: (newEvent: Event) => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       toast({
         title: "Success",
