@@ -41,7 +41,9 @@ export function registerEventsRoutes(
 
   app.post("/api/events", eventComponent, requireAccess(policies.admin), async (req, res) => {
     try {
-      const validation = insertEventSchema.safeParse(req.body);
+      const { occurrence, ...eventData } = req.body;
+      
+      const validation = insertEventSchema.safeParse(eventData);
       
       if (!validation.success) {
         return res.status(400).json({ 
@@ -50,9 +52,59 @@ export function registerEventsRoutes(
         });
       }
       
+      // Check if occurrence data is provided (required for new events)
+      if (!occurrence || !occurrence.startAt || occurrence.startAt.trim() === "") {
+        return res.status(400).json({ 
+          message: "Start date and time is required for new events"
+        });
+      }
+      
+      // Validate the startAt is a valid date
+      const startAtDate = new Date(occurrence.startAt);
+      if (isNaN(startAtDate.getTime())) {
+        return res.status(400).json({ 
+          message: "Invalid start date/time format"
+        });
+      }
+      
+      // Build occurrence data and validate before creating event
+      const occurrenceData = {
+        eventId: "temp", // will be replaced after event creation
+        startAt: occurrence.startAt,
+        endAt: occurrence.endAt || null,
+        status: occurrence.status || "active",
+        notes: occurrence.notes || null,
+      };
+      
+      // Pre-validate occurrence (except eventId which will be set after event creation)
+      const occValidation = insertEventOccurrenceSchema.safeParse(occurrenceData);
+      if (!occValidation.success) {
+        return res.status(400).json({ 
+          message: "Invalid occurrence data",
+          errors: occValidation.error.errors 
+        });
+      }
+      
+      // Create the event
       const event = await storage.events.create(validation.data);
+      
+      // Create the first occurrence with the actual event ID
+      try {
+        const finalOccurrenceData = {
+          ...occValidation.data,
+          eventId: event.id,
+        };
+        await storage.eventOccurrences.create(finalOccurrenceData);
+      } catch (occError) {
+        // If occurrence creation fails, delete the event to maintain consistency
+        console.error("Failed to create occurrence, rolling back event:", occError);
+        await storage.events.delete(event.id);
+        return res.status(500).json({ message: "Failed to create event occurrence" });
+      }
+      
       res.status(201).json(event);
     } catch (error: any) {
+      console.error("Failed to create event:", error);
       res.status(500).json({ message: "Failed to create event" });
     }
   });
