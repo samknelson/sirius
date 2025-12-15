@@ -4,6 +4,13 @@ import { insertEventSchema, insertEventOccurrenceSchema } from "@shared/schema";
 import { requireAccess } from "../accessControl";
 import { policies } from "../policies";
 import { requireComponent } from "./components";
+import { 
+  getAllEventCategories, 
+  getEventCategory, 
+  getCategoryRoles, 
+  getCategoryStatuses,
+  getCategoryConfigOptions 
+} from "./event-categories";
 
 export function registerEventsRoutes(
   app: Express,
@@ -11,6 +18,62 @@ export function registerEventsRoutes(
   requirePermission: any
 ) {
   const eventComponent = requireComponent("event");
+
+  app.get("/api/event-categories", eventComponent, async (req, res) => {
+    try {
+      const categories = getAllEventCategories();
+      res.json(categories);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch event categories" });
+    }
+  });
+
+  app.get("/api/event-categories/:categoryId", eventComponent, async (req, res) => {
+    try {
+      const { categoryId } = req.params;
+      const category = getEventCategory(categoryId);
+      
+      if (!category) {
+        res.status(404).json({ message: "Category not found" });
+        return;
+      }
+      
+      res.json(category);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch event category" });
+    }
+  });
+
+  app.get("/api/event-categories/:categoryId/roles", eventComponent, async (req, res) => {
+    try {
+      const { categoryId } = req.params;
+      const roles = getCategoryRoles(categoryId);
+      res.json(roles);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch category roles" });
+    }
+  });
+
+  app.get("/api/event-categories/:categoryId/statuses", eventComponent, async (req, res) => {
+    try {
+      const { categoryId } = req.params;
+      const statuses = getCategoryStatuses(categoryId);
+      res.json(statuses);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch category statuses" });
+    }
+  });
+
+  app.get("/api/event-categories/:categoryId/config-options", eventComponent, async (req, res) => {
+    try {
+      const { categoryId } = req.params;
+      const scope = req.query.scope as "type" | "event" | undefined;
+      const configOptions = getCategoryConfigOptions(categoryId, scope);
+      res.json(configOptions);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch category config options" });
+    }
+  });
 
   app.get("/api/events", eventComponent, requireAccess(policies.admin), async (req, res) => {
     try {
