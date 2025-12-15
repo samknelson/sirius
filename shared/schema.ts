@@ -293,6 +293,13 @@ export const eventOccurrences = pgTable("event_occurrences", {
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
+export const eventParticipants = pgTable("event_participants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  eventId: varchar("event_id").notNull().references(() => events.id, { onDelete: 'cascade' }),
+  contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
+  data: jsonb("data"),
+});
+
 export const workerIds = pgTable("worker_ids", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
@@ -947,6 +954,12 @@ export const insertEventOccurrenceSchema = createInsertSchema(eventOccurrences).
 });
 export type InsertEventOccurrence = z.infer<typeof insertEventOccurrenceSchema>;
 export type EventOccurrence = typeof eventOccurrences.$inferSelect;
+
+export const insertEventParticipantSchema = createInsertSchema(eventParticipants).omit({
+  id: true,
+});
+export type InsertEventParticipant = z.infer<typeof insertEventParticipantSchema>;
+export type EventParticipant = typeof eventParticipants.$inferSelect;
 
 export type InsertWorkerWs = z.infer<typeof insertWorkerWsSchema>;
 export type WorkerWs = typeof optionsWorkerWs.$inferSelect;
