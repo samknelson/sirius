@@ -270,6 +270,8 @@ export const optionsEventType = pgTable("options_event_type", {
   siriusId: varchar("sirius_id").notNull().unique(),
   name: text("name").notNull(),
   description: text("description"),
+  category: varchar("category").notNull().default("public"),
+  config: jsonb("config"),
   data: jsonb("data"),
 });
 
@@ -278,6 +280,7 @@ export const events = pgTable("events", {
   eventTypeId: varchar("event_type_id").notNull().references(() => optionsEventType.id, { onDelete: 'restrict' }),
   title: text("title").notNull(),
   description: text("description"),
+  config: jsonb("config"),
   data: jsonb("data"),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
@@ -297,6 +300,8 @@ export const eventParticipants = pgTable("event_participants", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   eventId: varchar("event_id").notNull().references(() => events.id, { onDelete: 'cascade' }),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
+  role: varchar("role").notNull(),
+  status: varchar("status"),
   data: jsonb("data"),
 });
 
