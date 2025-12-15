@@ -178,11 +178,16 @@ export function registerEventsRoutes(
         return;
       }
 
+      // Helper to convert date strings to Date objects
+      const parseOccurrenceData = (occ: any) => ({
+        ...occ,
+        eventId: id,
+        startAt: occ.startAt ? new Date(occ.startAt) : undefined,
+        endAt: occ.endAt ? new Date(occ.endAt) : null,
+      });
+
       if (Array.isArray(req.body)) {
-        const occurrences = req.body.map((occ: any) => ({
-          ...occ,
-          eventId: id,
-        }));
+        const occurrences = req.body.map(parseOccurrenceData);
         
         for (const occ of occurrences) {
           const validation = insertEventOccurrenceSchema.safeParse(occ);
@@ -197,7 +202,7 @@ export function registerEventsRoutes(
         const created = await storage.eventOccurrences.createMany(occurrences);
         res.status(201).json(created);
       } else {
-        const occurrenceData = { ...req.body, eventId: id };
+        const occurrenceData = parseOccurrenceData(req.body);
         const validation = insertEventOccurrenceSchema.safeParse(occurrenceData);
         
         if (!validation.success) {
@@ -231,7 +236,14 @@ export function registerEventsRoutes(
         return;
       }
       
-      const validation = insertEventOccurrenceSchema.partial().safeParse(req.body);
+      // Convert date strings to Date objects
+      const updateData = {
+        ...req.body,
+        ...(req.body.startAt && { startAt: new Date(req.body.startAt) }),
+        ...(req.body.endAt && { endAt: new Date(req.body.endAt) }),
+      };
+      
+      const validation = insertEventOccurrenceSchema.partial().safeParse(updateData);
       
       if (!validation.success) {
         return res.status(400).json({ 
