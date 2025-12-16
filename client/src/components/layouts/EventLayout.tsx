@@ -35,7 +35,7 @@ export function useEventLayout() {
 
 interface EventLayoutProps {
   children: React.ReactNode;
-  activeTab: "view" | "edit" | "delete" | "register" | "roster";
+  activeTab: "view" | "edit" | "delete" | "register" | "roster" | "self-register";
 }
 
 export default function EventLayout({ children, activeTab }: EventLayoutProps) {
@@ -153,7 +153,8 @@ export default function EventLayout({ children, activeTab }: EventLayoutProps) {
   if (category === "membership") {
     mainTabs.push(
       { id: "register", label: "Register", href: `/events/${event.id}/register` },
-      { id: "roster", label: "Roster", href: `/events/${event.id}/roster` }
+      { id: "roster", label: "Roster", href: `/events/${event.id}/roster` },
+      { id: "self-register", label: "Self Register", href: `/events/${event.id}/self-register` }
     );
   }
 

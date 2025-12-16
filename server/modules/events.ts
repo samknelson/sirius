@@ -510,4 +510,141 @@ export function registerEventsRoutes(
       res.status(500).json({ message: "Failed to remove participant" });
     }
   });
+
+  // Helper to get contactId for current user
+  async function getUserContactId(req: any): Promise<string | null> {
+    const user = (req as any).user;
+    if (!user?.dbUser?.email) return null;
+    
+    const email = user.dbUser.email;
+    const contact = await storage.contacts.getContactByEmail(email);
+    return contact?.id || null;
+  }
+
+  // Get current user's self-registration for an event
+  app.get("/api/events/:id/self-registration", eventComponent, requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const event = await storage.events.get(id);
+      if (!event) {
+        res.status(404).json({ message: "Event not found" });
+        return;
+      }
+      
+      // Get the event type to check if it's a membership event
+      const eventType = await storage.options.eventTypes.get(event.eventTypeId);
+      if (!eventType || eventType.category !== "membership") {
+        res.status(400).json({ message: "Self-registration is only available for membership events" });
+        return;
+      }
+      
+      const contactId = await getUserContactId(req);
+      if (!contactId) {
+        res.status(400).json({ message: "Your account is not linked to a contact record" });
+        return;
+      }
+      
+      const registration = await storage.eventParticipants.getByEventAndContact(id, contactId);
+      res.json(registration || null);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get self-registration" });
+    }
+  });
+
+  // Self-register for an event
+  app.post("/api/events/:id/self-register", eventComponent, requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const event = await storage.events.get(id);
+      if (!event) {
+        res.status(404).json({ message: "Event not found" });
+        return;
+      }
+      
+      // Get the event type to check if it's a membership event
+      const eventType = await storage.options.eventTypes.get(event.eventTypeId);
+      if (!eventType || eventType.category !== "membership") {
+        res.status(400).json({ message: "Self-registration is only available for membership events" });
+        return;
+      }
+      
+      const contactId = await getUserContactId(req);
+      if (!contactId) {
+        res.status(400).json({ message: "Your account is not linked to a contact record" });
+        return;
+      }
+      
+      // Check if already registered
+      const existing = await storage.eventParticipants.getByEventAndContact(id, contactId);
+      if (existing) {
+        res.status(400).json({ message: "You are already registered for this event" });
+        return;
+      }
+      
+      const participantData = {
+        eventId: id,
+        contactId,
+        role: "member",
+        status: "attended",
+      };
+      
+      const validation = insertEventParticipantSchema.safeParse(participantData);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: "Invalid participant data",
+          errors: validation.error.errors 
+        });
+      }
+      
+      const participant = await storage.eventParticipants.create(validation.data);
+      res.status(201).json(participant);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to self-register" });
+    }
+  });
+
+  // Update self-registration status
+  app.patch("/api/events/:id/self-register", eventComponent, requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+      
+      if (!status || !["attended", "canceled"].includes(status)) {
+        res.status(400).json({ message: "Status must be 'attended' or 'canceled'" });
+        return;
+      }
+      
+      const event = await storage.events.get(id);
+      if (!event) {
+        res.status(404).json({ message: "Event not found" });
+        return;
+      }
+      
+      // Get the event type to check if it's a membership event
+      const eventType = await storage.options.eventTypes.get(event.eventTypeId);
+      if (!eventType || eventType.category !== "membership") {
+        res.status(400).json({ message: "Self-registration is only available for membership events" });
+        return;
+      }
+      
+      const contactId = await getUserContactId(req);
+      if (!contactId) {
+        res.status(400).json({ message: "Your account is not linked to a contact record" });
+        return;
+      }
+      
+      const existing = await storage.eventParticipants.getByEventAndContact(id, contactId);
+      if (!existing) {
+        res.status(404).json({ message: "You are not registered for this event" });
+        return;
+      }
+      
+      const participant = await storage.eventParticipants.update(existing.id, { status });
+      res.json(participant);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update registration" });
+    }
+  });
 }

@@ -174,6 +174,7 @@ import EventEditPage from "@/pages/event-edit";
 import EventDeletePage from "@/pages/event-delete";
 import EventRegisterPage from "@/pages/event-register";
 import EventRosterPage from "@/pages/event-roster";
+import EventSelfRegisterPage from "@/pages/event-self-register";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
@@ -804,6 +805,14 @@ function Router() {
         <ProtectedRoute permission="admin" component="event">
           <AuthenticatedLayout>
             <EventRosterPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/events/:id/self-register">
+        <ProtectedRoute component="event">
+          <AuthenticatedLayout>
+            <EventSelfRegisterPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

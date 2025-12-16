@@ -303,6 +303,7 @@ export const eventParticipants = pgTable("event_participants", {
   role: varchar("role").notNull(),
   status: varchar("status"),
   data: jsonb("data"),
+  registeredAt: timestamp("registered_at").defaultNow(),
 });
 
 export const workerIds = pgTable("worker_ids", {
