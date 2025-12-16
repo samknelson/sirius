@@ -240,6 +240,14 @@ export const optionsEmployerContactType = pgTable("options_employer_contact_type
   data: jsonb("data"),
 });
 
+export const optionsEmployerType = pgTable("options_employer_type", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  sequence: integer("sequence").notNull().default(0),
+  data: jsonb("data"),
+});
+
 export const optionsWorkerWs = pgTable("options_worker_ws", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -745,6 +753,10 @@ export const insertEmployerContactTypeSchema = createInsertSchema(optionsEmploye
   id: true,
 });
 
+export const insertEmployerTypeSchema = createInsertSchema(optionsEmployerType).omit({
+  id: true,
+});
+
 export const insertTrustProviderTypeSchema = createInsertSchema(optionsTrustProviderType).omit({
   id: true,
 });
@@ -940,6 +952,9 @@ export type LedgerPaymentType = typeof optionsLedgerPaymentType.$inferSelect;
 
 export type InsertEmployerContactType = z.infer<typeof insertEmployerContactTypeSchema>;
 export type EmployerContactType = typeof optionsEmployerContactType.$inferSelect;
+
+export type InsertEmployerType = z.infer<typeof insertEmployerTypeSchema>;
+export type EmployerType = typeof optionsEmployerType.$inferSelect;
 
 export type InsertTrustProviderType = z.infer<typeof insertTrustProviderTypeSchema>;
 export type TrustProviderType = typeof optionsTrustProviderType.$inferSelect;

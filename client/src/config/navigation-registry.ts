@@ -78,6 +78,7 @@ export const configSections: NavSection[] = [
     description: "Employer-related configuration",
     icon: Building2,
     items: [
+      { path: "/config/employer-types", label: "Employer Types", icon: List, testId: "nav-config-employer-types", permission: "admin" },
       { path: "/config/employer-contact-types", label: "Employer Contact Types", icon: List, testId: "nav-config-employer-contact-types", permission: "admin" },
       { path: "/admin/users/employer-settings", label: "Employer User Settings", icon: Settings, testId: "nav-config-users-employer-settings", permission: "admin" },
     ],

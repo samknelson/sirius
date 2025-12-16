@@ -230,6 +230,123 @@ export function registerOptionsRoutes(
     }
   });
 
+  // Employer Type routes
+
+  // GET /api/employer-types - Get all employer types (requires admin permission)
+  app.get("/api/employer-types", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const employerTypes = await storage.options.employerTypes.getAll();
+      res.json(employerTypes);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch employer types" });
+    }
+  });
+
+  // GET /api/employer-types/:id - Get a specific employer type (requires admin permission)
+  app.get("/api/employer-types/:id", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const employerType = await storage.options.employerTypes.get(id);
+      
+      if (!employerType) {
+        res.status(404).json({ message: "Employer type not found" });
+        return;
+      }
+      
+      res.json(employerType);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch employer type" });
+    }
+  });
+
+  // POST /api/employer-types - Create a new employer type (requires admin permission)
+  app.post("/api/employer-types", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { name, description, sequence, data } = req.body;
+      
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ message: "Name is required" });
+      }
+      
+      const employerType = await storage.options.employerTypes.create({
+        name: name.trim(),
+        description: description && typeof description === 'string' ? description.trim() : null,
+        sequence: typeof sequence === 'number' ? sequence : 0,
+        data: data && typeof data === 'object' ? data : null,
+      });
+      
+      res.status(201).json(employerType);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to create employer type" });
+    }
+  });
+
+  // PUT /api/employer-types/:id - Update an employer type (requires admin permission)
+  app.put("/api/employer-types/:id", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, description, sequence, data } = req.body;
+      
+      const updates: any = {};
+      
+      if (name !== undefined) {
+        if (typeof name !== 'string' || !name.trim()) {
+          return res.status(400).json({ message: "Name must be a non-empty string" });
+        }
+        updates.name = name.trim();
+      }
+      
+      if (description !== undefined) {
+        if (description === null || description === '') {
+          updates.description = null;
+        } else if (typeof description === 'string') {
+          updates.description = description.trim();
+        } else {
+          return res.status(400).json({ message: "Description must be a string or null" });
+        }
+      }
+      
+      if (sequence !== undefined) {
+        if (typeof sequence !== 'number') {
+          return res.status(400).json({ message: "Sequence must be a number" });
+        }
+        updates.sequence = sequence;
+      }
+      
+      if (data !== undefined) {
+        updates.data = data && typeof data === 'object' ? data : null;
+      }
+      
+      const employerType = await storage.options.employerTypes.update(id, updates);
+      
+      if (!employerType) {
+        res.status(404).json({ message: "Employer type not found" });
+        return;
+      }
+      
+      res.json(employerType);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to update employer type" });
+    }
+  });
+
+  // DELETE /api/employer-types/:id - Delete an employer type (requires admin permission)
+  app.delete("/api/employer-types/:id", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.options.employerTypes.delete(id);
+      
+      if (!deleted) {
+        res.status(404).json({ message: "Employer type not found" });
+        return;
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete employer type" });
+    }
+  });
+
   // Provider Contact Type routes
 
   // GET /api/provider-contact-types - Get all provider contact types (requires admin permission)

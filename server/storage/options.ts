@@ -5,6 +5,7 @@ import {
   optionsTrustBenefitType, 
   optionsLedgerPaymentType,
   optionsEmployerContactType,
+  optionsEmployerType,
   optionsTrustProviderType,
   optionsWorkerWs,
   optionsEmploymentStatus,
@@ -19,6 +20,8 @@ import {
   type InsertLedgerPaymentType,
   type EmployerContactType,
   type InsertEmployerContactType,
+  type EmployerType,
+  type InsertEmployerType,
   type TrustProviderType,
   type InsertTrustProviderType,
   type WorkerWs,
@@ -75,11 +78,6 @@ export interface EmployerContactTypeStorage {
   delete(id: string): Promise<boolean>;
 }
 
-/**
- * Logging configuration for employer contact type storage operations
- * 
- * Logs all create/update/delete operations on employer contact types with full argument capture and change tracking.
- */
 export const employerContactTypeLoggingConfig: StorageLoggingConfig<EmployerContactTypeStorage> = {
   module: 'options.employerContactTypes',
   methods: {
@@ -87,24 +85,63 @@ export const employerContactTypeLoggingConfig: StorageLoggingConfig<EmployerCont
       enabled: true,
       getEntityId: (args) => args[0]?.name || 'new employer contact type',
       after: async (args, result, storage) => {
-        return result; // Capture created contact type
+        return result;
       }
     },
     update: {
       enabled: true,
-      getEntityId: (args) => args[0], // Contact type ID
+      getEntityId: (args) => args[0],
       before: async (args, storage) => {
-        return await storage.get(args[0]); // Current state
+        return await storage.get(args[0]);
       },
       after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
+        return result;
       }
     },
     delete: {
       enabled: true,
-      getEntityId: (args) => args[0], // Contact type ID
+      getEntityId: (args) => args[0],
       before: async (args, storage) => {
-        return await storage.get(args[0]); // Capture what's being deleted
+        return await storage.get(args[0]);
+      }
+    }
+  }
+};
+
+export interface EmployerTypeStorage {
+  getAll(): Promise<EmployerType[]>;
+  get(id: string): Promise<EmployerType | undefined>;
+  create(employerType: InsertEmployerType): Promise<EmployerType>;
+  update(id: string, employerType: Partial<InsertEmployerType>): Promise<EmployerType | undefined>;
+  delete(id: string): Promise<boolean>;
+  updateSequence(id: string, sequence: number): Promise<EmployerType | undefined>;
+}
+
+export const employerTypeLoggingConfig: StorageLoggingConfig<EmployerTypeStorage> = {
+  module: 'options.employerTypes',
+  methods: {
+    create: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.name || 'new employer type',
+      after: async (args, result, storage) => {
+        return result;
+      }
+    },
+    update: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        return await storage.get(args[0]);
+      },
+      after: async (args, result, storage) => {
+        return result;
+      }
+    },
+    delete: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        return await storage.get(args[0]);
       }
     }
   }
@@ -180,6 +217,7 @@ export interface OptionsStorage {
   trustBenefitTypes: TrustBenefitTypeStorage;
   ledgerPaymentTypes: LedgerPaymentTypeStorage;
   employerContactTypes: EmployerContactTypeStorage;
+  employerTypes: EmployerTypeStorage;
   trustProviderTypes: TrustProviderTypeStorage;
   workerWs: WorkerWsStorage;
   employmentStatus: EmploymentStatusStorage;
@@ -369,6 +407,43 @@ export function createOptionsStorage(): OptionsStorage {
       }
     },
 
+    employerTypes: {
+      async getAll(): Promise<EmployerType[]> {
+        return db.select().from(optionsEmployerType).orderBy(optionsEmployerType.sequence);
+      },
+
+      async get(id: string): Promise<EmployerType | undefined> {
+        const [employerType] = await db.select().from(optionsEmployerType).where(eq(optionsEmployerType.id, id));
+        return employerType || undefined;
+      },
+
+      async create(insertEmployerType: InsertEmployerType): Promise<EmployerType> {
+        const [employerType] = await db
+          .insert(optionsEmployerType)
+          .values(insertEmployerType)
+          .returning();
+        return employerType;
+      },
+
+      async update(id: string, employerTypeUpdate: Partial<InsertEmployerType>): Promise<EmployerType | undefined> {
+        const [employerType] = await db
+          .update(optionsEmployerType)
+          .set(employerTypeUpdate)
+          .where(eq(optionsEmployerType.id, id))
+          .returning();
+        return employerType || undefined;
+      },
+
+      async delete(id: string): Promise<boolean> {
+        const result = await db.delete(optionsEmployerType).where(eq(optionsEmployerType.id, id)).returning();
+        return result.length > 0;
+      },
+
+      async updateSequence(id: string, sequence: number): Promise<EmployerType | undefined> {
+        return this.update(id, { sequence });
+      }
+    },
+
     trustProviderTypes: {
       async getAll(): Promise<TrustProviderType[]> {
         return db.select().from(optionsTrustProviderType);
@@ -542,6 +617,45 @@ export function createEmployerContactTypeStorage(): EmployerContactTypeStorage {
     async delete(id: string): Promise<boolean> {
       const result = await db.delete(optionsEmployerContactType).where(eq(optionsEmployerContactType.id, id)).returning();
       return result.length > 0;
+    }
+  };
+}
+
+export function createEmployerTypeStorage(): EmployerTypeStorage {
+  return {
+    async getAll(): Promise<EmployerType[]> {
+      return db.select().from(optionsEmployerType).orderBy(optionsEmployerType.sequence);
+    },
+
+    async get(id: string): Promise<EmployerType | undefined> {
+      const [employerType] = await db.select().from(optionsEmployerType).where(eq(optionsEmployerType.id, id));
+      return employerType || undefined;
+    },
+
+    async create(insertEmployerType: InsertEmployerType): Promise<EmployerType> {
+      const [employerType] = await db
+        .insert(optionsEmployerType)
+        .values(insertEmployerType)
+        .returning();
+      return employerType;
+    },
+
+    async update(id: string, employerTypeUpdate: Partial<InsertEmployerType>): Promise<EmployerType | undefined> {
+      const [employerType] = await db
+        .update(optionsEmployerType)
+        .set(employerTypeUpdate)
+        .where(eq(optionsEmployerType.id, id))
+        .returning();
+      return employerType || undefined;
+    },
+
+    async delete(id: string): Promise<boolean> {
+      const result = await db.delete(optionsEmployerType).where(eq(optionsEmployerType.id, id)).returning();
+      return result.length > 0;
+    },
+
+    async updateSequence(id: string, sequence: number): Promise<EmployerType | undefined> {
+      return this.update(id, { sequence });
     }
   };
 }
