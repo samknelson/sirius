@@ -39,8 +39,7 @@ function EmployerEditContent() {
 
   const updateEmployerMutation = useMutation({
     mutationFn: async (data: { name: string; isActive: boolean; typeId: string | null }) => {
-      const response = await apiRequest("PUT", `/api/employers/${employer.id}`, data);
-      return response.json();
+      return await apiRequest("PUT", `/api/employers/${employer.id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employers", employer.id] });
