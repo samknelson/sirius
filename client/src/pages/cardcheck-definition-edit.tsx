@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
+import { IconPicker } from "@/components/ui/icon-picker";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -26,6 +27,7 @@ export default function CardcheckDefinitionEditPage() {
   const [formCheckboxes, setFormCheckboxes] = useState<string[]>(["", "", ""]);
   const [formRateTitle, setFormRateTitle] = useState("");
   const [formRateDescription, setFormRateDescription] = useState("");
+  const [formIcon, setFormIcon] = useState<string | undefined>(undefined);
 
   const { data: definition, isLoading, error } = useQuery<CardcheckDefinition>({
     queryKey: ["/api/cardcheck/definition", id],
@@ -47,6 +49,7 @@ export default function CardcheckDefinitionEditPage() {
       const rateField = (definition.data as any)?.rateField;
       setFormRateTitle(rateField?.title || "");
       setFormRateDescription(rateField?.description || "");
+      setFormIcon((definition.data as any)?.icon || undefined);
     }
   }, [definition]);
 
@@ -98,16 +101,24 @@ export default function CardcheckDefinitionEditPage() {
       ? { title: formRateTitle.trim(), description: formRateDescription.trim() || undefined }
       : undefined;
     
+    const updatedData = {
+      ...existingData,
+      checkboxes: nonEmptyCheckboxes.length > 0 ? nonEmptyCheckboxes : undefined,
+      rateField,
+    };
+    
+    if (formIcon) {
+      updatedData.icon = formIcon;
+    } else {
+      delete updatedData.icon;
+    }
+    
     updateMutation.mutate({
       siriusId: formSiriusId.trim(),
       name: formName.trim(),
       description: formDescription.trim() || null,
       body: formBody.trim() || null,
-      data: {
-        ...existingData,
-        checkboxes: nonEmptyCheckboxes.length > 0 ? nonEmptyCheckboxes : undefined,
-        rateField,
-      },
+      data: updatedData,
     });
   };
 
@@ -182,6 +193,16 @@ export default function CardcheckDefinitionEditPage() {
                   data-testid="input-name"
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Icon</Label>
+              <IconPicker
+                value={formIcon}
+                onChange={setFormIcon}
+                placeholder="Select an icon..."
+                className="w-full"
+              />
             </div>
 
             <div className="space-y-2">

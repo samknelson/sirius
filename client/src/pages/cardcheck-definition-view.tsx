@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
-import { Loader2, ArrowLeft, Pencil, CheckSquare, DollarSign } from "lucide-react";
+import { Loader2, ArrowLeft, Pencil, CheckSquare, DollarSign, FileText } from "lucide-react";
 import { CardcheckDefinition } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { renderIcon } from "@/components/ui/icon-picker";
 
 export default function CardcheckDefinitionViewPage() {
   const params = useParams<{ id: string }>();
@@ -52,13 +53,20 @@ export default function CardcheckDefinitionViewPage() {
                 <ArrowLeft className="h-4 w-4" />
               </Button>
             </Link>
-            <div>
-              <h1 className="text-2xl font-bold text-foreground" data-testid="heading-cardcheck-definition">
-                {definition.name}
-              </h1>
-              <p className="text-muted-foreground font-mono text-sm">
-                [{definition.siriusId}]
-              </p>
+            <div className="flex items-center gap-3">
+              {(definition.data as any)?.icon ? (
+                renderIcon((definition.data as any).icon, "h-8 w-8 text-primary")
+              ) : (
+                <FileText className="h-8 w-8 text-muted-foreground" />
+              )}
+              <div>
+                <h1 className="text-2xl font-bold text-foreground" data-testid="heading-cardcheck-definition">
+                  {definition.name}
+                </h1>
+                <p className="text-muted-foreground font-mono text-sm">
+                  [{definition.siriusId}]
+                </p>
+              </div>
             </div>
           </div>
           <Link href={`/cardcheck-definitions/${id}/edit`}>

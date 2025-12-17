@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { IconPicker, renderIcon } from "@/components/ui/icon-picker";
 import {
   Dialog,
   DialogContent,
@@ -36,13 +37,14 @@ export default function CardcheckDefinitionsPage() {
   const [formSiriusId, setFormSiriusId] = useState("");
   const [formName, setFormName] = useState("");
   const [formDescription, setFormDescription] = useState("");
+  const [formIcon, setFormIcon] = useState<string | undefined>(undefined);
 
   const { data: definitions = [], isLoading } = useQuery<CardcheckDefinition[]>({
     queryKey: ["/api/cardcheck/definitions"],
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: { siriusId: string; name: string; description?: string }) => {
+    mutationFn: async (data: { siriusId: string; name: string; description?: string; data?: any }) => {
       return apiRequest("POST", "/api/cardcheck/definitions", data);
     },
     onSuccess: () => {
@@ -88,6 +90,7 @@ export default function CardcheckDefinitionsPage() {
     setFormSiriusId("");
     setFormName("");
     setFormDescription("");
+    setFormIcon(undefined);
   };
 
   const handleCreate = () => {
@@ -113,6 +116,7 @@ export default function CardcheckDefinitionsPage() {
       siriusId: formSiriusId.trim(),
       name: formName.trim(),
       description: formDescription.trim() || undefined,
+      data: formIcon ? { icon: formIcon } : undefined,
     });
   };
 
@@ -165,6 +169,7 @@ export default function CardcheckDefinitionsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">Icon</TableHead>
                     <TableHead>Sirius ID</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Description</TableHead>
@@ -172,8 +177,17 @@ export default function CardcheckDefinitionsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {definitions.map((definition) => (
+                  {definitions.map((definition) => {
+                    const iconName = (definition.data as any)?.icon;
+                    return (
                     <TableRow key={definition.id} data-testid={`row-cardcheck-definition-${definition.id}`}>
+                      <TableCell>
+                        {iconName ? (
+                          renderIcon(iconName, "h-5 w-5 text-muted-foreground")
+                        ) : (
+                          <FileText className="h-5 w-5 text-muted-foreground/50" />
+                        )}
+                      </TableCell>
                       <TableCell className="font-mono text-sm" data-testid={`text-sirius-id-${definition.id}`}>
                         {definition.siriusId}
                       </TableCell>
@@ -206,7 +220,8 @@ export default function CardcheckDefinitionsPage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  );
+                  })}
                 </TableBody>
               </Table>
             )}
@@ -251,6 +266,15 @@ export default function CardcheckDefinitionsPage() {
                 value={formDescription}
                 onChange={(e) => setFormDescription(e.target.value)}
                 data-testid="input-add-description"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Icon</Label>
+              <IconPicker
+                value={formIcon}
+                onChange={setFormIcon}
+                placeholder="Select an icon..."
+                className="w-full"
               />
             </div>
           </div>
