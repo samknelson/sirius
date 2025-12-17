@@ -40,7 +40,19 @@ export function registerCardchecksRoutes(
   app.post("/api/workers/:workerId/cardchecks", requireAuth, cardcheckComponent, requirePermission("workers.manage"), async (req, res) => {
     try {
       const { workerId } = req.params;
-      const data = { ...req.body, workerId };
+      
+      // Get the worker to copy bargainingUnitId
+      const worker = await storage.workers.getWorker(workerId);
+      if (!worker) {
+        return res.status(404).json({ message: "Worker not found" });
+      }
+      
+      // Copy bargainingUnitId from worker when creating cardcheck
+      const data = { 
+        ...req.body, 
+        workerId,
+        bargainingUnitId: worker.bargainingUnitId || null
+      };
       const parsed = insertCardcheckSchema.safeParse(data);
       
       if (!parsed.success) {

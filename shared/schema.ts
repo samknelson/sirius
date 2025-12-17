@@ -554,6 +554,7 @@ export const cardchecks = pgTable("cardchecks", {
   rate: doublePrecision("rate"),
   data: jsonb("data"),
   esigId: varchar("esig_id").references(() => esigs.id, { onDelete: 'set null' }),
+  bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),
 });
 
 // Zod schemas for validation
