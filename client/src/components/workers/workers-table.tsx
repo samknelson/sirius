@@ -122,7 +122,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
 
   // Fetch component configs to check if trust benefits is enabled
   const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
-    queryKey: ["/api/components"],
+    queryKey: ["/api/components/config"],
   });
   const trustBenefitsEnabled = componentConfigs.find(c => c.componentId === "trust.benefits")?.enabled ?? false;
 
