@@ -8,6 +8,7 @@ import { InputsStep } from './report/InputsStep';
 import { RunStep } from './report/RunStep';
 import { ResultsStep } from './report/ResultsStep';
 import { LedgerIntegrityInputsStep } from './report/LedgerIntegrityInputsStep';
+import { BTUWorkersInvalidCardcheckInputsStep } from './report/BTUWorkersInvalidCardcheckInputsStep';
 
 export interface WizardStepComponent {
   (props: { wizardId: string; wizardType: string; data?: any; onDataChange?: (data: any) => void }): JSX.Element;
@@ -79,6 +80,11 @@ const evaluateRunComplete: StepCompletionEvaluator = ({ wizard }) => {
   return progress?.status === 'completed';
 };
 
+const evaluateBTUInputsComplete: StepCompletionEvaluator = ({ wizard }) => {
+  const cardcheckDefinitionId = wizard?.data?.config?.filters?.cardcheckDefinitionId;
+  return !!cardcheckDefinitionId;
+};
+
 export const stepControllerRegistry: StepControllerRegistry = {
   'gbhet_legal_workers_monthly': {
     'upload': { Component: UploadStep, evaluateCompletion: evaluateUploadComplete },
@@ -118,6 +124,11 @@ export const stepControllerRegistry: StepControllerRegistry = {
   },
   'report_ledger_integrity': {
     'inputs': { Component: LedgerIntegrityInputsStep, evaluateCompletion: alwaysComplete },
+    'run': { Component: RunStep, evaluateCompletion: evaluateRunComplete },
+    'results': { Component: ResultsStep, evaluateCompletion: alwaysComplete },
+  },
+  'report_btu_workers_invalid_cardcheck': {
+    'inputs': { Component: BTUWorkersInvalidCardcheckInputsStep, evaluateCompletion: evaluateBTUInputsComplete },
     'run': { Component: RunStep, evaluateCompletion: evaluateRunComplete },
     'results': { Component: ResultsStep, evaluateCompletion: alwaysComplete },
   },
@@ -162,6 +173,11 @@ export const stepComponentRegistry: StepComponentRegistry = {
   },
   'report_ledger_integrity': {
     'inputs': LedgerIntegrityInputsStep,
+    'run': RunStep,
+    'results': ResultsStep,
+  },
+  'report_btu_workers_invalid_cardcheck': {
+    'inputs': BTUWorkersInvalidCardcheckInputsStep,
     'run': RunStep,
     'results': ResultsStep,
   },
