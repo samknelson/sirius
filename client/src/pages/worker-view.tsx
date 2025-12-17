@@ -35,7 +35,7 @@ function WorkerDetailsContent() {
   // Fetch bargaining unit if enabled
   const { data: bargainingUnit } = useQuery<BargainingUnit>({
     queryKey: ["/api/bargaining-units", worker.bargainingUnitId],
-    enabled: hasComponent("bargainingunit") && !!worker.bargainingUnitId,
+    enabled: hasComponent("bargainingunits") && !!worker.bargainingUnitId,
   });
 
   // Fetch primary address
@@ -207,7 +207,7 @@ function WorkerDetailsContent() {
                 </p>
               )}
             </div>
-            {hasComponent("bargainingunit") && (
+            {hasComponent("bargainingunits") && (
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                   <Users size={14} />

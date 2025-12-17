@@ -190,7 +190,7 @@ export default function Header() {
                     </Button>
                   </Link>
                 )}
-                {hasComponent("bargainingunit") && (
+                {hasComponent("bargainingunits") && (
                   <Link href="/bargaining-units" onClick={() => setMobileMenuOpen(false)}>
                     <Button
                       variant={location.startsWith("/bargaining-units") ? "default" : "ghost"}
@@ -498,7 +498,7 @@ export default function Header() {
                     </Link>
                   </DropdownMenuItem>
                 )}
-                {hasComponent("bargainingunit") && (
+                {hasComponent("bargainingunits") && (
                   <DropdownMenuItem asChild>
                     <Link href="/bargaining-units" className="w-full">
                       <div className="flex items-center cursor-pointer" data-testid="menu-bargaining-units">

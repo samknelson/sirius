@@ -166,7 +166,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     { id: "birth-date", label: "Birth Date", href: `/workers/${worker.id}/birth-date` },
     { id: "gender", label: "Gender", href: `/workers/${worker.id}/gender` },
     { id: "work-status", label: "Work Status", href: `/workers/${worker.id}/work-status` },
-    ...(hasComponent("bargainingunit") ? [{ id: "bargaining-unit", label: "Bargaining Unit", href: `/workers/${worker.id}/bargaining-unit` }] : []),
+    ...(hasComponent("bargainingunits") ? [{ id: "bargaining-unit", label: "Bargaining Unit", href: `/workers/${worker.id}/bargaining-unit` }] : []),
   ];
 
   const contactSubTabs = [

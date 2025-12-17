@@ -351,7 +351,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/bargaining-unit">
-        <ProtectedRoute permission="workers.view" component="bargainingunit">
+        <ProtectedRoute permission="workers.view" component="bargainingunits">
           <AuthenticatedLayout>
             <WorkerBargainingUnit />
           </AuthenticatedLayout>
@@ -1058,7 +1058,7 @@ function Router() {
 
       {/* Bargaining Units routes */}
       <Route path="/bargaining-units/:id/edit">
-        <ProtectedRoute policy="staff" component="bargainingunit">
+        <ProtectedRoute policy="staff" component="bargainingunits">
           <AuthenticatedLayout>
             <BargainingUnitEditPage />
           </AuthenticatedLayout>
@@ -1066,7 +1066,7 @@ function Router() {
       </Route>
 
       <Route path="/bargaining-units/:id/delete">
-        <ProtectedRoute policy="staff" component="bargainingunit">
+        <ProtectedRoute policy="staff" component="bargainingunits">
           <AuthenticatedLayout>
             <BargainingUnitDeletePage />
           </AuthenticatedLayout>
@@ -1074,7 +1074,7 @@ function Router() {
       </Route>
 
       <Route path="/bargaining-units/:id">
-        <ProtectedRoute policy="staff" component="bargainingunit">
+        <ProtectedRoute policy="staff" component="bargainingunits">
           <AuthenticatedLayout>
             <BargainingUnitViewPage />
           </AuthenticatedLayout>
@@ -1082,7 +1082,7 @@ function Router() {
       </Route>
 
       <Route path="/bargaining-units">
-        <ProtectedRoute policy="staff" component="bargainingunit">
+        <ProtectedRoute policy="staff" component="bargainingunits">
           <AuthenticatedLayout>
             <BargainingUnitsPage />
           </AuthenticatedLayout>
