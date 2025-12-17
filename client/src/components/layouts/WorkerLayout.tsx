@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BookmarkButton } from "@/components/ui/bookmark-button";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface WorkerLayoutContextValue {
   worker: Worker;
@@ -26,12 +27,13 @@ export function useWorkerLayout() {
 }
 
 interface WorkerLayoutProps {
-  activeTab: "details" | "identity" | "name" | "email" | "ids" | "addresses" | "phone-numbers" | "birth-date" | "gender" | "work-status" | "employment" | "current" | "history" | "monthly" | "daily" | "comm" | "comm-history" | "send-sms" | "send-email" | "send-postal" | "benefits" | "benefits-history" | "benefits-eligibility" | "benefits-scan" | "cardchecks" | "logs" | "delete";
+  activeTab: "details" | "identity" | "name" | "email" | "ids" | "addresses" | "phone-numbers" | "birth-date" | "gender" | "work-status" | "bargaining-unit" | "employment" | "current" | "history" | "monthly" | "daily" | "comm" | "comm-history" | "send-sms" | "send-email" | "send-postal" | "benefits" | "benefits-history" | "benefits-eligibility" | "benefits-scan" | "cardchecks" | "logs" | "delete";
   children: ReactNode;
 }
 
 export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
   const { id } = useParams<{ id: string }>();
+  const { hasComponent } = useAuth();
 
   const { data: worker, isLoading: workerLoading, error: workerError } = useQuery<Worker>({
     queryKey: ["/api/workers", id],
@@ -164,6 +166,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     { id: "birth-date", label: "Birth Date", href: `/workers/${worker.id}/birth-date` },
     { id: "gender", label: "Gender", href: `/workers/${worker.id}/gender` },
     { id: "work-status", label: "Work Status", href: `/workers/${worker.id}/work-status` },
+    ...(hasComponent("bargainingunit") ? [{ id: "bargaining-unit", label: "Bargaining Unit", href: `/workers/${worker.id}/bargaining-unit` }] : []),
   ];
 
   const contactSubTabs = [
@@ -193,7 +196,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
   ];
 
   // Determine if we're in a sub-tab
-  const isIdentitySubTab = ["name", "ids", "birth-date", "gender", "work-status"].includes(activeTab);
+  const isIdentitySubTab = ["name", "ids", "birth-date", "gender", "work-status", "bargaining-unit"].includes(activeTab);
   const isContactSubTab = ["email", "addresses", "phone-numbers"].includes(activeTab);
   const isCommSubTab = ["comm-history", "send-sms", "send-email", "send-postal"].includes(activeTab);
   const isEmploymentSubTab = ["current", "history", "monthly", "daily"].includes(activeTab);
