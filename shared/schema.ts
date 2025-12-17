@@ -95,6 +95,13 @@ export const policies = pgTable("policies", {
   data: jsonb("data"),
 });
 
+export const bargainingUnits = pgTable("bargaining_units", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  siriusId: varchar("sirius_id").notNull().unique(),
+  name: text("name").notNull(),
+  data: jsonb("data"),
+});
+
 export const employerPolicyHistory = pgTable("employer_policy_history", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   date: date("date").notNull(),
@@ -593,6 +600,10 @@ export const insertPolicySchema = createInsertSchema(policies).omit({
   id: true,
 });
 
+export const insertBargainingUnitSchema = createInsertSchema(bargainingUnits).omit({
+  id: true,
+});
+
 export const insertCardcheckDefinitionSchema = createInsertSchema(cardcheckDefinitions).omit({
   id: true,
 });
@@ -828,6 +839,9 @@ export type Employer = typeof employers.$inferSelect;
 
 export type InsertPolicy = z.infer<typeof insertPolicySchema>;
 export type Policy = typeof policies.$inferSelect;
+
+export type InsertBargainingUnit = z.infer<typeof insertBargainingUnitSchema>;
+export type BargainingUnit = typeof bargainingUnits.$inferSelect;
 
 export type InsertCardcheckDefinition = z.infer<typeof insertCardcheckDefinitionSchema>;
 export type CardcheckDefinition = typeof cardcheckDefinitions.$inferSelect;
