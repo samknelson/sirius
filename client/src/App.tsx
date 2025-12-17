@@ -512,6 +512,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/reports/btu">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <Reports activeCategory="BTU" />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/reports/:reportType">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
