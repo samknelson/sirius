@@ -164,6 +164,7 @@ import PolicyView from "@/pages/policy-view";
 import PolicyEdit from "@/pages/policy-edit";
 import PolicyBenefits from "@/pages/policy-benefits";
 import PoliciesConfigPage from "@/pages/config/policies";
+import BargainingUnitsConfigPage from "@/pages/config/bargaining-units";
 import CardcheckDefinitionsPage from "@/pages/cardcheck-definitions";
 import CardcheckDefinitionViewPage from "@/pages/cardcheck-definition-view";
 import CardcheckDefinitionEditPage from "@/pages/cardcheck-definition-edit";
@@ -1318,6 +1319,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PoliciesConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/bargaining-units">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BargainingUnitsConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

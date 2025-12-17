@@ -42,6 +42,7 @@ import { registerSiteSettingsRoutes } from "./modules/site-settings";
 import { registerSystemModeRoutes } from "./modules/system-mode";
 import { registerBootstrapRoutes } from "./modules/bootstrap";
 import { registerPoliciesRoutes } from "./modules/policies";
+import { registerBargainingUnitsRoutes } from "./modules/bargaining-units";
 import { registerEmployerPolicyHistoryRoutes } from "./modules/employer-policy-history";
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
@@ -284,6 +285,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register policies configuration routes
   registerPoliciesRoutes(app, requireAuth, requireAccess, storage);
+
+  // Register bargaining units configuration routes
+  registerBargainingUnitsRoutes(app, requireAuth, requireAccess, storage);
 
   // Register employer policy history routes
   registerEmployerPolicyHistoryRoutes(app, requireAuth, requireAccess, storage);

@@ -21,6 +21,7 @@ import { type LogsStorage, createLogsStorage } from "./logs";
 import { type WorkerWshStorage, createWorkerWshStorage, workerWshLoggingConfig } from "./worker-wsh";
 import { type WorkerHoursStorage, createWorkerHoursStorage, workerHoursLoggingConfig } from "./worker-hours";
 import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./policies";
+import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnitLoggingConfig } from "./bargaining-units";
 import { type EmployerPolicyHistoryStorage, createEmployerPolicyHistoryStorage, employerPolicyHistoryLoggingConfig } from "./employer-policy-history";
 import { type WmbScanQueueStorage, createWmbScanQueueStorage } from "./wmb-scan-queue";
 import { type CardcheckDefinitionStorage, createCardcheckDefinitionStorage, cardcheckDefinitionLoggingConfig } from "./cardcheck-definitions";
@@ -59,6 +60,7 @@ export interface IStorage {
   workerWsh: WorkerWshStorage;
   workerHours: WorkerHoursStorage;
   policies: PolicyStorage;
+  bargainingUnits: BargainingUnitStorage;
   employerPolicyHistory: EmployerPolicyHistoryStorage;
   wmbScanQueue: WmbScanQueueStorage;
   cardcheckDefinitions: CardcheckDefinitionStorage;
@@ -96,6 +98,7 @@ export class DatabaseStorage implements IStorage {
   workerWsh: WorkerWshStorage;
   workerHours: WorkerHoursStorage;
   policies: PolicyStorage;
+  bargainingUnits: BargainingUnitStorage;
   employerPolicyHistory: EmployerPolicyHistoryStorage;
   wmbScanQueue: WmbScanQueueStorage;
   cardcheckDefinitions: CardcheckDefinitionStorage;
@@ -171,6 +174,10 @@ export class DatabaseStorage implements IStorage {
     this.policies = withStorageLogging(
       createPolicyStorage(),
       policyLoggingConfig
+    );
+    this.bargainingUnits = withStorageLogging(
+      createBargainingUnitStorage(),
+      bargainingUnitLoggingConfig
     );
     this.employerPolicyHistory = withStorageLogging(
       createEmployerPolicyHistoryStorage(this.employers.updateEmployerPolicy.bind(this.employers)),
