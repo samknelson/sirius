@@ -96,6 +96,10 @@ import TrustProviderContactSendSms from "@/pages/trust-provider-contact-send-sms
 import TrustProviderContactSendEmail from "@/pages/trust-provider-contact-send-email";
 import TrustProviderContactSendPostal from "@/pages/trust-provider-contact-send-postal";
 import TrustProviderLogsPage from "@/pages/trust-provider-logs";
+import BargainingUnitsPage from "@/pages/bargaining-units";
+import BargainingUnitViewPage from "@/pages/bargaining-unit-view";
+import BargainingUnitEditPage from "@/pages/bargaining-unit-edit";
+import BargainingUnitDeletePage from "@/pages/bargaining-unit-delete";
 import AdminUsersPage from "@/pages/admin/users";
 import UserAccountPage from "@/pages/admin/user-account";
 import UserLogs from "@/pages/admin/user-logs";
@@ -1039,6 +1043,39 @@ function Router() {
         <ProtectedRoute permission="workers.view" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProvidersPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Bargaining Units routes */}
+      <Route path="/bargaining-units/:id/edit">
+        <ProtectedRoute policy="staff" component="bargainingunit">
+          <AuthenticatedLayout>
+            <BargainingUnitEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bargaining-units/:id/delete">
+        <ProtectedRoute policy="staff" component="bargainingunit">
+          <AuthenticatedLayout>
+            <BargainingUnitDeletePage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bargaining-units/:id">
+        <ProtectedRoute policy="staff" component="bargainingunit">
+          <AuthenticatedLayout>
+            <BargainingUnitViewPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bargaining-units">
+        <ProtectedRoute policy="staff" component="bargainingunit">
+          <AuthenticatedLayout>
+            <BargainingUnitsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
