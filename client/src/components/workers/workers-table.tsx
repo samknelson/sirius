@@ -128,6 +128,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
   const [selectedEmployerId, setSelectedEmployerId] = useState<string>("all");
   const [selectedBenefitId, setSelectedBenefitId] = useState<string>("all");
   const [contactStatusFilter, setContactStatusFilter] = useState<string>("all");
+  const [cardcheckFilters, setCardcheckFilters] = useState<Record<string, string>>({});
 
   // Fetch component configs to check if trust benefits is enabled
   const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
@@ -172,6 +173,12 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     enabled: workers.length > 0 && cardcheckEnabled,
   });
 
+  // Fetch cardcheck definitions for filters (only when cardcheck is enabled)
+  const { data: cardcheckDefinitions = [] } = useQuery<{ id: string; name: string; icon?: string | null }[]>({
+    queryKey: ["/api/cardcheck/definitions"],
+    enabled: cardcheckEnabled,
+  });
+
   // Create map for worker cardcheck statuses
   const cardcheckMap = useMemo(() => {
     const map = new Map<string, CardcheckStatusSummary[]>();
@@ -183,6 +190,18 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     }
     return map;
   }, [cardcheckStatusSummary]);
+
+  // Get cardcheck definitions with icons for filter dropdowns
+  const cardcheckDefinitionsWithIcons = useMemo(() => {
+    return cardcheckDefinitions
+      .filter(def => def.icon)
+      .map(def => ({
+        id: def.id,
+        name: def.name,
+        icon: def.icon!,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [cardcheckDefinitions]);
 
   // Create map for worker employers
   const employerMap = new Map(workerEmployers.map(we => [we.workerId, we.employers]));
@@ -332,6 +351,21 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
       });
     }
     
+    // Filter by cardcheck status for each definition
+    if (cardcheckEnabled) {
+      const activeFilters = Object.entries(cardcheckFilters).filter(([_, value]) => value !== "all");
+      if (activeFilters.length > 0) {
+        filtered = filtered.filter(worker => {
+          const workerCardchecks = cardcheckMap.get(worker.id) || [];
+          return activeFilters.every(([definitionId, filterValue]) => {
+            const cardcheck = workerCardchecks.find(cc => cc.definitionId === definitionId);
+            const status = cardcheck?.status || 'none';
+            return status === filterValue;
+          });
+        });
+      }
+    }
+    
     // Filter by search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
@@ -349,7 +383,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     }
     
     return filtered;
-  }, [workersWithNames, searchQuery, selectedEmployerId, selectedBenefitId, contactStatusFilter, trustBenefitsEnabled]);
+  }, [workersWithNames, searchQuery, selectedEmployerId, selectedBenefitId, contactStatusFilter, trustBenefitsEnabled, cardcheckEnabled, cardcheckFilters, cardcheckMap]);
 
   const sortedWorkers = [...filteredWorkers].sort((a, b) => {
     const familyA = a.family || '';
@@ -639,6 +673,53 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                 </SelectContent>
               </Select>
             </div>
+            
+            {/* Card Check Status Filters - one per definition with icon */}
+            {cardcheckEnabled && cardcheckDefinitionsWithIcons.map((def) => {
+              const IconComponent = def.icon && iconMap[def.icon] ? iconMap[def.icon] : Star;
+              return (
+                <div key={def.id} className="w-48">
+                  <Select
+                    value={cardcheckFilters[def.id] || "all"}
+                    onValueChange={(value) => setCardcheckFilters(prev => ({ ...prev, [def.id]: value }))}
+                  >
+                    <SelectTrigger data-testid={`select-cardcheck-filter-${def.id}`}>
+                      <div className="flex items-center gap-2">
+                        <IconComponent size={16} className="text-muted-foreground" />
+                        <SelectValue placeholder={`All ${def.name}`} />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All {def.name}</SelectItem>
+                      <SelectItem value="signed">
+                        <div className="flex items-center gap-2">
+                          <IconComponent size={14} className="text-green-600" />
+                          <span>Signed</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="pending">
+                        <div className="flex items-center gap-2">
+                          <IconComponent size={14} className="text-yellow-500" />
+                          <span>Pending signature</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="none">
+                        <div className="flex items-center gap-2">
+                          <IconComponent size={14} className="text-yellow-500" />
+                          <span>None on file</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="revoked">
+                        <div className="flex items-center gap-2">
+                          <IconComponent size={14} className="text-red-600" />
+                          <span>Revoked</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              );
+            })}
           </div>
         </div>
 
