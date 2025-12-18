@@ -5,6 +5,7 @@ import { policies } from "../policies";
 import { requireComponent } from "./components";
 import { employerMonthlyPluginConfigSchema } from "@shared/schema";
 import { getPluginMetadata } from "@shared/pluginMetadata";
+import { getEffectiveUser } from "./masquerade";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -253,7 +254,10 @@ export function registerDashboardRoutes(
     try {
       const user = req.user as any;
       const replitUserId = user.claims.sub;
-      const dbUser = await storage.users.getUserByReplitId(replitUserId);
+      const session = req.session as any;
+      
+      // Use getEffectiveUser to respect masquerading
+      const { dbUser } = await getEffectiveUser(session, replitUserId);
       
       if (!dbUser || !dbUser.email) {
         res.json({ stewards: [], worker: null });
