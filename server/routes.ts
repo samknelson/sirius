@@ -780,7 +780,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const { id } = req.params;
-        const { name, isActive } = req.body;
+        const { name, isActive, typeId } = req.body;
 
         const updates: Partial<InsertEmployer> = {};
 
@@ -800,6 +800,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               .json({ message: "isActive must be a boolean" });
           }
           updates.isActive = isActive;
+        }
+
+        if (typeId !== undefined) {
+          updates.typeId = typeId;
         }
 
         if (Object.keys(updates).length === 0) {
