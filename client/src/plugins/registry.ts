@@ -8,6 +8,7 @@ import { ReportsPlugin } from "./reports/ReportsPlugin";
 import { ReportsSettings } from "./reports/ReportsSettings";
 import { WmbScanStatusPlugin } from "./wmbScanStatus/WmbScanStatusPlugin";
 import { ActiveSessionsPlugin } from "./activeSessions/ActiveSessionsPlugin";
+import { MyStewardPlugin } from "./mySteward/MyStewardPlugin";
 
 export const pluginRegistry: DashboardPlugin[] = [
   {
@@ -64,6 +65,14 @@ export const pluginRegistry: DashboardPlugin[] = [
     order: 6,
     component: ActiveSessionsPlugin,
     requiredPermissions: ["admin"],
+    enabledByDefault: true,
+  },
+  {
+    id: "my-steward",
+    name: "My Steward",
+    description: "Display stewards assigned to your home employer and bargaining unit",
+    order: 7,
+    component: MyStewardPlugin,
     enabledByDefault: true,
   },
 ];
