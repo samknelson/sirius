@@ -583,44 +583,44 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
             />
           </div>
           
-          {/* Filters */}
+          {/* Employer Filter - own row */}
+          <div className="mb-3">
+            <Select
+              value={selectedEmployerId}
+              onValueChange={setSelectedEmployerId}
+            >
+              <SelectTrigger data-testid="select-employer-filter">
+                <div className="flex items-center gap-2">
+                  <Building2 size={16} className="text-muted-foreground" />
+                  <SelectValue placeholder="All Employers" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Employers</SelectItem>
+                {employers
+                  .filter(emp => emp.isActive)
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((employer) => {
+                    const icon = employer.typeId ? employerTypeIconMap.get(employer.typeId) : null;
+                    return (
+                      <SelectItem 
+                        key={employer.id} 
+                        value={employer.id}
+                        data-testid={`select-employer-${employer.id}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          {renderIcon(icon || "Building", "h-4 w-4 text-muted-foreground")}
+                          <span>{employer.name}</span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          {/* Other Filters */}
           <div className="flex flex-wrap gap-3">
-            {/* Employer Filter */}
-            <div className="w-64">
-              <Select
-                value={selectedEmployerId}
-                onValueChange={setSelectedEmployerId}
-              >
-                <SelectTrigger data-testid="select-employer-filter">
-                  <div className="flex items-center gap-2">
-                    <Building2 size={16} className="text-muted-foreground" />
-                    <SelectValue placeholder="All Employers" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Employers</SelectItem>
-                  {employers
-                    .filter(emp => emp.isActive)
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((employer) => {
-                      const icon = employer.typeId ? employerTypeIconMap.get(employer.typeId) : null;
-                      return (
-                        <SelectItem 
-                          key={employer.id} 
-                          value={employer.id}
-                          data-testid={`select-employer-${employer.id}`}
-                        >
-                          <div className="flex items-center gap-2">
-                            {renderIcon(icon || "Building", "h-4 w-4 text-muted-foreground")}
-                            <span>{employer.name}</span>
-                          </div>
-                        </SelectItem>
-                      );
-                    })}
-                </SelectContent>
-              </Select>
-            </div>
-            
             {/* Benefit Filter - only show when trust.benefits component is enabled */}
             {trustBenefitsEnabled && (
               <div className="w-64">
