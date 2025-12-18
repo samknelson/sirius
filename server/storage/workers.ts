@@ -191,6 +191,15 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
     async getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]> {
       const result = await db.execute(sql`
+        WITH latest_hours AS (
+          SELECT DISTINCT ON (worker_id, employer_id)
+            worker_id,
+            employer_id,
+            employment_status_id,
+            home
+          FROM worker_hours
+          ORDER BY worker_id, employer_id, year DESC, month DESC, day DESC
+        )
         SELECT 
           w.id as worker_id,
           COALESCE(
@@ -198,14 +207,24 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
               DISTINCT jsonb_build_object(
                 'id', e.id,
                 'name', e.name,
-                'isHome', COALESCE(wh.home, false)
+                'isHome', COALESCE(lh.home, false),
+                'employmentStatusId', es.id,
+                'employmentStatusName', es.name,
+                'employmentStatusCode', es.code,
+                'employmentStatusEmployed', es.employed,
+                'employmentStatusColor', es.data->>'color',
+                'employerTypeId', et.id,
+                'employerTypeName', et.name,
+                'employerTypeIcon', et.data->>'icon'
               )
             ) FILTER (WHERE e.id IS NOT NULL),
             '[]'::json
           ) as employers
         FROM workers w
-        LEFT JOIN worker_hours wh ON w.id = wh.worker_id
-        LEFT JOIN employers e ON wh.employer_id = e.id
+        LEFT JOIN latest_hours lh ON w.id = lh.worker_id
+        LEFT JOIN employers e ON lh.employer_id = e.id
+        LEFT JOIN options_employment_status es ON lh.employment_status_id = es.id
+        LEFT JOIN options_employer_type et ON e.type_id = et.id
         GROUP BY w.id
       `);
       
@@ -432,6 +451,19 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       const [updatedWorker] = await db
         .update(workers)
         .set({ denormWsId })
+        .where(eq(workers.id, workerId))
+        .returning();
+      
+      return updatedWorker || undefined;
+    },
+
+    async updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined> {
+      // Normalize empty string to null
+      const normalizedId = bargainingUnitId && bargainingUnitId.trim() ? bargainingUnitId.trim() : null;
+      
+      const [updatedWorker] = await db
+        .update(workers)
+        .set({ bargainingUnitId: normalizedId })
         .where(eq(workers.id, workerId))
         .returning();
       

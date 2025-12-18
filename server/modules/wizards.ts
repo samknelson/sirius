@@ -35,17 +35,30 @@ export function registerWizardRoutes(
 ) {
   app.get("/api/wizard-types", requireAccess(policies.admin), async (req, res) => {
     try {
-      const types = wizardRegistry.getAll().map(type => ({
-        name: type.name,
-        displayName: type.displayName,
-        description: type.description,
-        isFeed: type.isFeed,
-        isMonthly: type.isMonthly,
-        isReport: (type as any).isReport || false,
-        entityType: type.entityType,
-        category: type.category
-      }));
-      res.json(types);
+      const { isComponentEnabled } = await import('./components.js');
+      const allTypes = wizardRegistry.getAll();
+      
+      const filteredTypes = [];
+      for (const type of allTypes) {
+        if (type.requiredComponent) {
+          const enabled = await isComponentEnabled(type.requiredComponent);
+          if (!enabled) {
+            continue;
+          }
+        }
+        filteredTypes.push({
+          name: type.name,
+          displayName: type.displayName,
+          description: type.description,
+          isFeed: type.isFeed,
+          isMonthly: type.isMonthly,
+          isReport: (type as any).isReport || false,
+          entityType: type.entityType,
+          category: type.category,
+          requiredComponent: type.requiredComponent
+        });
+      }
+      res.json(filteredTypes);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch wizard types" });
     }

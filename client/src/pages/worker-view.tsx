@@ -1,7 +1,7 @@
-import { Mail, Phone, MapPin, Calendar, IdCard, Gift, Building2, Home, Briefcase } from "lucide-react";
+import { Mail, Phone, MapPin, Calendar, IdCard, Gift, Building2, Home, Briefcase, Users } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ContactPostal, PhoneNumber as PhoneNumberType, WorkerId, WorkerIdType, TrustWmb, TrustBenefit, Employer, WorkerWs, EmploymentStatus } from "@shared/schema";
+import { ContactPostal, PhoneNumber as PhoneNumberType, WorkerId, WorkerIdType, TrustWmb, TrustBenefit, Employer, WorkerWs, EmploymentStatus, BargainingUnit } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
@@ -9,6 +9,7 @@ import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
 import { GoogleMap } from "@/components/ui/google-map";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface CurrentEmploymentEntry {
   id: string;
@@ -29,6 +30,13 @@ interface WorkerBenefit extends TrustWmb {
 
 function WorkerDetailsContent() {
   const { worker, contact } = useWorkerLayout();
+  const { hasComponent } = useAuth();
+
+  // Fetch bargaining unit if enabled
+  const { data: bargainingUnit } = useQuery<BargainingUnit>({
+    queryKey: ["/api/bargaining-units", worker.bargainingUnitId],
+    enabled: hasComponent("bargainingunits") && !!worker.bargainingUnitId,
+  });
 
   // Fetch primary address
   const { data: addresses = [] } = useQuery<ContactPostal[]>({
@@ -199,6 +207,25 @@ function WorkerDetailsContent() {
                 </p>
               )}
             </div>
+            {hasComponent("bargainingunits") && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <Users size={14} />
+                  Bargaining Unit
+                </label>
+                {bargainingUnit ? (
+                  <Link href={`/bargaining-units/${bargainingUnit.id}`}>
+                    <p className="text-foreground hover:underline cursor-pointer" data-testid="text-worker-bargaining-unit">
+                      {bargainingUnit.name}
+                    </p>
+                  </Link>
+                ) : (
+                  <p className="text-muted-foreground text-sm" data-testid="text-no-bargaining-unit">
+                    No bargaining unit assigned
+                  </p>
+                )}
+              </div>
+            )}
             {workerIds.length > 0 && (
               <div className="space-y-2 md:col-span-2">
                 <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">

@@ -3,11 +3,20 @@ import { cardchecks, cardcheckDefinitions, workers, contacts, type Cardcheck, ty
 import { eq, and } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 
+export interface CardcheckStatusSummary {
+  workerId: string;
+  definitionId: string;
+  definitionName: string;
+  definitionIcon: string;
+  status: 'signed' | 'pending' | 'revoked' | 'none';
+}
+
 export interface CardcheckStorage {
   getAllCardchecks(): Promise<Cardcheck[]>;
   getCardcheckById(id: string): Promise<Cardcheck | undefined>;
   getCardchecksByWorkerId(workerId: string): Promise<Cardcheck[]>;
   getCardchecksByDefinitionId(definitionId: string): Promise<Cardcheck[]>;
+  getCardcheckStatusSummary(): Promise<CardcheckStatusSummary[]>;
   createCardcheck(data: InsertCardcheck): Promise<Cardcheck>;
   updateCardcheck(id: string, data: Partial<InsertCardcheck>): Promise<Cardcheck | undefined>;
   deleteCardcheck(id: string): Promise<boolean>;
@@ -39,6 +48,50 @@ export function createCardcheckStorage(): CardcheckStorage {
         .select()
         .from(cardchecks)
         .where(eq(cardchecks.cardcheckDefinitionId, definitionId));
+    },
+
+    async getCardcheckStatusSummary(): Promise<CardcheckStatusSummary[]> {
+      const definitions = await db.select().from(cardcheckDefinitions);
+      const definitionsWithIcons = definitions.filter(d => {
+        const data = d.data as any;
+        return data?.icon;
+      });
+      
+      if (definitionsWithIcons.length === 0) {
+        return [];
+      }
+      
+      const allWorkers = await db.select({ id: workers.id }).from(workers);
+      const allCardchecks = await db.select().from(cardchecks);
+      
+      const cardcheckMap = new Map<string, Map<string, string>>();
+      for (const cc of allCardchecks) {
+        if (!cardcheckMap.has(cc.workerId)) {
+          cardcheckMap.set(cc.workerId, new Map());
+        }
+        const workerMap = cardcheckMap.get(cc.workerId)!;
+        const existingStatus = workerMap.get(cc.cardcheckDefinitionId);
+        if (!existingStatus || cc.status === 'signed' || (cc.status === 'revoked' && existingStatus !== 'signed')) {
+          workerMap.set(cc.cardcheckDefinitionId, cc.status);
+        }
+      }
+      
+      const summaries: CardcheckStatusSummary[] = [];
+      for (const worker of allWorkers) {
+        for (const def of definitionsWithIcons) {
+          const workerCardchecks = cardcheckMap.get(worker.id);
+          const status = workerCardchecks?.get(def.id) || 'none';
+          summaries.push({
+            workerId: worker.id,
+            definitionId: def.id,
+            definitionName: def.name,
+            definitionIcon: (def.data as any).icon,
+            status: status as 'signed' | 'pending' | 'revoked' | 'none',
+          });
+        }
+      }
+      
+      return summaries;
     },
 
     async createCardcheck(data: InsertCardcheck): Promise<Cardcheck> {

@@ -177,6 +177,7 @@ export interface IStorage {
   workerWsh: WorkerWshStorage;
   workerHours: WorkerHoursStorage;
   policies: PolicyStorage;
+  bargainingUnits: BargainingUnitStorage;
   employerPolicyHistory: EmployerPolicyHistoryStorage;
   wmbScanQueue: WmbScanQueueStorage;
   cardcheckDefinitions: CardcheckDefinitionStorage;
@@ -184,6 +185,9 @@ export interface IStorage {
   esigs: EsigStorage;
   sessions: SessionStorage;
   flood: FloodStorage;
+  events: EventStorage;
+  eventOccurrences: EventOccurrenceStorage;
+  eventParticipants: EventParticipantStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -211,6 +215,7 @@ export class DatabaseStorage implements IStorage {
   workerWsh: WorkerWshStorage;
   workerHours: WorkerHoursStorage;
   policies: PolicyStorage;
+  bargainingUnits: BargainingUnitStorage;
   employerPolicyHistory: EmployerPolicyHistoryStorage;
   wmbScanQueue: WmbScanQueueStorage;
   cardcheckDefinitions: CardcheckDefinitionStorage;
@@ -218,6 +223,9 @@ export class DatabaseStorage implements IStorage {
   esigs: EsigStorage;
   sessions: SessionStorage;
   flood: FloodStorage;
+  events: EventStorage;
+  eventOccurrences: EventOccurrenceStorage;
+  eventParticipants: EventParticipantStorage;
 
   constructor() {
     this.variables = withStorageLogging(
@@ -303,6 +311,10 @@ export class DatabaseStorage implements IStorage {
       createPolicyStorage(),
       policyLoggingConfig,
     );
+    this.bargainingUnits = withStorageLogging(
+      createBargainingUnitStorage(),
+      bargainingUnitLoggingConfig,
+    );
     this.employerPolicyHistory = withStorageLogging(
       createEmployerPolicyHistoryStorage(
         this.employers.updateEmployerPolicy.bind(this.employers),
@@ -323,6 +335,15 @@ export class DatabaseStorage implements IStorage {
       sessionLoggingConfig,
     );
     this.flood = createFloodStorage();
+    this.events = withStorageLogging(createEventStorage(), eventLoggingConfig);
+    this.eventOccurrences = withStorageLogging(
+      createEventOccurrenceStorage(),
+      eventOccurrenceLoggingConfig,
+    );
+    this.eventParticipants = withStorageLogging(
+      createEventParticipantStorage(),
+      eventParticipantLoggingConfig,
+    );
   }
 }
 

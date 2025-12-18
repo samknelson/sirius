@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { storage } from "../storage";
-import { insertWorkerWsSchema, updateWorkerWsSchema, insertEmploymentStatusSchema, updateEmploymentStatusSchema, insertTrustBenefitTypeSchema, insertTrustProviderTypeSchema } from "@shared/schema";
+import { insertWorkerWsSchema, updateWorkerWsSchema, insertEmploymentStatusSchema, updateEmploymentStatusSchema, insertTrustBenefitTypeSchema, insertTrustProviderTypeSchema, insertEventTypeSchema } from "@shared/schema";
 import { requireAccess } from "../accessControl";
 import { policies } from "../policies";
 
@@ -227,6 +227,123 @@ export function registerOptionsRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete employer contact type" });
+    }
+  });
+
+  // Employer Type routes
+
+  // GET /api/employer-types - Get all employer types (requires admin permission)
+  app.get("/api/employer-types", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const employerTypes = await storage.options.employerTypes.getAll();
+      res.json(employerTypes);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch employer types" });
+    }
+  });
+
+  // GET /api/employer-types/:id - Get a specific employer type (requires admin permission)
+  app.get("/api/employer-types/:id", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const employerType = await storage.options.employerTypes.get(id);
+      
+      if (!employerType) {
+        res.status(404).json({ message: "Employer type not found" });
+        return;
+      }
+      
+      res.json(employerType);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch employer type" });
+    }
+  });
+
+  // POST /api/employer-types - Create a new employer type (requires admin permission)
+  app.post("/api/employer-types", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { name, description, sequence, data } = req.body;
+      
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ message: "Name is required" });
+      }
+      
+      const employerType = await storage.options.employerTypes.create({
+        name: name.trim(),
+        description: description && typeof description === 'string' ? description.trim() : null,
+        sequence: typeof sequence === 'number' ? sequence : 0,
+        data: data && typeof data === 'object' ? data : null,
+      });
+      
+      res.status(201).json(employerType);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to create employer type" });
+    }
+  });
+
+  // PUT /api/employer-types/:id - Update an employer type (requires admin permission)
+  app.put("/api/employer-types/:id", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, description, sequence, data } = req.body;
+      
+      const updates: any = {};
+      
+      if (name !== undefined) {
+        if (typeof name !== 'string' || !name.trim()) {
+          return res.status(400).json({ message: "Name must be a non-empty string" });
+        }
+        updates.name = name.trim();
+      }
+      
+      if (description !== undefined) {
+        if (description === null || description === '') {
+          updates.description = null;
+        } else if (typeof description === 'string') {
+          updates.description = description.trim();
+        } else {
+          return res.status(400).json({ message: "Description must be a string or null" });
+        }
+      }
+      
+      if (sequence !== undefined) {
+        if (typeof sequence !== 'number') {
+          return res.status(400).json({ message: "Sequence must be a number" });
+        }
+        updates.sequence = sequence;
+      }
+      
+      if (data !== undefined) {
+        updates.data = data && typeof data === 'object' ? data : null;
+      }
+      
+      const employerType = await storage.options.employerTypes.update(id, updates);
+      
+      if (!employerType) {
+        res.status(404).json({ message: "Employer type not found" });
+        return;
+      }
+      
+      res.json(employerType);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to update employer type" });
+    }
+  });
+
+  // DELETE /api/employer-types/:id - Delete an employer type (requires admin permission)
+  app.delete("/api/employer-types/:id", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.options.employerTypes.delete(id);
+      
+      if (!deleted) {
+        res.status(404).json({ message: "Employer type not found" });
+        return;
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete employer type" });
     }
   });
 
@@ -854,6 +971,139 @@ export function registerOptionsRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete trust benefit type" });
+    }
+  });
+
+  // Event Type routes
+
+  // GET /api/event-types - Get all event types (requires admin permission + event component)
+  app.get("/api/event-types", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const eventTypes = await storage.options.eventTypes.getAll();
+      res.json(eventTypes);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch event types" });
+    }
+  });
+
+  // GET /api/event-types/:id - Get a specific event type (requires admin permission)
+  app.get("/api/event-types/:id", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const eventType = await storage.options.eventTypes.get(id);
+      
+      if (!eventType) {
+        res.status(404).json({ message: "Event type not found" });
+        return;
+      }
+      
+      res.json(eventType);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch event type" });
+    }
+  });
+
+  // POST /api/event-types - Create a new event type (requires admin permission)
+  app.post("/api/event-types", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { name, description, data, siriusId, category, config } = req.body;
+      
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ message: "Name is required" });
+      }
+      
+      if (!siriusId || typeof siriusId !== 'string' || !siriusId.trim()) {
+        return res.status(400).json({ message: "Sirius ID is required" });
+      }
+      
+      const eventType = await storage.options.eventTypes.create({
+        name: name.trim(),
+        siriusId: siriusId.trim(),
+        description: description && typeof description === 'string' ? description.trim() : undefined,
+        data: data && typeof data === 'object' ? data : undefined,
+        category: category && typeof category === 'string' ? category.trim() : undefined,
+        config: config && typeof config === 'object' ? config : undefined,
+      });
+      
+      res.status(201).json(eventType);
+    } catch (error: any) {
+      if (error.code === "23505") {
+        res.status(409).json({ message: "Event type with this Sirius ID already exists" });
+        return;
+      }
+      res.status(500).json({ message: "Failed to create event type" });
+    }
+  });
+
+  // PUT /api/event-types/:id - Update an event type (requires admin permission)
+  app.put("/api/event-types/:id", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, description, data, siriusId, category, config } = req.body;
+      
+      const updates: any = {};
+      
+      if (name !== undefined) {
+        if (typeof name !== 'string' || !name.trim()) {
+          return res.status(400).json({ message: "Name must be a non-empty string" });
+        }
+        updates.name = name.trim();
+      }
+      
+      if (siriusId !== undefined) {
+        if (typeof siriusId !== 'string' || !siriusId.trim()) {
+          return res.status(400).json({ message: "Sirius ID must be a non-empty string" });
+        }
+        updates.siriusId = siriusId.trim();
+      }
+      
+      if (description !== undefined) {
+        updates.description = description && typeof description === 'string' ? description.trim() : null;
+      }
+      
+      if (data !== undefined) {
+        updates.data = data && typeof data === 'object' ? data : null;
+      }
+      
+      if (category !== undefined) {
+        updates.category = category && typeof category === 'string' ? category.trim() : null;
+      }
+      
+      if (config !== undefined) {
+        updates.config = config && typeof config === 'object' ? config : null;
+      }
+      
+      const eventType = await storage.options.eventTypes.update(id, updates);
+      
+      if (!eventType) {
+        res.status(404).json({ message: "Event type not found" });
+        return;
+      }
+      
+      res.json(eventType);
+    } catch (error: any) {
+      if (error.code === "23505") {
+        res.status(409).json({ message: "Event type with this Sirius ID already exists" });
+        return;
+      }
+      res.status(500).json({ message: "Failed to update event type" });
+    }
+  });
+
+  // DELETE /api/event-types/:id - Delete an event type (requires admin permission)
+  app.delete("/api/event-types/:id", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.options.eventTypes.delete(id);
+      
+      if (!deleted) {
+        res.status(404).json({ message: "Event type not found" });
+        return;
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete event type" });
     }
   });
 }

@@ -40,7 +40,19 @@ export function registerCardchecksRoutes(
   app.post("/api/workers/:workerId/cardchecks", requireAuth, cardcheckComponent, requirePermission("workers.manage"), async (req, res) => {
     try {
       const { workerId } = req.params;
-      const data = { ...req.body, workerId };
+      
+      // Get the worker to copy bargainingUnitId
+      const worker = await storage.workers.getWorker(workerId);
+      if (!worker) {
+        return res.status(404).json({ message: "Worker not found" });
+      }
+      
+      // Copy bargainingUnitId from worker when creating cardcheck
+      const data = { 
+        ...req.body, 
+        workerId,
+        bargainingUnitId: worker.bargainingUnitId || null
+      };
       const parsed = insertCardcheckSchema.safeParse(data);
       
       if (!parsed.success) {
@@ -106,6 +118,15 @@ export function registerCardchecksRoutes(
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ message: "Failed to delete cardcheck" });
+    }
+  });
+
+  app.get("/api/cardchecks/status-summary", requireAuth, cardcheckComponent, requirePermission("workers.view"), async (req, res) => {
+    try {
+      const summary = await storage.cardchecks.getCardcheckStatusSummary();
+      res.json(summary);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch cardcheck status summary" });
     }
   });
 }

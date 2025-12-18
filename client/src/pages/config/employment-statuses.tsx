@@ -33,6 +33,7 @@ interface EmploymentStatus {
   employed: boolean;
   description: string | null;
   sequence: number;
+  data?: { color?: string } | null;
 }
 
 export default function EmploymentStatusesPage() {
@@ -46,18 +47,23 @@ export default function EmploymentStatusesPage() {
   const [formCode, setFormCode] = useState("");
   const [formEmployed, setFormEmployed] = useState(false);
   const [formDescription, setFormDescription] = useState("");
+  const [formColor, setFormColor] = useState("#6b7280");
   
   const { data: statuses = [], isLoading } = useQuery<EmploymentStatus[]>({
     queryKey: ["/api/employment-statuses"],
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: { name: string; code: string; employed: boolean; description: string | null }) => {
+    mutationFn: async (formData: { name: string; code: string; employed: boolean; description: string | null; color: string }) => {
       // Find the highest sequence number
       const maxSequence = statuses.reduce((max, status) => Math.max(max, status.sequence), -1);
       return apiRequest("POST", "/api/employment-statuses", { 
-        ...data, 
-        sequence: maxSequence + 1 
+        name: formData.name,
+        code: formData.code,
+        employed: formData.employed,
+        description: formData.description,
+        sequence: maxSequence + 1,
+        data: { color: formData.color }
       });
     },
     onSuccess: () => {
@@ -79,12 +85,13 @@ export default function EmploymentStatusesPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { id: string; name: string; code: string; employed: boolean; description: string | null }) => {
-      return apiRequest("PUT", `/api/employment-statuses/${data.id}`, {
-        name: data.name,
-        code: data.code,
-        employed: data.employed,
-        description: data.description,
+    mutationFn: async (formData: { id: string; name: string; code: string; employed: boolean; description: string | null; color: string }) => {
+      return apiRequest("PUT", `/api/employment-statuses/${formData.id}`, {
+        name: formData.name,
+        code: formData.code,
+        employed: formData.employed,
+        description: formData.description,
+        data: { color: formData.color }
       });
     },
     onSuccess: () => {
@@ -142,6 +149,7 @@ export default function EmploymentStatusesPage() {
     setFormCode("");
     setFormEmployed(false);
     setFormDescription("");
+    setFormColor("#6b7280");
   };
 
   const handleEdit = (status: EmploymentStatus) => {
@@ -150,6 +158,7 @@ export default function EmploymentStatusesPage() {
     setFormCode(status.code);
     setFormEmployed(status.employed);
     setFormDescription(status.description || "");
+    setFormColor(status.data?.color || "#6b7280");
   };
 
   const handleCancelEdit = () => {
@@ -180,6 +189,7 @@ export default function EmploymentStatusesPage() {
       code: formCode.trim(),
       employed: formEmployed,
       description: formDescription.trim() || null,
+      color: formColor,
     });
   };
 
@@ -205,6 +215,7 @@ export default function EmploymentStatusesPage() {
       code: formCode.trim(),
       employed: formEmployed,
       description: formDescription.trim() || null,
+      color: formColor,
     });
   };
 
@@ -263,6 +274,7 @@ export default function EmploymentStatusesPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Order</TableHead>
+                  <TableHead>Color</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Code</TableHead>
                   <TableHead>Employed</TableHead>
@@ -294,6 +306,23 @@ export default function EmploymentStatusesPage() {
                           <ArrowDown className="h-4 w-4" />
                         </Button>
                       </div>
+                    </TableCell>
+                    <TableCell data-testid={`text-color-${status.id}`}>
+                      {editingId === status.id ? (
+                        <input
+                          type="color"
+                          value={formColor}
+                          onChange={(e) => setFormColor(e.target.value)}
+                          className="w-10 h-8 cursor-pointer rounded border border-input"
+                          data-testid={`input-edit-color-${status.id}`}
+                        />
+                      ) : (
+                        <div
+                          className="w-6 h-6 rounded-full border border-border"
+                          style={{ backgroundColor: status.data?.color || "#6b7280" }}
+                          title={status.data?.color || "No color set"}
+                        />
+                      )}
                     </TableCell>
                     <TableCell data-testid={`text-name-${status.id}`}>
                       {editingId === status.id ? (
@@ -431,6 +460,23 @@ export default function EmploymentStatusesPage() {
                 placeholder="e.g., FT, PT"
                 data-testid="input-add-code"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-color">Color</Label>
+              <div className="flex items-center gap-3">
+                <input
+                  id="add-color"
+                  type="color"
+                  value={formColor}
+                  onChange={(e) => setFormColor(e.target.value)}
+                  className="w-12 h-10 cursor-pointer rounded border border-input"
+                  data-testid="input-add-color"
+                />
+                <span className="text-sm text-muted-foreground">{formColor}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Choose a color to visually identify this status on worker lists.
+              </p>
             </div>
             <div className="flex items-center space-x-2">
               <Checkbox

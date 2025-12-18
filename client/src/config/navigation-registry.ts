@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, 
   CreditCard, Activity, Wallet, Settings, Shield, Key, FileText, 
-  Building2, Database, Clock, Zap, Server, MessageSquare, type LucideIcon
+  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, type LucideIcon
 } from "lucide-react";
 
 export interface NavItem {
@@ -78,6 +78,7 @@ export const configSections: NavSection[] = [
     description: "Employer-related configuration",
     icon: Building2,
     items: [
+      { path: "/config/employer-types", label: "Employer Types", icon: List, testId: "nav-config-employer-types", permission: "admin" },
       { path: "/config/employer-contact-types", label: "Employer Contact Types", icon: List, testId: "nav-config-employer-contact-types", permission: "admin" },
       { path: "/admin/users/employer-settings", label: "Employer User Settings", icon: Settings, testId: "nav-config-users-employer-settings", permission: "admin" },
     ],
@@ -101,6 +102,15 @@ export const configSections: NavSection[] = [
       { path: "/config/worker-id-types", label: "Worker ID Types", icon: List, testId: "nav-config-worker-id-types", permission: "admin" },
       { path: "/config/worker-work-statuses", label: "Worker Work Statuses", icon: List, testId: "nav-config-worker-work-statuses", permission: "admin" },
       { path: "/config/employment-statuses", label: "Employment Statuses", icon: List, testId: "nav-config-employment-statuses", permission: "admin" },
+    ],
+  },
+  {
+    id: "events",
+    title: "Events",
+    description: "Event management and configuration",
+    icon: Calendar,
+    items: [
+      { path: "/config/event-types", label: "Event Types", icon: List, testId: "nav-config-event-types", permission: "admin", requiresComponent: "event" },
     ],
   },
   {

@@ -29,6 +29,7 @@ export interface WizardTypeDefinition {
   isReport?: boolean;
   entityType?: string;
   category?: string;
+  requiredComponent?: string;
   getSteps: () => WizardStep[] | Promise<WizardStep[]>;
   getStatuses: () => WizardStatus[] | Promise<WizardStatus[]>;
   getLaunchArguments?: () => LaunchArgument[] | Promise<LaunchArgument[]>;

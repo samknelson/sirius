@@ -25,6 +25,7 @@ import WorkerIDs from "@/pages/worker-ids";
 import WorkerBirthDate from "@/pages/worker-birth-date";
 import WorkerGender from "@/pages/worker-gender";
 import WorkerWorkStatus from "@/pages/worker-work-status";
+import WorkerBargainingUnit from "@/pages/worker-bargaining-unit";
 import WorkerBenefitsHistory from "@/pages/worker-benefits-history";
 import WorkerBenefitsEligibility from "@/pages/worker-benefits-eligibility";
 import WorkerBenefitsScan from "@/pages/worker-benefits-scan";
@@ -96,6 +97,10 @@ import TrustProviderContactSendSms from "@/pages/trust-provider-contact-send-sms
 import TrustProviderContactSendEmail from "@/pages/trust-provider-contact-send-email";
 import TrustProviderContactSendPostal from "@/pages/trust-provider-contact-send-postal";
 import TrustProviderLogsPage from "@/pages/trust-provider-logs";
+import BargainingUnitsPage from "@/pages/bargaining-units";
+import BargainingUnitViewPage from "@/pages/bargaining-unit-view";
+import BargainingUnitEditPage from "@/pages/bargaining-unit-edit";
+import BargainingUnitDeletePage from "@/pages/bargaining-unit-delete";
 import AdminUsersPage from "@/pages/admin/users";
 import UserAccountPage from "@/pages/admin/user-account";
 import UserLogs from "@/pages/admin/user-logs";
@@ -127,7 +132,9 @@ import WorkerWorkStatusesPage from "@/pages/config/worker-work-statuses";
 import EmploymentStatusesPage from "@/pages/config/employment-statuses";
 import TrustBenefitTypesPage from "@/pages/config/trust-benefit-types";
 import EmployerContactTypesPage from "@/pages/config/employer-contact-types";
+import EmployerTypesPage from "@/pages/config/employer-types";
 import ProviderContactTypesPage from "@/pages/config/provider-contact-types";
+import EventTypesPage from "@/pages/config/event-types";
 import MasqueradePage from "@/pages/config/masquerade";
 import SystemModePage from "@/pages/config/system-mode";
 import DefaultPolicyPage from "@/pages/config/default-policy";
@@ -162,11 +169,19 @@ import PolicyView from "@/pages/policy-view";
 import PolicyEdit from "@/pages/policy-edit";
 import PolicyBenefits from "@/pages/policy-benefits";
 import PoliciesConfigPage from "@/pages/config/policies";
+import BargainingUnitsConfigPage from "@/pages/config/bargaining-units";
 import CardcheckDefinitionsPage from "@/pages/cardcheck-definitions";
 import CardcheckDefinitionViewPage from "@/pages/cardcheck-definition-view";
 import CardcheckDefinitionEditPage from "@/pages/cardcheck-definition-edit";
 import WorkerCardchecks from "@/pages/worker-cardchecks";
 import CardcheckViewPage from "@/pages/cardcheck-view";
+import EventsListPage from "@/pages/events";
+import EventViewPage from "@/pages/event-view";
+import EventEditPage from "@/pages/event-edit";
+import EventDeletePage from "@/pages/event-delete";
+import EventRegisterPage from "@/pages/event-register";
+import EventRosterPage from "@/pages/event-roster";
+import EventSelfRegisterPage from "@/pages/event-self-register";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
@@ -335,6 +350,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/workers/:id/bargaining-unit">
+        <ProtectedRoute permission="workers.view" component="bargainingunits">
+          <AuthenticatedLayout>
+            <WorkerBargainingUnit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/:id/benefits/history">
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
@@ -485,6 +508,22 @@ function Router() {
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <Reports activeCategory="Ledger" />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/reports/compliance">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <Reports activeCategory="Compliance" />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/reports/btu">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <Reports activeCategory="BTU" />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -761,6 +800,70 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/events/new">
+        <ProtectedRoute permission="admin" component="event">
+          <AuthenticatedLayout>
+            <EventEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/events/:id/edit">
+        <ProtectedRoute permission="admin" component="event">
+          <AuthenticatedLayout>
+            <EventEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/events/:id/delete">
+        <ProtectedRoute permission="admin" component="event">
+          <AuthenticatedLayout>
+            <EventDeletePage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/events/:id/register">
+        <ProtectedRoute permission="admin" component="event">
+          <AuthenticatedLayout>
+            <EventRegisterPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/events/:id/roster">
+        <ProtectedRoute permission="admin" component="event">
+          <AuthenticatedLayout>
+            <EventRosterPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/events/:id/self-register">
+        <ProtectedRoute component="event">
+          <AuthenticatedLayout>
+            <EventSelfRegisterPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/events/:id">
+        <ProtectedRoute permission="admin" component="event">
+          <AuthenticatedLayout>
+            <EventViewPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/events">
+        <ProtectedRoute permission="admin" component="event">
+          <AuthenticatedLayout>
+            <EventsListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/trust-benefits/add">
         <ProtectedRoute permission="workers.manage">
           <AuthenticatedLayout>
@@ -969,6 +1072,39 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      {/* Bargaining Units routes */}
+      <Route path="/bargaining-units/:id/edit">
+        <ProtectedRoute policy="staff" component="bargainingunits">
+          <AuthenticatedLayout>
+            <BargainingUnitEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bargaining-units/:id/delete">
+        <ProtectedRoute policy="staff" component="bargainingunits">
+          <AuthenticatedLayout>
+            <BargainingUnitDeletePage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bargaining-units/:id">
+        <ProtectedRoute policy="staff" component="bargainingunits">
+          <AuthenticatedLayout>
+            <BargainingUnitViewPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bargaining-units">
+        <ProtectedRoute policy="staff" component="bargainingunits">
+          <AuthenticatedLayout>
+            <BargainingUnitsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       {/* Admin user management routes - no ConfigurationLayout sidebar */}
       <Route path="/admin/users/list">
         <ProtectedRoute permission="admin">
@@ -1162,6 +1298,26 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/employer-types">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <EmployerTypesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/event-types">
+        <ProtectedRoute permission="admin" component="event">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <EventTypesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/provider-contact-types">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
@@ -1237,6 +1393,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PoliciesConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/bargaining-units">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BargainingUnitsConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

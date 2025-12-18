@@ -54,6 +54,7 @@ import { registerSiteSettingsRoutes } from "./modules/site-settings";
 import { registerSystemModeRoutes } from "./modules/system-mode";
 import { registerBootstrapRoutes } from "./modules/bootstrap";
 import { registerPoliciesRoutes } from "./modules/policies";
+import { registerBargainingUnitsRoutes } from "./modules/bargaining-units";
 import { registerEmployerPolicyHistoryRoutes } from "./modules/employer-policy-history";
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
@@ -62,6 +63,7 @@ import { registerCardchecksRoutes } from "./modules/cardchecks";
 import { registerEsigsRoutes } from "./modules/esigs";
 import { registerSessionRoutes } from "./modules/sessions";
 import { registerFloodEventRoutes } from "./modules/flood-events";
+import { registerEventsRoutes } from "./modules/events";
 import { requireAccess } from "./accessControl";
 import { policies } from "./policies";
 import { addressValidationService } from "./services/address-validation";
@@ -344,6 +346,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register policies configuration routes
   registerPoliciesRoutes(app, requireAuth, requireAccess, storage);
 
+  // Register bargaining units configuration routes
+  registerBargainingUnitsRoutes(app, requireAuth, requireAccess, storage);
+
   // Register employer policy history routes
   registerEmployerPolicyHistoryRoutes(app, requireAuth, requireAccess, storage);
 
@@ -535,11 +540,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             res.json(worker);
           } catch (error: any) {
             if (error.message === "SSN already exists for another worker") {
-              res
-                .status(409)
-                .json({
-                  message: "This SSN is already assigned to another worker",
-                });
+              res.status(409).json({
+                message: "This SSN is already assigned to another worker",
+              });
               return;
             }
             throw error;
@@ -589,13 +592,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           res.json(worker);
         } else {
-          return res
-            .status(400)
-            .json({
-              message:
-                "Worker name, name components, email, birth date, or SSN are required",
-            });
+          return res.status(400).json({
+            message:
+              "Worker name, name components, email, birth date, or SSN are required",
+          });
         }
+      } catch (error) {
+        res.status(500).json({ message: "Failed to update worker" });
+      }
+    },
+  );
+
+  // PATCH /api/workers/:id - Partially update a worker (requires workers.manage permission)
+  app.patch(
+    "/api/workers/:id",
+    requireAuth,
+    requirePermission("workers.manage"),
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { bargainingUnitId } = req.body;
+
+        // Handle bargaining unit updates
+        if (bargainingUnitId !== undefined) {
+          // Validate bargainingUnitId - must be null/empty or a valid existing bargaining unit
+          const normalizedId =
+            bargainingUnitId &&
+            typeof bargainingUnitId === "string" &&
+            bargainingUnitId.trim()
+              ? bargainingUnitId.trim()
+              : null;
+
+          // If setting a bargaining unit, verify it exists
+          if (normalizedId) {
+            const bargainingUnit =
+              await storage.bargainingUnits.getBargainingUnitById(normalizedId);
+            if (!bargainingUnit) {
+              res.status(400).json({ message: "Invalid bargaining unit ID" });
+              return;
+            }
+          }
+
+          const worker = await storage.workers.updateWorkerBargainingUnit(
+            id,
+            normalizedId,
+          );
+
+          if (!worker) {
+            res.status(404).json({ message: "Worker not found" });
+            return;
+          }
+
+          res.json(worker);
+          return;
+        }
+
+        res.status(400).json({ message: "No valid update fields provided" });
       } catch (error) {
         res.status(500).json({ message: "Failed to update worker" });
       }
@@ -822,11 +874,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const config = await addressValidationService.getConfig();
         res.json(config);
       } catch (error) {
-        res
-          .status(500)
-          .json({
-            message: "Failed to fetch address validation configuration",
-          });
+        res.status(500).json({
+          message: "Failed to fetch address validation configuration",
+        });
       }
     },
   );
@@ -842,11 +892,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { mode, local, google } = req.body;
 
         if (!mode || (mode !== "local" && mode !== "google")) {
-          return res
-            .status(400)
-            .json({
-              message: "Invalid validation mode. Must be 'local' or 'google'.",
-            });
+          return res.status(400).json({
+            message: "Invalid validation mode. Must be 'local' or 'google'.",
+          });
         }
 
         if (!local || typeof local.enabled !== "boolean") {
@@ -865,11 +913,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const updatedConfig = await addressValidationService.getConfig();
         res.json(updatedConfig);
       } catch (error) {
-        res
-          .status(500)
-          .json({
-            message: "Failed to update address validation configuration",
-          });
+        res.status(500).json({
+          message: "Failed to update address validation configuration",
+        });
       }
     },
   );
@@ -938,11 +984,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { mode, local, twilio, fallback } = req.body;
 
         if (!mode || (mode !== "local" && mode !== "twilio")) {
-          return res
-            .status(400)
-            .json({
-              message: "Invalid validation mode. Must be 'local' or 'twilio'.",
-            });
+          return res.status(400).json({
+            message: "Invalid validation mode. Must be 'local' or 'twilio'.",
+          });
         }
 
         // Store local-specific settings in the local provider
@@ -1098,11 +1142,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { month, year, employerId, benefitId } = req.body;
 
         if (!month || !year || !employerId || !benefitId) {
-          return res
-            .status(400)
-            .json({
-              message: "Month, year, employer ID, and benefit ID are required",
-            });
+          return res.status(400).json({
+            message: "Month, year, employer ID, and benefit ID are required",
+          });
         }
 
         const wmb = await storage.workers.createWorkerBenefit({
@@ -1120,12 +1162,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           error.message?.includes("duplicate key") ||
           error.code === "23505"
         ) {
-          return res
-            .status(409)
-            .json({
-              message:
-                "This benefit entry already exists for this worker, employer, and month/year",
-            });
+          return res.status(409).json({
+            message:
+              "This benefit entry already exists for this worker, employer, and month/year",
+          });
         }
         res.status(500).json({ message: "Failed to create worker benefit" });
       }
@@ -1156,7 +1196,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register generic variable management routes (MUST come after specific routes)
   registerVariableRoutes(app, requireAuth, requirePermission);
-
   const httpServer = createServer(app);
   return httpServer;
 }

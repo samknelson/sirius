@@ -190,6 +190,18 @@ export default function Header() {
                     </Button>
                   </Link>
                 )}
+                {hasComponent("bargainingunits") && (
+                  <Link href="/bargaining-units" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location.startsWith("/bargaining-units") ? "default" : "ghost"}
+                      className="w-full justify-start pl-8"
+                      data-testid="mobile-nav-bargaining-units"
+                    >
+                      <Users className="h-4 w-4 mr-2" />
+                      Bargaining Units
+                    </Button>
+                  </Link>
+                )}
 
                 <Link href="/employers" onClick={() => setMobileMenuOpen(false)}>
                   <Button
@@ -250,6 +262,19 @@ export default function Header() {
                     >
                       <ScanLine className="h-4 w-4 mr-2" />
                       Benefit Scan
+                    </Button>
+                  </Link>
+                )}
+
+                {hasComponent("event") && (
+                  <Link href="/events" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location.startsWith("/events") ? "default" : "ghost"}
+                      className="w-full justify-start"
+                      data-testid="mobile-nav-events"
+                    >
+                      <Calendar className="h-4 w-4 mr-2" />
+                      Events
                     </Button>
                   </Link>
                 )}
@@ -445,7 +470,7 @@ export default function Header() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant={location === "/workers" || location.startsWith("/cardcheck") ? "default" : "ghost"}
+                  variant={location === "/workers" || location.startsWith("/cardcheck") || location.startsWith("/bargaining-units") ? "default" : "ghost"}
                   size="sm"
                   data-testid="nav-workers"
                 >
@@ -469,6 +494,16 @@ export default function Header() {
                       <div className="flex items-center cursor-pointer" data-testid="menu-cardcheck-definitions">
                         <ClipboardCheck className="h-4 w-4 mr-2" />
                         Cardchecks
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {hasComponent("bargainingunits") && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/bargaining-units" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-bargaining-units">
+                        <Users className="h-4 w-4 mr-2" />
+                        Bargaining Units
                       </div>
                     </Link>
                   </DropdownMenuItem>
@@ -552,6 +587,19 @@ export default function Header() {
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
+            )}
+
+            {hasComponent("event") && (
+              <Link href="/events">
+                <Button
+                  variant={location.startsWith("/events") ? "default" : "ghost"}
+                  size="sm"
+                  data-testid="nav-events"
+                >
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Events
+                </Button>
+              </Link>
             )}
 
             {ledgerStaffPolicy?.allowed && (

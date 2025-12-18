@@ -194,6 +194,10 @@ export function createWizardStorage(): WizardStorage {
           pk,
           data
         })
+        .onConflictDoUpdate({
+          target: [wizardReportData.wizardId, wizardReportData.pk],
+          set: { data, createdAt: new Date() }
+        })
         .returning();
       return reportData;
     },

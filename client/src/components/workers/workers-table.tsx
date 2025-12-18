@@ -1,11 +1,13 @@
-import { useState, useMemo } from "react";
-import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle, Scale, Stethoscope, Smile, Eye as EyeIcon, Star, Download, GraduationCap, Heart, Laptop, ShoppingBag, Mail, Phone, type LucideIcon } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle, Scale, Stethoscope, Smile, Eye as EyeIcon, Star, Download, GraduationCap, Heart, Laptop, ShoppingBag, Mail, Phone, FileText, type LucideIcon } from "lucide-react";
+import { renderIcon } from "@/components/ui/icon-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Worker, Contact, PhoneNumber, Employer, ContactPostal } from "@shared/schema";
+import { ComponentConfig } from "@shared/components";
 import { formatSSN } from "@shared/schema";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -42,6 +44,14 @@ interface WorkerBenefit {
   typeIcon?: string;
 }
 
+interface CardcheckStatusSummary {
+  workerId: string;
+  definitionId: string;
+  definitionName: string;
+  definitionIcon: string;
+  status: 'signed' | 'pending' | 'revoked' | 'none';
+}
+
 interface WorkerWithContact extends Worker {
   contactName?: string;
   email?: string;
@@ -61,6 +71,14 @@ interface EmployerInfo {
   id: string;
   name: string;
   isHome: boolean;
+  employmentStatusId?: string;
+  employmentStatusName?: string;
+  employmentStatusCode?: string;
+  employmentStatusEmployed?: boolean;
+  employmentStatusColor?: string;
+  employerTypeId?: string;
+  employerTypeName?: string;
+  employerTypeIcon?: string;
 }
 
 interface WorkerEmployerSummary {
@@ -118,6 +136,21 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
   const [selectedEmployerId, setSelectedEmployerId] = useState<string>("all");
   const [selectedBenefitId, setSelectedBenefitId] = useState<string>("all");
   const [contactStatusFilter, setContactStatusFilter] = useState<string>("all");
+  const [cardcheckFilters, setCardcheckFilters] = useState<Record<string, string>>({});
+
+  // Fetch component configs to check if trust benefits is enabled
+  const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
+    queryKey: ["/api/components/config"],
+  });
+  const trustBenefitsEnabled = componentConfigs.find(c => c.componentId === "trust.benefits")?.enabled ?? false;
+  const cardcheckEnabled = componentConfigs.find(c => c.componentId === "cardcheck")?.enabled ?? false;
+
+  // Reset benefit filter when trust.benefits is disabled
+  useEffect(() => {
+    if (!trustBenefitsEnabled && selectedBenefitId !== "all") {
+      setSelectedBenefitId("all");
+    }
+  }, [trustBenefitsEnabled, selectedBenefitId]);
 
   // Fetch worker-employer summary
   const { data: workerEmployers = [] } = useQuery<WorkerEmployerSummary[]>({
@@ -125,10 +158,10 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     enabled: workers.length > 0,
   });
 
-  // Fetch current month benefits for all workers
+  // Fetch current month benefits for all workers (only when trust.benefits is enabled)
   const { data: workerCurrentBenefits = [] } = useQuery<any[]>({
     queryKey: ["/api/workers/benefits/current"],
-    enabled: workers.length > 0,
+    enabled: workers.length > 0 && trustBenefitsEnabled,
   });
 
   // Fetch employers for filter dropdown
@@ -136,10 +169,84 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     queryKey: ["/api/employers"],
   });
 
-  // Fetch trust benefits for filter dropdown
+  // Fetch employer types for filter dropdown icons
+  const { data: employerTypes = [] } = useQuery<{ id: string; name: string; data?: Record<string, unknown> | null }[]>({
+    queryKey: ["/api/employer-types"],
+  });
+
+  // Create map for employer type icons
+  const employerTypeIconMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const type of employerTypes) {
+      const iconName = type.data?.icon;
+      if (typeof iconName === "string") {
+        map.set(type.id, iconName);
+      }
+    }
+    return map;
+  }, [employerTypes]);
+
+  // Fetch trust benefits for filter dropdown (only when trust.benefits is enabled)
   const { data: trustBenefits = [] } = useQuery<any[]>({
     queryKey: ["/api/trust-benefits"],
+    enabled: trustBenefitsEnabled,
   });
+
+  // Fetch cardcheck status summary (only when cardcheck is enabled)
+  const { data: cardcheckStatusSummary = [] } = useQuery<CardcheckStatusSummary[]>({
+    queryKey: ["/api/cardchecks/status-summary"],
+    enabled: workers.length > 0 && cardcheckEnabled,
+  });
+
+  // Fetch cardcheck definitions for filters (only when cardcheck is enabled)
+  const { data: cardcheckDefinitions = [] } = useQuery<{ id: string; name: string; data?: { icon?: string } | null }[]>({
+    queryKey: ["/api/cardcheck/definitions"],
+    enabled: cardcheckEnabled,
+    staleTime: 0,
+  });
+
+  // Create map for worker cardcheck statuses
+  const cardcheckMap = useMemo(() => {
+    const map = new Map<string, CardcheckStatusSummary[]>();
+    for (const summary of cardcheckStatusSummary) {
+      if (!map.has(summary.workerId)) {
+        map.set(summary.workerId, []);
+      }
+      map.get(summary.workerId)!.push(summary);
+    }
+    return map;
+  }, [cardcheckStatusSummary]);
+
+  // Get cardcheck definitions with icons for filter dropdowns
+  // Use status summary as primary source (synced with column display), 
+  // fall back to definitions for definitions without worker records yet
+  const cardcheckDefinitionsWithIcons = useMemo(() => {
+    const defsMap = new Map<string, { id: string; name: string; icon: string }>();
+    
+    // First, add definitions from status summary (always in sync with column display)
+    for (const summary of cardcheckStatusSummary) {
+      if (summary.definitionIcon && !defsMap.has(summary.definitionId)) {
+        defsMap.set(summary.definitionId, {
+          id: summary.definitionId,
+          name: summary.definitionName,
+          icon: summary.definitionIcon,
+        });
+      }
+    }
+    
+    // Then add any additional definitions with icons from definitions query
+    for (const def of cardcheckDefinitions) {
+      if (def.data?.icon && !defsMap.has(def.id)) {
+        defsMap.set(def.id, {
+          id: def.id,
+          name: def.name,
+          icon: def.data.icon,
+        });
+      }
+    }
+    
+    return Array.from(defsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [cardcheckStatusSummary, cardcheckDefinitions]);
 
   // Create map for worker employers
   const employerMap = new Map(workerEmployers.map(we => [we.workerId, we.employers]));
@@ -252,8 +359,8 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
       );
     }
     
-    // Filter by specific benefit if selected (using benefit IDs)
-    if (selectedBenefitId !== "all") {
+    // Filter by specific benefit if selected (using benefit IDs) - only when trust.benefits is enabled
+    if (trustBenefitsEnabled && selectedBenefitId !== "all") {
       filtered = filtered.filter(worker => 
         worker.benefitIds?.includes(selectedBenefitId)
       );
@@ -289,6 +396,21 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
       });
     }
     
+    // Filter by cardcheck status for each definition
+    if (cardcheckEnabled) {
+      const activeFilters = Object.entries(cardcheckFilters).filter(([_, value]) => value !== "all");
+      if (activeFilters.length > 0) {
+        filtered = filtered.filter(worker => {
+          const workerCardchecks = cardcheckMap.get(worker.id) || [];
+          return activeFilters.every(([definitionId, filterValue]) => {
+            const cardcheck = workerCardchecks.find(cc => cc.definitionId === definitionId);
+            const status = cardcheck?.status || 'none';
+            return status === filterValue;
+          });
+        });
+      }
+    }
+    
     // Filter by search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
@@ -306,7 +428,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     }
     
     return filtered;
-  }, [workersWithNames, searchQuery, selectedEmployerId, selectedBenefitId, contactStatusFilter]);
+  }, [workersWithNames, searchQuery, selectedEmployerId, selectedBenefitId, contactStatusFilter, trustBenefitsEnabled, cardcheckEnabled, cardcheckFilters, cardcheckMap]);
 
   const sortedWorkers = [...filteredWorkers].sort((a, b) => {
     const familyA = a.family || '';
@@ -335,19 +457,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
   const handleExportCSV = () => {
     // Prepare data for CSV export
     const csvData = sortedWorkers.map(worker => {
-      // Get current benefits for this worker
-      const currentBenefits = currentBenefitsMap.get(worker.id) || [];
-      const benefitsString = currentBenefits
-        .filter((b: any) => b && b.name)
-        .map((b: any) => {
-          if (b.employerName) {
-            return `${b.name} (${b.employerName})`;
-          }
-          return b.name;
-        })
-        .join('; ');
-
-      return {
+      const baseData: Record<string, string> = {
         'First Name': worker.given || '',
         'Middle Name': worker.middle || '',
         'Last Name': worker.family || '',
@@ -359,27 +469,45 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
         'Country': worker.address?.country || '',
         'Email': worker.email || '',
         'Phone Number': worker.phoneNumber || '',
-        'Current Benefits': benefitsString,
       };
+
+      if (trustBenefitsEnabled) {
+        const currentBenefits = currentBenefitsMap.get(worker.id) || [];
+        const benefitsString = currentBenefits
+          .filter((b: any) => b && b.name)
+          .map((b: any) => {
+            if (b.employerName) {
+              return `${b.name} (${b.employerName})`;
+            }
+            return b.name;
+          })
+          .join('; ');
+        baseData['Current Benefits'] = benefitsString;
+      }
+
+      return baseData;
     });
+
+    // Define columns based on whether trust benefits is enabled
+    const columns = [
+      'First Name',
+      'Middle Name',
+      'Last Name',
+      'SSN',
+      'Street',
+      'City',
+      'State',
+      'Postal Code',
+      'Country',
+      'Email',
+      'Phone Number',
+      ...(trustBenefitsEnabled ? ['Current Benefits'] : [])
+    ];
 
     // Generate CSV string
     const csv = stringify(csvData, {
       header: true,
-      columns: [
-        'First Name',
-        'Middle Name',
-        'Last Name',
-        'SSN',
-        'Street',
-        'City',
-        'State',
-        'Postal Code',
-        'Country',
-        'Email',
-        'Phone Number',
-        'Current Benefits'
-      ]
+      columns
     });
 
     // Create download link
@@ -442,21 +570,21 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
             </div>
           </div>
           
+          {/* Search Input - own row */}
+          <div className="relative mb-3">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={16} />
+            <Input
+              type="text"
+              placeholder="Search by name, email, phone, or SSN..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+              data-testid="input-search-workers"
+            />
+          </div>
+          
           {/* Filters */}
-          <div className="flex gap-3">
-            {/* Search Input */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={16} />
-              <Input
-                type="text"
-                placeholder="Search by name, email, phone, or SSN..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-                data-testid="input-search-workers"
-              />
-            </div>
-            
+          <div className="flex flex-wrap gap-3">
             {/* Employer Filter */}
             <div className="w-64">
               <Select
@@ -474,47 +602,17 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                   {employers
                     .filter(emp => emp.isActive)
                     .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((employer) => (
-                      <SelectItem 
-                        key={employer.id} 
-                        value={employer.id}
-                        data-testid={`select-employer-${employer.id}`}
-                      >
-                        {employer.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            {/* Benefit Filter */}
-            <div className="w-64">
-              <Select
-                value={selectedBenefitId}
-                onValueChange={setSelectedBenefitId}
-              >
-                <SelectTrigger data-testid="select-benefit-filter">
-                  <div className="flex items-center gap-2">
-                    <Star size={16} className="text-muted-foreground" />
-                    <SelectValue placeholder="All Benefits" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Benefits</SelectItem>
-                  {trustBenefits
-                    .filter(benefit => benefit.isActive)
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((benefit) => {
-                      const { Icon, color } = getIconByName(benefit.benefitTypeIcon);
+                    .map((employer) => {
+                      const icon = employer.typeId ? employerTypeIconMap.get(employer.typeId) : null;
                       return (
                         <SelectItem 
-                          key={benefit.id} 
-                          value={benefit.id}
-                          data-testid={`select-benefit-${benefit.id}`}
+                          key={employer.id} 
+                          value={employer.id}
+                          data-testid={`select-employer-${employer.id}`}
                         >
                           <div className="flex items-center gap-2">
-                            <Icon size={14} className={color} />
-                            <span>{benefit.name}</span>
+                            {renderIcon(icon || "Building", "h-4 w-4 text-muted-foreground")}
+                            <span>{employer.name}</span>
                           </div>
                         </SelectItem>
                       );
@@ -522,6 +620,44 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                 </SelectContent>
               </Select>
             </div>
+            
+            {/* Benefit Filter - only show when trust.benefits component is enabled */}
+            {trustBenefitsEnabled && (
+              <div className="w-64">
+                <Select
+                  value={selectedBenefitId}
+                  onValueChange={setSelectedBenefitId}
+                >
+                  <SelectTrigger data-testid="select-benefit-filter">
+                    <div className="flex items-center gap-2">
+                      <Star size={16} className="text-muted-foreground" />
+                      <SelectValue placeholder="All Benefits" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Benefits</SelectItem>
+                    {trustBenefits
+                      .filter(benefit => benefit.isActive)
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((benefit) => {
+                        const { Icon, color } = getIconByName(benefit.benefitTypeIcon);
+                        return (
+                          <SelectItem 
+                            key={benefit.id} 
+                            value={benefit.id}
+                            data-testid={`select-benefit-${benefit.id}`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Icon size={14} className={color} />
+                              <span>{benefit.name}</span>
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             
             {/* Contact Status Filter */}
             <div className="w-56">
@@ -588,6 +724,50 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                 </SelectContent>
               </Select>
             </div>
+            
+            {/* Card Check Status Filters - one per definition with icon */}
+            {cardcheckEnabled && cardcheckDefinitionsWithIcons.map((def) => (
+              <div key={def.id} className="w-48">
+                <Select
+                  value={cardcheckFilters[def.id] || "all"}
+                  onValueChange={(value) => setCardcheckFilters(prev => ({ ...prev, [def.id]: value }))}
+                >
+                  <SelectTrigger data-testid={`select-cardcheck-filter-${def.id}`}>
+                    <div className="flex items-center gap-2">
+                      {renderIcon(def.icon, "h-4 w-4 text-muted-foreground")}
+                      <SelectValue placeholder={`All ${def.name}`} />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All {def.name}</SelectItem>
+                    <SelectItem value="signed">
+                      <div className="flex items-center gap-2">
+                        {renderIcon(def.icon, "h-3.5 w-3.5 text-green-600")}
+                        <span>Signed</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="pending">
+                      <div className="flex items-center gap-2">
+                        {renderIcon(def.icon, "h-3.5 w-3.5 text-yellow-500")}
+                        <span>Pending signature</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="none">
+                      <div className="flex items-center gap-2">
+                        {renderIcon(def.icon, "h-3.5 w-3.5 text-yellow-500")}
+                        <span>None on file</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="revoked">
+                      <div className="flex items-center gap-2">
+                        {renderIcon(def.icon, "h-3.5 w-3.5 text-red-600")}
+                        <span>Revoked</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -613,11 +793,18 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Contact</span>
                 </th>
+                {trustBenefitsEnabled && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <span>Benefits</span>
+                  </th>
+                )}
+                {cardcheckEnabled && cardcheckStatusSummary.length > 0 && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <span>Card Checks</span>
+                  </th>
+                )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  <span>Benefits</span>
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  <span>Status</span>
+                  <span>Employment</span>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Actions</span>
@@ -763,84 +950,105 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                       )}
                     </div>
                   </td>
+                  {trustBenefitsEnabled && (
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <TooltipProvider>
+                        <div className="flex items-center gap-2" data-testid={`benefits-icons-${worker.id}`}>
+                          {worker.benefits && worker.benefits.length > 0 ? (
+                            worker.benefits.map((benefit, index) => {
+                              const { Icon, color } = getIconByName(benefit.typeIcon);
+                              return (
+                                <Tooltip key={index}>
+                                  <TooltipTrigger asChild>
+                                    <div className="cursor-help">
+                                      <Icon size={16} className={color} />
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>{benefit.name}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              );
+                            })
+                          ) : (
+                            <span className="text-sm text-muted-foreground italic">None</span>
+                          )}
+                        </div>
+                      </TooltipProvider>
+                    </td>
+                  )}
+                  {cardcheckEnabled && cardcheckStatusSummary.length > 0 && (
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <TooltipProvider>
+                        <div className="flex items-center gap-2" data-testid={`cardcheck-icons-${worker.id}`}>
+                          {(() => {
+                            const workerCardchecks = cardcheckMap.get(worker.id) || [];
+                            if (workerCardchecks.length === 0) {
+                              return <span className="text-sm text-muted-foreground italic">-</span>;
+                            }
+                            return workerCardchecks.map((cc) => {
+                              const statusColor = cc.status === 'signed' 
+                                ? 'text-green-600' 
+                                : cc.status === 'revoked' 
+                                  ? 'text-red-600' 
+                                  : 'text-yellow-500';
+                              const statusLabel = cc.status === 'signed' 
+                                ? 'Signed' 
+                                : cc.status === 'revoked' 
+                                  ? 'Revoked' 
+                                  : cc.status === 'pending'
+                                    ? 'Pending signature'
+                                    : 'None on file';
+                              return (
+                                <Tooltip key={cc.definitionId}>
+                                  <TooltipTrigger asChild>
+                                    <div className="cursor-help">
+                                      {renderIcon(cc.definitionIcon, `h-4 w-4 ${statusColor}`)}
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>{cc.definitionName}: {statusLabel}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              );
+                            });
+                          })()}
+                        </div>
+                      </TooltipProvider>
+                    </td>
+                  )}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <TooltipProvider>
-                      <div className="flex items-center gap-2" data-testid={`benefits-icons-${worker.id}`}>
-                        {worker.benefits && worker.benefits.length > 0 ? (
-                          worker.benefits.map((benefit, index) => {
-                            const { Icon, color } = getIconByName(benefit.typeIcon);
-                            return (
-                              <Tooltip key={index}>
-                                <TooltipTrigger asChild>
-                                  <div className="cursor-help">
-                                    <Icon size={16} className={color} />
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>{benefit.name}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            );
-                          })
+                      <div className="flex items-center gap-1" data-testid={`employment-indicators-${worker.id}`}>
+                        {worker.employers && worker.employers.length > 0 ? (
+                          worker.employers.map((employer) => (
+                            <Tooltip key={employer.id}>
+                              <TooltipTrigger asChild>
+                                <span 
+                                  className="cursor-help inline-flex"
+                                  style={{ color: employer.employmentStatusColor || "#6b7280" }}
+                                  tabIndex={0}
+                                  data-testid={`employment-icon-${employer.id}`}
+                                >
+                                  {renderIcon(employer.employerTypeIcon || "Building", "h-5 w-5")}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <div className="text-sm">
+                                  <p className="font-medium">{employer.name}</p>
+                                  <p className="text-muted-foreground">
+                                    {employer.employmentStatusName || "No status"}
+                                    {employer.isHome && " (Home)"}
+                                  </p>
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          ))
                         ) : (
-                          <span className="text-sm text-muted-foreground italic">None</span>
+                          <span className="text-xs text-muted-foreground italic">None</span>
                         )}
                       </div>
                     </TooltipProvider>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <HoverCard>
-                      <HoverCardTrigger asChild>
-                        <div 
-                          className="cursor-pointer"
-                          data-testid={`status-indicator-${worker.id}`}
-                        >
-                          {worker.workStatusName ? (
-                            <Badge 
-                              variant={
-                                worker.workStatusName.toLowerCase() === 'active' ? 'default' :
-                                worker.workStatusName.toLowerCase() === 'terminated' ? 'destructive' :
-                                'secondary'
-                              }
-                              className="text-xs"
-                            >
-                              {worker.workStatusName}
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-xs text-muted-foreground">
-                              No Status
-                            </Badge>
-                          )}
-                        </div>
-                      </HoverCardTrigger>
-                      <HoverCardContent className="w-64" data-testid={`employers-hover-${worker.id}`}>
-                        <div className="space-y-2">
-                          <p className="text-sm font-semibold text-foreground">
-                            {worker.contactName}
-                          </p>
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground uppercase">Employers</p>
-                            {worker.employers && worker.employers.length > 0 ? (
-                              <div className="flex flex-col gap-1">
-                                {worker.employers.map((employer) => (
-                                  <Badge
-                                    key={employer.id}
-                                    variant={employer.isHome ? "default" : "secondary"}
-                                    className="text-xs whitespace-normal break-words max-w-full inline-flex items-start"
-                                    data-testid={`badge-employer-${employer.id}`}
-                                  >
-                                    {employer.isHome && <Home size={10} className="mr-1 mt-0.5 flex-shrink-0" />}
-                                    <span className="break-words">{employer.name}</span>
-                                  </Badge>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-sm text-muted-foreground italic">No employers</span>
-                            )}
-                          </div>
-                        </div>
-                      </HoverCardContent>
-                    </HoverCard>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <div className="flex items-center space-x-2">

@@ -2,7 +2,8 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useParams, useLocation } from "wouter";
 import { Loader2, ArrowLeft, User, FileText, Calendar, CheckCircle, XCircle, Clock, Square, CheckSquare, DollarSign } from "lucide-react";
-import { Cardcheck, CardcheckDefinition, Worker, Contact } from "@shared/schema";
+import { Cardcheck, CardcheckDefinition, Worker, Contact, BargainingUnit } from "@shared/schema";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +33,7 @@ export default function CardcheckViewPage() {
   const id = params.id;
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { hasComponent } = useAuth();
   const [signModalOpen, setSignModalOpen] = useState(false);
   const [checkedBoxes, setCheckedBoxes] = useState<Record<number, boolean>>({});
   const [rateValue, setRateValue] = useState<string>("");
@@ -54,6 +56,12 @@ export default function CardcheckViewPage() {
   const { data: contact } = useQuery<Contact>({
     queryKey: ["/api/contacts", worker?.contactId],
     enabled: !!worker?.contactId,
+  });
+
+  // Fetch bargaining unit for the cardcheck (if component enabled and cardcheck has one)
+  const { data: bargainingUnit } = useQuery<BargainingUnit>({
+    queryKey: ["/api/bargaining-units", cardcheck?.bargainingUnitId],
+    enabled: hasComponent("bargainingunits") && !!cardcheck?.bargainingUnitId,
   });
 
   const handleSignSuccess = () => {
@@ -90,6 +98,11 @@ export default function CardcheckViewPage() {
 
   const buildDocRender = (): string => {
     let docRender = definition?.body || "";
+    
+    // Include bargaining unit in the signed document if component is enabled and cardcheck has one
+    if (hasComponent("bargainingunits") && bargainingUnit) {
+      docRender += `<div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #ddd;"><p style="font-weight: 600; margin-bottom: 8px;">Bargaining Unit:</p><p>${escapeHtml(bargainingUnit.name)}</p></div>`;
+    }
     
     if (requiredCheckboxes.length > 0) {
       const checkboxHtml = requiredCheckboxes
@@ -251,6 +264,14 @@ export default function CardcheckViewPage() {
                   <p className="text-sm text-muted-foreground font-mono">
                     [{worker.siriusId}]
                   </p>
+                  {hasComponent("bargainingunits") && (
+                    <div className="mt-2">
+                      <p className="text-sm text-muted-foreground">Bargaining Unit:</p>
+                      <p className="text-sm font-medium" data-testid="text-bargaining-unit">
+                        {bargainingUnit?.name || "(None)"}
+                      </p>
+                    </div>
+                  )}
                   <Link href={`/workers/${worker.id}`}>
                     <Button variant="outline" size="sm" className="mt-2">
                       View Worker
