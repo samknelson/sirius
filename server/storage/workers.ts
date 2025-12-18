@@ -80,6 +80,7 @@ export interface WorkerStorage {
   updateWorkerContactGender(workerId: string, gender: string | null, genderNota: string | null): Promise<Worker | undefined>;
   updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined>;
   updateWorkerStatus(workerId: string, denormWsId: string | null): Promise<Worker | undefined>;
+  syncWorkerEmployerDenorm(workerId: string): Promise<void>;
   deleteWorker(id: string): Promise<boolean>;
   // Worker benefits methods
   getWorkerBenefits(workerId: string): Promise<any[]>;
@@ -475,6 +476,34 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .returning();
       
       return updatedWorker || undefined;
+    },
+
+    async syncWorkerEmployerDenorm(workerId: string): Promise<void> {
+      const result = await db.execute(sql`
+        WITH latest_hours AS (
+          SELECT DISTINCT ON (employer_id)
+            employer_id,
+            home
+          FROM worker_hours
+          WHERE worker_id = ${workerId}
+          ORDER BY employer_id, year DESC, month DESC, day DESC
+        )
+        SELECT 
+          (SELECT employer_id FROM latest_hours WHERE home = true LIMIT 1) as home_employer_id,
+          ARRAY(SELECT employer_id FROM latest_hours) as employer_ids
+      `);
+      
+      const row = result.rows[0] as { home_employer_id: string | null; employer_ids: string[] | null } | undefined;
+      const homeEmployerId = row?.home_employer_id || null;
+      const employerIds = row?.employer_ids?.length ? row.employer_ids : null;
+      
+      await db
+        .update(workers)
+        .set({
+          denormHomeEmployerId: homeEmployerId,
+          denormEmployerIds: employerIds,
+        })
+        .where(eq(workers.id, workerId));
     },
 
     async updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined> {
