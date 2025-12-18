@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../accessControl";
 import { policies } from "../policies";
+import { requireComponent } from "./components";
 import { employerMonthlyPluginConfigSchema } from "@shared/schema";
 import { getPluginMetadata } from "@shared/pluginMetadata";
 
@@ -248,7 +249,7 @@ export function registerDashboardRoutes(
   });
 
   // GET /api/dashboard-plugins/my-steward - Get stewards for current user's home employer and bargaining unit
-  app.get("/api/dashboard-plugins/my-steward", requireAuth, async (req, res) => {
+  app.get("/api/dashboard-plugins/my-steward", requireAuth, requireComponent("worker.steward"), async (req, res) => {
     try {
       const user = req.user as any;
       const replitUserId = user.claims.sub;
