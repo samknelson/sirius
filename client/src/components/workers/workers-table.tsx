@@ -1021,7 +1021,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                     <TooltipProvider>
                       <div className="flex items-center gap-1" data-testid={`employment-indicators-${worker.id}`}>
                         {worker.employers && worker.employers.length > 0 ? (
-                          worker.employers.map((employer) => (
+                          [...worker.employers].sort((a, b) => (b.isHome ? 1 : 0) - (a.isHome ? 1 : 0)).map((employer) => (
                             <Tooltip key={employer.id}>
                               <TooltipTrigger asChild>
                                 <span 
