@@ -192,7 +192,11 @@ export class DatabaseStorage implements IStorage {
       cardcheckLoggingConfig
     );
     this.esigs = withStorageLogging(
-      createEsigStorage(),
+      createEsigStorage({
+        getFileById: this.files.getById.bind(this.files),
+        updateFile: this.files.update.bind(this.files),
+        updateCardcheck: this.cardchecks.updateCardcheck.bind(this.cardchecks),
+      }),
       esigLoggingConfig
     );
     this.sessions = withStorageLogging(

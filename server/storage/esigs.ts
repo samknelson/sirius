@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { esigs, cardchecks, cardcheckDefinitions, files, users, workers, contacts, type Esig, type InsertEsig, type Cardcheck } from "@shared/schema";
+import { esigs, cardchecks, cardcheckDefinitions, files, users, workers, contacts, type Esig, type InsertEsig, type Cardcheck, type InsertCardcheck, type File } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 import crypto from "crypto";
@@ -29,6 +29,13 @@ export interface SignCardcheckResult {
   cardcheck: Cardcheck;
 }
 
+// Dependency interfaces for cross-module operations
+export interface EsigStorageDependencies {
+  getFileById: (id: string) => Promise<File | undefined>;
+  updateFile: (id: string, updates: Partial<{ entityType: string; entityId: string }>) => Promise<File | undefined>;
+  updateCardcheck: (id: string, data: Partial<InsertCardcheck>) => Promise<Cardcheck | undefined>;
+}
+
 export interface EsigStorage {
   getEsigById(id: string): Promise<EsigWithSigner | undefined>;
   createEsig(data: InsertEsig): Promise<Esig>;
@@ -36,7 +43,7 @@ export interface EsigStorage {
   signCardcheck(params: SignCardcheckParams): Promise<SignCardcheckResult>;
 }
 
-export function createEsigStorage(): EsigStorage {
+export function createEsigStorage(deps: EsigStorageDependencies): EsigStorage {
   const storage: EsigStorage = {
     async getEsigById(id: string): Promise<EsigWithSigner | undefined> {
       const result = await db
@@ -88,61 +95,55 @@ export function createEsigStorage(): EsigStorage {
       const { cardcheckId, userId, docRender, docType, esigData, signatureType, fileId, rate } = params;
       const docHash = crypto.createHash("sha256").update(docRender).digest("hex");
 
-      return db.transaction(async (tx) => {
-        // If signing with an uploaded file, validate file ownership
-        if (fileId && signatureType === "upload") {
-          const [file] = await tx
-            .select()
-            .from(files)
-            .where(eq(files.id, fileId));
-          
-          if (!file) {
-            throw new Error("Referenced file not found");
-          }
-          
-          if (file.uploadedBy !== userId) {
-            throw new Error("You are not authorized to sign with this file");
-          }
+      // Validate file ownership if signing with uploaded file
+      if (fileId && signatureType === "upload") {
+        const file = await deps.getFileById(fileId);
+        
+        if (!file) {
+          throw new Error("Referenced file not found");
         }
-
-        const [newEsig] = await tx
-          .insert(esigs)
-          .values({
-            userId,
-            status: "signed",
-            signedDate: new Date(),
-            type: signatureType === "upload" ? "upload" : "online",
-            docRender,
-            docHash,
-            esig: esigData,
-            docType,
-          })
-          .returning();
-
-        // Link the file to the esig if present
-        if (fileId && signatureType === "upload") {
-          await tx
-            .update(files)
-            .set({
-              entityType: "esig",
-              entityId: newEsig.id,
-            })
-            .where(eq(files.id, fileId));
+        
+        if (file.uploadedBy !== userId) {
+          throw new Error("You are not authorized to sign with this file");
         }
+      }
 
-        const [updatedCardcheck] = await tx
-          .update(cardchecks)
-          .set({
-            status: "signed",
-            signedDate: new Date(),
-            esigId: newEsig.id,
-            rate: rate,
-          })
-          .where(eq(cardchecks.id, cardcheckId))
-          .returning();
+      // Create the esig record
+      const [newEsig] = await db
+        .insert(esigs)
+        .values({
+          userId,
+          status: "signed",
+          signedDate: new Date(),
+          type: signatureType === "upload" ? "upload" : "online",
+          docRender,
+          docHash,
+          esig: esigData,
+          docType,
+        })
+        .returning();
 
-        return { esig: newEsig, cardcheck: updatedCardcheck };
+      // Link the file to the esig if present - use files storage
+      if (fileId && signatureType === "upload") {
+        await deps.updateFile(fileId, {
+          entityType: "esig",
+          entityId: newEsig.id,
+        });
+      }
+
+      // Update the cardcheck - use cardcheck storage
+      const updatedCardcheck = await deps.updateCardcheck(cardcheckId, {
+        status: "signed",
+        signedDate: new Date(),
+        esigId: newEsig.id,
+        rate: rate,
       });
+
+      if (!updatedCardcheck) {
+        throw new Error("Failed to update cardcheck");
+      }
+
+      return { esig: newEsig, cardcheck: updatedCardcheck };
     },
   };
 
