@@ -169,6 +169,22 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     queryKey: ["/api/employers"],
   });
 
+  // Fetch employer types for filter dropdown icons
+  const { data: employerTypes = [] } = useQuery<{ id: string; name: string; data?: { icon?: string } | null }[]>({
+    queryKey: ["/api/options/employer-type"],
+  });
+
+  // Create map for employer type icons
+  const employerTypeIconMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const type of employerTypes) {
+      if (type.data?.icon) {
+        map.set(type.id, type.data.icon);
+      }
+    }
+    return map;
+  }, [employerTypes]);
+
   // Fetch trust benefits for filter dropdown (only when trust.benefits is enabled)
   const { data: trustBenefits = [] } = useQuery<any[]>({
     queryKey: ["/api/trust-benefits"],
@@ -585,15 +601,21 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                   {employers
                     .filter(emp => emp.isActive)
                     .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((employer) => (
-                      <SelectItem 
-                        key={employer.id} 
-                        value={employer.id}
-                        data-testid={`select-employer-${employer.id}`}
-                      >
-                        {employer.name}
-                      </SelectItem>
-                    ))}
+                    .map((employer) => {
+                      const icon = employer.typeId ? employerTypeIconMap.get(employer.typeId) : null;
+                      return (
+                        <SelectItem 
+                          key={employer.id} 
+                          value={employer.id}
+                          data-testid={`select-employer-${employer.id}`}
+                        >
+                          <div className="flex items-center gap-2">
+                            {renderIcon(icon || "Building", "h-4 w-4 text-muted-foreground")}
+                            <span>{employer.name}</span>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
                 </SelectContent>
               </Select>
             </div>
