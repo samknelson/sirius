@@ -133,6 +133,145 @@ interface StewardAssemblyDependencies {
   workerStewardAssignments: { getAssignmentsByEmployerId(employerId: string): Promise<WorkerStewardAssignment[]> };
 }
 
+export interface WorkerRepresentativeDetails {
+  id: string;
+  workerId: string;
+  employerId: string;
+  bargainingUnitId: string;
+  employer: {
+    id: string;
+    name: string;
+  };
+  bargainingUnit: {
+    id: string;
+    name: string;
+  };
+  steward: {
+    id: string;
+    contactId: string;
+    displayName: string;
+    email: string | null;
+    primaryPhoneNumber: string | null;
+  };
+  matchesWorkerBargainingUnit: boolean;
+}
+
+interface RepresentativeAssemblyDependencies {
+  workers: { getWorker(id: string): Promise<{ id: string; contactId: string; bargainingUnitId: string | null } | undefined> };
+  contacts: {
+    getContact(id: string): Promise<{ id: string; displayName: string; email: string | null } | undefined>;
+    phoneNumbers: {
+      getPhoneNumbersByContact(contactId: string): Promise<{ phoneNumber: string; isPrimary: boolean }[]>;
+    };
+  };
+  employers: { getEmployer(id: string): Promise<{ id: string; name: string } | undefined> };
+  bargainingUnits: { getBargainingUnitById(id: string): Promise<{ id: string; name: string } | undefined> };
+  workerHours: { getWorkerHoursCurrent(workerId: string): Promise<{ employerId: string; employmentStatus: { employed: boolean } }[]> };
+  workerStewardAssignments: { getAssignmentsByEmployerId(employerId: string): Promise<WorkerStewardAssignment[]> };
+}
+
+export async function assembleWorkerRepresentatives(
+  storage: RepresentativeAssemblyDependencies,
+  workerId: string
+): Promise<WorkerRepresentativeDetails[]> {
+  const worker = await storage.workers.getWorker(workerId);
+  if (!worker) {
+    return [];
+  }
+
+  const currentEmployment = await storage.workerHours.getWorkerHoursCurrent(workerId);
+  const activeEmployerIds = currentEmployment
+    .filter(e => e.employmentStatus?.employed)
+    .map(e => e.employerId);
+
+  if (activeEmployerIds.length === 0) {
+    return [];
+  }
+
+  const assignmentsByEmployer = await Promise.all(
+    activeEmployerIds.map(employerId => storage.workerStewardAssignments.getAssignmentsByEmployerId(employerId))
+  );
+
+  const allAssignments = assignmentsByEmployer.flat();
+  if (allAssignments.length === 0) {
+    return [];
+  }
+
+  const stewardWorkerIds = [...new Set(allAssignments.map(a => a.workerId))];
+  const employerIds = [...new Set(allAssignments.map(a => a.employerId))];
+  const bargainingUnitIds = [...new Set(allAssignments.map(a => a.bargainingUnitId))];
+
+  const [stewardWorkersData, employersData, bargainingUnitsData] = await Promise.all([
+    Promise.all(stewardWorkerIds.map(id => storage.workers.getWorker(id))),
+    Promise.all(employerIds.map(id => storage.employers.getEmployer(id))),
+    Promise.all(bargainingUnitIds.map(id => storage.bargainingUnits.getBargainingUnitById(id))),
+  ]);
+
+  const stewardWorkerMap = new Map(stewardWorkersData.filter(Boolean).map(w => [w!.id, w!]));
+  const employerMap = new Map(employersData.filter(Boolean).map(e => [e!.id, e!]));
+  const bargainingUnitMap = new Map(bargainingUnitsData.filter(Boolean).map(bu => [bu!.id, bu!]));
+
+  const contactIds = [...new Set([...stewardWorkerMap.values()].map(w => w.contactId))];
+  
+  const [contactsData, phoneNumbersData] = await Promise.all([
+    Promise.all(contactIds.map(id => storage.contacts.getContact(id))),
+    Promise.all(contactIds.map(id => storage.contacts.phoneNumbers.getPhoneNumbersByContact(id))),
+  ]);
+
+  const contactMap = new Map(contactsData.filter(Boolean).map(c => [c!.id, c!]));
+  const phoneNumberMap = new Map(contactIds.map((id, idx) => {
+    const phones = phoneNumbersData[idx];
+    const primary = phones.find(p => p.isPrimary);
+    return [id, primary?.phoneNumber || null];
+  }));
+
+  const results: WorkerRepresentativeDetails[] = [];
+
+  for (const assignment of allAssignments) {
+    const stewardWorker = stewardWorkerMap.get(assignment.workerId);
+    if (!stewardWorker) {
+      console.warn(`[worker-representatives] Steward assignment ${assignment.id} references missing worker ${assignment.workerId}, skipping`);
+      continue;
+    }
+
+    const contact = contactMap.get(stewardWorker.contactId);
+    if (!contact) {
+      console.warn(`[worker-representatives] Steward worker ${stewardWorker.id} references missing contact ${stewardWorker.contactId}, skipping`);
+      continue;
+    }
+
+    const employer = employerMap.get(assignment.employerId);
+    if (!employer) {
+      console.warn(`[worker-representatives] Assignment ${assignment.id} references missing employer ${assignment.employerId}, skipping`);
+      continue;
+    }
+
+    const bargainingUnit = bargainingUnitMap.get(assignment.bargainingUnitId);
+    const primaryPhoneNumber = phoneNumberMap.get(stewardWorker.contactId) || null;
+
+    results.push({
+      id: assignment.id,
+      workerId: assignment.workerId,
+      employerId: assignment.employerId,
+      bargainingUnitId: assignment.bargainingUnitId,
+      employer: { id: employer.id, name: employer.name },
+      bargainingUnit: bargainingUnit 
+        ? { id: bargainingUnit.id, name: bargainingUnit.name }
+        : { id: assignment.bargainingUnitId, name: "Unknown" },
+      steward: {
+        id: stewardWorker.id,
+        contactId: stewardWorker.contactId,
+        displayName: contact.displayName,
+        email: contact.email,
+        primaryPhoneNumber,
+      },
+      matchesWorkerBargainingUnit: worker.bargainingUnitId === assignment.bargainingUnitId,
+    });
+  }
+
+  return results;
+}
+
 export async function assembleEmployerStewardDetails(
   storage: StewardAssemblyDependencies,
   employerId: string

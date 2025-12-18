@@ -27,7 +27,7 @@ export function useWorkerLayout() {
 }
 
 interface WorkerLayoutProps {
-  activeTab: "details" | "identity" | "name" | "email" | "ids" | "addresses" | "phone-numbers" | "birth-date" | "gender" | "work-status" | "employment" | "current" | "history" | "monthly" | "daily" | "comm" | "comm-history" | "send-sms" | "send-email" | "send-postal" | "benefits" | "benefits-history" | "benefits-eligibility" | "benefits-scan" | "union" | "cardchecks" | "bargaining-unit" | "steward" | "logs" | "delete";
+  activeTab: "details" | "identity" | "name" | "email" | "ids" | "addresses" | "phone-numbers" | "birth-date" | "gender" | "work-status" | "employment" | "current" | "history" | "monthly" | "daily" | "comm" | "comm-history" | "send-sms" | "send-email" | "send-postal" | "benefits" | "benefits-history" | "benefits-eligibility" | "benefits-scan" | "union" | "cardchecks" | "bargaining-unit" | "steward" | "representatives" | "logs" | "delete";
   children: ReactNode;
 }
 
@@ -175,6 +175,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     ...(hasComponent("cardcheck") ? [{ id: "cardchecks", label: "Cardchecks", href: `/workers/${worker.id}/union/cardchecks` }] : []),
     ...(hasComponent("bargainingunits") ? [{ id: "bargaining-unit", label: "Bargaining Unit", href: `/workers/${worker.id}/union/bargaining-unit` }] : []),
     ...(hasComponent("worker.steward") ? [{ id: "steward", label: "Steward", href: `/workers/${worker.id}/union/steward` }] : []),
+    ...(hasComponent("worker.steward") ? [{ id: "representatives", label: "Representatives", href: `/workers/${worker.id}/union/representatives` }] : []),
   ];
 
   const contactSubTabs = [
@@ -209,7 +210,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
   const isCommSubTab = ["comm-history", "send-sms", "send-email", "send-postal"].includes(activeTab);
   const isEmploymentSubTab = ["current", "history", "monthly", "daily"].includes(activeTab);
   const isBenefitsSubTab = ["benefits-history", "benefits-eligibility", "benefits-scan"].includes(activeTab);
-  const isUnionSubTab = ["cardchecks", "bargaining-unit", "steward"].includes(activeTab);
+  const isUnionSubTab = ["cardchecks", "bargaining-unit", "steward", "representatives"].includes(activeTab);
   const showIdentitySubTabs = isIdentitySubTab;
   const showContactSubTabs = isContactSubTab;
   const showCommSubTabs = isCommSubTab;

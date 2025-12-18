@@ -3,7 +3,7 @@ import { IStorage } from "../storage";
 import { policies } from "../policies";
 import { insertWorkerStewardAssignmentSchema } from "@shared/schema";
 import { z } from "zod";
-import { assembleEmployerStewardDetails } from "../storage/worker-steward-assignments";
+import { assembleEmployerStewardDetails, assembleWorkerRepresentatives } from "../storage/worker-steward-assignments";
 
 type RequireAccess = (policy: any) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
@@ -24,6 +24,17 @@ export function registerWorkerStewardAssignmentRoutes(
     } catch (error: any) {
       console.error("Error fetching steward assignments:", error);
       res.status(500).json({ message: error.message || "Failed to fetch steward assignments" });
+    }
+  });
+
+  app.get("/api/workers/:workerId/representatives", requireAuth, async (req, res) => {
+    try {
+      const { workerId } = req.params;
+      const representatives = await assembleWorkerRepresentatives(storage, workerId);
+      res.json(representatives);
+    } catch (error: any) {
+      console.error("Error fetching worker representatives:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch representatives" });
     }
   });
 

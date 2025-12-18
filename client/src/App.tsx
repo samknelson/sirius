@@ -27,6 +27,7 @@ import WorkerGender from "@/pages/worker-gender";
 import WorkerWorkStatus from "@/pages/worker-work-status";
 import WorkerBargainingUnit from "@/pages/worker-bargaining-unit";
 import WorkerSteward from "@/pages/worker-steward";
+import WorkerRepresentatives from "@/pages/worker-representatives";
 import WorkerBenefitsHistory from "@/pages/worker-benefits-history";
 import WorkerBenefitsEligibility from "@/pages/worker-benefits-eligibility";
 import WorkerBenefitsScan from "@/pages/worker-benefits-scan";
@@ -397,6 +398,14 @@ function Router() {
         <ProtectedRoute permission="workers.view" component="worker.steward">
           <AuthenticatedLayout>
             <WorkerSteward />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/union/representatives">
+        <ProtectedRoute permission="workers.view" component="worker.steward">
+          <AuthenticatedLayout>
+            <WorkerRepresentatives />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
