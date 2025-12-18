@@ -487,21 +487,31 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           FROM worker_hours
           WHERE worker_id = ${workerId}
           ORDER BY employer_id, year DESC, month DESC, day DESC
+        ),
+        latest_ws AS (
+          SELECT ws_id
+          FROM worker_wsh
+          WHERE worker_id = ${workerId}
+          ORDER BY date DESC, created_at DESC NULLS LAST, id DESC
+          LIMIT 1
         )
         SELECT 
           (SELECT employer_id FROM latest_hours WHERE home = true LIMIT 1) as home_employer_id,
-          ARRAY(SELECT employer_id FROM latest_hours) as employer_ids
+          ARRAY(SELECT employer_id FROM latest_hours) as employer_ids,
+          (SELECT ws_id FROM latest_ws) as latest_ws_id
       `);
       
-      const row = result.rows[0] as { home_employer_id: string | null; employer_ids: string[] | null } | undefined;
+      const row = result.rows[0] as { home_employer_id: string | null; employer_ids: string[] | null; latest_ws_id: string | null } | undefined;
       const homeEmployerId = row?.home_employer_id || null;
       const employerIds = row?.employer_ids?.length ? row.employer_ids : null;
+      const denormWsId = homeEmployerId ? (row?.latest_ws_id || null) : null;
       
       await db
         .update(workers)
         .set({
           denormHomeEmployerId: homeEmployerId,
           denormEmployerIds: employerIds,
+          denormWsId: denormWsId,
         })
         .where(eq(workers.id, workerId));
     },

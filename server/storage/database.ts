@@ -161,6 +161,7 @@ export class DatabaseStorage implements IStorage {
       createWorkerWshStorage(
         this.workers.updateWorkerStatus.bind(this.workers),
         async (workerId: string) => {
+          await this.workers.syncWorkerEmployerDenorm(workerId);
           await this.wmbScanQueue.invalidateWorkerScans(workerId);
         }
       ),
