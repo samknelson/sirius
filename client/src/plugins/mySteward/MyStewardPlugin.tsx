@@ -73,6 +73,10 @@ export function MyStewardPlugin({ enabledComponents }: DashboardPluginProps) {
   }
 
   if (data.stewards.length === 0) {
+    const emptyMessage = data.employer && data.bargainingUnit
+      ? `No steward is assigned to ${data.bargainingUnit.name} at ${data.employer.name}.`
+      : "No steward is currently assigned for your employer and bargaining unit.";
+    
     return (
       <Card data-testid="plugin-my-steward">
         <CardHeader>
@@ -82,16 +86,9 @@ export function MyStewardPlugin({ enabledComponents }: DashboardPluginProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            {data.employer && data.bargainingUnit && (
-              <p className="text-sm text-muted-foreground">
-                For {data.employer.name} - {data.bargainingUnit.name}
-              </p>
-            )}
-            <p className="text-sm text-muted-foreground">
-              No steward is currently assigned for your employer and bargaining unit.
-            </p>
-          </div>
+          <p className="text-sm text-muted-foreground" data-testid="text-no-steward">
+            {emptyMessage}
+          </p>
         </CardContent>
       </Card>
     );
