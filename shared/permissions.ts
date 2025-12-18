@@ -204,6 +204,11 @@ export function initializePermissions(): void {
       key: 'employer.usermanage',
       description: 'Manage user accounts for employer contacts',
       module: 'core'
+    },
+    {
+      key: 'workers.steward',
+      description: 'Access to shop steward functionality for workers',
+      module: 'core'
     }
   ];
 
