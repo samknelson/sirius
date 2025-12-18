@@ -123,6 +123,9 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           a.country as address_country,
           a.is_primary as address_is_primary,
           ws.name as work_status_name,
+          bu.id as bargaining_unit_id,
+          bu.sirius_id as bargaining_unit_code,
+          bu.name as bargaining_unit_name,
           COALESCE(
             (
               SELECT json_agg(DISTINCT bt.name)
@@ -169,6 +172,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         FROM workers w
         INNER JOIN contacts c ON w.contact_id = c.id
         LEFT JOIN options_worker_ws ws ON w.denorm_ws_id = ws.id
+        LEFT JOIN bargaining_units bu ON w.bargaining_unit_id = bu.id
         LEFT JOIN LATERAL (
           SELECT phone_number, is_primary
           FROM contact_phone

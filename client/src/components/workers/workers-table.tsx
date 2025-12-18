@@ -65,6 +65,8 @@ interface WorkerWithContact extends Worker {
   benefitIds?: string[];
   benefits?: WorkerBenefit[];
   workStatusName?: string;
+  bargainingUnitCode?: string | null;
+  bargainingUnitName?: string | null;
 }
 
 interface EmployerInfo {
@@ -137,6 +139,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
   const [selectedBenefitId, setSelectedBenefitId] = useState<string>("all");
   const [contactStatusFilter, setContactStatusFilter] = useState<string>("all");
   const [selectedEmployerTypeId, setSelectedEmployerTypeId] = useState<string>("all");
+  const [selectedBargainingUnitId, setSelectedBargainingUnitId] = useState<string>("all");
   const [cardcheckFilters, setCardcheckFilters] = useState<Record<string, string>>({});
 
   // Fetch component configs to check if trust benefits is enabled
@@ -173,6 +176,11 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
   // Fetch employer types for filter dropdown icons
   const { data: employerTypes = [] } = useQuery<{ id: string; name: string; data?: Record<string, unknown> | null }[]>({
     queryKey: ["/api/employer-types"],
+  });
+
+  // Fetch bargaining units for filter dropdown
+  const { data: bargainingUnits = [] } = useQuery<{ id: string; siriusId: string; name: string }[]>({
+    queryKey: ["/api/bargaining-units"],
   });
 
   
@@ -347,6 +355,9 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
       benefitIds,
       benefits,
       workStatusName: worker.work_status_name || '',
+      bargainingUnitId: worker.bargaining_unit_id || undefined,
+      bargainingUnitCode: worker.bargaining_unit_code || undefined,
+      bargainingUnitName: worker.bargaining_unit_name || undefined,
     };
   });
 
@@ -365,6 +376,13 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     if (selectedEmployerTypeId !== "all") {
       filtered = filtered.filter(worker => 
         worker.employers?.some(emp => emp.employerTypeId === selectedEmployerTypeId)
+      );
+    }
+    
+    // Filter by bargaining unit if selected
+    if (selectedBargainingUnitId !== "all") {
+      filtered = filtered.filter(worker => 
+        worker.bargainingUnitId === selectedBargainingUnitId
       );
     }
     
@@ -437,7 +455,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     }
     
     return filtered;
-  }, [workersWithNames, searchQuery, selectedEmployerId, selectedEmployerTypeId, selectedBenefitId, contactStatusFilter, trustBenefitsEnabled, cardcheckEnabled, cardcheckFilters, cardcheckMap]);
+  }, [workersWithNames, searchQuery, selectedEmployerId, selectedEmployerTypeId, selectedBargainingUnitId, selectedBenefitId, contactStatusFilter, trustBenefitsEnabled, cardcheckEnabled, cardcheckFilters, cardcheckMap]);
 
   const sortedWorkers = [...filteredWorkers].sort((a, b) => {
     const familyA = a.family || '';
@@ -665,6 +683,35 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
               </Select>
             </div>
             
+            {/* Bargaining Unit Filter */}
+            <div className="w-48">
+              <Select
+                value={selectedBargainingUnitId}
+                onValueChange={setSelectedBargainingUnitId}
+              >
+                <SelectTrigger data-testid="select-bargaining-unit-filter">
+                  <div className="flex items-center gap-2">
+                    <FileText size={16} className="text-muted-foreground" />
+                    <SelectValue placeholder="All Units" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Units</SelectItem>
+                  {bargainingUnits
+                    .sort((a, b) => a.siriusId.localeCompare(b.siriusId))
+                    .map((unit) => (
+                      <SelectItem 
+                        key={unit.id} 
+                        value={unit.id}
+                        data-testid={`select-bargaining-unit-${unit.id}`}
+                      >
+                        <span>{unit.siriusId} - {unit.name}</span>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
             {/* Benefit Filter - only show when trust.benefits component is enabled */}
             {trustBenefitsEnabled && (
               <div className="w-64">
@@ -837,6 +884,9 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Contact</span>
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <span>Unit</span>
+                </th>
                 {trustBenefitsEnabled && (
                   <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     <span>Benefits</span>
@@ -993,6 +1043,27 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                         </Link>
                       )}
                     </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <TooltipProvider>
+                      {worker.bargainingUnitCode ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span 
+                              className="text-sm font-medium text-foreground cursor-help"
+                              data-testid={`unit-code-${worker.id}`}
+                            >
+                              {worker.bargainingUnitCode}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{worker.bargainingUnitName}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <span className="text-sm text-muted-foreground italic">-</span>
+                      )}
+                    </TooltipProvider>
                   </td>
                   {trustBenefitsEnabled && (
                     <td className="px-6 py-4 whitespace-nowrap">
