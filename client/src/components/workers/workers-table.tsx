@@ -178,8 +178,15 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
   const employerTypeIconMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const type of employerTypes) {
-      if (type.data?.icon) {
-        map.set(type.id, type.data.icon);
+      // Icon can be stored as a string or as an object with a name property (from icon picker)
+      const iconData = type.data?.icon;
+      const iconName = typeof iconData === "string" 
+        ? iconData 
+        : (iconData && typeof iconData === "object" && "name" in iconData) 
+          ? (iconData as { name: string }).name 
+          : null;
+      if (iconName) {
+        map.set(type.id, iconName);
       }
     }
     return map;
