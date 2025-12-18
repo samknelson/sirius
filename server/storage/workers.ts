@@ -63,6 +63,7 @@ export interface WorkerStorage {
   getWorkersCurrentBenefits(month?: number, year?: number): Promise<WorkerCurrentBenefits[]>;
   getWorker(id: string): Promise<Worker | undefined>;
   getWorkerBySSN(ssn: string): Promise<Worker | undefined>;
+  getWorkerByContactEmail(email: string): Promise<Worker | undefined>;
   createWorker(name: string): Promise<Worker>;
   // Update methods that delegate to contact storage (contact storage already has logging)
   updateWorkerContactName(workerId: string, name: string): Promise<Worker | undefined>;
@@ -299,6 +300,25 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .where(sql`regexp_replace(${workers.ssn}, '[^0-9]', '', 'g') = ${normalizedSSN}`);
       
       return worker || undefined;
+    },
+
+    async getWorkerByContactEmail(email: string): Promise<Worker | undefined> {
+      const [result] = await db
+        .select({
+          id: workers.id,
+          siriusId: workers.siriusId,
+          contactId: workers.contactId,
+          ssn: workers.ssn,
+          denormWsId: workers.denormWsId,
+          denormHomeEmployerId: workers.denormHomeEmployerId,
+          denormEmployerIds: workers.denormEmployerIds,
+          bargainingUnitId: workers.bargainingUnitId,
+        })
+        .from(workers)
+        .innerJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(sql`LOWER(${contacts.email}) = LOWER(${email})`);
+      
+      return result || undefined;
     },
 
     async createWorker(name: string): Promise<Worker> {
