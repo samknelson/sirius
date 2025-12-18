@@ -170,7 +170,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
   });
 
   // Fetch employer types for filter dropdown icons
-  const { data: employerTypes = [] } = useQuery<{ id: string; name: string; data?: { icon?: string } | null }[]>({
+  const { data: employerTypes = [] } = useQuery<{ id: string; name: string; data?: Record<string, unknown> | null }[]>({
     queryKey: ["/api/options/employer-type"],
   });
 
@@ -178,14 +178,8 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
   const employerTypeIconMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const type of employerTypes) {
-      // Icon can be stored as a string or as an object with a name property (from icon picker)
-      const iconData = type.data?.icon;
-      const iconName = typeof iconData === "string" 
-        ? iconData 
-        : (iconData && typeof iconData === "object" && "name" in iconData) 
-          ? (iconData as { name: string }).name 
-          : null;
-      if (iconName) {
+      const iconName = type.data?.icon;
+      if (typeof iconName === "string") {
         map.set(type.id, iconName);
       }
     }
