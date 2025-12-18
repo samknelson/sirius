@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Save, Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital } from "lucide-react";
+import { Save, Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital, CircleHelp } from "lucide-react";
 import { EmployerLayout, useEmployerLayout } from "@/components/layouts/EmployerLayout";
 import { EmployerType } from "@shared/schema";
 
@@ -22,6 +22,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string; size?: n
   Home,
   Landmark,
   Hospital,
+  CircleHelp,
 };
 
 function EmployerEditContent() {
