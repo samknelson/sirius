@@ -109,7 +109,9 @@ export const workerStewardAssignments = pgTable("worker_steward_assignments", {
   employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
   bargainingUnitId: varchar("bargaining_unit_id").notNull().references(() => bargainingUnits.id, { onDelete: 'cascade' }),
   data: jsonb("data"),
-});
+}, (table) => ({
+  uniqueWorkerEmployerBargainingUnit: unique().on(table.workerId, table.employerId, table.bargainingUnitId),
+}));
 
 export const employerPolicyHistory = pgTable("employer_policy_history", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
