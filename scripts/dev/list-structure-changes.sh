@@ -77,31 +77,17 @@ if [ -z "$changed_files" ]; then
     exit 0
 fi
 
-# Function to normalize content through Prettier (handles trailing commas, quotes, line breaks)
-# Falls back to whitespace removal if Prettier fails
+# Function to normalize content (remove all whitespace and newlines)
 normalize_content() {
-    local filepath="$1"
-    local content
-    content=$(cat)
-    
-    # Try to format with Prettier using the filepath to detect parser
-    formatted=$(echo "$content" | npx prettier --stdin-filepath "$filepath" 2>/dev/null)
-    
-    if [ $? -eq 0 ] && [ -n "$formatted" ]; then
-        # If Prettier succeeded, output the formatted content
-        echo "$formatted"
-    else
-        # Fallback: just remove whitespace
-        echo "$content" | tr -d '[:space:]'
-    fi
+    tr -d '[:space:]'
 }
 
 # Filter to only files with actual non-whitespace/formatting changes
 files_with_changes=""
 for file in $changed_files; do
     # Check if file exists in both versions
-    old_content=$(git show "$BASE_COMMIT":"$file" 2>/dev/null | normalize_content "$file")
-    new_content=$(git show HEAD:"$file" 2>/dev/null | normalize_content "$file")
+    old_content=$(git show "$BASE_COMMIT":"$file" 2>/dev/null | normalize_content)
+    new_content=$(git show HEAD:"$file" 2>/dev/null | normalize_content)
     
     # If file is new (old doesn't exist) or deleted (new doesn't exist), include it
     if [ -z "$old_content" ] || [ -z "$new_content" ]; then
@@ -150,23 +136,8 @@ for file in $files_with_changes; do
     echo -e "${CYAN}📝 DIFF:${NC}"
     echo ""
     
-    # Create temp files for Prettier-normalized diff
-    old_formatted=$(mktemp)
-    new_formatted=$(mktemp)
-    
-    git show "$BASE_COMMIT":"$file" 2>/dev/null | normalize_content "$file" > "$old_formatted"
-    git show HEAD:"$file" 2>/dev/null | normalize_content "$file" > "$new_formatted"
-    
-    # Show diff of normalized content
-    normalized_diff=$(diff -u --label "a/$file" --label "b/$file" "$old_formatted" "$new_formatted" 2>/dev/null)
-    
-    rm -f "$old_formatted" "$new_formatted"
-    
-    if [ -n "$normalized_diff" ]; then
-        echo "$normalized_diff"
-    else
-        echo -e "${YELLOW}(Only formatting changes after normalization)${NC}"
-    fi
+    # Show the diff with context (ignoring whitespace)
+    git --no-pager diff -w "$BASE_COMMIT"..HEAD -- "$file" 2>/dev/null
     
     echo ""
 done
