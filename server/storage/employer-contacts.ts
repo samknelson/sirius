@@ -165,7 +165,7 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
       const normalizedEmail = email === null || email === "null" || email?.trim() === "" ? null : email.trim();
 
       // Use contacts storage to update email
-      await contactsStorage.updateEmail(employerContact.contactId, normalizedEmail || "");
+      await contactsStorage.updateEmail(employerContact.contactId, normalizedEmail);
 
       return this.get(id);
     },
