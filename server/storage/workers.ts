@@ -212,7 +212,10 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
                 'employmentStatusName', es.name,
                 'employmentStatusCode', es.code,
                 'employmentStatusEmployed', es.employed,
-                'employmentStatusColor', es.data->>'color'
+                'employmentStatusColor', es.data->>'color',
+                'employerTypeId', et.id,
+                'employerTypeName', et.name,
+                'employerTypeIcon', et.data->>'icon'
               )
             ) FILTER (WHERE e.id IS NOT NULL),
             '[]'::json
@@ -221,6 +224,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         LEFT JOIN latest_hours lh ON w.id = lh.worker_id
         LEFT JOIN employers e ON lh.employer_id = e.id
         LEFT JOIN options_employment_status es ON lh.employment_status_id = es.id
+        LEFT JOIN options_employer_type et ON e.type_id = et.id
         GROUP BY w.id
       `);
       

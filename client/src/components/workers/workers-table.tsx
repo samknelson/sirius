@@ -76,6 +76,9 @@ interface EmployerInfo {
   employmentStatusCode?: string;
   employmentStatusEmployed?: boolean;
   employmentStatusColor?: string;
+  employerTypeId?: string;
+  employerTypeName?: string;
+  employerTypeIcon?: string;
 }
 
 interface WorkerEmployerSummary {
@@ -778,7 +781,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                   </th>
                 )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  <span>Status</span>
+                  <span>Employment</span>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Actions</span>
@@ -992,73 +995,37 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                     </td>
                   )}
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <HoverCard>
-                      <HoverCardTrigger asChild>
-                        <div 
-                          className="cursor-pointer"
-                          data-testid={`status-indicator-${worker.id}`}
-                        >
-                          {worker.workStatusName ? (
-                            <Badge 
-                              variant={
-                                worker.workStatusName.toLowerCase() === 'active' ? 'default' :
-                                worker.workStatusName.toLowerCase() === 'terminated' ? 'destructive' :
-                                'secondary'
-                              }
-                              className="text-xs"
-                            >
-                              {worker.workStatusName}
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-xs text-muted-foreground">
-                              No Status
-                            </Badge>
-                          )}
-                        </div>
-                      </HoverCardTrigger>
-                      <HoverCardContent className="w-64" data-testid={`employers-hover-${worker.id}`}>
-                        <div className="space-y-2">
-                          <p className="text-sm font-semibold text-foreground">
-                            {worker.contactName}
-                          </p>
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground uppercase">Employers</p>
-                            {worker.employers && worker.employers.length > 0 ? (
-                              <div className="flex flex-col gap-1.5">
-                                {worker.employers.map((employer) => (
-                                  <div 
-                                    key={employer.id} 
-                                    className="flex items-center gap-2"
-                                    data-testid={`employer-row-${employer.id}`}
-                                  >
-                                    <div
-                                      className="w-3 h-3 rounded-full flex-shrink-0 border border-border"
-                                      style={{ backgroundColor: employer.employmentStatusColor || "#6b7280" }}
-                                      title={employer.employmentStatusName || "No status"}
-                                    />
-                                    <Badge
-                                      variant={employer.isHome ? "default" : "secondary"}
-                                      className="text-xs whitespace-normal break-words max-w-full inline-flex items-start"
-                                      data-testid={`badge-employer-${employer.id}`}
-                                    >
-                                      {employer.isHome && <Home size={10} className="mr-1 mt-0.5 flex-shrink-0" />}
-                                      <span className="break-words">{employer.name}</span>
-                                    </Badge>
-                                    {employer.employmentStatusName && (
-                                      <span className="text-xs text-muted-foreground">
-                                        ({employer.employmentStatusCode || employer.employmentStatusName})
-                                      </span>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-sm text-muted-foreground italic">No employers</span>
-                            )}
-                          </div>
-                        </div>
-                      </HoverCardContent>
-                    </HoverCard>
+                    <TooltipProvider>
+                      <div className="flex items-center gap-1" data-testid={`employment-indicators-${worker.id}`}>
+                        {worker.employers && worker.employers.length > 0 ? (
+                          worker.employers.map((employer) => (
+                            <Tooltip key={employer.id}>
+                              <TooltipTrigger asChild>
+                                <span 
+                                  className="cursor-help inline-flex"
+                                  style={{ color: employer.employmentStatusColor || "#6b7280" }}
+                                  tabIndex={0}
+                                  data-testid={`employment-icon-${employer.id}`}
+                                >
+                                  {renderIcon(employer.employerTypeIcon || "Building", "h-5 w-5")}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <div className="text-sm">
+                                  <p className="font-medium">{employer.name}</p>
+                                  <p className="text-muted-foreground">
+                                    {employer.employmentStatusName || "No status"}
+                                    {employer.isHome && " (Home)"}
+                                  </p>
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          ))
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic">None</span>
+                        )}
+                      </div>
+                    </TooltipProvider>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <div className="flex items-center space-x-2">
