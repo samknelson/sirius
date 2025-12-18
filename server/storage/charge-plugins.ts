@@ -7,6 +7,7 @@ export interface ChargePluginConfigStorage {
   get(id: string): Promise<ChargePluginConfig | undefined>;
   getByPluginId(pluginId: string): Promise<ChargePluginConfig[]>;
   getByPluginIdAndScope(pluginId: string, scope: string, employerId?: string): Promise<ChargePluginConfig | undefined>;
+  getEnabledForPlugin(pluginId: string, employerId: string | null): Promise<ChargePluginConfig[]>;
   create(config: InsertChargePluginConfig): Promise<ChargePluginConfig>;
   update(id: string, config: Partial<InsertChargePluginConfig>): Promise<ChargePluginConfig | undefined>;
   delete(id: string): Promise<boolean>;
@@ -45,6 +46,47 @@ export function createChargePluginConfigStorage(): ChargePluginConfigStorage {
         .where(and(...conditions));
 
       return config || undefined;
+    },
+
+    async getEnabledForPlugin(pluginId: string, employerId: string | null): Promise<ChargePluginConfig[]> {
+      const baseConditions = [
+        eq(chargePluginConfigs.pluginId, pluginId),
+        eq(chargePluginConfigs.enabled, true),
+      ];
+
+      // Get global config
+      const globalConfig = await db
+        .select()
+        .from(chargePluginConfigs)
+        .where(
+          and(
+            ...baseConditions,
+            eq(chargePluginConfigs.scope, "global")
+          )
+        )
+        .limit(1);
+
+      // If employer-specific, also get employer config (which overrides global)
+      if (employerId) {
+        const employerConfig = await db
+          .select()
+          .from(chargePluginConfigs)
+          .where(
+            and(
+              ...baseConditions,
+              eq(chargePluginConfigs.scope, "employer"),
+              eq(chargePluginConfigs.employerId, employerId)
+            )
+          )
+          .limit(1);
+
+        // Return employer config if exists, otherwise global
+        if (employerConfig.length > 0) {
+          return employerConfig;
+        }
+      }
+
+      return globalConfig;
     },
 
     async create(insertConfig: InsertChargePluginConfig): Promise<ChargePluginConfig> {
