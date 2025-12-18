@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { workerStewardAssignments, employers, bargainingUnits, type WorkerStewardAssignment, type InsertWorkerStewardAssignment } from "@shared/schema";
+import { workerStewardAssignments, employers, bargainingUnits, workers, contacts, type WorkerStewardAssignment, type InsertWorkerStewardAssignment } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 
 export interface WorkerStewardAssignmentWithDetails extends WorkerStewardAssignment {
@@ -28,10 +28,17 @@ export interface StewardByEmployerDetails {
   };
 }
 
+export interface StewardAssignmentListItem extends WorkerStewardAssignment {
+  employer?: { id: string; name: string };
+  bargainingUnit?: { id: string; name: string };
+  worker?: { id: string; displayName: string };
+}
+
 export interface WorkerStewardAssignmentStorage {
   getAssignmentsByWorkerId(workerId: string): Promise<WorkerStewardAssignmentWithDetails[]>;
   getAssignmentsByEmployerId(employerId: string): Promise<WorkerStewardAssignment[]>;
   getAssignmentById(id: string): Promise<WorkerStewardAssignment | undefined>;
+  getAllAssignments(): Promise<StewardAssignmentListItem[]>;
   createAssignment(data: InsertWorkerStewardAssignment): Promise<WorkerStewardAssignment>;
   updateAssignment(id: string, data: Partial<InsertWorkerStewardAssignment>): Promise<WorkerStewardAssignment | undefined>;
   deleteAssignment(id: string): Promise<boolean>;
@@ -78,6 +85,42 @@ export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentS
         .from(workerStewardAssignments)
         .where(eq(workerStewardAssignments.id, id));
       return assignment || undefined;
+    },
+
+    async getAllAssignments(): Promise<StewardAssignmentListItem[]> {
+      const assignments = await db
+        .select({
+          assignment: workerStewardAssignments,
+          employer: {
+            id: employers.id,
+            name: employers.name,
+          },
+          bargainingUnit: {
+            id: bargainingUnits.id,
+            name: bargainingUnits.name,
+          },
+          worker: {
+            id: workers.id,
+          },
+          contact: {
+            displayName: contacts.displayName,
+          },
+        })
+        .from(workerStewardAssignments)
+        .leftJoin(employers, eq(workerStewardAssignments.employerId, employers.id))
+        .leftJoin(bargainingUnits, eq(workerStewardAssignments.bargainingUnitId, bargainingUnits.id))
+        .leftJoin(workers, eq(workerStewardAssignments.workerId, workers.id))
+        .leftJoin(contacts, eq(workers.contactId, contacts.id));
+
+      return assignments.map(row => ({
+        ...row.assignment,
+        employer: row.employer || undefined,
+        bargainingUnit: row.bargainingUnit || undefined,
+        worker: row.worker && row.contact ? {
+          id: row.worker.id,
+          displayName: row.contact.displayName,
+        } : undefined,
+      }));
     },
 
     async createAssignment(data: InsertWorkerStewardAssignment): Promise<WorkerStewardAssignment> {

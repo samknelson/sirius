@@ -4,6 +4,7 @@ import { policies } from "../policies";
 import { insertWorkerStewardAssignmentSchema } from "@shared/schema";
 import { z } from "zod";
 import { assembleEmployerStewardDetails, assembleWorkerRepresentatives } from "../storage/worker-steward-assignments";
+import { requireComponent } from "./components";
 
 type RequireAccess = (policy: any) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
@@ -16,6 +17,18 @@ export function registerWorkerStewardAssignmentRoutes(
   requireAccess: RequireAccess,
   storage: IStorage
 ) {
+  const stewardComponent = requireComponent("worker.steward");
+
+  app.get("/api/steward-assignments", requireAuth, stewardComponent, requireAccess(policies.workersView), async (req, res) => {
+    try {
+      const assignments = await storage.workerStewardAssignments.getAllAssignments();
+      res.json(assignments);
+    } catch (error: any) {
+      console.error("Error fetching all steward assignments:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch steward assignments" });
+    }
+  });
+
   app.get("/api/workers/:workerId/steward-assignments", requireAuth, requireAccess(policies.workersManage), async (req, res) => {
     try {
       const { workerId } = req.params;

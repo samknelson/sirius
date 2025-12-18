@@ -28,6 +28,7 @@ import WorkerWorkStatus from "@/pages/worker-work-status";
 import WorkerBargainingUnit from "@/pages/worker-bargaining-unit";
 import WorkerSteward from "@/pages/worker-steward";
 import WorkerRepresentatives from "@/pages/worker-representatives";
+import Stewards from "@/pages/stewards";
 import WorkerBenefitsHistory from "@/pages/worker-benefits-history";
 import WorkerBenefitsEligibility from "@/pages/worker-benefits-eligibility";
 import WorkerBenefitsScan from "@/pages/worker-benefits-scan";
@@ -1129,6 +1130,15 @@ function Router() {
         <ProtectedRoute policy="staff" component="bargainingunits">
           <AuthenticatedLayout>
             <BargainingUnitsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Stewards route */}
+      <Route path="/stewards">
+        <ProtectedRoute permission="workers.view" component="worker.steward">
+          <AuthenticatedLayout>
+            <Stewards />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

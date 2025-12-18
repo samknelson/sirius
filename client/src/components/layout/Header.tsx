@@ -202,6 +202,18 @@ export default function Header() {
                     </Button>
                   </Link>
                 )}
+                {hasComponent("worker.steward") && (
+                  <Link href="/stewards" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location === "/stewards" ? "default" : "ghost"}
+                      className="w-full justify-start pl-8"
+                      data-testid="mobile-nav-stewards"
+                    >
+                      <Shield className="h-4 w-4 mr-2" />
+                      Stewards
+                    </Button>
+                  </Link>
+                )}
 
                 <Link href="/employers" onClick={() => setMobileMenuOpen(false)}>
                   <Button
@@ -470,7 +482,7 @@ export default function Header() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant={location === "/workers" || location.startsWith("/cardcheck") || location.startsWith("/bargaining-units") ? "default" : "ghost"}
+                  variant={location === "/workers" || location.startsWith("/cardcheck") || location.startsWith("/bargaining-units") || location === "/stewards" ? "default" : "ghost"}
                   size="sm"
                   data-testid="nav-workers"
                 >
@@ -504,6 +516,16 @@ export default function Header() {
                       <div className="flex items-center cursor-pointer" data-testid="menu-bargaining-units">
                         <Users className="h-4 w-4 mr-2" />
                         Bargaining Units
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {hasComponent("worker.steward") && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/stewards" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-stewards">
+                        <Shield className="h-4 w-4 mr-2" />
+                        Stewards
                       </div>
                     </Link>
                   </DropdownMenuItem>
