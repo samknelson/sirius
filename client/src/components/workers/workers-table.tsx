@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle, Scale, Stethoscope, Smile, Eye as EyeIcon, Star, Download, GraduationCap, Heart, Laptop, ShoppingBag, Mail, Phone, FileText, type LucideIcon } from "lucide-react";
+import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle, Scale, Stethoscope, Smile, Eye as EyeIcon, Star, Download, GraduationCap, Heart, Laptop, ShoppingBag, Mail, Phone, FileText, Briefcase, type LucideIcon } from "lucide-react";
 import { renderIcon } from "@/components/ui/icon-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -136,6 +136,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
   const [selectedEmployerId, setSelectedEmployerId] = useState<string>("all");
   const [selectedBenefitId, setSelectedBenefitId] = useState<string>("all");
   const [contactStatusFilter, setContactStatusFilter] = useState<string>("all");
+  const [selectedEmploymentStatusId, setSelectedEmploymentStatusId] = useState<string>("all");
   const [cardcheckFilters, setCardcheckFilters] = useState<Record<string, string>>({});
 
   // Fetch component configs to check if trust benefits is enabled
@@ -172,6 +173,11 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
   // Fetch employer types for filter dropdown icons
   const { data: employerTypes = [] } = useQuery<{ id: string; name: string; data?: Record<string, unknown> | null }[]>({
     queryKey: ["/api/employer-types"],
+  });
+
+  // Fetch employment statuses for filter dropdown
+  const { data: employmentStatuses = [] } = useQuery<{ id: string; name: string; code?: string; isActive: boolean; color?: string }[]>({
+    queryKey: ["/api/employment-statuses"],
   });
 
   // Create map for employer type icons
@@ -359,6 +365,13 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
       );
     }
     
+    // Filter by employment status if selected
+    if (selectedEmploymentStatusId !== "all") {
+      filtered = filtered.filter(worker => 
+        worker.employers?.some(emp => emp.employmentStatusId === selectedEmploymentStatusId)
+      );
+    }
+    
     // Filter by specific benefit if selected (using benefit IDs) - only when trust.benefits is enabled
     if (trustBenefitsEnabled && selectedBenefitId !== "all") {
       filtered = filtered.filter(worker => 
@@ -428,7 +441,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     }
     
     return filtered;
-  }, [workersWithNames, searchQuery, selectedEmployerId, selectedBenefitId, contactStatusFilter, trustBenefitsEnabled, cardcheckEnabled, cardcheckFilters, cardcheckMap]);
+  }, [workersWithNames, searchQuery, selectedEmployerId, selectedEmploymentStatusId, selectedBenefitId, contactStatusFilter, trustBenefitsEnabled, cardcheckEnabled, cardcheckFilters, cardcheckMap]);
 
   const sortedWorkers = [...filteredWorkers].sort((a, b) => {
     const familyA = a.family || '';
@@ -617,6 +630,44 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                         </SelectItem>
                       );
                     })}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {/* Employment Status Filter */}
+            <div className="w-56">
+              <Select
+                value={selectedEmploymentStatusId}
+                onValueChange={setSelectedEmploymentStatusId}
+              >
+                <SelectTrigger data-testid="select-employment-status-filter">
+                  <div className="flex items-center gap-2">
+                    <Briefcase size={16} className="text-muted-foreground" />
+                    <SelectValue placeholder="All Employment Status" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Employment Status</SelectItem>
+                  {employmentStatuses
+                    .filter(status => status.isActive)
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((status) => (
+                      <SelectItem 
+                        key={status.id} 
+                        value={status.id}
+                        data-testid={`select-employment-status-${status.id}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          {status.color && (
+                            <span 
+                              className="w-3 h-3 rounded-full" 
+                              style={{ backgroundColor: status.color }}
+                            />
+                          )}
+                          <span>{status.name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
