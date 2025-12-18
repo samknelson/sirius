@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Settings, Loader2, Save, Users } from "lucide-react";
-import { Variable } from "@shared/schema";
+import { Loader2, Save, Users, AlertTriangle } from "lucide-react";
+import { Variable, RolePermission } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -12,10 +12,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
 const VARIABLE_NAME = "worker_steward_config";
+const STEWARD_PERMISSION = "workers.steward";
 
 interface Role {
   id: string;
@@ -40,6 +42,19 @@ export default function StewardSettingsPage() {
   const { data: roles = [], isLoading: rolesLoading } = useQuery<Role[]>({
     queryKey: ["/api/admin/roles"],
   });
+
+  const { data: rolePermissions = [], isLoading: permissionsLoading } = useQuery<RolePermission[]>({
+    queryKey: ["/api/admin/role-permissions"],
+  });
+
+  const eligibleRoles = useMemo(() => {
+    const rolesWithStewardPermission = new Set(
+      rolePermissions
+        .filter(rp => rp.permissionKey === STEWARD_PERMISSION)
+        .map(rp => rp.roleId)
+    );
+    return roles.filter(role => rolesWithStewardPermission.has(role.id));
+  }, [roles, rolePermissions]);
 
   const { data: configVariable, isLoading: variableLoading } = useQuery<Variable | null>({
     queryKey: ["/api/variables/by-name", VARIABLE_NAME],
@@ -126,7 +141,7 @@ export default function StewardSettingsPage() {
 
   const hasChanges = JSON.stringify(config) !== JSON.stringify(getCurrentConfig());
 
-  const isLoading = rolesLoading || variableLoading;
+  const isLoading = rolesLoading || variableLoading || permissionsLoading;
 
   if (isLoading) {
     return (
@@ -136,7 +151,8 @@ export default function StewardSettingsPage() {
     );
   }
 
-  const selectedRole = roles.find(r => r.id === config.role);
+  const selectedRole = eligibleRoles.find(r => r.id === config.role);
+  const noEligibleRoles = eligibleRoles.length === 0;
 
   return (
     <div className="space-y-6">
@@ -160,49 +176,63 @@ export default function StewardSettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="steward-role">Steward Role</Label>
-            <Select
-              value={config.role || ""}
-              onValueChange={(value) => setConfig({ ...config, role: value || null })}
-            >
-              <SelectTrigger id="steward-role" data-testid="select-steward-role">
-                <SelectValue placeholder="Select a role..." />
-              </SelectTrigger>
-              <SelectContent>
-                {roles.map((role) => (
-                  <SelectItem key={role.id} value={role.id} data-testid={`option-role-${role.id}`}>
-                    {role.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedRole?.description && (
-              <p className="text-sm text-muted-foreground mt-1">
-                {selectedRole.description}
-              </p>
-            )}
-          </div>
+          {noEligibleRoles ? (
+            <Alert variant="destructive" data-testid="alert-no-eligible-roles">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>No Eligible Roles Found</AlertTitle>
+              <AlertDescription>
+                No roles have been assigned the "workers.steward" permission. To configure a steward role, 
+                first go to <strong>Config &gt; Users &gt; Roles</strong> and assign the "workers.steward" 
+                permission to at least one role.
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="steward-role">Steward Role</Label>
+                <Select
+                  value={config.role || ""}
+                  onValueChange={(value) => setConfig({ ...config, role: value || null })}
+                >
+                  <SelectTrigger id="steward-role" data-testid="select-steward-role">
+                    <SelectValue placeholder="Select a role..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {eligibleRoles.map((role) => (
+                      <SelectItem key={role.id} value={role.id} data-testid={`option-role-${role.id}`}>
+                        {role.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedRole?.description && (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {selectedRole.description}
+                  </p>
+                )}
+              </div>
 
-          <div className="flex justify-end">
-            <Button
-              onClick={handleSave}
-              disabled={!hasChanges || saveMutation.isPending}
-              data-testid="button-save-steward-settings"
-            >
-              {saveMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Settings
-                </>
-              )}
-            </Button>
-          </div>
+              <div className="flex justify-end">
+                <Button
+                  onClick={handleSave}
+                  disabled={!hasChanges || saveMutation.isPending}
+                  data-testid="button-save-steward-settings"
+                >
+                  {saveMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Save Settings
+                    </>
+                  )}
+                </Button>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
