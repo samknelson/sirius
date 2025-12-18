@@ -77,11 +77,23 @@ if [ -z "$changed_files" ]; then
     exit 0
 fi
 
-# Filter to only files with actual non-whitespace changes
+# Function to normalize content (remove all whitespace and newlines)
+normalize_content() {
+    tr -d '[:space:]'
+}
+
+# Filter to only files with actual non-whitespace/formatting changes
 files_with_changes=""
 for file in $changed_files; do
-    actual_diff=$(git --no-pager diff -w "$BASE_COMMIT"..HEAD -- "$file" 2>/dev/null)
-    if [ -n "$actual_diff" ]; then
+    # Check if file exists in both versions
+    old_content=$(git show "$BASE_COMMIT":"$file" 2>/dev/null | normalize_content)
+    new_content=$(git show HEAD:"$file" 2>/dev/null | normalize_content)
+    
+    # If file is new (old doesn't exist) or deleted (new doesn't exist), include it
+    if [ -z "$old_content" ] || [ -z "$new_content" ]; then
+        files_with_changes="$files_with_changes $file"
+    # Compare normalized content - if different, there are real changes
+    elif [ "$old_content" != "$new_content" ]; then
         files_with_changes="$files_with_changes $file"
     fi
 done
@@ -102,14 +114,8 @@ echo -e "${BLUE}  Total: ${file_count} file(s)${NC}"
 echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
 echo ""
 
-# Process each file
-for file in $changed_files; do
-    # Skip files with no actual diff after ignoring whitespace
-    actual_diff=$(git --no-pager diff -w "$BASE_COMMIT"..HEAD -- "$file" 2>/dev/null)
-    if [ -z "$actual_diff" ]; then
-        continue
-    fi
-    
+# Process each file with actual changes
+for file in $files_with_changes; do
     echo -e "${GREEN}────────────────────────────────────────────────────────────────${NC}"
     echo -e "${GREEN}📄 FILE: ${YELLOW}${file}${NC}"
     echo -e "${GREEN}────────────────────────────────────────────────────────────────${NC}"
