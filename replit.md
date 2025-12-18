@@ -31,7 +31,7 @@ All database queries are strictly confined to the storage layer (`server/storage
 -   **Employer & Policy Management**: Manages employer records, links them to contacts, and tracks policy assignments over time with date-based history and benefit configurations.
 -   **Trust Provider Contacts Management**: Full CRUD operations for trust provider contacts.
 -   **Bookmarks**: User-specific, entity-agnostic bookmarking.
--   **Dashboard Plugin System**: Extensible architecture for customizable dashboard widgets.
+-   **Dashboard Plugin System**: Extensible architecture for customizable dashboard widgets, including "My Steward" plugin that displays stewards assigned to the current user's home employer and bargaining unit with contact details (name, email, phone).
 -   **Components Feature Flag System**: Centralized registry for managing application features with dependency management and access control.
 -   **Routing Architecture**: Consistent routing for configuration, detail pages, and reports.
 -   **Ledger System**: Manages financial transactions with accounts, payments, transactions, entity-account linking, payment allocation, and an integrity report.
