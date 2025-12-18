@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { 
   Loader2, Plus, Edit, Trash2, Save, X,
-  Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital,
+  Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital, CircleHelp,
   type LucideIcon
 } from "lucide-react";
 import {
@@ -56,6 +56,7 @@ const availableIcons: { name: string; Icon: LucideIcon }[] = [
   { name: 'Home', Icon: Home },
   { name: 'Landmark', Icon: Landmark },
   { name: 'Hospital', Icon: Hospital },
+  { name: 'CircleHelp', Icon: CircleHelp },
 ];
 
 export default function EmployerTypesPage() {
