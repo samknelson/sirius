@@ -6,8 +6,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Employer } from "@shared/schema";
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { renderIcon } from "@/components/ui/icon-picker";
 
 interface EmployersTableProps {
   employers: Employer[];
@@ -24,9 +27,30 @@ const avatarColors = [
   "bg-red-100 text-red-600",
 ];
 
+interface EmployerType {
+  id: string;
+  name: string;
+  data?: { icon?: string } | null;
+}
+
 export function EmployersTable({ employers, isLoading, includeInactive, onToggleInactive }: EmployersTableProps) {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Fetch employer types for icons
+  const { data: employerTypes = [] } = useQuery<EmployerType[]>({
+    queryKey: ["/api/employer-types"],
+  });
+
+  // Create map for employer type info (icon and name)
+  const employerTypeMap = useMemo(() => {
+    const map = new Map<string, { icon: string; name: string }>();
+    for (const type of employerTypes) {
+      const iconName = type.data?.icon || "Building";
+      map.set(type.id, { icon: iconName, name: type.name });
+    }
+    return map;
+  }, [employerTypes]);
 
   // Filter employers based on search query
   const filteredEmployers = useMemo(() => {
@@ -161,9 +185,25 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center space-x-3">
-                      <div className={`w-8 h-8 ${avatarColors[index % avatarColors.length]} rounded-full flex items-center justify-center`}>
-                        <Building2 size={12} />
-                      </div>
+                      {employer.typeId && employerTypeMap.has(employer.typeId) ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div 
+                              className={`w-8 h-8 ${avatarColors[index % avatarColors.length]} rounded-full flex items-center justify-center cursor-help`}
+                              data-testid={`icon-employer-type-${employer.id}`}
+                            >
+                              {renderIcon(employerTypeMap.get(employer.typeId)!.icon, "w-4 h-4")}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{employerTypeMap.get(employer.typeId)!.name}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <div className={`w-8 h-8 ${avatarColors[index % avatarColors.length]} rounded-full flex items-center justify-center`}>
+                          <Building2 size={12} />
+                        </div>
+                      )}
                       <span 
                         className="text-sm font-medium text-foreground"
                         data-testid={`text-employer-name-${employer.id}`}
