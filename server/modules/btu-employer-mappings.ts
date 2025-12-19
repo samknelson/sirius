@@ -6,7 +6,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 
 const VARIABLE_NAME = "sitespecific_btu_employer_mapping";
-const STORAGE_PATH = "sitespecific/btu/config/employer-mappings.csv";
+const STORAGE_PATH = "private/sitespecific/btu/config/employer-mappings.csv";
 
 const REQUIRED_HEADERS = [
   "Department ID",
