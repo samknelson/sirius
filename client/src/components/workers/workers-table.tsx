@@ -1141,7 +1141,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                               <TooltipTrigger asChild>
                                 <span 
                                   className="cursor-help inline-flex"
-                                  style={{ color: employer.employmentStatusColor || "#6b7280" }}
+                                  style={{ color: employer.isHome ? "#22c55e" : "#3b82f6" }}
                                   tabIndex={0}
                                   data-testid={`employment-icon-${employer.id}`}
                                 >
