@@ -250,7 +250,7 @@ export default function BtuStewardAttendanceConfigFormPage() {
                       />
                     </FormControl>
                     <FormDescription>
-                      Number of points to award for each qualifying attendance
+                      Number of points to credit for each qualifying attendance (creates a negative/credit entry in the ledger)
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

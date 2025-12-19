@@ -83,9 +83,11 @@ class BtuStewardAttendancePlugin extends ChargePlugin {
       ? new Date(participant.registeredAt) 
       : new Date();
 
+    // Negate amount to create a credit (award) in the ledger
+    // Positive in ledger = charge, negative = credit (award)
     return {
       chargePluginKey,
-      amount: settings.amount.toFixed(2),
+      amount: (-settings.amount).toFixed(2),
       description,
       transactionDate,
       eaId: ea.id,
