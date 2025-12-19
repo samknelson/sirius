@@ -26,13 +26,18 @@ interface CsvValidationResult {
 
 function validateCsvContent(buffer: Buffer): CsvValidationResult {
   try {
-    const content = buffer.toString("utf-8");
+    let content = buffer.toString("utf-8");
+    
+    if (content.charCodeAt(0) === 0xFEFF) {
+      content = content.slice(1);
+    }
     
     const records = parse(content, {
-      columns: true,
+      columns: (header: string[]) => header.map(h => h.trim()),
       skip_empty_lines: true,
       trim: true,
       relax_column_count: true,
+      bom: true,
     });
 
     if (records.length === 0) {
