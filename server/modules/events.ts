@@ -145,10 +145,11 @@ export function registerEventsRoutes(
       }
       
       // Build occurrence data and validate before creating event
+      // Convert date strings to Date objects for timestamp columns
       const occurrenceData = {
         eventId: "temp", // will be replaced after event creation
-        startAt: occurrence.startAt,
-        endAt: occurrence.endAt || null,
+        startAt: new Date(occurrence.startAt),
+        endAt: occurrence.endAt ? new Date(occurrence.endAt) : null,
         status: occurrence.status || "active",
         notes: occurrence.notes || null,
       };
