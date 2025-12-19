@@ -8,3 +8,4 @@ export * from "./executor";
 // import "./plugins/gbhetLegalHourly"; // Replaced by gbhetLegalBenefit
 import "./plugins/gbhetLegalBenefit";
 import "./plugins/paymentSimpleAllocation";
+import "./plugins/btuStewardAttendance";

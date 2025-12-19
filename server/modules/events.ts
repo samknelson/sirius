@@ -14,6 +14,8 @@ import {
   validateParticipantStatus
 } from "./event-categories";
 import { insertEventParticipantSchema } from "@shared/schema";
+import { executeChargePlugins, TriggerType, type ParticipantSavedContext } from "../charge-plugins";
+import { logger } from "../logger";
 
 export function registerEventsRoutes(
   app: Express,
@@ -437,6 +439,17 @@ export function registerEventsRoutes(
       }
       
       const participant = await storage.eventParticipants.create(validation.data);
+      
+      // Execute charge plugins for participant save (fire-and-forget, errors logged internally)
+      void executeParticipantChargePlugins(
+        participant.id,
+        id,
+        event.eventTypeId,
+        contactId,
+        role,
+        status
+      );
+      
       res.status(201).json(participant);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to register participant" });
@@ -481,6 +494,19 @@ export function registerEventsRoutes(
       if (status) updateData.status = status;
       
       const participant = await storage.eventParticipants.update(participantId, updateData);
+      
+      // Execute charge plugins for participant update (fire-and-forget, errors logged internally)
+      if (participant) {
+        void executeParticipantChargePlugins(
+          participantId,
+          eventId,
+          event.eventTypeId,
+          existing.contactId,
+          participant.role,
+          participant.status
+        );
+      }
+      
       res.json(participant);
     } catch (error) {
       res.status(500).json({ message: "Failed to update participant" });
@@ -505,6 +531,17 @@ export function registerEventsRoutes(
       }
       
       await storage.eventParticipants.delete(participantId);
+      
+      // Execute charge plugins with null status to clean up any ledger entries (fire-and-forget, errors logged internally)
+      void executeParticipantChargePlugins(
+        participantId,
+        eventId,
+        event.eventTypeId,
+        existing.contactId,
+        existing.role,
+        null
+      );
+      
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to remove participant" });
@@ -519,6 +556,51 @@ export function registerEventsRoutes(
     const email = user.dbUser.email;
     const contact = await storage.contacts.getContactByEmail(email);
     return contact?.id || null;
+  }
+
+  // Helper to execute charge plugins after participant save
+  async function executeParticipantChargePlugins(
+    participantId: string,
+    eventId: string,
+    eventTypeId: string,
+    contactId: string,
+    role: string,
+    status: string | null
+  ): Promise<void> {
+    try {
+      const worker = await storage.workers.getWorkerByContactId(contactId);
+      const workerId = worker?.id || null;
+      const isSteward = workerId ? await storage.workerStewardAssignments.isWorkerSteward(workerId) : false;
+
+      const context: ParticipantSavedContext = {
+        trigger: TriggerType.PARTICIPANT_SAVED,
+        participantId,
+        eventId,
+        eventTypeId,
+        contactId,
+        role,
+        status,
+        workerId,
+        isSteward,
+      };
+
+      const result = await executeChargePlugins(context);
+      
+      if (result.totalTransactions.length > 0 || (result.notifications && result.notifications.length > 0)) {
+        logger.info("Charge plugins executed for participant", {
+          service: "events",
+          participantId,
+          transactionCount: result.totalTransactions.length,
+          notificationCount: result.notifications?.length || 0,
+        });
+      }
+    } catch (error) {
+      logger.error("Failed to execute charge plugins for participant", {
+        service: "events",
+        participantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   // Get current user's self-registration for an event
@@ -599,6 +681,17 @@ export function registerEventsRoutes(
       }
       
       const participant = await storage.eventParticipants.create(validation.data);
+      
+      // Execute charge plugins for participant save (fire-and-forget, errors logged internally)
+      void executeParticipantChargePlugins(
+        participant.id,
+        id,
+        event.eventTypeId,
+        contactId,
+        "member",
+        "attended"
+      );
+      
       res.status(201).json(participant);
     } catch (error) {
       res.status(500).json({ message: "Failed to self-register" });
@@ -642,6 +735,19 @@ export function registerEventsRoutes(
       }
       
       const participant = await storage.eventParticipants.update(existing.id, { status });
+      
+      // Execute charge plugins for participant update (fire-and-forget, errors logged internally)
+      if (participant) {
+        void executeParticipantChargePlugins(
+          existing.id,
+          id,
+          event.eventTypeId,
+          contactId,
+          existing.role,
+          status
+        );
+      }
+      
       res.json(participant);
     } catch (error) {
       res.status(500).json({ message: "Failed to update registration" });
