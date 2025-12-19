@@ -23,6 +23,11 @@ type LedgerAccount = {
   name: string;
   description: string | null;
   currencyCode: string;
+  data: {
+    invoicesEnabled?: boolean;
+    invoiceHeader?: string;
+    invoiceFooter?: string;
+  } | null;
 };
 
 interface EALayoutContextValue {
@@ -162,17 +167,19 @@ export function EALayout({ activeTab, children }: EALayoutProps) {
           >
             View
           </Link>
-          <Link
-            href={`/ea/${id}/invoices`}
-            className={`pb-3 border-b-2 transition-colors ${
-              activeTab === "invoices"
-                ? "border-primary text-primary font-medium"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-            data-testid="tab-invoices"
-          >
-            Invoices
-          </Link>
+          {account?.data?.invoicesEnabled !== false && (
+            <Link
+              href={`/ea/${id}/invoices`}
+              className={`pb-3 border-b-2 transition-colors ${
+                activeTab === "invoices"
+                  ? "border-primary text-primary font-medium"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+              data-testid="tab-invoices"
+            >
+              Invoices
+            </Link>
+          )}
           <Link
             href={`/ea/${id}/payments`}
             className={`pb-3 border-b-2 transition-colors ${

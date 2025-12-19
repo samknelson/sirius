@@ -13,6 +13,7 @@ interface LedgerAccount {
   currencyCode: string;
   isActive: boolean;
   data: {
+    invoicesEnabled?: boolean;
     invoiceHeader?: string;
     invoiceFooter?: string;
   } | null;

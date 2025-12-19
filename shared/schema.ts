@@ -705,6 +705,7 @@ export const insertLedgerStripePaymentMethodSchema = createInsertSchema(ledgerSt
 });
 
 export const ledgerAccountDataSchema = z.object({
+  invoicesEnabled: z.boolean().optional(),
   invoiceHeader: z.string().optional(),
   invoiceFooter: z.string().optional(),
 }).strict();

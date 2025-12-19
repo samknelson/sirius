@@ -6,10 +6,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
+import { Switch } from "@/components/ui/switch";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2 } from "lucide-react";
 
 interface AccountData {
+  invoicesEnabled?: boolean;
   invoiceHeader?: string;
   invoiceFooter?: string;
 }
@@ -19,6 +21,7 @@ function AccountSettingsContent() {
   const { toast } = useToast();
 
   const accountData = account.data || {};
+  const [invoicesEnabled, setInvoicesEnabled] = useState(accountData.invoicesEnabled !== false);
   const [invoiceHeader, setInvoiceHeader] = useState(accountData.invoiceHeader || "");
   const [invoiceFooter, setInvoiceFooter] = useState(accountData.invoiceFooter || "");
 
@@ -44,12 +47,14 @@ function AccountSettingsContent() {
 
   const handleSave = () => {
     updateMutation.mutate({
+      invoicesEnabled,
       invoiceHeader: invoiceHeader || undefined,
       invoiceFooter: invoiceFooter || undefined,
     });
   };
 
   const hasChanges = 
+    invoicesEnabled !== (accountData.invoicesEnabled !== false) ||
     invoiceHeader !== (accountData.invoiceHeader || "") ||
     invoiceFooter !== (accountData.invoiceFooter || "");
 
@@ -63,6 +68,22 @@ function AccountSettingsContent() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <label className="text-sm font-medium text-foreground">
+                Invoices
+              </label>
+              <p className="text-sm text-muted-foreground">
+                Enable or disable invoices for this account.
+              </p>
+            </div>
+            <Switch
+              checked={invoicesEnabled}
+              onCheckedChange={setInvoicesEnabled}
+              data-testid="switch-invoices-enabled"
+            />
+          </div>
+
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">
               Invoice Header
@@ -97,6 +118,7 @@ function AccountSettingsContent() {
             <Button
               variant="outline"
               onClick={() => {
+                setInvoicesEnabled(accountData.invoicesEnabled !== false);
                 setInvoiceHeader(accountData.invoiceHeader || "");
                 setInvoiceFooter(accountData.invoiceFooter || "");
               }}
