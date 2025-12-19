@@ -1,4 +1,4 @@
-import { EALayout } from "@/components/layouts/EALayout";
+import { EALayout, useEALayout } from "@/components/layouts/EALayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -19,6 +19,7 @@ import { useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import type { z } from "zod";
 import { stringify } from "csv-stringify/browser/esm/sync";
+import { formatAmount } from "@shared/currency";
 
 const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
 
@@ -32,16 +33,9 @@ interface LedgerNotification {
   description: string;
 }
 
-function formatCurrency(amount: string | number): string {
-  const num = typeof amount === "string" ? parseFloat(amount) : amount;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(num);
-}
-
 function EAPaymentsContent() {
   const { id } = useParams<{ id: string }>();
+  const { currencyCode } = useEALayout();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [merchant, setMerchant] = useState("");
   const [checkTransactionNumber, setCheckTransactionNumber] = useState("");
@@ -60,7 +54,7 @@ function EAPaymentsContent() {
       
       toast({
         title: typeLabel,
-        description: `${formatCurrency(notification.amount)} - ${notification.description}`,
+        description: `${formatAmount(parseFloat(notification.amount), currencyCode)} - ${notification.description}`,
       });
     }
   };
@@ -392,7 +386,7 @@ function EAPaymentsContent() {
       const details = payment.details as any;
       
       return {
-        Amount: parseFloat(payment.amount).toFixed(2),
+        Amount: formatAmount(parseFloat(payment.amount), currencyCode),
         "Payment Type": paymentType?.name || "",
         Status: payment.status,
         Merchant: details?.merchant || "",
@@ -931,7 +925,7 @@ function EAPaymentsContent() {
                   return (
                     <TableRow key={payment.id} data-testid={`row-payment-${payment.id}`}>
                       <TableCell className="font-mono" data-testid={`text-amount-${payment.id}`}>
-                        ${parseFloat(payment.amount).toFixed(2)}
+                        {formatAmount(parseFloat(payment.amount), currencyCode)}
                       </TableCell>
                       <TableCell data-testid={`text-payment-type-${payment.id}`}>
                         {paymentType?.name || "-"}
