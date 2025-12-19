@@ -666,7 +666,7 @@ export function registerOptionsRoutes(
   // POST /api/ledger-payment-types - Create a new ledger payment type (requires ledgerStaff policy)
   app.post("/api/ledger-payment-types", requireAccess(policies.ledgerStaff), async (req, res) => {
     try {
-      const { name, description, sequence } = req.body;
+      const { name, description, sequence, currencyCode } = req.body;
       
       if (!name || typeof name !== 'string' || !name.trim()) {
         return res.status(400).json({ message: "Name is required" });
@@ -676,6 +676,7 @@ export function registerOptionsRoutes(
         name: name.trim(),
         description: description && typeof description === 'string' ? description.trim() : null,
         sequence: typeof sequence === 'number' ? sequence : 0,
+        currencyCode: currencyCode && typeof currencyCode === 'string' ? currencyCode : 'USD',
       });
       
       res.status(201).json(paymentType);
@@ -688,7 +689,7 @@ export function registerOptionsRoutes(
   app.put("/api/ledger-payment-types/:id", requireAccess(policies.ledgerStaff), async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, description, sequence } = req.body;
+      const { name, description, sequence, currencyCode } = req.body;
       
       const updates: any = {};
       
@@ -714,6 +715,13 @@ export function registerOptionsRoutes(
           return res.status(400).json({ message: "Sequence must be a number" });
         }
         updates.sequence = sequence;
+      }
+      
+      if (currencyCode !== undefined) {
+        if (typeof currencyCode !== 'string') {
+          return res.status(400).json({ message: "Currency code must be a string" });
+        }
+        updates.currencyCode = currencyCode;
       }
       
       const paymentType = await storage.options.ledgerPaymentTypes.updateLedgerPaymentType(id, updates);
