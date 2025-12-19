@@ -286,11 +286,31 @@ export default function BtuEmployerMappingsPage() {
               </div>
             ) : null}
 
-            <div className="border-t pt-4">
-              <Label className="text-base font-medium">Replace File</Label>
-              <p className="text-sm text-muted-foreground mb-3">
-                Upload a new CSV file to replace the current mapping.
-              </p>
+            <div className="border-t pt-4 space-y-4">
+              <div>
+                <Label className="text-base font-medium">Replace File</Label>
+                <p className="text-sm text-muted-foreground">
+                  Upload a new CSV file to replace the current mapping.
+                </p>
+              </div>
+              <div className="p-4 border rounded-lg space-y-3">
+                <p className="font-medium text-sm">Required CSV Format</p>
+                <p className="text-sm text-muted-foreground">
+                  The CSV file must contain exactly these column headers (in any order):
+                </p>
+                <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
+                  <li>Department ID</li>
+                  <li>Department Title</li>
+                  <li>Location ID</li>
+                  <li>Location Title</li>
+                  <li>Job Code</li>
+                  <li>Job Title</li>
+                  <li>Employer Name</li>
+                </ul>
+                <p className="text-sm text-muted-foreground">
+                  Every row must have a value in each column. No additional columns are allowed.
+                </p>
+              </div>
               <div className="flex items-center gap-4">
                 <Input
                   type="file"
@@ -337,6 +357,25 @@ export default function BtuEmployerMappingsPage() {
                   and can be downloaded or replaced later.
                 </p>
               </div>
+            </div>
+
+            <div className="p-4 border rounded-lg space-y-3">
+              <p className="font-medium text-sm">Required CSV Format</p>
+              <p className="text-sm text-muted-foreground">
+                The CSV file must contain exactly these column headers (in any order):
+              </p>
+              <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
+                <li>Department ID</li>
+                <li>Department Title</li>
+                <li>Location ID</li>
+                <li>Location Title</li>
+                <li>Job Code</li>
+                <li>Job Title</li>
+                <li>Employer Name</li>
+              </ul>
+              <p className="text-sm text-muted-foreground">
+                Every row must have a value in each column. No additional columns are allowed.
+              </p>
             </div>
 
             <div className="space-y-3">
