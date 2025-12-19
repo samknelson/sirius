@@ -10,6 +10,7 @@ interface LedgerAccount {
   id: string;
   name: string;
   description: string | null;
+  currencyCode: string;
   isActive: boolean;
   data: {
     invoiceHeader?: string;

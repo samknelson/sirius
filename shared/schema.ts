@@ -402,6 +402,7 @@ export const ledgerAccounts = pgTable("ledger_accounts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   description: text("description"),
+  currencyCode: text("currency_code").default('USD').notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   data: jsonb("data"),
 });

@@ -1,11 +1,27 @@
 import type { Express } from "express";
 import { storage } from "../../storage";
 import { insertLedgerAccountSchema, ledgerAccountDataSchema } from "@shared/schema";
+import { getAllCurrencies, hasCurrency } from "@shared/currency";
 import { policies } from "../../policies";
 import { requireAccess } from "../../accessControl";
 import { requireComponent } from "../components";
 
 export function registerLedgerAccountRoutes(app: Express) {
+  // GET /api/ledger/currencies - Get all available currencies
+  app.get("/api/ledger/currencies", requireComponent("ledger"), requireAccess(policies.ledgerStaff), async (req, res) => {
+    try {
+      const currencies = getAllCurrencies().map(c => ({
+        code: c.code,
+        label: c.label,
+        precision: c.precision,
+        symbol: c.symbol,
+        symbolPosition: c.symbolPosition,
+      }));
+      res.json(currencies);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch currencies" });
+    }
+  });
   // GET /api/ledger/accounts - Get all ledger accounts
   app.get("/api/ledger/accounts", requireComponent("ledger"), requireAccess(policies.ledgerStaff), async (req, res) => {
     try {
@@ -37,6 +53,14 @@ export function registerLedgerAccountRoutes(app: Express) {
   app.post("/api/ledger/accounts", requireComponent("ledger"), requireAccess(policies.ledgerStaff), async (req, res) => {
     try {
       const validatedData = insertLedgerAccountSchema.parse(req.body);
+      
+      // Validate currency code exists in registry
+      const currencyCode = validatedData.currencyCode || "USD";
+      if (!hasCurrency(currencyCode)) {
+        res.status(400).json({ message: `Invalid currency code: ${currencyCode}` });
+        return;
+      }
+      
       const account = await storage.ledger.accounts.create(validatedData);
       res.status(201).json(account);
     } catch (error) {
@@ -54,7 +78,10 @@ export function registerLedgerAccountRoutes(app: Express) {
       const { id } = req.params;
       const validatedData = insertLedgerAccountSchema.partial().parse(req.body);
       
-      const account = await storage.ledger.accounts.update(id, validatedData);
+      // Prevent currencyCode from being updated - it's immutable after creation
+      const { currencyCode, ...safeUpdateData } = validatedData;
+      
+      const account = await storage.ledger.accounts.update(id, safeUpdateData);
       
       if (!account) {
         res.status(404).json({ message: "Ledger account not found" });

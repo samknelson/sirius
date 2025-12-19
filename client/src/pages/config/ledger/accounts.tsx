@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Plus, Eye } from "lucide-react";
@@ -28,10 +29,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+interface Currency {
+  code: string;
+  label: string;
+  precision: number;
+  symbol?: string;
+  symbolPosition?: 'prefix' | 'suffix';
+}
+
 interface LedgerAccount {
   id: string;
   name: string;
   description: string | null;
+  currencyCode: string;
   isActive: boolean;
 }
 
@@ -42,14 +52,19 @@ export default function LedgerAccountsPage() {
   // Form state
   const [formName, setFormName] = useState("");
   const [formDescription, setFormDescription] = useState("");
+  const [formCurrencyCode, setFormCurrencyCode] = useState("USD");
   const [formIsActive, setFormIsActive] = useState(true);
   
   const { data: accounts = [], isLoading } = useQuery<LedgerAccount[]>({
     queryKey: ["/api/ledger/accounts"],
   });
 
+  const { data: currencies = [] } = useQuery<Currency[]>({
+    queryKey: ["/api/ledger/currencies"],
+  });
+
   const createMutation = useMutation({
-    mutationFn: async (data: { name: string; description?: string; isActive: boolean }) => {
+    mutationFn: async (data: { name: string; description?: string; currencyCode: string; isActive: boolean }) => {
       return apiRequest("POST", "/api/ledger/accounts", data);
     },
     onSuccess: () => {
@@ -73,6 +88,7 @@ export default function LedgerAccountsPage() {
   const resetForm = () => {
     setFormName("");
     setFormDescription("");
+    setFormCurrencyCode("USD");
     setFormIsActive(true);
   };
 
@@ -88,6 +104,7 @@ export default function LedgerAccountsPage() {
     createMutation.mutate({
       name: formName.trim(),
       description: formDescription.trim() || undefined,
+      currencyCode: formCurrencyCode,
       isActive: formIsActive,
     });
   };
@@ -132,6 +149,7 @@ export default function LedgerAccountsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
+                <TableHead>Currency</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -140,39 +158,47 @@ export default function LedgerAccountsPage() {
             <TableBody>
               {accounts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center text-muted-foreground">
                     No ledger accounts found. Click "Add Account" to create one.
                   </TableCell>
                 </TableRow>
               ) : (
-                accounts.map((account) => (
-                  <TableRow key={account.id} data-testid={`row-account-${account.id}`}>
-                    <TableCell className="font-medium">{account.name}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {account.description || <span className="italic">No description</span>}
-                    </TableCell>
-                    <TableCell>
-                      <Badge 
-                        variant={account.isActive ? "default" : "secondary"}
-                        data-testid={`badge-account-status-${account.id}`}
-                      >
-                        {account.isActive ? "Active" : "Inactive"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Link href={`/ledger/accounts/${account.id}`}>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          data-testid={`button-view-${account.id}`}
+                accounts.map((account) => {
+                  const currency = currencies.find(c => c.code === account.currencyCode);
+                  return (
+                    <TableRow key={account.id} data-testid={`row-account-${account.id}`}>
+                      <TableCell className="font-medium">{account.name}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" data-testid={`badge-account-currency-${account.id}`}>
+                          {currency?.label || account.currencyCode}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {account.description || <span className="italic">No description</span>}
+                      </TableCell>
+                      <TableCell>
+                        <Badge 
+                          variant={account.isActive ? "default" : "secondary"}
+                          data-testid={`badge-account-status-${account.id}`}
                         >
-                          <Eye className="h-4 w-4 mr-2" />
-                          View
-                        </Button>
-                      </Link>
-                    </TableCell>
-                  </TableRow>
-                ))
+                          {account.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Link href={`/ledger/accounts/${account.id}`}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            data-testid={`button-view-${account.id}`}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            View
+                          </Button>
+                        </Link>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -197,6 +223,21 @@ export default function LedgerAccountsPage() {
                 placeholder="e.g., Cash, Accounts Receivable"
                 data-testid="input-name"
               />
+            </div>
+            <div>
+              <Label htmlFor="currency">Currency *</Label>
+              <Select value={formCurrencyCode} onValueChange={setFormCurrencyCode}>
+                <SelectTrigger data-testid="select-currency">
+                  <SelectValue placeholder="Select a currency" />
+                </SelectTrigger>
+                <SelectContent>
+                  {currencies.map((currency) => (
+                    <SelectItem key={currency.code} value={currency.code}>
+                      {currency.label} ({currency.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label htmlFor="description">Description</Label>
