@@ -13,8 +13,16 @@ interface LedgerEa {
   accountId: string;
 }
 
+interface LedgerAccount {
+  id: string;
+  name: string;
+  currencyCode: string;
+}
+
 interface LedgerEaLayoutContextValue {
   ea: LedgerEa;
+  account: LedgerAccount | null;
+  currencyCode: string;
   isLoading: boolean;
   isError: boolean;
 }
@@ -48,7 +56,19 @@ export function LedgerEaLayout({ activeTab, children }: LedgerEaLayoutProps) {
     },
   });
 
-  const isLoading = eaLoading;
+  const { data: account, isLoading: accountLoading } = useQuery<LedgerAccount>({
+    queryKey: ["/api/ledger/accounts", ea?.accountId],
+    queryFn: async () => {
+      const response = await fetch(`/api/ledger/accounts/${ea!.accountId}`);
+      if (!response.ok) {
+        throw new Error("Account not found");
+      }
+      return response.json();
+    },
+    enabled: !!ea?.accountId,
+  });
+
+  const isLoading = eaLoading || accountLoading;
   const isError = !!eaError;
 
   // Error/Not found state
@@ -145,6 +165,8 @@ export function LedgerEaLayout({ activeTab, children }: LedgerEaLayoutProps) {
 
   const contextValue: LedgerEaLayoutContextValue = {
     ea,
+    account: account || null,
+    currencyCode: account?.currencyCode || "USD",
     isLoading: false,
     isError: false,
   };
