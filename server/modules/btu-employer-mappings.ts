@@ -3,9 +3,101 @@ import { storage } from "../storage";
 import { objectStorageService } from "../services/objectStorage";
 import { insertFileSchema } from "@shared/schema";
 import multer from "multer";
+import { parse } from "csv-parse/sync";
 
 const VARIABLE_NAME = "sitespecific_btu_employer_mapping";
 const STORAGE_PATH = "sitespecific/btu/config/employer-mappings.csv";
+
+const REQUIRED_HEADERS = [
+  "Department ID",
+  "Department Title",
+  "Location ID",
+  "Location Title",
+  "Job Code",
+  "Job Title",
+  "Employer Name",
+];
+
+interface CsvValidationResult {
+  valid: boolean;
+  error?: string;
+  rowErrors?: { row: number; field: string; message: string }[];
+}
+
+function validateCsvContent(buffer: Buffer): CsvValidationResult {
+  try {
+    const content = buffer.toString("utf-8");
+    
+    const records = parse(content, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+      relax_column_count: true,
+    });
+
+    if (records.length === 0) {
+      return { valid: false, error: "CSV file is empty or has no data rows" };
+    }
+
+    const actualHeaders = Object.keys(records[0]);
+    
+    const missingHeaders = REQUIRED_HEADERS.filter(h => !actualHeaders.includes(h));
+    if (missingHeaders.length > 0) {
+      return { 
+        valid: false, 
+        error: `Missing required columns: ${missingHeaders.join(", ")}` 
+      };
+    }
+
+    const extraHeaders = actualHeaders.filter(h => !REQUIRED_HEADERS.includes(h));
+    if (extraHeaders.length > 0) {
+      return { 
+        valid: false, 
+        error: `Unexpected columns found: ${extraHeaders.join(", ")}. Only these columns are allowed: ${REQUIRED_HEADERS.join(", ")}` 
+      };
+    }
+
+    const rowErrors: { row: number; field: string; message: string }[] = [];
+    
+    for (let i = 0; i < records.length; i++) {
+      const record = records[i];
+      for (const header of REQUIRED_HEADERS) {
+        const value = record[header];
+        if (value === undefined || value === null || value.toString().trim() === "") {
+          rowErrors.push({
+            row: i + 2,
+            field: header,
+            message: `Empty value`,
+          });
+        }
+      }
+    }
+
+    if (rowErrors.length > 0) {
+      const maxErrors = 5;
+      const errorMessages = rowErrors.slice(0, maxErrors).map(
+        e => `Row ${e.row}, "${e.field}": ${e.message}`
+      );
+      const moreCount = rowErrors.length - maxErrors;
+      let errorText = errorMessages.join("; ");
+      if (moreCount > 0) {
+        errorText += `; ... and ${moreCount} more error(s)`;
+      }
+      return { 
+        valid: false, 
+        error: `Validation errors: ${errorText}`,
+        rowErrors 
+      };
+    }
+
+    return { valid: true };
+  } catch (error) {
+    return { 
+      valid: false, 
+      error: `Failed to parse CSV: ${error instanceof Error ? error.message : "Unknown error"}` 
+    };
+  }
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -140,6 +232,13 @@ export function registerBtuEmployerMappingsRoutes(
 
         if (!req.file) {
           return res.status(400).json({ message: "No file provided" });
+        }
+
+        const validationResult = validateCsvContent(req.file.buffer);
+        if (!validationResult.valid) {
+          return res.status(400).json({ 
+            message: validationResult.error || "Invalid CSV file"
+          });
         }
 
         const existingVariable = await storage.variables.getByName(VARIABLE_NAME);
