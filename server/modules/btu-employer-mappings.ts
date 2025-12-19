@@ -254,6 +254,7 @@ export function registerBtuEmployerMappingsRoutes(
             try {
               await objectStorageService.deleteFile(oldFile.storagePath);
             } catch (e) {
+              console.warn("Failed to delete old file from object storage:", oldFile.storagePath, e);
             }
             await storage.files.delete(oldFileId);
           }
