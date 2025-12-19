@@ -64,6 +64,7 @@ import { registerEsigsRoutes } from "./modules/esigs";
 import { registerSessionRoutes } from "./modules/sessions";
 import { registerFloodEventRoutes } from "./modules/flood-events";
 import { registerEventsRoutes } from "./modules/events";
+import { registerBtuEmployerMappingsRoutes } from "./modules/btu-employer-mappings";
 import { requireAccess } from "./accessControl";
 import { policies } from "./policies";
 import { addressValidationService } from "./services/address-validation";
@@ -312,6 +313,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register eligibility plugin routes
   registerEligibilityPluginRoutes(app, requireAuth, requirePermission);
+
+  // Register BTU employer mappings routes
+  registerBtuEmployerMappingsRoutes(app, requireAuth, requirePermission);
 
   // Register Twilio configuration routes
   registerTwilioRoutes(app);
