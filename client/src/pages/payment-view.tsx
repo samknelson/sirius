@@ -154,6 +154,7 @@ function PaymentViewContent() {
         showEntityName={true}
         showEaAccount={true}
         showEaLink={true}
+        currencyCode={currencyCode}
       />
     </div>
   );
