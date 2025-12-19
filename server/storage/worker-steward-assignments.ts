@@ -53,6 +53,7 @@ export interface WorkerStewardAssignmentStorage {
   updateAssignment(id: string, data: Partial<InsertWorkerStewardAssignment>): Promise<WorkerStewardAssignment | undefined>;
   deleteAssignment(id: string): Promise<boolean>;
   findExistingAssignment(workerId: string, employerId: string, bargainingUnitId: string): Promise<WorkerStewardAssignment | undefined>;
+  isWorkerSteward(workerId: string): Promise<boolean>;
 }
 
 export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentStorage {
@@ -193,6 +194,15 @@ export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentS
           eq(workerStewardAssignments.bargainingUnitId, bargainingUnitId)
         ));
       return assignment || undefined;
+    },
+
+    async isWorkerSteward(workerId: string): Promise<boolean> {
+      const [assignment] = await db
+        .select({ id: workerStewardAssignments.id })
+        .from(workerStewardAssignments)
+        .where(eq(workerStewardAssignments.workerId, workerId))
+        .limit(1);
+      return !!assignment;
     },
   };
 

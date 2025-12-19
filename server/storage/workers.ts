@@ -64,6 +64,7 @@ export interface WorkerStorage {
   getWorker(id: string): Promise<Worker | undefined>;
   getWorkerBySSN(ssn: string): Promise<Worker | undefined>;
   getWorkerByContactEmail(email: string): Promise<Worker | undefined>;
+  getWorkerByContactId(contactId: string): Promise<Worker | undefined>;
   createWorker(name: string): Promise<Worker>;
   // Update methods that delegate to contact storage (contact storage already has logging)
   updateWorkerContactName(workerId: string, name: string): Promise<Worker | undefined>;
@@ -320,6 +321,14 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .where(sql`LOWER(${contacts.email}) = LOWER(${email})`);
       
       return result || undefined;
+    },
+
+    async getWorkerByContactId(contactId: string): Promise<Worker | undefined> {
+      const [worker] = await db
+        .select()
+        .from(workers)
+        .where(eq(workers.contactId, contactId));
+      return worker || undefined;
     },
 
     async createWorker(name: string): Promise<Worker> {
