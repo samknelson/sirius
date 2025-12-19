@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Employer } from "@shared/schema";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -36,6 +37,7 @@ interface EmployerType {
 export function EmployersTable({ employers, isLoading, includeInactive, onToggleInactive }: EmployersTableProps) {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedTypeId, setSelectedTypeId] = useState<string>("all");
 
   // Fetch employer types for icons
   const { data: employerTypes = [] } = useQuery<EmployerType[]>({
@@ -52,19 +54,29 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
     return map;
   }, [employerTypes]);
 
-  // Filter employers based on search query
+  // Filter employers based on search query and type
   const filteredEmployers = useMemo(() => {
-    if (!searchQuery.trim()) return employers;
-    
-    const query = searchQuery.toLowerCase();
     return employers.filter(employer => {
-      const id = employer.id.toLowerCase();
-      const name = employer.name.toLowerCase();
-      const siriusId = String(employer.siriusId);
+      // Filter by employer type
+      if (selectedTypeId !== "all" && employer.typeId !== selectedTypeId) {
+        return false;
+      }
       
-      return id.includes(query) || name.includes(query) || siriusId.includes(query);
+      // Filter by search query
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const id = employer.id.toLowerCase();
+        const name = employer.name.toLowerCase();
+        const siriusId = String(employer.siriusId);
+        
+        if (!id.includes(query) && !name.includes(query) && !siriusId.includes(query)) {
+          return false;
+        }
+      }
+      
+      return true;
     });
-  }, [employers, searchQuery]);
+  }, [employers, searchQuery, selectedTypeId]);
 
   const sortedEmployers = [...filteredEmployers].sort((a, b) => {
     if (sortOrder === "asc") {
@@ -128,20 +140,43 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
             />
           </div>
           
-          {/* Include Inactive Toggle */}
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="include-inactive"
-              checked={includeInactive}
-              onCheckedChange={onToggleInactive}
-              data-testid="checkbox-include-inactive"
-            />
-            <Label
-              htmlFor="include-inactive"
-              className="text-sm text-muted-foreground cursor-pointer"
-            >
-              Include inactive employers
-            </Label>
+          {/* Filters Row */}
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            {/* Include Inactive Toggle */}
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="include-inactive"
+                checked={includeInactive}
+                onCheckedChange={onToggleInactive}
+                data-testid="checkbox-include-inactive"
+              />
+              <Label
+                htmlFor="include-inactive"
+                className="text-sm text-muted-foreground cursor-pointer"
+              >
+                Include inactive employers
+              </Label>
+            </div>
+            
+            {/* Employer Type Filter */}
+            <div className="flex items-center gap-2">
+              <Select value={selectedTypeId} onValueChange={setSelectedTypeId}>
+                <SelectTrigger className="w-[180px]" data-testid="select-employer-type-filter">
+                  <SelectValue placeholder="All Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  {employerTypes.map((type) => (
+                    <SelectItem key={type.id} value={type.id}>
+                      <div className="flex items-center gap-2">
+                        {renderIcon(type.data?.icon || "Building2", "w-4 h-4")}
+                        <span>{type.name}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 
