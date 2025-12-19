@@ -14,7 +14,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertLedgerPaymentSchema, type LedgerPayment, type LedgerPaymentType } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, DollarSign, Download, ArrowUpDown, Filter, X } from "lucide-react";
+import { Plus, DollarSign, Download, ArrowUpDown, Filter, X, ChevronDown } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useState, useMemo, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -463,6 +464,11 @@ function EAPaymentsContent() {
     }
   };
 
+  const openDialogWithPaymentType = (paymentTypeId: string) => {
+    form.setValue("paymentType", paymentTypeId);
+    setDialogOpen(true);
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -498,18 +504,32 @@ function EAPaymentsContent() {
               <Download className="h-4 w-4 mr-2" />
               Export CSV
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button data-testid="button-add-payment">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Payment
+                  <ChevronDown className="h-4 w-4 ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {paymentTypes.map((type) => (
+                  <DropdownMenuItem
+                    key={type.id}
+                    onClick={() => openDialogWithPaymentType(type.id)}
+                    data-testid={`menu-item-${type.id}`}
+                  >
+                    {type.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-add-payment">
-                <Plus className="h-4 w-4 mr-2" />
-                Add an Offline Payment or Adjustment
-              </Button>
-            </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>
-                <DialogTitle>Add Offline Payment or Adjustment</DialogTitle>
+                <DialogTitle>Add {selectedPaymentType?.name || "Payment"}</DialogTitle>
                 <DialogDescription>
-                  Create a new payment record or adjustment for this account entry
+                  Create a new {selectedPaymentType?.name?.toLowerCase() || "payment"} record for this account entry
                 </DialogDescription>
               </DialogHeader>
               <Form {...form}>
@@ -529,31 +549,6 @@ function EAPaymentsContent() {
                             {...field}
                           />
                         </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="paymentType"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Payment Type</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger data-testid="select-payment-type">
-                              <SelectValue placeholder="Select payment type" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {paymentTypes.map((type) => (
-                              <SelectItem key={type.id} value={type.id} data-testid={`option-${type.id}`}>
-                                {type.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
