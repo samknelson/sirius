@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders } from "@shared/schema";
+import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
 import type { 
   LedgerAccount, 
   InsertLedgerAccount,
@@ -528,6 +528,26 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
     },
 
     async create(insertPayment: InsertLedgerPayment): Promise<LedgerPayment> {
+      // Validate currency match between payment type and account
+      const [ea] = await db.select().from(ledgerEa).where(eq(ledgerEa.id, insertPayment.ledgerEaId));
+      if (!ea) {
+        throw new Error("Account entry not found");
+      }
+      
+      const [account] = await db.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, ea.accountId));
+      if (!account) {
+        throw new Error("Account not found");
+      }
+      
+      const [paymentType] = await db.select().from(optionsLedgerPaymentType).where(eq(optionsLedgerPaymentType.id, insertPayment.paymentType));
+      if (!paymentType) {
+        throw new Error("Payment type not found");
+      }
+      
+      if (paymentType.currencyCode !== account.currencyCode) {
+        throw new Error(`Currency mismatch: Payment type "${paymentType.name}" uses ${paymentType.currencyCode} but account "${account.name}" uses ${account.currencyCode}`);
+      }
+      
       const [payment] = await db.insert(ledgerPayments)
         .values(insertPayment as any)
         .returning();
@@ -535,6 +555,33 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
     },
 
     async update(id: string, paymentUpdate: Partial<InsertLedgerPayment>): Promise<LedgerPayment | undefined> {
+      // If payment type is being changed, validate currency match
+      if (paymentUpdate.paymentType) {
+        const [existingPayment] = await db.select().from(ledgerPayments).where(eq(ledgerPayments.id, id));
+        if (!existingPayment) {
+          return undefined;
+        }
+        
+        const [ea] = await db.select().from(ledgerEa).where(eq(ledgerEa.id, existingPayment.ledgerEaId));
+        if (!ea) {
+          throw new Error("Account entry not found");
+        }
+        
+        const [account] = await db.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, ea.accountId));
+        if (!account) {
+          throw new Error("Account not found");
+        }
+        
+        const [paymentType] = await db.select().from(optionsLedgerPaymentType).where(eq(optionsLedgerPaymentType.id, paymentUpdate.paymentType));
+        if (!paymentType) {
+          throw new Error("Payment type not found");
+        }
+        
+        if (paymentType.currencyCode !== account.currencyCode) {
+          throw new Error(`Currency mismatch: Payment type "${paymentType.name}" uses ${paymentType.currencyCode} but account "${account.name}" uses ${account.currencyCode}`);
+        }
+      }
+      
       const [payment] = await db.update(ledgerPayments)
         .set(paymentUpdate as any)
         .where(eq(ledgerPayments.id, id))
