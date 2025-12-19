@@ -43,6 +43,10 @@ export function registerLedgerAccountRoutes(app: Express) {
         return;
       }
       
+      // Prevent browser caching to ensure currency code is always fresh
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
       res.json(account);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch ledger account" });
