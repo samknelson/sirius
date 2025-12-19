@@ -32,8 +32,14 @@ interface LedgerPaymentType {
   name: string;
   description: string | null;
   currencyCode: string;
+  category: "financial" | "adjustment";
   sequence: number;
 }
+
+const paymentCategories = [
+  { value: "financial", label: "Financial" },
+  { value: "adjustment", label: "Adjustment" },
+] as const;
 
 const currencies = getAllCurrencies();
 
@@ -47,13 +53,14 @@ export default function LedgerPaymentTypesPage() {
   const [formName, setFormName] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formCurrencyCode, setFormCurrencyCode] = useState("USD");
+  const [formCategory, setFormCategory] = useState<"financial" | "adjustment">("financial");
   
   const { data: paymentTypes = [], isLoading } = useQuery<LedgerPaymentType[]>({
     queryKey: ["/api/ledger-payment-types"],
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: { name: string; description: string | null; currencyCode: string }) => {
+    mutationFn: async (data: { name: string; description: string | null; currencyCode: string; category: "financial" | "adjustment" }) => {
       // Find the highest sequence number
       const maxSequence = paymentTypes.reduce((max, type) => Math.max(max, type.sequence), -1);
       return apiRequest("POST", "/api/ledger-payment-types", { 
@@ -80,11 +87,12 @@ export default function LedgerPaymentTypesPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { id: string; name: string; description: string | null; currencyCode: string }) => {
+    mutationFn: async (data: { id: string; name: string; description: string | null; currencyCode: string; category: "financial" | "adjustment" }) => {
       return apiRequest("PUT", `/api/ledger-payment-types/${data.id}`, {
         name: data.name,
         description: data.description,
         currencyCode: data.currencyCode,
+        category: data.category,
       });
     },
     onSuccess: () => {
@@ -141,6 +149,7 @@ export default function LedgerPaymentTypesPage() {
     setFormName("");
     setFormDescription("");
     setFormCurrencyCode("USD");
+    setFormCategory("financial");
   };
 
   const handleEdit = (type: LedgerPaymentType) => {
@@ -148,6 +157,7 @@ export default function LedgerPaymentTypesPage() {
     setFormName(type.name);
     setFormDescription(type.description || "");
     setFormCurrencyCode(type.currencyCode || "USD");
+    setFormCategory(type.category || "financial");
   };
 
   const handleCancelEdit = () => {
@@ -169,6 +179,7 @@ export default function LedgerPaymentTypesPage() {
       name: formName.trim(),
       description: formDescription.trim() || null,
       currencyCode: formCurrencyCode,
+      category: formCategory,
     });
   };
 
@@ -185,6 +196,7 @@ export default function LedgerPaymentTypesPage() {
       name: formName.trim(),
       description: formDescription.trim() || null,
       currencyCode: formCurrencyCode,
+      category: formCategory,
     });
   };
 
@@ -244,6 +256,7 @@ export default function LedgerPaymentTypesPage() {
                 <TableRow>
                   <TableHead>Order</TableHead>
                   <TableHead>Name</TableHead>
+                  <TableHead>Category</TableHead>
                   <TableHead>Currency</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -284,6 +297,24 @@ export default function LedgerPaymentTypesPage() {
                         />
                       ) : (
                         type.name
+                      )}
+                    </TableCell>
+                    <TableCell data-testid={`text-category-${type.id}`}>
+                      {editingId === type.id ? (
+                        <Select value={formCategory} onValueChange={(v) => setFormCategory(v as "financial" | "adjustment")}>
+                          <SelectTrigger data-testid={`select-edit-category-${type.id}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {paymentCategories.map((cat) => (
+                              <SelectItem key={cat.value} value={cat.value}>
+                                {cat.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        paymentCategories.find(c => c.value === type.category)?.label || "Financial"
                       )}
                     </TableCell>
                     <TableCell data-testid={`text-currency-${type.id}`}>
@@ -388,6 +419,25 @@ export default function LedgerPaymentTypesPage() {
                 placeholder="e.g., Cash, Check, Wire Transfer"
                 data-testid="input-add-name"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-category">Category</Label>
+              <Select value={formCategory} onValueChange={(v) => setFormCategory(v as "financial" | "adjustment")}>
+                <SelectTrigger data-testid="select-add-category">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {paymentCategories.map((cat) => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Financial: includes merchant, status, date received, check/transaction number.
+                Adjustment: includes user, date entered, effective date (always cleared).
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="add-currency">Currency</Label>
