@@ -103,16 +103,6 @@ export const bargainingUnits = pgTable("bargaining_units", {
   data: jsonb("data"),
 });
 
-export const workerStewardAssignments = pgTable("worker_steward_assignments", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
-  employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
-  bargainingUnitId: varchar("bargaining_unit_id").notNull().references(() => bargainingUnits.id, { onDelete: 'cascade' }),
-  data: jsonb("data"),
-}, (table) => ({
-  uniqueWorkerEmployerBargainingUnit: unique().on(table.workerId, table.employerId, table.bargainingUnitId),
-}));
-
 export const employerPolicyHistory = pgTable("employer_policy_history", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   date: date("date").notNull(),
@@ -549,6 +539,13 @@ export {
   type InsertEsig,
 } from "./schema/cardcheck/schema";
 
+export {
+  workerStewardAssignments,
+  insertWorkerStewardAssignmentSchema,
+  type WorkerStewardAssignment,
+  type InsertWorkerStewardAssignment,
+} from "./schema/worker/steward/schema";
+
 // Zod schemas for validation
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -595,10 +592,6 @@ export const insertPolicySchema = createInsertSchema(policies).omit({
 });
 
 export const insertBargainingUnitSchema = createInsertSchema(bargainingUnits).omit({
-  id: true,
-});
-
-export const insertWorkerStewardAssignmentSchema = createInsertSchema(workerStewardAssignments).omit({
   id: true,
 });
 
@@ -831,9 +824,6 @@ export type Policy = typeof policies.$inferSelect;
 
 export type InsertBargainingUnit = z.infer<typeof insertBargainingUnitSchema>;
 export type BargainingUnit = typeof bargainingUnits.$inferSelect;
-
-export type InsertWorkerStewardAssignment = z.infer<typeof insertWorkerStewardAssignmentSchema>;
-export type WorkerStewardAssignment = typeof workerStewardAssignments.$inferSelect;
 
 export type InsertEmployerContact = z.infer<typeof insertEmployerContactSchema>;
 export type EmployerContact = typeof employerContacts.$inferSelect;
