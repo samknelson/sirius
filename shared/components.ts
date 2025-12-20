@@ -65,7 +65,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Card Check",
     description: "Worker cardcheck functionality",
     enabledByDefault: false,
-    category: "core"
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/cardcheck/schema.ts",
+      tables: ["cardcheck_definitions", "esigs", "cardchecks"]
+    }
   },
   {
     id: "sitespecific.gbhet",
