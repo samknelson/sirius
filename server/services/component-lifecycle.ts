@@ -1,5 +1,6 @@
 import { db } from "../db";
 import { storage } from "../storage";
+import { tableExists } from "../storage/utils";
 import { sql } from "drizzle-orm";
 import {
   getComponentById,
@@ -30,17 +31,6 @@ export interface DriftCheckResult {
   componentId: string;
   drift: ComponentSchemaDrift;
   schemaState: ComponentSchemaState | null;
-}
-
-async function tableExists(tableName: string): Promise<boolean> {
-  const result = await db.execute(sql`
-    SELECT EXISTS (
-      SELECT FROM information_schema.tables 
-      WHERE table_schema = 'public' 
-      AND table_name = ${tableName}
-    ) as exists
-  `);
-  return result.rows[0]?.exists === true;
 }
 
 async function getSchemaState(componentId: string): Promise<ComponentSchemaState | null> {

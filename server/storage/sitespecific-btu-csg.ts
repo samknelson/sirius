@@ -1,5 +1,6 @@
 import { db } from "../db";
 import { sql } from "drizzle-orm";
+import { tableExists as tableExistsUtil } from "./utils";
 
 export interface BtuCsgRecord {
   id: string;
@@ -75,14 +76,7 @@ export interface BtuCsgStorage {
 export function createBtuCsgStorage(): BtuCsgStorage {
   return {
     async tableExists(): Promise<boolean> {
-      const result = await db.execute(sql`
-        SELECT EXISTS (
-          SELECT FROM information_schema.tables 
-          WHERE table_schema = 'public' 
-          AND table_name = 'sitespecific_btu_csg'
-        ) as exists
-      `);
-      return result.rows[0]?.exists === true;
+      return tableExistsUtil("sitespecific_btu_csg");
     },
 
     async getAll(): Promise<BtuCsgRecord[]> {
