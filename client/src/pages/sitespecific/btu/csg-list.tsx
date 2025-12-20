@@ -53,7 +53,7 @@ export default function BtuCsgListPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [schoolFilter, setSchoolFilter] = useState("");
+  const [schoolFilter, setSchoolFilter] = useState("all");
 
   const { data: records = [], isLoading, error } = useQuery<BtuCsgRecord[]>({
     queryKey: ["/api/sitespecific/btu/csg"],
@@ -95,7 +95,7 @@ export default function BtuCsgListPage() {
         record.school?.toLowerCase().includes(searchQuery.toLowerCase());
       
       const matchesStatus = statusFilter === "all" || record.status === statusFilter;
-      const matchesSchool = schoolFilter === "" || record.school === schoolFilter;
+      const matchesSchool = schoolFilter === "all" || record.school === schoolFilter;
 
       return matchesSearch && matchesStatus && matchesSchool;
     });
@@ -184,10 +184,10 @@ export default function BtuCsgListPage() {
   const clearFilters = () => {
     setSearchQuery("");
     setStatusFilter("all");
-    setSchoolFilter("");
+    setSchoolFilter("all");
   };
 
-  const hasActiveFilters = searchQuery !== "" || statusFilter !== "all" || schoolFilter !== "";
+  const hasActiveFilters = searchQuery !== "" || statusFilter !== "all" || schoolFilter !== "all";
 
   if (isLoading) {
     return (
@@ -267,7 +267,7 @@ export default function BtuCsgListPage() {
                 <SelectValue placeholder="All Schools" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Schools</SelectItem>
+                <SelectItem value="all">All Schools</SelectItem>
                 {uniqueSchools.map((school) => (
                   <SelectItem key={school} value={school}>
                     {school}
