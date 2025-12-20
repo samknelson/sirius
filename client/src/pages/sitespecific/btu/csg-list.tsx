@@ -8,9 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Loader2, AlertTriangle, Download, Search, Eye, X } from "lucide-react";
+import { Plus, Trash2, Loader2, AlertTriangle, Download, Search, Eye, X, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 interface BtuCsgRecord {
   id: string;
@@ -191,49 +192,63 @@ export default function BtuCsgListPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin" data-testid="loading-spinner" />
+      <div className="bg-background text-foreground min-h-screen">
+        <PageHeader 
+          title="Class Size Grievances" 
+          icon={<FileText className="text-primary-foreground" size={16} />}
+        />
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="h-8 w-8 animate-spin" data-testid="loading-spinner" />
+          </div>
+        </main>
       </div>
     );
   }
 
   if (error) {
     return (
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-2 text-destructive">
-            <AlertTriangle className="h-5 w-5" />
-            <span>Failed to load records. The BTU component may not be enabled.</span>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="bg-background text-foreground min-h-screen">
+        <PageHeader 
+          title="Class Size Grievances" 
+          icon={<FileText className="text-primary-foreground" size={16} />}
+        />
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-2 text-destructive">
+                <AlertTriangle className="h-5 w-5" />
+                <span>Failed to load records. The BTU component may not be enabled.</span>
+              </div>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-page-title">
-            Class Size Grievances
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Manage class size grievance submissions
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" onClick={exportToCSV} data-testid="button-export-csv">
-            <Download className="h-4 w-4 mr-2" />
-            Export CSV
-          </Button>
-          <Link href="/sitespecific/btu/csgs/new">
-            <Button data-testid="button-new-csg">
-              <Plus className="h-4 w-4 mr-2" />
-              New Grievance
+    <div className="bg-background text-foreground min-h-screen">
+      <PageHeader 
+        title="Class Size Grievances" 
+        icon={<FileText className="text-primary-foreground" size={16} />}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={exportToCSV} data-testid="button-export-csv">
+              <Download className="h-4 w-4 mr-2" />
+              Export CSV
             </Button>
-          </Link>
-        </div>
-      </div>
+            <Link href="/sitespecific/btu/csgs/new">
+              <Button size="sm" data-testid="button-new-csg">
+                <Plus className="h-4 w-4 mr-2" />
+                New Grievance
+              </Button>
+            </Link>
+          </div>
+        }
+      />
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
       <Card>
         <CardContent className="pt-6">
@@ -352,6 +367,8 @@ export default function BtuCsgListPage() {
           </Table>
         </div>
       )}
+
+      </main>
 
       <Dialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
         <DialogContent>
