@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, 
   CreditCard, Activity, Wallet, Settings, Shield, Key, FileText, 
-  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, Link, type LucideIcon
+  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, type LucideIcon
 } from "lucide-react";
 
 export interface NavItem {
@@ -134,15 +134,6 @@ export const configSections: NavSection[] = [
           { path: "/config/ledger/stripe/payment-types", label: "Payment Methods", icon: CreditCard, testId: "nav-ledger-stripe-payment-types", policy: "ledgerStripeAdmin" },
         ],
       },
-    ],
-  },
-  {
-    id: "btu",
-    title: "BTU",
-    description: "BTU-specific configuration",
-    icon: Building2,
-    items: [
-      { path: "/config/btu/employer-mappings", label: "Employer Mappings", icon: Link, testId: "nav-config-btu-employer-mappings", permission: "admin", requiresComponent: "sitespecific.btu" },
     ],
   },
 ];

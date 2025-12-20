@@ -135,7 +135,6 @@ import EmployerContactTypesPage from "@/pages/config/employer-contact-types";
 import EmployerTypesPage from "@/pages/config/employer-types";
 import ProviderContactTypesPage from "@/pages/config/provider-contact-types";
 import EventTypesPage from "@/pages/config/event-types";
-import BtuEmployerMappingsPage from "@/pages/config/btu/employer-mappings";
 import MasqueradePage from "@/pages/config/masquerade";
 import SystemModePage from "@/pages/config/system-mode";
 import DefaultPolicyPage from "@/pages/config/default-policy";
@@ -1314,16 +1313,6 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <EventTypesPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/btu/employer-mappings">
-        <ProtectedRoute permission="admin" component="sitespecific.btu">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <BtuEmployerMappingsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
