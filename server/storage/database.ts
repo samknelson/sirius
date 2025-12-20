@@ -32,6 +32,7 @@ import { type FloodStorage, createFloodStorage } from "./flood";
 import { type EventStorage, createEventStorage, eventLoggingConfig, type EventOccurrenceStorage, createEventOccurrenceStorage, eventOccurrenceLoggingConfig, type EventParticipantStorage, createEventParticipantStorage, eventParticipantLoggingConfig } from "./events";
 import { type WorkerStewardAssignmentStorage, createWorkerStewardAssignmentStorage, workerStewardAssignmentLoggingConfig } from "./worker-steward-assignments";
 import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./sitespecific-btu-csg";
+import { type BtuEmployerMapStorage, createBtuEmployerMapStorage, btuEmployerMapLoggingConfig } from "./sitespecific-btu-employer-map";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "../db";
 import { optionsEmploymentStatus, employers, workers, contacts } from "@shared/schema";
@@ -75,6 +76,7 @@ export interface IStorage {
   eventParticipants: EventParticipantStorage;
   workerStewardAssignments: WorkerStewardAssignmentStorage;
   btuCsg: BtuCsgStorage;
+  btuEmployerMap: BtuEmployerMapStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -115,6 +117,7 @@ export class DatabaseStorage implements IStorage {
   eventParticipants: EventParticipantStorage;
   workerStewardAssignments: WorkerStewardAssignmentStorage;
   btuCsg: BtuCsgStorage;
+  btuEmployerMap: BtuEmployerMapStorage;
 
   constructor() {
     this.variables = withStorageLogging(createVariableStorage(), variableLoggingConfig);
@@ -218,6 +221,7 @@ export class DatabaseStorage implements IStorage {
     this.eventParticipants = withStorageLogging(createEventParticipantStorage(), eventParticipantLoggingConfig);
     this.workerStewardAssignments = withStorageLogging(createWorkerStewardAssignmentStorage(), workerStewardAssignmentLoggingConfig);
     this.btuCsg = withStorageLogging(createBtuCsgStorage(), btuCsgLoggingConfig);
+    this.btuEmployerMap = withStorageLogging(createBtuEmployerMapStorage(), btuEmployerMapLoggingConfig);
   }
 }
 
