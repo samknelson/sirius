@@ -4,6 +4,7 @@ import { policies } from "../policies";
 import { requireComponent } from "./components";
 import { storage } from "../storage";
 import type { InsertBtuCsgRecord } from "../storage/sitespecific-btu-csg";
+import type { InsertBtuEmployerMap } from "../storage/sitespecific-btu-employer-map";
 import { z } from "zod";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -181,6 +182,157 @@ export function registerBtuCsgRoutes(
       res.json({ message: "Record deleted successfully" });
     } catch (error) {
       console.error("Failed to delete BTU CSG record:", error);
+      res.status(500).json({ message: "Failed to delete record" });
+    }
+  });
+
+  // Employer Map routes
+  const employerMapStorage = storage.btuEmployerMap;
+
+  const employerMapInsertSchema = z.object({
+    departmentId: z.string().nullable().optional(),
+    departmentTitle: z.string().nullable().optional(),
+    locationId: z.string().nullable().optional(),
+    locationTitle: z.string().nullable().optional(),
+    jobCode: z.string().nullable().optional(),
+    jobTitle: z.string().nullable().optional(),
+    employerName: z.string().nullable().optional(),
+  });
+
+  app.get("/api/sitespecific/btu/employer-map", requireAuth, componentMiddleware, async (req, res) => {
+    try {
+      const tableExists = await employerMapStorage.tableExists();
+      if (!tableExists) {
+        return res.status(503).json({ 
+          message: "Employer map table does not exist. Please enable the BTU component first." 
+        });
+      }
+      
+      const filters = {
+        search: req.query.search as string | undefined,
+        departmentId: req.query.departmentId as string | undefined,
+        locationId: req.query.locationId as string | undefined,
+        employerName: req.query.employerName as string | undefined,
+      };
+      
+      const records = await employerMapStorage.getAll(filters);
+      res.json(records);
+    } catch (error) {
+      console.error("Failed to fetch employer map records:", error);
+      res.status(500).json({ message: "Failed to fetch records" });
+    }
+  });
+
+  app.get("/api/sitespecific/btu/employer-map/filters", requireAuth, componentMiddleware, async (req, res) => {
+    try {
+      const tableExists = await employerMapStorage.tableExists();
+      if (!tableExists) {
+        return res.status(503).json({ 
+          message: "Employer map table does not exist. Please enable the BTU component first." 
+        });
+      }
+      
+      const [departments, locations, employerNames] = await Promise.all([
+        employerMapStorage.getUniqueDepartments(),
+        employerMapStorage.getUniqueLocations(),
+        employerMapStorage.getUniqueEmployerNames(),
+      ]);
+      
+      res.json({ departments, locations, employerNames });
+    } catch (error) {
+      console.error("Failed to fetch employer map filter options:", error);
+      res.status(500).json({ message: "Failed to fetch filter options" });
+    }
+  });
+
+  app.get("/api/sitespecific/btu/employer-map/:id", requireAuth, componentMiddleware, async (req, res) => {
+    try {
+      const tableExists = await employerMapStorage.tableExists();
+      if (!tableExists) {
+        return res.status(503).json({ 
+          message: "Employer map table does not exist. Please enable the BTU component first." 
+        });
+      }
+      const record = await employerMapStorage.get(req.params.id);
+      if (!record) {
+        return res.status(404).json({ message: "Record not found" });
+      }
+      res.json(record);
+    } catch (error) {
+      console.error("Failed to fetch employer map record:", error);
+      res.status(500).json({ message: "Failed to fetch record" });
+    }
+  });
+
+  app.post("/api/sitespecific/btu/employer-map", requireAuth, requirePermission("admin"), componentMiddleware, async (req, res) => {
+    try {
+      const tableExists = await employerMapStorage.tableExists();
+      if (!tableExists) {
+        return res.status(503).json({ 
+          message: "Employer map table does not exist. Please enable the BTU component first." 
+        });
+      }
+      
+      const parseResult = employerMapInsertSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: parseResult.error.errors 
+        });
+      }
+
+      const record = await employerMapStorage.create(parseResult.data as InsertBtuEmployerMap);
+      res.status(201).json(record);
+    } catch (error) {
+      console.error("Failed to create employer map record:", error);
+      res.status(500).json({ message: "Failed to create record" });
+    }
+  });
+
+  app.patch("/api/sitespecific/btu/employer-map/:id", requireAuth, requirePermission("admin"), componentMiddleware, async (req, res) => {
+    try {
+      const tableExists = await employerMapStorage.tableExists();
+      if (!tableExists) {
+        return res.status(503).json({ 
+          message: "Employer map table does not exist. Please enable the BTU component first." 
+        });
+      }
+      
+      const parseResult = employerMapInsertSchema.partial().safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: parseResult.error.errors 
+        });
+      }
+
+      const record = await employerMapStorage.update(req.params.id, parseResult.data as Partial<InsertBtuEmployerMap>);
+      if (!record) {
+        return res.status(404).json({ message: "Record not found" });
+      }
+      res.json(record);
+    } catch (error) {
+      console.error("Failed to update employer map record:", error);
+      res.status(500).json({ message: "Failed to update record" });
+    }
+  });
+
+  app.delete("/api/sitespecific/btu/employer-map/:id", requireAuth, requirePermission("admin"), componentMiddleware, async (req, res) => {
+    try {
+      const tableExists = await employerMapStorage.tableExists();
+      if (!tableExists) {
+        return res.status(503).json({ 
+          message: "Employer map table does not exist. Please enable the BTU component first." 
+        });
+      }
+      
+      const deleted = await employerMapStorage.delete(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Record not found" });
+      }
+      res.json({ message: "Record deleted successfully" });
+    } catch (error) {
+      console.error("Failed to delete employer map record:", error);
       res.status(500).json({ message: "Failed to delete record" });
     }
   });
