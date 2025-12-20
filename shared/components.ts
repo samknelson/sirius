@@ -1,3 +1,9 @@
+import { 
+  BTU_CSG_TABLE_NAME, 
+  BTU_CSG_CREATE_SQL, 
+  BTU_CSG_DROP_SQL 
+} from "./schema/sitespecific/btu/schema";
+
 export interface ComponentDefinition {
   id: string;
   name: string;
@@ -97,28 +103,9 @@ export const componentRegistry: ComponentDefinition[] = [
       version: 1,
       tables: [
         {
-          tableName: "sitespecific_btu_csg",
-          createSql: `CREATE TABLE IF NOT EXISTS sitespecific_btu_csg (
-            id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-            bps_id TEXT,
-            first_name TEXT,
-            last_name TEXT,
-            phone TEXT,
-            non_bps_email TEXT,
-            school TEXT,
-            principal_headmaster TEXT,
-            role TEXT,
-            type_of_class TEXT,
-            course TEXT,
-            section TEXT,
-            number_of_students TEXT,
-            comments TEXT,
-            status TEXT DEFAULT 'pending',
-            admin_notes TEXT,
-            created_at TIMESTAMP DEFAULT NOW(),
-            updated_at TIMESTAMP DEFAULT NOW()
-          )`,
-          dropSql: `DROP TABLE IF EXISTS sitespecific_btu_csg`
+          tableName: BTU_CSG_TABLE_NAME,
+          createSql: BTU_CSG_CREATE_SQL,
+          dropSql: BTU_CSG_DROP_SQL
         }
       ]
     }
