@@ -201,6 +201,7 @@ export class DatabaseStorage implements IStorage {
         getFileById: this.files.getById.bind(this.files),
         updateFile: this.files.update.bind(this.files),
         updateCardcheck: this.cardchecks.updateCardcheck.bind(this.cardchecks),
+        getCardcheckById: this.cardchecks.getCardcheckById.bind(this.cardchecks),
       }),
       esigLoggingConfig
     );

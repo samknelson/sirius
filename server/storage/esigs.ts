@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { esigs, cardchecks, cardcheckDefinitions, files, users, workers, contacts, type Esig, type InsertEsig, type Cardcheck, type InsertCardcheck, type File } from "@shared/schema";
+import { esigs, cardcheckDefinitions, files, users, workers, contacts, type Esig, type InsertEsig, type Cardcheck, type InsertCardcheck, type File } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 import crypto from "crypto";
@@ -34,7 +34,11 @@ export interface EsigStorageDependencies {
   getFileById: (id: string) => Promise<File | undefined>;
   updateFile: (id: string, updates: Partial<{ entityType: string; entityId: string }>) => Promise<File | undefined>;
   updateCardcheck: (id: string, data: Partial<InsertCardcheck>) => Promise<Cardcheck | undefined>;
+  getCardcheckById: (id: string) => Promise<Cardcheck | undefined>;
 }
+
+// Module-level storage for dependency used by logging config helpers
+let storedGetCardcheckById: ((id: string) => Promise<Cardcheck | undefined>) | null = null;
 
 export interface EsigStorage {
   getEsigById(id: string): Promise<EsigWithSigner | undefined>;
@@ -44,6 +48,9 @@ export interface EsigStorage {
 }
 
 export function createEsigStorage(deps: EsigStorageDependencies): EsigStorage {
+  // Store dependency for logging config helpers
+  storedGetCardcheckById = deps.getCardcheckById;
+  
   const storage: EsigStorage = {
     async getEsigById(id: string): Promise<EsigWithSigner | undefined> {
       const result = await db
@@ -175,10 +182,10 @@ async function getDefinitionName(definitionId: string): Promise<string> {
 }
 
 async function getCardcheckInfo(cardcheckId: string): Promise<{ workerId: string; definitionId: string } | null> {
-  const [cardcheck] = await db
-    .select({ workerId: cardchecks.workerId, cardcheckDefinitionId: cardchecks.cardcheckDefinitionId })
-    .from(cardchecks)
-    .where(eq(cardchecks.id, cardcheckId));
+  if (!storedGetCardcheckById) {
+    return null;
+  }
+  const cardcheck = await storedGetCardcheckById(cardcheckId);
   return cardcheck ? { workerId: cardcheck.workerId, definitionId: cardcheck.cardcheckDefinitionId } : null;
 }
 
