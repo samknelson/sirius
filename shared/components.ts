@@ -4,11 +4,49 @@ export interface ComponentDefinition {
   description: string;
   enabledByDefault: boolean;
   category?: string;
+  managesSchema?: boolean;
+  schemaManifest?: ComponentSchemaManifest;
 }
 
 export interface ComponentConfig {
   componentId: string;
   enabled: boolean;
+}
+
+export interface ComponentSchemaManifest {
+  version?: number;
+  tables: ComponentTableManifest[];
+}
+
+export interface ComponentTableManifest {
+  tableName: string;
+  createSql: string;
+  dropSql: string;
+}
+
+export type ComponentTableStatus = "active" | "dropped" | "pending" | "error";
+
+export interface ComponentTableState {
+  tableName: string;
+  status: ComponentTableStatus;
+  appliedAt: string | null;
+  droppedAt: string | null;
+  checksum: string;
+  errorMessage?: string;
+}
+
+export interface ComponentSchemaDrift {
+  lastCheckAt: string;
+  hasUnexpectedTables: boolean;
+  hasMissingTables: boolean;
+  details: string[];
+}
+
+export interface ComponentSchemaState {
+  manifestVersion: number;
+  lastSyncedAt: string;
+  tables: ComponentTableState[];
+  drift: ComponentSchemaDrift | null;
 }
 
 // Central registry of all available components
@@ -53,7 +91,37 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "BTU Customization",
     description: "Custom functionality for BTU",
     enabledByDefault: false,
-    category: "site-specific"
+    category: "site-specific",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      tables: [
+        {
+          tableName: "sitespecific_btu_csg",
+          createSql: `CREATE TABLE IF NOT EXISTS sitespecific_btu_csg (
+            id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+            bps_id TEXT,
+            first_name TEXT,
+            last_name TEXT,
+            phone TEXT,
+            non_bps_email TEXT,
+            school TEXT,
+            principal_headmaster TEXT,
+            role TEXT,
+            type_of_class TEXT,
+            course TEXT,
+            section TEXT,
+            number_of_students TEXT,
+            comments TEXT,
+            status TEXT DEFAULT 'pending',
+            admin_notes TEXT,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+          )`,
+          dropSql: `DROP TABLE IF EXISTS sitespecific_btu_csg`
+        }
+      ]
+    }
   },
   {
     id: "employer.login",
@@ -170,4 +238,41 @@ export function getAncestorComponentIds(componentId: string): string[] {
   }
   
   return ancestors;
+}
+
+/**
+ * Get the variable name for a component's enabled state
+ * For example: "sitespecific.btu" -> "component_sitespecific.btu"
+ */
+export function getComponentVariableName(componentId: string): string {
+  return `component_${componentId}`;
+}
+
+/**
+ * Get the variable name for a component's schema state
+ * For example: "sitespecific.btu" -> "component_schema_state_sitespecific.btu"
+ */
+export function getComponentSchemaStateVariableName(componentId: string): string {
+  return `component_schema_state_${componentId}`;
+}
+
+/**
+ * Get all components that manage schemas
+ */
+export function getSchemaManagingComponents(): ComponentDefinition[] {
+  return componentRegistry.filter(c => c.managesSchema && c.schemaManifest);
+}
+
+/**
+ * Simple hash function for SQL statements (for drift detection)
+ */
+export function computeSqlChecksum(sql: string): string {
+  const normalized = sql.replace(/\s+/g, ' ').trim().toLowerCase();
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i++) {
+    const char = normalized.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(16);
 }

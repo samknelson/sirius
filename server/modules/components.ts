@@ -2,7 +2,13 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../accessControl";
 import { policies } from "../policies";
-import { getAllComponents, getComponentById, ComponentConfig, getAncestorComponentIds, ComponentDefinition } from "../../shared/components";
+import { getAllComponents, getComponentById, ComponentConfig, getAncestorComponentIds, ComponentDefinition, ComponentSchemaState } from "../../shared/components";
+import {
+  enableComponentSchema,
+  disableComponentSchema,
+  checkComponentSchemaDrift,
+  getComponentSchemaInfo,
+} from "../services/component-lifecycle";
 
 // Type for middleware functions
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -131,48 +137,118 @@ export function registerComponentRoutes(
   app.put("/api/components/config/:componentId", requireAccess(policies.admin), async (req, res) => {
     try {
       const { componentId } = req.params;
-      const { enabled } = req.body;
+      const { enabled, confirmDestructive } = req.body;
 
       if (typeof enabled !== 'boolean') {
         return res.status(400).json({ message: "enabled must be a boolean" });
       }
 
-      // Verify component exists
       const component = getComponentById(componentId);
       if (!component) {
         return res.status(404).json({ message: "Component not found" });
       }
 
+      if (component.managesSchema && !enabled) {
+        const schemaInfo = await getComponentSchemaInfo(component);
+        const hasActiveTables = schemaInfo.tablesExist.some(exists => exists);
+        
+        if (hasActiveTables && confirmDestructive !== "DELETE") {
+          return res.status(400).json({
+            message: "This component has active database tables. Disabling it will DELETE all data.",
+            requiresConfirmation: true,
+            confirmationType: "destructive",
+            tables: schemaInfo.tables,
+            instructions: "To confirm, send confirmDestructive: 'DELETE' in the request body"
+          });
+        }
+      }
+
+      if (component.managesSchema) {
+        if (enabled) {
+          const lifecycleResult = await enableComponentSchema(componentId);
+          if (!lifecycleResult.success) {
+            return res.status(500).json({
+              message: "Failed to create component tables",
+              schemaOperations: lifecycleResult.schemaOperations,
+              error: lifecycleResult.error
+            });
+          }
+        } else {
+          const lifecycleResult = await disableComponentSchema(componentId);
+          if (!lifecycleResult.success) {
+            return res.status(500).json({
+              message: "Failed to drop component tables",
+              schemaOperations: lifecycleResult.schemaOperations,
+              error: lifecycleResult.error
+            });
+          }
+        }
+      }
+
       const variableName = `component_${componentId}`;
-      
-      // Check if variable exists
       const existingVariable = await storage.variables.getByName(variableName);
       
       if (existingVariable) {
-        // Update existing variable
         await storage.variables.update(existingVariable.id, {
           name: variableName,
           value: enabled
         });
       } else {
-        // Create new variable
         await storage.variables.create({
           name: variableName,
           value: enabled
         });
       }
 
-      // Get the effective enabled state (considers parent components)
       const effectiveEnabled = await isComponentEnabled(componentId);
 
       res.json({
         componentId,
         enabled: effectiveEnabled,
         requestedState: enabled,
+        managesSchema: component.managesSchema || false,
         message: `Component ${enabled ? 'enabled' : 'disabled'} successfully${effectiveEnabled !== enabled ? ' (but disabled due to parent component)' : ''}`
       });
     } catch (error) {
+      console.error("Failed to update component configuration:", error);
       res.status(500).json({ message: "Failed to update component configuration" });
+    }
+  });
+
+  // GET /api/components/:componentId/schema-info - Get schema information for a component
+  app.get("/api/components/:componentId/schema-info", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { componentId } = req.params;
+      const component = getComponentById(componentId);
+      
+      if (!component) {
+        return res.status(404).json({ message: "Component not found" });
+      }
+
+      const schemaInfo = await getComponentSchemaInfo(component);
+      res.json({
+        componentId,
+        ...schemaInfo
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get component schema info" });
+    }
+  });
+
+  // POST /api/components/:componentId/check-drift - Check schema drift for a component
+  app.post("/api/components/:componentId/check-drift", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { componentId } = req.params;
+      const component = getComponentById(componentId);
+      
+      if (!component) {
+        return res.status(404).json({ message: "Component not found" });
+      }
+
+      const driftResult = await checkComponentSchemaDrift(componentId);
+      res.json(driftResult);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to check schema drift" });
     }
   });
 

@@ -3,10 +3,29 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Info } from "lucide-react";
+import { Info, Database, AlertTriangle, Loader2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { getAllComponents, ComponentDefinition, ComponentConfig } from "@shared/components";
+
+interface SchemaInfo {
+  componentId: string;
+  hasSchema: boolean;
+  tables: string[];
+  schemaState: any;
+  tablesExist: boolean[];
+}
+
+interface PendingAction {
+  componentId: string;
+  enabled: boolean;
+  component: ComponentDefinition;
+  schemaInfo?: SchemaInfo;
+}
 
 export default function ComponentsConfigPage() {
   const { toast } = useToast();
@@ -19,10 +38,13 @@ export default function ComponentsConfigPage() {
   });
 
   const [localStates, setLocalStates] = useState<Record<string, boolean>>({});
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [confirmText, setConfirmText] = useState("");
+  const [isCheckingSchema, setIsCheckingSchema] = useState(false);
 
   const updateComponentMutation = useMutation({
-    mutationFn: async ({ componentId, enabled }: { componentId: string; enabled: boolean }) => {
-      return apiRequest("PUT", `/api/components/config/${componentId}`, { enabled });
+    mutationFn: async ({ componentId, enabled, confirmDestructive }: { componentId: string; enabled: boolean; confirmDestructive?: string }) => {
+      return apiRequest("PUT", `/api/components/config/${componentId}`, { enabled, confirmDestructive });
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/components/config"] });
@@ -30,6 +52,8 @@ export default function ComponentsConfigPage() {
         title: "Component Updated",
         description: `Component ${variables.enabled ? "enabled" : "disabled"} successfully.`,
       });
+      setPendingAction(null);
+      setConfirmText("");
     },
     onError: (error: any, variables) => {
       toast({
@@ -37,18 +61,16 @@ export default function ComponentsConfigPage() {
         description: error?.message || "Failed to update component.",
         variant: "destructive",
       });
-      // Revert local state on error
       setLocalStates(prev => ({
         ...prev,
         [variables.componentId]: !variables.enabled,
       }));
+      setPendingAction(null);
+      setConfirmText("");
     },
   });
 
   useEffect(() => {
-    // Sync local states with server configs only when:
-    // 1. No mutation is pending (to preserve optimistic updates)
-    // 2. No query is fetching (to avoid using stale data)
     if (!updateComponentMutation.isPending && !isFetching) {
       const states: Record<string, boolean> = {};
       allComponents.forEach((component: ComponentDefinition) => {
@@ -59,14 +81,63 @@ export default function ComponentsConfigPage() {
     }
   }, [componentConfigs, allComponents, updateComponentMutation.isPending, isFetching]);
 
-  const handleToggle = (componentId: string, enabled: boolean) => {
-    // Optimistic update
-    setLocalStates(prev => ({
-      ...prev,
-      [componentId]: enabled,
-    }));
-    
+  const handleToggle = async (componentId: string, enabled: boolean) => {
+    const component = allComponents.find(c => c.id === componentId);
+    if (!component) return;
+
+    if (component.managesSchema) {
+      setIsCheckingSchema(true);
+      try {
+        const response = await fetch(`/api/components/${componentId}/schema-info`);
+        const schemaInfo: SchemaInfo = await response.json();
+        
+        if (!enabled && schemaInfo.tablesExist.some(exists => exists)) {
+          setPendingAction({ componentId, enabled, component, schemaInfo });
+          setIsCheckingSchema(false);
+          return;
+        }
+        
+        if (enabled) {
+          setPendingAction({ componentId, enabled, component, schemaInfo });
+          setIsCheckingSchema(false);
+          return;
+        }
+      } catch (error) {
+        console.error("Failed to fetch schema info:", error);
+      }
+      setIsCheckingSchema(false);
+    }
+
+    setLocalStates(prev => ({ ...prev, [componentId]: enabled }));
     updateComponentMutation.mutate({ componentId, enabled });
+  };
+
+  const handleConfirmAction = () => {
+    if (!pendingAction) return;
+
+    const isDisabling = !pendingAction.enabled;
+    const hasActiveTables = pendingAction.schemaInfo?.tablesExist.some(exists => exists);
+
+    if (isDisabling && hasActiveTables && confirmText !== "DELETE") {
+      toast({
+        title: "Confirmation Required",
+        description: "Please type DELETE to confirm.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLocalStates(prev => ({ ...prev, [pendingAction.componentId]: pendingAction.enabled }));
+    updateComponentMutation.mutate({
+      componentId: pendingAction.componentId,
+      enabled: pendingAction.enabled,
+      confirmDestructive: isDisabling && hasActiveTables ? "DELETE" : undefined,
+    });
+  };
+
+  const handleCancelAction = () => {
+    setPendingAction(null);
+    setConfirmText("");
   };
 
   // Sort components alphabetically by component ID
@@ -127,7 +198,17 @@ export default function ComponentsConfigPage() {
             <TableBody>
               {sortedComponents.map((component) => (
                 <TableRow key={component.id} data-testid={`row-component-${component.id}`}>
-                  <TableCell className="font-mono text-sm">{component.id}</TableCell>
+                  <TableCell className="font-mono text-sm">
+                    <div className="flex items-center gap-2">
+                      {component.id}
+                      {component.managesSchema && (
+                        <Badge variant="outline" className="text-xs">
+                          <Database className="h-3 w-3 mr-1" />
+                          Schema
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell className="font-medium">{component.name}</TableCell>
                   <TableCell className="text-muted-foreground">{component.description}</TableCell>
                   <TableCell className="text-right">
@@ -135,6 +216,7 @@ export default function ComponentsConfigPage() {
                       id={`component-${component.id}`}
                       checked={localStates[component.id] || false}
                       onCheckedChange={(checked) => handleToggle(component.id, checked)}
+                      disabled={isCheckingSchema}
                       data-testid={`switch-component-${component.id}`}
                     />
                   </TableCell>
@@ -144,6 +226,77 @@ export default function ComponentsConfigPage() {
           </Table>
         </div>
       )}
+
+      <Dialog open={!!pendingAction} onOpenChange={(open) => !open && handleCancelAction()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {pendingAction?.enabled ? (
+                <>
+                  <Database className="h-5 w-5" />
+                  Enable {pendingAction?.component.name}
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                  Disable {pendingAction?.component.name}
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {pendingAction?.enabled ? (
+                <div className="space-y-3">
+                  <p>Enabling this component will create the following database tables:</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    {pendingAction?.schemaInfo?.tables.map((table) => (
+                      <li key={table} className="font-mono text-sm">{table}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-destructive font-medium">
+                    Warning: This action will permanently delete all data in the following tables:
+                  </p>
+                  <ul className="list-disc list-inside space-y-1">
+                    {pendingAction?.schemaInfo?.tables.map((table, idx) => (
+                      <li key={table} className="font-mono text-sm">
+                        {table}
+                        {pendingAction?.schemaInfo?.tablesExist[idx] && (
+                          <Badge variant="destructive" className="ml-2 text-xs">Contains Data</Badge>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="pt-2">
+                    <p className="text-sm mb-2">Type <strong>DELETE</strong> to confirm:</p>
+                    <Input
+                      value={confirmText}
+                      onChange={(e) => setConfirmText(e.target.value)}
+                      placeholder="Type DELETE"
+                      data-testid="input-confirm-delete"
+                    />
+                  </div>
+                </div>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCancelAction} data-testid="button-cancel">
+              Cancel
+            </Button>
+            <Button
+              variant={pendingAction?.enabled ? "default" : "destructive"}
+              onClick={handleConfirmAction}
+              disabled={updateComponentMutation.isPending || (!pendingAction?.enabled && confirmText !== "DELETE")}
+              data-testid="button-confirm"
+            >
+              {updateComponentMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {pendingAction?.enabled ? "Enable Component" : "Delete Tables & Disable"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -55,6 +55,7 @@ import { registerSessionRoutes } from "./modules/sessions";
 import { registerFloodEventRoutes } from "./modules/flood-events";
 import { registerEventsRoutes } from "./modules/events";
 import { registerWorkerStewardAssignmentRoutes } from "./modules/worker-steward-assignments";
+import { registerBtuCsgRoutes } from "./modules/sitespecific-btu-csg";
 import { requireAccess } from "./accessControl";
 import { policies } from "./policies";
 import { addressValidationService } from "./services/address-validation";
@@ -940,6 +941,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register events routes
   registerEventsRoutes(app, requireAuth, requirePermission);
 
+  // Register site-specific routes
+  registerBtuCsgRoutes(app, requireAuth, requirePermission);
 
   const httpServer = createServer(app);
   return httpServer;
