@@ -14,6 +14,7 @@ import Bootstrap from "@/pages/bootstrap";
 import SmsOptinPage from "@/pages/sms-optin";
 import Dashboard from "@/pages/dashboard";
 import Bookmarks from "@/pages/bookmarks";
+import AlertsPage from "@/pages/alerts";
 import Reports from "@/pages/reports";
 import ReportType from "@/pages/report-type";
 import Workers from "@/pages/workers";
@@ -528,6 +529,14 @@ function Router() {
         <ProtectedRoute policy="bookmark">
           <AuthenticatedLayout>
             <Bookmarks />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/alerts">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <AlertsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
