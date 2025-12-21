@@ -1396,6 +1396,37 @@ export const insertCommPostalOptinSchema = createInsertSchema(commPostalOptin, {
 export type InsertCommPostalOptin = z.infer<typeof insertCommPostalOptinSchema>;
 export type CommPostalOptin = typeof commPostalOptin.$inferSelect;
 
+// Communications - In-App
+export const commInapp = pgTable("comm_inapp", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  commId: varchar("comm_id").notNull().references(() => comm.id, { onDelete: 'cascade' }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  title: varchar("title", { length: 100 }).notNull(),
+  body: varchar("body", { length: 500 }).notNull(),
+  linkUrl: varchar("link_url", { length: 2048 }),
+  linkLabel: varchar("link_label", { length: 50 }),
+  status: varchar("status").notNull().default("pending"), // pending, read, expired
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+}, (table) => ({
+  userIdIdx: index("comm_inapp_user_id_idx").on(table.userId),
+  statusIdx: index("comm_inapp_status_idx").on(table.status),
+  userStatusIdx: index("comm_inapp_user_status_idx").on(table.userId, table.status),
+}));
+
+export const insertCommInappSchema = createInsertSchema(commInapp, {
+  title: z.string().min(1, "Title is required").max(100, "Title must be 100 characters or less"),
+  body: z.string().min(1, "Body is required").max(500, "Body must be 500 characters or less"),
+  linkUrl: z.string().max(2048, "Link URL must be 2048 characters or less").optional().nullable(),
+  linkLabel: z.string().max(50, "Link label must be 50 characters or less").optional().nullable(),
+  status: z.enum(["pending", "read", "expired"]).optional(),
+}).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCommInapp = z.infer<typeof insertCommInappSchema>;
+export type CommInapp = typeof commInapp.$inferSelect;
+
 // Flood control table for rate limiting
 export const flood = pgTable("flood", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

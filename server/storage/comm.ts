@@ -1,7 +1,8 @@
 import { db } from "../db";
-import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, commPostal, commPostalOptin, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin, type CommEmail, type InsertCommEmail, type CommEmailOptin, type InsertCommEmailOptin, type CommPostal, type InsertCommPostal, type CommPostalOptin, type InsertCommPostalOptin } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, commPostal, commPostalOptin, commInapp, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin, type CommEmail, type InsertCommEmail, type CommEmailOptin, type InsertCommEmailOptin, type CommPostal, type InsertCommPostal, type CommPostalOptin, type InsertCommPostalOptin, type CommInapp, type InsertCommInapp } from "@shared/schema";
+import { eq, desc, and } from "drizzle-orm";
 import { phoneValidationService } from "../services/phone-validation";
+import { storageLogger } from "../logger";
 
 export interface CommWithSms extends Comm {
   smsDetails?: CommSms | null;
@@ -656,6 +657,111 @@ export function createCommPostalOptinStorage(): CommPostalOptinStorage {
 
     async deletePostalOptin(id: string): Promise<boolean> {
       const result = await db.delete(commPostalOptin).where(eq(commPostalOptin.id, id)).returning();
+      return result.length > 0;
+    },
+  };
+}
+
+// Communications - In-App
+
+export interface CommInappWithComm extends CommInapp {
+  comm: Comm;
+}
+
+export interface CommInappStorage {
+  getCommInapp(id: string): Promise<CommInapp | undefined>;
+  getCommInappByComm(commId: string): Promise<CommInapp | undefined>;
+  getCommInappsByUser(userId: string, status?: string): Promise<CommInappWithComm[]>;
+  getUnreadCountByUser(userId: string): Promise<number>;
+  createCommInapp(data: InsertCommInapp): Promise<CommInapp>;
+  updateCommInapp(id: string, data: Partial<InsertCommInapp>): Promise<CommInapp | undefined>;
+  markAsRead(id: string): Promise<CommInapp | undefined>;
+  deleteCommInapp(id: string): Promise<boolean>;
+}
+
+export function createCommInappStorage(): CommInappStorage {
+  return {
+    async getCommInapp(id: string): Promise<CommInapp | undefined> {
+      const [result] = await db.select().from(commInapp).where(eq(commInapp.id, id));
+      return result || undefined;
+    },
+
+    async getCommInappByComm(commId: string): Promise<CommInapp | undefined> {
+      const [result] = await db.select().from(commInapp).where(eq(commInapp.commId, commId));
+      return result || undefined;
+    },
+
+    async getCommInappsByUser(userId: string, status?: string): Promise<CommInappWithComm[]> {
+      const conditions = status
+        ? and(eq(commInapp.userId, userId), eq(commInapp.status, status))
+        : eq(commInapp.userId, userId);
+
+      const inappRecords = await db
+        .select()
+        .from(commInapp)
+        .where(conditions)
+        .orderBy(desc(commInapp.createdAt));
+
+      const results: CommInappWithComm[] = [];
+      for (const record of inappRecords) {
+        const [commRecord] = await db.select().from(comm).where(eq(comm.id, record.commId));
+        if (commRecord) {
+          results.push({ ...record, comm: commRecord });
+        }
+      }
+      return results;
+    },
+
+    async getUnreadCountByUser(userId: string): Promise<number> {
+      const result = await db
+        .select()
+        .from(commInapp)
+        .where(and(eq(commInapp.userId, userId), eq(commInapp.status, "pending")));
+      return result.length;
+    },
+
+    async createCommInapp(data: InsertCommInapp): Promise<CommInapp> {
+      const [result] = await db.insert(commInapp).values(data).returning();
+      return result;
+    },
+
+    async updateCommInapp(id: string, data: Partial<InsertCommInapp>): Promise<CommInapp | undefined> {
+      const [result] = await db.update(commInapp).set(data).where(eq(commInapp.id, id)).returning();
+      return result || undefined;
+    },
+
+    async markAsRead(id: string): Promise<CommInapp | undefined> {
+      const [existing] = await db.select().from(commInapp).where(eq(commInapp.id, id));
+      if (!existing || existing.status !== "pending") {
+        return existing || undefined;
+      }
+
+      const [result] = await db
+        .update(commInapp)
+        .set({ status: "read" })
+        .where(eq(commInapp.id, id))
+        .returning();
+      
+      if (result) {
+        storageLogger.info(`In-app alert marked as read: ${id}`, {
+          module: 'comm-inapp',
+          operation: 'markAsRead',
+          entity_id: id,
+          host_entity_id: existing.userId,
+          description: `Alert "${existing.title}" status changed from "pending" to "read"`,
+          meta: {
+            medium: 'in-app',
+            commId: existing.commId,
+            title: existing.title,
+          },
+        });
+      }
+      
+      return result || undefined;
+    },
+
+    async deleteCommInapp(id: string): Promise<boolean> {
+      const result = await db.delete(commInapp).where(eq(commInapp.id, id)).returning();
       return result.length > 0;
     },
   };
