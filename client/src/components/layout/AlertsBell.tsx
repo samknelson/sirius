@@ -42,10 +42,11 @@ export function AlertsBell() {
     retry: false,
   });
 
-  const { data: alerts } = useQuery<CommInapp[]>({
+  const { data: alerts, refetch: refetchAlerts } = useQuery<CommInapp[]>({
     queryKey: ["/api/alerts", { limit: 5 }],
     enabled: isOpen && !!user,
     retry: false,
+    refetchOnMount: "always",
   });
 
   const markAsReadMutation = useMutation({
@@ -68,7 +69,11 @@ export function AlertsBell() {
     },
   });
 
-  const handleAlertClick = (alert: CommInapp) => {
+  const handleAlertClick = async (alert: CommInapp) => {
+    if (markAsReadMutation.isPending || markAllReadMutation.isPending) {
+      return;
+    }
+    
     if (alert.status === "pending") {
       markAsReadMutation.mutate(alert.id);
     }
@@ -81,6 +86,10 @@ export function AlertsBell() {
       }
     }
     setIsOpen(false);
+  };
+
+  const handleMarkAllRead = async () => {
+    await markAllReadMutation.mutateAsync();
   };
 
   const unreadCount = unreadData?.count || 0;
@@ -115,11 +124,11 @@ export function AlertsBell() {
               variant="ghost"
               size="sm"
               className="text-xs h-7"
-              onClick={() => markAllReadMutation.mutate()}
-              disabled={markAllReadMutation.isPending}
+              onClick={handleMarkAllRead}
+              disabled={markAllReadMutation.isPending || markAsReadMutation.isPending}
               data-testid="button-mark-all-read"
             >
-              Mark all read
+              {markAllReadMutation.isPending ? "Marking..." : "Mark all read"}
             </Button>
           )}
         </div>
@@ -132,10 +141,14 @@ export function AlertsBell() {
             </div>
           ) : (
             <div className="divide-y">
-              {alerts.map((alert) => (
+              {alerts.map((alert) => {
+                const isMutating = markAsReadMutation.isPending || markAllReadMutation.isPending;
+                return (
                 <div
                   key={alert.id}
-                  className={`px-4 py-3 hover-elevate cursor-pointer ${
+                  className={`px-4 py-3 hover-elevate ${
+                    isMutating ? "cursor-wait opacity-60" : "cursor-pointer"
+                  } ${
                     alert.status === "pending" ? "bg-accent/30" : ""
                   }`}
                   onClick={() => handleAlertClick(alert)}
@@ -165,7 +178,8 @@ export function AlertsBell() {
                     </div>
                   </div>
                 </div>
-              ))}
+              );
+            })}
             </div>
           )}
         </ScrollArea>

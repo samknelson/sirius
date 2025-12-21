@@ -8,6 +8,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface CommInapp {
   id: string;
@@ -23,9 +24,12 @@ interface CommInapp {
 
 export default function AlertsPage() {
   const [, navigate] = useLocation();
+  const { user } = useAuth();
 
   const { data: alerts, isLoading } = useQuery<CommInapp[]>({
     queryKey: ["/api/alerts"],
+    enabled: !!user,
+    retry: false,
   });
 
   const markAsReadMutation = useMutation({
