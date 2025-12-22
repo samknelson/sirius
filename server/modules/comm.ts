@@ -696,12 +696,12 @@ export function registerCommRoutes(
   // Get unread count for the current user
   app.get("/api/alerts/unread-count", requireAuth, async (req, res) => {
     try {
-      const user = (req as any).user;
-      if (!user?.id) {
+      const dbUser = (req as any).user?.dbUser;
+      if (!dbUser?.id) {
         return res.status(401).json({ message: "User not authenticated" });
       }
 
-      const count = await commInappStorage.getUnreadCountByUser(user.id);
+      const count = await commInappStorage.getUnreadCountByUser(dbUser.id);
       res.json({ count });
     } catch (error) {
       console.error("Failed to fetch unread alert count:", error);
@@ -712,15 +712,15 @@ export function registerCommRoutes(
   // Get all alerts for the current user (with optional status filter)
   app.get("/api/alerts", requireAuth, async (req, res) => {
     try {
-      const user = (req as any).user;
-      if (!user?.id) {
+      const dbUser = (req as any).user?.dbUser;
+      if (!dbUser?.id) {
         return res.status(401).json({ message: "User not authenticated" });
       }
 
       const { status, limit } = req.query;
       const statusFilter = typeof status === 'string' ? status : undefined;
       
-      let alerts = await commInappStorage.getCommInappsByUser(user.id, statusFilter);
+      let alerts = await commInappStorage.getCommInappsByUser(dbUser.id, statusFilter);
 
       // Apply limit if specified
       if (limit && !isNaN(Number(limit))) {
@@ -737,8 +737,8 @@ export function registerCommRoutes(
   // Get a specific alert by ID
   app.get("/api/alerts/:id", requireAuth, async (req, res) => {
     try {
-      const user = (req as any).user;
-      if (!user?.id) {
+      const dbUser = (req as any).user?.dbUser;
+      if (!dbUser?.id) {
         return res.status(401).json({ message: "User not authenticated" });
       }
 
@@ -750,7 +750,7 @@ export function registerCommRoutes(
       }
 
       // Ensure user can only access their own alerts
-      if (alert.userId !== user.id) {
+      if (alert.userId !== dbUser.id) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -764,8 +764,8 @@ export function registerCommRoutes(
   // Mark an alert as read
   app.patch("/api/alerts/:id/read", requireAuth, async (req, res) => {
     try {
-      const user = (req as any).user;
-      if (!user?.id) {
+      const dbUser = (req as any).user?.dbUser;
+      if (!dbUser?.id) {
         return res.status(401).json({ message: "User not authenticated" });
       }
 
@@ -777,13 +777,13 @@ export function registerCommRoutes(
       }
 
       // Ensure user can only mark their own alerts as read
-      if (alert.userId !== user.id) {
+      if (alert.userId !== dbUser.id) {
         return res.status(403).json({ message: "Access denied" });
       }
 
       const updatedAlert = await commInappStorage.markAsRead(id);
       
-      setImmediate(() => notifyAlertCountChange(user.id));
+      setImmediate(() => notifyAlertCountChange(dbUser.id));
       
       res.json(updatedAlert);
     } catch (error) {
@@ -795,18 +795,18 @@ export function registerCommRoutes(
   // Mark all alerts as read for current user
   app.patch("/api/alerts/mark-all-read", requireAuth, async (req, res) => {
     try {
-      const user = (req as any).user;
-      if (!user?.id) {
+      const dbUser = (req as any).user?.dbUser;
+      if (!dbUser?.id) {
         return res.status(401).json({ message: "User not authenticated" });
       }
 
       // Get all unread alerts for the user and mark each as read
-      const unreadAlerts = await commInappStorage.getCommInappsByUser(user.id, "pending");
+      const unreadAlerts = await commInappStorage.getCommInappsByUser(dbUser.id, "pending");
       const results = await Promise.all(
         unreadAlerts.map((alert) => commInappStorage.markAsRead(alert.id))
       );
 
-      setImmediate(() => notifyAlertCountChange(user.id));
+      setImmediate(() => notifyAlertCountChange(dbUser.id));
 
       res.json({ 
         message: "All alerts marked as read",
