@@ -76,7 +76,7 @@ const stewardAssignmentReaction: Reaction = {
       userId: target.userId,
       title: "Steward Assignment Update",
       body: payload.message || "Your steward assignment has been updated.",
-      linkUrl: `/workers/${payload.hostEntityId}/steward`,
+      linkUrl: `/workers/${payload.hostEntityId}/union/steward`,
       linkLabel: "View Stewards",
       initiatedBy: "log-notifier",
     });
