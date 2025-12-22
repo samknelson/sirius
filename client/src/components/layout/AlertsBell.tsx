@@ -13,6 +13,7 @@ import { Link, useLocation } from "wouter";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useWebSocket } from "@/hooks/use-websocket";
 
 interface CommInapp {
   id: string;
@@ -34,12 +35,14 @@ export function AlertsBell() {
   const [, navigate] = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const { user } = useAuth();
+  const { alertCount: wsAlertCount, isConnected } = useWebSocket();
 
   const { data: unreadData } = useQuery<UnreadCountResponse>({
     queryKey: ["/api/alerts/unread-count"],
-    refetchInterval: user ? 30000 : false,
     enabled: !!user,
     retry: false,
+    staleTime: isConnected ? Infinity : 30000,
+    refetchInterval: isConnected ? false : (user ? 30000 : false),
   });
 
   const { data: alerts, refetch: refetchAlerts } = useQuery<CommInapp[]>({
@@ -92,7 +95,7 @@ export function AlertsBell() {
     await markAllReadMutation.mutateAsync();
   };
 
-  const unreadCount = unreadData?.count || 0;
+  const unreadCount = wsAlertCount ?? unreadData?.count ?? 0;
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>

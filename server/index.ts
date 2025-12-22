@@ -11,6 +11,8 @@ import { captureRequestContext } from "./middleware/request-context";
 import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler } from "./cron";
 import { loadComponentCache } from "./services/component-cache";
 import { runMigrations } from "../scripts/migrate";
+import { initializeWebSocket } from "./services/websocket";
+import { getSession } from "./replitAuth";
 
 // Import charge plugins module to trigger registration
 // Note: Individual plugins are registered in ./charge-plugins/index.ts
@@ -180,6 +182,11 @@ app.use((req, res, next) => {
   app.use(captureRequestContext);
 
   const server = await registerRoutes(app);
+
+  // Initialize WebSocket server for real-time notifications
+  const sessionMiddleware = getSession();
+  initializeWebSocket(server, sessionMiddleware);
+  logger.info("WebSocket server initialized", { source: "startup" });
 
   // Start cron scheduler after routes are registered
   try {

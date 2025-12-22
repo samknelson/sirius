@@ -7,6 +7,7 @@ import { sendPostal } from "../services/postal-sender";
 import { handleStatusCallback } from "../services/comm-status/handler";
 import { serviceRegistry } from "../services/service-registry";
 import type { PostalTransport, PostalAddress } from "../services/providers/postal";
+import { broadcastAlertUpdate } from "../services/websocket";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -58,6 +59,15 @@ const sendPostalSchema = z.object({
 }).refine(data => data.file || data.templateId, {
   message: "Either file or templateId is required",
 });
+
+async function notifyAlertCountChange(userId: string): Promise<void> {
+  try {
+    const count = await commInappStorage.getUnreadCountByUser(userId);
+    broadcastAlertUpdate(userId, count);
+  } catch (error) {
+    console.error("Failed to broadcast alert update:", error);
+  }
+}
 
 export function registerCommRoutes(
   app: Express, 
@@ -772,6 +782,9 @@ export function registerCommRoutes(
       }
 
       const updatedAlert = await commInappStorage.markAsRead(id);
+      
+      setImmediate(() => notifyAlertCountChange(user.id));
+      
       res.json(updatedAlert);
     } catch (error) {
       console.error("Failed to mark alert as read:", error);
@@ -793,6 +806,8 @@ export function registerCommRoutes(
         unreadAlerts.map((alert) => commInappStorage.markAsRead(alert.id))
       );
 
+      setImmediate(() => notifyAlertCountChange(user.id));
+
       res.json({ 
         message: "All alerts marked as read",
         count: results.filter(Boolean).length 
@@ -803,3 +818,5 @@ export function registerCommRoutes(
     }
   });
 }
+
+export { notifyAlertCountChange };
