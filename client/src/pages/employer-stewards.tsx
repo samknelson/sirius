@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Users, AlertTriangle, ExternalLink } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTerm } from "@/contexts/TerminologyContext";
 import {
   Table,
   TableBody,
@@ -40,6 +41,7 @@ interface StewardWithDetails {
 function EmployerStewardsContent() {
   const { employer } = useEmployerLayout();
   const { hasComponent } = useAuth();
+  const term = useTerm();
 
   const componentEnabled = hasComponent("worker.steward");
 
@@ -54,10 +56,10 @@ function EmployerStewardsContent() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            Stewards
+            {term("steward", { plural: true })}
           </CardTitle>
           <CardDescription>
-            Shop stewards assigned to this employer
+            {term("steward", { plural: true })} assigned to this employer
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -65,8 +67,8 @@ function EmployerStewardsContent() {
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Feature Not Enabled</AlertTitle>
             <AlertDescription>
-              The Shop Stewards feature is not enabled. Please contact your administrator 
-              to enable the "worker.steward" component.
+              The {term("steward", { plural: true })} feature is not enabled. Please contact your administrator 
+              to enable the &ldquo;worker.steward&rdquo; component.
             </AlertDescription>
           </Alert>
         </CardContent>
@@ -80,10 +82,10 @@ function EmployerStewardsContent() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            Stewards
+            {term("steward", { plural: true })}
           </CardTitle>
           <CardDescription>
-            Shop stewards assigned to this employer
+            {term("steward", { plural: true })} assigned to this employer
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -100,16 +102,16 @@ function EmployerStewardsContent() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Users className="h-5 w-5" />
-          Stewards
+          {term("steward", { plural: true })}
         </CardTitle>
         <CardDescription>
-          Shop stewards assigned to this employer
+          {term("steward", { plural: true })} assigned to this employer
         </CardDescription>
       </CardHeader>
       <CardContent>
         {stewards.length === 0 ? (
           <p className="text-muted-foreground text-sm" data-testid="text-no-stewards">
-            No shop stewards are assigned to this employer.
+            No {term("steward", { plural: true, lowercase: true })} are assigned to this employer.
           </p>
         ) : (
           <Table>

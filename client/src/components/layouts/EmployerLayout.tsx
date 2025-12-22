@@ -1,4 +1,4 @@
-import { createContext, useContext, ReactNode } from "react";
+import { createContext, useContext, ReactNode, useMemo } from "react";
 import { Building2, ArrowLeft } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BookmarkButton } from "@/components/ui/bookmark-button";
 import { useAuth } from "@/contexts/AuthContext";
-import { useMemo } from "react";
+import { useTerm } from "@/contexts/TerminologyContext";
 
 interface EmployerLayoutContextValue {
   employer: Employer;
@@ -34,6 +34,7 @@ interface EmployerLayoutProps {
 export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
   const { id } = useParams<{ id: string }>();
   const { hasPermission, hasComponent } = useAuth();
+  const term = useTerm();
 
   const { data: employer, isLoading: employerLoading, error: employerError } = useQuery<Employer>({
     queryKey: ["/api/employers", id],
@@ -122,7 +123,7 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
   ];
 
   const unionSubTabs = [
-    { id: "stewards", label: "Stewards", href: `/employers/${employer.id}/union/stewards` },
+    { id: "stewards", label: term("steward", { plural: true }), href: `/employers/${employer.id}/union/stewards` },
   ];
 
   // Determine if we're in a sub-tab

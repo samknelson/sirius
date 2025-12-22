@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTerm } from "@/contexts/TerminologyContext";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import {
@@ -57,6 +58,7 @@ interface SystemModeResponse {
 
 export default function Header() {
   const { user, logout, hasPermission, hasComponent, masquerade, stopMasquerade } = useAuth();
+  const term = useTerm();
   const [location] = useLocation();
   const { toast } = useToast();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -213,7 +215,7 @@ export default function Header() {
                       data-testid="mobile-nav-stewards"
                     >
                       <Shield className="h-4 w-4 mr-2" />
-                      Stewards
+                      {term("steward", { plural: true })}
                     </Button>
                   </Link>
                 )}
@@ -553,7 +555,7 @@ export default function Header() {
                     <Link href="/stewards" className="w-full">
                       <div className="flex items-center cursor-pointer" data-testid="menu-stewards">
                         <Shield className="h-4 w-4 mr-2" />
-                        Stewards
+                        {term("steward", { plural: true })}
                       </div>
                     </Link>
                   </DropdownMenuItem>
