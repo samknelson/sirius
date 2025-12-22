@@ -180,12 +180,13 @@ export async function markInappAsRead(alertId: string, userId: string): Promise<
     storageLogger.info(`In-app alert marked as read: ${alertId}`, {
       module: 'comm-inapp',
       operation: 'markAsRead',
-      entity_id: alertId,
-      host_entity_id: existing.userId,
+      entity_id: existing.commId,
+      host_entity_id: existing.commId,
       description: `Alert "${existing.title}" status changed from "pending" to "read"`,
       meta: {
         medium: 'in-app',
-        commId: existing.commId,
+        commInappId: alertId,
+        userId: existing.userId,
         title: existing.title,
       },
     });
