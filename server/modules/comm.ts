@@ -4,6 +4,7 @@ import { createCommStorage, createCommSmsOptinStorage, createCommEmailOptinStora
 import { sendSms } from "../services/sms-sender";
 import { sendEmail } from "../services/email-sender";
 import { sendPostal } from "../services/postal-sender";
+import { markInappAsRead, markAllInappAsRead } from "../services/inapp-sender";
 import { handleStatusCallback } from "../services/comm-status/handler";
 import { serviceRegistry } from "../services/service-registry";
 import type { PostalTransport, PostalAddress } from "../services/providers/postal";
@@ -770,22 +771,16 @@ export function registerCommRoutes(
       }
 
       const { id } = req.params;
-      const alert = await commInappStorage.getCommInapp(id);
+      const result = await markInappAsRead(id, dbUser.id);
 
-      if (!alert) {
-        return res.status(404).json({ message: "Alert not found" });
+      if (!result.success) {
+        if (result.errorCode === 'NOT_FOUND') {
+          return res.status(404).json({ message: result.error });
+        }
+        return res.status(500).json({ message: result.error });
       }
-
-      // Ensure user can only mark their own alerts as read
-      if (alert.userId !== dbUser.id) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-
-      const updatedAlert = await commInappStorage.markAsRead(id, commStorage);
       
-      setImmediate(() => notifyAlertCountChange(dbUser.id));
-      
-      res.json(updatedAlert);
+      res.json(result.commInapp);
     } catch (error) {
       console.error("Failed to mark alert as read:", error);
       res.status(500).json({ message: "Failed to mark alert as read" });
@@ -800,17 +795,15 @@ export function registerCommRoutes(
         return res.status(401).json({ message: "User not authenticated" });
       }
 
-      // Get all unread alerts for the user and mark each as read
-      const unreadAlerts = await commInappStorage.getCommInappsByUser(dbUser.id, "pending");
-      const results = await Promise.all(
-        unreadAlerts.map((alert) => commInappStorage.markAsRead(alert.id, commStorage))
-      );
+      const result = await markAllInappAsRead(dbUser.id);
 
-      setImmediate(() => notifyAlertCountChange(dbUser.id));
+      if (!result.success) {
+        return res.status(500).json({ message: result.error });
+      }
 
       res.json({ 
         message: "All alerts marked as read",
-        count: results.filter(Boolean).length 
+        count: result.count 
       });
     } catch (error) {
       console.error("Failed to mark all alerts as read:", error);

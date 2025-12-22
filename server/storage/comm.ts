@@ -682,7 +682,6 @@ export interface CommInappStorage {
   getUnreadCountByUser(userId: string): Promise<number>;
   createCommInapp(data: InsertCommInapp): Promise<CommInapp>;
   updateCommInapp(id: string, data: Partial<InsertCommInapp>): Promise<CommInapp | undefined>;
-  markAsRead(id: string, commStorage: CommStorage): Promise<CommInapp | undefined>;
   deleteCommInapp(id: string): Promise<boolean>;
 }
 
@@ -734,39 +733,6 @@ export function createCommInappStorage(): CommInappStorage {
 
     async updateCommInapp(id: string, data: Partial<InsertCommInapp>): Promise<CommInapp | undefined> {
       const [result] = await db.update(commInapp).set(data).where(eq(commInapp.id, id)).returning();
-      return result || undefined;
-    },
-
-    async markAsRead(id: string, commStorage: CommStorage): Promise<CommInapp | undefined> {
-      const [existing] = await db.select().from(commInapp).where(eq(commInapp.id, id));
-      if (!existing || existing.status !== "pending") {
-        return existing || undefined;
-      }
-
-      const [result] = await db
-        .update(commInapp)
-        .set({ status: "read" })
-        .where(eq(commInapp.id, id))
-        .returning();
-      
-      if (result) {
-        // Also update the parent comm record status via storage layer
-        await commStorage.updateComm(existing.commId, { status: "read" });
-
-        storageLogger.info(`In-app alert marked as read: ${id}`, {
-          module: 'comm-inapp',
-          operation: 'markAsRead',
-          entity_id: id,
-          host_entity_id: existing.userId,
-          description: `Alert "${existing.title}" status changed from "pending" to "read"`,
-          meta: {
-            medium: 'in-app',
-            commId: existing.commId,
-            title: existing.title,
-          },
-        });
-      }
-      
       return result || undefined;
     },
 
