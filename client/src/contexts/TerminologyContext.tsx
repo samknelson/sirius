@@ -46,8 +46,7 @@ export function TerminologyProvider({ children }: { children: React.ReactNode })
 
   const updateMutation = useMutation({
     mutationFn: async (terms: Partial<TerminologyDictionary>) => {
-      const response = await apiRequest('PUT', '/api/terminology', { terminology: terms });
-      return response.json();
+      return await apiRequest('PUT', '/api/terminology', { terminology: terms });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/terminology'] });
@@ -56,8 +55,7 @@ export function TerminologyProvider({ children }: { children: React.ReactNode })
 
   const resetMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest('POST', '/api/terminology/reset');
-      return response.json();
+      return await apiRequest('POST', '/api/terminology/reset');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/terminology'] });
