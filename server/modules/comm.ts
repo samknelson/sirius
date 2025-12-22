@@ -276,13 +276,11 @@ export function registerCommRoutes(
       const { contactId } = req.params;
       
       const contact = await storage.contacts.getContact(contactId);
-      console.log("[user-lookup] contactId:", contactId, "contact:", contact);
       if (!contact) {
         return res.status(404).json({ message: "Contact not found" });
       }
 
       if (!contact.email) {
-        console.log("[user-lookup] No email on contact:", contact.id, contact.displayName);
         return res.json({
           hasEmail: false,
           hasUser: false,
