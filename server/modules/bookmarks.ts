@@ -33,6 +33,25 @@ export function registerBookmarkRoutes(
     }
   });
 
+  // GET /api/bookmarks/enriched - Get all bookmarks with display names pre-resolved
+  app.get("/api/bookmarks/enriched", requireAccess(policies.bookmark), async (req, res) => {
+    try {
+      const user = req.user as any;
+      const replitUserId = user.claims.sub;
+      const session = req.session as any;
+      const { dbUser } = await getEffectiveUser(session, replitUserId);
+      
+      if (!dbUser) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const enrichedBookmarks = await storage.bookmarks.getEnrichedUserBookmarks(dbUser.id);
+      res.json(enrichedBookmarks);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch enriched bookmarks" });
+    }
+  });
+
   // GET /api/bookmarks/check - Check if a specific entity is bookmarked
   app.get("/api/bookmarks/check", requireAccess(policies.bookmark), async (req, res) => {
     try {
