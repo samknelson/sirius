@@ -781,7 +781,7 @@ export function registerCommRoutes(
         return res.status(403).json({ message: "Access denied" });
       }
 
-      const updatedAlert = await commInappStorage.markAsRead(id);
+      const updatedAlert = await commInappStorage.markAsRead(id, commStorage);
       
       setImmediate(() => notifyAlertCountChange(dbUser.id));
       
@@ -803,7 +803,7 @@ export function registerCommRoutes(
       // Get all unread alerts for the user and mark each as read
       const unreadAlerts = await commInappStorage.getCommInappsByUser(dbUser.id, "pending");
       const results = await Promise.all(
-        unreadAlerts.map((alert) => commInappStorage.markAsRead(alert.id))
+        unreadAlerts.map((alert) => commInappStorage.markAsRead(alert.id, commStorage))
       );
 
       setImmediate(() => notifyAlertCountChange(dbUser.id));
