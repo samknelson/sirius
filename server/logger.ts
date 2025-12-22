@@ -1,5 +1,5 @@
 import winston from "winston";
-import { PostgresTransport } from "@innova2/winston-pg";
+import { LogsTransport } from "./services/logs-transport";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
@@ -42,39 +42,20 @@ const storageTransports: winston.transport[] = [
   }),
 ];
 
-// Add PostgreSQL transport for storage operations
+// Add custom logs transport for storage operations (writes via logs storage, emits LOG events)
 if (process.env.DATABASE_URL) {
   try {
-    const pgTransport = new PostgresTransport({
-      connectionString: process.env.DATABASE_URL,
-      tableName: "winston_logs",
-      level: "info", // Capture info logs and above
-      maxPool: 10,
-      tableColumns: [
-        { name: "id", dataType: "SERIAL", primaryKey: true, unique: true },
-        { name: "level", dataType: "VARCHAR(20)" },
-        { name: "message", dataType: "TEXT" },
-        { name: "timestamp", dataType: "TIMESTAMP DEFAULT NOW()" },
-        { name: "source", dataType: "VARCHAR(50)" },
-        { name: "meta", dataType: "JSONB" },
-        { name: "module", dataType: "VARCHAR(100)" },
-        { name: "operation", dataType: "VARCHAR(100)" },
-        { name: "entity_id", dataType: "VARCHAR(255)" },
-        { name: "host_entity_id", dataType: "VARCHAR(255)" },
-        { name: "description", dataType: "TEXT" },
-        { name: "user_id", dataType: "VARCHAR(255)" },
-        { name: "user_email", dataType: "VARCHAR(255)" },
-        { name: "ip_address", dataType: "VARCHAR(45)" },
-      ],
+    const logsTransport = new LogsTransport({
+      level: "info",
     });
     
-    pgTransport.on('error', (error) => {
-      console.error('[PostgresTransport] Error:', error);
+    logsTransport.on("error", (error) => {
+      console.error("[LogsTransport] Error:", error);
     });
     
-    storageTransports.push(pgTransport);
+    storageTransports.push(logsTransport);
   } catch (error) {
-    console.error("Failed to initialize PostgreSQL transport for storage logger:", error);
+    console.error("Failed to initialize LogsTransport for storage logger:", error);
   }
 }
 

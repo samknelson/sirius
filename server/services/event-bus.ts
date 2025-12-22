@@ -6,6 +6,7 @@ export enum EventType {
   WMB_SAVED = "wmb.saved",
   PARTICIPANT_SAVED = "participant.saved",
   CRON = "cron",
+  LOG = "log",
 }
 
 export interface HoursSavedPayload {
@@ -59,12 +60,30 @@ export interface CronPayload {
   mode: "live" | "test";
 }
 
+export interface LogPayload {
+  id: number;
+  level: string | null;
+  message: string | null;
+  timestamp: Date | null;
+  source: string | null;
+  meta: unknown | null;
+  module: string | null;
+  operation: string | null;
+  entityId: string | null;
+  hostEntityId: string | null;
+  description: string | null;
+  userId: string | null;
+  userEmail: string | null;
+  ipAddress: string | null;
+}
+
 export interface EventPayloadMap {
   [EventType.HOURS_SAVED]: HoursSavedPayload;
   [EventType.PAYMENT_SAVED]: PaymentSavedPayload;
   [EventType.WMB_SAVED]: WmbSavedPayload;
   [EventType.PARTICIPANT_SAVED]: ParticipantSavedPayload;
   [EventType.CRON]: CronPayload;
+  [EventType.LOG]: LogPayload;
 }
 
 export type EventHandler<T extends EventType> = (payload: EventPayloadMap[T]) => Promise<void>;
