@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, commPostal, commPostalOptin, commInapp, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin, type CommEmail, type InsertCommEmail, type CommEmailOptin, type InsertCommEmailOptin, type CommPostal, type InsertCommPostal, type CommPostalOptin, type InsertCommPostalOptin, type CommInapp, type InsertCommInapp } from "@shared/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, SQL } from "drizzle-orm";
 import { phoneValidationService } from "../services/phone-validation";
 import { storageLogger } from "../logger";
 
@@ -698,24 +698,25 @@ export function createCommInappStorage(): CommInappStorage {
     },
 
     async getCommInappsByUser(userId: string, status?: string): Promise<CommInappWithComm[]> {
-      const conditions = status
-        ? and(eq(commInapp.userId, userId), eq(commInapp.status, status))
-        : eq(commInapp.userId, userId);
+      const conditions: SQL[] = [eq(commInapp.userId, userId)];
+      if (status) {
+        conditions.push(eq(commInapp.status, status));
+      }
 
-      const inappRecords = await db
-        .select()
+      const rows = await db
+        .select({
+          inapp: commInapp,
+          comm: comm,
+        })
         .from(commInapp)
-        .where(conditions)
+        .innerJoin(comm, eq(commInapp.commId, comm.id))
+        .where(and(...conditions))
         .orderBy(desc(commInapp.createdAt));
 
-      const results: CommInappWithComm[] = [];
-      for (const record of inappRecords) {
-        const [commRecord] = await db.select().from(comm).where(eq(comm.id, record.commId));
-        if (commRecord) {
-          results.push({ ...record, comm: commRecord });
-        }
-      }
-      return results;
+      return rows.map((row) => ({
+        ...row.inapp,
+        comm: row.comm,
+      }));
     },
 
     async getUnreadCountByUser(userId: string): Promise<number> {
