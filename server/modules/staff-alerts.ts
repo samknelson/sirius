@@ -85,6 +85,24 @@ export function registerStaffAlertRoutes(
         }
         
         const config = parseResult.data;
+        
+        // Validate that all user IDs are authorized staff/admin users
+        if (config.recipients.length > 0) {
+          const authorizedUsers = await storage.users.getUsersWithAnyPermission(["staff", "admin"]);
+          const authorizedUserIds = new Set(authorizedUsers.map(u => u.id));
+          
+          const invalidUserIds = config.recipients
+            .filter(r => !authorizedUserIds.has(r.userId))
+            .map(r => r.userId);
+          
+          if (invalidUserIds.length > 0) {
+            return res.status(400).json({
+              message: "Invalid user IDs in configuration",
+              invalidUserIds,
+            });
+          }
+        }
+        
         const existingVariable = await storage.variables.getByName(variableName);
         
         if (existingVariable) {
