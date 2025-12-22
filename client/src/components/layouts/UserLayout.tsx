@@ -2,6 +2,7 @@ import { createContext, useContext, ReactNode } from "react";
 import { UserCircle, ArrowLeft } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { Contact } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,6 +20,7 @@ interface UserDetails {
 
 interface UserLayoutContextValue {
   user: UserDetails;
+  contact: Contact | null | undefined;
   isLoading: boolean;
   isError: boolean;
 }
@@ -34,7 +36,7 @@ export function useUserLayout() {
 }
 
 interface UserLayoutProps {
-  activeTab: "details" | "logs";
+  activeTab: "details" | "logs" | "email" | "phone-numbers" | "addresses" | "comm-history" | "send-sms" | "send-email" | "send-postal";
   children: ReactNode;
 }
 
@@ -55,10 +57,26 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
     enabled: !!id,
   });
 
-  const isLoading = userLoading;
+  const { data: contact, isLoading: contactLoading } = useQuery<Contact | null>({
+    queryKey: ["/api/contacts/by-email", user?.email],
+    queryFn: async () => {
+      const response = await fetch(`/api/contacts/by-email/${encodeURIComponent(user!.email!)}`, {
+        credentials: 'include'
+      });
+      if (response.status === 404) {
+        return null;
+      }
+      if (!response.ok) {
+        throw new Error("Failed to fetch contact");
+      }
+      return response.json();
+    },
+    enabled: !!user?.email,
+  });
+
+  const isLoading = userLoading || contactLoading;
   const isError = !!userError;
 
-  // Error/Not found state - check this BEFORE loading
   if (userError) {
     return (
       <div className="bg-background text-foreground min-h-screen">
@@ -106,7 +124,6 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
     );
   }
 
-  // Loading state - check this AFTER error handling
   if (isLoading || !user) {
     return (
       <div className="bg-background text-foreground min-h-screen">
@@ -144,18 +161,38 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
     );
   }
 
-  // Success state - render layout with tabs
   const displayName = user.firstName && user.lastName
     ? `${user.firstName} ${user.lastName}`
     : user.firstName || user.lastName || user.email || user.id;
 
   const mainTabs = [
     { id: "details", label: "Details", href: `/users/${user.id}` },
+    { id: "contact", label: "Contact", href: `/users/${user.id}/contact/email` },
+    { id: "comm", label: "Comm", href: `/users/${user.id}/comm/history` },
     { id: "logs", label: "Logs", href: `/users/${user.id}/logs` },
   ];
 
+  const contactSubTabs = [
+    { id: "email", label: "Email", href: `/users/${user.id}/contact/email` },
+    { id: "phone-numbers", label: "Phone Numbers", href: `/users/${user.id}/contact/phone-numbers` },
+    { id: "addresses", label: "Addresses", href: `/users/${user.id}/contact/addresses` },
+  ];
+
+  const commSubTabs = [
+    { id: "comm-history", label: "History", href: `/users/${user.id}/comm/history` },
+    { id: "send-sms", label: "Send SMS", href: `/users/${user.id}/comm/send-sms` },
+    { id: "send-email", label: "Send Email", href: `/users/${user.id}/comm/send-email` },
+    { id: "send-postal", label: "Send Postal", href: `/users/${user.id}/comm/send-postal` },
+  ];
+
+  const isContactSubTab = ["email", "phone-numbers", "addresses"].includes(activeTab);
+  const isCommSubTab = ["comm-history", "send-sms", "send-email", "send-postal"].includes(activeTab);
+  const showContactSubTabs = isContactSubTab;
+  const showCommSubTabs = isCommSubTab;
+
   const contextValue: UserLayoutContextValue = {
     user,
+    contact,
     isLoading: false,
     isError: false,
   };
@@ -163,7 +200,6 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
   return (
     <UserLayoutContext.Provider value={contextValue}>
       <div className="bg-background text-foreground min-h-screen">
-        {/* Header */}
         <header className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
@@ -187,12 +223,11 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
           </div>
         </header>
 
-        {/* Main Tab Navigation */}
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center space-x-2 py-3">
               {mainTabs.map((tab) => {
-                const isActive = tab.id === activeTab;
+                const isActive = tab.id === activeTab || (tab.id === "contact" && isContactSubTab) || (tab.id === "comm" && isCommSubTab);
                 return isActive ? (
                   <Button
                     key={tab.id}
@@ -218,7 +253,68 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
           </div>
         </div>
 
-        {/* Main Content */}
+        {showContactSubTabs && (
+          <div className="bg-muted/30 border-b border-border">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex items-center space-x-2 py-2 pl-4">
+                {contactSubTabs.map((tab) => (
+                  tab.id === activeTab ? (
+                    <Button
+                      key={tab.id}
+                      variant="secondary"
+                      size="sm"
+                      data-testid={`button-user-${tab.id}`}
+                    >
+                      {tab.label}
+                    </Button>
+                  ) : (
+                    <Link key={tab.id} href={tab.href}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid={`button-user-${tab.id}`}
+                      >
+                        {tab.label}
+                      </Button>
+                    </Link>
+                  )
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showCommSubTabs && (
+          <div className="bg-muted/30 border-b border-border">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex items-center space-x-2 py-2 pl-4">
+                {commSubTabs.map((tab) => (
+                  tab.id === activeTab ? (
+                    <Button
+                      key={tab.id}
+                      variant="secondary"
+                      size="sm"
+                      data-testid={`button-user-${tab.id}`}
+                    >
+                      {tab.label}
+                    </Button>
+                  ) : (
+                    <Link key={tab.id} href={tab.href}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid={`button-user-${tab.id}`}
+                      >
+                        {tab.label}
+                      </Button>
+                    </Link>
+                  )
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {children}
         </main>

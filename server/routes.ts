@@ -690,6 +690,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/contacts/by-email/:email - Get a contact by email (requires workers.view permission)
+  app.get("/api/contacts/by-email/:email", requireAuth, requirePermission("workers.view"), async (req, res) => {
+    try {
+      const { email } = req.params;
+      const contact = await storage.contacts.getContactByEmail(email);
+      
+      if (!contact) {
+        res.status(404).json({ message: "Contact not found" });
+        return;
+      }
+      
+      res.json(contact);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch contact" });
+    }
+  });
+
   // GET /api/contacts/:id - Get a contact by ID (requires workers.view permission)
   app.get("/api/contacts/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
     try {

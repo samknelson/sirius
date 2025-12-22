@@ -111,6 +111,13 @@ import BargainingUnitDeletePage from "@/pages/bargaining-unit-delete";
 import AdminUsersPage from "@/pages/admin/users";
 import UserAccountPage from "@/pages/admin/user-account";
 import UserLogs from "@/pages/admin/user-logs";
+import UserEmail from "@/pages/admin/user-email";
+import UserPhoneNumbers from "@/pages/admin/user-phone-numbers";
+import UserAddresses from "@/pages/admin/user-addresses";
+import UserCommHistory from "@/pages/admin/user-comm-history";
+import UserSendSms from "@/pages/admin/user-send-sms";
+import UserSendEmail from "@/pages/admin/user-send-email";
+import UserSendPostal from "@/pages/admin/user-send-postal";
 import AdminRolesPage from "@/pages/admin/roles";
 import AdminPermissionsPage from "@/pages/admin/permissions";
 import WmbScanQueue from "@/pages/admin/wmb-scan-queue";
@@ -1755,6 +1762,64 @@ function Router() {
         <ProtectedRoute policy="staff">
           <AuthenticatedLayout>
             <UserLogs />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* User Contact sub-tabs */}
+      <Route path="/users/:id/contact/email">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserEmail />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/users/:id/contact/phone-numbers">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserPhoneNumbers />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/users/:id/contact/addresses">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserAddresses />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* User Comm sub-tabs */}
+      <Route path="/users/:id/comm/history">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserCommHistory />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/users/:id/comm/send-sms">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserSendSms />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/users/:id/comm/send-email">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserSendEmail />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/users/:id/comm/send-postal">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserSendPostal />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
