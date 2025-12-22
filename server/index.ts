@@ -17,6 +17,7 @@ import { getSession } from "./replitAuth";
 // Import charge plugins module to trigger registration
 // Note: Individual plugins are registered in ./charge-plugins/index.ts
 import "./charge-plugins";
+import { registerChargePluginListeners } from "./charge-plugins";
 
 // Import eligibility plugins module to trigger registration
 // Note: Individual plugins are registered in ./eligibility-plugins/index.ts
@@ -154,6 +155,11 @@ app.use((req, res, next) => {
   // Load component cache
   await loadComponentCache();
   logger.info("Component cache initialized", { source: "startup" });
+
+  // Register charge plugin event listeners
+  // Note: Charge plugins are currently called directly from storage for backwards compatibility.
+  // The listener is available for future use when we fully migrate to event-driven execution.
+  // registerChargePluginListeners();
 
   // Register cron job handlers
   registerCronJob('delete-expired-reports', deleteExpiredReportsHandler);

@@ -9,6 +9,7 @@ import { eq, sql, and, desc } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { storageLogger as logger } from "../logger";
 import type { LedgerNotification } from "../charge-plugins/types";
+import { eventBus, EventType } from "../services/event-bus";
 
 export interface WorkerHoursResult {
   data: WorkerHours;
@@ -334,23 +335,34 @@ export function createWorkerHoursStorage(
       let notifications: LedgerNotification[] = [];
 
       if (savedHours) {
+        const payload = {
+          hoursId: savedHours.id,
+          workerId: savedHours.workerId,
+          employerId: savedHours.employerId,
+          year: savedHours.year,
+          month: savedHours.month,
+          day: savedHours.day,
+          hours: savedHours.hours || 0,
+          employmentStatusId: savedHours.employmentStatusId,
+          home: savedHours.home,
+        };
+
+        // Emit event for any listeners (future notification plugins, etc.)
+        eventBus.emit(EventType.HOURS_SAVED, payload).catch(err => {
+          logger.error("Failed to emit HOURS_SAVED event", {
+            service: "worker-hours-storage",
+            hoursId: savedHours.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+
+        // Execute charge plugins directly (for backwards compatibility with notifications)
         try {
           const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
-          
-          const context = {
-            trigger: TriggerType.HOURS_SAVED as typeof TriggerType.HOURS_SAVED,
-            hoursId: savedHours.id,
-            workerId: savedHours.workerId,
-            employerId: savedHours.employerId,
-            year: savedHours.year,
-            month: savedHours.month,
-            day: savedHours.day,
-            hours: savedHours.hours || 0,
-            employmentStatusId: savedHours.employmentStatusId,
-            home: savedHours.home,
-          };
-
-          const result = await executeChargePlugins(context);
+          const result = await executeChargePlugins({
+            trigger: TriggerType.HOURS_SAVED,
+            ...payload,
+          });
           notifications = result.notifications;
         } catch (error) {
           logger.error("Failed to execute charge plugins for hours create", {
@@ -378,23 +390,34 @@ export function createWorkerHoursStorage(
 
       let notifications: LedgerNotification[] = [];
 
+      const payload = {
+        hoursId: updated.id,
+        workerId: updated.workerId,
+        employerId: updated.employerId,
+        year: updated.year,
+        month: updated.month,
+        day: updated.day,
+        hours: updated.hours || 0,
+        employmentStatusId: updated.employmentStatusId,
+        home: updated.home,
+      };
+
+      // Emit event for any listeners (future notification plugins, etc.)
+      eventBus.emit(EventType.HOURS_SAVED, payload).catch(err => {
+        logger.error("Failed to emit HOURS_SAVED event", {
+          service: "worker-hours-storage",
+          hoursId: updated.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+
+      // Execute charge plugins directly (for backwards compatibility with notifications)
       try {
         const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
-        
-        const context = {
-          trigger: TriggerType.HOURS_SAVED as typeof TriggerType.HOURS_SAVED,
-          hoursId: updated.id,
-          workerId: updated.workerId,
-          employerId: updated.employerId,
-          year: updated.year,
-          month: updated.month,
-          day: updated.day,
-          hours: updated.hours || 0,
-          employmentStatusId: updated.employmentStatusId,
-          home: updated.home,
-        };
-
-        const result = await executeChargePlugins(context);
+        const result = await executeChargePlugins({
+          trigger: TriggerType.HOURS_SAVED,
+          ...payload,
+        });
         notifications = result.notifications;
       } catch (error) {
         logger.error("Failed to execute charge plugins for hours update", {
@@ -418,23 +441,34 @@ export function createWorkerHoursStorage(
       let notifications: LedgerNotification[] = [];
 
       if (deleted) {
+        const payload = {
+          hoursId: deleted.id,
+          workerId: deleted.workerId,
+          employerId: deleted.employerId,
+          year: deleted.year,
+          month: deleted.month,
+          day: deleted.day,
+          hours: 0,
+          employmentStatusId: deleted.employmentStatusId,
+          home: deleted.home,
+        };
+
+        // Emit event for any listeners (future notification plugins, etc.)
+        eventBus.emit(EventType.HOURS_SAVED, payload).catch(err => {
+          logger.error("Failed to emit HOURS_SAVED event", {
+            service: "worker-hours-storage",
+            hoursId: deleted.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+
+        // Execute charge plugins directly (for backwards compatibility with notifications)
         try {
           const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
-          
-          const context = {
-            trigger: TriggerType.HOURS_SAVED as typeof TriggerType.HOURS_SAVED,
-            hoursId: deleted.id,
-            workerId: deleted.workerId,
-            employerId: deleted.employerId,
-            year: deleted.year,
-            month: deleted.month,
-            day: deleted.day,
-            hours: 0,
-            employmentStatusId: deleted.employmentStatusId,
-            home: deleted.home,
-          };
-
-          const pluginResult = await executeChargePlugins(context);
+          const pluginResult = await executeChargePlugins({
+            trigger: TriggerType.HOURS_SAVED,
+            ...payload,
+          });
           notifications = pluginResult.notifications;
         } catch (error) {
           logger.error("Failed to execute charge plugins for hours delete", {
@@ -448,7 +482,7 @@ export function createWorkerHoursStorage(
       
       return { success: result.length > 0, notifications };
     },
-    executeChargePlugins
+
     async upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult> {
       const [savedHours] = await db
         .insert(workerHours)
@@ -468,23 +502,34 @@ export function createWorkerHoursStorage(
       let notifications: LedgerNotification[] = [];
 
       if (savedHours) {
+        const payload = {
+          hoursId: savedHours.id,
+          workerId: savedHours.workerId,
+          employerId: savedHours.employerId,
+          year: savedHours.year,
+          month: savedHours.month,
+          day: savedHours.day,
+          hours: savedHours.hours || 0,
+          employmentStatusId: savedHours.employmentStatusId,
+          home: savedHours.home,
+        };
+
+        // Emit event for any listeners (future notification plugins, etc.)
+        eventBus.emit(EventType.HOURS_SAVED, payload).catch(err => {
+          logger.error("Failed to emit HOURS_SAVED event", {
+            service: "worker-hours-storage",
+            hoursId: savedHours.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+
+        // Execute charge plugins directly (for backwards compatibility with notifications)
         try {
           const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
-          
-          const context = {
-            trigger: TriggerType.HOURS_SAVED as typeof TriggerType.HOURS_SAVED,
-            hoursId: savedHours.id,
-            workerId: savedHours.workerId,
-            employerId: savedHours.employerId,
-            year: savedHours.year,
-            month: savedHours.month,
-            day: savedHours.day,
-            hours: savedHours.hours || 0,
-            employmentStatusId: savedHours.employmentStatusId,
-            home: savedHours.home,
-          };
-
-          const result = await executeChargePlugins(context);
+          const result = await executeChargePlugins({
+            trigger: TriggerType.HOURS_SAVED,
+            ...payload,
+          });
           notifications = result.notifications;
         } catch (error) {
           logger.error("Failed to execute charge plugins for hours save", {

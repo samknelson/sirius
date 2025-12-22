@@ -16,6 +16,7 @@ import { eq, sql, desc, and } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { logger } from "../logger";
+import { eventBus, EventType } from "../services/event-bus";
 
 export interface WorkerEmployerSummary {
   workerId: string;
@@ -585,20 +586,31 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .returning();
 
       if (wmb) {
+        const payload = {
+          wmbId: wmb.id,
+          workerId: wmb.workerId,
+          employerId: wmb.employerId,
+          benefitId: wmb.benefitId,
+          year: wmb.year,
+          month: wmb.month,
+        };
+
+        // Emit event for any listeners (future notification plugins, etc.)
+        eventBus.emit(EventType.WMB_SAVED, payload).catch(err => {
+          logger.error("Failed to emit WMB_SAVED event", {
+            service: "worker-storage",
+            wmbId: wmb.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+
+        // Execute charge plugins directly (for backwards compatibility)
         try {
           const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
-          
-          const context = {
-            trigger: TriggerType.WMB_SAVED as typeof TriggerType.WMB_SAVED,
-            wmbId: wmb.id,
-            workerId: wmb.workerId,
-            employerId: wmb.employerId,
-            benefitId: wmb.benefitId,
-            year: wmb.year,
-            month: wmb.month,
-          };
-
-          await executeChargePlugins(context);
+          await executeChargePlugins({
+            trigger: TriggerType.WMB_SAVED,
+            ...payload,
+          });
         } catch (error) {
           logger.error("Failed to execute charge plugins for WMB create", {
             service: "worker-storage",
@@ -620,21 +632,32 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       const deleted = result[0];
       
       if (deleted) {
+        const payload = {
+          wmbId: deleted.id,
+          workerId: deleted.workerId,
+          employerId: deleted.employerId,
+          benefitId: deleted.benefitId,
+          year: deleted.year,
+          month: deleted.month,
+          isDeleted: true,
+        };
+
+        // Emit event for any listeners (future notification plugins, etc.)
+        eventBus.emit(EventType.WMB_SAVED, payload).catch(err => {
+          logger.error("Failed to emit WMB_SAVED event", {
+            service: "worker-storage",
+            wmbId: deleted.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+
+        // Execute charge plugins directly (for backwards compatibility)
         try {
           const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
-          
-          const context = {
-            trigger: TriggerType.WMB_SAVED as typeof TriggerType.WMB_SAVED,
-            wmbId: deleted.id,
-            workerId: deleted.workerId,
-            employerId: deleted.employerId,
-            benefitId: deleted.benefitId,
-            year: deleted.year,
-            month: deleted.month,
-            isDeleted: true,
-          };
-
-          await executeChargePlugins(context);
+          await executeChargePlugins({
+            trigger: TriggerType.WMB_SAVED,
+            ...payload,
+          });
         } catch (error) {
           logger.error("Failed to execute charge plugins for WMB delete", {
             service: "worker-storage",

@@ -6,6 +6,7 @@ import { requireAccess } from "../../accessControl";
 import { requireComponent } from "../components";
 import { executeChargePlugins, TriggerType, PaymentSavedContext, LedgerNotification } from "../../charge-plugins";
 import { logger } from "../../logger";
+import { eventBus, EventType } from "../../services/event-bus";
 
 async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<LedgerNotification[]> {
   try {
@@ -19,8 +20,7 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<Ledg
       return [];
     }
 
-    const context: PaymentSavedContext = {
-      trigger: TriggerType.PAYMENT_SAVED,
+    const payload = {
       paymentId: payment.id,
       amount: payment.amount,
       status: payment.status,
@@ -31,6 +31,21 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<Ledg
       dateCleared: payment.dateCleared,
       memo: payment.memo,
       paymentTypeId: payment.paymentType,
+    };
+
+    // Emit event for any listeners (future notification plugins, etc.)
+    eventBus.emit(EventType.PAYMENT_SAVED, payload).catch(err => {
+      logger.error("Failed to emit PAYMENT_SAVED event", {
+        service: "ledger-payments",
+        paymentId: payment.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+
+    // Execute charge plugins directly (for backwards compatibility with notifications)
+    const context: PaymentSavedContext = {
+      trigger: TriggerType.PAYMENT_SAVED,
+      ...payload,
     };
 
     const result = await executeChargePlugins(context);

@@ -16,6 +16,7 @@ import {
 import { insertEventParticipantSchema } from "@shared/schema";
 import { executeChargePlugins, TriggerType, type ParticipantSavedContext } from "../charge-plugins";
 import { logger } from "../logger";
+import { eventBus, EventType } from "../services/event-bus";
 
 export function registerEventsRoutes(
   app: Express,
@@ -573,8 +574,7 @@ export function registerEventsRoutes(
       const workerId = worker?.id || null;
       const isSteward = workerId ? await storage.workerStewardAssignments.isWorkerSteward(workerId) : false;
 
-      const context: ParticipantSavedContext = {
-        trigger: TriggerType.PARTICIPANT_SAVED,
+      const payload = {
         participantId,
         eventId,
         eventTypeId,
@@ -583,6 +583,21 @@ export function registerEventsRoutes(
         status,
         workerId,
         isSteward,
+      };
+
+      // Emit event for any listeners (future notification plugins, etc.)
+      eventBus.emit(EventType.PARTICIPANT_SAVED, payload).catch(err => {
+        logger.error("Failed to emit PARTICIPANT_SAVED event", {
+          service: "events",
+          participantId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+
+      // Execute charge plugins directly (for backwards compatibility with notifications)
+      const context: ParticipantSavedContext = {
+        trigger: TriggerType.PARTICIPANT_SAVED,
+        ...payload,
       };
 
       const result = await executeChargePlugins(context);
