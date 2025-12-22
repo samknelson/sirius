@@ -9,7 +9,8 @@ import { initAccessControl } from "./accessControl";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
 import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler } from "./cron";
-import { migrateFromLegacyVariables, loadComponentCache } from "./services/component-cache";
+import { loadComponentCache } from "./services/component-cache";
+import { runMigrations } from "../scripts/migrate";
 
 // Import charge plugins module to trigger registration
 // Note: Individual plugins are registered in ./charge-plugins/index.ts
@@ -130,14 +131,25 @@ app.use((req, res, next) => {
   await addressValidationService.getConfig();
   logger.info("Address validation service initialized", { source: "startup" });
 
-  // Migrate legacy component variables and load component cache
-  const migrationResult = await migrateFromLegacyVariables();
-  if (migrationResult.migrated) {
-    logger.info("Migrated legacy component variables", { 
+  // Run database migrations
+  const migrationResult = await runMigrations();
+  if (migrationResult.ran > 0) {
+    logger.info("Database migrations completed", { 
       source: "startup",
-      migratedCount: migrationResult.migratedCount 
+      ran: migrationResult.ran,
+      skipped: migrationResult.skipped
+    });
+  } else {
+    logger.debug("No pending migrations", { source: "startup" });
+  }
+  if (migrationResult.errors.length > 0) {
+    logger.error("Migration errors occurred", {
+      source: "startup",
+      errors: migrationResult.errors
     });
   }
+
+  // Load component cache
   await loadComponentCache();
   logger.info("Component cache initialized", { source: "startup" });
 

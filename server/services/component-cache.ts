@@ -116,38 +116,3 @@ export function getEnabledComponentIdsSync(): string[] {
   return enabledIds;
 }
 
-export async function migrateFromLegacyVariables(): Promise<{ migrated: boolean; migratedCount: number }> {
-  const existingVariable = await storage.variables.getByName(COMPONENTS_VARIABLE_NAME);
-  if (existingVariable) {
-    logger.debug("Components variable already exists, skipping migration", { service: "component-cache" });
-    return { migrated: false, migratedCount: 0 };
-  }
-
-  const allComponents = getAllComponents();
-  const componentState: ComponentEnabledMap = {};
-  let migratedCount = 0;
-
-  for (const component of allComponents) {
-    const legacyVariableName = `component_${component.id}`;
-    const legacyVariable = await storage.variables.getByName(legacyVariableName);
-    
-    if (legacyVariable) {
-      componentState[component.id] = legacyVariable.value === true;
-      migratedCount++;
-    }
-  }
-
-  if (migratedCount > 0) {
-    await storage.variables.create({
-      name: COMPONENTS_VARIABLE_NAME,
-      value: componentState
-    });
-    
-    logger.info("Migrated legacy component variables to single 'components' variable", {
-      service: "component-cache",
-      migratedCount
-    });
-  }
-
-  return { migrated: migratedCount > 0, migratedCount };
-}
