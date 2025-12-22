@@ -17,6 +17,8 @@ import {
 import { permissionRegistry, type PermissionDefinition } from "@shared/permissions";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
+import type { ContactsStorage } from "./contacts";
+import { createUserContactSyncService } from "../services/user-contact-sync";
 
 export interface UserStorage {
   // User operations
@@ -65,7 +67,9 @@ export interface UserStorage {
   getUsersWithAnyPermission(permissionKeys: string[]): Promise<User[]>;
 }
 
-export function createUserStorage(): UserStorage {
+export function createUserStorage(contactsStorage?: ContactsStorage): UserStorage {
+  const contactSync = contactsStorage ? createUserContactSyncService(contactsStorage) : null;
+
   return {
     // User operations
     async getUser(id: string): Promise<User | undefined> {
@@ -98,10 +102,18 @@ export function createUserStorage(): UserStorage {
           },
         })
         .returning();
+      
+      if (contactSync) {
+        await contactSync.ensureContactForUser(user);
+      }
+      
       return user;
     },
 
     async linkReplitAccount(userId: string, replitUserId: string, userData: Partial<UpsertUser>): Promise<User | undefined> {
+      const previousUser = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
+      const previousEmail = previousUser?.email;
+      
       const [user] = await db
         .update(users)
         .set({
@@ -115,6 +127,11 @@ export function createUserStorage(): UserStorage {
         })
         .where(eq(users.id, userId))
         .returning();
+      
+      if (user && contactSync) {
+        await contactSync.ensureContactForUser(user, previousEmail);
+      }
+      
       return user || undefined;
     },
 
@@ -123,15 +140,28 @@ export function createUserStorage(): UserStorage {
         .insert(users)
         .values(insertUser)
         .returning();
+      
+      if (contactSync) {
+        await contactSync.ensureContactForUser(user);
+      }
+      
       return user;
     },
 
     async updateUser(id: string, userUpdate: Partial<InsertUser>): Promise<User | undefined> {
+      const previousUser = await db.select().from(users).where(eq(users.id, id)).then(r => r[0]);
+      const previousEmail = previousUser?.email;
+      
       const [user] = await db
         .update(users)
         .set(userUpdate)
         .where(eq(users.id, id))
         .returning();
+      
+      if (user && contactSync) {
+        await contactSync.ensureContactForUser(user, previousEmail);
+      }
+      
       return user || undefined;
     },
 

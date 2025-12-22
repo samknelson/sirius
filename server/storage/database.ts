@@ -121,11 +121,11 @@ export class DatabaseStorage implements IStorage {
 
   constructor() {
     this.variables = withStorageLogging(createVariableStorage(), variableLoggingConfig);
-    this.users = withStorageLogging(createUserStorage(), userLoggingConfig);
     this.contacts = withStorageLogging(
       createContactsStorage(addressLoggingConfig, phoneNumberLoggingConfig), 
       contactLoggingConfig
     );
+    this.users = withStorageLogging(createUserStorage(this.contacts), userLoggingConfig);
     this.workers = withStorageLogging(
       createWorkerStorage(this.contacts),
       workerLoggingConfig
