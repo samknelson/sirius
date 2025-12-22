@@ -37,7 +37,7 @@ export function AlertsBell() {
 
   const { data: unreadData } = useQuery<UnreadCountResponse>({
     queryKey: ["/api/alerts/unread-count"],
-    refetchInterval: 30000,
+    refetchInterval: user ? 30000 : false,
     enabled: !!user,
     retry: false,
   });
