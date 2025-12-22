@@ -20,6 +20,7 @@ export interface CommWithDetails extends Comm {
   smsDetails?: CommSms | null;
   emailDetails?: CommEmail | null;
   postalDetails?: CommPostal | null;
+  inappDetails?: CommInapp | null;
 }
 
 export interface CommStorage {
@@ -109,15 +110,18 @@ export function createCommStorage(): CommStorage {
         comms.map(async (c) => {
           if (c.medium === 'sms') {
             const [smsDetails] = await db.select().from(commSms).where(eq(commSms.commId, c.id));
-            return { ...c, smsDetails: smsDetails || null, emailDetails: null, postalDetails: null };
+            return { ...c, smsDetails: smsDetails || null, emailDetails: null, postalDetails: null, inappDetails: null };
           } else if (c.medium === 'email') {
             const [emailDetails] = await db.select().from(commEmail).where(eq(commEmail.commId, c.id));
-            return { ...c, smsDetails: null, emailDetails: emailDetails || null, postalDetails: null };
+            return { ...c, smsDetails: null, emailDetails: emailDetails || null, postalDetails: null, inappDetails: null };
           } else if (c.medium === 'postal') {
             const [postalDetails] = await db.select().from(commPostal).where(eq(commPostal.commId, c.id));
-            return { ...c, smsDetails: null, emailDetails: null, postalDetails: postalDetails || null };
+            return { ...c, smsDetails: null, emailDetails: null, postalDetails: postalDetails || null, inappDetails: null };
+          } else if (c.medium === 'inapp') {
+            const [inappDetails] = await db.select().from(commInapp).where(eq(commInapp.commId, c.id));
+            return { ...c, smsDetails: null, emailDetails: null, postalDetails: null, inappDetails: inappDetails || null };
           }
-          return { ...c, smsDetails: null, emailDetails: null, postalDetails: null };
+          return { ...c, smsDetails: null, emailDetails: null, postalDetails: null, inappDetails: null };
         })
       );
       
@@ -130,16 +134,19 @@ export function createCommStorage(): CommStorage {
       
       if (c.medium === 'sms') {
         const [smsDetails] = await db.select().from(commSms).where(eq(commSms.commId, c.id));
-        return { ...c, smsDetails: smsDetails || null, emailDetails: null, postalDetails: null };
+        return { ...c, smsDetails: smsDetails || null, emailDetails: null, postalDetails: null, inappDetails: null };
       } else if (c.medium === 'email') {
         const [emailDetails] = await db.select().from(commEmail).where(eq(commEmail.commId, c.id));
-        return { ...c, smsDetails: null, emailDetails: emailDetails || null, postalDetails: null };
+        return { ...c, smsDetails: null, emailDetails: emailDetails || null, postalDetails: null, inappDetails: null };
       } else if (c.medium === 'postal') {
         const [postalDetails] = await db.select().from(commPostal).where(eq(commPostal.commId, c.id));
-        return { ...c, smsDetails: null, emailDetails: null, postalDetails: postalDetails || null };
+        return { ...c, smsDetails: null, emailDetails: null, postalDetails: postalDetails || null, inappDetails: null };
+      } else if (c.medium === 'inapp') {
+        const [inappDetails] = await db.select().from(commInapp).where(eq(commInapp.commId, c.id));
+        return { ...c, smsDetails: null, emailDetails: null, postalDetails: null, inappDetails: inappDetails || null };
       }
       
-      return { ...c, smsDetails: null, emailDetails: null, postalDetails: null };
+      return { ...c, smsDetails: null, emailDetails: null, postalDetails: null, inappDetails: null };
     },
 
     async createComm(data: InsertComm): Promise<Comm> {
@@ -743,6 +750,12 @@ export function createCommInappStorage(): CommInappStorage {
         .returning();
       
       if (result) {
+        // Also update the parent comm record status
+        await db
+          .update(comm)
+          .set({ status: "read" })
+          .where(eq(comm.id, existing.commId));
+
         storageLogger.info(`In-app alert marked as read: ${id}`, {
           module: 'comm-inapp',
           operation: 'markAsRead',
