@@ -6,19 +6,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { PluginSettingsProps } from "../types";
-
-interface Role {
-  id: string;
-  name: string;
-  description: string | null;
-}
-
-interface WizardType {
-  name: string;
-  displayName: string;
-  description: string;
-  isReport?: boolean;
-}
+import { Role } from "@/lib/entity-types";
+import { WizardType } from "@/lib/wizard-types";
 
 type ReportsSettings = Record<string, string[]>;
 

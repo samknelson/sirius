@@ -6,13 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Building2, Calendar, ExternalLink } from "lucide-react";
 import { DashboardPluginProps } from "../types";
 import { format, subMonths } from "date-fns";
-
-interface WizardType {
-  name: string;
-  displayName: string;
-  description?: string;
-  isMonthly?: boolean;
-}
+import { WizardType } from "@/lib/wizard-types";
 
 interface EmployerMonthlyStats {
   totalActiveEmployers: number;

@@ -11,13 +11,7 @@ import { useForm } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-
-interface WizardType {
-  name: string;
-  displayName: string;
-  description?: string;
-  isMonthly?: boolean;
-}
+import { WizardType } from "@/lib/wizard-types";
 
 interface Upload {
   wizardId: string;

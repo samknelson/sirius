@@ -16,37 +16,7 @@ import { RetentionSettings } from "@/components/wizards/RetentionSettings";
 import { getStepComponent, getStepController } from "@/components/wizards/steps/registry";
 import type { WizardData } from "@shared/schema";
 import type { ReportData } from "@shared/wizard-types";
-
-interface Wizard {
-  id: string;
-  date: string;
-  type: string;
-  status: string;
-  currentStep: string | null;
-  entityId: string | null;
-  data: any;
-}
-
-interface WizardType {
-  name: string;
-  displayName: string;
-  description?: string;
-  isFeed?: boolean;
-  isReport?: boolean;
-  entityType?: string;
-}
-
-interface WizardStatus {
-  id: string;
-  name: string;
-  description?: string;
-}
-
-interface WizardStep {
-  id: string;
-  name: string;
-  description?: string;
-}
+import { Wizard, WizardType, WizardStatus, WizardStep } from "@/lib/wizard-types";
 
 interface Employer {
   id: string;
