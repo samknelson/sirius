@@ -9,17 +9,12 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Key, Shield, Plus, X } from 'lucide-react';
 import { useState } from 'react';
+import { Role } from '@/lib/entity-types';
 
 interface Permission {
   key: string;
   description: string;
   module?: string;
-}
-
-interface Role {
-  id: string;
-  name: string;
-  description: string;
 }
 
 interface RolePermission {

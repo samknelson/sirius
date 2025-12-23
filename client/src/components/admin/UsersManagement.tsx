@@ -12,13 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, ExternalLink } from 'lucide-react';
 import { Link } from 'wouter';
-
-interface Role {
-  id: string;
-  name: string;
-  description: string;
-  createdAt: string;
-}
+import { Role } from '@/lib/entity-types';
 
 interface User {
   id: string;

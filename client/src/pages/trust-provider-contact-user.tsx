@@ -13,13 +13,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { UserPlus, Save, AlertCircle, CheckCircle2 } from "lucide-react";
-
-interface Role {
-  id: string;
-  name: string;
-  description: string | null;
-  sequence: number;
-}
+import { Role } from "@/lib/entity-types";
 
 interface ProviderContactUserResponse {
   hasUser: boolean;

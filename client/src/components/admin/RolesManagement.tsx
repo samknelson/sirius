@@ -10,14 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Loader2, Shield, Pencil, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
-
-interface Role {
-  id: string;
-  name: string;
-  description: string;
-  sequence: number;
-  createdAt: string;
-}
+import { Role } from '@/lib/entity-types';
 
 export default function RolesManagement() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -171,7 +164,7 @@ export default function RolesManagement() {
   const handleEditRole = (role: Role) => {
     setEditingRole(role);
     setEditRoleName(role.name);
-    setEditRoleDescription(role.description);
+    setEditRoleDescription(role.description ?? '');
   };
 
   const handleUpdateRole = () => {

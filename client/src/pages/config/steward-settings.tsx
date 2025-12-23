@@ -15,16 +15,10 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { Role } from "@/lib/entity-types";
 
 const VARIABLE_NAME = "worker_steward_config";
 const STEWARD_PERMISSION = "workers.steward";
-
-interface Role {
-  id: string;
-  name: string;
-  description: string | null;
-  sequence: number;
-}
 
 interface StewardConfig {
   role: string | null;
