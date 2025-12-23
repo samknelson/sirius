@@ -6,27 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-
-interface CronJobSettingsField {
-  key: string;
-  label: string;
-  type: "number" | "string" | "boolean";
-  description?: string;
-  min?: number;
-  max?: number;
-}
-
-interface CronJob {
-  name: string;
-  description: string | null;
-  schedule: string;
-  isEnabled: boolean;
-  settings: Record<string, unknown> | null;
-  settingsFields: CronJobSettingsField[] | null;
-  defaultSettings: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-}
+import { CronJob } from "@/lib/cron-types";
 
 interface CronJobLayoutContextValue {
   job: CronJob;
