@@ -6,14 +6,7 @@ import type { Employer } from "@shared/schema";
 import { ArrowLeft, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-
-interface EmploymentStatus {
-  id: string;
-  name: string;
-  code: string;
-  employed: boolean;
-  description: string | null;
-}
+import { EmploymentStatus } from "@/lib/entity-types";
 
 interface WorkerHoursEntry {
   id: string;

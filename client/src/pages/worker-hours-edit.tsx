@@ -11,14 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import type { Employer } from "@shared/schema";
-
-interface EmploymentStatus {
-  id: string;
-  name: string;
-  code: string;
-  employed: boolean;
-  description: string | null;
-}
+import { EmploymentStatus } from "@/lib/entity-types";
 
 interface LedgerNotification {
   type: "created" | "updated" | "deleted";

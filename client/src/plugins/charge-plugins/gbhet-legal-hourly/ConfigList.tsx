@@ -19,6 +19,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { EmploymentStatus } from "@/lib/entity-types";
 
 interface ChargePluginConfig {
   id: string;
@@ -41,12 +42,6 @@ interface LedgerAccount {
   name: string;
   description: string | null;
   isActive: boolean;
-}
-
-interface EmploymentStatus {
-  id: string;
-  name: string;
-  code: string;
 }
 
 export default function GbhetLegalHourlyConfigList({ pluginId }: ChargePluginConfigProps) {

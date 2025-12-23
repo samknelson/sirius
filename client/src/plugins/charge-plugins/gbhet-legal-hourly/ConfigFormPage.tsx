@@ -14,6 +14,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { RateHistorySection } from "@/components/charge-plugins/RateHistorySection";
 import { sortRatesDescending } from "@/lib/rateHistory";
 import { useEffect } from "react";
+import { EmploymentStatus } from "@/lib/entity-types";
 
 const formSchema = z.object({
   accountId: z.string().min(1, "Account is required"),
@@ -31,12 +32,6 @@ interface LedgerAccount {
   name: string;
   description: string | null;
   isActive: boolean;
-}
-
-interface EmploymentStatus {
-  id: string;
-  name: string;
-  code: string;
 }
 
 interface ChargePluginConfig {

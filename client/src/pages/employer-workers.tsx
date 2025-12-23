@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users } from "lucide-react";
 import { Link } from "wouter";
+import { EmploymentStatus } from "@/lib/entity-types";
 
 interface EmployerWorker {
   workerId: string;
@@ -18,15 +19,6 @@ interface EmployerWorker {
   position: string | null;
   date: string | null;
   home: boolean;
-}
-
-interface EmploymentStatus {
-  id: string;
-  name: string;
-  code: string;
-  employed: boolean;
-  description: string | null;
-  sequence: number;
 }
 
 function EmployerWorkersContent() {

@@ -22,14 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-
-interface EmploymentStatus {
-  id: string;
-  name: string;
-  code: string;
-  employed: boolean;
-  description: string | null;
-}
+import { EmploymentStatus } from "@/lib/entity-types";
 
 interface WorkerHoursEntry {
   id: string;

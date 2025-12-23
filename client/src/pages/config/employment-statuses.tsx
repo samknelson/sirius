@@ -25,16 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-
-interface EmploymentStatus {
-  id: string;
-  name: string;
-  code: string;
-  employed: boolean;
-  description: string | null;
-  sequence: number;
-  data?: { color?: string } | null;
-}
+import { EmploymentStatus } from "@/lib/entity-types";
 
 export default function EmploymentStatusesPage() {
   const { toast } = useToast();
@@ -56,7 +47,7 @@ export default function EmploymentStatusesPage() {
   const createMutation = useMutation({
     mutationFn: async (formData: { name: string; code: string; employed: boolean; description: string | null; color: string }) => {
       // Find the highest sequence number
-      const maxSequence = statuses.reduce((max, status) => Math.max(max, status.sequence), -1);
+      const maxSequence = statuses.reduce((max, status) => Math.max(max, status.sequence ?? 0), -1);
       return apiRequest("POST", "/api/employment-statuses", { 
         name: formData.name,
         code: formData.code,
@@ -156,7 +147,7 @@ export default function EmploymentStatusesPage() {
     setEditingId(status.id);
     setFormName(status.name);
     setFormCode(status.code);
-    setFormEmployed(status.employed);
+    setFormEmployed(status.employed ?? false);
     setFormDescription(status.description || "");
     setFormColor(status.data?.color || "#6b7280");
   };
@@ -223,8 +214,8 @@ export default function EmploymentStatusesPage() {
     const currentIndex = statuses.findIndex(s => s.id === status.id);
     if (currentIndex > 0) {
       const prevStatus = statuses[currentIndex - 1];
-      updateSequenceMutation.mutate({ id: status.id, sequence: prevStatus.sequence });
-      updateSequenceMutation.mutate({ id: prevStatus.id, sequence: status.sequence });
+      updateSequenceMutation.mutate({ id: status.id, sequence: prevStatus.sequence ?? 0 });
+      updateSequenceMutation.mutate({ id: prevStatus.id, sequence: status.sequence ?? 0 });
     }
   };
 
@@ -232,8 +223,8 @@ export default function EmploymentStatusesPage() {
     const currentIndex = statuses.findIndex(s => s.id === status.id);
     if (currentIndex < statuses.length - 1) {
       const nextStatus = statuses[currentIndex + 1];
-      updateSequenceMutation.mutate({ id: status.id, sequence: nextStatus.sequence });
-      updateSequenceMutation.mutate({ id: nextStatus.id, sequence: status.sequence });
+      updateSequenceMutation.mutate({ id: status.id, sequence: nextStatus.sequence ?? 0 });
+      updateSequenceMutation.mutate({ id: nextStatus.id, sequence: status.sequence ?? 0 });
     }
   };
 

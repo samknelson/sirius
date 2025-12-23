@@ -17,6 +17,8 @@ import { Loader2, ArrowLeft } from "lucide-react";
 import { Link, useParams, useLocation } from "wouter";
 import { RateHistorySection } from "@/components/charge-plugins/RateHistorySection";
 import { baseRateHistoryEntrySchema, BaseRateHistoryEntry } from "@shared/schema";
+import { EmploymentStatus } from "@/lib/entity-types";
+import { Employer } from "@/lib/employer-types";
 
 // Use base schema from shared with coerce for number input
 const rateHistoryEntrySchema = baseRateHistoryEntrySchema.extend({
@@ -53,18 +55,6 @@ interface LedgerAccount {
   name: string;
   description: string | null;
   isActive: boolean;
-}
-
-interface Employer {
-  id: string;
-  name: string;
-  isActive: boolean;
-}
-
-interface EmploymentStatus {
-  id: string;
-  name: string;
-  code: string;
 }
 
 interface ChargePluginConfig {
