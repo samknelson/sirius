@@ -27,7 +27,7 @@ export default function RolesManagement() {
 
   const createRoleMutation = useMutation({
     mutationFn: async ({ name, description }: { name: string; description: string }) => {
-      const maxSequence = roles.reduce((max, role) => Math.max(max, role.sequence), -1);
+      const maxSequence = roles.reduce((max, role) => Math.max(max, role.sequence ?? 0), -1);
       return await apiRequest('POST', '/api/admin/roles', { 
         name, 
         description,
@@ -111,8 +111,8 @@ export default function RolesManagement() {
     const currentIndex = roles.findIndex(r => r.id === role.id);
     if (currentIndex > 0) {
       const prevRole = roles[currentIndex - 1];
-      const currentSeq = role.sequence;
-      const prevSeq = prevRole.sequence;
+      const currentSeq = role.sequence ?? 0;
+      const prevSeq = prevRole.sequence ?? 0;
       
       try {
         await apiRequest('PUT', `/api/admin/roles/${role.id}`, { sequence: prevSeq });
@@ -132,8 +132,8 @@ export default function RolesManagement() {
     const currentIndex = roles.findIndex(r => r.id === role.id);
     if (currentIndex < roles.length - 1) {
       const nextRole = roles[currentIndex + 1];
-      const currentSeq = role.sequence;
-      const nextSeq = nextRole.sequence;
+      const currentSeq = role.sequence ?? 0;
+      const nextSeq = nextRole.sequence ?? 0;
       
       try {
         await apiRequest('PUT', `/api/admin/roles/${role.id}`, { sequence: nextSeq });

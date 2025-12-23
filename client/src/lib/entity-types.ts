@@ -2,7 +2,7 @@ export interface Role {
   id: string;
   name: string;
   description: string | null;
-  sequence: number;
+  sequence?: number;
   createdAt?: string;
 }
 
