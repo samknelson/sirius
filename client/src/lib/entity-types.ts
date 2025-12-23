@@ -27,3 +27,13 @@ export interface PhoneNumber {
   isPrimary: boolean;
   isActive: boolean;
 }
+
+export interface EmploymentStatus {
+  id: string;
+  name: string;
+  code: string;
+  employed?: boolean;
+  description?: string | null;
+  sequence?: number;
+  data?: { color?: string } | null;
+}
