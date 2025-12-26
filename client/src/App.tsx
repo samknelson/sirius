@@ -156,6 +156,7 @@ import EmployerContactTypesPage from "@/pages/config/employer-contact-types";
 import EmployerTypesPage from "@/pages/config/employer-types";
 import ProviderContactTypesPage from "@/pages/config/provider-contact-types";
 import EventTypesPage from "@/pages/config/event-types";
+import DispatchJobTypesPage from "@/pages/config/dispatch-job-types";
 import MasqueradePage from "@/pages/config/masquerade";
 import SystemModePage from "@/pages/config/system-mode";
 import DefaultPolicyPage from "@/pages/config/default-policy";
@@ -1503,6 +1504,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <EventTypesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/dispatch-job-types">
+        <ProtectedRoute permission="admin" component="dispatch">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DispatchJobTypesPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

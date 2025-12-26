@@ -1124,4 +1124,107 @@ export function registerOptionsRoutes(
       res.status(500).json({ message: "Failed to delete event type" });
     }
   });
+
+  // Dispatch Job Type routes
+
+  // GET /api/dispatch-job-types - Get all dispatch job types (requires admin permission)
+  app.get("/api/dispatch-job-types", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const jobTypes = await storage.options.dispatchJobTypes.getAll();
+      res.json(jobTypes);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch dispatch job types" });
+    }
+  });
+
+  // GET /api/dispatch-job-types/:id - Get a specific dispatch job type (requires admin permission)
+  app.get("/api/dispatch-job-types/:id", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const jobType = await storage.options.dispatchJobTypes.get(id);
+      
+      if (!jobType) {
+        res.status(404).json({ message: "Dispatch job type not found" });
+        return;
+      }
+      
+      res.json(jobType);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch dispatch job type" });
+    }
+  });
+
+  // POST /api/dispatch-job-types - Create a new dispatch job type (requires admin permission)
+  app.post("/api/dispatch-job-types", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { name, description, data } = req.body;
+      
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ message: "Name is required" });
+      }
+      
+      const jobType = await storage.options.dispatchJobTypes.create({
+        name: name.trim(),
+        description: description && typeof description === 'string' ? description.trim() : null,
+        data: data && typeof data === 'object' ? data : null,
+      });
+      
+      res.status(201).json(jobType);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to create dispatch job type" });
+    }
+  });
+
+  // PUT /api/dispatch-job-types/:id - Update a dispatch job type (requires admin permission)
+  app.put("/api/dispatch-job-types/:id", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, description, data } = req.body;
+      
+      const updates: any = {};
+      
+      if (name !== undefined) {
+        if (typeof name !== 'string' || !name.trim()) {
+          return res.status(400).json({ message: "Name must be a non-empty string" });
+        }
+        updates.name = name.trim();
+      }
+      
+      if (description !== undefined) {
+        updates.description = description && typeof description === 'string' ? description.trim() : null;
+      }
+      
+      if (data !== undefined) {
+        updates.data = data && typeof data === 'object' ? data : null;
+      }
+      
+      const jobType = await storage.options.dispatchJobTypes.update(id, updates);
+      
+      if (!jobType) {
+        res.status(404).json({ message: "Dispatch job type not found" });
+        return;
+      }
+      
+      res.json(jobType);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to update dispatch job type" });
+    }
+  });
+
+  // DELETE /api/dispatch-job-types/:id - Delete a dispatch job type (requires admin permission)
+  app.delete("/api/dispatch-job-types/:id", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.options.dispatchJobTypes.delete(id);
+      
+      if (!deleted) {
+        res.status(404).json({ message: "Dispatch job type not found" });
+        return;
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete dispatch job type" });
+    }
+  });
 }

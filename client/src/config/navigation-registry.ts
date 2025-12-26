@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, 
   CreditCard, Activity, Wallet, Settings, Shield, Key, FileText, 
-  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, type LucideIcon
+  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, Truck, type LucideIcon
 } from "lucide-react";
 
 export interface NavItem {
@@ -114,6 +114,15 @@ export const configSections: NavSection[] = [
     icon: Calendar,
     items: [
       { path: "/config/event-types", label: "Event Types", icon: List, testId: "nav-config-event-types", permission: "admin", requiresComponent: "event" },
+    ],
+  },
+  {
+    id: "dispatch",
+    title: "Dispatch",
+    description: "Dispatch management and configuration",
+    icon: Truck,
+    items: [
+      { path: "/config/dispatch-job-types", label: "Job Types", icon: List, testId: "nav-config-dispatch-job-types", permission: "admin", requiresComponent: "dispatch" },
     ],
   },
   {
