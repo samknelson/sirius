@@ -6,9 +6,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Loader2, Plus, Edit, Trash2, Save, X } from "lucide-react";
+import { 
+  Loader2, Plus, Edit, Trash2, Save, X,
+  Briefcase, Truck, HardHat, Wrench, Clock, Calendar, 
+  ClipboardList, Package, MapPin, Users,
+  type LucideIcon
+} from "lucide-react";
 import {
   Table,
   TableBody,
@@ -33,13 +39,39 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { insertDispatchJobTypeSchema, type DispatchJobType, type InsertDispatchJobType } from "@shared/schema";
+
+const availableIcons: { name: string; Icon: LucideIcon }[] = [
+  { name: 'Briefcase', Icon: Briefcase },
+  { name: 'Truck', Icon: Truck },
+  { name: 'HardHat', Icon: HardHat },
+  { name: 'Wrench', Icon: Wrench },
+  { name: 'Clock', Icon: Clock },
+  { name: 'Calendar', Icon: Calendar },
+  { name: 'ClipboardList', Icon: ClipboardList },
+  { name: 'Package', Icon: Package },
+  { name: 'MapPin', Icon: MapPin },
+  { name: 'Users', Icon: Users },
+];
+
+function getIconComponent(iconName: string | undefined): LucideIcon {
+  const found = availableIcons.find(i => i.name === iconName);
+  return found?.Icon || Briefcase;
+}
 
 export default function DispatchJobTypesPage() {
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [formIcon, setFormIcon] = useState<string>("Briefcase");
   
   const { data: jobTypes = [], isLoading } = useQuery<DispatchJobType[]>({
     queryKey: ["/api/dispatch-job-types"],
@@ -63,12 +95,16 @@ export default function DispatchJobTypesPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertDispatchJobType) => {
-      return apiRequest("POST", "/api/dispatch-job-types", data);
+      return apiRequest("POST", "/api/dispatch-job-types", {
+        ...data,
+        data: { icon: formIcon }
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dispatch-job-types"] });
       setIsAddDialogOpen(false);
       addForm.reset();
+      setFormIcon("Briefcase");
       toast({
         title: "Success",
         description: "Dispatch job type created successfully.",
@@ -85,12 +121,16 @@ export default function DispatchJobTypesPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; updates: InsertDispatchJobType }) => {
-      return apiRequest("PUT", `/api/dispatch-job-types/${data.id}`, data.updates);
+      return apiRequest("PUT", `/api/dispatch-job-types/${data.id}`, {
+        ...data.updates,
+        data: { icon: formIcon }
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dispatch-job-types"] });
       setEditingId(null);
       editForm.reset();
+      setFormIcon("Briefcase");
       toast({
         title: "Success",
         description: "Dispatch job type updated successfully.",
@@ -128,6 +168,8 @@ export default function DispatchJobTypesPage() {
 
   const handleEdit = (type: DispatchJobType) => {
     setEditingId(type.id);
+    const data = type.data as { icon?: string } | null;
+    setFormIcon(data?.icon || "Briefcase");
     editForm.reset({
       name: type.name,
       description: type.description || "",
@@ -137,6 +179,7 @@ export default function DispatchJobTypesPage() {
   const handleCancelEdit = () => {
     setEditingId(null);
     editForm.reset();
+    setFormIcon("Briefcase");
   };
 
   const onAddSubmit = (data: InsertDispatchJobType) => {
@@ -183,113 +226,150 @@ export default function DispatchJobTypesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12">Icon</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {jobTypes.map((type) => (
-                  <TableRow key={type.id} data-testid={`row-type-${type.id}`}>
-                    {editingId === type.id ? (
-                      <TableCell colSpan={3}>
-                        <Form {...editForm}>
-                          <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                              <FormField
-                                control={editForm.control}
-                                name="name"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Name *</FormLabel>
-                                    <FormControl>
-                                      <Input
-                                        placeholder="e.g., Full Time"
-                                        data-testid="input-edit-name"
-                                        {...field}
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                              <FormField
-                                control={editForm.control}
-                                name="description"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Description</FormLabel>
-                                    <FormControl>
-                                      <Input
-                                        placeholder="Optional description"
-                                        data-testid="input-edit-description"
-                                        {...field}
-                                        value={field.value || ""}
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                            </div>
-                            <div className="flex gap-2">
-                              <Button
-                                type="submit"
-                                size="sm"
-                                data-testid="button-save"
-                                disabled={updateMutation.isPending}
-                              >
-                                {updateMutation.isPending ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <>
-                                    <Save className="h-4 w-4 mr-2" />
-                                    Save
-                                  </>
-                                )}
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={handleCancelEdit}
-                                data-testid="button-cancel"
-                              >
-                                <X className="h-4 w-4 mr-2" />
-                                Cancel
-                              </Button>
-                            </div>
-                          </form>
-                        </Form>
-                      </TableCell>
-                    ) : (
-                      <>
-                        <TableCell data-testid={`text-name-${type.id}`}>{type.name}</TableCell>
-                        <TableCell data-testid={`text-description-${type.id}`}>
-                          {type.description || <span className="text-muted-foreground">-</span>}
+                {jobTypes.map((type) => {
+                  const typeData = type.data as { icon?: string } | null;
+                  const IconComponent = getIconComponent(typeData?.icon);
+                  
+                  return (
+                    <TableRow key={type.id} data-testid={`row-type-${type.id}`}>
+                      {editingId === type.id ? (
+                        <TableCell colSpan={4}>
+                          <Form {...editForm}>
+                            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
+                              <div className="grid grid-cols-3 gap-4">
+                                <div className="space-y-2">
+                                  <Label>Icon</Label>
+                                  <Select value={formIcon} onValueChange={setFormIcon}>
+                                    <SelectTrigger data-testid="select-edit-icon">
+                                      <SelectValue>
+                                        {(() => {
+                                          const SelectedIcon = getIconComponent(formIcon);
+                                          return (
+                                            <div className="flex items-center gap-2">
+                                              <SelectedIcon className="h-4 w-4" />
+                                              <span>{formIcon}</span>
+                                            </div>
+                                          );
+                                        })()}
+                                      </SelectValue>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {availableIcons.map(({ name, Icon }) => (
+                                        <SelectItem key={name} value={name}>
+                                          <div className="flex items-center gap-2">
+                                            <Icon className="h-4 w-4" />
+                                            <span>{name}</span>
+                                          </div>
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <FormField
+                                  control={editForm.control}
+                                  name="name"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Name *</FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          placeholder="e.g., Full Time"
+                                          data-testid="input-edit-name"
+                                          {...field}
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <FormField
+                                  control={editForm.control}
+                                  name="description"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Description</FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          placeholder="Optional description"
+                                          data-testid="input-edit-description"
+                                          {...field}
+                                          value={field.value || ""}
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  type="submit"
+                                  size="sm"
+                                  data-testid="button-save"
+                                  disabled={updateMutation.isPending}
+                                >
+                                  {updateMutation.isPending ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <>
+                                      <Save className="h-4 w-4 mr-2" />
+                                      Save
+                                    </>
+                                  )}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={handleCancelEdit}
+                                  data-testid="button-cancel"
+                                >
+                                  <X className="h-4 w-4 mr-2" />
+                                  Cancel
+                                </Button>
+                              </div>
+                            </form>
+                          </Form>
                         </TableCell>
-                        <TableCell className="text-right space-x-2">
-                          <Button
-                            data-testid={`button-edit-${type.id}`}
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleEdit(type)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            data-testid={`button-delete-${type.id}`}
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => setDeleteId(type.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </>
-                    )}
-                  </TableRow>
-                ))}
+                      ) : (
+                        <>
+                          <TableCell data-testid={`icon-${type.id}`}>
+                            <IconComponent className="h-5 w-5 text-muted-foreground" />
+                          </TableCell>
+                          <TableCell data-testid={`text-name-${type.id}`}>{type.name}</TableCell>
+                          <TableCell data-testid={`text-description-${type.id}`}>
+                            {type.description || <span className="text-muted-foreground">-</span>}
+                          </TableCell>
+                          <TableCell className="text-right space-x-2">
+                            <Button
+                              data-testid={`button-edit-${type.id}`}
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleEdit(type)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              data-testid={`button-delete-${type.id}`}
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => setDeleteId(type.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </>
+                      )}
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -300,6 +380,7 @@ export default function DispatchJobTypesPage() {
         setIsAddDialogOpen(open);
         if (!open) {
           addForm.reset();
+          setFormIcon("Briefcase");
         }
       }}>
         <DialogContent data-testid="dialog-add">
@@ -311,6 +392,34 @@ export default function DispatchJobTypesPage() {
           </DialogHeader>
           <Form {...addForm}>
             <form onSubmit={addForm.handleSubmit(onAddSubmit)} className="space-y-4">
+              <div className="space-y-2">
+                <Label>Icon</Label>
+                <Select value={formIcon} onValueChange={setFormIcon}>
+                  <SelectTrigger data-testid="select-add-icon">
+                    <SelectValue>
+                      {(() => {
+                        const SelectedIcon = getIconComponent(formIcon);
+                        return (
+                          <div className="flex items-center gap-2">
+                            <SelectedIcon className="h-4 w-4" />
+                            <span>{formIcon}</span>
+                          </div>
+                        );
+                      })()}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableIcons.map(({ name, Icon }) => (
+                      <SelectItem key={name} value={name}>
+                        <div className="flex items-center gap-2">
+                          <Icon className="h-4 w-4" />
+                          <span>{name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <FormField
                 control={addForm.control}
                 name="name"
