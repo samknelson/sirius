@@ -29,7 +29,7 @@ interface BtuEmployerMap {
 
 interface BargainingUnit {
   id: string;
-  code: string;
+  siriusId: string;
   name: string;
 }
 
@@ -370,7 +370,7 @@ export default function BtuEmployerMapListPage() {
       escapeCSV(record.jobCode),
       escapeCSV(record.jobTitle),
       escapeCSV(record.employerName),
-      escapeCSV(bargainingUnits.find(bu => bu.id === record.bargainingUnitId)?.code),
+      escapeCSV(bargainingUnits.find(bu => bu.id === record.bargainingUnitId)?.siriusId),
     ]);
 
     const csv = [headers.join(","), ...rows.map(row => row.join(","))].join("\n");
@@ -610,7 +610,7 @@ export default function BtuEmployerMapListPage() {
                   <TableCell data-testid={`text-job-title-${record.id}`}>{record.jobTitle || "-"}</TableCell>
                   <TableCell className="font-medium" data-testid={`text-employer-${record.id}`}>{record.employerName || "-"}</TableCell>
                   <TableCell data-testid={`text-bargaining-unit-${record.id}`}>
-                    {bargainingUnits.find(bu => bu.id === record.bargainingUnitId)?.code || "-"}
+                    {bargainingUnits.find(bu => bu.id === record.bargainingUnitId)?.siriusId || "-"}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
@@ -799,7 +799,7 @@ export default function BtuEmployerMapListPage() {
                           <SelectItem value="__none__">None</SelectItem>
                           {bargainingUnits.map((unit) => (
                             <SelectItem key={unit.id} value={unit.id}>
-                              {unit.code} - {unit.name}
+                              {unit.siriusId} - {unit.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
