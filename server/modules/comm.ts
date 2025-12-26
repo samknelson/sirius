@@ -1,12 +1,14 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
-import { createCommStorage, createCommSmsOptinStorage, createCommEmailOptinStorage, createCommPostalOptinStorage, storage } from "../storage";
+import { createCommStorage, createCommSmsOptinStorage, createCommEmailOptinStorage, createCommPostalOptinStorage, createCommInappStorage, storage } from "../storage";
 import { sendSms } from "../services/sms-sender";
 import { sendEmail } from "../services/email-sender";
 import { sendPostal } from "../services/postal-sender";
+import { sendInapp, markInappAsRead, markAllInappAsRead } from "../services/inapp-sender";
 import { handleStatusCallback } from "../services/comm-status/handler";
 import { serviceRegistry } from "../services/service-registry";
 import type { PostalTransport, PostalAddress } from "../services/providers/postal";
+import { broadcastAlertUpdate } from "../services/websocket";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -16,6 +18,7 @@ const commStorage = createCommStorage();
 const smsOptinStorage = createCommSmsOptinStorage();
 const emailOptinStorage = createCommEmailOptinStorage();
 const postalOptinStorage = createCommPostalOptinStorage();
+const commInappStorage = createCommInappStorage();
 
 const sendSmsSchema = z.object({
   phoneNumber: z.string().min(1, "Phone number is required"),
@@ -57,6 +60,23 @@ const sendPostalSchema = z.object({
 }).refine(data => data.file || data.templateId, {
   message: "Either file or templateId is required",
 });
+
+const sendInappSchema = z.object({
+  userId: z.string().uuid("Invalid user ID"),
+  title: z.string().min(1, "Title is required").max(100, "Title must be 100 characters or less"),
+  body: z.string().min(1, "Body is required").max(500, "Body must be 500 characters or less"),
+  linkUrl: z.string().url("Invalid URL").optional().or(z.literal("")),
+  linkLabel: z.string().max(50, "Link label must be 50 characters or less").optional(),
+});
+
+async function notifyAlertCountChange(userId: string): Promise<void> {
+  try {
+    const count = await commInappStorage.getUnreadCountByUser(userId);
+    broadcastAlertUpdate(userId, count);
+  } catch (error) {
+    console.error("Failed to broadcast alert update:", error);
+  }
+}
 
 export function registerCommRoutes(
   app: Express, 
@@ -248,6 +268,94 @@ export function registerCommRoutes(
     } catch (error) {
       console.error("Failed to send postal mail:", error);
       res.status(500).json({ message: "Failed to send postal mail" });
+    }
+  });
+
+  app.get("/api/contacts/:contactId/user-lookup", requireAuth, requirePermission("workers.view"), async (req, res) => {
+    try {
+      const { contactId } = req.params;
+      
+      const contact = await storage.contacts.getContact(contactId);
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+
+      if (!contact.email) {
+        return res.json({
+          hasEmail: false,
+          hasUser: false,
+          user: null,
+          message: "Contact does not have an email address",
+        });
+      }
+
+      const user = await storage.users.getUserByEmail(contact.email);
+      
+      res.json({
+        hasEmail: true,
+        hasUser: !!user,
+        user: user ? {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+        } : null,
+        email: contact.email,
+      });
+
+    } catch (error) {
+      console.error("Failed to lookup user for contact:", error);
+      res.status(500).json({ message: "Failed to lookup user for contact" });
+    }
+  });
+
+  app.post("/api/contacts/:contactId/inapp", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+    try {
+      const { contactId } = req.params;
+      
+      const parsed = sendInappSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ 
+          message: "Invalid request body", 
+          errors: parsed.error.flatten() 
+        });
+      }
+
+      const { userId, title, body, linkUrl, linkLabel } = parsed.data;
+      const currentUser = (req as any).user;
+
+      const result = await sendInapp({
+        contactId,
+        userId,
+        title,
+        body,
+        linkUrl: linkUrl || undefined,
+        linkLabel: linkLabel || undefined,
+        initiatedBy: currentUser?.id,
+      });
+
+      if (!result.success) {
+        const statusCode = result.errorCode === 'VALIDATION_ERROR' 
+          ? 400 
+          : 500;
+        
+        return res.status(statusCode).json({
+          message: result.error,
+          errorCode: result.errorCode,
+          comm: result.comm,
+          commInapp: result.commInapp,
+        });
+      }
+
+      res.status(201).json({
+        message: "In-app message sent successfully",
+        comm: result.comm,
+        commInapp: result.commInapp,
+      });
+
+    } catch (error) {
+      console.error("Failed to send in-app message:", error);
+      res.status(500).json({ message: "Failed to send in-app message" });
     }
   });
 
@@ -679,4 +787,125 @@ export function registerCommRoutes(
       res.status(500).json({ message: "Failed to fetch postal templates" });
     }
   });
+
+  // ===== In-App Alerts Routes =====
+
+  // Get unread count for the current user
+  app.get("/api/alerts/unread-count", requireAuth, async (req, res) => {
+    try {
+      const dbUser = (req as any).user?.dbUser;
+      if (!dbUser?.id) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const count = await commInappStorage.getUnreadCountByUser(dbUser.id);
+      res.json({ count });
+    } catch (error) {
+      console.error("Failed to fetch unread alert count:", error);
+      res.status(500).json({ message: "Failed to fetch unread alert count" });
+    }
+  });
+
+  // Get all alerts for the current user (with optional status filter)
+  app.get("/api/alerts", requireAuth, async (req, res) => {
+    try {
+      const dbUser = (req as any).user?.dbUser;
+      if (!dbUser?.id) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const { status, limit } = req.query;
+      const statusFilter = typeof status === 'string' ? status : undefined;
+      
+      let alerts = await commInappStorage.getCommInappsByUser(dbUser.id, statusFilter);
+
+      // Apply limit if specified
+      if (limit && !isNaN(Number(limit))) {
+        alerts = alerts.slice(0, Number(limit));
+      }
+
+      res.json(alerts);
+    } catch (error) {
+      console.error("Failed to fetch alerts:", error);
+      res.status(500).json({ message: "Failed to fetch alerts" });
+    }
+  });
+
+  // Get a specific alert by ID
+  app.get("/api/alerts/:id", requireAuth, async (req, res) => {
+    try {
+      const dbUser = (req as any).user?.dbUser;
+      if (!dbUser?.id) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const { id } = req.params;
+      const alert = await commInappStorage.getCommInapp(id);
+
+      if (!alert) {
+        return res.status(404).json({ message: "Alert not found" });
+      }
+
+      // Ensure user can only access their own alerts
+      if (alert.userId !== dbUser.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      res.json(alert);
+    } catch (error) {
+      console.error("Failed to fetch alert:", error);
+      res.status(500).json({ message: "Failed to fetch alert" });
+    }
+  });
+
+  // Mark an alert as read
+  app.patch("/api/alerts/:id/read", requireAuth, async (req, res) => {
+    try {
+      const dbUser = (req as any).user?.dbUser;
+      if (!dbUser?.id) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const { id } = req.params;
+      const result = await markInappAsRead(id, dbUser.id);
+
+      if (!result.success) {
+        if (result.errorCode === 'NOT_FOUND') {
+          return res.status(404).json({ message: result.error });
+        }
+        return res.status(500).json({ message: result.error });
+      }
+      
+      res.json(result.commInapp);
+    } catch (error) {
+      console.error("Failed to mark alert as read:", error);
+      res.status(500).json({ message: "Failed to mark alert as read" });
+    }
+  });
+
+  // Mark all alerts as read for current user
+  app.patch("/api/alerts/mark-all-read", requireAuth, async (req, res) => {
+    try {
+      const dbUser = (req as any).user?.dbUser;
+      if (!dbUser?.id) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const result = await markAllInappAsRead(dbUser.id);
+
+      if (!result.success) {
+        return res.status(500).json({ message: result.error });
+      }
+
+      res.json({ 
+        message: "All alerts marked as read",
+        count: result.count 
+      });
+    } catch (error) {
+      console.error("Failed to mark all alerts as read:", error);
+      res.status(500).json({ message: "Failed to mark all alerts as read" });
+    }
+  });
 }
+
+export { notifyAlertCountChange };

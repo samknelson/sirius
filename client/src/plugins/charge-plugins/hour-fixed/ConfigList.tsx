@@ -5,19 +5,8 @@ import { Link } from "wouter";
 import { Plus, Edit } from "lucide-react";
 import type { ChargePluginConfigProps } from "../registry";
 import { getCurrentRateValue } from "@/lib/rateHistory";
-
-interface LedgerAccount {
-  id: string;
-  name: string;
-  description: string | null;
-  isActive: boolean;
-}
-
-interface Employer {
-  id: string;
-  name: string;
-  isActive: boolean;
-}
+import { Employer } from "@/lib/employer-types";
+import { LedgerAccountBase } from "@/lib/ledger-types";
 
 interface ChargePluginConfig {
   id: string;
@@ -46,7 +35,7 @@ export default function HourFixedConfigList({ pluginId }: ChargePluginConfigProp
   });
 
   // Fetch ledger accounts for displaying account names
-  const { data: accounts = [] } = useQuery<LedgerAccount[]>({
+  const { data: accounts = [] } = useQuery<LedgerAccountBase[]>({
     queryKey: ["/api/ledger/accounts"],
   });
 

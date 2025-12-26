@@ -11,13 +11,8 @@ import { useForm } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-
-interface WizardType {
-  name: string;
-  displayName: string;
-  description?: string;
-  isMonthly?: boolean;
-}
+import { WizardType } from "@/lib/wizard-types";
+import { Employer } from "@/lib/employer-types";
 
 interface Upload {
   wizardId: string;
@@ -31,13 +26,6 @@ interface Upload {
   entityId: string | null;
   data: any;
   createdAt: string;
-}
-
-interface Employer {
-  id: string;
-  name: string;
-  siriusId: number;
-  isActive: boolean;
 }
 
 interface EmployerWithUploads {

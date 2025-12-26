@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useEffect } from "react";
 import type { z } from "zod";
+import { useAuth } from "@/contexts/AuthContext";
 
 const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
 
@@ -24,6 +25,8 @@ interface LedgerNotification {
   amount: string;
   description: string;
 }
+
+type PaymentCategory = "financial" | "adjustment";
 
 function formatCurrency(amount: string | number): string {
   const num = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -37,6 +40,14 @@ function PaymentEditContent() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth();
+  
+  const getTodayString = () => new Date().toISOString().split('T')[0];
+  const getEffectiveUserName = () => {
+    if (!user) return "";
+    const parts = [user.firstName, user.lastName].filter(Boolean);
+    return parts.join(" ") || user.email || "";
+  };
   
   const showLedgerNotifications = (notifications: LedgerNotification[] | undefined) => {
     if (!notifications || notifications.length === 0) return;
@@ -54,6 +65,9 @@ function PaymentEditContent() {
   };
   const [merchant, setMerchant] = useState("");
   const [checkTransactionNumber, setCheckTransactionNumber] = useState("");
+  const [adjustmentUser, setAdjustmentUser] = useState("");
+  const [dateEntered, setDateEntered] = useState("");
+  const [effectiveDate, setEffectiveDate] = useState("");
 
   const { data: payment, isLoading } = useQuery<LedgerPayment>({
     queryKey: ["/api/ledger/payments", id],
@@ -78,13 +92,35 @@ function PaymentEditContent() {
     } : undefined,
   });
 
+  const watchedPaymentType = form.watch("paymentType");
+  const selectedPaymentType = paymentTypes.find(pt => pt.id === watchedPaymentType);
+  const category: PaymentCategory = (selectedPaymentType?.category as PaymentCategory) || "financial";
+
   useEffect(() => {
     if (payment?.details) {
       const details = payment.details as any;
       setMerchant(details.merchant || "");
       setCheckTransactionNumber(details.checkTransactionNumber || "");
+      setAdjustmentUser(details.adjustmentUser || "");
+      setDateEntered(details.dateEntered || "");
+      setEffectiveDate(details.effectiveDate || "");
     }
   }, [payment]);
+
+  useEffect(() => {
+    if (payment && category === "adjustment") {
+      const details = payment.details as any || {};
+      if (!details.adjustmentUser && !adjustmentUser) {
+        setAdjustmentUser(getEffectiveUserName());
+      }
+      if (!details.dateEntered && !dateEntered) {
+        setDateEntered(getTodayString());
+      }
+      if (!details.effectiveDate && !effectiveDate) {
+        setEffectiveDate(getTodayString());
+      }
+    }
+  }, [payment, category, user]);
 
   const updatePaymentMutation = useMutation({
     mutationFn: async (data: z.infer<typeof insertLedgerPaymentSchema>) => {
@@ -115,22 +151,50 @@ function PaymentEditContent() {
     const existingDetails = (data.details || {}) as Record<string, any>;
     const details: any = { ...existingDetails };
     
-    if (merchant) {
-      details.merchant = merchant;
+    if (category === "financial") {
+      if (merchant) {
+        details.merchant = merchant;
+      } else {
+        delete details.merchant;
+      }
+      
+      if (checkTransactionNumber) {
+        details.checkTransactionNumber = checkTransactionNumber;
+      } else {
+        delete details.checkTransactionNumber;
+      }
+      delete details.adjustmentUser;
+      delete details.dateEntered;
+      delete details.effectiveDate;
     } else {
+      if (adjustmentUser) {
+        details.adjustmentUser = adjustmentUser;
+      } else {
+        delete details.adjustmentUser;
+      }
+      
+      if (dateEntered) {
+        details.dateEntered = dateEntered;
+      } else {
+        delete details.dateEntered;
+      }
+      
+      if (effectiveDate) {
+        details.effectiveDate = effectiveDate;
+      } else {
+        delete details.effectiveDate;
+      }
       delete details.merchant;
-    }
-    
-    if (checkTransactionNumber) {
-      details.checkTransactionNumber = checkTransactionNumber;
-    } else {
       delete details.checkTransactionNumber;
     }
     
-    updatePaymentMutation.mutate({
+    const submissionData = {
       ...data,
       details: Object.keys(details).length > 0 ? details : null,
-    });
+      status: category === "adjustment" ? "cleared" as const : data.status,
+    };
+    
+    updatePaymentMutation.mutate(submissionData);
   });
 
   if (isLoading) {
@@ -215,30 +279,126 @@ function PaymentEditContent() {
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="status"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Status</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger data-testid="select-payment-status">
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {paymentStatuses.map((status) => (
-                        <SelectItem key={status} value={status} data-testid={`option-${status}`}>
-                          {status.charAt(0).toUpperCase() + status.slice(1)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {category === "financial" ? (
+              <>
+                <FormField
+                  control={form.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Status</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-payment-status">
+                            <SelectValue placeholder="Select status" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {paymentStatuses.map((status) => (
+                            <SelectItem key={status} value={status} data-testid={`option-${status}`}>
+                              {status.charAt(0).toUpperCase() + status.slice(1)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="dateReceived"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Date Received</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="date"
+                          data-testid="input-date-received"
+                          value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
+                          onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div>
+                  <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Merchant
+                  </label>
+                  <Input
+                    placeholder="Enter merchant name..."
+                    data-testid="input-merchant"
+                    value={merchant}
+                    onChange={(e) => setMerchant(e.target.value)}
+                    className="mt-2"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Check or Transaction Number
+                  </label>
+                  <Input
+                    placeholder="Enter check or transaction number..."
+                    data-testid="input-check-transaction-number"
+                    value={checkTransactionNumber}
+                    onChange={(e) => setCheckTransactionNumber(e.target.value)}
+                    className="mt-2"
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="p-3 bg-muted rounded-md">
+                  <p className="text-sm text-muted-foreground">
+                    Status: <span className="font-medium text-foreground">Cleared</span> (adjustments are always cleared)
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    User Executing Adjustment
+                  </label>
+                  <Input
+                    placeholder="Enter user name..."
+                    data-testid="input-adjustment-user"
+                    value={adjustmentUser}
+                    onChange={(e) => setAdjustmentUser(e.target.value)}
+                    className="mt-2"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Date Entered
+                  </label>
+                  <Input
+                    type="date"
+                    data-testid="input-date-entered"
+                    value={dateEntered}
+                    onChange={(e) => setDateEntered(e.target.value)}
+                    className="mt-2"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Effective Date
+                  </label>
+                  <Input
+                    type="date"
+                    data-testid="input-effective-date"
+                    value={effectiveDate}
+                    onChange={(e) => setEffectiveDate(e.target.value)}
+                    className="mt-2"
+                  />
+                </div>
+              </>
+            )}
 
             <FormField
               control={form.control}
@@ -258,70 +418,6 @@ function PaymentEditContent() {
                 </FormItem>
               )}
             />
-
-            <FormField
-              control={form.control}
-              name="dateReceived"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Date Received</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="date"
-                      data-testid="input-date-received"
-                      value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
-                      onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="dateCleared"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Date Cleared</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="date"
-                      data-testid="input-date-cleared"
-                      value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
-                      onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div>
-              <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                Merchant
-              </label>
-              <Input
-                placeholder="Enter merchant name..."
-                data-testid="input-merchant"
-                value={merchant}
-                onChange={(e) => setMerchant(e.target.value)}
-                className="mt-2"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                Check or Transaction Number
-              </label>
-              <Input
-                placeholder="Enter check or transaction number..."
-                data-testid="input-check-transaction-number"
-                value={checkTransactionNumber}
-                onChange={(e) => setCheckTransactionNumber(e.target.value)}
-                className="mt-2"
-              />
-            </div>
 
             <FormField
               control={form.control}

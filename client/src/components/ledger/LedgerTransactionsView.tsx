@@ -16,6 +16,7 @@ import { useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { stringify } from "csv-stringify/browser/esm/sync";
 import { Link } from "wouter";
+import { formatAmount as formatCurrencyAmount } from "@shared/currency";
 
 interface LedgerEntryData {
   workerId?: string;
@@ -54,6 +55,7 @@ interface LedgerTransactionsViewProps {
   showEntityName?: boolean;
   showEaAccount?: boolean;
   showEaLink?: boolean;
+  currencyCode?: string;
 }
 
 // Helper function to generate reference link based on type and ID
@@ -100,6 +102,7 @@ export function LedgerTransactionsView({
   showEntityName = true,
   showEaAccount = true,
   showEaLink = true,
+  currencyCode = "USD",
 }: LedgerTransactionsViewProps) {
   const { toast } = useToast();
   
@@ -317,10 +320,10 @@ export function LedgerTransactionsView({
     }
   };
 
-  const formatAmount = (amount: string) => {
+  const formatAmountDisplay = (amount: string) => {
     const num = parseFloat(amount);
-    const formatted = Math.abs(num).toFixed(2);
-    return num >= 0 ? `$${formatted}` : `($${formatted})`;
+    const formattedAbs = formatCurrencyAmount(Math.abs(num), currencyCode);
+    return num >= 0 ? formattedAbs : `(${formattedAbs})`;
   };
 
   const hasActiveFilters = 
@@ -564,7 +567,7 @@ export function LedgerTransactionsView({
                       className={parseFloat(transaction.amount) < 0 ? "text-red-600 dark:text-red-400" : ""}
                       data-testid={`cell-amount-${transaction.id}`}
                     >
-                      {formatAmount(transaction.amount)}
+                      {formatAmountDisplay(transaction.amount)}
                     </TableCell>
                     {showEntityType && (
                       <TableCell data-testid={`cell-entity-type-${transaction.id}`}>
@@ -676,7 +679,7 @@ export function LedgerTransactionsView({
                     className={`mt-1 font-semibold ${parseFloat(selectedTransaction.amount) < 0 ? "text-red-600 dark:text-red-400" : ""}`}
                     data-testid="modal-transaction-amount"
                   >
-                    {formatAmount(selectedTransaction.amount)}
+                    {formatAmountDisplay(selectedTransaction.amount)}
                   </p>
                 </div>
                 

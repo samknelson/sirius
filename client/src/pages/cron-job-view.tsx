@@ -5,21 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 import { CronJobLayout } from "@/components/layouts/CronJobLayout";
-
-interface CronJobRun {
-  id: string;
-  jobName: string;
-  status: string;
-  mode: string;
-  output: string | null;
-  error: string | null;
-  startedAt: string;
-  completedAt: string | null;
-  triggeredBy: string | null;
-  userFirstName?: string | null;
-  userLastName?: string | null;
-  userEmail?: string | null;
-}
+import { CronJob, CronJobRun } from "@/lib/cron-types";
 
 interface CronJobOutputData {
   executionTimeMs: number;
@@ -27,16 +13,6 @@ interface CronJobOutputData {
   summary: {
     [key: string]: any;
   };
-}
-
-interface CronJob {
-  name: string;
-  description: string | null;
-  schedule: string;
-  isEnabled: boolean;
-  createdAt: string;
-  updatedAt: string;
-  latestRun?: CronJobRun;
 }
 
 function StatusBadge({ status }: { status: string }) {

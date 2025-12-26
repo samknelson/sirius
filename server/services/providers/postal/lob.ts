@@ -10,9 +10,7 @@ import type {
   PostalTemplate,
 } from './index';
 import { buildCanonicalAddress } from './index';
-import { db } from '../../../db';
-import { variables } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { storage } from '../../../storage';
 import { getConfigKey } from '../base';
 
 interface LobVerificationResponse {
@@ -547,10 +545,10 @@ export class LobPostalProvider implements PostalTransport {
     this.settings.defaultReturnAddress = address;
     
     const configKey = getConfigKey('postal');
-    const existingConfig = await db.select().from(variables).where(eq(variables.name, configKey)).limit(1);
+    const existingConfig = await storage.variables.getByName(configKey);
     
-    if (existingConfig.length > 0) {
-      const currentConfig = existingConfig[0].value as Record<string, unknown>;
+    if (existingConfig) {
+      const currentConfig = existingConfig.value as Record<string, unknown>;
       const providers = (currentConfig.providers || {}) as Record<string, { enabled: boolean; settings: Record<string, unknown> }>;
       
       if (!providers.lob) {
@@ -558,9 +556,9 @@ export class LobPostalProvider implements PostalTransport {
       }
       providers.lob.settings.defaultReturnAddress = address;
       
-      await db.update(variables)
-        .set({ value: { ...currentConfig, providers } })
-        .where(eq(variables.name, configKey));
+      await storage.variables.update(existingConfig.id, { 
+        value: { ...currentConfig, providers } 
+      });
     }
   }
 

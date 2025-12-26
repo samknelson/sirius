@@ -1,4 +1,5 @@
 import type { LedgerPayment, LedgerPaymentType } from "@shared/schema";
+import { formatAmount } from "@shared/currency";
 
 export function getPaymentTitle(
   payment: LedgerPayment,
@@ -33,9 +34,10 @@ export function getPaymentTitle(
     parts.push(merchantAndTransaction.join(" "));
   }
 
-  // Amount
+  // Amount with currency formatting
   const amount = parseFloat(payment.amount);
-  parts.push(`$${amount.toFixed(2)}`);
+  const currencyCode = paymentType?.currencyCode || 'USD';
+  parts.push(formatAmount(amount, currencyCode));
 
   return parts.join(" - ");
 }

@@ -14,23 +14,7 @@ import {
 } from "@/components/ui/table";
 import { Clock, ChevronRight, Calendar } from "lucide-react";
 import { format } from "date-fns";
-
-interface CronJobRun {
-  id: string;
-  jobName: string;
-  status: string;
-  startedAt: string;
-}
-
-interface CronJob {
-  name: string;
-  description: string | null;
-  schedule: string;
-  isEnabled: boolean;
-  createdAt: string;
-  updatedAt: string;
-  latestRun?: CronJobRun;
-}
+import { CronJob } from "@/lib/cron-types";
 
 function StatusBadge({ status }: { status: string }) {
   const variant = 

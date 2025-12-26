@@ -1,4 +1,4 @@
-import { createContext, useContext, ReactNode } from "react";
+import { createContext, useContext, ReactNode, useMemo } from "react";
 import { Building2, ArrowLeft } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BookmarkButton } from "@/components/ui/bookmark-button";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTerm } from "@/contexts/TerminologyContext";
 
 interface EmployerLayoutContextValue {
   employer: Employer;
@@ -26,13 +27,14 @@ export function useEmployerLayout() {
 }
 
 interface EmployerLayoutProps {
-  activeTab: "details" | "edit" | "workers" | "contacts" | "wizards" | "accounting" | "accounts" | "payment-methods" | "customer" | "logs" | "policy-history";
+  activeTab: "details" | "edit" | "workers" | "contacts" | "wizards" | "accounting" | "accounts" | "payment-methods" | "customer" | "logs" | "policy-history" | "union" | "stewards";
   children: ReactNode;
 }
 
 export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
   const { id } = useParams<{ id: string }>();
-  const { hasPermission } = useAuth();
+  const { hasPermission, hasComponent } = useAuth();
+  const term = useTerm();
 
   const { data: employer, isLoading: employerLoading, error: employerError } = useQuery<Employer>({
     queryKey: ["/api/employers", id],
@@ -106,15 +108,30 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
     );
   }
 
+  // Add Union tab if worker.steward component is enabled
+  const hasUnionAccess = hasComponent('worker.steward');
+  if (hasUnionAccess) {
+    mainTabs.push(
+      { id: "union", label: "Union", href: `/employers/${employer.id}/union/stewards` }
+    );
+  }
+
   const accountingSubTabs = [
     { id: "accounts", label: "Accounts", href: `/employers/${employer.id}/ledger/accounts` },
     { id: "payment-methods", label: "Payment Methods", href: `/employers/${employer.id}/ledger/stripe/payment_methods` },
     { id: "customer", label: "Customer", href: `/employers/${employer.id}/ledger/stripe/customer` },
   ];
 
+  const unionSubTabs = [
+    { id: "stewards", label: term("steward", { plural: true }), href: `/employers/${employer.id}/union/stewards` },
+  ];
+
   // Determine if we're in a sub-tab
   const isAccountingSubTab = ["accounts", "payment-methods", "customer"].includes(activeTab);
   const showAccountingSubTabs = isAccountingSubTab;
+  
+  const isUnionSubTab = ["stewards"].includes(activeTab);
+  const showUnionSubTabs = isUnionSubTab;
 
   const contextValue: EmployerLayoutContextValue = {
     employer,
@@ -154,7 +171,7 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center space-x-2 py-3">
             {mainTabs.map((tab) => {
-              const isActive = tab.id === activeTab || (tab.id === "accounting" && isAccountingSubTab);
+              const isActive = tab.id === activeTab || (tab.id === "accounting" && isAccountingSubTab) || (tab.id === "union" && isUnionSubTab);
               return isActive ? (
                 <Button
                   key={tab.id}
@@ -186,6 +203,38 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center space-x-2 py-2 pl-4">
               {accountingSubTabs.map((tab) => (
+                tab.id === activeTab ? (
+                  <Button
+                    key={tab.id}
+                    variant="secondary"
+                    size="sm"
+                    data-testid={`button-employer-${tab.id}`}
+                  >
+                    {tab.label}
+                  </Button>
+                ) : (
+                  <Link key={tab.id} href={tab.href}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      data-testid={`button-employer-${tab.id}`}
+                    >
+                      {tab.label}
+                    </Button>
+                  </Link>
+                )
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Union Sub-Tab Navigation */}
+      {showUnionSubTabs && (
+        <section className="bg-muted/30 border-b border-border">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center space-x-2 py-2 pl-4">
+              {unionSubTabs.map((tab) => (
                 tab.id === activeTab ? (
                   <Button
                     key={tab.id}

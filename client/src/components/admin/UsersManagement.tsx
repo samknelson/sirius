@@ -12,25 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, ExternalLink } from 'lucide-react';
 import { Link } from 'wouter';
+import { Role } from '@/lib/entity-types';
+import { User } from '@/lib/user-types';
 
-interface Role {
-  id: string;
-  name: string;
-  description: string;
-  createdAt: string;
-}
-
-interface User {
-  id: string;
-  replitUserId: string | null;
-  email: string;
-  firstName: string | null;
-  lastName: string | null;
-  profileImageUrl: string | null;
-  accountStatus: string;
-  isActive: boolean;
-  createdAt: string;
-  lastLogin?: string;
+interface UserWithRoles extends User {
   roles: Role[];
 }
 
@@ -50,7 +35,7 @@ export default function UsersManagement() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const { toast } = useToast();
 
-  const { data: users = [], isLoading } = useQuery<User[]>({
+  const { data: users = [], isLoading } = useQuery<UserWithRoles[]>({
     queryKey: ['/api/admin/users'],
   });
 

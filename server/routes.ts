@@ -33,6 +33,8 @@ import {
 } from "./modules/components";
 import { registerEmployerUserSettingsRoutes } from "./modules/employer-user-settings";
 import { registerTrustProviderUserSettingsRoutes } from "./modules/trust-provider-user-settings";
+import { registerWorkerUserSettingsRoutes } from "./modules/worker-user-settings";
+import { registerWorkerUsersRoutes } from "./modules/worker-users";
 import { registerWizardRoutes } from "./modules/wizards";
 import { registerFileRoutes } from "./modules/files";
 import { registerLedgerStripeRoutes } from "./modules/ledger/stripe";
@@ -58,12 +60,16 @@ import { registerBargainingUnitsRoutes } from "./modules/bargaining-units";
 import { registerEmployerPolicyHistoryRoutes } from "./modules/employer-policy-history";
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
+import { registerStaffAlertRoutes } from "./modules/staff-alerts";
 import { registerCardcheckDefinitionsRoutes } from "./modules/cardcheck-definitions";
 import { registerCardchecksRoutes } from "./modules/cardchecks";
 import { registerEsigsRoutes } from "./modules/esigs";
 import { registerSessionRoutes } from "./modules/sessions";
 import { registerFloodEventRoutes } from "./modules/flood-events";
 import { registerEventsRoutes } from "./modules/events";
+import { registerWorkerStewardAssignmentRoutes } from "./modules/worker-steward-assignments";
+import { registerBtuCsgRoutes } from "./modules/sitespecific-btu-csg";
+import { registerTerminologyRoutes } from "./modules/terminology";
 import { requireAccess } from "./accessControl";
 import { policies } from "./policies";
 import { addressValidationService } from "./services/address-validation";
@@ -82,9 +88,11 @@ const requirePermission = (permissionKey: string) => {
       return res.status(401).json({ message: "Authentication required" });
     }
 
-    // Get database user ID from Replit user ID
+    // Get database user ID from Replit user ID, respecting masquerade
     const replitUserId = user.claims.sub;
-    const dbUser = await storage.users.getUserByReplitId(replitUserId);
+    const session = req.session as any;
+    const { getEffectiveUser } = await import("./modules/masquerade");
+    const { dbUser } = await getEffectiveUser(session, replitUserId);
     if (!dbUser) {
       return res.status(401).json({ message: "User not found" });
     }
@@ -214,7 +222,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register trust provider user settings routes
   registerTrustProviderUserSettingsRoutes(app, requireAuth, requirePermission);
-
+  
+  // Register worker user settings routes
+  registerWorkerUserSettingsRoutes(app, requireAuth, requirePermission);
+  
+  // Register worker users routes (create/manage user accounts for workers)
+  registerWorkerUsersRoutes(app, requireAuth, requirePermission);
+  
   // Register contact postal address management routes
   registerContactPostalRoutes(app, requireAuth, requirePermission);
 
@@ -331,6 +345,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     policies,
   );
 
+  // Register terminology routes
+  registerTerminologyRoutes(app, requireAuth, requirePermission, requireAccess, policies);
+
   // Register system mode routes
   registerSystemModeRoutes(
     app,
@@ -349,6 +366,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register bargaining units configuration routes
   registerBargainingUnitsRoutes(app, requireAuth, requireAccess, storage);
 
+  // Register worker steward assignments routes
+  registerWorkerStewardAssignmentRoutes(app, requireAuth, requireAccess, storage);
+
   // Register employer policy history routes
   registerEmployerPolicyHistoryRoutes(app, requireAuth, requireAccess, storage);
 
@@ -357,7 +377,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register WMB scan queue routes (admin only)
   registerWmbScanQueueRoutes(app, requireAuth, requireAccess, storage);
-
+  
+  // Register staff alert configuration routes
+  registerStaffAlertRoutes(app, requireAuth, requireAccess, storage);
+  
   // Register cardcheck definitions routes
   registerCardcheckDefinitionsRoutes(
     app,
@@ -455,7 +478,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return;
         }
 
-        res.json(worker);
+        // Fetch contact to get name fields
+        const contact = await storage.contacts.getContact(worker.contactId);
+      
+        res.json({
+          ...worker,
+          firstName: contact?.given || null,
+          lastName: contact?.family || null,
+          displayName: contact?.displayName || null,
+        });
       } catch (error) {
         res.status(500).json({ message: "Failed to fetch worker" });
       }
@@ -846,6 +877,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
+  // GET /api/contacts/by-email/:email - Get a contact by email (requires workers.view permission)
+  app.get("/api/contacts/by-email/:email", requireAuth, requirePermission("workers.view"), async (req, res) => {
+    try {
+      const { email } = req.params;
+      const contact = await storage.contacts.getContactByEmail(email);
+      
+      if (!contact) {
+        res.status(404).json({ message: "Contact not found" });
+        return;
+      }
+      
+      res.json(contact);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch contact" });
+    }
+  });
+
   // GET /api/contacts/:id - Get a contact by ID (requires workers.view permission)
   app.get(
     "/api/contacts/:id",
@@ -1200,6 +1248,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register generic variable management routes (MUST come after specific routes)
   registerVariableRoutes(app, requireAuth, requirePermission);
+
+  // Register events routes
+  registerEventsRoutes(app, requireAuth, requirePermission);
+
+  // Register site-specific routes
+  registerBtuCsgRoutes(app, requireAuth, requirePermission);
+
+  // Register terminology routes
+  registerTerminologyRoutes(app, requireAuth, requirePermission, requireAccess, policies);
+
   const httpServer = createServer(app);
   return httpServer;
 }

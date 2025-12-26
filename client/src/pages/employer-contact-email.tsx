@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { EmployerContactLayout, useEmployerContactLayout } from "@/components/layouts/EmployerContactLayout";
-import EmployerContactEmailManagement from "@/components/employer-contacts/EmployerContactEmailManagement";
+import { EntityEmailManagement } from "@/components/shared";
 
 function EmployerContactEmailContent() {
   const { employerContact } = useEmployerContactLayout();
@@ -8,9 +8,20 @@ function EmployerContactEmailContent() {
   return (
     <Card>
       <CardContent>
-        <EmployerContactEmailManagement 
-          employerContactId={employerContact.id} 
-          contactEmail={employerContact.contact.email}
+        <EntityEmailManagement 
+          config={{
+            entityId: employerContact.id,
+            currentEmail: employerContact.contact.email,
+            apiEndpoint: `/api/employer-contacts/${employerContact.id}`,
+            apiMethod: "PATCH",
+            apiPayloadKey: "email",
+            invalidateQueryKeys: [
+              "/api/contacts",
+              "/api/employer-contacts",
+              ["/api/employer-contacts", employerContact.id],
+              "/api/employers",
+            ],
+          }}
         />
       </CardContent>
     </Card>

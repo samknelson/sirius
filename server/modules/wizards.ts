@@ -8,6 +8,7 @@ import { wizardRegistry } from "../wizards/index.js";
 import { FeedWizard } from "../wizards/feed.js";
 import { objectStorageService } from "../services/objectStorage.js";
 import { hashHeaderRow } from "../utils/hash.js";
+import { getEffectiveUser } from "./masquerade";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -810,7 +811,7 @@ export function registerWizardRoutes(
         const user = (req as any).user;
         const session = req.session as any;
         const replitUserId = user?.claims?.sub;
-        const dbUser = await storage.users.getUserByReplitId(replitUserId);
+        const { dbUser } = await getEffectiveUser(session, replitUserId);
 
         if (!dbUser) {
           return res.status(401).json({ message: "User not found" });
@@ -972,7 +973,8 @@ export function registerWizardRoutes(
 
         // Get database user from Replit user
         const replitUserId = user?.claims?.sub;
-        const dbUser = await storage.users.getUserByReplitId(replitUserId);
+        const session = req.session as any;
+        const { dbUser } = await getEffectiveUser(session, replitUserId);
 
         if (!dbUser) {
           return res.status(401).json({ message: "User not found" });
@@ -1072,7 +1074,8 @@ export function registerWizardRoutes(
 
         // Get database user from Replit user
         const replitUserId = user?.claims?.sub;
-        const dbUser = await storage.users.getUserByReplitId(replitUserId);
+        const session = req.session as any;
+        const { dbUser } = await getEffectiveUser(session, replitUserId);
 
         if (!dbUser) {
           return res.status(401).json({ message: "User not found" });

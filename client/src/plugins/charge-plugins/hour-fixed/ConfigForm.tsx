@@ -15,6 +15,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import type { ChargePluginConfigProps } from "../registry";
+import { LedgerAccountBase } from "@/lib/ledger-types";
+import { Employer } from "@/lib/employer-types";
 
 const rateHistoryEntrySchema = z.object({
   effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
@@ -44,19 +46,6 @@ const formSchema = z.object({
 );
 
 type FormData = z.infer<typeof formSchema>;
-
-interface LedgerAccount {
-  id: string;
-  name: string;
-  description: string | null;
-  isActive: boolean;
-}
-
-interface Employer {
-  id: string;
-  name: string;
-  isActive: boolean;
-}
 
 interface ChargePluginConfig {
   id: string;
@@ -90,7 +79,7 @@ export default function HourFixedConfigForm({ pluginId }: ChargePluginConfigProp
   });
 
   // Fetch ledger accounts for rate history
-  const { data: accounts = [] } = useQuery<LedgerAccount[]>({
+  const { data: accounts = [] } = useQuery<LedgerAccountBase[]>({
     queryKey: ["/api/ledger/accounts"],
   });
 

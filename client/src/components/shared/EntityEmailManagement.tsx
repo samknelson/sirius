@@ -8,12 +8,32 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Save, Mail } from "lucide-react";
 
-interface TrustProviderContactEmailManagementProps {
-  trustProviderContactId: string;
-  contactEmail: string | null;
+export interface EntityEmailManagementConfig {
+  entityId: string;
+  currentEmail: string | null;
+  apiEndpoint: string;
+  apiMethod?: "PATCH" | "PUT";
+  apiPayloadKey?: string;
+  invalidateQueryKeys: (string | string[])[];
+  cardTitle?: string;
+  cardDescription?: string;
 }
 
-export default function TrustProviderContactEmailManagement({ trustProviderContactId, contactEmail }: TrustProviderContactEmailManagementProps) {
+interface EntityEmailManagementProps {
+  config: EntityEmailManagementConfig;
+}
+
+export default function EntityEmailManagement({ config }: EntityEmailManagementProps) {
+  const {
+    currentEmail,
+    apiEndpoint,
+    apiMethod = "PATCH",
+    apiPayloadKey = "email",
+    invalidateQueryKeys,
+    cardTitle = "Email Address",
+    cardDescription = "Manage contact email address",
+  } = config;
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [editedEmail, setEditedEmail] = useState<string>("");
@@ -21,13 +41,12 @@ export default function TrustProviderContactEmailManagement({ trustProviderConta
 
   const updateEmailMutation = useMutation({
     mutationFn: async (email: string) => {
-      return apiRequest("PATCH", `/api/trust-provider-contacts/${trustProviderContactId}/contact/email`, { email });
+      return apiRequest(apiMethod, apiEndpoint, { [apiPayloadKey]: email });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trust-provider-contacts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trust-provider-contacts", trustProviderContactId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trust-providers"] });
+      invalidateQueryKeys.forEach((key) => {
+        queryClient.invalidateQueries({ queryKey: Array.isArray(key) ? key : [key] });
+      });
       setIsEditing(false);
       toast({
         title: "Success",
@@ -45,7 +64,7 @@ export default function TrustProviderContactEmailManagement({ trustProviderConta
   });
 
   const handleEdit = () => {
-    setEditedEmail(contactEmail || "");
+    setEditedEmail(currentEmail || "");
     setIsEditing(true);
   };
 
@@ -78,8 +97,8 @@ export default function TrustProviderContactEmailManagement({ trustProviderConta
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Email Address</CardTitle>
-        <CardDescription>Manage contact email address</CardDescription>
+        <CardTitle>{cardTitle}</CardTitle>
+        <CardDescription>{cardDescription}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {!isEditing ? (
@@ -91,7 +110,7 @@ export default function TrustProviderContactEmailManagement({ trustProviderConta
               <div className="flex-1">
                 <Label className="text-sm text-muted-foreground">Email Address</Label>
                 <p className="text-lg font-medium text-foreground" data-testid="text-contact-email">
-                  {contactEmail || "Not set"}
+                  {currentEmail || "Not set"}
                 </p>
               </div>
               <Button
@@ -119,22 +138,31 @@ export default function TrustProviderContactEmailManagement({ trustProviderConta
               />
               <p className="text-xs text-muted-foreground">Enter a valid email address</p>
             </div>
-            <div className="flex justify-end space-x-2">
+            <div className="flex justify-end gap-2">
               <Button
                 variant="outline"
                 onClick={handleCancel}
                 disabled={updateEmailMutation.isPending}
-                data-testid="button-cancel"
+                data-testid="button-cancel-edit"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSave}
                 disabled={updateEmailMutation.isPending}
-                data-testid="button-save"
+                data-testid="button-save-email"
               >
-                {updateEmailMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {updateEmailMutation.isPending ? "Saving..." : "Save Changes"}
+                {updateEmailMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Save
+                  </>
+                )}
               </Button>
             </div>
           </div>

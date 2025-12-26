@@ -10,15 +10,7 @@ import { UserCog, Loader2, AlertTriangle, Check } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
-
-interface User {
-  id: string;
-  email: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  accountStatus: string;
-  isActive: boolean;
-}
+import { User } from '@/lib/user-types';
 
 export default function MasqueradePage() {
   const [searchQuery, setSearchQuery] = useState<string>('');

@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { winstonLogs, type WinstonLog } from "@shared/schema";
 import { desc, eq, and, sql, or, like, inArray, gte, lte, type SQL } from "drizzle-orm";
+import { eventBus, EventType } from "../services/event-bus";
 
 export interface LogsQueryParams {
   page?: number;
@@ -35,11 +36,27 @@ export interface HostEntityLogsParams {
   limit?: number;
 }
 
+export interface LogInsertData {
+  level?: string | null;
+  message?: string | null;
+  source?: string | null;
+  meta?: unknown | null;
+  module?: string | null;
+  operation?: string | null;
+  entityId?: string | null;
+  hostEntityId?: string | null;
+  description?: string | null;
+  userId?: string | null;
+  userEmail?: string | null;
+  ipAddress?: string | null;
+}
+
 export interface LogsStorage {
   getLogs(params: LogsQueryParams): Promise<LogsResult>;
   getLogFilters(): Promise<LogFilters>;
   getLogById(id: number): Promise<WinstonLog | undefined>;
   getLogsByHostEntityIds(params: HostEntityLogsParams): Promise<WinstonLog[]>;
+  create(data: LogInsertData): Promise<WinstonLog>;
 }
 
 export function createLogsStorage(): LogsStorage {
@@ -162,6 +179,45 @@ export function createLogsStorage(): LogsStorage {
       }
 
       return query;
+    },
+
+    async create(data: LogInsertData): Promise<WinstonLog> {
+      const [log] = await db
+        .insert(winstonLogs)
+        .values({
+          level: data.level,
+          message: data.message,
+          source: data.source,
+          meta: data.meta,
+          module: data.module,
+          operation: data.operation,
+          entityId: data.entityId,
+          hostEntityId: data.hostEntityId,
+          description: data.description,
+          userId: data.userId,
+          userEmail: data.userEmail,
+          ipAddress: data.ipAddress,
+        })
+        .returning();
+
+      eventBus.emit(EventType.LOG, {
+        id: log.id,
+        level: log.level,
+        message: log.message,
+        timestamp: log.timestamp,
+        source: log.source,
+        meta: log.meta,
+        module: log.module,
+        operation: log.operation,
+        entityId: log.entityId,
+        hostEntityId: log.hostEntityId,
+        description: log.description,
+        userId: log.userId,
+        userEmail: log.userEmail,
+        ipAddress: log.ipAddress,
+      });
+
+      return log;
     },
   };
 }

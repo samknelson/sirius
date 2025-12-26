@@ -1,10 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import DOMPurify from "isomorphic-dompurify";
-
-interface SiteSettings {
-  siteName: string;
-  footer: string;
-}
+import { SiteSettings } from "@/lib/system-types";
 
 export default function Footer() {
   const { data: settings } = useQuery<SiteSettings>({

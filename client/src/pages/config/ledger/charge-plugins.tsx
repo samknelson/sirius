@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, Plus } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { Employer } from "@/lib/employer-types";
 
 interface ChargePluginMetadata {
   id: string;
@@ -29,12 +30,6 @@ interface ChargePluginConfig {
   scope: string;
   employerId: string | null;
   settings: Record<string, any>;
-}
-
-interface Employer {
-  id: string;
-  name: string;
-  isActive: boolean;
 }
 
 export default function ChargePluginsPage() {

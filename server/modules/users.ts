@@ -53,6 +53,36 @@ export function registerUserRoutes(
     }
   });
   
+  // GET /api/admin/users/by-email/:email - Get user by email (admin only)
+  app.get("/api/admin/users/by-email/:email", requireAccess(policies.admin), async (req, res) => {
+    try {
+      const { email } = req.params;
+      const decodedEmail = decodeURIComponent(email);
+      
+      const user = await storage.users.getUserByEmail(decodedEmail);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.json({ 
+        id: user.id,
+        replitUserId: user.replitUserId,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        profileImageUrl: user.profileImageUrl,
+        accountStatus: user.accountStatus,
+        isActive: user.isActive,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        lastLogin: user.lastLogin,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
   // GET /api/admin/users - Get all users (admin only)
   // MIGRATED to new access control system
   app.get("/api/admin/users", requireAccess(policies.admin), async (req, res) => {

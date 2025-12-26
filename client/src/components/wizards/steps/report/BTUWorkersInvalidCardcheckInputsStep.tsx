@@ -6,13 +6,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Info, Users } from "lucide-react";
 import { useState, useEffect } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Employer } from "@/lib/employer-types";
 
 interface CardcheckDefinition {
-  id: string;
-  name: string;
-}
-
-interface Employer {
   id: string;
   name: string;
 }

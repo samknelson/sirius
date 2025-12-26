@@ -13,24 +13,7 @@ import { Wand2, Plus } from "lucide-react";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-
-interface Wizard {
-  id: string;
-  date: string;
-  type: string;
-  status: string;
-  entityId: string | null;
-  currentStep?: string;
-  data: any;
-}
-
-interface WizardType {
-  name: string;
-  displayName: string;
-  description?: string;
-  isFeed?: boolean;
-  entityType?: string;
-}
+import { Wizard, WizardType } from "@/lib/wizard-types";
 
 interface LaunchArgument {
   id: string;

@@ -28,11 +28,8 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
     async create(data: { employerId: string; contactData: InsertContact & { email?: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }> {
       // Email is optional for all contact types
 
-      // Create the contact first
-      const [contact] = await db
-        .insert(contacts)
-        .values(data.contactData)
-        .returning();
+      // Create the contact first using contacts storage
+      const contact = await contactsStorage.createContact(data.contactData);
 
       // Create the employer contact relationship
       const [employerContact] = await db
@@ -164,10 +161,8 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
 
       const normalizedEmail = email === null || email === "null" || email?.trim() === "" ? null : email.trim();
 
-      await db
-        .update(contacts)
-        .set({ email: normalizedEmail })
-        .where(eq(contacts.id, employerContact.contactId));
+      // Use contacts storage to update email
+      await contactsStorage.updateEmail(employerContact.contactId, normalizedEmail);
 
       return this.get(id);
     },

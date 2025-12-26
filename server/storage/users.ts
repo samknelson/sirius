@@ -15,8 +15,10 @@ import {
   type AssignPermission,
 } from "@shared/schema";
 import { permissionRegistry, type PermissionDefinition } from "@shared/permissions";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
+import type { ContactsStorage } from "./contacts";
+import { createUserContactSyncService } from "../services/user-contact-sync";
 
 export interface UserStorage {
   // User operations
@@ -62,9 +64,12 @@ export interface UserStorage {
   // Authorization helpers
   getUserPermissions(userId: string): Promise<PermissionDefinition[]>;
   userHasPermission(userId: string, permissionKey: string): Promise<boolean>;
+  getUsersWithAnyPermission(permissionKeys: string[]): Promise<User[]>;
 }
 
-export function createUserStorage(): UserStorage {
+export function createUserStorage(contactsStorage?: ContactsStorage): UserStorage {
+  const contactSync = contactsStorage ? createUserContactSyncService(contactsStorage) : null;
+
   return {
     // User operations
     async getUser(id: string): Promise<User | undefined> {
@@ -97,10 +102,18 @@ export function createUserStorage(): UserStorage {
           },
         })
         .returning();
+      
+      if (contactSync) {
+        await contactSync.ensureContactForUser(user);
+      }
+      
       return user;
     },
 
     async linkReplitAccount(userId: string, replitUserId: string, userData: Partial<UpsertUser>): Promise<User | undefined> {
+      const previousUser = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
+      const previousEmail = previousUser?.email;
+      
       const [user] = await db
         .update(users)
         .set({
@@ -114,6 +127,11 @@ export function createUserStorage(): UserStorage {
         })
         .where(eq(users.id, userId))
         .returning();
+      
+      if (user && contactSync) {
+        await contactSync.ensureContactForUser(user, previousEmail);
+      }
+      
       return user || undefined;
     },
 
@@ -122,15 +140,28 @@ export function createUserStorage(): UserStorage {
         .insert(users)
         .values(insertUser)
         .returning();
+      
+      if (contactSync) {
+        await contactSync.ensureContactForUser(user);
+      }
+      
       return user;
     },
 
     async updateUser(id: string, userUpdate: Partial<InsertUser>): Promise<User | undefined> {
+      const previousUser = await db.select().from(users).where(eq(users.id, id)).then(r => r[0]);
+      const previousEmail = previousUser?.email;
+      
       const [user] = await db
         .update(users)
         .set(userUpdate)
         .where(eq(users.id, id))
         .returning();
+      
+      if (user && contactSync) {
+        await contactSync.ensureContactForUser(user, previousEmail);
+      }
+      
       return user || undefined;
     },
 
@@ -401,6 +432,35 @@ export function createUserStorage(): UserStorage {
         .innerJoin(rolePermissions, eq(roles.id, rolePermissions.roleId))
         .where(and(eq(userRoles.userId, userId), eq(rolePermissions.permissionKey, permissionKey)));
       return result.length > 0;
+    },
+
+    async getUsersWithAnyPermission(permissionKeys: string[]): Promise<User[]> {
+      if (permissionKeys.length === 0) {
+        return [];
+      }
+      const result = await db
+        .selectDistinct({
+          id: users.id,
+          replitUserId: users.replitUserId,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          profileImageUrl: users.profileImageUrl,
+          accountStatus: users.accountStatus,
+          isActive: users.isActive,
+          createdAt: users.createdAt,
+          updatedAt: users.updatedAt,
+          lastLogin: users.lastLogin,
+        })
+        .from(users)
+        .innerJoin(userRoles, eq(users.id, userRoles.userId))
+        .innerJoin(rolePermissions, eq(userRoles.roleId, rolePermissions.roleId))
+        .where(and(
+          eq(users.isActive, true),
+          inArray(rolePermissions.permissionKey, permissionKeys)
+        ))
+        .orderBy(users.lastName, users.firstName);
+      return result;
     },
   };
 }

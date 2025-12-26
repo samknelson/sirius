@@ -1,15 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
-
-interface User {
-  id: string;
-  email: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  profileImageUrl: string | null;
-  isActive: boolean;
-}
+import { User } from '@/lib/user-types';
 
 interface MasqueradeInfo {
   isMasquerading: boolean;

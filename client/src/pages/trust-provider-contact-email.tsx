@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { TrustProviderContactLayout, useTrustProviderContactLayout } from "@/components/layouts/TrustProviderContactLayout";
-import TrustProviderContactEmailManagement from "@/components/trust-provider-contacts/TrustProviderContactEmailManagement";
+import { EntityEmailManagement } from "@/components/shared";
 
 function TrustProviderContactEmailContent() {
   const { trustProviderContact } = useTrustProviderContactLayout();
@@ -8,9 +8,20 @@ function TrustProviderContactEmailContent() {
   return (
     <Card>
       <CardContent>
-        <TrustProviderContactEmailManagement 
-          trustProviderContactId={trustProviderContact.id} 
-          contactEmail={trustProviderContact.contact.email}
+        <EntityEmailManagement 
+          config={{
+            entityId: trustProviderContact.id,
+            currentEmail: trustProviderContact.contact.email,
+            apiEndpoint: `/api/trust-provider-contacts/${trustProviderContact.id}/contact/email`,
+            apiMethod: "PATCH",
+            apiPayloadKey: "email",
+            invalidateQueryKeys: [
+              "/api/contacts",
+              "/api/trust-provider-contacts",
+              ["/api/trust-provider-contacts", trustProviderContact.id],
+              "/api/trust-providers",
+            ],
+          }}
         />
       </CardContent>
     </Card>

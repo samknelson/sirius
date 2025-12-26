@@ -16,6 +16,7 @@ import { eq, sql, desc, and } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { logger } from "../logger";
+import { eventBus, EventType } from "../services/event-bus";
 
 export interface WorkerEmployerSummary {
   workerId: string;
@@ -63,6 +64,8 @@ export interface WorkerStorage {
   getWorkersCurrentBenefits(month?: number, year?: number): Promise<WorkerCurrentBenefits[]>;
   getWorker(id: string): Promise<Worker | undefined>;
   getWorkerBySSN(ssn: string): Promise<Worker | undefined>;
+  getWorkerByContactEmail(email: string): Promise<Worker | undefined>;
+  getWorkerByContactId(contactId: string): Promise<Worker | undefined>;
   createWorker(name: string): Promise<Worker>;
   // Update methods that delegate to contact storage (contact storage already has logging)
   updateWorkerContactName(workerId: string, name: string): Promise<Worker | undefined>;
@@ -79,6 +82,8 @@ export interface WorkerStorage {
   updateWorkerContactGender(workerId: string, gender: string | null, genderNota: string | null): Promise<Worker | undefined>;
   updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined>;
   updateWorkerStatus(workerId: string, denormWsId: string | null): Promise<Worker | undefined>;
+  syncWorkerEmployerDenorm(workerId: string): Promise<void>;
+  updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined>;
   deleteWorker(id: string): Promise<boolean>;
   // Worker benefits methods
   getWorkerBenefits(workerId: string): Promise<any[]>;
@@ -305,6 +310,33 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return worker || undefined;
     },
 
+    async getWorkerByContactEmail(email: string): Promise<Worker | undefined> {
+      const [result] = await db
+        .select({
+          id: workers.id,
+          siriusId: workers.siriusId,
+          contactId: workers.contactId,
+          ssn: workers.ssn,
+          denormWsId: workers.denormWsId,
+          denormHomeEmployerId: workers.denormHomeEmployerId,
+          denormEmployerIds: workers.denormEmployerIds,
+          bargainingUnitId: workers.bargainingUnitId,
+        })
+        .from(workers)
+        .innerJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(sql`LOWER(${contacts.email}) = LOWER(${email})`);
+      
+      return result || undefined;
+    },
+
+    async getWorkerByContactId(contactId: string): Promise<Worker | undefined> {
+      const [worker] = await db
+        .select()
+        .from(workers)
+        .where(eq(workers.contactId, contactId));
+      return worker || undefined;
+    },
+
     async createWorker(name: string): Promise<Worker> {
       // For simple name input, parse into given/family names
       const nameParts = name.trim().split(' ');
@@ -461,6 +493,44 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return updatedWorker || undefined;
     },
 
+    async syncWorkerEmployerDenorm(workerId: string): Promise<void> {
+      const result = await db.execute(sql`
+        WITH latest_hours AS (
+          SELECT DISTINCT ON (employer_id)
+            employer_id,
+            home
+          FROM worker_hours
+          WHERE worker_id = ${workerId}
+          ORDER BY employer_id, year DESC, month DESC, day DESC
+        ),
+        latest_ws AS (
+          SELECT ws_id
+          FROM worker_wsh
+          WHERE worker_id = ${workerId}
+          ORDER BY date DESC, created_at DESC NULLS LAST, id DESC
+          LIMIT 1
+        )
+        SELECT 
+          (SELECT employer_id FROM latest_hours WHERE home = true LIMIT 1) as home_employer_id,
+          ARRAY(SELECT employer_id FROM latest_hours) as employer_ids,
+          (SELECT ws_id FROM latest_ws) as latest_ws_id
+      `);
+      
+      const row = result.rows[0] as { home_employer_id: string | null; employer_ids: string[] | null; latest_ws_id: string | null } | undefined;
+      const homeEmployerId = row?.home_employer_id || null;
+      const employerIds = row?.employer_ids?.length ? row.employer_ids : null;
+      const denormWsId = homeEmployerId ? (row?.latest_ws_id || null) : null;
+      
+      await db
+        .update(workers)
+        .set({
+          denormHomeEmployerId: homeEmployerId,
+          denormEmployerIds: employerIds,
+          denormWsId: denormWsId,
+        })
+        .where(eq(workers.id, workerId));
+    },
+
     async updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined> {
       // Normalize empty string to null
       const normalizedId = bargainingUnitId && bargainingUnitId.trim() ? bargainingUnitId.trim() : null;
@@ -521,20 +591,31 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .returning();
 
       if (wmb) {
+        const payload = {
+          wmbId: wmb.id,
+          workerId: wmb.workerId,
+          employerId: wmb.employerId,
+          benefitId: wmb.benefitId,
+          year: wmb.year,
+          month: wmb.month,
+        };
+
+        // Emit event for any listeners (future notification plugins, etc.)
+        eventBus.emit(EventType.WMB_SAVED, payload).catch(err => {
+          logger.error("Failed to emit WMB_SAVED event", {
+            service: "worker-storage",
+            wmbId: wmb.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+
+        // Execute charge plugins directly (for backwards compatibility)
         try {
           const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
-          
-          const context = {
-            trigger: TriggerType.WMB_SAVED as typeof TriggerType.WMB_SAVED,
-            wmbId: wmb.id,
-            workerId: wmb.workerId,
-            employerId: wmb.employerId,
-            benefitId: wmb.benefitId,
-            year: wmb.year,
-            month: wmb.month,
-          };
-
-          await executeChargePlugins(context);
+          await executeChargePlugins({
+            trigger: TriggerType.WMB_SAVED,
+            ...payload,
+          });
         } catch (error) {
           logger.error("Failed to execute charge plugins for WMB create", {
             service: "worker-storage",
@@ -556,21 +637,32 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       const deleted = result[0];
       
       if (deleted) {
+        const payload = {
+          wmbId: deleted.id,
+          workerId: deleted.workerId,
+          employerId: deleted.employerId,
+          benefitId: deleted.benefitId,
+          year: deleted.year,
+          month: deleted.month,
+          isDeleted: true,
+        };
+
+        // Emit event for any listeners (future notification plugins, etc.)
+        eventBus.emit(EventType.WMB_SAVED, payload).catch(err => {
+          logger.error("Failed to emit WMB_SAVED event", {
+            service: "worker-storage",
+            wmbId: deleted.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+
+        // Execute charge plugins directly (for backwards compatibility)
         try {
           const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
-          
-          const context = {
-            trigger: TriggerType.WMB_SAVED as typeof TriggerType.WMB_SAVED,
-            wmbId: deleted.id,
-            workerId: deleted.workerId,
-            employerId: deleted.employerId,
-            benefitId: deleted.benefitId,
-            year: deleted.year,
-            month: deleted.month,
-            isDeleted: true,
-          };
-
-          await executeChargePlugins(context);
+          await executeChargePlugins({
+            trigger: TriggerType.WMB_SAVED,
+            ...payload,
+          });
         } catch (error) {
           logger.error("Failed to execute charge plugins for WMB delete", {
             service: "worker-storage",

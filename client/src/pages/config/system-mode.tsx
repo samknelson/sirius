@@ -6,12 +6,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
 import { Server, AlertTriangle, CheckCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-
-type SystemMode = "dev" | "test" | "live";
-
-interface SystemModeResponse {
-  mode: SystemMode;
-}
+import { SystemMode, SystemModeResponse } from "@/lib/system-types";
 
 const modeDescriptions: Record<SystemMode, { label: string; description: string; color: string }> = {
   dev: {

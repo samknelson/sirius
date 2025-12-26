@@ -9,20 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmployerMonthlyPluginConfig } from "@shared/schema";
 import { PluginSettingsProps } from "../types";
-
-interface Role {
-  id: string;
-  name: string;
-  description: string | null;
-  sequence: number;
-}
-
-interface WizardType {
-  name: string;
-  displayName: string;
-  description?: string;
-  isMonthly?: boolean;
-}
+import { Role } from "@/lib/entity-types";
+import { WizardType } from "@/lib/wizard-types";
 
 export function EmployerMonthlySettings({ plugin, queryClient, onConfigSaved, loadSettings, saveSettings }: PluginSettingsProps<EmployerMonthlyPluginConfig>) {
   const { toast } = useToast();

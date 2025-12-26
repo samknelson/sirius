@@ -4,11 +4,44 @@ export interface ComponentDefinition {
   description: string;
   enabledByDefault: boolean;
   category?: string;
+  managesSchema?: boolean;
+  schemaManifest?: ComponentSchemaManifest;
 }
 
 export interface ComponentConfig {
   componentId: string;
   enabled: boolean;
+}
+
+export interface ComponentSchemaManifest {
+  version?: number;
+  schemaPath: string;
+  tables: string[];
+}
+
+export type ComponentTableStatus = "active" | "dropped" | "pending" | "error";
+
+export interface ComponentTableState {
+  tableName: string;
+  status: ComponentTableStatus;
+  appliedAt: string | null;
+  droppedAt: string | null;
+  checksum: string;
+  errorMessage?: string;
+}
+
+export interface ComponentSchemaDrift {
+  lastCheckAt: string;
+  hasUnexpectedTables: boolean;
+  hasMissingTables: boolean;
+  details: string[];
+}
+
+export interface ComponentSchemaState {
+  manifestVersion: number;
+  lastSyncedAt: string;
+  tables: ComponentTableState[];
+  drift: ComponentSchemaDrift | null;
 }
 
 // Central registry of all available components
@@ -32,7 +65,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Card Check",
     description: "Worker cardcheck functionality",
     enabledByDefault: false,
-    category: "core"
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/cardcheck/schema.ts",
+      tables: ["cardcheck_definitions", "cardchecks"]
+    }
   },
   {
     id: "sitespecific.gbhet",
@@ -53,7 +92,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "BTU Customization",
     description: "Custom functionality for BTU",
     enabledByDefault: false,
-    category: "site-specific"
+    category: "site-specific",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/sitespecific/btu/schema.ts",
+      tables: ["sitespecific_btu_csg", "sitespecific_btu_employer_map"]
+    }
   },
   {
     id: "employer.login",
@@ -68,6 +113,19 @@ export const componentRegistry: ComponentDefinition[] = [
     description: "Ability for workers to log in",
     enabledByDefault: false,
     category: "authentication"
+  },
+  {
+    id: "worker.steward",
+    name: "Shop Stewards",
+    description: "Ability to designate workers as shop stewards",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/worker/steward/schema.ts",
+      tables: ["worker_steward_assignments"]
+    }
   },
   {
     id: "trust.providers.login",
@@ -164,3 +222,27 @@ export function getAncestorComponentIds(componentId: string): string[] {
   
   return ancestors;
 }
+
+/**
+ * Get the variable name for a component's enabled state
+ * For example: "sitespecific.btu" -> "component_sitespecific.btu"
+ */
+export function getComponentVariableName(componentId: string): string {
+  return `component_${componentId}`;
+}
+
+/**
+ * Get the variable name for a component's schema state
+ * For example: "sitespecific.btu" -> "component_schema_state_sitespecific.btu"
+ */
+export function getComponentSchemaStateVariableName(componentId: string): string {
+  return `component_schema_state_${componentId}`;
+}
+
+/**
+ * Get all components that manage schemas
+ */
+export function getSchemaManagingComponents(): ComponentDefinition[] {
+  return componentRegistry.filter(c => c.managesSchema && c.schemaManifest);
+}
+

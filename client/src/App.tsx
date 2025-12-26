@@ -4,6 +4,7 @@ import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { TerminologyProvider } from "@/contexts/TerminologyContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -14,6 +15,7 @@ import Bootstrap from "@/pages/bootstrap";
 import SmsOptinPage from "@/pages/sms-optin";
 import Dashboard from "@/pages/dashboard";
 import Bookmarks from "@/pages/bookmarks";
+import AlertsPage, { AlertsRedirect } from "@/pages/alerts";
 import Reports from "@/pages/reports";
 import ReportType from "@/pages/report-type";
 import Workers from "@/pages/workers";
@@ -25,7 +27,12 @@ import WorkerIDs from "@/pages/worker-ids";
 import WorkerBirthDate from "@/pages/worker-birth-date";
 import WorkerGender from "@/pages/worker-gender";
 import WorkerWorkStatus from "@/pages/worker-work-status";
+import WorkerUserPage from "@/pages/worker-user";
 import WorkerBargainingUnit from "@/pages/worker-bargaining-unit";
+import WorkerSteward from "@/pages/worker-steward";
+import WorkerRepresentatives from "@/pages/worker-representatives";
+import WorkerLedgerAccounts from "@/pages/worker-ledger-accounts";
+import Stewards from "@/pages/stewards";
 import WorkerBenefitsHistory from "@/pages/worker-benefits-history";
 import WorkerBenefitsEligibility from "@/pages/worker-benefits-eligibility";
 import WorkerBenefitsScan from "@/pages/worker-benefits-scan";
@@ -43,6 +50,7 @@ import WorkerCommHistory from "@/pages/worker-comm-history";
 import WorkerSendSms from "@/pages/worker-send-sms";
 import WorkerSendEmail from "@/pages/worker-send-email";
 import WorkerSendPostal from "@/pages/worker-send-postal";
+import WorkerSendInApp from "@/pages/worker-send-inapp";
 import CommDetail from "@/pages/comm-detail";
 import WorkerDelete from "@/pages/worker-delete";
 import Employers from "@/pages/employers";
@@ -65,8 +73,10 @@ import EmployerContactCommHistory from "@/pages/employer-contact-comm-history";
 import EmployerContactSendSms from "@/pages/employer-contact-send-sms";
 import EmployerContactSendEmail from "@/pages/employer-contact-send-email";
 import EmployerContactSendPostal from "@/pages/employer-contact-send-postal";
+import EmployerContactSendInApp from "@/pages/employer-contact-send-inapp";
 import EmployerLogs from "@/pages/employer-logs";
 import EmployerPolicyHistory from "@/pages/employer-policy-history";
+import EmployerStewards from "@/pages/employer-stewards";
 import WizardView from "@/pages/wizard-view";
 import StripeCustomerPage from "@/pages/employers/stripe-customer";
 import StripePaymentMethodsPage from "@/pages/employers/stripe-payment-methods";
@@ -96,6 +106,7 @@ import TrustProviderContactCommHistory from "@/pages/trust-provider-contact-comm
 import TrustProviderContactSendSms from "@/pages/trust-provider-contact-send-sms";
 import TrustProviderContactSendEmail from "@/pages/trust-provider-contact-send-email";
 import TrustProviderContactSendPostal from "@/pages/trust-provider-contact-send-postal";
+import TrustProviderContactSendInApp from "@/pages/trust-provider-contact-send-inapp";
 import TrustProviderLogsPage from "@/pages/trust-provider-logs";
 import BargainingUnitsPage from "@/pages/bargaining-units";
 import BargainingUnitViewPage from "@/pages/bargaining-unit-view";
@@ -104,6 +115,14 @@ import BargainingUnitDeletePage from "@/pages/bargaining-unit-delete";
 import AdminUsersPage from "@/pages/admin/users";
 import UserAccountPage from "@/pages/admin/user-account";
 import UserLogs from "@/pages/admin/user-logs";
+import UserEmail from "@/pages/admin/user-email";
+import UserPhoneNumbers from "@/pages/admin/user-phone-numbers";
+import UserAddresses from "@/pages/admin/user-addresses";
+import UserCommHistory from "@/pages/admin/user-comm-history";
+import UserSendSms from "@/pages/admin/user-send-sms";
+import UserSendEmail from "@/pages/admin/user-send-email";
+import UserSendPostal from "@/pages/admin/user-send-postal";
+import UserSendInApp from "@/pages/admin/user-send-inapp";
 import AdminRolesPage from "@/pages/admin/roles";
 import AdminPermissionsPage from "@/pages/admin/permissions";
 import WmbScanQueue from "@/pages/admin/wmb-scan-queue";
@@ -121,6 +140,7 @@ import PermissionsPage from "@/pages/config/users/permissions";
 import PoliciesPage from "@/pages/config/users/policies";
 import EmployerUserSettingsPage from "@/pages/config/users/employer-settings";
 import TrustProviderUserSettingsPage from "@/pages/config/users/trust-provider-settings";
+import WorkerUserSettingsPage from "@/pages/config/users/worker-settings";
 import SessionsPage from "@/pages/sessions";
 import FloodEventsPage from "@/pages/flood-events";
 import FloodEventsConfigPage from "@/pages/flood-events-config";
@@ -129,6 +149,7 @@ import PhoneNumbersConfigPage from "@/pages/config/phone-numbers";
 import GenderOptionsPage from "@/pages/config/gender-options";
 import WorkerIDTypesPage from "@/pages/config/worker-id-types";
 import WorkerWorkStatusesPage from "@/pages/config/worker-work-statuses";
+import StewardSettingsPage from "@/pages/config/steward-settings";
 import EmploymentStatusesPage from "@/pages/config/employment-statuses";
 import TrustBenefitTypesPage from "@/pages/config/trust-benefit-types";
 import EmployerContactTypesPage from "@/pages/config/employer-contact-types";
@@ -163,8 +184,8 @@ import AccountPayments from "@/pages/config/ledger/account-payments";
 import AccountTransactions from "@/pages/config/ledger/account-transactions";
 import AccountParticipants from "@/pages/account-participants";
 import AccountSettings from "@/pages/config/ledger/account-settings";
-import EaTransactions from "@/pages/config/ledger/ea-transactions";
 import SiteInformation from "@/pages/site-information";
+import TerminologyConfigPage from "@/pages/config/terminology";
 import PolicyView from "@/pages/policy-view";
 import PolicyEdit from "@/pages/policy-edit";
 import PolicyBenefits from "@/pages/policy-benefits";
@@ -182,6 +203,11 @@ import EventDeletePage from "@/pages/event-delete";
 import EventRegisterPage from "@/pages/event-register";
 import EventRosterPage from "@/pages/event-roster";
 import EventSelfRegisterPage from "@/pages/event-self-register";
+import BtuCsgListPage from "@/pages/sitespecific/btu/csg-list";
+import BtuCsgViewPage from "@/pages/sitespecific/btu/csg-view";
+import BtuCsgEditPage from "@/pages/sitespecific/btu/csg-edit";
+import BtuCsgNewPage from "@/pages/sitespecific/btu/csg-new";
+import BtuEmployerMapListPage from "@/pages/sitespecific/btu/employer-map-list";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
@@ -198,16 +224,21 @@ function Router() {
   const { isAuthenticated, isLoading } = useAuth();
   const [location, setLocation] = useLocation();
 
-  // Check if bootstrap is needed
+  // Check if bootstrap is needed - only for unauthenticated users
+  // If user is authenticated, bootstrap was already completed (can't have users without bootstrap)
   const { data: bootstrapData, isLoading: isBootstrapLoading } = useQuery<{
     needed: boolean;
   }>({
     queryKey: ["/api/bootstrap/needed"],
     retry: false,
+    enabled: !isAuthenticated && !isLoading,
   });
 
-  // Redirect to bootstrap page if needed
+  // Redirect to bootstrap page if needed (only for unauthenticated users)
   useEffect(() => {
+    // Skip redirect logic for authenticated users - they don't need bootstrap
+    if (isAuthenticated) return;
+    
     if (!isBootstrapLoading && bootstrapData) {
       if (bootstrapData.needed && location !== "/bootstrap") {
         setLocation("/bootstrap");
@@ -215,10 +246,11 @@ function Router() {
         setLocation("/login");
       }
     }
-  }, [bootstrapData, isBootstrapLoading, location, setLocation]);
+  }, [bootstrapData, isBootstrapLoading, location, setLocation, isAuthenticated]);
 
-  // Show loading while checking bootstrap status
-  if (isBootstrapLoading) {
+  // Show loading while checking auth or bootstrap status (for unauthenticated users only)
+  const showLoading = isLoading || (!isAuthenticated && isBootstrapLoading);
+  if (showLoading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
@@ -282,6 +314,14 @@ function Router() {
         <ProtectedRoute permission="workers.view">
           <AuthenticatedLayout>
             <WorkerSendPostal />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/comm/send-inapp">
+        <ProtectedRoute permission="workers.view">
+          <AuthenticatedLayout>
+            <WorkerSendInApp />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -350,7 +390,15 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/workers/:id/bargaining-unit">
+      <Route path="/workers/:id/user">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <WorkerUserPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/union/bargaining-unit">
         <ProtectedRoute permission="workers.view" component="bargainingunits">
           <AuthenticatedLayout>
             <WorkerBargainingUnit />
@@ -382,10 +430,34 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/workers/:id/cardchecks">
+      <Route path="/workers/:id/union/cardchecks">
         <ProtectedRoute permission="workers.view" component="cardcheck">
           <AuthenticatedLayout>
             <WorkerCardchecks />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/union/steward">
+        <ProtectedRoute permission="workers.view" component="worker.steward">
+          <AuthenticatedLayout>
+            <WorkerSteward />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/union/representatives">
+        <ProtectedRoute permission="workers.view" component="worker.steward">
+          <AuthenticatedLayout>
+            <WorkerRepresentatives />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/ledger/accounts">
+        <ProtectedRoute permission="workers.view" component="ledger">
+          <AuthenticatedLayout>
+            <WorkerLedgerAccounts />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -484,6 +556,38 @@ function Router() {
         <ProtectedRoute policy="bookmark">
           <AuthenticatedLayout>
             <Bookmarks />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/alerts/unread">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <AlertsPage activeTab="unread" />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/alerts/read">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <AlertsPage activeTab="read" />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/alerts/all">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <AlertsPage activeTab="all" />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/alerts">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <AlertsRedirect />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -744,6 +848,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/employer-contacts/:id/comm/send-inapp">
+        <ProtectedRoute permission="workers.view">
+          <AuthenticatedLayout>
+            <EmployerContactSendInApp />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/employers/:id/ledger/stripe/customer">
         <ProtectedRoute permission="admin" component="ledger">
           <AuthenticatedLayout>
@@ -780,6 +892,14 @@ function Router() {
         <ProtectedRoute policy="employerUser">
           <AuthenticatedLayout>
             <EmployerPolicyHistory />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/employers/:id/union/stewards">
+        <ProtectedRoute policy="employerUser" component="worker.steward">
+          <AuthenticatedLayout>
+            <EmployerStewards />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -860,6 +980,47 @@ function Router() {
         <ProtectedRoute permission="admin" component="event">
           <AuthenticatedLayout>
             <EventsListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* BTU Site-specific routes */}
+      <Route path="/sitespecific/btu/csgs/new">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuCsgNewPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/btu/csg/:id/edit">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuCsgEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/btu/csg/:id">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuCsgViewPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/btu/csgs">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuCsgListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/btu/employer-map">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuEmployerMapListPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1032,6 +1193,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/trust-provider-contacts/:id/comm/send-inapp">
+        <ProtectedRoute policy="staff" component="trust.providers">
+          <AuthenticatedLayout>
+            <TrustProviderContactSendInApp />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/trust-provider-contacts/:id">
         <ProtectedRoute policy="staff" component="trust.providers">
           <AuthenticatedLayout>
@@ -1105,6 +1274,15 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      {/* Stewards route */}
+      <Route path="/stewards">
+        <ProtectedRoute permission="workers.view" component="worker.steward">
+          <AuthenticatedLayout>
+            <Stewards />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       {/* Admin user management routes - no ConfigurationLayout sidebar */}
       <Route path="/admin/users/list">
         <ProtectedRoute permission="admin">
@@ -1138,18 +1316,32 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/admin/users/employer-settings">
+      <Route path="/config/employers/user-settings">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <EmployerUserSettingsPage />
+            <ConfigurationLayout>
+              <EmployerUserSettingsPage />
+            </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
-      <Route path="/admin/users/trust-provider-settings">
+      <Route path="/config/trust/providers/user-settings">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <TrustProviderUserSettingsPage />
+            <ConfigurationLayout>
+              <TrustProviderUserSettingsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/workers/user-settings">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WorkerUserSettingsPage />
+            </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1278,6 +1470,16 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/steward-settings">
+        <ProtectedRoute permission="admin" component="worker.steward">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <StewardSettingsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/trust-benefit-types">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
@@ -1333,6 +1535,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <SiteInformation />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/terminology">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <TerminologyConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -1595,15 +1807,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      {/* Ledger EA detail pages */}
-      <Route path="/ledger/ea/:id/transactions">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
-          <AuthenticatedLayout>
-            <EaTransactions />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
       {/* User detail page */}
       <Route path="/users/:id">
         <ProtectedRoute permission="admin">
@@ -1617,6 +1820,72 @@ function Router() {
         <ProtectedRoute policy="staff">
           <AuthenticatedLayout>
             <UserLogs />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* User Contact sub-tabs */}
+      <Route path="/users/:id/contact/email">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserEmail />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/users/:id/contact/phone-numbers">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserPhoneNumbers />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/users/:id/contact/addresses">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserAddresses />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* User Comm sub-tabs */}
+      <Route path="/users/:id/comm/history">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserCommHistory />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/users/:id/comm/send-sms">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserSendSms />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/users/:id/comm/send-email">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserSendEmail />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/users/:id/comm/send-postal">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserSendPostal />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/users/:id/comm/send-inapp">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <UserSendInApp />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1772,8 +2041,10 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          <Toaster />
-          <Router />
+          <TerminologyProvider>
+            <Toaster />
+            <Router />
+          </TerminologyProvider>
         </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>

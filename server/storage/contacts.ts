@@ -39,7 +39,7 @@ export interface ContactStorage {
     generational?: string;
     credentials?: string;
   }): Promise<Contact | undefined>;
-  updateEmail(contactId: string, email: string): Promise<Contact | undefined>;
+  updateEmail(contactId: string, email: string | null): Promise<Contact | undefined>;
   updateBirthDate(contactId: string, birthDate: string | null): Promise<Contact | undefined>;
   updateGender(contactId: string, gender: string | null, genderNota: string | null): Promise<Contact | undefined>;
   deleteContact(id: string): Promise<boolean>;
@@ -59,7 +59,7 @@ export interface ContactsStorage {
     generational?: string;
     credentials?: string;
   }): Promise<Contact | undefined>;
-  updateEmail(contactId: string, email: string): Promise<Contact | undefined>;
+  updateEmail(contactId: string, email: string | null): Promise<Contact | undefined>;
   updateBirthDate(contactId: string, birthDate: string | null): Promise<Contact | undefined>;
   updateGender(contactId: string, gender: string | null, genderNota: string | null): Promise<Contact | undefined>;
   deleteContact(id: string): Promise<boolean>;
@@ -429,8 +429,8 @@ export function createContactStorage(): ContactStorage {
       return contact || undefined;
     },
 
-    async updateEmail(contactId: string, email: string): Promise<Contact | undefined> {
-      const cleanEmail = email.trim();
+    async updateEmail(contactId: string, email: string | null): Promise<Contact | undefined> {
+      const cleanEmail = email?.trim() ?? "";
       
       // Basic email validation
       if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {

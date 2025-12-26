@@ -12,14 +12,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-
-interface EmploymentStatus {
-  id: string;
-  name: string;
-  code: string;
-  employed: boolean;
-  description: string | null;
-}
+import { EmploymentStatus } from "@/lib/entity-types";
 
 interface MonthlyHoursEntry {
   employerId: string;

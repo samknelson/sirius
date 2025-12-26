@@ -5,20 +5,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-
-interface LedgerAccount {
-  id: string;
-  name: string;
-  description: string | null;
-  isActive: boolean;
-  data: {
-    invoiceHeader?: string;
-    invoiceFooter?: string;
-  } | null;
-}
+import { LedgerAccountWithDetails } from "@/lib/ledger-types";
 
 interface LedgerAccountLayoutContextValue {
-  account: LedgerAccount;
+  account: LedgerAccountWithDetails;
   isLoading: boolean;
   isError: boolean;
 }
@@ -41,7 +31,7 @@ interface LedgerAccountLayoutProps {
 export function LedgerAccountLayout({ activeTab, children }: LedgerAccountLayoutProps) {
   const { id } = useParams<{ id: string }>();
 
-  const { data: account, isLoading: accountLoading, error: accountError } = useQuery<LedgerAccount>({
+  const { data: account, isLoading: accountLoading, error: accountError } = useQuery<LedgerAccountWithDetails>({
     queryKey: ["/api/ledger/accounts", id],
     queryFn: async () => {
       const response = await fetch(`/api/ledger/accounts/${id}`);

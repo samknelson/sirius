@@ -100,6 +100,25 @@ export function registerLedgerEaRoutes(app: Express) {
     }
   });
 
+  // GET /api/ledger/ea/:id/balance - Get the current balance for an EA
+  app.get("/api/ledger/ea/:id/balance", requireComponent("ledger"), requireAccess(policies.ledgerStaff), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Check if EA exists
+      const ea = await storage.ledger.ea.get(id);
+      if (!ea) {
+        res.status(404).json({ message: "Ledger EA entry not found" });
+        return;
+      }
+
+      const balance = await storage.ledger.ea.getBalance(id);
+      res.json({ balance });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch EA balance" });
+    }
+  });
+
   // GET /api/ledger/ea/:id/transactions - Get ledger entries for an EA
   app.get("/api/ledger/ea/:id/transactions", requireComponent("ledger"), requireAccess(policies.ledgerStaff), async (req, res) => {
     try {

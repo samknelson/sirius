@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders } from "@shared/schema";
+import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
 import type { 
   LedgerAccount, 
   InsertLedgerAccount,
@@ -16,6 +16,7 @@ import type {
 import { eq, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray } from "drizzle-orm";
 import { alias as pgAlias } from "drizzle-orm/pg-core";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
+import { formatAmount, getCurrency } from "@shared/currency";
 
 export interface StripePaymentMethodStorage {
   getAll(): Promise<LedgerStripePaymentMethod[]>;
@@ -33,6 +34,7 @@ export interface LedgerEaStorage {
   getByEntity(entityType: string, entityId: string): Promise<SelectLedgerEa[]>;
   getByEntityAndAccount(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa | undefined>;
   getOrCreate(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa>;
+  getBalance(id: string): Promise<string>;
   create(entry: InsertLedgerEa): Promise<SelectLedgerEa>;
   update(id: string, entry: Partial<InsertLedgerEa>): Promise<SelectLedgerEa | undefined>;
   delete(id: string): Promise<boolean>;
@@ -361,15 +363,69 @@ export function createLedgerEaStorage(): LedgerEaStorage {
     },
 
     async getOrCreate(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa> {
-      const existing = await this.getByEntityAndAccount(entityType, entityId, accountId);
-      if (existing) {
-        return existing;
-      }
-      return await this.create({
-        entityType,
-        entityId,
-        accountId,
+      // Use a transaction with conflict handling to prevent race conditions
+      return await db.transaction(async (tx) => {
+        // First, try to find existing EA entry
+        const [existingEa] = await tx
+          .select()
+          .from(ledgerEa)
+          .where(
+            and(
+              eq(ledgerEa.accountId, accountId),
+              eq(ledgerEa.entityType, entityType),
+              eq(ledgerEa.entityId, entityId)
+            )
+          )
+          .limit(1);
+
+        if (existingEa) {
+          return existingEa;
+        }
+
+        // Try to create new EA entry with conflict handling
+        const insertResult = await tx
+          .insert(ledgerEa)
+          .values({
+            accountId,
+            entityType,
+            entityId,
+          })
+          .onConflictDoNothing()
+          .returning();
+
+        if (insertResult.length > 0) {
+          return insertResult[0];
+        }
+
+        // Conflict occurred, look up the existing entry
+        const [conflictedEa] = await tx
+          .select()
+          .from(ledgerEa)
+          .where(
+            and(
+              eq(ledgerEa.accountId, accountId),
+              eq(ledgerEa.entityType, entityType),
+              eq(ledgerEa.entityId, entityId)
+            )
+          )
+          .limit(1);
+
+        if (!conflictedEa) {
+          throw new Error("Failed to find or create EA entry after conflict");
+        }
+
+        return conflictedEa;
       });
+    },
+
+    async getBalance(id: string): Promise<string> {
+      const result = await db
+        .select({ totalBalance: sum(ledger.amount) })
+        .from(ledger)
+        .where(eq(ledger.eaId, id));
+      
+      const balance = result[0]?.totalBalance;
+      return balance ? String(balance) : "0.00";
     },
 
     async create(insertEntry: InsertLedgerEa): Promise<SelectLedgerEa> {
@@ -484,6 +540,26 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
     },
 
     async create(insertPayment: InsertLedgerPayment): Promise<LedgerPayment> {
+      // Validate currency match between payment type and account
+      const [ea] = await db.select().from(ledgerEa).where(eq(ledgerEa.id, insertPayment.ledgerEaId));
+      if (!ea) {
+        throw new Error("Account entry not found");
+      }
+      
+      const [account] = await db.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, ea.accountId));
+      if (!account) {
+        throw new Error("Account not found");
+      }
+      
+      const [paymentType] = await db.select().from(optionsLedgerPaymentType).where(eq(optionsLedgerPaymentType.id, insertPayment.paymentType));
+      if (!paymentType) {
+        throw new Error("Payment type not found");
+      }
+      
+      if (paymentType.currencyCode !== account.currencyCode) {
+        throw new Error(`Currency mismatch: Payment type "${paymentType.name}" uses ${paymentType.currencyCode} but account "${account.name}" uses ${account.currencyCode}`);
+      }
+      
       const [payment] = await db.insert(ledgerPayments)
         .values(insertPayment as any)
         .returning();
@@ -491,6 +567,33 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
     },
 
     async update(id: string, paymentUpdate: Partial<InsertLedgerPayment>): Promise<LedgerPayment | undefined> {
+      // If payment type is being changed, validate currency match
+      if (paymentUpdate.paymentType) {
+        const [existingPayment] = await db.select().from(ledgerPayments).where(eq(ledgerPayments.id, id));
+        if (!existingPayment) {
+          return undefined;
+        }
+        
+        const [ea] = await db.select().from(ledgerEa).where(eq(ledgerEa.id, existingPayment.ledgerEaId));
+        if (!ea) {
+          throw new Error("Account entry not found");
+        }
+        
+        const [account] = await db.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, ea.accountId));
+        if (!account) {
+          throw new Error("Account not found");
+        }
+        
+        const [paymentType] = await db.select().from(optionsLedgerPaymentType).where(eq(optionsLedgerPaymentType.id, paymentUpdate.paymentType));
+        if (!paymentType) {
+          throw new Error("Payment type not found");
+        }
+        
+        if (paymentType.currencyCode !== account.currencyCode) {
+          throw new Error(`Currency mismatch: Payment type "${paymentType.name}" uses ${paymentType.currencyCode} but account "${account.name}" uses ${account.currencyCode}`);
+        }
+      }
+      
       const [payment] = await db.update(ledgerPayments)
         .set(paymentUpdate as any)
         .where(eq(ledgerPayments.id, id))
@@ -546,6 +649,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
           workerSiriusId: workers.siriusId,
           workerContact: contacts,
           payment: ledgerPayments,
+          paymentType: optionsLedgerPaymentType,
           refEmployer: refEmployers,
           refTrustProvider: refTrustProviders,
           refWorkerSiriusId: refWorkers.siriusId,
@@ -588,6 +692,10 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
             eq(ledger.referenceType, 'payment'),
             eq(ledger.referenceId, ledgerPayments.id)
           )
+        )
+        .leftJoin(
+          optionsLedgerPaymentType,
+          eq(ledgerPayments.paymentType, optionsLedgerPaymentType.id)
         )
         .leftJoin(
           refEmployers,
@@ -655,11 +763,16 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
 
           let referenceName: string | null = null;
           if (row.entry.referenceType === 'payment' && row.payment) {
-            const amount = parseFloat(row.payment.amount).toFixed(2);
+            const paymentTypeName = row.paymentType?.name || 'Payment';
+            const currencyCode = row.paymentType?.currencyCode || 'USD';
+            const currency = getCurrency(currencyCode);
+            const currencyLabel = currency?.label || currencyCode;
+            const formattedAmount = formatAmount(parseFloat(row.payment.amount), currencyCode);
+            
             if (row.payment.memo) {
-              referenceName = `Payment: $${amount} - ${row.payment.memo}`;
+              referenceName = `${currencyLabel} Adjustment: ${formattedAmount} - ${row.payment.memo}`;
             } else {
-              referenceName = `Payment: $${amount}`;
+              referenceName = `${currencyLabel} Adjustment: ${formattedAmount}`;
             }
           } else if (row.entry.referenceType === 'employer' && row.refEmployer) {
             referenceName = `Employer: ${row.refEmployer.name}`;
@@ -1074,6 +1187,83 @@ export const stripePaymentMethodLoggingConfig: StorageLoggingConfig<StripePaymen
       },
       after: async (args, result, storage) => {
         return result; // New state (diff auto-calculated)
+      }
+    }
+  }
+};
+
+/**
+ * Helper to resolve worker ID from an EA
+ */
+async function getWorkerIdFromEaId(eaId: string): Promise<string | undefined> {
+  const eaStorage = createLedgerEaStorage();
+  const ea = await eaStorage.get(eaId);
+  if (ea && ea.entityType === 'worker') {
+    return ea.entityId;
+  }
+  return undefined;
+}
+
+/**
+ * Helper to format a payment for logging display
+ */
+function formatPaymentForLog(payment: LedgerPayment | undefined): string {
+  if (!payment) return 'payment';
+  const amount = payment.amount ? `$${payment.amount}` : '';
+  const memo = payment.memo ? ` - ${payment.memo}` : '';
+  return amount ? `${amount} payment${memo}` : 'payment';
+}
+
+/**
+ * Logging configuration for ledger payment storage operations
+ * 
+ * Logs all payment mutations with full argument capture and change tracking.
+ * Links to worker entity when the payment's EA is associated with a worker.
+ */
+export const ledgerPaymentLoggingConfig: StorageLoggingConfig<LedgerPaymentStorage> = {
+  module: 'ledger.payments',
+  methods: {
+    create: {
+      enabled: true,
+      getEntityId: (args, result) => formatPaymentForLog(result),
+      getHostEntityId: async (args, result) => {
+        if (result?.ledgerEaId) {
+          return await getWorkerIdFromEaId(result.ledgerEaId);
+        }
+        return undefined;
+      },
+      after: async (args, result, storage) => {
+        return result; // Capture created payment
+      }
+    },
+    update: {
+      enabled: true,
+      getEntityId: (args, result, beforeState) => formatPaymentForLog(result || beforeState),
+      getHostEntityId: async (args, result, beforeState) => {
+        const eaId = result?.ledgerEaId || beforeState?.ledgerEaId;
+        if (eaId) {
+          return await getWorkerIdFromEaId(eaId);
+        }
+        return undefined;
+      },
+      before: async (args, storage) => {
+        return await storage.get(args[0]); // Current state
+      },
+      after: async (args, result, storage) => {
+        return result; // New state (diff auto-calculated)
+      }
+    },
+    delete: {
+      enabled: true,
+      getEntityId: (args, result, beforeState) => formatPaymentForLog(beforeState),
+      getHostEntityId: async (args, result, beforeState) => {
+        if (beforeState?.ledgerEaId) {
+          return await getWorkerIdFromEaId(beforeState.ledgerEaId);
+        }
+        return undefined;
+      },
+      before: async (args, storage) => {
+        return await storage.get(args[0]); // Capture what's being deleted
       }
     }
   }

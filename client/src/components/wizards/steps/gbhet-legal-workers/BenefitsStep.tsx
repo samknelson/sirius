@@ -9,6 +9,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertCircle, Gift, CheckCircle2, ArrowRight, Info } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { TrustBenefit } from "@/lib/policy-types";
 
 interface BenefitsStepProps {
   wizardId: string;
@@ -24,14 +25,6 @@ interface FeedField {
   required: boolean;
   description?: string;
   isBenefitEligibility?: boolean;
-}
-
-interface TrustBenefit {
-  id: string;
-  name: string;
-  benefitTypeName?: string;
-  benefitTypeIcon?: string;
-  isActive: boolean;
 }
 
 interface BenefitFieldConfig {

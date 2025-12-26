@@ -11,19 +11,13 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useEffect } from "react";
+import { LedgerAccountBase } from "@/lib/ledger-types";
 
 const formSchema = z.object({
   accountIds: z.array(z.string()).min(1, "At least one account is required"),
 });
 
 type FormData = z.infer<typeof formSchema>;
-
-interface LedgerAccount {
-  id: string;
-  name: string;
-  description: string | null;
-  isActive: boolean;
-}
 
 interface ChargePluginConfig {
   id: string;
@@ -54,7 +48,7 @@ export default function PaymentSimpleAllocationConfigFormPage() {
     enabled: isEditMode,
   });
 
-  const { data: accounts = [] } = useQuery<LedgerAccount[]>({
+  const { data: accounts = [] } = useQuery<LedgerAccountBase[]>({
     queryKey: ["/api/ledger/accounts"],
   });
 

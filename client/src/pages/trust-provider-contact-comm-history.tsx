@@ -2,40 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { TrustProviderContactLayout, useTrustProviderContactLayout } from "@/components/layouts/TrustProviderContactLayout";
 import { CommList } from "@/components/worker/CommList";
-
-interface CommSmsDetails {
-  id: string;
-  commId: string;
-  to: string | null;
-  body: string | null;
-  data: Record<string, unknown> | null;
-}
-
-interface CommEmailDetails {
-  id: string;
-  commId: string;
-  to: string | null;
-  toName: string | null;
-  from: string | null;
-  fromName: string | null;
-  replyTo: string | null;
-  subject: string | null;
-  bodyText: string | null;
-  bodyHtml: string | null;
-  data: Record<string, unknown> | null;
-}
-
-interface CommWithDetails {
-  id: string;
-  medium: string;
-  contactId: string;
-  status: string;
-  sent: string | null;
-  received: string | null;
-  data: Record<string, unknown> | null;
-  smsDetails?: CommSmsDetails | null;
-  emailDetails?: CommEmailDetails | null;
-}
+import { CommWithDetails } from "@/lib/comm-types";
 
 function TrustProviderContactCommHistoryContent() {
   const { trustProviderContact } = useTrustProviderContactLayout();

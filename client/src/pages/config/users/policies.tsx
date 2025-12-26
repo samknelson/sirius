@@ -2,25 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Shield, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
-
-// Access requirement types (mirrors server-side definition)
-type AccessRequirement =
-  | { type: 'authenticated' }
-  | { type: 'permission'; key: string }
-  | { type: 'anyPermission'; keys: string[] }
-  | { type: 'allPermissions'; keys: string[] }
-  | { type: 'component'; componentId: string }
-  | { type: 'ownership'; resourceType: string; resourceIdParam?: string }
-  | { type: 'anyOf'; options: AccessRequirement[] }
-  | { type: 'allOf'; options: AccessRequirement[] }
-  | { type: 'custom'; reason?: string };
-
-interface Policy {
-  id: string;
-  name: string;
-  description: string;
-  requirements: AccessRequirement[];
-}
+import { AccessRequirement, Policy } from '@/lib/policy-types';
 
 function formatRequirement(req: AccessRequirement): { text: string; type: string } {
   switch (req.type) {

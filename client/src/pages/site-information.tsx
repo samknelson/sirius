@@ -8,11 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Save } from "lucide-react";
 import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
-
-interface SiteSettings {
-  siteName: string;
-  footer: string;
-}
+import { SiteSettings } from "@/lib/system-types";
 
 export default function SiteInformation() {
   const { toast } = useToast();

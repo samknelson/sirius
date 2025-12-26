@@ -1,4 +1,4 @@
-import { EALayout } from "@/components/layouts/EALayout";
+import { EALayout, useEALayout } from "@/components/layouts/EALayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -14,16 +14,20 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertLedgerPaymentSchema, type LedgerPayment, type LedgerPaymentType } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, DollarSign, Download, ArrowUpDown, Filter, X } from "lucide-react";
-import { useState, useMemo } from "react";
+import { Plus, DollarSign, Download, ArrowUpDown, Filter, X, ChevronDown } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useState, useMemo, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import type { z } from "zod";
 import { stringify } from "csv-stringify/browser/esm/sync";
+import { formatAmount } from "@shared/currency";
 
 const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
 
 type SortField = "amount" | "dateCreated" | "dateReceived" | "dateCleared";
 type SortDirection = "asc" | "desc";
+type PaymentCategory = "financial" | "adjustment";
 
 interface LedgerNotification {
   type: "created" | "updated" | "deleted";
@@ -31,20 +35,24 @@ interface LedgerNotification {
   description: string;
 }
 
-function formatCurrency(amount: string | number): string {
-  const num = typeof amount === "string" ? parseFloat(amount) : amount;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(num);
-}
-
 function EAPaymentsContent() {
   const { id } = useParams<{ id: string }>();
+  const { currencyCode } = useEALayout();
+  const { user } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [merchant, setMerchant] = useState("");
   const [checkTransactionNumber, setCheckTransactionNumber] = useState("");
+  const [adjustmentUser, setAdjustmentUser] = useState("");
+  const [dateEntered, setDateEntered] = useState("");
+  const [effectiveDate, setEffectiveDate] = useState("");
   const { toast } = useToast();
+  
+  const getTodayString = () => new Date().toISOString().split('T')[0];
+  const getEffectiveUserName = () => {
+    if (!user) return "";
+    const parts = [user.firstName, user.lastName].filter(Boolean);
+    return parts.join(" ") || user.email || "";
+  };
   
   const showLedgerNotifications = (notifications: LedgerNotification[] | undefined) => {
     if (!notifications || notifications.length === 0) return;
@@ -56,7 +64,7 @@ function EAPaymentsContent() {
       
       toast({
         title: typeLabel,
-        description: `${formatCurrency(notification.amount)} - ${notification.description}`,
+        description: `${formatAmount(parseFloat(notification.amount), currencyCode)} - ${notification.description}`,
       });
     }
   };
@@ -102,6 +110,24 @@ function EAPaymentsContent() {
     },
   });
 
+  const watchedPaymentType = form.watch("paymentType");
+  const selectedPaymentType = paymentTypes.find(pt => pt.id === watchedPaymentType);
+  const category: PaymentCategory = (selectedPaymentType?.category as PaymentCategory) || "financial";
+
+  useEffect(() => {
+    if (dialogOpen && category === "adjustment") {
+      if (!adjustmentUser) {
+        setAdjustmentUser(getEffectiveUserName());
+      }
+      if (!dateEntered) {
+        setDateEntered(getTodayString());
+      }
+      if (!effectiveDate) {
+        setEffectiveDate(getTodayString());
+      }
+    }
+  }, [dialogOpen, category, user]);
+
   const createPaymentMutation = useMutation({
     mutationFn: async (data: z.infer<typeof insertLedgerPaymentSchema>) => {
       return await apiRequest("POST", "/api/ledger/payments", data);
@@ -111,6 +137,9 @@ function EAPaymentsContent() {
       setDialogOpen(false);
       setMerchant("");
       setCheckTransactionNumber("");
+      setAdjustmentUser("");
+      setDateEntered("");
+      setEffectiveDate("");
       form.reset({
         status: "draft",
         allocated: false,
@@ -141,22 +170,50 @@ function EAPaymentsContent() {
     const existingDetails = (data.details || {}) as Record<string, any>;
     const details: any = { ...existingDetails };
     
-    if (merchant) {
-      details.merchant = merchant;
+    if (category === "financial") {
+      if (merchant) {
+        details.merchant = merchant;
+      } else {
+        delete details.merchant;
+      }
+      
+      if (checkTransactionNumber) {
+        details.checkTransactionNumber = checkTransactionNumber;
+      } else {
+        delete details.checkTransactionNumber;
+      }
+      delete details.adjustmentUser;
+      delete details.dateEntered;
+      delete details.effectiveDate;
     } else {
+      if (adjustmentUser) {
+        details.adjustmentUser = adjustmentUser;
+      } else {
+        delete details.adjustmentUser;
+      }
+      
+      if (dateEntered) {
+        details.dateEntered = dateEntered;
+      } else {
+        delete details.dateEntered;
+      }
+      
+      if (effectiveDate) {
+        details.effectiveDate = effectiveDate;
+      } else {
+        delete details.effectiveDate;
+      }
       delete details.merchant;
-    }
-    
-    if (checkTransactionNumber) {
-      details.checkTransactionNumber = checkTransactionNumber;
-    } else {
       delete details.checkTransactionNumber;
     }
     
-    createPaymentMutation.mutate({
+    const submissionData = {
       ...data,
       details: Object.keys(details).length > 0 ? details : null,
-    });
+      status: category === "adjustment" ? "cleared" as const : data.status,
+    };
+    
+    createPaymentMutation.mutate(submissionData);
   });
 
   const getStatusBadgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
@@ -353,7 +410,7 @@ function EAPaymentsContent() {
       const details = payment.details as any;
       
       return {
-        Amount: parseFloat(payment.amount).toFixed(2),
+        Amount: formatAmount(parseFloat(payment.amount), currencyCode),
         "Payment Type": paymentType?.name || "",
         Status: payment.status,
         Merchant: details?.merchant || "",
@@ -407,6 +464,11 @@ function EAPaymentsContent() {
     }
   };
 
+  const openDialogWithPaymentType = (paymentTypeId: string) => {
+    form.setValue("paymentType", paymentTypeId);
+    setDialogOpen(true);
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -442,18 +504,34 @@ function EAPaymentsContent() {
               <Download className="h-4 w-4 mr-2" />
               Export CSV
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button data-testid="button-add-payment">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add
+                  <ChevronDown className="h-4 w-4 ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {paymentTypes
+                  .filter((type) => type.currencyCode === currencyCode)
+                  .map((type) => (
+                  <DropdownMenuItem
+                    key={type.id}
+                    onClick={() => openDialogWithPaymentType(type.id)}
+                    data-testid={`menu-item-${type.id}`}
+                  >
+                    {type.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-add-payment">
-                <Plus className="h-4 w-4 mr-2" />
-                Add an Offline Payment or Adjustment
-              </Button>
-            </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>
-                <DialogTitle>Add Offline Payment or Adjustment</DialogTitle>
+                <DialogTitle>Add {selectedPaymentType?.name || "Payment"}</DialogTitle>
                 <DialogDescription>
-                  Create a new payment record or adjustment for this account entry
+                  Create a new {selectedPaymentType?.name?.toLowerCase() || "payment"} record for this account entry
                 </DialogDescription>
               </DialogHeader>
               <Form {...form}>
@@ -478,119 +556,126 @@ function EAPaymentsContent() {
                     )}
                   />
 
-                  <FormField
-                    control={form.control}
-                    name="paymentType"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Payment Type</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger data-testid="select-payment-type">
-                              <SelectValue placeholder="Select payment type" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {paymentTypes.map((type) => (
-                              <SelectItem key={type.id} value={type.id} data-testid={`option-${type.id}`}>
-                                {type.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {category === "financial" ? (
+                    <>
+                      <FormField
+                        control={form.control}
+                        name="status"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Status</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                <SelectTrigger data-testid="select-payment-status">
+                                  <SelectValue placeholder="Select status" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {paymentStatuses.map((status) => (
+                                  <SelectItem key={status} value={status} data-testid={`option-${status}`}>
+                                    {status.charAt(0).toUpperCase() + status.slice(1)}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                  <FormField
-                    control={form.control}
-                    name="status"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Status</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger data-testid="select-payment-status">
-                              <SelectValue placeholder="Select status" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {paymentStatuses.map((status) => (
-                              <SelectItem key={status} value={status} data-testid={`option-${status}`}>
-                                {status.charAt(0).toUpperCase() + status.slice(1)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                      <FormField
+                        control={form.control}
+                        name="dateReceived"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Date Received</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="date"
+                                data-testid="input-date-received"
+                                value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
+                                onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                  <FormField
-                    control={form.control}
-                    name="dateReceived"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Date Received</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="date"
-                            data-testid="input-date-received"
-                            value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
-                            onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                      <div>
+                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                          Merchant
+                        </label>
+                        <Input
+                          placeholder="Enter merchant name..."
+                          data-testid="input-merchant"
+                          value={merchant}
+                          onChange={(e) => setMerchant(e.target.value)}
+                          className="mt-2"
+                        />
+                      </div>
 
-                  <FormField
-                    control={form.control}
-                    name="dateCleared"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Date Cleared</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="date"
-                            data-testid="input-date-cleared"
-                            value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
-                            onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                      <div>
+                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                          Check or Transaction Number
+                        </label>
+                        <Input
+                          placeholder="Enter check or transaction number..."
+                          data-testid="input-check-transaction-number"
+                          value={checkTransactionNumber}
+                          onChange={(e) => setCheckTransactionNumber(e.target.value)}
+                          className="mt-2"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="p-3 bg-muted rounded-md">
+                        <p className="text-sm text-muted-foreground">
+                          Status: <span className="font-medium text-foreground">Cleared</span> (adjustments are always cleared)
+                        </p>
+                      </div>
 
-                  <div>
-                    <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                      Merchant
-                    </label>
-                    <Input
-                      placeholder="Enter merchant name..."
-                      data-testid="input-merchant"
-                      value={merchant}
-                      onChange={(e) => setMerchant(e.target.value)}
-                      className="mt-2"
-                    />
-                  </div>
+                      <div>
+                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                          User Executing Adjustment
+                        </label>
+                        <Input
+                          placeholder="Enter user name..."
+                          data-testid="input-adjustment-user"
+                          value={adjustmentUser}
+                          onChange={(e) => setAdjustmentUser(e.target.value)}
+                          className="mt-2"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                      Check or Transaction Number
-                    </label>
-                    <Input
-                      placeholder="Enter check or transaction number..."
-                      data-testid="input-check-transaction-number"
-                      value={checkTransactionNumber}
-                      onChange={(e) => setCheckTransactionNumber(e.target.value)}
-                      className="mt-2"
-                    />
-                  </div>
+                      <div>
+                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                          Date Entered
+                        </label>
+                        <Input
+                          type="date"
+                          data-testid="input-date-entered"
+                          value={dateEntered}
+                          onChange={(e) => setDateEntered(e.target.value)}
+                          className="mt-2"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                          Effective Date
+                        </label>
+                        <Input
+                          type="date"
+                          data-testid="input-effective-date"
+                          value={effectiveDate}
+                          onChange={(e) => setEffectiveDate(e.target.value)}
+                          className="mt-2"
+                        />
+                      </div>
+                    </>
+                  )}
 
                   <FormField
                     control={form.control}
@@ -860,7 +945,7 @@ function EAPaymentsContent() {
                   return (
                     <TableRow key={payment.id} data-testid={`row-payment-${payment.id}`}>
                       <TableCell className="font-mono" data-testid={`text-amount-${payment.id}`}>
-                        ${parseFloat(payment.amount).toFixed(2)}
+                        {formatAmount(parseFloat(payment.amount), currencyCode)}
                       </TableCell>
                       <TableCell data-testid={`text-payment-type-${payment.id}`}>
                         {paymentType?.name || "-"}

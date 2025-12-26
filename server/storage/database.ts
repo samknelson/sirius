@@ -59,6 +59,7 @@ import {
   createLedgerStorage,
   ledgerAccountLoggingConfig,
   stripePaymentMethodLoggingConfig,
+  ledgerPaymentLoggingConfig,
 } from "./ledger";
 import {
   type EmployerContactStorage,
@@ -156,6 +157,21 @@ import {
   eventParticipantLoggingConfig,
 } from "./events";
 import {
+  type WorkerStewardAssignmentStorage,
+  createWorkerStewardAssignmentStorage,
+  workerStewardAssignmentLoggingConfig,
+} from "./worker-steward-assignments";
+import {
+  type BtuCsgStorage,
+  createBtuCsgStorage,
+  btuCsgLoggingConfig,
+} from "./sitespecific-btu-csg";
+import {
+  type BtuEmployerMapStorage,
+  createBtuEmployerMapStorage,
+  btuEmployerMapLoggingConfig,
+} from "./sitespecific-btu-employer-map";
+import {
   withStorageLogging,
   type StorageLoggingConfig,
 } from "./middleware/logging";
@@ -204,6 +220,9 @@ export interface IStorage {
   events: EventStorage;
   eventOccurrences: EventOccurrenceStorage;
   eventParticipants: EventParticipantStorage;
+  workerStewardAssignments: WorkerStewardAssignmentStorage;
+  btuCsg: BtuCsgStorage;
+  btuEmployerMap: BtuEmployerMapStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -242,17 +261,20 @@ export class DatabaseStorage implements IStorage {
   events: EventStorage;
   eventOccurrences: EventOccurrenceStorage;
   eventParticipants: EventParticipantStorage;
+  workerStewardAssignments: WorkerStewardAssignmentStorage;
+  btuCsg: BtuCsgStorage;
+  btuEmployerMap: BtuEmployerMapStorage;
 
   constructor() {
     this.variables = withStorageLogging(
       createVariableStorage(),
       variableLoggingConfig,
     );
-    this.users = withStorageLogging(createUserStorage(), userLoggingConfig);
     this.contacts = withStorageLogging(
       createContactsStorage(addressLoggingConfig, phoneNumberLoggingConfig),
       contactLoggingConfig,
     );
+    this.users = withStorageLogging(createUserStorage(this.contacts), userLoggingConfig);
     this.workers = withStorageLogging(
       createWorkerStorage(this.contacts),
       workerLoggingConfig,
@@ -287,6 +309,8 @@ export class DatabaseStorage implements IStorage {
     this.ledger = createLedgerStorage(
       ledgerAccountLoggingConfig,
       stripePaymentMethodLoggingConfig,
+      undefined,
+      ledgerPaymentLoggingConfig,
     );
     this.employerContacts = withStorageLogging(
       createEmployerContactStorage(this.contacts),
@@ -312,15 +336,19 @@ export class DatabaseStorage implements IStorage {
       createWorkerWshStorage(
         this.workers.updateWorkerStatus.bind(this.workers),
         async (workerId: string) => {
+          await this.workers.syncWorkerEmployerDenorm(workerId);
           await this.wmbScanQueue.invalidateWorkerScans(workerId);
         },
       ),
       workerWshLoggingConfig,
     );
     this.workerHours = withStorageLogging(
-      createWorkerHoursStorage(async (workerId: string) => {
-        await this.wmbScanQueue.invalidateWorkerScans(workerId);
-      }),
+      createWorkerHoursStorage(
+        async (workerId: string) => {
+          await this.workers.syncWorkerEmployerDenorm(workerId);
+          await this.wmbScanQueue.invalidateWorkerScans(workerId);
+        },
+      ),
       workerHoursLoggingConfig,
     );
     this.policies = withStorageLogging(
@@ -345,7 +373,15 @@ export class DatabaseStorage implements IStorage {
       createCardcheckStorage(),
       cardcheckLoggingConfig,
     );
-    this.esigs = withStorageLogging(createEsigStorage(), esigLoggingConfig);
+    this.esigs = withStorageLogging(
+      createEsigStorage({
+        getFileById: this.files.getById.bind(this.files),
+        updateFile: this.files.update.bind(this.files),
+        updateCardcheck: this.cardchecks.updateCardcheck.bind(this.cardchecks),
+        getCardcheckById: this.cardchecks.getCardcheckById.bind(this.cardchecks),
+      }),
+      esigLoggingConfig,
+    );
     this.sessions = withStorageLogging(
       createSessionStorage(),
       sessionLoggingConfig,
@@ -359,6 +395,18 @@ export class DatabaseStorage implements IStorage {
     this.eventParticipants = withStorageLogging(
       createEventParticipantStorage(),
       eventParticipantLoggingConfig,
+    );
+    this.workerStewardAssignments = withStorageLogging(
+      createWorkerStewardAssignmentStorage(),
+      workerStewardAssignmentLoggingConfig,
+    );
+    this.btuCsg = withStorageLogging(
+      createBtuCsgStorage(),
+      btuCsgLoggingConfig,
+    );
+    this.btuEmployerMap = withStorageLogging(
+      createBtuEmployerMapStorage(),
+      btuEmployerMapLoggingConfig,
     );
   }
 }

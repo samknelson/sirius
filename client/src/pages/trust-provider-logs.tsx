@@ -17,19 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { format } from "date-fns";
-
-interface WinstonLog {
-  id: number;
-  level: string | null;
-  message: string | null;
-  timestamp: string | null;
-  source: string | null;
-  meta: any;
-  module: string | null;
-  operation: string | null;
-  entityId: string | null;
-  description: string | null;
-}
+import { WinstonLog } from "@/lib/system-types";
 
 function TrustProviderLogsContent() {
   const { provider } = useTrustProviderLayout();

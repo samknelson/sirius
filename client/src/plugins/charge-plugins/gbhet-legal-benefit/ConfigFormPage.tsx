@@ -14,30 +14,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { RateHistorySection } from "@/components/charge-plugins/RateHistorySection";
 import { sortRatesDescending } from "@/lib/rateHistory";
 import { useEffect } from "react";
-
-const formSchema = z.object({
-  accountId: z.string().min(1, "Account is required"),
-  benefitId: z.string().min(1, "Benefit is required"),
-  billingOffsetMonths: z.number().int().default(-3),
-  rateHistory: z.array(z.object({
-    effectiveDate: z.string().min(1, "Effective date is required"),
-    rate: z.number({ invalid_type_error: "Rate is required" }),
-  })).min(1, "At least one rate entry is required"),
-});
-
-type FormData = z.infer<typeof formSchema>;
-
-interface LedgerAccount {
-  id: string;
-  name: string;
-  description: string | null;
-  isActive: boolean;
-}
-
-interface TrustBenefit {
-  id: string;
-  name: string;
-}
+import { TrustBenefit } from "@/lib/policy-types";
+import { LedgerAccountBase } from "@/lib/ledger-types";
 
 interface ChargePluginConfig {
   id: string;
@@ -55,6 +33,18 @@ interface ChargePluginConfig {
     }>;
   };
 }
+
+const formSchema = z.object({
+  accountId: z.string().min(1, "Account is required"),
+  benefitId: z.string().min(1, "Benefit is required"),
+  billingOffsetMonths: z.number().int().default(-3),
+  rateHistory: z.array(z.object({
+    effectiveDate: z.string().min(1, "Effective date is required"),
+    rate: z.number({ invalid_type_error: "Rate is required" }),
+  })).min(1, "At least one rate entry is required"),
+});
+
+type FormData = z.infer<typeof formSchema>;
 
 export default function GbhetLegalBenefitConfigFormPage() {
   const { toast } = useToast();
@@ -74,7 +64,7 @@ export default function GbhetLegalBenefitConfigFormPage() {
     enabled: isEditMode,
   });
 
-  const { data: accounts = [] } = useQuery<LedgerAccount[]>({
+  const { data: accounts = [] } = useQuery<LedgerAccountBase[]>({
     queryKey: ["/api/ledger/accounts"],
   });
 

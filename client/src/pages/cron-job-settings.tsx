@@ -15,18 +15,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CronJobLayout, useCronJobLayout } from "@/components/layouts/CronJobLayout";
 import { format } from "date-fns";
-
-interface CronJobRun {
-  id: string;
-  jobName: string;
-  status: string;
-  mode: string;
-  output: string | null;
-  error: string | null;
-  startedAt: string;
-  completedAt: string | null;
-  triggeredBy: string | null;
-}
+import { CronJobRun } from "@/lib/cron-types";
 
 interface CronJobOutputData {
   executionTimeMs: number;

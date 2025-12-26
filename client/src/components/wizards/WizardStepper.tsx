@@ -3,12 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import type { WizardData } from "@shared/schema";
-
-interface WizardStep {
-  id: string;
-  name: string;
-  description?: string;
-}
+import { WizardStep } from "@/lib/wizard-types";
 
 interface WizardStepperProps {
   steps: WizardStep[];

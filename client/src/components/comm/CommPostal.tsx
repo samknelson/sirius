@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { Address } from "@/lib/entity-types";
 
 type ContentMode = "template" | "compose" | "rawHtml";
 
@@ -73,19 +74,6 @@ const DEFAULT_HTML_WRAPPER = `<!DOCTYPE html>
 
 function wrapBodyWithHtml(body: string): string {
   return DEFAULT_HTML_WRAPPER.replace("{{BODY}}", body);
-}
-
-interface Address {
-  id: string;
-  contactId: string;
-  friendlyName: string | null;
-  street: string;
-  city: string;
-  state: string;
-  postalCode: string;
-  country: string;
-  isPrimary: boolean;
-  isActive: boolean;
 }
 
 interface PostalOptinResponse {

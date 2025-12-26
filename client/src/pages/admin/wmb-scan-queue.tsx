@@ -8,6 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   Table,
   TableBody,
   TableCell,
@@ -23,6 +28,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { StaffAlertConfigEditor } from "@/components/staff-alert-config";
+import type { StaffAlertConfig } from "@shared/staffAlerts";
 import { 
   Clock, 
   Play, 
@@ -35,7 +42,11 @@ import {
   Square,
   Eye,
   XCircle,
-  RotateCcw
+  RotateCcw,
+  Bell,
+  ChevronDown,
+  ChevronRight,
+  Save
 } from "lucide-react";
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -96,6 +107,10 @@ export default function WmbScanQueue() {
   const [isRunning, setIsRunning] = useState(false);
   const isRunningRef = useRef(false);
   const processingRef = useRef(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const [alertConfig, setAlertConfig] = useState<StaffAlertConfig>({ recipients: [] });
+  const [alertConfigDirty, setAlertConfigDirty] = useState(false);
+  const [alertWarnings, setAlertWarnings] = useState<Array<{ userId: string; email: string; message: string }>>([]);
 
   const { data: statuses = [], isLoading: isLoadingStatuses, refetch: refetchStatuses } = useQuery<MonthStatus[]>({
     queryKey: ["/api/wmb-scan/status"],
@@ -104,6 +119,58 @@ export default function WmbScanQueue() {
   const { data: summary = [], isLoading: isLoadingSummary, refetch: refetchSummary } = useQuery<PendingSummary[]>({
     queryKey: ["/api/wmb-scan/summary"],
   });
+
+  const { data: savedAlertData, isLoading: isLoadingAlertConfig } = useQuery<{ config: StaffAlertConfig; warnings: Array<{ userId: string; email: string; message: string }> }>({
+    queryKey: ["/api/staff-alerts/trust_wmb_scan"],
+  });
+
+  useEffect(() => {
+    if (savedAlertData && !alertConfigDirty) {
+      setAlertConfig(savedAlertData.config);
+      setAlertWarnings(savedAlertData.warnings || []);
+    }
+  }, [savedAlertData, alertConfigDirty]);
+
+  const saveAlertConfigMutation = useMutation({
+    mutationFn: async (config: StaffAlertConfig) => {
+      return apiRequest("PUT", "/api/staff-alerts/trust_wmb_scan", config);
+    },
+    onSuccess: (result: any) => {
+      const warnings = result?.warnings || [];
+      setAlertWarnings(warnings);
+      
+      if (warnings.length > 0) {
+        toast({
+          title: "Configuration Saved with Warnings",
+          description: `${warnings.length} recipient(s) may not receive alerts due to missing contact records.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Configuration Saved",
+          description: "Alert recipients have been updated",
+        });
+      }
+      setAlertConfigDirty(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/staff-alerts/trust_wmb_scan"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save configuration",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleAlertConfigChange = (config: StaffAlertConfig) => {
+    setAlertConfig(config);
+    setAlertConfigDirty(true);
+  };
+
+  const handleSaveAlertConfig = () => {
+    saveAlertConfigMutation.mutate(alertConfig);
+  };
 
   const enqueueMonthMutation = useMutation({
     mutationFn: async ({ month, year }: { month: number; year: number }) => {
@@ -429,6 +496,88 @@ export default function WmbScanQueue() {
           </CardContent>
         </Card>
       </div>
+
+      <Collapsible open={alertsOpen} onOpenChange={setAlertsOpen} className="mb-6">
+        <Card>
+          <CollapsibleTrigger asChild>
+            <CardHeader className="cursor-pointer hover-elevate rounded-t-lg">
+              <CardTitle className="flex items-center gap-2">
+                {alertsOpen ? (
+                  <ChevronDown className="h-5 w-5" />
+                ) : (
+                  <ChevronRight className="h-5 w-5" />
+                )}
+                <Bell className="h-5 w-5" />
+                Scan Completion Alerts
+                {alertConfig.recipients.length > 0 && (
+                  <Badge variant="secondary" className="ml-2">
+                    {alertConfig.recipients.length} recipient{alertConfig.recipients.length !== 1 ? "s" : ""}
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription>
+                Configure who receives notifications when monthly scans complete
+              </CardDescription>
+            </CardHeader>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="pt-0">
+              {isLoadingAlertConfig ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map(i => (
+                    <Skeleton key={i} className="h-12 w-full" />
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <StaffAlertConfigEditor
+                    value={alertConfig}
+                    onChange={handleAlertConfigChange}
+                    disabled={saveAlertConfigMutation.isPending}
+                  />
+                  <div className="flex items-center gap-2 pt-2">
+                    <Button
+                      onClick={handleSaveAlertConfig}
+                      disabled={!alertConfigDirty || saveAlertConfigMutation.isPending}
+                      data-testid="button-save-alert-config"
+                    >
+                      {saveAlertConfigMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Save className="h-4 w-4 mr-2" />
+                      )}
+                      Save Configuration
+                    </Button>
+                    {alertConfigDirty && (
+                      <span className="text-sm text-muted-foreground">Unsaved changes</span>
+                    )}
+                  </div>
+                  
+                  {alertWarnings.length > 0 && (
+                    <div className="mt-4 p-3 rounded-md border border-destructive/50 bg-destructive/10" data-testid="alert-warnings">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium text-destructive">
+                            {alertWarnings.length} recipient{alertWarnings.length !== 1 ? "s" : ""} cannot receive alerts
+                          </p>
+                          <ul className="text-xs text-muted-foreground space-y-1">
+                            {alertWarnings.map((warning, idx) => (
+                              <li key={idx}>
+                                {warning.email ? `${warning.email}: ` : ""}{warning.message}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
 
       <Card>
         <CardHeader>

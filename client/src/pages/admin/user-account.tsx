@@ -9,13 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, UserCheck, UserX, Shield } from 'lucide-react';
 import { UserLayout, useUserLayout } from '@/components/layouts/UserLayout';
-
-interface Role {
-  id: string;
-  name: string;
-  description: string;
-  createdAt: string;
-}
+import { Role } from '@/lib/entity-types';
 
 function UserAccountContent() {
   const { user } = useUserLayout();

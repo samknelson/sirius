@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTerm } from "@/contexts/TerminologyContext";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import {
@@ -24,10 +25,13 @@ import {
   Key,
   Clock,
   Droplets,
+  FileWarning,
+  Map,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { AlertsBell } from "./AlertsBell";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,18 +46,11 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-
-interface SiteSettings {
-  siteName: string;
-  footer: string;
-}
-
-interface SystemModeResponse {
-  mode: "dev" | "test" | "live";
-}
+import { SiteSettings, SystemModeResponse } from "@/lib/system-types";
 
 export default function Header() {
   const { user, logout, hasPermission, hasComponent, masquerade, stopMasquerade } = useAuth();
+  const term = useTerm();
   const [location] = useLocation();
   const { toast } = useToast();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -202,6 +199,30 @@ export default function Header() {
                     </Button>
                   </Link>
                 )}
+                {hasComponent("worker.steward") && (
+                  <Link href="/stewards" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location === "/stewards" ? "default" : "ghost"}
+                      className="w-full justify-start pl-8"
+                      data-testid="mobile-nav-stewards"
+                    >
+                      <Shield className="h-4 w-4 mr-2" />
+                      {term("steward", { plural: true })}
+                    </Button>
+                  </Link>
+                )}
+                {hasComponent("sitespecific.btu") && (
+                  <Link href="/sitespecific/btu/csgs" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location.startsWith("/sitespecific/btu/csg") ? "default" : "ghost"}
+                      className="w-full justify-start pl-8"
+                      data-testid="mobile-nav-class-size-grievances"
+                    >
+                      <FileWarning className="h-4 w-4 mr-2" />
+                      Class Size Grievances
+                    </Button>
+                  </Link>
+                )}
 
                 <Link href="/employers" onClick={() => setMobileMenuOpen(false)}>
                   <Button
@@ -235,6 +256,18 @@ export default function Header() {
                     Monthly Uploads
                   </Button>
                 </Link>
+                {hasComponent("sitespecific.btu") && (
+                  <Link href="/sitespecific/btu/employer-map" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location === "/sitespecific/btu/employer-map" ? "default" : "ghost"}
+                      className="w-full justify-start pl-8"
+                      data-testid="mobile-nav-employer-map"
+                    >
+                      <Map className="h-4 w-4 mr-2" />
+                      Employer Map
+                    </Button>
+                  </Link>
+                )}
 
                 {(hasComponent("trust.providers") || (hasPermission("admin") && hasComponent("trust.benefits.scan"))) && (
                   <>
@@ -420,7 +453,8 @@ export default function Header() {
         </div>
 
         {/* User menu - right side of row 1 */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center gap-2">
+          {user && <AlertsBell />}
           {user && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -470,7 +504,7 @@ export default function Header() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant={location === "/workers" || location.startsWith("/cardcheck") || location.startsWith("/bargaining-units") ? "default" : "ghost"}
+                  variant={location === "/workers" || location.startsWith("/cardcheck") || location.startsWith("/bargaining-units") || location === "/stewards" || location.startsWith("/sitespecific/btu/csg") ? "default" : "ghost"}
                   size="sm"
                   data-testid="nav-workers"
                 >
@@ -504,6 +538,26 @@ export default function Header() {
                       <div className="flex items-center cursor-pointer" data-testid="menu-bargaining-units">
                         <Users className="h-4 w-4 mr-2" />
                         Bargaining Units
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {hasComponent("worker.steward") && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/stewards" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-stewards">
+                        <Shield className="h-4 w-4 mr-2" />
+                        {term("steward", { plural: true })}
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {hasComponent("sitespecific.btu") && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/sitespecific/btu/csgs" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-class-size-grievances">
+                        <FileWarning className="h-4 w-4 mr-2" />
+                        Class Size Grievances
                       </div>
                     </Link>
                   </DropdownMenuItem>
@@ -548,6 +602,16 @@ export default function Header() {
                     </div>
                   </Link>
                 </DropdownMenuItem>
+                {hasComponent("sitespecific.btu") && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/sitespecific/btu/employer-map" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-employer-map">
+                        <Map className="h-4 w-4 mr-2" />
+                        Employer Map
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
 

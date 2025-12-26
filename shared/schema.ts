@@ -238,6 +238,8 @@ export const optionsLedgerPaymentType = pgTable("options_ledger_payment_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   description: text("description"),
+  currencyCode: varchar("currency_code", { length: 10 }).notNull().default("USD"),
+  category: varchar("category", { length: 20 }).notNull().default("financial").$type<"financial" | "adjustment">(),
   sequence: integer("sequence").notNull().default(0),
   data: jsonb("data"),
 });
@@ -392,6 +394,7 @@ export const ledgerAccounts = pgTable("ledger_accounts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   description: text("description"),
+  currencyCode: text("currency_code").default('USD').notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   data: jsonb("data"),
 });
@@ -493,6 +496,22 @@ export const files = pgTable("files", {
   metadata: jsonb("metadata"),
 });
 
+export const esigStatusEnum = pgEnum("esig_status", ["pending", "signed"]);
+export const esigTypeEnum = pgEnum("esig_type", ["online", "offline", "upload"]);
+
+export const esigs = pgTable("esigs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'restrict' }),
+  status: esigStatusEnum("status").notNull().default("pending"),
+  signedDate: timestamp("signed_date"),
+  type: esigTypeEnum("type").notNull(),
+  docFileId: varchar("doc_file_id").references(() => files.id, { onDelete: 'set null' }),
+  docRender: text("doc_render"),
+  docHash: text("doc_hash"),
+  esig: jsonb("esig"),
+  docType: text("doc_type"),
+});
+
 export const winstonLogs = pgTable("winston_logs", {
   id: serial("id").primaryKey(),
   level: varchar("level", { length: 20 }),
@@ -518,44 +537,35 @@ export const winstonLogs = pgTable("winston_logs", {
 
 export type WinstonLog = typeof winstonLogs.$inferSelect;
 
-export const cardcheckDefinitions = pgTable("cardcheck_definitions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  siriusId: varchar("sirius_id").notNull().unique(),
-  name: text("name").notNull(),
-  description: text("description"),
-  body: text("body"),
-  data: jsonb("data"),
-});
+export {
+  cardcheckDefinitions,
+  cardcheckStatusEnum,
+  cardchecks,
+  insertCardcheckDefinitionSchema,
+  insertCardcheckSchema,
+  type CardcheckDefinition,
+  type InsertCardcheckDefinition,
+  type Cardcheck,
+  type InsertCardcheck,
+} from "./schema/cardcheck/schema";
 
-export const cardcheckStatusEnum = pgEnum("cardcheck_status", ["pending", "signed", "revoked"]);
+export {
+  workerStewardAssignments,
+  insertWorkerStewardAssignmentSchema,
+  type WorkerStewardAssignment,
+  type InsertWorkerStewardAssignment,
+} from "./schema/worker/steward/schema";
 
-export const esigStatusEnum = pgEnum("esig_status", ["pending", "signed"]);
-export const esigTypeEnum = pgEnum("esig_type", ["online", "offline", "upload"]);
-
-export const esigs = pgTable("esigs", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'restrict' }),
-  status: esigStatusEnum("status").notNull().default("pending"),
-  signedDate: timestamp("signed_date"),
-  type: esigTypeEnum("type").notNull(),
-  docFileId: varchar("doc_file_id").references(() => files.id, { onDelete: 'set null' }),
-  docRender: text("doc_render"),
-  docHash: text("doc_hash"),
-  esig: jsonb("esig"),
-  docType: text("doc_type"),
-});
-
-export const cardchecks = pgTable("cardchecks", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
-  cardcheckDefinitionId: varchar("cardcheck_definition_id").notNull().references(() => cardcheckDefinitions.id, { onDelete: 'restrict' }),
-  status: cardcheckStatusEnum("status").notNull().default("pending"),
-  signedDate: timestamp("signed_date"),
-  rate: doublePrecision("rate"),
-  data: jsonb("data"),
-  esigId: varchar("esig_id").references(() => esigs.id, { onDelete: 'set null' }),
-  bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),
-});
+export {
+  sitespecificBtuCsg,
+  insertBtuCsgSchema,
+  type BtuCsgRecord,
+  type InsertBtuCsgRecord,
+  sitespecificBtuEmployerMap,
+  insertBtuEmployerMapSchema,
+  type BtuEmployerMap,
+  type InsertBtuEmployerMap,
+} from "./schema/sitespecific/btu/schema";
 
 // Zod schemas for validation
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -603,18 +613,6 @@ export const insertPolicySchema = createInsertSchema(policies).omit({
 });
 
 export const insertBargainingUnitSchema = createInsertSchema(bargainingUnits).omit({
-  id: true,
-});
-
-export const insertCardcheckDefinitionSchema = createInsertSchema(cardcheckDefinitions).omit({
-  id: true,
-});
-
-export const insertCardcheckSchema = createInsertSchema(cardchecks).omit({
-  id: true,
-});
-
-export const insertEsigSchema = createInsertSchema(esigs).omit({
   id: true,
 });
 
@@ -688,6 +686,7 @@ export const insertLedgerStripePaymentMethodSchema = createInsertSchema(ledgerSt
 });
 
 export const ledgerAccountDataSchema = z.object({
+  invoicesEnabled: z.boolean().optional(),
   invoiceHeader: z.string().optional(),
   invoiceFooter: z.string().optional(),
 }).strict();
@@ -847,15 +846,6 @@ export type Policy = typeof policies.$inferSelect;
 export type InsertBargainingUnit = z.infer<typeof insertBargainingUnitSchema>;
 export type BargainingUnit = typeof bargainingUnits.$inferSelect;
 
-export type InsertCardcheckDefinition = z.infer<typeof insertCardcheckDefinitionSchema>;
-export type CardcheckDefinition = typeof cardcheckDefinitions.$inferSelect;
-
-export type InsertCardcheck = z.infer<typeof insertCardcheckSchema>;
-export type Cardcheck = typeof cardchecks.$inferSelect;
-
-export type InsertEsig = z.infer<typeof insertEsigSchema>;
-export type Esig = typeof esigs.$inferSelect;
-
 export type InsertEmployerContact = z.infer<typeof insertEmployerContactSchema>;
 export type EmployerContact = typeof employerContacts.$inferSelect;
 
@@ -945,8 +935,15 @@ export const insertFileSchema = createInsertSchema(files).omit({
   uploadedAt: true,
 });
 
+export const insertEsigSchema = createInsertSchema(esigs).omit({
+  id: true,
+});
+
 export type InsertFile = z.infer<typeof insertFileSchema>;
 export type File = typeof files.$inferSelect;
+
+export type InsertEsig = z.infer<typeof insertEsigSchema>;
+export type Esig = typeof esigs.$inferSelect;
 
 export type InsertGenderOption = z.infer<typeof insertGenderOptionSchema>;
 export type GenderOption = typeof optionsGender.$inferSelect;
@@ -1398,6 +1395,37 @@ export const insertCommPostalOptinSchema = createInsertSchema(commPostalOptin, {
 
 export type InsertCommPostalOptin = z.infer<typeof insertCommPostalOptinSchema>;
 export type CommPostalOptin = typeof commPostalOptin.$inferSelect;
+
+// Communications - In-App
+export const commInapp = pgTable("comm_inapp", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  commId: varchar("comm_id").notNull().references(() => comm.id, { onDelete: 'cascade' }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  title: varchar("title", { length: 100 }).notNull(),
+  body: varchar("body", { length: 500 }).notNull(),
+  linkUrl: varchar("link_url", { length: 2048 }),
+  linkLabel: varchar("link_label", { length: 50 }),
+  status: varchar("status").notNull().default("pending"), // pending, read, expired
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+}, (table) => ({
+  userIdIdx: index("comm_inapp_user_id_idx").on(table.userId),
+  statusIdx: index("comm_inapp_status_idx").on(table.status),
+  userStatusIdx: index("comm_inapp_user_status_idx").on(table.userId, table.status),
+}));
+
+export const insertCommInappSchema = createInsertSchema(commInapp, {
+  title: z.string().min(1, "Title is required").max(100, "Title must be 100 characters or less"),
+  body: z.string().min(1, "Body is required").max(500, "Body must be 500 characters or less"),
+  linkUrl: z.string().max(2048, "Link URL must be 2048 characters or less").optional().nullable(),
+  linkLabel: z.string().max(50, "Link label must be 50 characters or less").optional().nullable(),
+  status: z.enum(["pending", "read", "expired"]).optional(),
+}).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCommInapp = z.infer<typeof insertCommInappSchema>;
+export type CommInapp = typeof commInapp.$inferSelect;
 
 // Flood control table for rate limiting
 export const flood = pgTable("flood", {

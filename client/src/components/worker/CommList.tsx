@@ -32,7 +32,8 @@ import {
   Inbox,
   Phone,
   Mail,
-  Eye
+  Eye,
+  Bell
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
@@ -81,6 +82,18 @@ interface CommPostalDetails {
   data: Record<string, unknown> | null;
 }
 
+interface CommInappDetails {
+  id: string;
+  commId: string;
+  userId: string;
+  title: string;
+  body: string;
+  linkUrl: string | null;
+  linkLabel: string | null;
+  status: string;
+  createdAt: string;
+}
+
 interface CommWithDetails {
   id: string;
   medium: string;
@@ -92,6 +105,7 @@ interface CommWithDetails {
   smsDetails?: CommSmsDetails | null;
   emailDetails?: CommEmailDetails | null;
   postalDetails?: CommPostalDetails | null;
+  inappDetails?: CommInappDetails | null;
 }
 
 type SortField = "sent" | "medium" | "status";
@@ -220,6 +234,8 @@ export function CommList({
         return <Phone className="h-4 w-4" />;
       case "email":
         return <Mail className="h-4 w-4" />;
+      case "inapp":
+        return <Bell className="h-4 w-4" />;
       default:
         return <MessageSquare className="h-4 w-4" />;
     }
@@ -267,6 +283,13 @@ export function CommList({
           <Badge variant="outline" className="gap-1">
             <Clock className="h-3 w-3" />
             Pending
+          </Badge>
+        );
+      case "read":
+        return (
+          <Badge variant="secondary" className="gap-1">
+            <Eye className="h-3 w-3" />
+            Read
           </Badge>
         );
       case "undelivered":
@@ -481,7 +504,9 @@ export function CommList({
                           ? record.emailDetails.to
                           : record.medium === 'postal' && record.postalDetails
                             ? `${record.postalDetails.toName || ''} - ${record.postalDetails.toCity || ''}, ${record.postalDetails.toState || ''}`.replace(/^[\s-]+|[\s-]+$/g, '') || "-"
-                            : "-"}
+                            : record.medium === 'inapp' && record.inappDetails
+                              ? "(In-App)"
+                              : "-"}
                     </TableCell>
                     <TableCell className="max-w-[300px]">
                       <span className="text-sm text-muted-foreground">
@@ -489,7 +514,9 @@ export function CommList({
                           ? truncateBody(record.emailDetails.subject)
                           : record.medium === 'postal' && record.postalDetails?.description
                             ? truncateBody(record.postalDetails.description)
-                            : truncateBody(record.smsDetails?.body || null)}
+                            : record.medium === 'inapp' && record.inappDetails?.title
+                              ? truncateBody(record.inappDetails.title)
+                              : truncateBody(record.smsDetails?.body || null)}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">

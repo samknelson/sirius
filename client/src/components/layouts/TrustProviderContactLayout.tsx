@@ -62,7 +62,7 @@ export function useTrustProviderContactLayout() {
 
 interface TrustProviderContactLayoutProps {
   children: React.ReactNode;
-  activeTab: "view" | "edit" | "name" | "email" | "phone-numbers" | "addresses" | "user" | "comm" | "comm-history" | "send-sms" | "send-email" | "send-postal";
+  activeTab: "view" | "edit" | "name" | "email" | "phone-numbers" | "addresses" | "user" | "comm" | "comm-history" | "send-sms" | "send-email" | "send-postal" | "send-inapp";
 }
 
 export function TrustProviderContactLayout({ children, activeTab }: TrustProviderContactLayoutProps) {
@@ -126,9 +126,10 @@ export function TrustProviderContactLayout({ children, activeTab }: TrustProvide
     { id: "send-sms", label: "Send SMS", href: `/trust-provider-contacts/${id}/comm/send-sms` },
     { id: "send-email", label: "Send Email", href: `/trust-provider-contacts/${id}/comm/send-email` },
     { id: "send-postal", label: "Send Postal", href: `/trust-provider-contacts/${id}/comm/send-postal` },
+    { id: "send-inapp", label: "Send In-App", href: `/trust-provider-contacts/${id}/comm/send-inapp` },
   ];
 
-  const isCommSubTab = ["comm-history", "send-sms", "send-email", "send-postal"].includes(activeTab);
+  const isCommSubTab = ["comm-history", "send-sms", "send-email", "send-postal", "send-inapp"].includes(activeTab);
   const showCommSubTabs = isCommSubTab;
 
   return (

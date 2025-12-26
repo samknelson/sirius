@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Link } from "wouter";
-import type { Bookmark as BookmarkType, Worker, Employer, Contact } from "@shared/schema";
+import type { Bookmark as BookmarkType } from "@shared/schema";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,42 +19,19 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+interface EnrichedBookmark extends BookmarkType {
+  displayName: string;
+}
+
 type SortOption = "name" | "timestamp";
 
 export default function Bookmarks() {
   const { toast } = useToast();
   const [sortBy, setSortBy] = useState<SortOption>("timestamp");
-  const [deleteTarget, setDeleteTarget] = useState<BookmarkType | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<EnrichedBookmark | null>(null);
 
-  const { data: bookmarks = [], isLoading: bookmarksLoading } = useQuery<BookmarkType[]>({
-    queryKey: ["/api/bookmarks"],
-  });
-
-  const { data: workers = [] } = useQuery<Worker[]>({
-    queryKey: ["/api/workers"],
-    enabled: bookmarks.some(b => b.entityType === 'worker'),
-  });
-
-  const { data: employers = [] } = useQuery<Employer[]>({
-    queryKey: ["/api/employers"],
-    enabled: bookmarks.some(b => b.entityType === 'employer'),
-  });
-
-  const contactIds = workers.map(w => w.contactId);
-  const { data: contacts = [] } = useQuery<Contact[]>({
-    queryKey: ["/api/contacts", contactIds],
-    queryFn: async () => {
-      const contactPromises = contactIds.map(async (id) => {
-        const res = await fetch(`/api/contacts/${id}`);
-        if (res.ok) {
-          return res.json();
-        }
-        return null;
-      });
-      const results = await Promise.all(contactPromises);
-      return results.filter((c): c is Contact => c !== null);
-    },
-    enabled: contactIds.length > 0,
+  const { data: bookmarks = [], isLoading: bookmarksLoading } = useQuery<EnrichedBookmark[]>({
+    queryKey: ["/api/bookmarks/enriched"],
   });
 
   const deleteMutation = useMutation({
@@ -62,6 +39,7 @@ export default function Bookmarks() {
       return apiRequest("DELETE", `/api/bookmarks/${bookmarkId}`);
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookmarks/enriched"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookmarks"] });
       toast({
         title: "Bookmark deleted",
@@ -78,25 +56,7 @@ export default function Bookmarks() {
     },
   });
 
-  const getBookmarkName = (bookmark: BookmarkType): string => {
-    if (bookmark.entityType === 'worker') {
-      const worker = workers.find(w => w.id === bookmark.entityId);
-      if (worker) {
-        const contact = contacts.find(c => c.id === worker.contactId);
-        return contact?.displayName || `Worker #${worker.siriusId}`;
-      }
-      return `Worker #${bookmark.entityId.slice(0, 8)}`;
-    }
-    
-    if (bookmark.entityType === 'employer') {
-      const employer = employers.find(e => e.id === bookmark.entityId);
-      return employer?.name || `Employer #${bookmark.entityId.slice(0, 8)}`;
-    }
-    
-    return `${bookmark.entityType} #${bookmark.entityId.slice(0, 8)}`;
-  };
-
-  const getBookmarkLink = (bookmark: BookmarkType): string => {
+  const getBookmarkLink = (bookmark: EnrichedBookmark): string => {
     switch (bookmark.entityType) {
       case 'worker':
         return `/workers/${bookmark.entityId}`;
@@ -107,7 +67,7 @@ export default function Bookmarks() {
     }
   };
 
-  const getBookmarkIcon = (bookmark: BookmarkType) => {
+  const getBookmarkIcon = (bookmark: EnrichedBookmark) => {
     switch (bookmark.entityType) {
       case 'worker':
         return User;
@@ -120,7 +80,7 @@ export default function Bookmarks() {
 
   const sortedBookmarks = [...bookmarks].sort((a, b) => {
     if (sortBy === "name") {
-      return getBookmarkName(a).localeCompare(getBookmarkName(b));
+      return a.displayName.localeCompare(b.displayName);
     }
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
@@ -171,7 +131,6 @@ export default function Bookmarks() {
           <div className="space-y-2">
             {sortedBookmarks.map((bookmark) => {
               const Icon = getBookmarkIcon(bookmark);
-              const name = getBookmarkName(bookmark);
               const link = getBookmarkLink(bookmark);
               
               return (
@@ -183,7 +142,7 @@ export default function Bookmarks() {
                           <Icon className="h-5 w-5 text-muted-foreground flex-shrink-0" />
                           <div className="flex-1">
                             <div className="font-medium" data-testid={`bookmark-name-${bookmark.id}`}>
-                              {name}
+                              {bookmark.displayName}
                             </div>
                             <div className="text-xs text-muted-foreground">
                               Bookmarked {new Date(bookmark.createdAt).toLocaleDateString()} at{" "}

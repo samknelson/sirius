@@ -14,6 +14,11 @@ export interface QueueEntryWithWorker extends TrustWmbScanQueue {
   workerDisplayName: string | null;
 }
 
+export interface JobResultInfo {
+  scanCompleted: boolean;
+  completedStatus?: TrustWmbScanStatus;
+}
+
 export interface QueueEntriesFilter {
   search?: string;
   outcome?: "started" | "continued" | "terminated" | null;
@@ -47,7 +52,7 @@ export interface WmbScanQueueStorage {
   
   // Job processing
   claimNextJob(): Promise<TrustWmbScanQueue | undefined>;
-  recordJobResult(queueId: string, success: boolean, resultSummary: any, error?: string): Promise<void>;
+  recordJobResult(queueId: string, success: boolean, resultSummary: any, error?: string): Promise<JobResultInfo>;
   
   // Invalidation
   invalidateWorkerScans(workerId: string): Promise<number>;
@@ -438,8 +443,8 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
       });
     },
 
-    async recordJobResult(queueId: string, success: boolean, resultSummary: any, error?: string): Promise<void> {
-      await db.transaction(async (tx) => {
+    async recordJobResult(queueId: string, success: boolean, resultSummary: any, error?: string): Promise<JobResultInfo> {
+      return await db.transaction(async (tx) => {
         const [job] = await tx
           .update(trustWmbScanQueue)
           .set({
@@ -451,7 +456,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
           .where(eq(trustWmbScanQueue.id, queueId))
           .returning();
 
-        if (!job) return;
+        if (!job) return { scanCompleted: false };
 
         // Parse benefit outcomes from resultSummary
         // Priority: check for termination (delete action) before continuation (eligible)
@@ -501,14 +506,19 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
           );
 
         if (Number(remaining.count) === 0) {
-          await tx
+          const [completedStatus] = await tx
             .update(trustWmbScanStatus)
             .set({
               status: "completed",
               completedAt: new Date(),
             })
-            .where(eq(trustWmbScanStatus.id, job.statusId));
+            .where(eq(trustWmbScanStatus.id, job.statusId))
+            .returning();
+          
+          return { scanCompleted: true, completedStatus };
         }
+        
+        return { scanCompleted: false };
       });
     },
 

@@ -2,25 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { CommList } from "@/components/worker/CommList";
-
-interface CommSmsDetails {
-  id: string;
-  commId: string;
-  to: string | null;
-  body: string | null;
-  data: Record<string, unknown> | null;
-}
-
-interface CommWithSms {
-  id: string;
-  medium: string;
-  contactId: string;
-  status: string;
-  sent: string | null;
-  received: string | null;
-  data: Record<string, unknown> | null;
-  smsDetails?: CommSmsDetails | null;
-}
+import { CommWithSms } from "@/lib/comm-types";
 
 function WorkerCommHistoryContent() {
   const { worker } = useWorkerLayout();

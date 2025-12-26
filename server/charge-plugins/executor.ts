@@ -1,6 +1,3 @@
-import { db } from "../db";
-import { chargePluginConfigs, ledgerEa, ledger } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
 import { logger } from "../logger";
 import { 
   TriggerType, 
@@ -9,7 +6,7 @@ import {
   LedgerNotification,
 } from "./types";
 import { getEnabledChargePluginsByTrigger } from "./registry";
-import { storage } from "../storage/database";
+import { storage } from "../storage";
 
 export interface PluginExecutionSummary {
   pluginId: string;
@@ -162,74 +159,20 @@ export async function executeChargePlugins(
 async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<void> {
   for (const transaction of transactions) {
     try {
-      // Find or create EA entry for this entity-account pair using a transaction to handle race conditions
-      const eaId = await db.transaction(async (tx) => {
-        // First, try to find existing EA entry
-        const [existingEa] = await tx
-          .select()
-          .from(ledgerEa)
-          .where(
-            and(
-              eq(ledgerEa.accountId, transaction.accountId),
-              eq(ledgerEa.entityType, transaction.entityType),
-              eq(ledgerEa.entityId, transaction.entityId)
-            )
-          )
-          .limit(1);
+      // Find or create EA entry for this entity-account pair using storage layer
+      const ea = await storage.ledger.ea.getOrCreate(
+        transaction.entityType,
+        transaction.entityId,
+        transaction.accountId
+      );
 
-        if (existingEa) {
-          return existingEa.id;
-        }
-
-        // Try to create new EA entry with conflict handling
-        const insertResult = await tx
-          .insert(ledgerEa)
-          .values({
-            accountId: transaction.accountId,
-            entityType: transaction.entityType,
-            entityId: transaction.entityId,
-          })
-          .onConflictDoNothing()
-          .returning();
-
-        if (insertResult.length > 0) {
-          logger.info("Created new ledger EA entry", {
-            service: "charge-plugin-executor",
-            eaId: insertResult[0].id,
-            accountId: transaction.accountId,
-            entityType: transaction.entityType,
-            entityId: transaction.entityId,
-          });
-          return insertResult[0].id;
-        }
-
-        // Conflict occurred, look up the existing entry
-        const [conflictedEa] = await tx
-          .select()
-          .from(ledgerEa)
-          .where(
-            and(
-              eq(ledgerEa.accountId, transaction.accountId),
-              eq(ledgerEa.entityType, transaction.entityType),
-              eq(ledgerEa.entityId, transaction.entityId)
-            )
-          )
-          .limit(1);
-
-        if (!conflictedEa) {
-          throw new Error("Failed to find or create EA entry after conflict");
-        }
-
-        return conflictedEa.id;
-      });
-
-      // Create ledger entry (outside the EA transaction)
+      // Create ledger entry
       await storage.ledger.entries.create({
         chargePlugin: transaction.chargePlugin,
         chargePluginKey: transaction.chargePluginKey,
         chargePluginConfigId: transaction.chargePluginConfigId,
         amount: transaction.amount,
-        eaId,
+        eaId: ea.id,
         referenceType: transaction.referenceType || "charge_plugin",
         referenceId: transaction.referenceId,
         date: transaction.transactionDate,
@@ -239,7 +182,7 @@ async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<v
 
       logger.info("Created ledger entry from charge plugin", {
         service: "charge-plugin-executor",
-        eaId,
+        eaId: ea.id,
         amount: transaction.amount,
         description: transaction.description,
       });
@@ -263,42 +206,5 @@ async function getEnabledConfigsForPlugin(
   pluginId: string,
   employerId: string | null
 ): Promise<any[]> {
-  const conditions = [
-    eq(chargePluginConfigs.pluginId, pluginId),
-    eq(chargePluginConfigs.enabled, true),
-  ];
-
-  // Get global config
-  const globalConfig = await db
-    .select()
-    .from(chargePluginConfigs)
-    .where(
-      and(
-        ...conditions,
-        eq(chargePluginConfigs.scope, "global")
-      )
-    )
-    .limit(1);
-
-  // If employer-specific, also get employer config (which overrides global)
-  if (employerId) {
-    const employerConfig = await db
-      .select()
-      .from(chargePluginConfigs)
-      .where(
-        and(
-          ...conditions,
-          eq(chargePluginConfigs.scope, "employer"),
-          eq(chargePluginConfigs.employerId, employerId)
-        )
-      )
-      .limit(1);
-
-    // Return employer config if exists, otherwise global
-    if (employerConfig.length > 0) {
-      return employerConfig;
-    }
-  }
-
-  return globalConfig;
+  return storage.chargePluginConfigs.getEnabledForPlugin(pluginId, employerId);
 }

@@ -1,7 +1,8 @@
 import { db } from "../db";
-import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, commPostal, commPostalOptin, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin, type CommEmail, type InsertCommEmail, type CommEmailOptin, type InsertCommEmailOptin, type CommPostal, type InsertCommPostal, type CommPostalOptin, type InsertCommPostalOptin } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, commPostal, commPostalOptin, commInapp, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin, type CommEmail, type InsertCommEmail, type CommEmailOptin, type InsertCommEmailOptin, type CommPostal, type InsertCommPostal, type CommPostalOptin, type InsertCommPostalOptin, type CommInapp, type InsertCommInapp } from "@shared/schema";
+import { eq, desc, and, SQL } from "drizzle-orm";
 import { phoneValidationService } from "../services/phone-validation";
+import { storageLogger } from "../logger";
 
 export interface CommWithSms extends Comm {
   smsDetails?: CommSms | null;
@@ -19,6 +20,7 @@ export interface CommWithDetails extends Comm {
   smsDetails?: CommSms | null;
   emailDetails?: CommEmail | null;
   postalDetails?: CommPostal | null;
+  inappDetails?: CommInapp | null;
 }
 
 export interface CommStorage {
@@ -108,15 +110,18 @@ export function createCommStorage(): CommStorage {
         comms.map(async (c) => {
           if (c.medium === 'sms') {
             const [smsDetails] = await db.select().from(commSms).where(eq(commSms.commId, c.id));
-            return { ...c, smsDetails: smsDetails || null, emailDetails: null, postalDetails: null };
+            return { ...c, smsDetails: smsDetails || null, emailDetails: null, postalDetails: null, inappDetails: null };
           } else if (c.medium === 'email') {
             const [emailDetails] = await db.select().from(commEmail).where(eq(commEmail.commId, c.id));
-            return { ...c, smsDetails: null, emailDetails: emailDetails || null, postalDetails: null };
+            return { ...c, smsDetails: null, emailDetails: emailDetails || null, postalDetails: null, inappDetails: null };
           } else if (c.medium === 'postal') {
             const [postalDetails] = await db.select().from(commPostal).where(eq(commPostal.commId, c.id));
-            return { ...c, smsDetails: null, emailDetails: null, postalDetails: postalDetails || null };
+            return { ...c, smsDetails: null, emailDetails: null, postalDetails: postalDetails || null, inappDetails: null };
+          } else if (c.medium === 'inapp') {
+            const [inappDetails] = await db.select().from(commInapp).where(eq(commInapp.commId, c.id));
+            return { ...c, smsDetails: null, emailDetails: null, postalDetails: null, inappDetails: inappDetails || null };
           }
-          return { ...c, smsDetails: null, emailDetails: null, postalDetails: null };
+          return { ...c, smsDetails: null, emailDetails: null, postalDetails: null, inappDetails: null };
         })
       );
       
@@ -129,16 +134,19 @@ export function createCommStorage(): CommStorage {
       
       if (c.medium === 'sms') {
         const [smsDetails] = await db.select().from(commSms).where(eq(commSms.commId, c.id));
-        return { ...c, smsDetails: smsDetails || null, emailDetails: null, postalDetails: null };
+        return { ...c, smsDetails: smsDetails || null, emailDetails: null, postalDetails: null, inappDetails: null };
       } else if (c.medium === 'email') {
         const [emailDetails] = await db.select().from(commEmail).where(eq(commEmail.commId, c.id));
-        return { ...c, smsDetails: null, emailDetails: emailDetails || null, postalDetails: null };
+        return { ...c, smsDetails: null, emailDetails: emailDetails || null, postalDetails: null, inappDetails: null };
       } else if (c.medium === 'postal') {
         const [postalDetails] = await db.select().from(commPostal).where(eq(commPostal.commId, c.id));
-        return { ...c, smsDetails: null, emailDetails: null, postalDetails: postalDetails || null };
+        return { ...c, smsDetails: null, emailDetails: null, postalDetails: postalDetails || null, inappDetails: null };
+      } else if (c.medium === 'inapp') {
+        const [inappDetails] = await db.select().from(commInapp).where(eq(commInapp.commId, c.id));
+        return { ...c, smsDetails: null, emailDetails: null, postalDetails: null, inappDetails: inappDetails || null };
       }
       
-      return { ...c, smsDetails: null, emailDetails: null, postalDetails: null };
+      return { ...c, smsDetails: null, emailDetails: null, postalDetails: null, inappDetails: null };
     },
 
     async createComm(data: InsertComm): Promise<Comm> {
@@ -656,6 +664,81 @@ export function createCommPostalOptinStorage(): CommPostalOptinStorage {
 
     async deletePostalOptin(id: string): Promise<boolean> {
       const result = await db.delete(commPostalOptin).where(eq(commPostalOptin.id, id)).returning();
+      return result.length > 0;
+    },
+  };
+}
+
+// Communications - In-App
+
+export interface CommInappWithComm extends CommInapp {
+  comm: Comm;
+}
+
+export interface CommInappStorage {
+  getCommInapp(id: string): Promise<CommInapp | undefined>;
+  getCommInappByComm(commId: string): Promise<CommInapp | undefined>;
+  getCommInappsByUser(userId: string, status?: string): Promise<CommInappWithComm[]>;
+  getUnreadCountByUser(userId: string): Promise<number>;
+  createCommInapp(data: InsertCommInapp): Promise<CommInapp>;
+  updateCommInapp(id: string, data: Partial<InsertCommInapp>): Promise<CommInapp | undefined>;
+  deleteCommInapp(id: string): Promise<boolean>;
+}
+
+export function createCommInappStorage(): CommInappStorage {
+  return {
+    async getCommInapp(id: string): Promise<CommInapp | undefined> {
+      const [result] = await db.select().from(commInapp).where(eq(commInapp.id, id));
+      return result || undefined;
+    },
+
+    async getCommInappByComm(commId: string): Promise<CommInapp | undefined> {
+      const [result] = await db.select().from(commInapp).where(eq(commInapp.commId, commId));
+      return result || undefined;
+    },
+
+    async getCommInappsByUser(userId: string, status?: string): Promise<CommInappWithComm[]> {
+      const conditions: SQL[] = [eq(commInapp.userId, userId)];
+      if (status) {
+        conditions.push(eq(commInapp.status, status));
+      }
+
+      const rows = await db
+        .select({
+          inapp: commInapp,
+          comm: comm,
+        })
+        .from(commInapp)
+        .innerJoin(comm, eq(commInapp.commId, comm.id))
+        .where(and(...conditions))
+        .orderBy(desc(commInapp.createdAt));
+
+      return rows.map((row) => ({
+        ...row.inapp,
+        comm: row.comm,
+      }));
+    },
+
+    async getUnreadCountByUser(userId: string): Promise<number> {
+      const result = await db
+        .select()
+        .from(commInapp)
+        .where(and(eq(commInapp.userId, userId), eq(commInapp.status, "pending")));
+      return result.length;
+    },
+
+    async createCommInapp(data: InsertCommInapp): Promise<CommInapp> {
+      const [result] = await db.insert(commInapp).values(data).returning();
+      return result;
+    },
+
+    async updateCommInapp(id: string, data: Partial<InsertCommInapp>): Promise<CommInapp | undefined> {
+      const [result] = await db.update(commInapp).set(data).where(eq(commInapp.id, id)).returning();
+      return result || undefined;
+    },
+
+    async deleteCommInapp(id: string): Promise<boolean> {
+      const result = await db.delete(commInapp).where(eq(commInapp.id, id)).returning();
       return result.length > 0;
     },
   };

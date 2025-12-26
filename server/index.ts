@@ -9,10 +9,15 @@ import { initAccessControl } from "./accessControl";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
 import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler } from "./cron";
+import { loadComponentCache } from "./services/component-cache";
+import { runMigrations } from "../scripts/migrate";
+import { initializeWebSocket } from "./services/websocket";
+import { getSession } from "./replitAuth";
 
 // Import charge plugins module to trigger registration
 // Note: Individual plugins are registered in ./charge-plugins/index.ts
 import "./charge-plugins";
+import { registerChargePluginListeners } from "./charge-plugins";
 
 // Import eligibility plugins module to trigger registration
 // Note: Individual plugins are registered in ./eligibility-plugins/index.ts
@@ -24,6 +29,9 @@ import "./services/providers";
 
 // Import and register flood events
 import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
+
+// Import log notifier module
+import { initLogNotifier } from "./modules/log-notifier";
 
 // Helper function to redact sensitive data from responses before logging
 function redactSensitiveData(data: any): any {
@@ -129,6 +137,33 @@ app.use((req, res, next) => {
   await addressValidationService.getConfig();
   logger.info("Address validation service initialized", { source: "startup" });
 
+  // Run database migrations
+  const migrationResult = await runMigrations();
+  if (migrationResult.ran > 0) {
+    logger.info("Database migrations completed", { 
+      source: "startup",
+      ran: migrationResult.ran,
+      skipped: migrationResult.skipped
+    });
+  } else {
+    logger.debug("No pending migrations", { source: "startup" });
+  }
+  if (migrationResult.errors.length > 0) {
+    logger.error("Migration errors occurred", {
+      source: "startup",
+      errors: migrationResult.errors
+    });
+  }
+
+  // Load component cache
+  await loadComponentCache();
+  logger.info("Component cache initialized", { source: "startup" });
+
+  // Register charge plugin event listeners
+  // Note: Charge plugins are currently called directly from storage for backwards compatibility.
+  // The listener is available for future use when we fully migrate to event-driven execution.
+  // registerChargePluginListeners();
+
   // Register cron job handlers
   registerCronJob('delete-expired-reports', deleteExpiredReportsHandler);
   registerCronJob('delete-old-cron-logs', deleteOldCronLogsHandler);
@@ -144,6 +179,9 @@ app.use((req, res, next) => {
   await loadFloodConfigFromVariables();
   logger.info("Flood configs loaded from variables", { source: "startup" });
 
+  // Initialize log notifier (listens to LOG events for conditional in-app alerts)
+  initLogNotifier();
+
   // Bootstrap default cron jobs
   await bootstrapCronJobs();
   logger.info("Default cron jobs bootstrapped", { source: "startup" });
@@ -156,6 +194,11 @@ app.use((req, res, next) => {
   app.use(captureRequestContext);
 
   const server = await registerRoutes(app);
+
+  // Initialize WebSocket server for real-time notifications
+  const sessionMiddleware = getSession();
+  initializeWebSocket(server, sessionMiddleware);
+  logger.info("WebSocket server initialized", { source: "startup" });
 
   // Start cron scheduler after routes are registered
   try {

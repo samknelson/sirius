@@ -8,13 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { Briefcase, Info, Save } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
-
-interface Role {
-  id: string;
-  name: string;
-  description: string | null;
-  sequence: number;
-}
+import { Role } from "@/lib/entity-types";
 
 interface EmployerUserSettingsResponse {
   required: string[];

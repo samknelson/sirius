@@ -1,4 +1,4 @@
-import { PaymentLayout } from "@/components/layouts/PaymentLayout";
+import { PaymentLayout, usePaymentLayout } from "@/components/layouts/PaymentLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -6,13 +6,17 @@ import { useParams } from "wouter";
 import type { LedgerPayment } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LedgerTransactionsView } from "@/components/ledger/LedgerTransactionsView";
+import { formatAmount } from "@shared/currency";
 
 function PaymentViewContent() {
   const { id } = useParams<{ id: string }>();
+  const { payment: layoutPayment, paymentType } = usePaymentLayout();
 
   const { data: payment, isLoading } = useQuery<LedgerPayment>({
     queryKey: ["/api/ledger/payments", id],
   });
+  
+  const currencyCode = paymentType?.currencyCode || 'USD';
 
   const getStatusBadgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
@@ -74,7 +78,7 @@ function PaymentViewContent() {
             <div>
               <label className="text-sm font-medium text-muted-foreground">Amount</label>
               <p className="mt-1 font-mono text-lg font-semibold" data-testid="text-amount">
-                ${parseFloat(payment.amount).toFixed(2)}
+                {formatAmount(parseFloat(payment.amount), currencyCode)}
               </p>
             </div>
 
@@ -150,6 +154,7 @@ function PaymentViewContent() {
         showEntityName={true}
         showEaAccount={true}
         showEaLink={true}
+        currencyCode={currencyCode}
       />
     </div>
   );

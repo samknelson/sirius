@@ -30,76 +30,8 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
-
-interface CommSmsDetails {
-  id: string;
-  commId: string;
-  to: string | null;
-  body: string | null;
-  data: Record<string, unknown> | null;
-}
-
-interface CommEmailDetails {
-  id: string;
-  commId: string;
-  to: string | null;
-  toName: string | null;
-  from: string | null;
-  fromName: string | null;
-  replyTo: string | null;
-  subject: string | null;
-  bodyText: string | null;
-  bodyHtml: string | null;
-  data: Record<string, unknown> | null;
-}
-
-interface CommPostalDetails {
-  id: string;
-  commId: string;
-  toName: string | null;
-  toAddressLine1: string | null;
-  toAddressLine2: string | null;
-  toCity: string | null;
-  toState: string | null;
-  toZip: string | null;
-  toCountry: string | null;
-  fromName: string | null;
-  fromAddressLine1: string | null;
-  fromAddressLine2: string | null;
-  fromCity: string | null;
-  fromState: string | null;
-  fromZip: string | null;
-  fromCountry: string | null;
-  description: string | null;
-  mailType: string | null;
-  data: Record<string, unknown> | null;
-}
-
-interface CommWithDetails {
-  id: string;
-  medium: string;
-  contactId: string;
-  status: string;
-  sent: string | null;
-  received: string | null;
-  data: Record<string, unknown> | null;
-  smsDetails?: CommSmsDetails | null;
-  emailDetails?: CommEmailDetails | null;
-  postalDetails?: CommPostalDetails | null;
-}
-
-interface WinstonLog {
-  id: number;
-  level: string | null;
-  message: string | null;
-  timestamp: string | null;
-  source: string | null;
-  meta: Record<string, unknown> | null;
-  module: string | null;
-  operation: string | null;
-  entityId: string | null;
-  description: string | null;
-}
+import { CommWithDetails } from "@/lib/comm-types";
+import { WinstonLog } from "@/lib/system-types";
 
 export default function CommDetail() {
   const { commId } = useParams<{ commId: string }>();

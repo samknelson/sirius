@@ -13,6 +13,7 @@ import { z } from "zod";
 import { logger } from "../../logger";
 import { storage } from "../../storage";
 import type { Ledger, ChargePluginConfig } from "@shared/schema";
+import { getCurrency } from "@shared/currency";
 
 const paymentSimpleAllocationSettingsSchema = z.object({
   accountIds: z.array(z.string().uuid("Account ID must be a valid UUID")).min(1, "At least one account is required"),
@@ -43,7 +44,9 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
 
   private computeExpectedEntry(
     paymentContext: PaymentSavedContext,
-    configId: string
+    configId: string,
+    currencyLabel: string,
+    paymentTypeName: string
   ): ExpectedEntry | null {
     if (paymentContext.status !== "cleared") {
       return null;
@@ -53,9 +56,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
     const allocatedAmount = -paymentAmount;
     const transactionDate = paymentContext.dateCleared || new Date();
     
-    const description = paymentContext.memo 
-      ? `Payment allocation: ${paymentContext.memo}`
-      : "Payment allocation";
+    const description = `${currencyLabel} Adjustment: ${paymentTypeName}`;
 
     return {
       chargePluginKey: `${configId}:${paymentContext.paymentId}`,
@@ -120,7 +121,14 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
         };
       }
 
-      const expectedEntry = this.computeExpectedEntry(paymentContext, config.id);
+      // Look up payment type and currency for description
+      const paymentType = await storage.options.ledgerPaymentTypes.getLedgerPaymentType(paymentContext.paymentTypeId);
+      const paymentTypeName = paymentType?.name || "Unknown";
+      const currencyCode = paymentType?.currencyCode || "USD";
+      const currency = getCurrency(currencyCode);
+      const currencyLabel = currency?.label || currencyCode;
+
+      const expectedEntry = this.computeExpectedEntry(paymentContext, config.id, currencyLabel, paymentTypeName);
       
       // Find ALL existing entries for this payment + config combination
       // This catches entries with any chargePluginKey format (including legacy formats)
@@ -306,9 +314,17 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
         entityId: ea.entityId,
         dateCleared: payment.dateCleared,
         memo: payment.memo,
+        paymentTypeId: payment.paymentType,
       };
 
-      const expectedEntry = this.computeExpectedEntry(paymentContext, config.id);
+      // Look up payment type and currency for description
+      const verifyPaymentType = await storage.options.ledgerPaymentTypes.getLedgerPaymentType(payment.paymentType);
+      const verifyPaymentTypeName = verifyPaymentType?.name || "Unknown";
+      const verifyCurrencyCode = verifyPaymentType?.currencyCode || "USD";
+      const verifyCurrency = getCurrency(verifyCurrencyCode);
+      const verifyCurrencyLabel = verifyCurrency?.label || verifyCurrencyCode;
+
+      const expectedEntry = this.computeExpectedEntry(paymentContext, config.id, verifyCurrencyLabel, verifyPaymentTypeName);
 
       if (!expectedEntry) {
         return {

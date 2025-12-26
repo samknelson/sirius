@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Save } from "lucide-react";
@@ -72,6 +73,19 @@ function AccountEditContent() {
                 className="w-full"
                 data-testid="input-edit-account-name"
               />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-foreground">
+                Currency
+              </Label>
+              <div>
+                <Badge variant="outline" data-testid="text-account-currency">
+                  {account.currencyCode}
+                </Badge>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Currency cannot be changed after account creation
+                </p>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-account-description" className="text-sm font-medium text-foreground">

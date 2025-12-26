@@ -1,6 +1,10 @@
 import type { IStorage } from "../storage";
+import { DatabaseStorage } from "../storage/database";
 import { runBenefitsScan, type BenefitsScanResult } from "./benefits-scan";
 import { logger } from "../logger";
+import { sendStaffAlerts } from "./alert-dispatcher";
+import type { StaffAlertMessagePayload } from "@shared/staffAlertMessages";
+import type { TrustWmbScanStatus } from "@shared/schema";
 
 export interface QueueProcessorOptions {
   maxConcurrent?: number;
@@ -40,7 +44,7 @@ export async function processNextQueueJob(
       "live"
     );
 
-    await storage.wmbScanQueue.recordJobResult(
+    const jobResultInfo = await storage.wmbScanQueue.recordJobResult(
       job.id,
       true,
       {
@@ -66,6 +70,10 @@ export async function processNextQueueJob(
       summary: result.summary,
     });
 
+    if (jobResultInfo.scanCompleted && jobResultInfo.completedStatus) {
+      setImmediate(() => sendScanCompletionAlerts(jobResultInfo.completedStatus!));
+    }
+
     return { processed: true, workerId: job.workerId, success: true };
   } catch (error: any) {
     logger.error(`Failed WMB scan job for worker ${job.workerId}`, {
@@ -74,12 +82,16 @@ export async function processNextQueueJob(
       error: error.message,
     });
 
-    await storage.wmbScanQueue.recordJobResult(
+    const jobResultInfo = await storage.wmbScanQueue.recordJobResult(
       job.id,
       false,
       null,
       error.message
     );
+
+    if (jobResultInfo.scanCompleted && jobResultInfo.completedStatus) {
+      setImmediate(() => sendScanCompletionAlerts(jobResultInfo.completedStatus!));
+    }
 
     return { processed: true, workerId: job.workerId, success: false };
   }
@@ -146,4 +158,90 @@ export async function invalidateWorkerScans(
   }
 
   return count;
+}
+
+async function sendScanCompletionAlerts(
+  completedStatus: TrustWmbScanStatus
+): Promise<void> {
+  const storage = new DatabaseStorage();
+  try {
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    const monthName = monthNames[completedStatus.month - 1] || `Month ${completedStatus.month}`;
+    const periodLabel = `${monthName} ${completedStatus.year}`;
+
+    const totalProcessed = (completedStatus.processedSuccess || 0) + (completedStatus.processedFailed || 0);
+    const successCount = completedStatus.processedSuccess || 0;
+    const failedCount = completedStatus.processedFailed || 0;
+    const benefitsStarted = completedStatus.benefitsStarted || 0;
+    const benefitsContinued = completedStatus.benefitsContinued || 0;
+    const benefitsTerminated = completedStatus.benefitsTerminated || 0;
+
+    const payload: StaffAlertMessagePayload = {
+      sms: {
+        text: `WMB Scan for ${periodLabel} completed. ${totalProcessed} workers processed (${successCount} success, ${failedCount} failed). Benefits: ${benefitsStarted} started, ${benefitsContinued} continued, ${benefitsTerminated} terminated.`,
+      },
+      email: {
+        subject: `WMB Scan Completed: ${periodLabel}`,
+        bodyText: `The Worker Monthly Benefits scan for ${periodLabel} has completed.\n\nSummary:\n- Total workers processed: ${totalProcessed}\n- Successful: ${successCount}\n- Failed: ${failedCount}\n\nBenefit Changes:\n- Benefits Started: ${benefitsStarted}\n- Benefits Continued: ${benefitsContinued}\n- Benefits Terminated: ${benefitsTerminated}\n\nYou can view the full report in the WMB Scan Queue page.`,
+        bodyHtml: `
+          <h2>WMB Scan Completed: ${periodLabel}</h2>
+          <p>The Worker Monthly Benefits scan for ${periodLabel} has completed.</p>
+          <h3>Summary</h3>
+          <ul>
+            <li><strong>Total workers processed:</strong> ${totalProcessed}</li>
+            <li><strong>Successful:</strong> ${successCount}</li>
+            <li><strong>Failed:</strong> ${failedCount}</li>
+          </ul>
+          <h3>Benefit Changes</h3>
+          <ul>
+            <li><strong>Benefits Started:</strong> ${benefitsStarted}</li>
+            <li><strong>Benefits Continued:</strong> ${benefitsContinued}</li>
+            <li><strong>Benefits Terminated:</strong> ${benefitsTerminated}</li>
+          </ul>
+          <p>You can view the full report in the WMB Scan Queue page.</p>
+        `,
+      },
+      inapp: {
+        title: `WMB Scan Completed: ${periodLabel}`,
+        body: `Processed ${totalProcessed} workers (${successCount} success, ${failedCount} failed). Benefits: ${benefitsStarted} started, ${benefitsContinued} continued, ${benefitsTerminated} terminated.`,
+        linkUrl: `/admin/wmb-scan/${completedStatus.id}`,
+        linkLabel: "View Scan Details",
+      },
+    };
+
+    const result = await sendStaffAlerts("trust_wmb_scan", payload, storage);
+
+    if (result.deliveryResults.some(r => r.status === 'failed')) {
+      const failures = result.deliveryResults.filter(r => r.status === 'failed');
+      logger.warn(`Some scan completion alerts failed`, {
+        service: "wmb-scan-queue",
+        month: completedStatus.month,
+        year: completedStatus.year,
+        failures: failures.map(f => ({
+          userId: f.userId,
+          medium: f.medium,
+          error: f.error,
+          errorCode: f.errorCode,
+        })),
+      });
+    }
+
+    logger.info(`Sent scan completion alerts for ${periodLabel}`, {
+      service: "wmb-scan-queue",
+      month: completedStatus.month,
+      year: completedStatus.year,
+      totalRecipients: result.totalRecipients,
+      summary: result.summary,
+    });
+  } catch (error: any) {
+    logger.error("Failed to send scan completion alerts", {
+      service: "wmb-scan-queue",
+      month: completedStatus.month,
+      year: completedStatus.year,
+      error: error.message,
+    });
+  }
 }

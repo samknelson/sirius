@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, createContext, useContext } from "react";
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ChevronRight, FileText } from "lucide-react";
@@ -22,7 +22,29 @@ type LedgerAccount = {
   id: string;
   name: string;
   description: string | null;
+  currencyCode: string;
+  data: {
+    invoicesEnabled?: boolean;
+    invoiceHeader?: string;
+    invoiceFooter?: string;
+  } | null;
 };
+
+interface EALayoutContextValue {
+  ea: LedgerEA | undefined;
+  account: LedgerAccount | undefined;
+  currencyCode: string;
+}
+
+const EALayoutContext = createContext<EALayoutContextValue | null>(null);
+
+export function useEALayout() {
+  const context = useContext(EALayoutContext);
+  if (!context) {
+    throw new Error("useEALayout must be used within EALayout");
+  }
+  return context;
+}
 
 export function EALayout({ activeTab, children }: EALayoutProps) {
   const { id } = useParams<{ id: string }>();
@@ -32,7 +54,8 @@ export function EALayout({ activeTab, children }: EALayoutProps) {
   });
 
   const { data: account } = useQuery<LedgerAccount>({
-    queryKey: ['/api/ledger/accounts', ea?.accountId],
+    queryKey: [`/api/ledger/accounts/${ea?.accountId}`],
+    staleTime: 0, // Ensure fresh data for currency code
     enabled: !!ea?.accountId,
   });
 
@@ -144,17 +167,19 @@ export function EALayout({ activeTab, children }: EALayoutProps) {
           >
             View
           </Link>
-          <Link
-            href={`/ea/${id}/invoices`}
-            className={`pb-3 border-b-2 transition-colors ${
-              activeTab === "invoices"
-                ? "border-primary text-primary font-medium"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-            data-testid="tab-invoices"
-          >
-            Invoices
-          </Link>
+          {account?.data?.invoicesEnabled !== false && (
+            <Link
+              href={`/ea/${id}/invoices`}
+              className={`pb-3 border-b-2 transition-colors ${
+                activeTab === "invoices"
+                  ? "border-primary text-primary font-medium"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+              data-testid="tab-invoices"
+            >
+              Invoices
+            </Link>
+          )}
           <Link
             href={`/ea/${id}/payments`}
             className={`pb-3 border-b-2 transition-colors ${
@@ -164,7 +189,7 @@ export function EALayout({ activeTab, children }: EALayoutProps) {
             }`}
             data-testid="tab-payments"
           >
-            Payments
+            Payments and Adjustments
           </Link>
           <Link
             href={`/ea/${id}/transactions`}
@@ -180,7 +205,9 @@ export function EALayout({ activeTab, children }: EALayoutProps) {
         </nav>
       </div>
 
-      {children}
+      <EALayoutContext.Provider value={{ ea, account, currencyCode: account?.currencyCode || "USD" }}>
+        {children}
+      </EALayoutContext.Provider>
     </div>
   );
 }
