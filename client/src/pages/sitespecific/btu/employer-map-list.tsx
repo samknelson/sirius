@@ -244,7 +244,7 @@ export default function BtuEmployerMapListPage() {
           record.jobTitle = value || null;
         } else if (normalizedHeader === "employername") {
           record.employerName = value || null;
-        } else if (normalizedHeader === "bargainingunit") {
+        } else if (normalizedHeader === "bargainingunit" || normalizedHeader === "bargaining" || normalizedHeader === "bu" || normalizedHeader === "unit") {
           record.bargainingUnitName = value || null;
         }
       });
