@@ -334,7 +334,11 @@ export class BtuWorkerImportWizard extends FeedWizard {
             throw new Error(`No employer mapping found for Dept: ${deptId}, Location: ${locationId}, Job: ${jobCode}`);
           }
 
-          processedEmployerIds.add(mappingResult.employerId);
+          // Track both primary and secondary employer IDs for termination scoping
+          processedEmployerIds.add(mappingResult.primaryEmployer.employerId);
+          if (mappingResult.secondaryEmployer) {
+            processedEmployerIds.add(mappingResult.secondaryEmployer.employerId);
+          }
 
           const existingWorker = await btuStorage.findWorkerByBpsEmployeeId(bpsEmployeeId);
 
@@ -347,12 +351,23 @@ export class BtuWorkerImportWizard extends FeedWizard {
               phone: row.phone?.toString().trim(),
             });
 
+            // Create primary employment record
             await btuStorage.upsertEmploymentRecord(existingWorker.id, {
-              employerId: mappingResult.employerId,
-              isPrimary: !mappingResult.isSecondary,
+              employerId: mappingResult.primaryEmployer.employerId,
+              isPrimary: true,
               asOfDate,
-              bargainingUnitId: mappingResult.bargainingUnitId,
+              bargainingUnitId: mappingResult.bargainingUnitId || undefined,
             });
+
+            // Create secondary employment record if secondary employer exists
+            if (mappingResult.secondaryEmployer) {
+              await btuStorage.upsertEmploymentRecord(existingWorker.id, {
+                employerId: mappingResult.secondaryEmployer.employerId,
+                isPrimary: false,
+                asOfDate,
+                bargainingUnitId: mappingResult.bargainingUnitId || undefined,
+              });
+            }
 
             updatedCount++;
             rowResults.push({
@@ -373,15 +388,26 @@ export class BtuWorkerImportWizard extends FeedWizard {
               city: row.city?.toString().trim(),
               state: row.state?.toString().trim(),
               zip: row.zip?.toString().trim(),
-              bargainingUnitId: mappingResult.bargainingUnitId,
+              bargainingUnitId: mappingResult.bargainingUnitId || undefined,
             });
 
+            // Create primary employment record
             await btuStorage.upsertEmploymentRecord(newWorker.id, {
-              employerId: mappingResult.employerId,
-              isPrimary: !mappingResult.isSecondary,
+              employerId: mappingResult.primaryEmployer.employerId,
+              isPrimary: true,
               asOfDate,
-              bargainingUnitId: mappingResult.bargainingUnitId,
+              bargainingUnitId: mappingResult.bargainingUnitId || undefined,
             });
+
+            // Create secondary employment record if secondary employer exists
+            if (mappingResult.secondaryEmployer) {
+              await btuStorage.upsertEmploymentRecord(newWorker.id, {
+                employerId: mappingResult.secondaryEmployer.employerId,
+                isPrimary: false,
+                asOfDate,
+                bargainingUnitId: mappingResult.bargainingUnitId || undefined,
+              });
+            }
 
             createdCount++;
             rowResults.push({

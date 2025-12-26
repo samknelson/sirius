@@ -19,12 +19,15 @@ import { storage } from "./index";
 
 const BPS_EMPLOYEE_ID_TYPE_NAME = "BPS Employee ID";
 
-export interface EmployerMappingResult {
+export interface EmployerInfo {
   employerId: string;
   employerName: string;
-  bargainingUnitId: string;
-  bargainingUnitName: string;
-  isSecondary: boolean;
+}
+
+export interface EmployerMappingResult {
+  primaryEmployer: EmployerInfo;
+  secondaryEmployer: EmployerInfo | null;
+  bargainingUnitId: string | null;
 }
 
 export interface BtuWorkerImportStorage {
@@ -123,30 +126,42 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
       
       if (!mapping) return null;
       
-      const [employer] = await db
+      // Look up primary employer by name
+      const [primaryEmployer] = await db
         .select()
         .from(employers)
-        .where(eq(employers.name, mapping.employerName));
+        .where(eq(employers.name, mapping.employerName || ''));
       
-      if (!employer) {
-        console.warn(`Employer not found for name: ${mapping.employerName}`);
+      if (!primaryEmployer) {
+        console.warn(`Primary employer not found for name: ${mapping.employerName}`);
         return null;
       }
       
-      const [unit] = await db
-        .select()
-        .from(bargainingUnits)
-        .where(eq(bargainingUnits.name, mapping.unionCode || 'Unknown'));
-      
-      const bargainingUnitId = unit?.id || '';
-      const bargainingUnitName = unit?.name || mapping.unionCode || 'Unknown';
+      // Look up secondary employer if specified
+      let secondaryEmployer: EmployerInfo | null = null;
+      if (mapping.secondaryEmployerName) {
+        const [secEmp] = await db
+          .select()
+          .from(employers)
+          .where(eq(employers.name, mapping.secondaryEmployerName));
+        
+        if (secEmp) {
+          secondaryEmployer = {
+            employerId: secEmp.id,
+            employerName: secEmp.name,
+          };
+        } else {
+          console.warn(`Secondary employer not found for name: ${mapping.secondaryEmployerName}`);
+        }
+      }
       
       return {
-        employerId: employer.id,
-        employerName: employer.name,
-        bargainingUnitId,
-        bargainingUnitName,
-        isSecondary: mapping.secondary === true,
+        primaryEmployer: {
+          employerId: primaryEmployer.id,
+          employerName: primaryEmployer.name,
+        },
+        secondaryEmployer,
+        bargainingUnitId: mapping.bargainingUnitId || null,
       };
     },
 
