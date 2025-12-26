@@ -643,14 +643,17 @@ export default function BtuEmployerMapListPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Bargaining Unit</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select 
+                        onValueChange={(val) => field.onChange(val === "__none__" ? null : val)} 
+                        value={field.value || "__none__"}
+                      >
                         <FormControl>
                           <SelectTrigger data-testid="select-bargaining-unit">
                             <SelectValue placeholder="Select a bargaining unit" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">None</SelectItem>
+                          <SelectItem value="__none__">None</SelectItem>
                           {bargainingUnits.map((unit) => (
                             <SelectItem key={unit.id} value={unit.id}>
                               {unit.code} - {unit.name}
