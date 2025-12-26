@@ -55,6 +55,7 @@ import { registerEsigsRoutes } from "./modules/esigs";
 import { registerSessionRoutes } from "./modules/sessions";
 import { registerFloodEventRoutes } from "./modules/flood-events";
 import { registerEventsRoutes } from "./modules/events";
+import { registerDispatchJobsRoutes } from "./modules/dispatch-jobs";
 import { registerWorkerStewardAssignmentRoutes } from "./modules/worker-steward-assignments";
 import { registerBtuCsgRoutes } from "./modules/sitespecific-btu-csg";
 import { registerTerminologyRoutes } from "./modules/terminology";
@@ -965,6 +966,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register events routes
   registerEventsRoutes(app, requireAuth, requirePermission);
+
+  // Register dispatch jobs routes
+  registerDispatchJobsRoutes(app, requireAuth, requirePermission);
 
   // Register site-specific routes
   registerBtuCsgRoutes(app, requireAuth, requirePermission);

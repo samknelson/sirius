@@ -30,6 +30,7 @@ import { type EsigStorage, createEsigStorage, esigLoggingConfig } from "./esigs"
 import { type SessionStorage, createSessionStorage, sessionLoggingConfig } from "./sessions";
 import { type FloodStorage, createFloodStorage } from "./flood";
 import { type EventStorage, createEventStorage, eventLoggingConfig, type EventOccurrenceStorage, createEventOccurrenceStorage, eventOccurrenceLoggingConfig, type EventParticipantStorage, createEventParticipantStorage, eventParticipantLoggingConfig } from "./events";
+import { type DispatchJobStorage, createDispatchJobStorage, dispatchJobLoggingConfig } from "./dispatch-jobs";
 import { type WorkerStewardAssignmentStorage, createWorkerStewardAssignmentStorage, workerStewardAssignmentLoggingConfig } from "./worker-steward-assignments";
 import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./sitespecific-btu-csg";
 import { type BtuEmployerMapStorage, createBtuEmployerMapStorage, btuEmployerMapLoggingConfig } from "./sitespecific-btu-employer-map";
@@ -74,6 +75,7 @@ export interface IStorage {
   events: EventStorage;
   eventOccurrences: EventOccurrenceStorage;
   eventParticipants: EventParticipantStorage;
+  dispatchJobs: DispatchJobStorage;
   workerStewardAssignments: WorkerStewardAssignmentStorage;
   btuCsg: BtuCsgStorage;
   btuEmployerMap: BtuEmployerMapStorage;
@@ -115,6 +117,7 @@ export class DatabaseStorage implements IStorage {
   events: EventStorage;
   eventOccurrences: EventOccurrenceStorage;
   eventParticipants: EventParticipantStorage;
+  dispatchJobs: DispatchJobStorage;
   workerStewardAssignments: WorkerStewardAssignmentStorage;
   btuCsg: BtuCsgStorage;
   btuEmployerMap: BtuEmployerMapStorage;
@@ -219,6 +222,7 @@ export class DatabaseStorage implements IStorage {
     this.events = withStorageLogging(createEventStorage(), eventLoggingConfig);
     this.eventOccurrences = withStorageLogging(createEventOccurrenceStorage(), eventOccurrenceLoggingConfig);
     this.eventParticipants = withStorageLogging(createEventParticipantStorage(), eventParticipantLoggingConfig);
+    this.dispatchJobs = withStorageLogging(createDispatchJobStorage(), dispatchJobLoggingConfig);
     this.workerStewardAssignments = withStorageLogging(createWorkerStewardAssignmentStorage(), workerStewardAssignmentLoggingConfig);
     this.btuCsg = withStorageLogging(createBtuCsgStorage(), btuCsgLoggingConfig);
     this.btuEmployerMap = withStorageLogging(createBtuEmployerMapStorage(), btuEmployerMapLoggingConfig);
