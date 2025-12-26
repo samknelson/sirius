@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, 
   CreditCard, Activity, Wallet, Settings, Shield, Key, FileText, 
-  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, type LucideIcon
+  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, type LucideIcon
 } from "lucide-react";
 
 export interface NavItem {
@@ -114,6 +114,16 @@ export const configSections: NavSection[] = [
     icon: Calendar,
     items: [
       { path: "/config/event-types", label: "Event Types", icon: List, testId: "nav-config-event-types", permission: "admin", requiresComponent: "event" },
+    ],
+  },
+  {
+    id: "btu",
+    title: "BTU",
+    description: "Boston Teachers Union configuration",
+    icon: GraduationCap,
+    items: [
+      { path: "/sitespecific/btu/csgs", label: "CSG Management", icon: Users, testId: "nav-btu-csgs", permission: "admin", requiresComponent: "sitespecific.btu" },
+      { path: "/sitespecific/btu/employer-map", label: "Employer Map", icon: Building2, testId: "nav-btu-employer-map", permission: "admin", requiresComponent: "sitespecific.btu" },
     ],
   },
   {
