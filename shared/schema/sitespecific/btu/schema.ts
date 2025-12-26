@@ -44,6 +44,7 @@ export const sitespecificBtuEmployerMap = pgTable("sitespecific_btu_employer_map
   jobCode: varchar("job_code"),
   jobTitle: varchar("job_title"),
   employerName: varchar("employer_name"),
+  secondaryEmployerName: varchar("secondary_employer_name"),
   bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),
 });
 

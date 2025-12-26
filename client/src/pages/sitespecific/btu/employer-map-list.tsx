@@ -24,6 +24,7 @@ interface BtuEmployerMap {
   jobCode: string | null;
   jobTitle: string | null;
   employerName: string | null;
+  secondaryEmployerName: string | null;
   bargainingUnitId: string | null;
 }
 
@@ -47,6 +48,7 @@ interface FormValues {
   jobCode: string;
   jobTitle: string;
   employerName: string;
+  secondaryEmployerName: string;
   bargainingUnitId: string;
 }
 
@@ -94,6 +96,7 @@ export default function BtuEmployerMapListPage() {
       jobCode: "",
       jobTitle: "",
       employerName: "",
+      secondaryEmployerName: "",
       bargainingUnitId: "",
     },
   });
@@ -242,8 +245,10 @@ export default function BtuEmployerMapListPage() {
           record.jobCode = value || null;
         } else if (normalizedHeader === "jobtitle") {
           record.jobTitle = value || null;
-        } else if (normalizedHeader === "employername") {
+        } else if (normalizedHeader === "employername" || normalizedHeader === "employer") {
           record.employerName = value || null;
+        } else if (normalizedHeader === "secondaryemployername" || normalizedHeader === "secondaryemployer" || normalizedHeader === "secondary") {
+          record.secondaryEmployerName = value || null;
         } else if (normalizedHeader === "bargainingunit" || normalizedHeader === "bargaining" || normalizedHeader === "bu" || normalizedHeader === "unit") {
           record.bargainingUnitName = value || null;
         }
@@ -358,6 +363,7 @@ export default function BtuEmployerMapListPage() {
       "Job Code",
       "Job Title",
       "Employer Name",
+      "Secondary Employer Name",
       "Bargaining Unit",
     ];
 
@@ -370,6 +376,7 @@ export default function BtuEmployerMapListPage() {
       escapeCSV(record.jobCode),
       escapeCSV(record.jobTitle),
       escapeCSV(record.employerName),
+      escapeCSV(record.secondaryEmployerName),
       escapeCSV(bargainingUnits.find(bu => bu.id === record.bargainingUnitId)?.siriusId),
     ]);
 
@@ -410,6 +417,7 @@ export default function BtuEmployerMapListPage() {
       jobCode: "",
       jobTitle: "",
       employerName: "",
+      secondaryEmployerName: "",
       bargainingUnitId: "",
     });
     setIsAddDialogOpen(true);
@@ -424,6 +432,7 @@ export default function BtuEmployerMapListPage() {
       jobCode: record.jobCode || "",
       jobTitle: record.jobTitle || "",
       employerName: record.employerName || "",
+      secondaryEmployerName: record.secondaryEmployerName || "",
       bargainingUnitId: record.bargainingUnitId || "",
     });
     setEditRecord(record);
@@ -438,6 +447,7 @@ export default function BtuEmployerMapListPage() {
       jobCode: data.jobCode?.trim() || null,
       jobTitle: data.jobTitle?.trim() || null,
       employerName: data.employerName?.trim() || null,
+      secondaryEmployerName: data.secondaryEmployerName?.trim() || null,
       bargainingUnitId: data.bargainingUnitId || null,
     };
     
@@ -597,6 +607,7 @@ export default function BtuEmployerMapListPage() {
                 <TableHead>Job Code</TableHead>
                 <TableHead>Job Title</TableHead>
                 <TableHead>Employer</TableHead>
+                <TableHead>Secondary Employer</TableHead>
                 <TableHead>Bargaining Unit</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -609,6 +620,7 @@ export default function BtuEmployerMapListPage() {
                   <TableCell data-testid={`text-job-code-${record.id}`}>{record.jobCode || "-"}</TableCell>
                   <TableCell data-testid={`text-job-title-${record.id}`}>{record.jobTitle || "-"}</TableCell>
                   <TableCell className="font-medium" data-testid={`text-employer-${record.id}`}>{record.employerName || "-"}</TableCell>
+                  <TableCell data-testid={`text-secondary-employer-${record.id}`}>{record.secondaryEmployerName || "-"}</TableCell>
                   <TableCell data-testid={`text-bargaining-unit-${record.id}`}>
                     {bargainingUnits.find(bu => bu.id === record.bargainingUnitId)?.siriusId || "-"}
                   </TableCell>
@@ -782,6 +794,21 @@ export default function BtuEmployerMapListPage() {
                 />
                 <FormField
                   control={form.control}
+                  name="secondaryEmployerName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Secondary Employer Name</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="Optional secondary employer" data-testid="input-secondary-employer-name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
                   name="bargainingUnitId"
                   render={({ field }) => (
                     <FormItem>
@@ -838,7 +865,7 @@ export default function BtuEmployerMapListPage() {
           <DialogHeader>
             <DialogTitle>Import Employer Map from CSV</DialogTitle>
             <DialogDescription>
-              Upload a CSV file with columns: Dept ID, Dept Title, Location ID, Location Title, Job Code/ID, Job Title, Employer Name, Bargaining Unit
+              Upload a CSV file with columns: Dept ID, Dept Title, Location ID, Location Title, Job Code/ID, Job Title, Employer Name, Secondary Employer, Bargaining Unit
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">

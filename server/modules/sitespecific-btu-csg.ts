@@ -368,6 +368,7 @@ export function registerBtuCsgRoutes(
       jobCode: z.string().nullable().optional(),
       jobTitle: z.string().nullable().optional(),
       employerName: z.string().nullable().optional(),
+      secondaryEmployerName: z.string().nullable().optional(),
       bargainingUnitName: z.string().nullable().optional(),
     })),
     clearExisting: z.boolean().optional().default(false),
@@ -482,6 +483,7 @@ export function registerBtuCsgRoutes(
             jobCode: csvRecord.jobCode || null,
             jobTitle: csvRecord.jobTitle || null,
             employerName: csvRecord.employerName || null,
+            secondaryEmployerName: csvRecord.secondaryEmployerName || null,
             bargainingUnitId: mapBargainingUnitNameToId(csvRecord.bargainingUnitName),
           };
           
