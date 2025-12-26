@@ -357,4 +357,137 @@ export function registerBtuCsgRoutes(
       res.status(500).json({ message: "Failed to delete record" });
     }
   });
+
+  // Bulk import endpoint for CSV data
+  const csvImportSchema = z.object({
+    records: z.array(z.object({
+      departmentId: z.string().nullable().optional(),
+      departmentTitle: z.string().nullable().optional(),
+      locationId: z.string().nullable().optional(),
+      locationTitle: z.string().nullable().optional(),
+      jobCode: z.string().nullable().optional(),
+      jobTitle: z.string().nullable().optional(),
+      employerName: z.string().nullable().optional(),
+      bargainingUnitName: z.string().nullable().optional(),
+    })),
+    clearExisting: z.boolean().optional().default(false),
+  });
+
+  app.post("/api/sitespecific/btu/employer-map/import", requireAuth, requirePermission("admin"), componentMiddleware, async (req, res) => {
+    try {
+      const tableExists = await employerMapStorage.tableExists();
+      if (!tableExists) {
+        return res.status(503).json({ 
+          message: "Employer map table does not exist. Please enable the BTU component first." 
+        });
+      }
+      
+      const parseResult = csvImportSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: parseResult.error.errors 
+        });
+      }
+
+      const { records: csvRecords, clearExisting } = parseResult.data;
+      
+      // Fetch bargaining units for name-to-ID mapping
+      const bargainingUnits = await storage.bargainingUnits.getAllBargainingUnits();
+      
+      // Create name-to-ID mapping (case-insensitive, supports code and name matching)
+      const mapBargainingUnitNameToId = (name: string | null | undefined): string | null => {
+        if (!name || name.trim() === "" || name.toUpperCase() === "NO CHANGE") {
+          return null;
+        }
+        
+        const normalizedName = name.toLowerCase().trim();
+        
+        // Try exact match by name first
+        const exactMatch = bargainingUnits.find(
+          (bu: { id: string; name: string; siriusId?: string }) => bu.name.toLowerCase() === normalizedName
+        );
+        if (exactMatch) return exactMatch.id;
+        
+        // Try match by sirius_id/code (e.g., "BT1", "BT2")
+        const codeMatch = bargainingUnits.find(
+          (bu: { id: string; name: string; siriusId?: string }) => 
+            bu.siriusId?.toLowerCase() === normalizedName
+        );
+        if (codeMatch) return codeMatch.id;
+        
+        // Try partial/fuzzy match
+        // "Substitute Teacher Unit" should match "Sub Unit"
+        if (normalizedName.includes("substitute") || normalizedName.includes("sub")) {
+          const subMatch = bargainingUnits.find(
+            (bu: { id: string; name: string }) => bu.name.toLowerCase().includes("sub")
+          );
+          if (subMatch) return subMatch.id;
+        }
+        
+        // Try matching by common words (excluding "unit")
+        const words = normalizedName.split(/\s+/).filter((w: string) => w !== "unit");
+        for (const unit of bargainingUnits) {
+          const unitWords = unit.name.toLowerCase().split(/\s+/).filter((w: string) => w !== "unit");
+          // Check if any significant word matches
+          const matchingWords = words.filter((w: string) => 
+            unitWords.some((uw: string) => uw.includes(w) || w.includes(uw))
+          );
+          if (matchingWords.length > 0) {
+            return unit.id;
+          }
+        }
+        
+        return null;
+      };
+
+      // Clear existing records if requested
+      if (clearExisting) {
+        await employerMapStorage.deleteAll();
+      }
+
+      // Process and insert records
+      let successCount = 0;
+      let errorCount = 0;
+      const errors: Array<{ row: number; error: string }> = [];
+
+      for (let i = 0; i < csvRecords.length; i++) {
+        const csvRecord = csvRecords[i];
+        try {
+          const insertData: InsertBtuEmployerMap = {
+            departmentId: csvRecord.departmentId || null,
+            departmentTitle: csvRecord.departmentTitle || null,
+            locationId: csvRecord.locationId || null,
+            locationTitle: csvRecord.locationTitle || null,
+            jobCode: csvRecord.jobCode || null,
+            jobTitle: csvRecord.jobTitle || null,
+            employerName: csvRecord.employerName || null,
+            bargainingUnitId: mapBargainingUnitNameToId(csvRecord.bargainingUnitName),
+          };
+          
+          await employerMapStorage.create(insertData);
+          successCount++;
+        } catch (err: any) {
+          errorCount++;
+          errors.push({ row: i + 2, error: err.message || "Unknown error" }); // +2 for header and 0-based index
+        }
+      }
+
+      res.json({
+        success: true,
+        imported: successCount,
+        failed: errorCount,
+        total: csvRecords.length,
+        errors: errors.slice(0, 10), // Return first 10 errors only
+      });
+    } catch (error: any) {
+      if (error?.message === "COMPONENT_TABLE_NOT_FOUND") {
+        return res.status(503).json({ 
+          message: "Employer map table does not exist. Please enable the BTU component first." 
+        });
+      }
+      console.error("Failed to import employer map records:", error);
+      res.status(500).json({ message: "Failed to import records" });
+    }
+  });
 }

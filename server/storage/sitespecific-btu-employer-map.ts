@@ -24,6 +24,7 @@ export interface BtuEmployerMapStorage {
   create(record: InsertBtuEmployerMap): Promise<BtuEmployerMap>;
   update(id: string, record: Partial<InsertBtuEmployerMap>): Promise<BtuEmployerMap | undefined>;
   delete(id: string): Promise<boolean>;
+  deleteAll(): Promise<number>;
   tableExists(): Promise<boolean>;
   getUniqueDepartments(): Promise<string[]>;
   getUniqueLocations(): Promise<string[]>;
@@ -135,6 +136,16 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
         .where(eq(sitespecificBtuEmployerMap.id, id))
         .returning({ id: sitespecificBtuEmployerMap.id });
       return results.length > 0;
+    },
+
+    async deleteAll(): Promise<number> {
+      if (!(await this.tableExists())) {
+        throw new Error("COMPONENT_TABLE_NOT_FOUND");
+      }
+      const results = await db
+        .delete(sitespecificBtuEmployerMap)
+        .returning({ id: sitespecificBtuEmployerMap.id });
+      return results.length;
     },
 
     async getUniqueDepartments(): Promise<string[]> {

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,12 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Loader2, AlertTriangle, Download, Search, X, Map, Pencil } from "lucide-react";
+import { Plus, Trash2, Loader2, AlertTriangle, Download, Search, X, Map, Pencil, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useForm } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface BtuEmployerMap {
   id: string;
@@ -49,11 +50,24 @@ interface FormValues {
   bargainingUnitId: string;
 }
 
+interface ImportResult {
+  success: boolean;
+  imported: number;
+  failed: number;
+  total: number;
+  errors: Array<{ row: number; error: string }>;
+}
+
 export default function BtuEmployerMapListPage() {
   const { toast } = useToast();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editRecord, setEditRecord] = useState<BtuEmployerMap | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [clearExisting, setClearExisting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
@@ -151,6 +165,132 @@ export default function BtuEmployerMapListPage() {
       });
     },
   });
+
+  const importMutation = useMutation({
+    mutationFn: async (data: { records: any[]; clearExisting: boolean }) => {
+      const res = await apiRequest("POST", "/api/sitespecific/btu/employer-map/import", data);
+      return res.json();
+    },
+    onSuccess: (result: ImportResult) => {
+      setImportResult(result);
+      queryClient.invalidateQueries({ queryKey: ["/api/sitespecific/btu/employer-map"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sitespecific/btu/employer-map/filters"] });
+      if (result.failed === 0) {
+        toast({
+          title: "Import Successful",
+          description: `Successfully imported ${result.imported} records.`,
+        });
+      } else {
+        toast({
+          title: "Import Completed with Errors",
+          description: `Imported ${result.imported} records, ${result.failed} failed.`,
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Import Failed",
+        description: error?.message || "Failed to import records.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const parseCSV = (text: string): any[] => {
+    if (!text || text.length === 0) return [];
+    
+    // Strip UTF-8 BOM if present
+    const cleanText = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+    
+    const lines = cleanText.split(/\r?\n/).filter(line => line.trim() !== "");
+    if (lines.length < 2) return [];
+    
+    const headers = lines[0].split(",").map(h => h.trim());
+    const records: any[] = [];
+    
+    for (let i = 1; i < lines.length; i++) {
+      const values: string[] = [];
+      let current = "";
+      let inQuotes = false;
+      
+      for (const char of lines[i]) {
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === "," && !inQuotes) {
+          values.push(current.trim());
+          current = "";
+        } else {
+          current += char;
+        }
+      }
+      values.push(current.trim());
+      
+      const record: any = {};
+      headers.forEach((header, idx) => {
+        const value = values[idx] || "";
+        const normalizedHeader = header.toLowerCase().replace(/\s+/g, "");
+        
+        if (normalizedHeader === "deptid" || normalizedHeader === "departmentid") {
+          record.departmentId = value || null;
+        } else if (normalizedHeader === "depttitle" || normalizedHeader === "departmenttitle") {
+          record.departmentTitle = value || null;
+        } else if (normalizedHeader === "locationid") {
+          record.locationId = value || null;
+        } else if (normalizedHeader === "locationtitle") {
+          record.locationTitle = value || null;
+        } else if (normalizedHeader === "jobid" || normalizedHeader === "jobcode") {
+          record.jobCode = value || null;
+        } else if (normalizedHeader === "jobtitle") {
+          record.jobTitle = value || null;
+        } else if (normalizedHeader === "employername") {
+          record.employerName = value || null;
+        } else if (normalizedHeader === "bargainingunit") {
+          record.bargainingUnitName = value || null;
+        }
+      });
+      
+      records.push(record);
+    }
+    
+    return records;
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImportFile(file);
+      setImportResult(null);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!importFile) return;
+    
+    const text = await importFile.text();
+    const records = parseCSV(text);
+    
+    if (records.length === 0) {
+      toast({
+        title: "No Records Found",
+        description: "The CSV file appears to be empty or invalid.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    importMutation.mutate({ records, clearExisting });
+  };
+
+  const closeImportDialog = () => {
+    setIsImportDialogOpen(false);
+    setImportFile(null);
+    setClearExisting(false);
+    setImportResult(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   const parsedDepartments = useMemo(() => {
     if (!filterOptions?.departments) return [];
@@ -353,6 +493,10 @@ export default function BtuEmployerMapListPage() {
         icon={<Map className="text-primary-foreground" size={16} />}
         actions={
           <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setIsImportDialogOpen(true)} data-testid="button-import-csv">
+              <Upload className="h-4 w-4 mr-2" />
+              Import CSV
+            </Button>
             <Button variant="outline" size="sm" onClick={exportToCSV} data-testid="button-export-csv">
               <Download className="h-4 w-4 mr-2" />
               Export CSV
@@ -687,6 +831,83 @@ export default function BtuEmployerMapListPage() {
               </DialogFooter>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isImportDialogOpen} onOpenChange={(open) => !open && closeImportDialog()}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Import Employer Map from CSV</DialogTitle>
+            <DialogDescription>
+              Upload a CSV file with columns: Dept ID, Dept Title, Location ID, Location Title, Job Code/ID, Job Title, Employer Name, Bargaining Unit
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="csv-file">CSV File</Label>
+              <Input
+                id="csv-file"
+                type="file"
+                accept=".csv"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                data-testid="input-import-file"
+              />
+            </div>
+            {importFile && (
+              <p className="text-sm text-muted-foreground">
+                Selected: {importFile.name}
+              </p>
+            )}
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="clear-existing"
+                checked={clearExisting}
+                onCheckedChange={(checked) => setClearExisting(checked === true)}
+                data-testid="checkbox-clear-existing"
+              />
+              <Label htmlFor="clear-existing" className="text-sm font-normal">
+                Clear all existing records before importing
+              </Label>
+            </div>
+            {importResult && (
+              <div className="p-4 bg-muted rounded-md space-y-2">
+                <p className="font-medium">Import Results:</p>
+                <p className="text-sm">Total records: {importResult.total}</p>
+                <p className="text-sm text-green-600 dark:text-green-400">Successfully imported: {importResult.imported}</p>
+                {importResult.failed > 0 && (
+                  <>
+                    <p className="text-sm text-destructive">Failed: {importResult.failed}</p>
+                    {importResult.errors.length > 0 && (
+                      <div className="text-sm text-destructive">
+                        <p>First errors:</p>
+                        <ul className="list-disc list-inside">
+                          {importResult.errors.map((err, idx) => (
+                            <li key={idx}>Row {err.row}: {err.error}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeImportDialog} data-testid="button-cancel-import">
+              {importResult ? "Close" : "Cancel"}
+            </Button>
+            {!importResult && (
+              <Button 
+                onClick={handleImport} 
+                disabled={!importFile || importMutation.isPending}
+                data-testid="button-submit-import"
+              >
+                {importMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Import
+              </Button>
+            )}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
