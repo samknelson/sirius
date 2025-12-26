@@ -395,49 +395,69 @@ export function registerBtuCsgRoutes(
       // Fetch bargaining units for name-to-ID mapping
       const bargainingUnits = await storage.bargainingUnits.getAllBargainingUnits();
       
+      // Log available bargaining units for debugging
+      console.log("Available bargaining units for mapping:", bargainingUnits.map((bu: any) => ({ id: bu.id, name: bu.name, siriusId: bu.siriusId })));
+      
+      // Track unmatched names for debugging
+      const unmatchedNames = new Set<string>();
+      
       // Create name-to-ID mapping (case-insensitive, supports code and name matching)
       const mapBargainingUnitNameToId = (name: string | null | undefined): string | null => {
         if (!name || name.trim() === "" || name.toUpperCase() === "NO CHANGE") {
           return null;
         }
         
-        const normalizedName = name.toLowerCase().trim();
+        // Normalize: lowercase, trim, and remove extra whitespace
+        const normalizedName = name.toLowerCase().trim().replace(/\s+/g, ' ');
         
         // Try exact match by name first
         const exactMatch = bargainingUnits.find(
-          (bu: { id: string; name: string; siriusId?: string }) => bu.name.toLowerCase() === normalizedName
+          (bu: { id: string; name: string; siriusId?: string }) => 
+            bu.name.toLowerCase().trim() === normalizedName
         );
-        if (exactMatch) return exactMatch.id;
+        if (exactMatch) {
+          console.log(`Matched "${name}" to "${exactMatch.name}" (exact match)`);
+          return exactMatch.id;
+        }
         
         // Try match by sirius_id/code (e.g., "BT1", "BT2")
         const codeMatch = bargainingUnits.find(
           (bu: { id: string; name: string; siriusId?: string }) => 
             bu.siriusId?.toLowerCase() === normalizedName
         );
-        if (codeMatch) return codeMatch.id;
-        
-        // Try partial/fuzzy match
-        // "Substitute Teacher Unit" should match "Sub Unit"
-        if (normalizedName.includes("substitute") || normalizedName.includes("sub")) {
-          const subMatch = bargainingUnits.find(
-            (bu: { id: string; name: string }) => bu.name.toLowerCase().includes("sub")
-          );
-          if (subMatch) return subMatch.id;
+        if (codeMatch) {
+          console.log(`Matched "${name}" to "${codeMatch.name}" (code match)`);
+          return codeMatch.id;
         }
         
-        // Try matching by common words (excluding "unit")
-        const words = normalizedName.split(/\s+/).filter((w: string) => w !== "unit");
+        // Try partial/fuzzy match - look for bargaining units that contain the key part of the name
         for (const unit of bargainingUnits) {
-          const unitWords = unit.name.toLowerCase().split(/\s+/).filter((w: string) => w !== "unit");
-          // Check if any significant word matches
-          const matchingWords = words.filter((w: string) => 
-            unitWords.some((uw: string) => uw.includes(w) || w.includes(uw))
-          );
-          if (matchingWords.length > 0) {
+          const unitNameLower = unit.name.toLowerCase().trim();
+          // Check if CSV name contains the unit name or vice versa
+          if (normalizedName.includes(unitNameLower) || unitNameLower.includes(normalizedName)) {
+            console.log(`Matched "${name}" to "${unit.name}" (contains match)`);
             return unit.id;
           }
         }
         
+        // Try matching by significant words (excluding common words like "unit")
+        const commonWords = ['unit', 'the', 'a', 'an'];
+        const words = normalizedName.split(/\s+/).filter((w: string) => !commonWords.includes(w) && w.length > 2);
+        for (const unit of bargainingUnits) {
+          const unitWords = unit.name.toLowerCase().split(/\s+/).filter((w: string) => !commonWords.includes(w) && w.length > 2);
+          // Check if any significant word matches
+          const matchingWords = words.filter((w: string) => 
+            unitWords.some((uw: string) => uw === w || uw.includes(w) || w.includes(uw))
+          );
+          if (matchingWords.length > 0) {
+            console.log(`Matched "${name}" to "${unit.name}" (word match: ${matchingWords.join(', ')})`);
+            return unit.id;
+          }
+        }
+        
+        // No match found
+        unmatchedNames.add(name);
+        console.log(`No match found for bargaining unit: "${name}"`);
         return null;
       };
 
@@ -479,6 +499,7 @@ export function registerBtuCsgRoutes(
         failed: errorCount,
         total: csvRecords.length,
         errors: errors.slice(0, 10), // Return first 10 errors only
+        unmatchedBargainingUnits: Array.from(unmatchedNames).slice(0, 20), // Show unmatched BU names for debugging
       });
     } catch (error: any) {
       if (error?.message === "COMPONENT_TABLE_NOT_FOUND") {
