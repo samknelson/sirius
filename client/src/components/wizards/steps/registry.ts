@@ -10,6 +10,9 @@ import { ResultsStep } from './report/ResultsStep';
 import { LedgerIntegrityInputsStep } from './report/LedgerIntegrityInputsStep';
 import { GbhetLegalComplianceInputsStep } from './report/GbhetLegalComplianceInputsStep';
 import { BTUWorkersInvalidCardcheckInputsStep } from './report/BTUWorkersInvalidCardcheckInputsStep';
+import { ConfigureStep as BTUConfigureStep } from './btu-worker-import/ConfigureStep';
+import { ProcessStep as BTUProcessStep } from './btu-worker-import/ProcessStep';
+import { ResultsStep as BTUResultsStep } from './btu-worker-import/ResultsStep';
 
 export interface WizardStepComponent {
   (props: { wizardId: string; wizardType: string; data?: any; onDataChange?: (data: any) => void }): JSX.Element;
@@ -86,6 +89,10 @@ const evaluateBTUInputsComplete: StepCompletionEvaluator = ({ wizard }) => {
   return !!cardcheckDefinitionId;
 };
 
+const evaluateConfigureComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.asOfDate;
+};
+
 export const stepControllerRegistry: StepControllerRegistry = {
   'gbhet_legal_workers_monthly': {
     'upload': { Component: UploadStep, evaluateCompletion: evaluateUploadComplete },
@@ -137,6 +144,14 @@ export const stepControllerRegistry: StepControllerRegistry = {
     'inputs': { Component: BTUWorkersInvalidCardcheckInputsStep, evaluateCompletion: evaluateBTUInputsComplete },
     'run': { Component: RunStep, evaluateCompletion: evaluateRunComplete },
     'results': { Component: ResultsStep, evaluateCompletion: alwaysComplete },
+  },
+  'btu_worker_import': {
+    'upload': { Component: UploadStep, evaluateCompletion: evaluateUploadComplete },
+    'map': { Component: MapStep, evaluateCompletion: evaluateMapComplete },
+    'configure': { Component: BTUConfigureStep, evaluateCompletion: evaluateConfigureComplete },
+    'validate': { Component: ValidateStep, evaluateCompletion: evaluateValidateComplete },
+    'process': { Component: BTUProcessStep, evaluateCompletion: alwaysComplete },
+    'results': { Component: BTUResultsStep, evaluateCompletion: alwaysComplete },
   },
 };
 
@@ -191,6 +206,14 @@ export const stepComponentRegistry: StepComponentRegistry = {
     'inputs': BTUWorkersInvalidCardcheckInputsStep,
     'run': RunStep,
     'results': ResultsStep,
+  },
+  'btu_worker_import': {
+    'upload': UploadStep,
+    'map': MapStep,
+    'configure': BTUConfigureStep,
+    'validate': ValidateStep,
+    'process': BTUProcessStep,
+    'results': BTUResultsStep,
   },
 };
 

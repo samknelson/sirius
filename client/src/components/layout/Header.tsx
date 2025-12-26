@@ -27,6 +27,7 @@ import {
   Droplets,
   FileWarning,
   Map,
+  Upload,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -220,6 +221,18 @@ export default function Header() {
                     >
                       <FileWarning className="h-4 w-4 mr-2" />
                       Class Size Grievances
+                    </Button>
+                  </Link>
+                )}
+                {hasComponent("sitespecific.btu") && hasPermission("admin") && (
+                  <Link href="/sitespecific/btu/worker-import" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location.startsWith("/sitespecific/btu/worker-import") ? "default" : "ghost"}
+                      className="w-full justify-start pl-8"
+                      data-testid="mobile-nav-btu-worker-import"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Worker Import
                     </Button>
                   </Link>
                 )}
@@ -558,6 +571,16 @@ export default function Header() {
                       <div className="flex items-center cursor-pointer" data-testid="menu-class-size-grievances">
                         <FileWarning className="h-4 w-4 mr-2" />
                         Class Size Grievances
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {hasComponent("sitespecific.btu") && hasPermission("admin") && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/sitespecific/btu/worker-import" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-btu-worker-import">
+                        <Upload className="h-4 w-4 mr-2" />
+                        Worker Import
                       </div>
                     </Link>
                   </DropdownMenuItem>
