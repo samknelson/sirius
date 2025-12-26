@@ -284,6 +284,13 @@ export const optionsTrustProviderType = pgTable("options_trust_provider_type", {
   data: jsonb("data"),
 });
 
+export const optionsDispatchJobType = pgTable("options_dispatch_job_type", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  data: jsonb("data"),
+});
+
 export const optionsEventType = pgTable("options_event_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   siriusId: varchar("sirius_id").notNull().unique(),
@@ -774,6 +781,10 @@ export const insertTrustProviderTypeSchema = createInsertSchema(optionsTrustProv
   id: true,
 });
 
+export const insertDispatchJobTypeSchema = createInsertSchema(optionsDispatchJobType).omit({
+  id: true,
+});
+
 export const insertEventTypeSchema = createInsertSchema(optionsEventType).omit({
   id: true,
 });
@@ -974,6 +985,9 @@ export type EmployerType = typeof optionsEmployerType.$inferSelect;
 
 export type InsertTrustProviderType = z.infer<typeof insertTrustProviderTypeSchema>;
 export type TrustProviderType = typeof optionsTrustProviderType.$inferSelect;
+
+export type InsertDispatchJobType = z.infer<typeof insertDispatchJobTypeSchema>;
+export type DispatchJobType = typeof optionsDispatchJobType.$inferSelect;
 
 export type InsertEventType = z.infer<typeof insertEventTypeSchema>;
 export type EventType = typeof optionsEventType.$inferSelect;
