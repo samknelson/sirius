@@ -291,12 +291,16 @@ export const optionsDispatchJobType = pgTable("options_dispatch_job_type", {
   data: jsonb("data"),
 });
 
+export const dispatchJobStatusEnum = ["draft", "open", "running", "closed", "archived"] as const;
+export type DispatchJobStatus = typeof dispatchJobStatusEnum[number];
+
 export const dispatchJobs = pgTable("dispatch_jobs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
   jobTypeId: varchar("job_type_id").references(() => optionsDispatchJobType.id, { onDelete: 'set null' }),
   title: text("title").notNull(),
   description: text("description"),
+  status: varchar("status").notNull().default("draft"),
   startDate: timestamp("start_date").notNull(),
   data: jsonb("data"),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
