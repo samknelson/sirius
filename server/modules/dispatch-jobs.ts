@@ -1,9 +1,10 @@
 import type { Express } from "express";
 import { storage } from "../storage";
-import { insertDispatchJobSchema } from "@shared/schema";
+import { insertDispatchJobSchema, dispatchJobStatusEnum } from "@shared/schema";
 import { requireAccess } from "../accessControl";
 import { policies } from "../policies";
 import { requireComponent } from "./components";
+import type { DispatchJobFilters } from "../storage/dispatch-jobs";
 
 export function registerDispatchJobsRoutes(
   app: Express,
@@ -14,15 +15,39 @@ export function registerDispatchJobsRoutes(
 
   app.get("/api/dispatch-jobs", dispatchComponent, requireAccess(policies.admin), async (req, res) => {
     try {
-      const { employerId } = req.query;
+      const { 
+        employerId, 
+        status, 
+        jobTypeId, 
+        startDateFrom, 
+        startDateTo,
+        page: pageParam,
+        limit: limitParam 
+      } = req.query;
+      
+      const page = parseInt(pageParam as string) || 0;
+      const limit = Math.min(parseInt(limitParam as string) || 100, 100);
+      
+      const filters: DispatchJobFilters = {};
       
       if (employerId && typeof employerId === 'string') {
-        const jobs = await storage.dispatchJobs.getByEmployer(employerId);
-        res.json(jobs);
-      } else {
-        const jobs = await storage.dispatchJobs.getAll();
-        res.json(jobs);
+        filters.employerId = employerId;
       }
+      if (status && typeof status === 'string' && dispatchJobStatusEnum.includes(status as any)) {
+        filters.status = status;
+      }
+      if (jobTypeId && typeof jobTypeId === 'string') {
+        filters.jobTypeId = jobTypeId;
+      }
+      if (startDateFrom && typeof startDateFrom === 'string') {
+        filters.startDateFrom = new Date(startDateFrom);
+      }
+      if (startDateTo && typeof startDateTo === 'string') {
+        filters.startDateTo = new Date(startDateTo);
+      }
+      
+      const result = await storage.dispatchJobs.getPaginated(page, limit, filters);
+      res.json(result);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch dispatch jobs" });
     }
@@ -31,7 +56,7 @@ export function registerDispatchJobsRoutes(
   app.get("/api/dispatch-jobs/:id", dispatchComponent, requireAccess(policies.admin), async (req, res) => {
     try {
       const { id } = req.params;
-      const job = await storage.dispatchJobs.get(id);
+      const job = await storage.dispatchJobs.getWithRelations(id);
       
       if (!job) {
         res.status(404).json({ message: "Dispatch job not found" });
@@ -84,7 +109,7 @@ export function registerDispatchJobsRoutes(
         return;
       }
       
-      const { employerId, jobTypeId, title, description, startDate, data } = req.body;
+      const { employerId, jobTypeId, title, description, status, startDate, data } = req.body;
       const updates: any = {};
       
       if (employerId !== undefined) {
@@ -119,6 +144,14 @@ export function registerDispatchJobsRoutes(
       
       if (description !== undefined) {
         updates.description = description;
+      }
+      
+      if (status !== undefined) {
+        if (!dispatchJobStatusEnum.includes(status)) {
+          res.status(400).json({ message: `Invalid status. Must be one of: ${dispatchJobStatusEnum.join(', ')}` });
+          return;
+        }
+        updates.status = status;
       }
       
       if (startDate !== undefined) {
