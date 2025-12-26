@@ -168,8 +168,7 @@ export default function BtuEmployerMapListPage() {
 
   const importMutation = useMutation({
     mutationFn: async (data: { records: any[]; clearExisting: boolean }) => {
-      const res = await apiRequest("POST", "/api/sitespecific/btu/employer-map/import", data);
-      return res.json();
+      return await apiRequest("POST", "/api/sitespecific/btu/employer-map/import", data);
     },
     onSuccess: (result: ImportResult) => {
       setImportResult(result);
