@@ -2,7 +2,7 @@ import { pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { workers } from "../../../schema";
+import { workers, bargainingUnits } from "../../../schema";
 
 export const sitespecificBtuCsg = pgTable("sitespecific_btu_csg", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -44,6 +44,7 @@ export const sitespecificBtuEmployerMap = pgTable("sitespecific_btu_employer_map
   jobCode: varchar("job_code"),
   jobTitle: varchar("job_title"),
   employerName: varchar("employer_name"),
+  bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),
 });
 
 export const insertBtuEmployerMapSchema = createInsertSchema(sitespecificBtuEmployerMap).omit({

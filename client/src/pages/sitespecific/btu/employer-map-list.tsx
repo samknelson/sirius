@@ -23,6 +23,13 @@ interface BtuEmployerMap {
   jobCode: string | null;
   jobTitle: string | null;
   employerName: string | null;
+  bargainingUnitId: string | null;
+}
+
+interface BargainingUnit {
+  id: string;
+  code: string;
+  name: string;
 }
 
 interface FilterOptions {
@@ -39,6 +46,7 @@ interface FormValues {
   jobCode: string;
   jobTitle: string;
   employerName: string;
+  bargainingUnitId: string;
 }
 
 export default function BtuEmployerMapListPage() {
@@ -59,6 +67,10 @@ export default function BtuEmployerMapListPage() {
     queryKey: ["/api/sitespecific/btu/employer-map/filters"],
   });
 
+  const { data: bargainingUnits = [] } = useQuery<BargainingUnit[]>({
+    queryKey: ["/api/bargaining-units"],
+  });
+
   const form = useForm<FormValues>({
     defaultValues: {
       departmentId: "",
@@ -68,6 +80,7 @@ export default function BtuEmployerMapListPage() {
       jobCode: "",
       jobTitle: "",
       employerName: "",
+      bargainingUnitId: "",
     },
   });
 
@@ -206,6 +219,7 @@ export default function BtuEmployerMapListPage() {
       "Job Code",
       "Job Title",
       "Employer Name",
+      "Bargaining Unit",
     ];
 
     const rows = filteredRecords.map((record) => [
@@ -217,6 +231,7 @@ export default function BtuEmployerMapListPage() {
       escapeCSV(record.jobCode),
       escapeCSV(record.jobTitle),
       escapeCSV(record.employerName),
+      escapeCSV(bargainingUnits.find(bu => bu.id === record.bargainingUnitId)?.code),
     ]);
 
     const csv = [headers.join(","), ...rows.map(row => row.join(","))].join("\n");
@@ -256,6 +271,7 @@ export default function BtuEmployerMapListPage() {
       jobCode: "",
       jobTitle: "",
       employerName: "",
+      bargainingUnitId: "",
     });
     setIsAddDialogOpen(true);
   };
@@ -269,6 +285,7 @@ export default function BtuEmployerMapListPage() {
       jobCode: record.jobCode || "",
       jobTitle: record.jobTitle || "",
       employerName: record.employerName || "",
+      bargainingUnitId: record.bargainingUnitId || "",
     });
     setEditRecord(record);
   };
@@ -282,6 +299,7 @@ export default function BtuEmployerMapListPage() {
       jobCode: data.jobCode?.trim() || null,
       jobTitle: data.jobTitle?.trim() || null,
       employerName: data.employerName?.trim() || null,
+      bargainingUnitId: data.bargainingUnitId || null,
     };
     
     if (editRecord) {
@@ -436,6 +454,7 @@ export default function BtuEmployerMapListPage() {
                 <TableHead>Job Code</TableHead>
                 <TableHead>Job Title</TableHead>
                 <TableHead>Employer</TableHead>
+                <TableHead>Bargaining Unit</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -447,6 +466,9 @@ export default function BtuEmployerMapListPage() {
                   <TableCell data-testid={`text-job-code-${record.id}`}>{record.jobCode || "-"}</TableCell>
                   <TableCell data-testid={`text-job-title-${record.id}`}>{record.jobTitle || "-"}</TableCell>
                   <TableCell className="font-medium" data-testid={`text-employer-${record.id}`}>{record.employerName || "-"}</TableCell>
+                  <TableCell data-testid={`text-bargaining-unit-${record.id}`}>
+                    {bargainingUnits.find(bu => bu.id === record.bargainingUnitId)?.code || "-"}
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
                       <Button
@@ -601,19 +623,46 @@ export default function BtuEmployerMapListPage() {
                   )}
                 />
               </div>
-              <FormField
-                control={form.control}
-                name="employerName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Employer Name</FormLabel>
-                    <FormControl>
-                      <Input {...field} placeholder="e.g., Boston Public Schools" data-testid="input-employer-name" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="employerName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Employer Name</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="e.g., Boston Public Schools" data-testid="input-employer-name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="bargainingUnitId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Bargaining Unit</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-bargaining-unit">
+                            <SelectValue placeholder="Select a bargaining unit" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="">None</SelectItem>
+                          {bargainingUnits.map((unit) => (
+                            <SelectItem key={unit.id} value={unit.id}>
+                              {unit.code} - {unit.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => {
                   setIsAddDialogOpen(false);
