@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import { stringify } from "csv-stringify/sync";
 import { storage } from "./storage";
 import {
   insertWorkerSchema,
@@ -452,6 +453,110 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error("Failed to fetch paginated workers:", error);
         res.status(500).json({ message: "Failed to fetch workers" });
+      }
+    },
+  );
+
+  // GET /api/workers/export - Export workers to CSV with filters
+  app.get(
+    "/api/workers/export",
+    requireAuth,
+    requirePermission("workers.view"),
+    async (req, res) => {
+      try {
+        const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+        const sortOrderParam = req.query.sortOrder as string;
+        const sortOrder = sortOrderParam === 'desc' ? 'desc' : 'asc';
+        
+        // Filter parameters
+        const employerId = typeof req.query.employerId === 'string' && req.query.employerId !== 'all' ? req.query.employerId : undefined;
+        const employerTypeId = typeof req.query.employerTypeId === 'string' && req.query.employerTypeId !== 'all' ? req.query.employerTypeId : undefined;
+        const bargainingUnitId = typeof req.query.bargainingUnitId === 'string' && req.query.bargainingUnitId !== 'all' ? req.query.bargainingUnitId : undefined;
+        const benefitId = typeof req.query.benefitId === 'string' && req.query.benefitId !== 'all' ? req.query.benefitId : undefined;
+        const contactStatusParam = req.query.contactStatus as string;
+        const validContactStatuses = ['all', 'has_email', 'missing_email', 'has_phone', 'missing_phone', 'has_address', 'missing_address', 'complete', 'incomplete'];
+        const contactStatus = validContactStatuses.includes(contactStatusParam) ? contactStatusParam as any : 'all';
+        const includeBenefits = req.query.includeBenefits === 'true';
+        
+        // Get all workers matching filters
+        const workers = await storage.workers.getWorkersForExport({
+          search,
+          sortOrder,
+          employerId,
+          employerTypeId,
+          bargainingUnitId,
+          benefitId,
+          contactStatus,
+        });
+        
+        // Helper to format SSN
+        const formatSSN = (ssn: string | null) => {
+          if (!ssn) return '';
+          const digits = ssn.replace(/\D/g, '');
+          if (digits.length === 9) {
+            return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`;
+          }
+          return ssn;
+        };
+        
+        // Build CSV data
+        const csvData = workers.map(worker => {
+          const baseData: Record<string, string> = {
+            'First Name': worker.given || '',
+            'Middle Name': worker.middle || '',
+            'Last Name': worker.family || '',
+            'SSN': formatSSN(worker.ssn),
+            'Street': worker.address_street || '',
+            'City': worker.address_city || '',
+            'State': worker.address_state || '',
+            'Postal Code': worker.address_postal_code || '',
+            'Country': worker.address_country || '',
+            'Email': worker.contact_email || '',
+            'Phone Number': worker.phone_number || '',
+          };
+          
+          if (includeBenefits) {
+            const benefits = worker.benefits || [];
+            const benefitsString = benefits
+              .filter((b: any) => b && b.name)
+              .map((b: any) => b.name)
+              .join('; ');
+            baseData['Current Benefits'] = benefitsString;
+          }
+          
+          return baseData;
+        });
+        
+        // Define columns
+        const columns = [
+          'First Name',
+          'Middle Name',
+          'Last Name',
+          'SSN',
+          'Street',
+          'City',
+          'State',
+          'Postal Code',
+          'Country',
+          'Email',
+          'Phone Number',
+          ...(includeBenefits ? ['Current Benefits'] : [])
+        ];
+        
+        // Generate CSV
+        const csv = stringify(csvData, {
+          header: true,
+          columns
+        });
+        
+        // Send CSV response
+        const filename = `workers_export_${new Date().toISOString().split('T')[0]}.csv`;
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(csv);
+      } catch (error) {
+        console.error("Failed to export workers:", error);
+        res.status(500).json({ message: "Failed to export workers" });
       }
     },
   );

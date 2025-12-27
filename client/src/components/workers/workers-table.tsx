@@ -12,7 +12,6 @@ import { formatSSN } from "@shared/schema";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { parsePhoneNumber } from "libphonenumber-js";
-import { stringify } from 'csv-stringify/browser/esm/sync';
 import {
   Select,
   SelectContent,
@@ -546,73 +545,22 @@ export function WorkersTable({
     setSortOrder(sortOrder === "asc" ? "desc" : "asc");
   };
 
-  // CSV Export function
+  // CSV Export function - calls server endpoint to get all matching workers
   const handleExportCSV = () => {
-    // Prepare data for CSV export
-    const csvData = sortedWorkers.map(worker => {
-      const baseData: Record<string, string> = {
-        'First Name': worker.given || '',
-        'Middle Name': worker.middle || '',
-        'Last Name': worker.family || '',
-        'SSN': formatSSN(worker.ssn),
-        'Street': worker.address?.street || '',
-        'City': worker.address?.city || '',
-        'State': worker.address?.state || '',
-        'Postal Code': worker.address?.postalCode || '',
-        'Country': worker.address?.country || '',
-        'Email': worker.email || '',
-        'Phone Number': worker.phoneNumber || '',
-      };
-
-      if (trustBenefitsEnabled) {
-        const currentBenefits = currentBenefitsMap.get(worker.id) || [];
-        const benefitsString = currentBenefits
-          .filter((b: any) => b && b.name)
-          .map((b: any) => {
-            if (b.employerName) {
-              return `${b.name} (${b.employerName})`;
-            }
-            return b.name;
-          })
-          .join('; ');
-        baseData['Current Benefits'] = benefitsString;
-      }
-
-      return baseData;
-    });
-
-    // Define columns based on whether trust benefits is enabled
-    const columns = [
-      'First Name',
-      'Middle Name',
-      'Last Name',
-      'SSN',
-      'Street',
-      'City',
-      'State',
-      'Postal Code',
-      'Country',
-      'Email',
-      'Phone Number',
-      ...(trustBenefitsEnabled ? ['Current Benefits'] : [])
-    ];
-
-    // Generate CSV string
-    const csv = stringify(csvData, {
-      header: true,
-      columns
-    });
-
-    // Create download link
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `workers_export_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Build URL with current filter parameters
+    const params = new URLSearchParams();
+    if (searchQuery) params.set('search', searchQuery);
+    params.set('sortOrder', sortOrder);
+    if (selectedEmployerId !== 'all') params.set('employerId', selectedEmployerId);
+    if (selectedEmployerTypeId !== 'all') params.set('employerTypeId', selectedEmployerTypeId);
+    if (selectedBargainingUnitId !== 'all') params.set('bargainingUnitId', selectedBargainingUnitId);
+    if (selectedBenefitId !== 'all') params.set('benefitId', selectedBenefitId);
+    if (contactStatusFilter !== 'all') params.set('contactStatus', contactStatusFilter);
+    if (trustBenefitsEnabled) params.set('includeBenefits', 'true');
+    
+    // Trigger download by opening the export URL
+    const exportUrl = `/api/workers/export?${params.toString()}`;
+    window.location.href = exportUrl;
   };
 
   if (isLoading) {
