@@ -8,218 +8,238 @@ import { TerminologyProvider } from "@/contexts/TerminologyContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// Import charge plugin UIs to register them (side effect import)
+import "@/plugins/charge-plugins";
+
+// Essential pages loaded eagerly for fast initial render
 import LoginPage from "@/pages/login";
 import UnauthorizedPage from "@/pages/unauthorized";
-import Bootstrap from "@/pages/bootstrap";
-import SmsOptinPage from "@/pages/sms-optin";
-import Dashboard from "@/pages/dashboard";
-import Bookmarks from "@/pages/bookmarks";
-import AlertsPage, { AlertsRedirect } from "@/pages/alerts";
-import Reports from "@/pages/reports";
-import ReportType from "@/pages/report-type";
-import Workers from "@/pages/workers";
-import WorkersAdd from "@/pages/workers-add";
-import WorkerView from "@/pages/worker-view";
-import WorkerName from "@/pages/worker-name";
-import WorkerEmail from "@/pages/worker-email";
-import WorkerIDs from "@/pages/worker-ids";
-import WorkerBirthDate from "@/pages/worker-birth-date";
-import WorkerGender from "@/pages/worker-gender";
-import WorkerWorkStatus from "@/pages/worker-work-status";
-import WorkerUserPage from "@/pages/worker-user";
-import WorkerBargainingUnit from "@/pages/worker-bargaining-unit";
-import WorkerSteward from "@/pages/worker-steward";
-import WorkerRepresentatives from "@/pages/worker-representatives";
-import WorkerDispatchStatus from "@/pages/workers/dispatch-status";
-import WorkerDispatchDoNotCall from "@/pages/workers/dispatch-do-not-call";
-import WorkerDispatchHoldForEmployer from "@/pages/workers/dispatch-hold-for-employer";
-import WorkerLedgerAccounts from "@/pages/worker-ledger-accounts";
-import Stewards from "@/pages/stewards";
-import WorkerBenefitsHistory from "@/pages/worker-benefits-history";
-import WorkerBenefitsEligibility from "@/pages/worker-benefits-eligibility";
-import WorkerBenefitsScan from "@/pages/worker-benefits-scan";
-import WorkerCurrentEmployment from "@/pages/worker-current-employment";
-import WorkerEmploymentHistory from "@/pages/worker-employment-history";
-import WorkerHoursMonthly from "@/pages/worker-hours-monthly";
-import WorkerHoursDaily from "@/pages/worker-hours-daily";
-import WorkerHoursView from "@/pages/worker-hours-view";
-import WorkerHoursEdit from "@/pages/worker-hours-edit";
-import WorkerHoursDelete from "@/pages/worker-hours-delete";
-import WorkerLogs from "@/pages/worker-logs";
-import WorkerAddresses from "@/pages/worker-addresses";
-import WorkerPhoneNumbers from "@/pages/worker-phone-numbers";
-import WorkerCommHistory from "@/pages/worker-comm-history";
-import WorkerSendSms from "@/pages/worker-send-sms";
-import WorkerSendEmail from "@/pages/worker-send-email";
-import WorkerSendPostal from "@/pages/worker-send-postal";
-import WorkerSendInApp from "@/pages/worker-send-inapp";
-import CommDetail from "@/pages/comm-detail";
-import WorkerDelete from "@/pages/worker-delete";
-import Employers from "@/pages/employers";
-import EmployersAdd from "@/pages/employers-add";
-import EmployerView from "@/pages/employer-view";
-import EmployerEdit from "@/pages/employer-edit";
-import EmployerWorkers from "@/pages/employer-workers";
-import EmployerContacts from "@/pages/employer-contacts";
-import EmployerWizards from "@/pages/employer-wizards";
-import EmployersMonthlyUploads from "@/pages/employers-monthly-uploads";
-import AllEmployerContacts from "@/pages/all-employer-contacts";
-import EmployerContactView from "@/pages/employer-contact-view";
-import EmployerContactEdit from "@/pages/employer-contact-edit";
-import EmployerContactName from "@/pages/employer-contact-name";
-import EmployerContactEmail from "@/pages/employer-contact-email";
-import EmployerContactPhoneNumbers from "@/pages/employer-contact-phone-numbers";
-import EmployerContactAddresses from "@/pages/employer-contact-addresses";
-import EmployerContactUser from "@/pages/employer-contact-user";
-import EmployerContactCommHistory from "@/pages/employer-contact-comm-history";
-import EmployerContactSendSms from "@/pages/employer-contact-send-sms";
-import EmployerContactSendEmail from "@/pages/employer-contact-send-email";
-import EmployerContactSendPostal from "@/pages/employer-contact-send-postal";
-import EmployerContactSendInApp from "@/pages/employer-contact-send-inapp";
-import EmployerLogs from "@/pages/employer-logs";
-import EmployerPolicyHistory from "@/pages/employer-policy-history";
-import EmployerStewards from "@/pages/employer-stewards";
-import EmployerDispatchPage from "@/pages/employers/dispatch";
-import WizardView from "@/pages/wizard-view";
-import StripeCustomerPage from "@/pages/employers/stripe-customer";
-import StripePaymentMethodsPage from "@/pages/employers/stripe-payment-methods";
-import EmployerLedgerAccountsWrapper from "@/pages/employer-ledger-accounts-wrapper";
-import EAView from "@/pages/ea-view";
-import EAInvoices from "@/pages/ea-invoices";
-import EAPayments from "@/pages/ea-payments";
-import EATransactions from "@/pages/ea-transactions";
-import PaymentView from "@/pages/payment-view";
-import PaymentEdit from "@/pages/payment-edit";
-import TrustBenefits from "@/pages/trust-benefits";
-import TrustBenefitsAdd from "@/pages/trust-benefits-add";
-import TrustBenefitView from "@/pages/trust-benefit-view";
-import TrustBenefitEdit from "@/pages/trust-benefit-edit";
-import TrustProvidersPage from "@/pages/trust-providers";
-import TrustProviderViewPage from "@/pages/trust-provider-view";
-import TrustProviderEditPage from "@/pages/trust-provider-edit";
-import TrustProviderContactsPage from "@/pages/trust-provider-contacts";
-import TrustProviderContactView from "@/pages/trust-provider-contact-view";
-import TrustProviderContactEdit from "@/pages/trust-provider-contact-edit";
-import TrustProviderContactName from "@/pages/trust-provider-contact-name";
-import TrustProviderContactEmail from "@/pages/trust-provider-contact-email";
-import TrustProviderContactPhoneNumbers from "@/pages/trust-provider-contact-phone-numbers";
-import TrustProviderContactAddresses from "@/pages/trust-provider-contact-addresses";
-import TrustProviderContactUser from "@/pages/trust-provider-contact-user";
-import TrustProviderContactCommHistory from "@/pages/trust-provider-contact-comm-history";
-import TrustProviderContactSendSms from "@/pages/trust-provider-contact-send-sms";
-import TrustProviderContactSendEmail from "@/pages/trust-provider-contact-send-email";
-import TrustProviderContactSendPostal from "@/pages/trust-provider-contact-send-postal";
-import TrustProviderContactSendInApp from "@/pages/trust-provider-contact-send-inapp";
-import TrustProviderLogsPage from "@/pages/trust-provider-logs";
-import BargainingUnitsPage from "@/pages/bargaining-units";
-import BargainingUnitViewPage from "@/pages/bargaining-unit-view";
-import BargainingUnitEditPage from "@/pages/bargaining-unit-edit";
-import BargainingUnitDeletePage from "@/pages/bargaining-unit-delete";
-import AdminUsersPage from "@/pages/admin/users";
-import UserAccountPage from "@/pages/admin/user-account";
-import UserLogs from "@/pages/admin/user-logs";
-import UserEmail from "@/pages/admin/user-email";
-import UserPhoneNumbers from "@/pages/admin/user-phone-numbers";
-import UserAddresses from "@/pages/admin/user-addresses";
-import UserCommHistory from "@/pages/admin/user-comm-history";
-import UserSendSms from "@/pages/admin/user-send-sms";
-import UserSendEmail from "@/pages/admin/user-send-email";
-import UserSendPostal from "@/pages/admin/user-send-postal";
-import UserSendInApp from "@/pages/admin/user-send-inapp";
-import AdminRolesPage from "@/pages/admin/roles";
-import AdminPermissionsPage from "@/pages/admin/permissions";
-import WmbScanQueue from "@/pages/admin/wmb-scan-queue";
-import WmbScanDetail from "@/pages/admin/wmb-scan-detail";
-import AdminQuickstarts from "@/pages/admin-quickstarts";
-import CronJobs from "@/pages/cron-jobs";
-import CronJobView from "@/pages/cron-job-view";
-import CronJobSettings from "@/pages/cron-job-settings";
-import CronJobHistory from "@/pages/cron-job-history";
+import NotFound from "@/pages/not-found";
+
+// Lazy-loaded pages
+const Bootstrap = lazy(() => import("@/pages/bootstrap"));
+const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const Bookmarks = lazy(() => import("@/pages/bookmarks"));
+const AlertsPage = lazy(() => import("@/pages/alerts").then(m => ({ default: m.default })));
+const AlertsRedirect = lazy(() => import("@/pages/alerts").then(m => ({ default: m.AlertsRedirect })));
+const Reports = lazy(() => import("@/pages/reports"));
+const ReportType = lazy(() => import("@/pages/report-type"));
+const Workers = lazy(() => import("@/pages/workers"));
+const WorkersAdd = lazy(() => import("@/pages/workers-add"));
+const WorkerView = lazy(() => import("@/pages/worker-view"));
+const WorkerName = lazy(() => import("@/pages/worker-name"));
+const WorkerEmail = lazy(() => import("@/pages/worker-email"));
+const WorkerIDs = lazy(() => import("@/pages/worker-ids"));
+const WorkerBirthDate = lazy(() => import("@/pages/worker-birth-date"));
+const WorkerGender = lazy(() => import("@/pages/worker-gender"));
+const WorkerWorkStatus = lazy(() => import("@/pages/worker-work-status"));
+const WorkerUserPage = lazy(() => import("@/pages/worker-user"));
+const WorkerBargainingUnit = lazy(() => import("@/pages/worker-bargaining-unit"));
+const WorkerSteward = lazy(() => import("@/pages/worker-steward"));
+const WorkerRepresentatives = lazy(() => import("@/pages/worker-representatives"));
+const WorkerDispatchStatus = lazy(() => import("@/pages/workers/dispatch-status"));
+const WorkerDispatchDoNotCall = lazy(() => import("@/pages/workers/dispatch-do-not-call"));
+const WorkerDispatchHoldForEmployer = lazy(() => import("@/pages/workers/dispatch-hold-for-employer"));
+const WorkerLedgerAccounts = lazy(() => import("@/pages/worker-ledger-accounts"));
+const Stewards = lazy(() => import("@/pages/stewards"));
+const WorkerBenefitsHistory = lazy(() => import("@/pages/worker-benefits-history"));
+const WorkerBenefitsEligibility = lazy(() => import("@/pages/worker-benefits-eligibility"));
+const WorkerBenefitsScan = lazy(() => import("@/pages/worker-benefits-scan"));
+const WorkerCurrentEmployment = lazy(() => import("@/pages/worker-current-employment"));
+const WorkerEmploymentHistory = lazy(() => import("@/pages/worker-employment-history"));
+const WorkerHoursMonthly = lazy(() => import("@/pages/worker-hours-monthly"));
+const WorkerHoursDaily = lazy(() => import("@/pages/worker-hours-daily"));
+const WorkerHoursView = lazy(() => import("@/pages/worker-hours-view"));
+const WorkerHoursEdit = lazy(() => import("@/pages/worker-hours-edit"));
+const WorkerHoursDelete = lazy(() => import("@/pages/worker-hours-delete"));
+const WorkerLogs = lazy(() => import("@/pages/worker-logs"));
+const WorkerAddresses = lazy(() => import("@/pages/worker-addresses"));
+const WorkerPhoneNumbers = lazy(() => import("@/pages/worker-phone-numbers"));
+const WorkerCommHistory = lazy(() => import("@/pages/worker-comm-history"));
+const WorkerSendSms = lazy(() => import("@/pages/worker-send-sms"));
+const WorkerSendEmail = lazy(() => import("@/pages/worker-send-email"));
+const WorkerSendPostal = lazy(() => import("@/pages/worker-send-postal"));
+const WorkerSendInApp = lazy(() => import("@/pages/worker-send-inapp"));
+const CommDetail = lazy(() => import("@/pages/comm-detail"));
+const WorkerDelete = lazy(() => import("@/pages/worker-delete"));
+const Employers = lazy(() => import("@/pages/employers"));
+const EmployersAdd = lazy(() => import("@/pages/employers-add"));
+const EmployerView = lazy(() => import("@/pages/employer-view"));
+const EmployerEdit = lazy(() => import("@/pages/employer-edit"));
+const EmployerWorkers = lazy(() => import("@/pages/employer-workers"));
+const EmployerContacts = lazy(() => import("@/pages/employer-contacts"));
+const EmployerWizards = lazy(() => import("@/pages/employer-wizards"));
+const EmployersMonthlyUploads = lazy(() => import("@/pages/employers-monthly-uploads"));
+const AllEmployerContacts = lazy(() => import("@/pages/all-employer-contacts"));
+const EmployerContactView = lazy(() => import("@/pages/employer-contact-view"));
+const EmployerContactEdit = lazy(() => import("@/pages/employer-contact-edit"));
+const EmployerContactName = lazy(() => import("@/pages/employer-contact-name"));
+const EmployerContactEmail = lazy(() => import("@/pages/employer-contact-email"));
+const EmployerContactPhoneNumbers = lazy(() => import("@/pages/employer-contact-phone-numbers"));
+const EmployerContactAddresses = lazy(() => import("@/pages/employer-contact-addresses"));
+const EmployerContactUser = lazy(() => import("@/pages/employer-contact-user"));
+const EmployerContactCommHistory = lazy(() => import("@/pages/employer-contact-comm-history"));
+const EmployerContactSendSms = lazy(() => import("@/pages/employer-contact-send-sms"));
+const EmployerContactSendEmail = lazy(() => import("@/pages/employer-contact-send-email"));
+const EmployerContactSendPostal = lazy(() => import("@/pages/employer-contact-send-postal"));
+const EmployerContactSendInApp = lazy(() => import("@/pages/employer-contact-send-inapp"));
+const EmployerLogs = lazy(() => import("@/pages/employer-logs"));
+const EmployerPolicyHistory = lazy(() => import("@/pages/employer-policy-history"));
+const EmployerStewards = lazy(() => import("@/pages/employer-stewards"));
+const EmployerDispatchPage = lazy(() => import("@/pages/employers/dispatch"));
+const WizardView = lazy(() => import("@/pages/wizard-view"));
+const StripeCustomerPage = lazy(() => import("@/pages/employers/stripe-customer"));
+const StripePaymentMethodsPage = lazy(() => import("@/pages/employers/stripe-payment-methods"));
+const EmployerLedgerAccountsWrapper = lazy(() => import("@/pages/employer-ledger-accounts-wrapper"));
+const EAView = lazy(() => import("@/pages/ea-view"));
+const EAInvoices = lazy(() => import("@/pages/ea-invoices"));
+const EAPayments = lazy(() => import("@/pages/ea-payments"));
+const EATransactions = lazy(() => import("@/pages/ea-transactions"));
+const PaymentView = lazy(() => import("@/pages/payment-view"));
+const PaymentEdit = lazy(() => import("@/pages/payment-edit"));
+const TrustBenefits = lazy(() => import("@/pages/trust-benefits"));
+const TrustBenefitsAdd = lazy(() => import("@/pages/trust-benefits-add"));
+const TrustBenefitView = lazy(() => import("@/pages/trust-benefit-view"));
+const TrustBenefitEdit = lazy(() => import("@/pages/trust-benefit-edit"));
+const TrustProvidersPage = lazy(() => import("@/pages/trust-providers"));
+const TrustProviderViewPage = lazy(() => import("@/pages/trust-provider-view"));
+const TrustProviderEditPage = lazy(() => import("@/pages/trust-provider-edit"));
+const TrustProviderContactsPage = lazy(() => import("@/pages/trust-provider-contacts"));
+const TrustProviderContactView = lazy(() => import("@/pages/trust-provider-contact-view"));
+const TrustProviderContactEdit = lazy(() => import("@/pages/trust-provider-contact-edit"));
+const TrustProviderContactName = lazy(() => import("@/pages/trust-provider-contact-name"));
+const TrustProviderContactEmail = lazy(() => import("@/pages/trust-provider-contact-email"));
+const TrustProviderContactPhoneNumbers = lazy(() => import("@/pages/trust-provider-contact-phone-numbers"));
+const TrustProviderContactAddresses = lazy(() => import("@/pages/trust-provider-contact-addresses"));
+const TrustProviderContactUser = lazy(() => import("@/pages/trust-provider-contact-user"));
+const TrustProviderContactCommHistory = lazy(() => import("@/pages/trust-provider-contact-comm-history"));
+const TrustProviderContactSendSms = lazy(() => import("@/pages/trust-provider-contact-send-sms"));
+const TrustProviderContactSendEmail = lazy(() => import("@/pages/trust-provider-contact-send-email"));
+const TrustProviderContactSendPostal = lazy(() => import("@/pages/trust-provider-contact-send-postal"));
+const TrustProviderContactSendInApp = lazy(() => import("@/pages/trust-provider-contact-send-inapp"));
+const TrustProviderLogsPage = lazy(() => import("@/pages/trust-provider-logs"));
+const BargainingUnitsPage = lazy(() => import("@/pages/bargaining-units"));
+const BargainingUnitViewPage = lazy(() => import("@/pages/bargaining-unit-view"));
+const BargainingUnitEditPage = lazy(() => import("@/pages/bargaining-unit-edit"));
+const BargainingUnitDeletePage = lazy(() => import("@/pages/bargaining-unit-delete"));
+const AdminUsersPage = lazy(() => import("@/pages/admin/users"));
+const UserAccountPage = lazy(() => import("@/pages/admin/user-account"));
+const UserLogs = lazy(() => import("@/pages/admin/user-logs"));
+const UserEmail = lazy(() => import("@/pages/admin/user-email"));
+const UserPhoneNumbers = lazy(() => import("@/pages/admin/user-phone-numbers"));
+const UserAddresses = lazy(() => import("@/pages/admin/user-addresses"));
+const UserCommHistory = lazy(() => import("@/pages/admin/user-comm-history"));
+const UserSendSms = lazy(() => import("@/pages/admin/user-send-sms"));
+const UserSendEmail = lazy(() => import("@/pages/admin/user-send-email"));
+const UserSendPostal = lazy(() => import("@/pages/admin/user-send-postal"));
+const UserSendInApp = lazy(() => import("@/pages/admin/user-send-inapp"));
+const AdminRolesPage = lazy(() => import("@/pages/admin/roles"));
+const AdminPermissionsPage = lazy(() => import("@/pages/admin/permissions"));
+const WmbScanQueue = lazy(() => import("@/pages/admin/wmb-scan-queue"));
+const WmbScanDetail = lazy(() => import("@/pages/admin/wmb-scan-detail"));
+const AdminQuickstarts = lazy(() => import("@/pages/admin-quickstarts"));
+const CronJobs = lazy(() => import("@/pages/cron-jobs"));
+const CronJobView = lazy(() => import("@/pages/cron-job-view"));
+const CronJobSettings = lazy(() => import("@/pages/cron-job-settings"));
+const CronJobHistory = lazy(() => import("@/pages/cron-job-history"));
 import AdminLayout from "@/components/layouts/AdminLayout";
 import ConfigurationLayout from "@/components/layouts/ConfigurationLayout";
-import UsersListPage from "@/pages/config/users/list";
-import RolesPage from "@/pages/config/users/roles";
-import PermissionsPage from "@/pages/config/users/permissions";
-import PoliciesPage from "@/pages/config/users/policies";
-import EmployerUserSettingsPage from "@/pages/config/users/employer-settings";
-import TrustProviderUserSettingsPage from "@/pages/config/users/trust-provider-settings";
-import WorkerUserSettingsPage from "@/pages/config/users/worker-settings";
-import SessionsPage from "@/pages/sessions";
-import FloodEventsPage from "@/pages/flood-events";
-import FloodEventsConfigPage from "@/pages/flood-events-config";
-import PostalAddressesConfigPage from "@/pages/config/addresses";
-import PhoneNumbersConfigPage from "@/pages/config/phone-numbers";
-import GenderOptionsPage from "@/pages/config/gender-options";
-import WorkerIDTypesPage from "@/pages/config/worker-id-types";
-import WorkerWorkStatusesPage from "@/pages/config/worker-work-statuses";
-import StewardSettingsPage from "@/pages/config/steward-settings";
-import EmploymentStatusesPage from "@/pages/config/employment-statuses";
-import TrustBenefitTypesPage from "@/pages/config/trust-benefit-types";
-import EmployerContactTypesPage from "@/pages/config/employer-contact-types";
-import EmployerTypesPage from "@/pages/config/employer-types";
-import ProviderContactTypesPage from "@/pages/config/provider-contact-types";
-import EventTypesPage from "@/pages/config/event-types";
-import DispatchJobTypesPage from "@/pages/config/dispatch-job-types";
-import DispatchJobsPage from "@/pages/dispatch/jobs";
-import DispatchJobDetailsPage from "@/pages/dispatch/job-details";
-import DispatchJobEditPage from "@/pages/dispatch/job-edit";
-import DispatchJobDispatchesPage from "@/pages/dispatch/job-dispatches";
-import DispatchJobEligibleWorkersPage from "@/pages/dispatch/job-eligible-workers";
-import DispatchJobNewPage from "@/pages/dispatch/job-new";
-import MasqueradePage from "@/pages/config/masquerade";
-import SystemModePage from "@/pages/config/system-mode";
-import DefaultPolicyPage from "@/pages/config/default-policy";
-import TwilioConfigPage from "@/pages/config/twilio";
-import EmailConfigPage from "@/pages/config/email";
-import PostalConfigPage from "@/pages/config/postal";
-import LogsPage from "@/pages/config/logs";
-import DashboardPluginsConfigPage from "@/pages/config/dashboard-plugins";
-import PluginSettingsPage from "@/pages/config/plugin-settings";
-import ComponentsConfigPage from "@/pages/config/components";
-import StripeTestPage from "@/pages/config/ledger/stripe/test";
-import StripeSettingsPage from "@/pages/config/ledger/stripe/settings";
-import PaymentTypesPage from "@/pages/config/ledger/stripe/payment-types";
-import LedgerPaymentTypesPage from "@/pages/config/ledger-payment-types";
-import ChargePluginsListPage from "@/pages/config/ledger/charge-plugins-list";
-import ChargePluginConfigPage from "@/pages/config/ledger/charge-plugin-config";
-import ChargePluginFormPage from "@/pages/config/ledger/charge-plugin-form";
-import ConfigurationLandingPage from "@/pages/config/index";
+const UsersListPage = lazy(() => import("@/pages/config/users/list"));
+const RolesPage = lazy(() => import("@/pages/config/users/roles"));
+const PermissionsPage = lazy(() => import("@/pages/config/users/permissions"));
+const PoliciesPage = lazy(() => import("@/pages/config/users/policies"));
+const EmployerUserSettingsPage = lazy(() => import("@/pages/config/users/employer-settings"));
+const TrustProviderUserSettingsPage = lazy(() => import("@/pages/config/users/trust-provider-settings"));
+const WorkerUserSettingsPage = lazy(() => import("@/pages/config/users/worker-settings"));
+const SessionsPage = lazy(() => import("@/pages/sessions"));
+const FloodEventsPage = lazy(() => import("@/pages/flood-events"));
+const FloodEventsConfigPage = lazy(() => import("@/pages/flood-events-config"));
+const PostalAddressesConfigPage = lazy(() => import("@/pages/config/addresses"));
+const PhoneNumbersConfigPage = lazy(() => import("@/pages/config/phone-numbers"));
+const GenderOptionsPage = lazy(() => import("@/pages/config/gender-options"));
+const WorkerIDTypesPage = lazy(() => import("@/pages/config/worker-id-types"));
+const WorkerWorkStatusesPage = lazy(() => import("@/pages/config/worker-work-statuses"));
+const StewardSettingsPage = lazy(() => import("@/pages/config/steward-settings"));
+const EmploymentStatusesPage = lazy(() => import("@/pages/config/employment-statuses"));
+const TrustBenefitTypesPage = lazy(() => import("@/pages/config/trust-benefit-types"));
+const EmployerContactTypesPage = lazy(() => import("@/pages/config/employer-contact-types"));
+const EmployerTypesPage = lazy(() => import("@/pages/config/employer-types"));
+const ProviderContactTypesPage = lazy(() => import("@/pages/config/provider-contact-types"));
+const EventTypesPage = lazy(() => import("@/pages/config/event-types"));
+const DispatchJobTypesPage = lazy(() => import("@/pages/config/dispatch-job-types"));
+const DispatchJobsPage = lazy(() => import("@/pages/dispatch/jobs"));
+const DispatchJobDetailsPage = lazy(() => import("@/pages/dispatch/job-details"));
+const DispatchJobEditPage = lazy(() => import("@/pages/dispatch/job-edit"));
+const DispatchJobDispatchesPage = lazy(() => import("@/pages/dispatch/job-dispatches"));
+const DispatchJobEligibleWorkersPage = lazy(() => import("@/pages/dispatch/job-eligible-workers"));
+const DispatchJobNewPage = lazy(() => import("@/pages/dispatch/job-new"));
+const MasqueradePage = lazy(() => import("@/pages/config/masquerade"));
+const SystemModePage = lazy(() => import("@/pages/config/system-mode"));
+const DefaultPolicyPage = lazy(() => import("@/pages/config/default-policy"));
+const TwilioConfigPage = lazy(() => import("@/pages/config/twilio"));
+const EmailConfigPage = lazy(() => import("@/pages/config/email"));
+const PostalConfigPage = lazy(() => import("@/pages/config/postal"));
+const LogsPage = lazy(() => import("@/pages/config/logs"));
+const DashboardPluginsConfigPage = lazy(() => import("@/pages/config/dashboard-plugins"));
+const PluginSettingsPage = lazy(() => import("@/pages/config/plugin-settings"));
+const ComponentsConfigPage = lazy(() => import("@/pages/config/components"));
+const StripeTestPage = lazy(() => import("@/pages/config/ledger/stripe/test"));
+const StripeSettingsPage = lazy(() => import("@/pages/config/ledger/stripe/settings"));
+const PaymentTypesPage = lazy(() => import("@/pages/config/ledger/stripe/payment-types"));
+const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-types"));
+const ChargePluginsListPage = lazy(() => import("@/pages/config/ledger/charge-plugins-list"));
+const ChargePluginConfigPage = lazy(() => import("@/pages/config/ledger/charge-plugin-config"));
+const ChargePluginFormPage = lazy(() => import("@/pages/config/ledger/charge-plugin-form"));
+const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
+const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
+const LedgerAccountView = lazy(() => import("@/pages/config/ledger/account-view"));
+const LedgerAccountEdit = lazy(() => import("@/pages/config/ledger/account-edit"));
+const AccountPayments = lazy(() => import("@/pages/config/ledger/account-payments"));
+const AccountTransactions = lazy(() => import("@/pages/config/ledger/account-transactions"));
+const AccountParticipants = lazy(() => import("@/pages/account-participants"));
+const AccountSettings = lazy(() => import("@/pages/config/ledger/account-settings"));
+const SiteInformation = lazy(() => import("@/pages/site-information"));
+const TerminologyConfigPage = lazy(() => import("@/pages/config/terminology"));
+const PolicyView = lazy(() => import("@/pages/policy-view"));
+const PolicyEdit = lazy(() => import("@/pages/policy-edit"));
+const PolicyBenefits = lazy(() => import("@/pages/policy-benefits"));
+const PoliciesConfigPage = lazy(() => import("@/pages/config/policies"));
+const BargainingUnitsConfigPage = lazy(() => import("@/pages/config/bargaining-units"));
+const CardcheckDefinitionsPage = lazy(() => import("@/pages/cardcheck-definitions"));
+const CardcheckDefinitionViewPage = lazy(() => import("@/pages/cardcheck-definition-view"));
+const CardcheckDefinitionEditPage = lazy(() => import("@/pages/cardcheck-definition-edit"));
+const WorkerCardchecks = lazy(() => import("@/pages/worker-cardchecks"));
+const CardcheckViewPage = lazy(() => import("@/pages/cardcheck-view"));
+const EventsListPage = lazy(() => import("@/pages/events"));
+const EventViewPage = lazy(() => import("@/pages/event-view"));
+const EventEditPage = lazy(() => import("@/pages/event-edit"));
+const EventDeletePage = lazy(() => import("@/pages/event-delete"));
+const EventRegisterPage = lazy(() => import("@/pages/event-register"));
+const EventRosterPage = lazy(() => import("@/pages/event-roster"));
+const EventSelfRegisterPage = lazy(() => import("@/pages/event-self-register"));
+const BtuCsgListPage = lazy(() => import("@/pages/sitespecific/btu/csg-list"));
+const BtuCsgViewPage = lazy(() => import("@/pages/sitespecific/btu/csg-view"));
+const BtuCsgEditPage = lazy(() => import("@/pages/sitespecific/btu/csg-edit"));
+const BtuCsgNewPage = lazy(() => import("@/pages/sitespecific/btu/csg-new"));
+const BtuEmployerMapListPage = lazy(() => import("@/pages/sitespecific/btu/employer-map-list"));
 
-// Import charge plugin UIs to register them
-import "@/plugins/charge-plugins";
-import LedgerAccountsPage from "@/pages/config/ledger/accounts";
-import LedgerAccountView from "@/pages/config/ledger/account-view";
-import LedgerAccountEdit from "@/pages/config/ledger/account-edit";
-import AccountPayments from "@/pages/config/ledger/account-payments";
-import AccountTransactions from "@/pages/config/ledger/account-transactions";
-import AccountParticipants from "@/pages/account-participants";
-import AccountSettings from "@/pages/config/ledger/account-settings";
-import SiteInformation from "@/pages/site-information";
-import TerminologyConfigPage from "@/pages/config/terminology";
-import PolicyView from "@/pages/policy-view";
-import PolicyEdit from "@/pages/policy-edit";
-import PolicyBenefits from "@/pages/policy-benefits";
-import PoliciesConfigPage from "@/pages/config/policies";
-import BargainingUnitsConfigPage from "@/pages/config/bargaining-units";
-import CardcheckDefinitionsPage from "@/pages/cardcheck-definitions";
-import CardcheckDefinitionViewPage from "@/pages/cardcheck-definition-view";
-import CardcheckDefinitionEditPage from "@/pages/cardcheck-definition-edit";
-import WorkerCardchecks from "@/pages/worker-cardchecks";
-import CardcheckViewPage from "@/pages/cardcheck-view";
-import EventsListPage from "@/pages/events";
-import EventViewPage from "@/pages/event-view";
-import EventEditPage from "@/pages/event-edit";
-import EventDeletePage from "@/pages/event-delete";
-import EventRegisterPage from "@/pages/event-register";
-import EventRosterPage from "@/pages/event-roster";
-import EventSelfRegisterPage from "@/pages/event-self-register";
-import BtuCsgListPage from "@/pages/sitespecific/btu/csg-list";
-import BtuCsgViewPage from "@/pages/sitespecific/btu/csg-view";
-import BtuCsgEditPage from "@/pages/sitespecific/btu/csg-edit";
-import BtuCsgNewPage from "@/pages/sitespecific/btu/csg-new";
-import BtuEmployerMapListPage from "@/pages/sitespecific/btu/employer-map-list";
-import NotFound from "@/pages/not-found";
+// Loading fallback component
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <div className="space-y-4 w-full max-w-md">
+        <Skeleton className="h-8 w-3/4" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-5/6" />
+        <Skeleton className="h-32 w-full" />
+      </div>
+    </div>
+  );
+}
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -273,12 +293,13 @@ function Router() {
   }
 
   return (
-    <Switch>
-      {/* Public routes */}
-      <Route path="/bootstrap" component={Bootstrap} />
-      <Route path="/login" component={LoginPage} />
-      <Route path="/unauthorized" component={UnauthorizedPage} />
-      <Route path="/sms/optin/:token" component={SmsOptinPage} />
+    <Suspense fallback={<PageLoader />}>
+      <Switch>
+        {/* Public routes */}
+        <Route path="/bootstrap" component={Bootstrap} />
+        <Route path="/login" component={LoginPage} />
+        <Route path="/unauthorized" component={UnauthorizedPage} />
+        <Route path="/sms/optin/:token" component={SmsOptinPage} />
 
       {/* Protected routes */}
       <Route path="/workers/add">
@@ -2121,7 +2142,8 @@ function Router() {
 
       {/* 404 for unmatched routes */}
       <Route component={NotFound} />
-    </Switch>
+      </Switch>
+    </Suspense>
   );
 }
 
