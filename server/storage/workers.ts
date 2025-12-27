@@ -71,6 +71,12 @@ export interface WorkersPaginationParams {
   search?: string;
   sortField?: 'name' | 'email';
   sortOrder?: 'asc' | 'desc';
+  // Filters
+  employerId?: string;
+  employerTypeId?: string;
+  bargainingUnitId?: string;
+  benefitId?: string;
+  contactStatus?: 'all' | 'has_email' | 'missing_email' | 'has_phone' | 'missing_phone' | 'has_address' | 'missing_address' | 'complete' | 'incomplete';
 }
 
 export interface WorkerStorage {
@@ -221,6 +227,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       const offset = (page - 1) * pageSize;
       const search = params.search?.trim() ?? '';
       const sortOrder = params.sortOrder ?? 'asc';
+      const { employerId, employerTypeId, bargainingUnitId, benefitId, contactStatus } = params;
       
       const now = new Date();
       const currentMonth = now.getMonth() + 1;
@@ -236,12 +243,79 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           )`
         : sql``;
       
+      // Build employer filter condition (checks denorm_employer_ids array)
+      const employerCondition = employerId 
+        ? sql`AND ${employerId} = ANY(w.denorm_employer_ids)`
+        : sql``;
+      
+      // Build employer type filter condition
+      const employerTypeCondition = employerTypeId
+        ? sql`AND EXISTS (
+            SELECT 1 FROM employers e 
+            WHERE e.id = ANY(w.denorm_employer_ids) 
+            AND e.employer_type_id = ${employerTypeId}
+          )`
+        : sql``;
+      
+      // Build bargaining unit filter condition
+      const bargainingUnitCondition = bargainingUnitId
+        ? sql`AND w.bargaining_unit_id = ${bargainingUnitId}`
+        : sql``;
+      
+      // Build benefit filter condition
+      const benefitCondition = benefitId
+        ? sql`AND EXISTS (
+            SELECT 1 FROM trust_wmb wmb
+            WHERE wmb.worker_id = w.id
+            AND wmb.benefit_id = ${benefitId}
+            AND wmb.month = ${currentMonth}
+            AND wmb.year = ${currentYear}
+          )`
+        : sql``;
+      
+      // Build contact status filter condition
+      let contactStatusCondition = sql``;
+      if (contactStatus && contactStatus !== 'all') {
+        switch (contactStatus) {
+          case 'has_email':
+            contactStatusCondition = sql`AND c.email IS NOT NULL AND c.email != ''`;
+            break;
+          case 'missing_email':
+            contactStatusCondition = sql`AND (c.email IS NULL OR c.email = '')`;
+            break;
+          case 'has_phone':
+            contactStatusCondition = sql`AND EXISTS (SELECT 1 FROM contact_phone cp WHERE cp.contact_id = c.id)`;
+            break;
+          case 'missing_phone':
+            contactStatusCondition = sql`AND NOT EXISTS (SELECT 1 FROM contact_phone cp WHERE cp.contact_id = c.id)`;
+            break;
+          case 'has_address':
+            contactStatusCondition = sql`AND EXISTS (SELECT 1 FROM contact_postal ca WHERE ca.contact_id = c.id AND ca.is_active = true)`;
+            break;
+          case 'missing_address':
+            contactStatusCondition = sql`AND NOT EXISTS (SELECT 1 FROM contact_postal ca WHERE ca.contact_id = c.id AND ca.is_active = true)`;
+            break;
+          case 'complete':
+            contactStatusCondition = sql`AND c.email IS NOT NULL AND c.email != '' 
+              AND EXISTS (SELECT 1 FROM contact_phone cp WHERE cp.contact_id = c.id)
+              AND EXISTS (SELECT 1 FROM contact_postal ca WHERE ca.contact_id = c.id AND ca.is_active = true)`;
+            break;
+          case 'incomplete':
+            contactStatusCondition = sql`AND (
+              (c.email IS NULL OR c.email = '')
+              OR NOT EXISTS (SELECT 1 FROM contact_phone cp WHERE cp.contact_id = c.id)
+              OR NOT EXISTS (SELECT 1 FROM contact_postal ca WHERE ca.contact_id = c.id AND ca.is_active = true)
+            )`;
+            break;
+        }
+      }
+      
       // Get total count first (without benefits aggregation for speed)
       const countResult = await db.execute(sql`
         SELECT COUNT(*) as total
         FROM workers w
         INNER JOIN contacts c ON w.contact_id = c.id
-        WHERE 1=1 ${searchCondition}
+        WHERE 1=1 ${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition}
       `);
       const total = parseInt((countResult.rows[0] as any).total, 10);
       
@@ -338,7 +412,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           ORDER BY is_primary DESC NULLS LAST, created_at ASC
           LIMIT 1
         ) a ON true
-        WHERE 1=1 ${searchCondition}
+        WHERE 1=1 ${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition}
         ORDER BY c.family ${orderDirection}, c.given ${orderDirection}
         LIMIT ${pageSize}
         OFFSET ${offset}

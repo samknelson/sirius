@@ -24,7 +24,7 @@ The frontend utilizes React 18 with TypeScript, Vite, Shadcn/ui (built on Radix 
 All database queries are strictly confined to the storage layer (`server/storage/`). Route handlers and services must utilize storage functions and never directly access the `db` object. This enforces strict separation of concerns where route handlers call storage functions, and storage functions query the database.
 
 ## Feature Specifications
--   **Worker Management**: Full CRUD operations for workers, including contact information, work status history, and benefits.
+-   **Worker Management**: Full CRUD operations for workers, including contact information, work status history, and benefits. The worker list uses server-side pagination (50 records per page) with debounced search and server-side filtering by employer, employer type, bargaining unit, benefit, and contact status. Cardcheck filters remain client-side.
 -   **Configurable Settings**: Manages organizational settings (worker ID types, work statuses, employer contact types).
 -   **User Provisioning**: Email-based user provisioning integrated with Replit accounts.
 -   **Data Validation**: Extensive Zod schema validation, `libphonenumber-js` for phone numbers, and custom validations.

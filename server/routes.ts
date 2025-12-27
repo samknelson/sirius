@@ -428,11 +428,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const sortOrderParam = req.query.sortOrder as string;
         const sortOrder = sortOrderParam === 'desc' ? 'desc' : 'asc';
         
+        // Filter parameters
+        const employerId = typeof req.query.employerId === 'string' && req.query.employerId !== 'all' ? req.query.employerId : undefined;
+        const employerTypeId = typeof req.query.employerTypeId === 'string' && req.query.employerTypeId !== 'all' ? req.query.employerTypeId : undefined;
+        const bargainingUnitId = typeof req.query.bargainingUnitId === 'string' && req.query.bargainingUnitId !== 'all' ? req.query.bargainingUnitId : undefined;
+        const benefitId = typeof req.query.benefitId === 'string' && req.query.benefitId !== 'all' ? req.query.benefitId : undefined;
+        const contactStatusParam = req.query.contactStatus as string;
+        const validContactStatuses = ['all', 'has_email', 'missing_email', 'has_phone', 'missing_phone', 'has_address', 'missing_address', 'complete', 'incomplete'];
+        const contactStatus = validContactStatuses.includes(contactStatusParam) ? contactStatusParam as any : 'all';
+        
         const result = await storage.workers.getWorkersWithDetailsPaginated({
           page,
           pageSize,
           search,
           sortOrder,
+          employerId,
+          employerTypeId,
+          bargainingUnitId,
+          benefitId,
+          contactStatus,
         });
         res.json(result);
       } catch (error) {

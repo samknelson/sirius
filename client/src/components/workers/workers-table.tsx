@@ -32,6 +32,15 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+export interface WorkerFilters {
+  employerId: string;
+  employerTypeId: string;
+  bargainingUnitId: string;
+  benefitId: string;
+  contactStatus: string;
+  cardcheckFilters?: Record<string, string>;
+}
+
 interface WorkersTableProps {
   workers: Worker[];
   isLoading: boolean;
@@ -44,6 +53,8 @@ interface WorkersTableProps {
   onSearchChange?: (query: string) => void;
   sortOrder?: "asc" | "desc";
   onSortOrderChange?: (order: "asc" | "desc") => void;
+  filters?: WorkerFilters;
+  onFiltersChange?: (filters: WorkerFilters) => void;
 }
 
 interface WorkerBenefit {
@@ -153,22 +164,45 @@ export function WorkersTable({
   onSearchChange,
   sortOrder: externalSortOrder,
   onSortOrderChange,
+  filters: externalFilters,
+  onFiltersChange,
 }: WorkersTableProps) {
   const isPaginated = onPageChange !== undefined;
   const [internalSortOrder, setInternalSortOrder] = useState<"asc" | "desc">("asc");
   const [internalSearchQuery, setInternalSearchQuery] = useState("");
+  const [internalFilters, setInternalFilters] = useState<WorkerFilters>({
+    employerId: "all",
+    employerTypeId: "all",
+    bargainingUnitId: "all",
+    benefitId: "all",
+    contactStatus: "all",
+    cardcheckFilters: {},
+  });
   
   const sortOrder = externalSortOrder ?? internalSortOrder;
   const setSortOrder = onSortOrderChange ?? setInternalSortOrder;
   const searchQuery = externalSearchQuery ?? internalSearchQuery;
   const setSearchQuery = onSearchChange ?? setInternalSearchQuery;
   
-  const [selectedEmployerId, setSelectedEmployerId] = useState<string>("all");
-  const [selectedBenefitId, setSelectedBenefitId] = useState<string>("all");
-  const [contactStatusFilter, setContactStatusFilter] = useState<string>("all");
-  const [selectedEmployerTypeId, setSelectedEmployerTypeId] = useState<string>("all");
-  const [selectedBargainingUnitId, setSelectedBargainingUnitId] = useState<string>("all");
-  const [cardcheckFilters, setCardcheckFilters] = useState<Record<string, string>>({});
+  // Use external filters if provided (server-side filtering), otherwise use internal
+  const filters = externalFilters ?? internalFilters;
+  const setFilters = onFiltersChange ?? setInternalFilters;
+  
+  const selectedEmployerId = filters.employerId;
+  const selectedBenefitId = filters.benefitId;
+  const contactStatusFilter = filters.contactStatus;
+  const selectedEmployerTypeId = filters.employerTypeId;
+  const selectedBargainingUnitId = filters.bargainingUnitId;
+  const cardcheckFilters = filters.cardcheckFilters ?? {};
+  
+  // Helper to update a single filter
+  const updateFilter = (key: keyof WorkerFilters, value: string) => {
+    setFilters({ ...filters, [key]: value });
+  };
+  
+  const setCardcheckFilters = (newFilters: Record<string, string>) => {
+    setFilters({ ...filters, cardcheckFilters: newFilters });
+  };
 
   // Fetch component configs to check if trust benefits is enabled
   const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
@@ -180,7 +214,7 @@ export function WorkersTable({
   // Reset benefit filter when trust.benefits is disabled
   useEffect(() => {
     if (!trustBenefitsEnabled && selectedBenefitId !== "all") {
-      setSelectedBenefitId("all");
+      updateFilter("benefitId", "all");
     }
   }, [trustBenefitsEnabled, selectedBenefitId]);
 
@@ -390,68 +424,88 @@ export function WorkersTable({
   });
 
   // Filter workers based on search query, employer, and benefit
+  // When using server-side pagination (isPaginated), skip client-side filters as they're already applied on the server
   const filteredWorkers = useMemo(() => {
     let filtered = workersWithNames;
     
-    // Filter by employer if selected
-    if (selectedEmployerId !== "all") {
-      filtered = filtered.filter(worker => 
-        worker.employers?.some(emp => emp.id === selectedEmployerId)
-      );
+    // Skip these filters when using server-side pagination - they're handled by the API
+    if (!isPaginated) {
+      // Filter by employer if selected
+      if (selectedEmployerId !== "all") {
+        filtered = filtered.filter(worker => 
+          worker.employers?.some(emp => emp.id === selectedEmployerId)
+        );
+      }
+      
+      // Filter by employer type if selected
+      if (selectedEmployerTypeId !== "all") {
+        filtered = filtered.filter(worker => 
+          worker.employers?.some(emp => emp.employerTypeId === selectedEmployerTypeId)
+        );
+      }
+      
+      // Filter by bargaining unit if selected
+      if (selectedBargainingUnitId !== "all") {
+        filtered = filtered.filter(worker => 
+          worker.bargainingUnitId === selectedBargainingUnitId
+        );
+      }
+      
+      // Filter by specific benefit if selected (using benefit IDs) - only when trust.benefits is enabled
+      if (trustBenefitsEnabled && selectedBenefitId !== "all") {
+        filtered = filtered.filter(worker => 
+          worker.benefitIds?.includes(selectedBenefitId)
+        );
+      }
+      
+      // Filter by contact status
+      if (contactStatusFilter !== "all") {
+        filtered = filtered.filter(worker => {
+          const hasEmail = Boolean(worker.email);
+          const hasPhone = Boolean(worker.phoneNumber);
+          const hasAddress = Boolean(worker.address);
+          
+          switch (contactStatusFilter) {
+            case "has_email":
+              return hasEmail;
+            case "missing_email":
+              return !hasEmail;
+            case "has_phone":
+              return hasPhone;
+            case "missing_phone":
+              return !hasPhone;
+            case "has_address":
+              return hasAddress;
+            case "missing_address":
+              return !hasAddress;
+            case "complete":
+              return hasEmail && hasPhone && hasAddress;
+            case "incomplete":
+              return !hasEmail || !hasPhone || !hasAddress;
+            default:
+              return true;
+          }
+        });
+      }
+      
+      // Filter by search query (only client-side when not paginated)
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        filtered = filtered.filter(worker => {
+          const name = (worker.contactName || '').toLowerCase();
+          const email = (worker.email || '').toLowerCase();
+          const phone = (worker.phoneNumber || '').toLowerCase();
+          const ssn = formatSSN(worker.ssn).toLowerCase();
+          
+          return name.includes(query) || 
+                 email.includes(query) || 
+                 phone.includes(query) || 
+                 ssn.includes(query);
+        });
+      }
     }
     
-    // Filter by employer type if selected
-    if (selectedEmployerTypeId !== "all") {
-      filtered = filtered.filter(worker => 
-        worker.employers?.some(emp => emp.employerTypeId === selectedEmployerTypeId)
-      );
-    }
-    
-    // Filter by bargaining unit if selected
-    if (selectedBargainingUnitId !== "all") {
-      filtered = filtered.filter(worker => 
-        worker.bargainingUnitId === selectedBargainingUnitId
-      );
-    }
-    
-    // Filter by specific benefit if selected (using benefit IDs) - only when trust.benefits is enabled
-    if (trustBenefitsEnabled && selectedBenefitId !== "all") {
-      filtered = filtered.filter(worker => 
-        worker.benefitIds?.includes(selectedBenefitId)
-      );
-    }
-    
-    // Filter by contact status
-    if (contactStatusFilter !== "all") {
-      filtered = filtered.filter(worker => {
-        const hasEmail = Boolean(worker.email);
-        const hasPhone = Boolean(worker.phoneNumber);
-        const hasAddress = Boolean(worker.address);
-        
-        switch (contactStatusFilter) {
-          case "has_email":
-            return hasEmail;
-          case "missing_email":
-            return !hasEmail;
-          case "has_phone":
-            return hasPhone;
-          case "missing_phone":
-            return !hasPhone;
-          case "has_address":
-            return hasAddress;
-          case "missing_address":
-            return !hasAddress;
-          case "complete":
-            return hasEmail && hasPhone && hasAddress;
-          case "incomplete":
-            return !hasEmail || !hasPhone || !hasAddress;
-          default:
-            return true;
-        }
-      });
-    }
-    
-    // Filter by cardcheck status for each definition
+    // Cardcheck filtering is always done client-side since it's not yet supported on the server
     if (cardcheckEnabled) {
       const activeFilters = Object.entries(cardcheckFilters).filter(([_, value]) => value !== "all");
       if (activeFilters.length > 0) {
@@ -466,24 +520,8 @@ export function WorkersTable({
       }
     }
     
-    // Filter by search query
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(worker => {
-        const name = (worker.contactName || '').toLowerCase();
-        const email = (worker.email || '').toLowerCase();
-        const phone = (worker.phoneNumber || '').toLowerCase();
-        const ssn = formatSSN(worker.ssn).toLowerCase();
-        
-        return name.includes(query) || 
-               email.includes(query) || 
-               phone.includes(query) || 
-               ssn.includes(query);
-      });
-    }
-    
     return filtered;
-  }, [workersWithNames, searchQuery, selectedEmployerId, selectedEmployerTypeId, selectedBargainingUnitId, selectedBenefitId, contactStatusFilter, trustBenefitsEnabled, cardcheckEnabled, cardcheckFilters, cardcheckMap]);
+  }, [workersWithNames, searchQuery, selectedEmployerId, selectedEmployerTypeId, selectedBargainingUnitId, selectedBenefitId, contactStatusFilter, trustBenefitsEnabled, cardcheckEnabled, cardcheckFilters, cardcheckMap, isPaginated]);
 
   const sortedWorkers = [...filteredWorkers].sort((a, b) => {
     const familyA = a.family || '';
@@ -644,7 +682,7 @@ export function WorkersTable({
             <div className="w-64">
               <Select
                 value={selectedEmployerId}
-                onValueChange={setSelectedEmployerId}
+                onValueChange={(value) => updateFilter("employerId", value)}
               >
                 <SelectTrigger data-testid="select-employer-filter">
                   <div className="flex items-center gap-2">
@@ -680,7 +718,7 @@ export function WorkersTable({
             <div className="w-56">
               <Select
                 value={selectedEmployerTypeId}
-                onValueChange={setSelectedEmployerTypeId}
+                onValueChange={(value) => updateFilter("employerTypeId", value)}
               >
                 <SelectTrigger data-testid="select-employer-type-filter">
                   <div className="flex items-center gap-2">
@@ -715,7 +753,7 @@ export function WorkersTable({
             <div className="w-48">
               <Select
                 value={selectedBargainingUnitId}
-                onValueChange={setSelectedBargainingUnitId}
+                onValueChange={(value) => updateFilter("bargainingUnitId", value)}
               >
                 <SelectTrigger data-testid="select-bargaining-unit-filter">
                   <div className="flex items-center gap-2">
@@ -745,7 +783,7 @@ export function WorkersTable({
               <div className="w-64">
                 <Select
                   value={selectedBenefitId}
-                  onValueChange={setSelectedBenefitId}
+                  onValueChange={(value) => updateFilter("benefitId", value)}
                 >
                   <SelectTrigger data-testid="select-benefit-filter">
                     <div className="flex items-center gap-2">
@@ -782,7 +820,7 @@ export function WorkersTable({
             <div className="w-56">
               <Select
                 value={contactStatusFilter}
-                onValueChange={setContactStatusFilter}
+                onValueChange={(value) => updateFilter("contactStatus", value)}
               >
                 <SelectTrigger data-testid="select-contact-status-filter">
                   <div className="flex items-center gap-2">
@@ -849,7 +887,7 @@ export function WorkersTable({
               <div key={def.id} className="w-48">
                 <Select
                   value={cardcheckFilters[def.id] || "all"}
-                  onValueChange={(value) => setCardcheckFilters(prev => ({ ...prev, [def.id]: value }))}
+                  onValueChange={(value) => setCardcheckFilters({ ...cardcheckFilters, [def.id]: value })}
                 >
                   <SelectTrigger data-testid={`select-cardcheck-filter-${def.id}`}>
                     <div className="flex items-center gap-2">

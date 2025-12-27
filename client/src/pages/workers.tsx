@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Users } from "lucide-react";
-import { WorkersTable } from "@/components/workers/workers-table";
+import { WorkersTable, WorkerFilters } from "@/components/workers/workers-table";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -21,6 +21,13 @@ export default function Workers() {
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [filters, setFilters] = useState<WorkerFilters>({
+    employerId: "all",
+    employerTypeId: "all",
+    bargainingUnitId: "all",
+    benefitId: "all",
+    contactStatus: "all",
+  });
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -30,8 +37,23 @@ export default function Workers() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
+  const handleFiltersChange = useCallback((newFilters: WorkerFilters) => {
+    setFilters(newFilters);
+    setPage(1); // Reset to first page when filters change
+  }, []);
+
   const { data: paginatedData, isLoading } = useQuery<PaginatedWorkersResponse>({
-    queryKey: ["/api/workers/with-details/paginated", { page, pageSize, search: debouncedSearch, sortOrder }],
+    queryKey: ["/api/workers/with-details/paginated", { 
+      page, 
+      pageSize, 
+      search: debouncedSearch, 
+      sortOrder,
+      employerId: filters.employerId,
+      employerTypeId: filters.employerTypeId,
+      bargainingUnitId: filters.bargainingUnitId,
+      benefitId: filters.benefitId,
+      contactStatus: filters.contactStatus,
+    }],
   });
 
   const workers = paginatedData?.data ?? [];
@@ -87,6 +109,8 @@ export default function Workers() {
           onSearchChange={setSearchInput}
           sortOrder={sortOrder}
           onSortOrderChange={setSortOrder}
+          filters={filters}
+          onFiltersChange={handleFiltersChange}
         />
       </main>
     </div>
