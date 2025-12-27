@@ -113,16 +113,34 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
     },
 
     async findEmployerMapping(deptId: string, locationId: string, jobCode: string): Promise<EmployerMappingResult | null> {
+      const trimmedDept = deptId.trim();
+      const trimmedLoc = locationId.trim();
+      const trimmedJob = jobCode.trim();
+      
+      console.log(`[BTU Import] Looking up mapping: Dept="${trimmedDept}", Loc="${trimmedLoc}", Job="${trimmedJob}"`);
+      
+      // Use raw SQL for debugging
+      const rawResults = await db.execute(sql`
+        SELECT * FROM sitespecific_btu_employer_map 
+        WHERE department_id = ${trimmedDept} 
+          AND location_id = ${trimmedLoc} 
+          AND job_code = ${trimmedJob}
+      `);
+      
+      console.log(`[BTU Import] Raw SQL result count:`, rawResults.rows?.length);
+      
       const [mapping] = await db
         .select()
         .from(sitespecificBtuEmployerMap)
         .where(
           and(
-            eq(sitespecificBtuEmployerMap.departmentId, deptId.trim()),
-            eq(sitespecificBtuEmployerMap.locationId, locationId.trim()),
-            eq(sitespecificBtuEmployerMap.jobCode, jobCode.trim())
+            eq(sitespecificBtuEmployerMap.departmentId, trimmedDept),
+            eq(sitespecificBtuEmployerMap.locationId, trimmedLoc),
+            eq(sitespecificBtuEmployerMap.jobCode, trimmedJob)
           )
         );
+      
+      console.log(`[BTU Import] Drizzle result:`, mapping ? `Found ID: ${mapping.id}` : 'NOT FOUND');
       
       if (!mapping) return null;
       
