@@ -52,10 +52,19 @@ function DispatchHoldForEmployerContent() {
       setNewEmployerId("");
       setNewHoldUntil("");
     },
-    onError: () => {
+    onError: (error: any) => {
+      let errorMessage = "Failed to add entry.";
+      if (error?.details && Array.isArray(error.details)) {
+        const messages = error.details.map((d: any) => d.message).filter(Boolean);
+        if (messages.length > 0) {
+          errorMessage = messages.join(". ");
+        }
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
       toast({
         title: "Error",
-        description: "Failed to add entry.",
+        description: errorMessage,
         variant: "destructive",
       });
     },
