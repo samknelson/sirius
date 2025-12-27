@@ -27,6 +27,7 @@ import {
   Droplets,
   FileWarning,
   Map,
+  Briefcase,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -265,6 +266,18 @@ export default function Header() {
                     >
                       <Map className="h-4 w-4 mr-2" />
                       Employer Map
+                    </Button>
+                  </Link>
+                )}
+                {hasComponent("dispatch") && (
+                  <Link href="/dispatch/jobs" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location.startsWith("/dispatch") ? "default" : "ghost"}
+                      className="w-full justify-start pl-8"
+                      data-testid="mobile-nav-dispatch-jobs"
+                    >
+                      <Briefcase className="h-4 w-4 mr-2" />
+                      Dispatch Jobs
                     </Button>
                   </Link>
                 )}
@@ -568,7 +581,7 @@ export default function Header() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant={location.startsWith("/employers") || location.startsWith("/employer-contacts") ? "default" : "ghost"}
+                  variant={location.startsWith("/employers") || location.startsWith("/employer-contacts") || location.startsWith("/dispatch") ? "default" : "ghost"}
                   size="sm"
                   data-testid="nav-employers"
                 >
@@ -608,6 +621,16 @@ export default function Header() {
                       <div className="flex items-center cursor-pointer" data-testid="menu-employer-map">
                         <Map className="h-4 w-4 mr-2" />
                         Employer Map
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {hasComponent("dispatch") && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/dispatch/jobs" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-dispatch-jobs">
+                        <Briefcase className="h-4 w-4 mr-2" />
+                        Dispatch Jobs
                       </div>
                     </Link>
                   </DropdownMenuItem>

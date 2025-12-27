@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, 
   CreditCard, Activity, Wallet, Settings, Shield, Key, FileText, 
-  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, Truck, Briefcase, type LucideIcon
+  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, Truck, type LucideIcon
 } from "lucide-react";
 
 export interface NavItem {
@@ -122,7 +122,6 @@ export const configSections: NavSection[] = [
     description: "Dispatch management and configuration",
     icon: Truck,
     items: [
-      { path: "/dispatch/jobs", label: "Jobs", icon: Briefcase, testId: "nav-dispatch-jobs", permission: "admin", requiresComponent: "dispatch" },
       { path: "/config/dispatch-job-types", label: "Job Types", icon: List, testId: "nav-config-dispatch-job-types", permission: "admin", requiresComponent: "dispatch" },
     ],
   },
