@@ -188,6 +188,13 @@ export const componentRegistry: ComponentDefinition[] = [
     description: "Do Not Call list management for dispatch",
     enabledByDefault: false,
     category: "dispatch"
+  },
+  {
+    id: "dispatch.hfe",
+    name: "Dispatch Hold for Employer",
+    description: "Hold for Employer management for dispatch",
+    enabledByDefault: false,
+    category: "dispatch"
   }
 ];
 
