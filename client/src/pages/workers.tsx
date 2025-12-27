@@ -1,16 +1,42 @@
+import { useState, useEffect } from "react";
 import { Users } from "lucide-react";
 import { WorkersTable } from "@/components/workers/workers-table";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { Worker } from "@shared/schema";
 import { PageHeader } from "@/components/layout/PageHeader";
+
+interface PaginatedWorkersResponse {
+  data: any[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
 
 export default function Workers() {
   const [location] = useLocation();
-  const { data: workers = [], isLoading } = useQuery<Worker[]>({
-    queryKey: ["/api/workers/with-details"],
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(50);
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchInput);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  const { data: paginatedData, isLoading } = useQuery<PaginatedWorkersResponse>({
+    queryKey: ["/api/workers/with-details/paginated", { page, pageSize, search: debouncedSearch, sortOrder }],
   });
+
+  const workers = paginatedData?.data ?? [];
+  const total = paginatedData?.total ?? 0;
+  const totalPages = paginatedData?.totalPages ?? 1;
 
   const tabs = [
     { id: "list", label: "List", href: "/workers" },
@@ -24,7 +50,7 @@ export default function Workers() {
         icon={<Users className="text-primary-foreground" size={16} />}
         actions={
           <span className="text-sm text-muted-foreground" data-testid="text-worker-count">
-            {workers.length} Workers
+            {total.toLocaleString()} Workers
           </span>
         }
       />
@@ -49,7 +75,19 @@ export default function Workers() {
       </div>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <WorkersTable workers={workers} isLoading={isLoading} />
+        <WorkersTable 
+          workers={workers} 
+          isLoading={isLoading}
+          page={page}
+          pageSize={pageSize}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+          searchQuery={searchInput}
+          onSearchChange={setSearchInput}
+          sortOrder={sortOrder}
+          onSortOrderChange={setSortOrder}
+        />
       </main>
     </div>
   );

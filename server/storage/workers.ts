@@ -57,9 +57,26 @@ export interface WorkerWithDetails {
   benefits: Array<{ id: string; name: string; typeName: string; typeIcon: string | null }> | null;
 }
 
+export interface PaginatedWorkersResult {
+  data: WorkerWithDetails[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface WorkersPaginationParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  sortField?: 'name' | 'email';
+  sortOrder?: 'asc' | 'desc';
+}
+
 export interface WorkerStorage {
   getAllWorkers(): Promise<Worker[]>;
   getWorkersWithDetails(): Promise<WorkerWithDetails[]>;
+  getWorkersWithDetailsPaginated(params: WorkersPaginationParams): Promise<PaginatedWorkersResult>;
   getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]>;
   getWorkersCurrentBenefits(month?: number, year?: number): Promise<WorkerCurrentBenefits[]>;
   getWorker(id: string): Promise<Worker | undefined>;
@@ -196,6 +213,144 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       `);
       
       return result.rows as unknown as WorkerWithDetails[];
+    },
+
+    async getWorkersWithDetailsPaginated(params: WorkersPaginationParams): Promise<PaginatedWorkersResult> {
+      const page = params.page ?? 1;
+      const pageSize = params.pageSize ?? 50;
+      const offset = (page - 1) * pageSize;
+      const search = params.search?.trim() ?? '';
+      const sortOrder = params.sortOrder ?? 'asc';
+      
+      const now = new Date();
+      const currentMonth = now.getMonth() + 1;
+      const currentYear = now.getFullYear();
+      
+      // Build search condition
+      const searchCondition = search 
+        ? sql`AND (
+            LOWER(c.display_name) LIKE ${`%${search.toLowerCase()}%`}
+            OR LOWER(c.email) LIKE ${`%${search.toLowerCase()}%`}
+            OR LOWER(c.given) LIKE ${`%${search.toLowerCase()}%`}
+            OR LOWER(c.family) LIKE ${`%${search.toLowerCase()}%`}
+          )`
+        : sql``;
+      
+      // Get total count first (without benefits aggregation for speed)
+      const countResult = await db.execute(sql`
+        SELECT COUNT(*) as total
+        FROM workers w
+        INNER JOIN contacts c ON w.contact_id = c.id
+        WHERE 1=1 ${searchCondition}
+      `);
+      const total = parseInt((countResult.rows[0] as any).total, 10);
+      
+      // Build ORDER BY based on sortOrder
+      const orderDirection = sortOrder === 'desc' ? sql`DESC` : sql`ASC`;
+      
+      // Get paginated workers with details
+      const result = await db.execute(sql`
+        SELECT 
+          w.id,
+          w.sirius_id,
+          w.contact_id,
+          w.ssn,
+          w.denorm_ws_id,
+          w.denorm_home_employer_id,
+          w.denorm_employer_ids,
+          w.bargaining_unit_id,
+          c.display_name as contact_name,
+          c.email as contact_email,
+          c.given,
+          c.middle,
+          c.family,
+          p.phone_number,
+          p.is_primary,
+          a.id as address_id,
+          a.friendly_name as address_friendly_name,
+          a.street as address_street,
+          a.city as address_city,
+          a.state as address_state,
+          a.postal_code as address_postal_code,
+          a.country as address_country,
+          a.is_primary as address_is_primary,
+          ws.name as work_status_name,
+          bu.sirius_id as bargaining_unit_code,
+          bu.name as bargaining_unit_name,
+          COALESCE(
+            (
+              SELECT json_agg(DISTINCT bt.name)
+              FROM trust_wmb wmb
+              INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
+              INNER JOIN options_trust_benefit_type bt ON tb.benefit_type = bt.id
+              WHERE wmb.worker_id = w.id
+                AND tb.is_active = true
+                AND wmb.month = ${currentMonth}
+                AND wmb.year = ${currentYear}
+            ),
+            '[]'::json
+          ) as benefit_types,
+          COALESCE(
+            (
+              SELECT json_agg(DISTINCT wmb.benefit_id)
+              FROM trust_wmb wmb
+              INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
+              WHERE wmb.worker_id = w.id
+                AND tb.is_active = true
+                AND wmb.month = ${currentMonth}
+                AND wmb.year = ${currentYear}
+            ),
+            '[]'::json
+          ) as benefit_ids,
+          COALESCE(
+            (
+              SELECT json_agg(DISTINCT jsonb_build_object(
+                'id', tb.id,
+                'name', tb.name,
+                'typeName', bt.name,
+                'typeIcon', bt.data->>'icon'
+              ))
+              FROM trust_wmb wmb
+              INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
+              INNER JOIN options_trust_benefit_type bt ON tb.benefit_type = bt.id
+              WHERE wmb.worker_id = w.id
+                AND tb.is_active = true
+                AND wmb.month = ${currentMonth}
+                AND wmb.year = ${currentYear}
+            ),
+            '[]'::json
+          ) as benefits
+        FROM workers w
+        INNER JOIN contacts c ON w.contact_id = c.id
+        LEFT JOIN options_worker_ws ws ON w.denorm_ws_id = ws.id
+        LEFT JOIN bargaining_units bu ON w.bargaining_unit_id = bu.id
+        LEFT JOIN LATERAL (
+          SELECT phone_number, is_primary
+          FROM contact_phone
+          WHERE contact_id = c.id
+          ORDER BY is_primary DESC NULLS LAST, created_at ASC
+          LIMIT 1
+        ) p ON true
+        LEFT JOIN LATERAL (
+          SELECT id, friendly_name, street, city, state, postal_code, country, is_primary
+          FROM contact_postal
+          WHERE contact_id = c.id AND is_active = true
+          ORDER BY is_primary DESC NULLS LAST, created_at ASC
+          LIMIT 1
+        ) a ON true
+        WHERE 1=1 ${searchCondition}
+        ORDER BY c.family ${orderDirection}, c.given ${orderDirection}
+        LIMIT ${pageSize}
+        OFFSET ${offset}
+      `);
+      
+      return {
+        data: result.rows as unknown as WorkerWithDetails[],
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      };
     },
 
     async getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]> {

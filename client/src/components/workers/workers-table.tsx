@@ -35,6 +35,15 @@ import {
 interface WorkersTableProps {
   workers: Worker[];
   isLoading: boolean;
+  page?: number;
+  pageSize?: number;
+  totalPages?: number;
+  total?: number;
+  onPageChange?: (page: number) => void;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
+  sortOrder?: "asc" | "desc";
+  onSortOrderChange?: (order: "asc" | "desc") => void;
 }
 
 interface WorkerBenefit {
@@ -132,9 +141,28 @@ const getIconByName = (iconName?: string) => {
   return { Icon, color };
 };
 
-export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-  const [searchQuery, setSearchQuery] = useState("");
+export function WorkersTable({ 
+  workers, 
+  isLoading,
+  page = 1,
+  pageSize = 50,
+  totalPages = 1,
+  total = 0,
+  onPageChange,
+  searchQuery: externalSearchQuery,
+  onSearchChange,
+  sortOrder: externalSortOrder,
+  onSortOrderChange,
+}: WorkersTableProps) {
+  const isPaginated = onPageChange !== undefined;
+  const [internalSortOrder, setInternalSortOrder] = useState<"asc" | "desc">("asc");
+  const [internalSearchQuery, setInternalSearchQuery] = useState("");
+  
+  const sortOrder = externalSortOrder ?? internalSortOrder;
+  const setSortOrder = onSortOrderChange ?? setInternalSortOrder;
+  const searchQuery = externalSearchQuery ?? internalSearchQuery;
+  const setSearchQuery = onSearchChange ?? setInternalSearchQuery;
+  
   const [selectedEmployerId, setSelectedEmployerId] = useState<string>("all");
   const [selectedBenefitId, setSelectedBenefitId] = useState<string>("all");
   const [contactStatusFilter, setContactStatusFilter] = useState<string>("all");
@@ -1197,6 +1225,56 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                 <h3 className="text-lg font-medium text-foreground mb-2">No workers found</h3>
                 <p className="text-muted-foreground">Add your first worker using the form above.</p>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {isPaginated && totalPages > 1 && (
+          <div className="px-6 py-4 border-t border-border flex flex-wrap items-center justify-between gap-4">
+            <div className="text-sm text-muted-foreground" data-testid="text-pagination-info">
+              Showing {((page - 1) * pageSize) + 1} - {Math.min(page * pageSize, total)} of {total.toLocaleString()} workers
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange?.(1)}
+                disabled={page === 1}
+                data-testid="button-page-first"
+              >
+                First
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange?.(page - 1)}
+                disabled={page === 1}
+                data-testid="button-page-prev"
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-muted-foreground px-2" data-testid="text-page-number">
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange?.(page + 1)}
+                disabled={page === totalPages}
+                data-testid="button-page-next"
+              >
+                Next
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange?.(totalPages)}
+                disabled={page === totalPages}
+                data-testid="button-page-last"
+              >
+                Last
+              </Button>
             </div>
           </div>
         )}

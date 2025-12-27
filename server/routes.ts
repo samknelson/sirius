@@ -413,6 +413,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
+  // GET /api/workers/with-details/paginated - Get paginated workers with contact data
+  app.get(
+    "/api/workers/with-details/paginated",
+    requireAuth,
+    requirePermission("workers.view"),
+    async (req, res) => {
+      try {
+        const rawPage = parseInt(req.query.page as string);
+        const rawPageSize = parseInt(req.query.pageSize as string);
+        const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+        const pageSize = isNaN(rawPageSize) || rawPageSize < 1 ? 50 : Math.min(rawPageSize, 100);
+        const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+        const sortOrderParam = req.query.sortOrder as string;
+        const sortOrder = sortOrderParam === 'desc' ? 'desc' : 'asc';
+        
+        const result = await storage.workers.getWorkersWithDetailsPaginated({
+          page,
+          pageSize,
+          search,
+          sortOrder,
+        });
+        res.json(result);
+      } catch (error) {
+        console.error("Failed to fetch paginated workers:", error);
+        res.status(500).json({ message: "Failed to fetch workers" });
+      }
+    },
+  );
+
   // GET /api/workers - Get all workers (requires workers.view permission)
   app.get(
     "/api/workers",
