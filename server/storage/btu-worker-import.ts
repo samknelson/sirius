@@ -118,12 +118,8 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
       const trimmedLoc = locationId.trim();
       const trimmedJob = jobCode.trim();
       
-      log.info(`[BTU Import] Looking up mapping`, { 
-        service: 'btu-import', 
-        dept: trimmedDept, 
-        loc: trimmedLoc, 
-        job: trimmedJob 
-      });
+      // DEBUG: Throw to verify code is running
+      throw new Error(`DEBUG_VERIFY: findEmployerMapping called with: Dept=${trimmedDept}, Loc=${trimmedLoc}, Job=${trimmedJob}`);
       
       // Use raw SQL for debugging
       const rawResults = await db.execute(sql`
