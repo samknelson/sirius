@@ -5,6 +5,7 @@ import { requireAccess } from "../accessControl";
 import { policies } from "../policies";
 import { requireComponent } from "./components";
 import type { DispatchJobFilters } from "../storage/dispatch-jobs";
+import { dispatchEligPluginRegistry } from "../services/dispatch-elig-plugin-registry";
 
 export function registerDispatchJobsRoutes(
   app: Express,
@@ -182,6 +183,15 @@ export function registerDispatchJobsRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete dispatch job" });
+    }
+  });
+
+  app.get("/api/dispatch-eligibility-plugins", dispatchComponent, requireAccess(policies.admin), async (req, res) => {
+    try {
+      const plugins = dispatchEligPluginRegistry.getAllPluginsMetadata();
+      res.json(plugins);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch eligibility plugins" });
     }
   });
 }
