@@ -212,7 +212,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
 
   const dispatchSubTabs = [
     { id: "dispatch-status", label: "Status", href: `/workers/${worker.id}/dispatch/status` },
-    { id: "dispatch-dnc", label: "Do Not Call", href: `/workers/${worker.id}/dispatch/do-not-call` },
+    ...(hasComponent("dispatch.dnc") ? [{ id: "dispatch-dnc", label: "Do Not Call", href: `/workers/${worker.id}/dispatch/do-not-call` }] : []),
   ];
 
   // Determine if we're in a sub-tab
