@@ -12,7 +12,7 @@ Preferred communication style: Simple, everyday language.
 The frontend utilizes React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI), and Tailwind CSS with a "new-york" theme for a modern and accessible interface. This combination ensures a consistent, responsive, and visually appealing user experience across the application.
 
 ## Technical Implementations
--   **Frontend**: Wouter for routing, TanStack Query for server state, React Hook Form with Zod for forms.
+-   **Frontend**: Wouter for routing, TanStack Query for server state, React Hook Form with Zod for forms. Pages are lazy-loaded using `React.lazy()` with Suspense to optimize initial load time.
 -   **Backend**: Express.js with TypeScript, RESTful API, and a feature-based module structure.
 -   **Authentication**: Replit Auth (OAuth via OpenID Connect) with PostgreSQL-based session management.
 -   **Access Control**: Centralized, declarative role-based access control.
