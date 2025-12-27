@@ -16,6 +16,7 @@ import {
 import { sitespecificBtuEmployerMap } from "@shared/schema/sitespecific/btu/schema";
 import { eq, and, sql, inArray, not } from "drizzle-orm";
 import { storage } from "./index";
+import { log } from "../logger";
 
 const BPS_EMPLOYEE_ID_TYPE_NAME = "BPS Employee ID";
 
@@ -117,7 +118,12 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
       const trimmedLoc = locationId.trim();
       const trimmedJob = jobCode.trim();
       
-      console.log(`[BTU Import] Looking up mapping: Dept="${trimmedDept}", Loc="${trimmedLoc}", Job="${trimmedJob}"`);
+      log.info(`[BTU Import] Looking up mapping`, { 
+        service: 'btu-import', 
+        dept: trimmedDept, 
+        loc: trimmedLoc, 
+        job: trimmedJob 
+      });
       
       // Use raw SQL for debugging
       const rawResults = await db.execute(sql`
@@ -127,7 +133,7 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
           AND job_code = ${trimmedJob}
       `);
       
-      console.log(`[BTU Import] Raw SQL result count:`, rawResults.rows?.length);
+      log.info(`[BTU Import] Raw SQL result count: ${rawResults.rows?.length}`, { service: 'btu-import' });
       
       const [mapping] = await db
         .select()
@@ -140,7 +146,7 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
           )
         );
       
-      console.log(`[BTU Import] Drizzle result:`, mapping ? `Found ID: ${mapping.id}` : 'NOT FOUND');
+      log.info(`[BTU Import] Drizzle result: ${mapping ? `Found ID: ${mapping.id}` : 'NOT FOUND'}`, { service: 'btu-import' });
       
       if (!mapping) return null;
       
