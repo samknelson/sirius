@@ -6,6 +6,7 @@ export enum EventType {
   WMB_SAVED = "wmb.saved",
   PARTICIPANT_SAVED = "participant.saved",
   DISPATCH_DNC_SAVED = "dispatch.dnc.saved",
+  DISPATCH_STATUS_SAVED = "dispatch.status.saved",
   CRON = "cron",
   LOG = "log",
 }
@@ -64,6 +65,13 @@ export interface DispatchDncSavedPayload {
   isDeleted?: boolean;
 }
 
+export interface DispatchStatusSavedPayload {
+  statusId: string;
+  workerId: string;
+  status: string;
+  isDeleted?: boolean;
+}
+
 export interface CronPayload {
   jobId: string;
   mode: "live" | "test";
@@ -92,6 +100,7 @@ export interface EventPayloadMap {
   [EventType.WMB_SAVED]: WmbSavedPayload;
   [EventType.PARTICIPANT_SAVED]: ParticipantSavedPayload;
   [EventType.DISPATCH_DNC_SAVED]: DispatchDncSavedPayload;
+  [EventType.DISPATCH_STATUS_SAVED]: DispatchStatusSavedPayload;
   [EventType.CRON]: CronPayload;
   [EventType.LOG]: LogPayload;
 }

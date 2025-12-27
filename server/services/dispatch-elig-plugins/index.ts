@@ -2,10 +2,12 @@ import { logger } from "../../logger";
 import { eventBus, EventType } from "../event-bus";
 import { dispatchEligPluginRegistry } from "../dispatch-elig-plugin-registry";
 import { dispatchDncPlugin } from "./dnc";
+import { dispatchStatusPlugin } from "./status";
 import { isComponentEnabledSync, isCacheInitialized } from "../component-cache";
 
 export function registerDispatchEligPlugins(): void {
   dispatchEligPluginRegistry.register(dispatchDncPlugin);
+  dispatchEligPluginRegistry.register(dispatchStatusPlugin);
   
   logger.info("Dispatch eligibility plugins registered", {
     service: "dispatch-elig-plugins",
@@ -32,6 +34,29 @@ export function subscribeDispatchEligEventHandlers(): void {
     }
 
     const plugin = dispatchEligPluginRegistry.getPlugin("dispatch_dnc");
+    if (plugin) {
+      await plugin.recomputeWorker(payload.workerId);
+    }
+  });
+
+  eventBus.on(EventType.DISPATCH_STATUS_SAVED, async (payload) => {
+    if (!isCacheInitialized()) {
+      logger.warn("Component cache not initialized, skipping status eligibility recompute", {
+        service: "dispatch-elig-plugins",
+        workerId: payload.workerId,
+      });
+      return;
+    }
+
+    if (!isComponentEnabledSync("dispatch")) {
+      logger.debug("dispatch component not enabled, skipping recompute", {
+        service: "dispatch-elig-plugins",
+        workerId: payload.workerId,
+      });
+      return;
+    }
+
+    const plugin = dispatchEligPluginRegistry.getPlugin("dispatch_status");
     if (plugin) {
       await plugin.recomputeWorker(payload.workerId);
     }

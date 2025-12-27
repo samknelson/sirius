@@ -8,6 +8,7 @@ import {
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
+import { eventBus, EventType } from "../services/event-bus";
 
 export interface WorkerDispatchStatusWithRelations extends WorkerDispatchStatus {
   worker?: {
@@ -137,6 +138,13 @@ export function createWorkerDispatchStatusStorage(): WorkerDispatchStatusStorage
         .insert(workerDispatchStatus)
         .values(status)
         .returning();
+      
+      eventBus.emit(EventType.DISPATCH_STATUS_SAVED, {
+        statusId: created.id,
+        workerId: created.workerId,
+        status: created.status,
+      });
+      
       return created;
     },
 
@@ -146,32 +154,62 @@ export function createWorkerDispatchStatusStorage(): WorkerDispatchStatusStorage
         .set(status)
         .where(eq(workerDispatchStatus.id, id))
         .returning();
+      
+      if (updated) {
+        eventBus.emit(EventType.DISPATCH_STATUS_SAVED, {
+          statusId: updated.id,
+          workerId: updated.workerId,
+          status: updated.status,
+        });
+      }
+      
       return updated;
     },
 
     async upsertByWorker(workerId: string, status: Partial<InsertWorkerDispatchStatus>): Promise<WorkerDispatchStatus> {
       const existing = await this.getByWorker(workerId);
+      let result: WorkerDispatchStatus;
+      
       if (existing) {
         const [updated] = await db
           .update(workerDispatchStatus)
           .set(status)
           .where(eq(workerDispatchStatus.id, existing.id))
           .returning();
-        return updated;
+        result = updated;
       } else {
         const [created] = await db
           .insert(workerDispatchStatus)
           .values({ workerId, ...status })
           .returning();
-        return created;
+        result = created;
       }
+      
+      eventBus.emit(EventType.DISPATCH_STATUS_SAVED, {
+        statusId: result.id,
+        workerId: result.workerId,
+        status: result.status,
+      });
+      
+      return result;
     },
 
     async delete(id: string): Promise<boolean> {
+      const existing = await this.get(id);
       const result = await db
         .delete(workerDispatchStatus)
         .where(eq(workerDispatchStatus.id, id))
         .returning();
+      
+      if (result.length > 0 && existing) {
+        eventBus.emit(EventType.DISPATCH_STATUS_SAVED, {
+          statusId: id,
+          workerId: existing.workerId,
+          status: existing.status,
+          isDeleted: true,
+        });
+      }
+      
       return result.length > 0;
     }
   };
