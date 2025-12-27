@@ -9,6 +9,7 @@ import {
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
+import { eventBus, EventType } from "../services/event-bus";
 
 export interface WorkerDispatchDncWithRelations extends WorkerDispatchDnc {
   worker?: {
@@ -162,6 +163,16 @@ export function createWorkerDispatchDncStorage(): WorkerDispatchDncStorage {
         .insert(workerDispatchDnc)
         .values(dnc)
         .returning();
+      
+      setImmediate(() => {
+        eventBus.emit(EventType.DISPATCH_DNC_SAVED, {
+          dncId: result.id,
+          workerId: result.workerId,
+          employerId: result.employerId,
+          type: result.type,
+        });
+      });
+      
       return result;
     },
 
@@ -171,15 +182,40 @@ export function createWorkerDispatchDncStorage(): WorkerDispatchDncStorage {
         .set(dnc)
         .where(eq(workerDispatchDnc.id, id))
         .returning();
+      
+      if (result) {
+        setImmediate(() => {
+          eventBus.emit(EventType.DISPATCH_DNC_SAVED, {
+            dncId: result.id,
+            workerId: result.workerId,
+            employerId: result.employerId,
+            type: result.type,
+          });
+        });
+      }
+      
       return result;
     },
 
     async delete(id: string) {
-      const result = await db
+      const [deleted] = await db
         .delete(workerDispatchDnc)
         .where(eq(workerDispatchDnc.id, id))
         .returning();
-      return result.length > 0;
+      
+      if (deleted) {
+        setImmediate(() => {
+          eventBus.emit(EventType.DISPATCH_DNC_SAVED, {
+            dncId: deleted.id,
+            workerId: deleted.workerId,
+            employerId: deleted.employerId,
+            type: deleted.type,
+            isDeleted: true,
+          });
+        });
+      }
+      
+      return !!deleted;
     }
   };
 }

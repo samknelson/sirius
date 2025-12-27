@@ -5,6 +5,7 @@ export enum EventType {
   PAYMENT_SAVED = "payment.saved",
   WMB_SAVED = "wmb.saved",
   PARTICIPANT_SAVED = "participant.saved",
+  DISPATCH_DNC_SAVED = "dispatch.dnc.saved",
   CRON = "cron",
   LOG = "log",
 }
@@ -55,6 +56,14 @@ export interface ParticipantSavedPayload {
   isSteward: boolean;
 }
 
+export interface DispatchDncSavedPayload {
+  dncId: string;
+  workerId: string;
+  employerId: string;
+  type: string;
+  isDeleted?: boolean;
+}
+
 export interface CronPayload {
   jobId: string;
   mode: "live" | "test";
@@ -82,6 +91,7 @@ export interface EventPayloadMap {
   [EventType.PAYMENT_SAVED]: PaymentSavedPayload;
   [EventType.WMB_SAVED]: WmbSavedPayload;
   [EventType.PARTICIPANT_SAVED]: ParticipantSavedPayload;
+  [EventType.DISPATCH_DNC_SAVED]: DispatchDncSavedPayload;
   [EventType.CRON]: CronPayload;
   [EventType.LOG]: LogPayload;
 }

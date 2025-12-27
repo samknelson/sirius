@@ -33,6 +33,9 @@ import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
 // Import log notifier module
 import { initLogNotifier } from "./modules/log-notifier";
 
+// Import dispatch eligibility plugins system
+import { initializeDispatchEligSystem } from "./services/dispatch-elig-plugins";
+
 // Helper function to redact sensitive data from responses before logging
 function redactSensitiveData(data: any): any {
   if (!data || typeof data !== 'object') return data;
@@ -158,6 +161,10 @@ app.use((req, res, next) => {
   // Load component cache
   await loadComponentCache();
   logger.info("Component cache initialized", { source: "startup" });
+
+  // Initialize dispatch eligibility plugin system
+  initializeDispatchEligSystem();
+  logger.info("Dispatch eligibility system initialized", { source: "startup" });
 
   // Register charge plugin event listeners
   // Note: Charge plugins are currently called directly from storage for backwards compatibility.
