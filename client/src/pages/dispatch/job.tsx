@@ -157,8 +157,7 @@ function DispatchJobPageInner() {
         startDate: new Date(data.startDate).toISOString(),
       });
     },
-    onSuccess: async (response) => {
-      const newJob = await response.json();
+    onSuccess: (newJob) => {
       queryClient.invalidateQueries({ queryKey: ["/api/dispatch-jobs"] });
       toast({
         title: "Success",
