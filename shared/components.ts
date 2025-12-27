@@ -179,7 +179,7 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/dispatch/schema.ts",
-      tables: ["options_dispatch_job_type", "dispatch_jobs", "dispatches"]
+      tables: ["options_dispatch_job_type", "dispatch_jobs", "dispatches", "worker_dispatch_status"]
     }
   }
 ];

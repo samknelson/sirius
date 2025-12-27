@@ -74,3 +74,24 @@ export const insertDispatchSchema = createInsertSchema(dispatches).omit({
 
 export type InsertDispatch = z.infer<typeof insertDispatchSchema>;
 export type Dispatch = typeof dispatches.$inferSelect;
+
+// Worker dispatch status (availability for dispatch)
+export const workerDispatchStatusEnum = ["available", "not_available"] as const;
+export type WorkerDispatchStatusOption = typeof workerDispatchStatusEnum[number];
+
+export const workerDispatchStatus = pgTable("worker_dispatch_status", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  workerId: varchar("worker_id").notNull().unique().references(() => workers.id, { onDelete: 'cascade' }),
+  status: varchar("status").notNull().default("available"),
+  seniorityDate: timestamp("seniority_date"),
+});
+
+export const insertWorkerDispatchStatusSchema = createInsertSchema(workerDispatchStatus).omit({
+  id: true,
+}).extend({
+  status: z.enum(workerDispatchStatusEnum).default("available"),
+  seniorityDate: z.coerce.date().optional().nullable(),
+});
+
+export type InsertWorkerDispatchStatus = z.infer<typeof insertWorkerDispatchStatusSchema>;
+export type WorkerDispatchStatus = typeof workerDispatchStatus.$inferSelect;
