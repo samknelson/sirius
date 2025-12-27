@@ -118,7 +118,7 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
       const trimmedLoc = locationId.trim();
       const trimmedJob = jobCode.trim();
       
-      // DEBUG: Throw with full details
+      // Use raw SQL to find the mapping - Drizzle has issues with nullable column comparisons
       const rawResults = await db.execute(sql`
         SELECT * FROM sitespecific_btu_employer_map 
         WHERE department_id = ${trimmedDept} 
@@ -126,8 +126,6 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
           AND job_code = ${trimmedJob}
         LIMIT 1
       `);
-      
-      throw new Error(`DEBUG_QUERY: dept="${trimmedDept}" loc="${trimmedLoc}" job="${trimmedJob}" | rowCount=${rawResults.rows?.length} | firstRow=${JSON.stringify(rawResults.rows?.[0])}`);
       
       const rawRow = rawResults.rows?.[0] as any;
       if (!rawRow) return null;
