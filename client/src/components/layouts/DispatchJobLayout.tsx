@@ -25,7 +25,7 @@ export function useDispatchJobLayout() {
 }
 
 interface DispatchJobLayoutProps {
-  activeTab: "details" | "edit";
+  activeTab: "details" | "edit" | "dispatches";
   children: ReactNode;
 }
 
@@ -93,6 +93,7 @@ export function DispatchJobLayout({ activeTab, children }: DispatchJobLayoutProp
 
   const mainTabs = [
     { id: "details", label: "Details", href: `/dispatch/job/${job.id}` },
+    { id: "dispatches", label: "Dispatches", href: `/dispatch/job/${job.id}/dispatches` },
     { id: "edit", label: "Edit", href: `/dispatch/job/${job.id}/edit` },
   ];
 

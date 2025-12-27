@@ -161,6 +161,7 @@ import DispatchJobTypesPage from "@/pages/config/dispatch-job-types";
 import DispatchJobsPage from "@/pages/dispatch/jobs";
 import DispatchJobDetailsPage from "@/pages/dispatch/job-details";
 import DispatchJobEditPage from "@/pages/dispatch/job-edit";
+import DispatchJobDispatchesPage from "@/pages/dispatch/job-dispatches";
 import DispatchJobNewPage from "@/pages/dispatch/job-new";
 import MasqueradePage from "@/pages/config/masquerade";
 import SystemModePage from "@/pages/config/system-mode";
@@ -1560,6 +1561,14 @@ function Router() {
         <ProtectedRoute permission="admin" component="dispatch">
           <AuthenticatedLayout>
             <DispatchJobEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job/:id/dispatches">
+        <ProtectedRoute permission="admin" component="dispatch">
+          <AuthenticatedLayout>
+            <DispatchJobDispatchesPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
