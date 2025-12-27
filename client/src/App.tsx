@@ -77,6 +77,7 @@ import EmployerContactSendInApp from "@/pages/employer-contact-send-inapp";
 import EmployerLogs from "@/pages/employer-logs";
 import EmployerPolicyHistory from "@/pages/employer-policy-history";
 import EmployerStewards from "@/pages/employer-stewards";
+import EmployerDispatchPage from "@/pages/employers/dispatch";
 import WizardView from "@/pages/wizard-view";
 import StripeCustomerPage from "@/pages/employers/stripe-customer";
 import StripePaymentMethodsPage from "@/pages/employers/stripe-payment-methods";
@@ -905,6 +906,14 @@ function Router() {
         <ProtectedRoute policy="employerUser" component="worker.steward">
           <AuthenticatedLayout>
             <EmployerStewards />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/employers/:id/dispatch">
+        <ProtectedRoute policy="employerUser" component="dispatch">
+          <AuthenticatedLayout>
+            <EmployerDispatchPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

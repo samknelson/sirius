@@ -27,7 +27,7 @@ export function useEmployerLayout() {
 }
 
 interface EmployerLayoutProps {
-  activeTab: "details" | "edit" | "workers" | "contacts" | "wizards" | "accounting" | "accounts" | "payment-methods" | "customer" | "logs" | "policy-history" | "union" | "stewards";
+  activeTab: "details" | "edit" | "workers" | "contacts" | "wizards" | "accounting" | "accounts" | "payment-methods" | "customer" | "logs" | "policy-history" | "union" | "stewards" | "dispatch";
   children: ReactNode;
 }
 
@@ -113,6 +113,14 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
   if (hasUnionAccess) {
     mainTabs.push(
       { id: "union", label: "Union", href: `/employers/${employer.id}/union/stewards` }
+    );
+  }
+
+  // Add Dispatch tab if dispatch component is enabled
+  const hasDispatchAccess = hasComponent('dispatch');
+  if (hasDispatchAccess) {
+    mainTabs.push(
+      { id: "dispatch", label: "Dispatch", href: `/employers/${employer.id}/dispatch` }
     );
   }
 
