@@ -15,9 +15,6 @@ export {
   workerDispatchStatus,
   workerDispatchStatusEnum,
   insertWorkerDispatchStatusSchema,
-  workerDispatchDnc,
-  dispatchWorkerDncTypeEnum,
-  insertWorkerDispatchDncSchema,
   workerDispatchEligDenorm,
   insertWorkerDispatchEligDenormSchema,
   type DispatchJobStatus,
@@ -31,12 +28,18 @@ export {
   type WorkerDispatchStatusOption,
   type InsertWorkerDispatchStatus,
   type WorkerDispatchStatus,
-  type DispatchWorkerDncType,
-  type InsertWorkerDispatchDnc,
-  type WorkerDispatchDnc,
   type InsertWorkerDispatchEligDenorm,
   type WorkerDispatchEligDenorm,
 } from "./schema/dispatch/schema";
+
+export {
+  workerDispatchDnc,
+  dispatchWorkerDncTypeEnum,
+  insertWorkerDispatchDncSchema,
+  type DispatchWorkerDncType,
+  type InsertWorkerDispatchDnc,
+  type WorkerDispatchDnc,
+} from "./schema/dispatch/dnc-schema";
 
 export {
   workerDispatchHfe,

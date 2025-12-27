@@ -179,7 +179,7 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/dispatch/schema.ts",
-      tables: ["options_dispatch_job_type", "dispatch_jobs", "dispatches", "worker_dispatch_status", "worker_dispatch_dnc", "worker_dispatch_elig_denorm"]
+      tables: ["options_dispatch_job_type", "dispatch_jobs", "dispatches", "worker_dispatch_status", "worker_dispatch_elig_denorm"]
     }
   },
   {
@@ -187,7 +187,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Dispatch Do Not Call",
     description: "Do Not Call list management for dispatch",
     enabledByDefault: false,
-    category: "dispatch"
+    category: "dispatch",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/dispatch/dnc-schema.ts",
+      tables: ["worker_dispatch_dnc"]
+    }
   },
   {
     id: "dispatch.hfe",

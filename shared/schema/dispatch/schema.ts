@@ -96,30 +96,6 @@ export const insertWorkerDispatchStatusSchema = createInsertSchema(workerDispatc
 export type InsertWorkerDispatchStatus = z.infer<typeof insertWorkerDispatchStatusSchema>;
 export type WorkerDispatchStatus = typeof workerDispatchStatus.$inferSelect;
 
-// Dispatch Worker DNC (Do Not Call/Contact)
-export const dispatchWorkerDncTypeEnum = ["employer", "worker"] as const;
-export type DispatchWorkerDncType = typeof dispatchWorkerDncTypeEnum[number];
-
-export const workerDispatchDnc = pgTable("worker_dispatch_dnc", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
-  employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
-  type: varchar("type").notNull(),
-  data: jsonb("data"),
-  message: text("message"),
-}, (table) => ({
-  workerEmployerTypeUnique: sql`UNIQUE(${table.workerId}, ${table.employerId}, ${table.type})`,
-}));
-
-export const insertWorkerDispatchDncSchema = createInsertSchema(workerDispatchDnc).omit({
-  id: true,
-}).extend({
-  type: z.enum(dispatchWorkerDncTypeEnum),
-});
-
-export type InsertWorkerDispatchDnc = z.infer<typeof insertWorkerDispatchDncSchema>;
-export type WorkerDispatchDnc = typeof workerDispatchDnc.$inferSelect;
-
 // Worker Dispatch Eligibility Denormalized (EAV-style facts for eligibility queries)
 export const workerDispatchEligDenorm = pgTable("worker_dispatch_elig_denorm", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
