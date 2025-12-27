@@ -63,12 +63,12 @@ const formSchema = z.object({
 type FormData = z.infer<typeof formSchema>;
 
 export default function DispatchJobPage() {
-  const params = useParams();
-  const id = params.id as string;
-  const isNew = id === "new";
+  const params = useParams<{ id: string }>();
+  const id = params.id;
+  const isNew = !id || id === "new";
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<string>("view");
+  const [activeTab, setActiveTab] = useState<string>(isNew ? "edit" : "view");
 
   const { data: employers = [] } = useQuery<Employer[]>({
     queryKey: ["/api/employers"],
