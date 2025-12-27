@@ -40,24 +40,96 @@ export interface DispatchJobStorage {
   delete(id: string): Promise<boolean>;
 }
 
+async function getJobTypeName(jobTypeId: string | null | undefined): Promise<string> {
+  if (!jobTypeId) return '';
+  const [jobType] = await db.select({ name: optionsDispatchJobType.name })
+    .from(optionsDispatchJobType)
+    .where(eq(optionsDispatchJobType.id, jobTypeId));
+  return jobType?.name || '';
+}
+
 export const dispatchJobLoggingConfig: StorageLoggingConfig<DispatchJobStorage> = {
   module: 'dispatchJobs',
   methods: {
     create: {
       enabled: true,
-      getEntityId: (args) => args[0]?.title || 'new dispatch job',
-      after: async (args, result) => result
+      getEntityId: (args, result) => result?.id || 'new dispatch job',
+      getHostEntityId: (args, result) => result?.employerId || args[0]?.employerId,
+      getDescription: async (args, result) => {
+        const title = result?.title || args[0]?.title || 'Unnamed';
+        const jobTypeName = await getJobTypeName(result?.jobTypeId || args[0]?.jobTypeId);
+        const typeLabel = jobTypeName ? ` (${jobTypeName})` : '';
+        return `Created Dispatch Job "${title}"${typeLabel}`;
+      },
+      after: async (args, result) => {
+        const jobTypeName = await getJobTypeName(result?.jobTypeId);
+        return {
+          job: result,
+          metadata: {
+            jobId: result?.id,
+            employerId: result?.employerId,
+            title: result?.title,
+            jobTypeName,
+            status: result?.status,
+          }
+        };
+      }
     },
     update: {
       enabled: true,
       getEntityId: (args) => args[0],
-      before: async (args, storage) => await storage.get(args[0]),
-      after: async (args, result) => result
+      getHostEntityId: async (args, result, beforeState) => {
+        return result?.employerId || beforeState?.job?.employerId;
+      },
+      getDescription: async (args, result, beforeState) => {
+        const title = result?.title || beforeState?.job?.title || 'Unnamed';
+        const jobTypeName = await getJobTypeName(result?.jobTypeId || beforeState?.job?.jobTypeId);
+        const typeLabel = jobTypeName ? ` (${jobTypeName})` : '';
+        const oldStatus = beforeState?.job?.status;
+        const newStatus = result?.status;
+        if (oldStatus && newStatus && oldStatus !== newStatus) {
+          return `Updated Dispatch Job "${title}"${typeLabel}: ${oldStatus} → ${newStatus}`;
+        }
+        return `Updated Dispatch Job "${title}"${typeLabel}`;
+      },
+      before: async (args, storage) => {
+        const job = await storage.get(args[0]);
+        if (!job) return null;
+        const jobTypeName = await getJobTypeName(job.jobTypeId);
+        return { job, jobTypeName };
+      },
+      after: async (args, result, storage, beforeState) => {
+        const jobTypeName = await getJobTypeName(result?.jobTypeId);
+        return {
+          job: result,
+          previousState: beforeState?.job,
+          metadata: {
+            jobId: result?.id,
+            employerId: result?.employerId,
+            title: result?.title,
+            jobTypeName,
+            status: result?.status,
+            previousStatus: beforeState?.job?.status,
+          }
+        };
+      }
     },
     delete: {
       enabled: true,
       getEntityId: (args) => args[0],
-      before: async (args, storage) => await storage.get(args[0])
+      getHostEntityId: (args, result, beforeState) => beforeState?.job?.employerId,
+      getDescription: async (args, result, beforeState) => {
+        const title = beforeState?.job?.title || 'Unknown';
+        const jobTypeName = beforeState?.jobTypeName || '';
+        const typeLabel = jobTypeName ? ` (${jobTypeName})` : '';
+        return `Deleted Dispatch Job "${title}"${typeLabel}`;
+      },
+      before: async (args, storage) => {
+        const job = await storage.get(args[0]);
+        if (!job) return null;
+        const jobTypeName = await getJobTypeName(job.jobTypeId);
+        return { job, jobTypeName };
+      }
     }
   }
 };
