@@ -7,8 +7,9 @@ import {
   type WorkerDispatchHfe, 
   type InsertWorkerDispatchHfe
 } from "@shared/schema";
-import { eq, lt, sql } from "drizzle-orm";
+import { eq, lt } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
+import { eventBus, EventType } from "../services/event-bus";
 
 export interface WorkerDispatchHfeWithRelations extends WorkerDispatchHfe {
   worker?: {
@@ -154,6 +155,15 @@ export function createWorkerDispatchHfeStorage(): WorkerDispatchHfeStorage {
         .insert(workerDispatchHfe)
         .values(hfe)
         .returning();
+      
+      setImmediate(() => {
+        eventBus.emit(EventType.DISPATCH_HFE_SAVED, {
+          hfeId: result.id,
+          workerId: result.workerId,
+          employerId: result.employerId,
+        });
+      });
+      
       return result;
     },
 
@@ -163,6 +173,17 @@ export function createWorkerDispatchHfeStorage(): WorkerDispatchHfeStorage {
         .set(hfe)
         .where(eq(workerDispatchHfe.id, id))
         .returning();
+      
+      if (result) {
+        setImmediate(() => {
+          eventBus.emit(EventType.DISPATCH_HFE_SAVED, {
+            hfeId: result.id,
+            workerId: result.workerId,
+            employerId: result.employerId,
+          });
+        });
+      }
+      
       return result;
     },
 
@@ -171,6 +192,18 @@ export function createWorkerDispatchHfeStorage(): WorkerDispatchHfeStorage {
         .delete(workerDispatchHfe)
         .where(eq(workerDispatchHfe.id, id))
         .returning();
+      
+      if (deleted) {
+        setImmediate(() => {
+          eventBus.emit(EventType.DISPATCH_HFE_SAVED, {
+            hfeId: deleted.id,
+            workerId: deleted.workerId,
+            employerId: deleted.employerId,
+            isDeleted: true,
+          });
+        });
+      }
+      
       return !!deleted;
     },
 
