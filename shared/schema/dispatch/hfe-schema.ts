@@ -14,7 +14,12 @@ export const workerDispatchHfe = pgTable("worker_dispatch_hfe", {
 export const insertWorkerDispatchHfeSchema = createInsertSchema(workerDispatchHfe).omit({
   id: true,
 }).extend({
-  holdUntil: z.string(),
+  holdUntil: z.string().min(1, "Hold until date is required").refine((val) => {
+    const date = new Date(val);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return date > today;
+  }, { message: "Hold until date must be in the future" }),
 });
 
 export type InsertWorkerDispatchHfe = z.infer<typeof insertWorkerDispatchHfeSchema>;

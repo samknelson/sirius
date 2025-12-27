@@ -81,6 +81,12 @@ function DispatchHoldForEmployerContent() {
     },
   });
 
+  const getTomorrowDate = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split('T')[0];
+  };
+
   const handleAdd = () => {
     if (!newEmployerId) {
       toast({
@@ -93,7 +99,18 @@ function DispatchHoldForEmployerContent() {
     if (!newHoldUntil) {
       toast({
         title: "Validation Error",
-        description: "Please select a hold until date.",
+        description: "Hold until date is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const selectedDate = new Date(newHoldUntil);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (selectedDate <= today) {
+      toast({
+        title: "Validation Error",
+        description: "Hold until date must be in the future.",
         variant: "destructive",
       });
       return;
@@ -159,14 +176,16 @@ function DispatchHoldForEmployerContent() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="holdUntil">Hold Until</Label>
+                  <Label htmlFor="holdUntil">Hold Until <span className="text-destructive">*</span></Label>
                   <input
                     type="date"
                     id="holdUntil"
                     value={newHoldUntil}
+                    min={getTomorrowDate()}
                     onChange={(e) => setNewHoldUntil(e.target.value)}
                     className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                     data-testid="input-hfe-hold-until"
+                    required
                   />
                 </div>
               </div>
