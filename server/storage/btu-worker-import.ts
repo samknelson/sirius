@@ -118,31 +118,31 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
       const trimmedLoc = locationId.trim();
       const trimmedJob = jobCode.trim();
       
-      // DEBUG: Throw to verify code is running
-      throw new Error(`DEBUG_VERIFY: findEmployerMapping called with: Dept=${trimmedDept}, Loc=${trimmedLoc}, Job=${trimmedJob}`);
-      
-      // Use raw SQL for debugging
+      // Use raw SQL to find the mapping - Drizzle has issues with nullable column comparisons
       const rawResults = await db.execute(sql`
         SELECT * FROM sitespecific_btu_employer_map 
         WHERE department_id = ${trimmedDept} 
           AND location_id = ${trimmedLoc} 
           AND job_code = ${trimmedJob}
+        LIMIT 1
       `);
       
-      log.info(`[BTU Import] Raw SQL result count: ${rawResults.rows?.length}`, { service: 'btu-import' });
+      const rawRow = rawResults.rows?.[0] as any;
+      if (!rawRow) return null;
       
-      const [mapping] = await db
-        .select()
-        .from(sitespecificBtuEmployerMap)
-        .where(
-          and(
-            eq(sitespecificBtuEmployerMap.departmentId, trimmedDept),
-            eq(sitespecificBtuEmployerMap.locationId, trimmedLoc),
-            eq(sitespecificBtuEmployerMap.jobCode, trimmedJob)
-          )
-        );
-      
-      log.info(`[BTU Import] Drizzle result: ${mapping ? `Found ID: ${mapping.id}` : 'NOT FOUND'}`, { service: 'btu-import' });
+      // Map the raw result to expected shape
+      const mapping = {
+        id: rawRow.id,
+        departmentId: rawRow.department_id,
+        departmentTitle: rawRow.department_title,
+        locationId: rawRow.location_id,
+        locationTitle: rawRow.location_title,
+        jobCode: rawRow.job_code,
+        jobTitle: rawRow.job_title,
+        employerName: rawRow.employer_name,
+        bargainingUnitId: rawRow.bargaining_unit_id,
+        secondaryEmployerName: rawRow.secondary_employer_name,
+      };
       
       if (!mapping) return null;
       
