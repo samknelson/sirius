@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, varchar, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, varchar, jsonb, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -119,3 +119,21 @@ export const insertWorkerDispatchDncSchema = createInsertSchema(workerDispatchDn
 
 export type InsertWorkerDispatchDnc = z.infer<typeof insertWorkerDispatchDncSchema>;
 export type WorkerDispatchDnc = typeof workerDispatchDnc.$inferSelect;
+
+// Worker Dispatch Eligibility Denormalized (EAV-style facts for eligibility queries)
+export const workerDispatchEligDenorm = pgTable("worker_dispatch_elig_denorm", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
+  category: varchar("category").notNull(),
+  value: varchar("value").notNull(),
+}, (table) => ({
+  categoryValueWorkerIdx: index("idx_worker_dispatch_elig_denorm_cat_val_worker").on(table.category, table.value, table.workerId),
+  workerCategoryIdx: index("idx_worker_dispatch_elig_denorm_worker_cat").on(table.workerId, table.category),
+}));
+
+export const insertWorkerDispatchEligDenormSchema = createInsertSchema(workerDispatchEligDenorm).omit({
+  id: true,
+});
+
+export type InsertWorkerDispatchEligDenorm = z.infer<typeof insertWorkerDispatchEligDenormSchema>;
+export type WorkerDispatchEligDenorm = typeof workerDispatchEligDenorm.$inferSelect;
