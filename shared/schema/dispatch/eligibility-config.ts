@@ -20,3 +20,8 @@ export interface EligibilityPluginMetadata {
   componentId: string;
   componentEnabled: boolean;
 }
+
+export interface JobTypeData {
+  icon?: string;
+  eligibility?: EligibilityPluginConfig[];
+}

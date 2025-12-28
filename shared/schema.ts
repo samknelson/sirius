@@ -54,6 +54,7 @@ export {
   type EligibilityPluginConfig,
   type JobTypeEligibility,
   type EligibilityPluginMetadata,
+  type JobTypeData,
 } from "./schema/dispatch/eligibility-config";
 
 // Session storage table for Replit Auth

@@ -53,6 +53,7 @@ import {
   type InsertDispatchJobType,
   type EligibilityPluginMetadata,
   type EligibilityPluginConfig,
+  type JobTypeData,
 } from "@shared/schema";
 
 const availableIcons: { name: string; Icon: LucideIcon }[] = [
@@ -71,11 +72,6 @@ const availableIcons: { name: string; Icon: LucideIcon }[] = [
 function getIconComponent(iconName: string | undefined): LucideIcon {
   const found = availableIcons.find(i => i.name === iconName);
   return found?.Icon || Briefcase;
-}
-
-interface JobTypeData {
-  icon?: string;
-  eligibility?: EligibilityPluginConfig[];
 }
 
 export default function DispatchJobTypesPage() {
