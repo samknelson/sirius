@@ -1,7 +1,7 @@
 import { logger } from "../../logger";
 import { createWorkerDispatchStatusStorage } from "../../storage/worker-dispatch-status";
 import { createWorkerDispatchEligDenormStorage } from "../../storage/worker-dispatch-elig-denorm";
-import type { DispatchEligPlugin } from "../dispatch-elig-plugin-registry";
+import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../dispatch-elig-plugin-registry";
 
 const DISPSTATUS_CATEGORY = "dispstatus";
 const AVAILABLE_VALUE = "Available";
@@ -11,6 +11,15 @@ export const dispatchStatusPlugin: DispatchEligPlugin = {
   name: "Dispatch Availability",
   description: "Only includes workers whose dispatch status is set to Available",
   componentId: "dispatch",
+
+  getEligibilityCondition(_context: EligibilityQueryContext, _config: Record<string, unknown>): EligibilityCondition | null {
+    // Workers must have a dispstatus entry with value "Available"
+    return {
+      category: DISPSTATUS_CATEGORY,
+      type: "exists",
+      value: AVAILABLE_VALUE,
+    };
+  },
 
   async recomputeWorker(workerId: string): Promise<void> {
     const statusStorage = createWorkerDispatchStatusStorage();

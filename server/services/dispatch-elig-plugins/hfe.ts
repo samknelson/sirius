@@ -1,7 +1,7 @@
 import { logger } from "../../logger";
 import { createWorkerDispatchHfeStorage } from "../../storage/worker-dispatch-hfe";
 import { createWorkerDispatchEligDenormStorage } from "../../storage/worker-dispatch-elig-denorm";
-import type { DispatchEligPlugin } from "../dispatch-elig-plugin-registry";
+import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../dispatch-elig-plugin-registry";
 
 const HFE_CATEGORY = "hfe";
 
@@ -10,6 +10,16 @@ export const dispatchHfePlugin: DispatchEligPlugin = {
   name: "Hold for Employer",
   description: "Only includes workers who are being held for a specific employer",
   componentId: "dispatch.hfe",
+
+  getEligibilityCondition(context: EligibilityQueryContext, _config: Record<string, unknown>): EligibilityCondition | null {
+    // Workers must either have no HFE entries, OR have one matching this employer
+    // This allows workers without any holds, plus workers specifically held for this employer
+    return {
+      category: HFE_CATEGORY,
+      type: "exists_or_none",
+      value: context.employerId,
+    };
+  },
 
   async recomputeWorker(workerId: string): Promise<void> {
     const hfeStorage = createWorkerDispatchHfeStorage();

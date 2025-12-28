@@ -1,7 +1,7 @@
 import { logger } from "../../logger";
 import { createWorkerDispatchDncStorage } from "../../storage/worker-dispatch-dnc";
 import { createWorkerDispatchEligDenormStorage } from "../../storage/worker-dispatch-elig-denorm";
-import type { DispatchEligPlugin } from "../dispatch-elig-plugin-registry";
+import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../dispatch-elig-plugin-registry";
 
 const DNC_CATEGORY = "dnc";
 
@@ -10,6 +10,15 @@ export const dispatchDncPlugin: DispatchEligPlugin = {
   name: "Do Not Call",
   description: "Excludes workers who have a Do Not Call entry for the job's employer",
   componentId: "dispatch.dnc",
+
+  getEligibilityCondition(context: EligibilityQueryContext, _config: Record<string, unknown>): EligibilityCondition | null {
+    // Workers must NOT have a DNC entry for this job's employer
+    return {
+      category: DNC_CATEGORY,
+      type: "not_exists",
+      value: context.employerId,
+    };
+  },
 
   async recomputeWorker(workerId: string): Promise<void> {
     const dncStorage = createWorkerDispatchDncStorage();
