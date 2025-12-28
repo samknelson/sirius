@@ -42,43 +42,6 @@ export default function DispatchJobTypeLayout({ children, activeTab }: DispatchJ
   const jobTypeData = jobType?.data as JobTypeData | undefined;
   const IconComponent = jobTypeData?.icon ? iconMap[jobTypeData.icon] || Briefcase : Briefcase;
 
-  if (isLoading || !jobType) {
-    return (
-      <div className="bg-background text-foreground min-h-screen">
-        <header className="bg-card border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Briefcase className="text-primary-foreground" size={16} />
-                </div>
-                <Skeleton className="h-6 w-48" />
-              </div>
-              <div className="flex items-center space-x-4">
-                <Link href="/config/dispatch-job-types">
-                  <Button variant="ghost" size="sm" data-testid="button-back-to-job-types">
-                    <ArrowLeft size={16} className="mr-2" />
-                    Back to Job Types
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Skeleton className="h-16 w-16 rounded-full mb-4" />
-              <Skeleton className="h-6 w-48 mb-2" />
-              <Skeleton className="h-4 w-64" />
-            </CardContent>
-          </Card>
-        </main>
-      </div>
-    );
-  }
-
   if (error) {
     return (
       <div className="bg-background text-foreground min-h-screen">
@@ -109,6 +72,43 @@ export default function DispatchJobTypeLayout({ children, activeTab }: DispatchJ
               <p className="text-center text-muted-foreground">
                 The job type you're looking for doesn't exist or has been removed.
               </p>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
+  if (isLoading || !jobType) {
+    return (
+      <div className="bg-background text-foreground min-h-screen">
+        <header className="bg-card border-b border-border">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center h-16">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                  <Briefcase className="text-primary-foreground" size={16} />
+                </div>
+                <Skeleton className="h-6 w-48" />
+              </div>
+              <div className="flex items-center space-x-4">
+                <Link href="/config/dispatch-job-types">
+                  <Button variant="ghost" size="sm" data-testid="button-back-to-job-types">
+                    <ArrowLeft size={16} className="mr-2" />
+                    Back to Job Types
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Skeleton className="h-16 w-16 rounded-full mb-4" />
+              <Skeleton className="h-6 w-48 mb-2" />
+              <Skeleton className="h-4 w-64" />
             </CardContent>
           </Card>
         </main>
