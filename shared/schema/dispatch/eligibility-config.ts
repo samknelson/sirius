@@ -24,4 +24,6 @@ export interface EligibilityPluginMetadata {
 export interface JobTypeData {
   icon?: string;
   eligibility?: EligibilityPluginConfig[];
+  minWorkers?: number;
+  maxWorkers?: number;
 }

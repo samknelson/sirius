@@ -48,6 +48,8 @@ function DispatchJobTypeEditContent() {
   
   const jobTypeData = jobType.data as JobTypeData | undefined;
   const [formIcon, setFormIcon] = useState<string>(jobTypeData?.icon || "Briefcase");
+  const [minWorkers, setMinWorkers] = useState<string>(jobTypeData?.minWorkers?.toString() || "");
+  const [maxWorkers, setMaxWorkers] = useState<string>(jobTypeData?.maxWorkers?.toString() || "");
 
   const form = useForm<InsertDispatchJobType>({
     resolver: zodResolver(insertDispatchJobTypeSchema),
@@ -63,6 +65,8 @@ function DispatchJobTypeEditContent() {
       description: jobType.description || "",
     });
     setFormIcon(jobTypeData?.icon || "Briefcase");
+    setMinWorkers(jobTypeData?.minWorkers?.toString() || "");
+    setMaxWorkers(jobTypeData?.maxWorkers?.toString() || "");
   }, [jobType, jobTypeData, form]);
 
   const updateMutation = useMutation({
@@ -70,6 +74,8 @@ function DispatchJobTypeEditContent() {
       const updatedData: JobTypeData = {
         ...jobTypeData,
         icon: formIcon,
+        minWorkers: minWorkers ? parseInt(minWorkers, 10) : undefined,
+        maxWorkers: maxWorkers ? parseInt(maxWorkers, 10) : undefined,
       };
       return apiRequest("PUT", `/api/dispatch-job-types/${jobType.id}`, {
         ...data,
@@ -144,6 +150,31 @@ function DispatchJobTypeEditContent() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <FormLabel>Minimum Workers</FormLabel>
+                <Input
+                  type="number"
+                  min="0"
+                  value={minWorkers}
+                  onChange={(e) => setMinWorkers(e.target.value)}
+                  placeholder="No minimum"
+                  data-testid="input-min-workers"
+                />
+              </div>
+              <div className="space-y-2">
+                <FormLabel>Maximum Workers</FormLabel>
+                <Input
+                  type="number"
+                  min="0"
+                  value={maxWorkers}
+                  onChange={(e) => setMaxWorkers(e.target.value)}
+                  placeholder="No maximum"
+                  data-testid="input-max-workers"
+                />
+              </div>
             </div>
 
             <FormField

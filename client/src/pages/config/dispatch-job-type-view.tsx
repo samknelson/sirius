@@ -31,6 +31,18 @@ function DispatchJobTypeViewContent() {
               <span className="text-foreground">{jobTypeData?.icon || "Briefcase"}</span>
             </div>
           </div>
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-1">Minimum Workers</h3>
+            <p className="text-foreground" data-testid="text-min-workers">
+              {jobTypeData?.minWorkers !== undefined ? jobTypeData.minWorkers : "Not set"}
+            </p>
+          </div>
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-1">Maximum Workers</h3>
+            <p className="text-foreground" data-testid="text-max-workers">
+              {jobTypeData?.maxWorkers !== undefined ? jobTypeData.maxWorkers : "Not set"}
+            </p>
+          </div>
         </div>
         
         {jobType.description && (
