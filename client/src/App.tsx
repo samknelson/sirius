@@ -175,6 +175,7 @@ const DispatchJobTypeViewPage = lazy(() => import("@/pages/config/dispatch-job-t
 const DispatchJobTypeEditPage = lazy(() => import("@/pages/config/dispatch-job-type-edit"));
 const DispatchJobTypeDeletePage = lazy(() => import("@/pages/config/dispatch-job-type-delete"));
 const DispatchJobTypePluginsPage = lazy(() => import("@/pages/config/dispatch-job-type-plugins"));
+const DispatchDncConfigPage = lazy(() => import("@/pages/config/dispatch-dnc"));
 const DispatchJobsPage = lazy(() => import("@/pages/dispatch/jobs"));
 const DispatchJobDetailsPage = lazy(() => import("@/pages/dispatch/job-details"));
 const DispatchJobEditPage = lazy(() => import("@/pages/dispatch/job-edit"));
@@ -1614,6 +1615,16 @@ function Router() {
         <ProtectedRoute permission="admin" component="dispatch">
           <AuthenticatedLayout>
             <DispatchJobTypeDeletePage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/dispatch/dnc">
+        <ProtectedRoute permission="admin" component="dispatch.dnc">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DispatchDncConfigPage />
+            </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

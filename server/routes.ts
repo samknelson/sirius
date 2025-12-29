@@ -49,6 +49,7 @@ import { registerEmployerPolicyHistoryRoutes } from "./modules/employer-policy-h
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
 import { registerStaffAlertRoutes } from "./modules/staff-alerts";
+import { registerDispatchDncConfigRoutes } from "./modules/dispatch-dnc-config";
 import { registerCardcheckDefinitionsRoutes } from "./modules/cardcheck-definitions";
 import { registerCardchecksRoutes } from "./modules/cardchecks";
 import { registerEsigsRoutes } from "./modules/esigs";
@@ -326,6 +327,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register staff alert configuration routes
   registerStaffAlertRoutes(app, requireAuth, requireAccess, storage);
+  
+  // Register dispatch DNC configuration routes
+  registerDispatchDncConfigRoutes(app, requireAuth, requireAccess, storage);
   
   // Register cardcheck definitions routes
   registerCardcheckDefinitionsRoutes(app, requireAuth, requirePermission, requireAccess);
