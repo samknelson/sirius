@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Loader2, AlertTriangle, Download, Search, X, Map, Pencil, Upload } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Plus, Trash2, Loader2, AlertTriangle, Download, Search, X, Map, Pencil, Upload, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -86,6 +87,14 @@ export default function BtuEmployerMapListPage() {
   const { data: bargainingUnits = [] } = useQuery<BargainingUnit[]>({
     queryKey: ["/api/bargaining-units"],
   });
+
+  const { data: systemEmployersData, isSuccess: systemEmployersLoaded } = useQuery<{ employerNames: string[] }>({
+    queryKey: ["/api/sitespecific/btu/employer-map/system-employers"],
+  });
+
+  const systemEmployerNames = useMemo(() => {
+    return new Set(systemEmployersData?.employerNames || []);
+  }, [systemEmployersData]);
 
   const form = useForm<FormValues>({
     defaultValues: {
@@ -619,8 +628,52 @@ export default function BtuEmployerMapListPage() {
                   <TableCell data-testid={`text-location-${record.id}`}>{record.locationTitle || record.locationId || "-"}</TableCell>
                   <TableCell data-testid={`text-job-code-${record.id}`}>{record.jobCode || "-"}</TableCell>
                   <TableCell data-testid={`text-job-title-${record.id}`}>{record.jobTitle || "-"}</TableCell>
-                  <TableCell className="font-medium" data-testid={`text-employer-${record.id}`}>{record.employerName || "-"}</TableCell>
-                  <TableCell data-testid={`text-secondary-employer-${record.id}`}>{record.secondaryEmployerName || "-"}</TableCell>
+                  <TableCell className="font-medium" data-testid={`text-employer-${record.id}`}>
+                    {record.employerName ? (
+                      <div className="flex items-center gap-1.5">
+                        {systemEmployersLoaded && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              {systemEmployerNames.has(record.employerName) ? (
+                                <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-500 flex-shrink-0 cursor-help" />
+                              ) : (
+                                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500 flex-shrink-0 cursor-help" />
+                              )}
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {systemEmployerNames.has(record.employerName) 
+                                ? "Employer exists in system" 
+                                : "Employer not found in system"}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                        <span>{record.employerName}</span>
+                      </div>
+                    ) : "-"}
+                  </TableCell>
+                  <TableCell data-testid={`text-secondary-employer-${record.id}`}>
+                    {record.secondaryEmployerName ? (
+                      <div className="flex items-center gap-1.5">
+                        {systemEmployersLoaded && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              {systemEmployerNames.has(record.secondaryEmployerName) ? (
+                                <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-500 flex-shrink-0 cursor-help" />
+                              ) : (
+                                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500 flex-shrink-0 cursor-help" />
+                              )}
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {systemEmployerNames.has(record.secondaryEmployerName) 
+                                ? "Employer exists in system" 
+                                : "Employer not found in system"}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                        <span>{record.secondaryEmployerName}</span>
+                      </div>
+                    ) : "-"}
+                  </TableCell>
                   <TableCell data-testid={`text-bargaining-unit-${record.id}`}>
                     {bargainingUnits.find(bu => bu.id === record.bargainingUnitId)?.siriusId || "-"}
                   </TableCell>

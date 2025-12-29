@@ -246,6 +246,17 @@ export function registerBtuCsgRoutes(
     }
   });
 
+  app.get("/api/sitespecific/btu/employer-map/system-employers", requireAuth, componentMiddleware, async (req, res) => {
+    try {
+      const employers = await storage.employers.getAllEmployers();
+      const employerNames = employers.map(e => e.name);
+      res.json({ employerNames });
+    } catch (error: any) {
+      console.error("Failed to fetch system employers:", error);
+      res.status(500).json({ message: "Failed to fetch system employers" });
+    }
+  });
+
   app.get("/api/sitespecific/btu/employer-map/:id", requireAuth, componentMiddleware, async (req, res) => {
     try {
       const tableExists = await employerMapStorage.tableExists();
