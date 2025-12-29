@@ -75,6 +75,7 @@ export default function BtuEmployerMapListPage() {
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
   const [employerFilter, setEmployerFilter] = useState("all");
+  const [employerExistsFilter, setEmployerExistsFilter] = useState("all");
 
   const { data: records = [], isLoading, error } = useQuery<BtuEmployerMap[]>({
     queryKey: ["/api/sitespecific/btu/employer-map"],
@@ -340,9 +341,23 @@ export default function BtuEmployerMapListPage() {
       const matchesLocation = locationFilter === "all" || record.locationId === locationFilter;
       const matchesEmployer = employerFilter === "all" || record.employerName === employerFilter;
 
-      return matchesSearch && matchesDepartment && matchesLocation && matchesEmployer;
+      // Employer exists filter - only apply when system employers have loaded
+      let matchesEmployerExists = true;
+      if (systemEmployersLoaded && employerExistsFilter !== "all") {
+        const primaryExists = record.employerName ? systemEmployerNames.has(record.employerName) : false;
+        const secondaryExists = record.secondaryEmployerName ? systemEmployerNames.has(record.secondaryEmployerName) : true;
+        const allExist = primaryExists && secondaryExists;
+        
+        if (employerExistsFilter === "exists") {
+          matchesEmployerExists = allExist;
+        } else if (employerExistsFilter === "missing") {
+          matchesEmployerExists = !allExist;
+        }
+      }
+
+      return matchesSearch && matchesDepartment && matchesLocation && matchesEmployer && matchesEmployerExists;
     });
-  }, [records, searchQuery, departmentFilter, locationFilter, employerFilter]);
+  }, [records, searchQuery, departmentFilter, locationFilter, employerFilter, employerExistsFilter, systemEmployersLoaded, systemEmployerNames]);
 
   const escapeCSV = (value: string | null | undefined): string => {
     if (value === null || value === undefined) return "";
@@ -413,9 +428,10 @@ export default function BtuEmployerMapListPage() {
     setDepartmentFilter("all");
     setLocationFilter("all");
     setEmployerFilter("all");
+    setEmployerExistsFilter("all");
   };
 
-  const hasActiveFilters = searchQuery !== "" || departmentFilter !== "all" || locationFilter !== "all" || employerFilter !== "all";
+  const hasActiveFilters = searchQuery !== "" || departmentFilter !== "all" || locationFilter !== "all" || employerFilter !== "all" || employerExistsFilter !== "all";
 
   const openAddDialog = () => {
     form.reset({
@@ -581,6 +597,16 @@ export default function BtuEmployerMapListPage() {
                     {name}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+            <Select value={employerExistsFilter} onValueChange={setEmployerExistsFilter} disabled={!systemEmployersLoaded}>
+              <SelectTrigger className="w-[180px]" data-testid="select-employer-exists-filter">
+                <SelectValue placeholder="Employer Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="exists">Exists in System</SelectItem>
+                <SelectItem value="missing">Missing from System</SelectItem>
               </SelectContent>
             </Select>
             {hasActiveFilters && (
