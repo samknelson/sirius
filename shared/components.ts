@@ -207,6 +207,13 @@ export const componentRegistry: ComponentDefinition[] = [
       schemaPath: "./shared/schema/dispatch/hfe-schema.ts",
       tables: ["worker_dispatch_hfe"]
     }
+  },
+  {
+    id: "debug",
+    name: "Debug",
+    description: "Debug tools and developer utilities",
+    enabledByDefault: false,
+    category: "core"
   }
 ];
 
