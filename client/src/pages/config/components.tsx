@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Info, Database, AlertTriangle, Loader2, Archive, Trash2 } from "lucide-react";
+import { Info, Database, AlertTriangle, Loader2, Archive, Trash2, Shield } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { getAllComponents, ComponentDefinition, ComponentConfig } from "@shared/components";
 
@@ -207,12 +207,18 @@ export default function ComponentsConfigPage() {
               {sortedComponents.map((component) => (
                 <TableRow key={component.id} data-testid={`row-component-${component.id}`}>
                   <TableCell className="font-mono text-sm">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       {component.id}
                       {component.managesSchema && (
                         <Badge variant="outline" className="text-xs">
                           <Database className="h-3 w-3 mr-1" />
                           Schema
+                        </Badge>
+                      )}
+                      {component.permissions && component.permissions.length > 0 && (
+                        <Badge variant="outline" className="text-xs">
+                          <Shield className="h-3 w-3 mr-1" />
+                          Permissions
                         </Badge>
                       )}
                     </div>
