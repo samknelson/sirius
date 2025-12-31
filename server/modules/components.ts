@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { requireAccess } from "../accessControl";
 import { policies } from "../policies";
-import { getAllComponents, getComponentById, getDescendantComponentIds, ComponentConfig, ComponentDefinition, ComponentSchemaState } from "../../shared/components";
+import { getAllComponents, getComponentById, getDescendantComponentIds, getAncestorComponentIds, ComponentConfig, ComponentDefinition, ComponentSchemaState } from "../../shared/components";
 import {
   enableComponentSchema,
   disableComponentSchema,
@@ -146,6 +146,25 @@ export function registerComponentRoutes(
             message: `Cannot disable "${component.name}" because the following dependent components are still enabled. Please disable them first.`,
             enabledDescendants: enabledDescendants,
             enabledDescendantNames: descendantNames
+          });
+        }
+      }
+
+      // When enabling, check if any ancestor components are disabled
+      if (enabled) {
+        const ancestorIds = getAncestorComponentIds(componentId);
+        const disabledAncestors = ancestorIds.filter(id => !isComponentEnabledSync(id));
+        
+        if (disabledAncestors.length > 0) {
+          const ancestorNames = disabledAncestors.map(id => {
+            const anc = getComponentById(id);
+            return anc ? anc.name : id;
+          });
+          
+          return res.status(400).json({
+            message: `Cannot enable "${component.name}" because the following parent components are disabled. Please enable them first.`,
+            disabledAncestors: disabledAncestors,
+            disabledAncestorNames: ancestorNames
           });
         }
       }
