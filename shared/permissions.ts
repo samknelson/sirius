@@ -209,11 +209,6 @@ export function initializePermissions(): void {
       key: 'workers.steward',
       description: 'Access to shop steward functionality for workers',
       module: 'core'
-    },
-    {
-      key: 'debug',
-      description: 'Access to debug tools and raw data viewers',
-      module: 'core'
     }
   ];
 

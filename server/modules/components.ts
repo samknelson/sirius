@@ -15,6 +15,7 @@ import {
   loadComponentCache,
   updateComponentCache,
 } from "../services/component-cache";
+import { syncComponentPermissions } from "../services/component-permissions";
 
 // Type for middleware functions
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -170,6 +171,9 @@ export function registerComponentRoutes(
       }
 
       await updateComponentCache(componentId, enabled);
+
+      // Sync permissions from enabled components (registers any new permissions)
+      syncComponentPermissions();
 
       const effectiveEnabled = await isComponentEnabled(componentId);
 

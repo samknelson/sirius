@@ -10,6 +10,7 @@ import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
 import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler, deleteExpiredHfeHandler } from "./cron";
 import { loadComponentCache } from "./services/component-cache";
+import { syncComponentPermissions } from "./services/component-permissions";
 import { runMigrations } from "../scripts/migrate";
 import { initializeWebSocket } from "./services/websocket";
 import { getSession } from "./replitAuth";
@@ -161,6 +162,10 @@ app.use((req, res, next) => {
   // Load component cache
   await loadComponentCache();
   logger.info("Component cache initialized", { source: "startup" });
+
+  // Register permissions from enabled components
+  syncComponentPermissions();
+  logger.info("Component permissions synced", { source: "startup" });
 
   // Initialize dispatch eligibility plugin system
   initializeDispatchEligSystem();

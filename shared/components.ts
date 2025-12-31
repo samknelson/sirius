@@ -1,3 +1,8 @@
+export interface ComponentPermission {
+  key: string;
+  description: string;
+}
+
 export interface ComponentDefinition {
   id: string;
   name: string;
@@ -6,6 +11,7 @@ export interface ComponentDefinition {
   category?: string;
   managesSchema?: boolean;
   schemaManifest?: ComponentSchemaManifest;
+  permissions?: ComponentPermission[];
 }
 
 export interface ComponentConfig {
@@ -213,7 +219,10 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Debug",
     description: "Debug tools and developer utilities",
     enabledByDefault: false,
-    category: "core"
+    category: "developer",
+    permissions: [
+      { key: "debug", description: "Access to debug tools and raw data viewers" }
+    ]
   }
 ];
 
