@@ -1757,7 +1757,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/masquerade">
+      <Route path="/admin/users/masquerade">
         <ProtectedRoute policy="masquerade">
           <AuthenticatedLayout>
             <ConfigurationLayout>

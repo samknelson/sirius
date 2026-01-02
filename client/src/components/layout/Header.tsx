@@ -381,9 +381,9 @@ export default function Header() {
                         Policies
                       </Button>
                     </Link>
-                    <Link href="/config/masquerade" onClick={() => setMobileMenuOpen(false)}>
+                    <Link href="/admin/users/masquerade" onClick={() => setMobileMenuOpen(false)}>
                       <Button
-                        variant={location === "/config/masquerade" ? "default" : "ghost"}
+                        variant={location === "/admin/users/masquerade" ? "default" : "ghost"}
                         className="w-full justify-start pl-8"
                         data-testid="mobile-nav-users-masquerade"
                       >
@@ -706,7 +706,7 @@ export default function Header() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    variant={location.startsWith("/admin/users") || location === "/config/masquerade" ? "default" : "ghost"}
+                    variant={location.startsWith("/admin/users") ? "default" : "ghost"}
                     size="sm"
                     data-testid="nav-users"
                   >
@@ -750,7 +750,7 @@ export default function Header() {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
-                    <Link href="/config/masquerade" className="w-full">
+                    <Link href="/admin/users/masquerade" className="w-full">
                       <div className="flex items-center cursor-pointer" data-testid="menu-users-masquerade">
                         <UserCog className="h-4 w-4 mr-2" />
                         Masquerade
