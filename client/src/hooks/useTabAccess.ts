@@ -53,11 +53,11 @@ export function useTabAccess({
   const { data, isLoading, isError } = useQuery<TabAccessResponse>({
     queryKey: ['/api/access/tabs', entityType, entityId],
     queryFn: async () => {
-      const response = await apiRequest('POST', '/api/access/tabs', {
+      // apiRequest already returns parsed JSON, don't call .json() again
+      return await apiRequest('POST', '/api/access/tabs', {
         entityType,
         entityId,
       });
-      return response.json();
     },
     enabled: enabled && !!entityId,
     staleTime: 5 * 60 * 1000,
