@@ -78,7 +78,7 @@ export default function Header() {
 
   // Check employer policy for Employers navigation
   const { data: employerPolicy } = useQuery<{ allowed: boolean }>({
-    queryKey: ["/api/access/policies/employer"],
+    queryKey: ["/api/access/policies/employersView"],
     staleTime: 30000,
   });
 
