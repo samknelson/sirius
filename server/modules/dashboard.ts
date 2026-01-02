@@ -6,6 +6,66 @@ import { employerMonthlyPluginConfigSchema } from "@shared/schema";
 import { getPluginMetadata } from "@shared/pluginMetadata";
 import { getEffectiveUser } from "./masquerade";
 
+// Content resolver context passed to each plugin's content resolver
+interface ContentResolverContext {
+  userId: string;
+  userRoles: Array<{ id: string; name: string }>;
+}
+
+// Content resolver function type
+type ContentResolver = (ctx: ContentResolverContext) => Promise<any>;
+
+// Registry of content resolvers for each plugin
+const contentResolvers: Record<string, ContentResolver> = {
+  "welcome-messages": async (ctx) => {
+    // Get welcome messages settings
+    const variableName = "dashboard_plugin_welcome-messages_settings";
+    let variable = await storage.variables.getByName(variableName);
+    
+    // If unified settings don't exist, try to migrate from legacy format
+    if (!variable) {
+      const roles = await storage.users.getAllRoles();
+      const migratedSettings: Record<string, string> = {};
+      
+      for (const role of roles) {
+        const legacyVarName = `welcome_message_${role.id}`;
+        const legacyVar = await storage.variables.getByName(legacyVarName);
+        if (legacyVar) {
+          migratedSettings[role.id] = legacyVar.value as string;
+        }
+      }
+      
+      // Save migrated settings to new unified variable
+      if (Object.keys(migratedSettings).length > 0) {
+        await storage.variables.create({ 
+          name: variableName, 
+          value: migratedSettings 
+        });
+        variable = await storage.variables.getByName(variableName);
+      }
+    }
+    
+    const allMessages = variable ? (variable.value as Record<string, string>) : {};
+    
+    // Filter messages to only include those for the user's roles
+    const userRoleIds = new Set(ctx.userRoles.map(r => r.id));
+    const userMessages: Array<{ roleId: string; roleName: string; message: string }> = [];
+    
+    for (const role of ctx.userRoles) {
+      const message = allMessages[role.id];
+      if (message) {
+        userMessages.push({
+          roleId: role.id,
+          roleName: role.name,
+          message,
+        });
+      }
+    }
+    
+    return { messages: userMessages };
+  },
+};
+
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
@@ -154,6 +214,47 @@ export function registerDashboardRoutes(
       res.json({ success: true, settings });
     } catch (error) {
       res.status(500).json({ message: "Failed to update plugin settings" });
+    }
+  });
+
+  // GET /api/dashboard-plugins/:pluginId/content - Get user-specific plugin content
+  app.get("/api/dashboard-plugins/:pluginId/content", requireAuth, async (req, res) => {
+    try {
+      const { pluginId } = req.params;
+      
+      // Check if a content resolver exists for this plugin
+      const resolver = contentResolvers[pluginId];
+      if (!resolver) {
+        res.status(404).json({ message: `No content resolver for plugin '${pluginId}'` });
+        return;
+      }
+      
+      // Get effective user
+      const user = req.user as any;
+      const replitUserId = user.claims.sub;
+      const session = req.session as any;
+      const { dbUser } = await getEffectiveUser(session, replitUserId);
+      
+      if (!dbUser) {
+        res.status(401).json({ message: "User not found" });
+        return;
+      }
+      
+      // Get user's roles
+      const userRoles = await storage.users.getUserRoles(dbUser.id);
+      
+      // Build resolver context
+      const ctx: ContentResolverContext = {
+        userId: dbUser.id,
+        userRoles: userRoles.map(r => ({ id: r.id, name: r.name })),
+      };
+      
+      // Execute the resolver
+      const content = await resolver(ctx);
+      res.json(content);
+    } catch (error) {
+      console.error("Error fetching plugin content:", error);
+      res.status(500).json({ message: "Failed to fetch plugin content" });
     }
   });
 
