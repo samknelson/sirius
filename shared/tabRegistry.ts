@@ -19,6 +19,10 @@ export interface TabDefinition {
   permission?: string;
   component?: string;
   parent?: string;
+  /** Terminology key for dynamic label substitution (e.g., 'steward', 'union') */
+  termKey?: string;
+  /** Whether to use plural form for terminology substitution */
+  termPlural?: boolean;
 }
 
 /**
@@ -132,11 +136,11 @@ export const workerTabTree: HierarchicalTab[] = [
     ]
   },
   { 
-    id: 'union', label: 'Union', hrefTemplate: '/workers/{id}/union/cardchecks', policyId: 'worker', component: 'cardcheck|bargainingunits|worker.steward',
+    id: 'union', label: 'Union', hrefTemplate: '/workers/{id}/union/cardchecks', policyId: 'worker', component: 'cardcheck|bargainingunits|worker.steward', termKey: 'union',
     children: [
       { id: 'cardchecks', label: 'Cardchecks', hrefTemplate: '/workers/{id}/union/cardchecks', policyId: 'worker', component: 'cardcheck' },
       { id: 'bargaining-unit', label: 'Bargaining Unit', hrefTemplate: '/workers/{id}/union/bargaining-unit', policyId: 'worker', component: 'bargainingunits' },
-      { id: 'steward', label: 'Steward', hrefTemplate: '/workers/{id}/union/steward', policyId: 'worker', component: 'worker.steward' },
+      { id: 'steward', label: 'Steward', hrefTemplate: '/workers/{id}/union/steward', policyId: 'worker', component: 'worker.steward', termKey: 'steward' },
       { id: 'representatives', label: 'Representatives', hrefTemplate: '/workers/{id}/union/representatives', policyId: 'worker', component: 'worker.steward' },
     ]
   },
@@ -173,9 +177,9 @@ export const employerTabTree: HierarchicalTab[] = [
     ]
   },
   { 
-    id: 'union', label: 'Union', hrefTemplate: '/employers/{id}/union/stewards', permission: 'employers.view', component: 'worker.steward',
+    id: 'union', label: 'Union', hrefTemplate: '/employers/{id}/union/stewards', permission: 'employers.view', component: 'worker.steward', termKey: 'union',
     children: [
-      { id: 'stewards', label: 'Stewards', hrefTemplate: '/employers/{id}/union/stewards', permission: 'employers.view', component: 'worker.steward' },
+      { id: 'stewards', label: 'Stewards', hrefTemplate: '/employers/{id}/union/stewards', permission: 'employers.view', component: 'worker.steward', termKey: 'steward', termPlural: true },
     ]
   },
   { id: 'dispatch', label: 'Dispatch', hrefTemplate: '/employers/{id}/dispatch', permission: 'employers.view', component: 'dispatch' },
