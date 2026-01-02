@@ -12,6 +12,8 @@ import {
   workerUnionSubTabs,
   workerDispatchSubTabs,
   employerTabs,
+  employerAccountingSubTabs,
+  employerUnionSubTabs,
   providerTabs,
   buildTabHref,
 } from "@shared/tabRegistry";
@@ -37,6 +39,7 @@ interface UseTabAccessResult {
   isLoading: boolean;
   isError: boolean;
   tabAccess: Map<string, boolean>;
+  hasAccess: (tabId: string) => boolean;
   filterTabs: <T extends TabDefinition>(tabs: T[]) => (T & { href: string })[];
   getTabsWithAccess: (tabs: TabDefinition[]) => TabWithAccess[];
 }
@@ -71,6 +74,11 @@ export function useTabAccess({
     }
   }
 
+  // Helper function to check if a specific tab is accessible
+  const hasAccess = (tabId: string): boolean => {
+    return tabAccess.get(tabId) === true;
+  };
+
   const filterTabs = <T extends TabDefinition>(tabs: T[]): (T & { href: string })[] => {
     if (isLoading || !data?.tabs || !entityId) {
       return [];
@@ -99,6 +107,7 @@ export function useTabAccess({
     isLoading,
     isError,
     tabAccess,
+    hasAccess,
     filterTabs,
     getTabsWithAccess,
   };
@@ -140,6 +149,8 @@ export function useEmployerTabAccess(employerId: string | undefined, enabled = t
   return {
     ...access,
     mainTabs: access.filterTabs(employerTabs),
+    accountingSubTabs: access.filterTabs(employerAccountingSubTabs),
+    unionSubTabs: access.filterTabs(employerUnionSubTabs),
   };
 }
 

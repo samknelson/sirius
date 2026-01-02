@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import type { TrustProvider } from "@shared/schema";
 import { createContext, useContext } from "react";
+import { useProviderTabAccess } from "@/hooks/useTabAccess";
 
 interface TrustProviderLayoutContextValue {
   provider: TrustProvider | undefined;
@@ -32,7 +33,7 @@ export default function TrustProviderLayout({ children, activeTab }: TrustProvid
   const { id } = useParams<{ id: string }>();
   const [location] = useLocation();
 
-  const { data: provider, isLoading, error } = useQuery<TrustProvider>({
+  const { data: provider, isLoading: providerLoading, error } = useQuery<TrustProvider>({
     queryKey: ["/api/trust/provider", id],
     queryFn: async () => {
       const response = await fetch(`/api/trust/provider/${id}`);
@@ -42,6 +43,11 @@ export default function TrustProviderLayout({ children, activeTab }: TrustProvid
       return response.json();
     },
   });
+
+  // Use the tab access hook to get pre-filtered tabs
+  const { mainTabs, isLoading: tabAccessLoading } = useProviderTabAccess(id || '');
+  
+  const isLoading = providerLoading || tabAccessLoading;
 
   // Loading state
   if (isLoading || !provider) {
@@ -119,13 +125,7 @@ export default function TrustProviderLayout({ children, activeTab }: TrustProvid
     );
   }
 
-  // Success state - render layout with tabs
-  const mainTabs = [
-    { id: "view", label: "View", href: `/trust/provider/${provider.id}` },
-    { id: "edit", label: "Edit", href: `/trust/provider/${provider.id}/edit` },
-    { id: "contacts", label: "Contacts", href: `/trust/provider/${provider.id}/contacts` },
-    { id: "logs", label: "Logs", href: `/trust/provider/${provider.id}/logs` },
-  ];
+  // mainTabs are pre-filtered by the hook
 
   const contextValue: TrustProviderLayoutContextValue = {
     provider,

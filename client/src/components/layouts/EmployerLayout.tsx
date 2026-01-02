@@ -1,4 +1,4 @@
-import { createContext, useContext, ReactNode, useMemo } from "react";
+import { createContext, useContext, ReactNode } from "react";
 import { Building2, ArrowLeft } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -8,8 +8,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BookmarkButton } from "@/components/ui/bookmark-button";
 import { DebugRecordViewer } from "@/components/debug/DebugRecordViewer";
-import { useAuth } from "@/contexts/AuthContext";
 import { useTerm } from "@/contexts/TerminologyContext";
+import { useEmployerTabAccess } from "@/hooks/useTabAccess";
 
 interface EmployerLayoutContextValue {
   employer: Employer;
@@ -34,7 +34,6 @@ interface EmployerLayoutProps {
 
 export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
   const { id } = useParams<{ id: string }>();
-  const { hasPermission, hasComponent } = useAuth();
   const term = useTerm();
 
   const { data: employer, isLoading: employerLoading, error: employerError } = useQuery<Employer>({
@@ -48,7 +47,15 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
     },
   });
 
-  const isLoading = employerLoading;
+  // Use the tab access hook to get pre-filtered tabs
+  const { 
+    mainTabs: accessMainTabs, 
+    accountingSubTabs: accessAccountingSubTabs,
+    unionSubTabs: accessUnionSubTabs,
+    isLoading: tabAccessLoading 
+  } = useEmployerTabAccess(id || '');
+
+  const isLoading = employerLoading || tabAccessLoading;
   const isError = !!employerError;
 
   // Error/Not found state - check this BEFORE loading
@@ -90,50 +97,18 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
     );
   }
 
-  // Success state - render layout with tabs
-  const mainTabs = [
-    { id: "details", label: "Details", href: `/employers/${employer.id}` },
-    { id: "edit", label: "Edit", href: `/employers/${employer.id}/edit` },
-    { id: "workers", label: "Workers", href: `/employers/${employer.id}/workers` },
-    { id: "contacts", label: "Contacts", href: `/employers/${employer.id}/contacts` },
-    { id: "policy-history", label: "Policy History", href: `/employers/${employer.id}/policy-history` },
-    { id: "wizards", label: "Wizards", href: `/employers/${employer.id}/wizards` },
-    { id: "logs", label: "Logs", href: `/employers/${employer.id}/logs` },
-  ];
+  // Use pre-filtered tabs from the hook, with terminology applied
+  const mainTabs = accessMainTabs.map(tab => ({
+    ...tab,
+    label: tab.id === 'union' ? term("union") : tab.label,
+  }));
 
-  // Add accounting tab if user has permission
-  const hasAccountingAccess = hasPermission('admin') || hasPermission('ledger.staff') || hasPermission('ledger.employer');
-  if (hasAccountingAccess) {
-    mainTabs.push(
-      { id: "accounting", label: "Accounting", href: `/employers/${employer.id}/ledger/accounts` }
-    );
-  }
+  const accountingSubTabs = accessAccountingSubTabs;
 
-  // Add Union tab if worker.steward component is enabled
-  const hasUnionAccess = hasComponent('worker.steward');
-  if (hasUnionAccess) {
-    mainTabs.push(
-      { id: "union", label: "Union", href: `/employers/${employer.id}/union/stewards` }
-    );
-  }
-
-  // Add Dispatch tab if dispatch component is enabled
-  const hasDispatchAccess = hasComponent('dispatch');
-  if (hasDispatchAccess) {
-    mainTabs.push(
-      { id: "dispatch", label: "Dispatch", href: `/employers/${employer.id}/dispatch` }
-    );
-  }
-
-  const accountingSubTabs = [
-    { id: "accounts", label: "Accounts", href: `/employers/${employer.id}/ledger/accounts` },
-    { id: "payment-methods", label: "Payment Methods", href: `/employers/${employer.id}/ledger/stripe/payment_methods` },
-    { id: "customer", label: "Customer", href: `/employers/${employer.id}/ledger/stripe/customer` },
-  ];
-
-  const unionSubTabs = [
-    { id: "stewards", label: term("steward", { plural: true }), href: `/employers/${employer.id}/union/stewards` },
-  ];
+  const unionSubTabs = accessUnionSubTabs.map(tab => ({
+    ...tab,
+    label: tab.id === 'stewards' ? term("steward", { plural: true }) : tab.label,
+  }));
 
   // Determine if we're in a sub-tab
   const isAccountingSubTab = ["accounts", "payment-methods", "customer"].includes(activeTab);

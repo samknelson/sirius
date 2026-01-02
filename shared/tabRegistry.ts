@@ -131,26 +131,41 @@ export const allWorkerTabs: TabDefinition[] = [
  */
 export const employerTabs: TabDefinition[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/employers/{id}', permission: 'employers.view' },
-  { id: 'contacts', label: 'Contacts', hrefTemplate: '/employers/{id}/contacts', permission: 'employers.view' },
-  { id: 'policies', label: 'Policies', hrefTemplate: '/employers/{id}/policies', permission: 'employers.view' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/employers/{id}/edit', permission: 'employers.edit' },
   { id: 'workers', label: 'Workers', hrefTemplate: '/employers/{id}/workers', permission: 'employers.view' },
-  { id: 'settings', label: 'Settings', hrefTemplate: '/employers/{id}/settings', permission: 'employers.edit' },
-  { id: 'delete', label: 'Delete', hrefTemplate: '/employers/{id}/delete', permission: 'employers.delete' },
+  { id: 'contacts', label: 'Contacts', hrefTemplate: '/employers/{id}/contacts', permission: 'employers.view' },
+  { id: 'policy-history', label: 'Policy History', hrefTemplate: '/employers/{id}/policy-history', permission: 'employers.view' },
+  { id: 'wizards', label: 'Wizards', hrefTemplate: '/employers/{id}/wizards', permission: 'employers.view' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/employers/{id}/logs', permission: 'employers.view' },
+  { id: 'accounting', label: 'Accounting', hrefTemplate: '/employers/{id}/ledger/accounts', permission: 'ledger.staff|ledger.employer', component: 'ledger' },
+  { id: 'union', label: 'Union', hrefTemplate: '/employers/{id}/union/stewards', permission: 'employers.view', component: 'worker.steward' },
+  { id: 'dispatch', label: 'Dispatch', hrefTemplate: '/employers/{id}/dispatch', permission: 'employers.view', component: 'dispatch' },
+];
+
+export const employerAccountingSubTabs: TabDefinition[] = [
+  { id: 'accounts', label: 'Accounts', hrefTemplate: '/employers/{id}/ledger/accounts', permission: 'ledger.staff|ledger.employer', parent: 'accounting' },
+  { id: 'payment-methods', label: 'Payment Methods', hrefTemplate: '/employers/{id}/ledger/stripe/payment_methods', permission: 'ledger.staff|ledger.employer', parent: 'accounting' },
+  { id: 'customer', label: 'Customer', hrefTemplate: '/employers/{id}/ledger/stripe/customer', permission: 'ledger.staff|ledger.employer', parent: 'accounting' },
+];
+
+export const employerUnionSubTabs: TabDefinition[] = [
+  { id: 'stewards', label: 'Stewards', hrefTemplate: '/employers/{id}/union/stewards', permission: 'employers.view', component: 'worker.steward', parent: 'union' },
 ];
 
 export const allEmployerTabs: TabDefinition[] = [
   ...employerTabs,
+  ...employerAccountingSubTabs,
+  ...employerUnionSubTabs,
 ];
 
 /**
  * Provider entity tabs
  */
 export const providerTabs: TabDefinition[] = [
-  { id: 'details', label: 'Details', hrefTemplate: '/providers/{id}', permission: 'providers.view' },
-  { id: 'contacts', label: 'Contacts', hrefTemplate: '/providers/{id}/contacts', permission: 'providers.view' },
-  { id: 'benefits', label: 'Benefits', hrefTemplate: '/providers/{id}/benefits', permission: 'providers.view' },
-  { id: 'settings', label: 'Settings', hrefTemplate: '/providers/{id}/settings', permission: 'providers.edit' },
-  { id: 'delete', label: 'Delete', hrefTemplate: '/providers/{id}/delete', permission: 'providers.delete' },
+  { id: 'view', label: 'View', hrefTemplate: '/trust/provider/{id}', permission: 'trust.view' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/trust/provider/{id}/edit', permission: 'trust.edit' },
+  { id: 'contacts', label: 'Contacts', hrefTemplate: '/trust/provider/{id}/contacts', permission: 'trust.view' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/trust/provider/{id}/logs', permission: 'trust.view' },
 ];
 
 export const allProviderTabs: TabDefinition[] = [
