@@ -1,7 +1,6 @@
 import type { Express } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 
 export function registerWorkerIdsRoutes(
   app: Express,
@@ -9,7 +8,7 @@ export function registerWorkerIdsRoutes(
   requirePermission: any
 ) {
   // GET /api/workers/:workerId/ids - Get all IDs for a worker (requires worker policy: staff or worker with matching email)
-  app.get("/api/workers/:workerId/ids", requireAccess(policies.worker), async (req, res) => {
+  app.get("/api/workers/:workerId/ids", requireAccess('worker.self'), async (req, res) => {
     try {
       const { workerId } = req.params;
       const workerIds = await storage.workerIds.getWorkerIdsByWorkerId(workerId);

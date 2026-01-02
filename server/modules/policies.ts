@@ -1,6 +1,5 @@
 import type { Express, Request, Response } from "express";
 import { IStorage } from "../storage";
-import { policies } from "../policies";
 import { insertPolicySchema } from "@shared/schema";
 import { z } from "zod";
 
@@ -15,7 +14,7 @@ export function registerPoliciesRoutes(
   requireAccess: RequireAccess,
   storage: IStorage
 ) {
-  app.get("/api/policies", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/policies", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const allPolicies = await storage.policies.getAllPolicies();
       res.json(allPolicies);
@@ -25,7 +24,7 @@ export function registerPoliciesRoutes(
     }
   });
 
-  app.get("/api/policies/:id", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/policies/:id", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const policy = await storage.policies.getPolicyById(id);
@@ -39,7 +38,7 @@ export function registerPoliciesRoutes(
     }
   });
 
-  app.post("/api/policies", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/policies", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const validated = insertPolicySchema.parse(req.body);
       
@@ -59,7 +58,7 @@ export function registerPoliciesRoutes(
     }
   });
 
-  app.put("/api/policies/:id", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/policies/:id", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -88,7 +87,7 @@ export function registerPoliciesRoutes(
     }
   });
 
-  app.delete("/api/policies/:id", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/policies/:id", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       

@@ -1,6 +1,5 @@
 import type { Express, Request, Response } from "express";
 import { IStorage } from "../storage";
-import { policies } from "../policies";
 import { insertEmployerPolicyHistorySchema } from "@shared/schema";
 import { z } from "zod";
 
@@ -16,7 +15,7 @@ export function registerEmployerPolicyHistoryRoutes(
   requireAccess: RequireAccess,
   storage: IStorage
 ) {
-  app.get("/api/employers/:employerId/policy-history", requireAuth, requireAccess(policies.employerUser), async (req, res) => {
+  app.get("/api/employers/:employerId/policy-history", requireAuth, requireAccess('employer.self'), async (req, res) => {
     try {
       const { employerId } = req.params;
       
@@ -33,7 +32,7 @@ export function registerEmployerPolicyHistoryRoutes(
     }
   });
 
-  app.post("/api/employers/:employerId/policy-history", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/employers/:employerId/policy-history", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { employerId } = req.params;
       
@@ -63,7 +62,7 @@ export function registerEmployerPolicyHistoryRoutes(
     }
   });
 
-  app.put("/api/employers/:employerId/policy-history/:id", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/employers/:employerId/policy-history/:id", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -91,7 +90,7 @@ export function registerEmployerPolicyHistoryRoutes(
     }
   });
 
-  app.delete("/api/employers/:employerId/policy-history/:id", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/employers/:employerId/policy-history/:id", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       

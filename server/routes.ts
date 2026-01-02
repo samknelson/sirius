@@ -43,7 +43,6 @@ import { registerPostalConfigRoutes } from "./modules/postal-config";
 import { registerSiteSettingsRoutes } from "./modules/site-settings";
 import { registerSystemModeRoutes } from "./modules/system-mode";
 import { registerBootstrapRoutes } from "./modules/bootstrap";
-import { registerPoliciesRoutes } from "./modules/policies";
 import { registerBargainingUnitsRoutes } from "./modules/bargaining-units";
 import { registerEmployerPolicyHistoryRoutes } from "./modules/employer-policy-history";
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
@@ -66,8 +65,8 @@ import { requireComponent } from "./modules/components";
 import { registerWorkerStewardAssignmentRoutes } from "./modules/worker-steward-assignments";
 import { registerBtuCsgRoutes } from "./modules/sitespecific-btu-csg";
 import { registerTerminologyRoutes } from "./modules/terminology";
+import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./accessControl";
-import { policies } from "./policies";
 import { addressValidationService } from "./services/address-validation";
 import { phoneValidationService } from "./services/phone-validation";
 import { serviceRegistry } from "./services/service-registry";
@@ -273,9 +272,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerLedgerPaymentRoutes(app);
 
   // Register log management routes
-  registerLogRoutes(app, requireAuth, requirePermission, requireAccess, policies);
-  registerWorkerWshRoutes(app, requireAuth, requirePermission, requireAccess, policies, storage.workerWsh);
-  registerWorkerHoursRoutes(app, requireAuth, requirePermission, requireAccess, policies, storage.workerHours, storage.ledger);
+  registerLogRoutes(app, requireAuth, requirePermission, requireAccess);
+  registerWorkerWshRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerWsh);
+  registerWorkerHoursRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerHours, storage.ledger);
   registerQuickstartRoutes(app);
 
   // Register cron job management routes
@@ -297,13 +296,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerPostalConfigRoutes(app);
 
   // Register site settings routes
-  registerSiteSettingsRoutes(app, requireAuth, requirePermission, requireAccess, policies);
+  registerSiteSettingsRoutes(app, requireAuth, requirePermission, requireAccess);
 
   // Register terminology routes
-  registerTerminologyRoutes(app, requireAuth, requirePermission, requireAccess, policies);
+  registerTerminologyRoutes(app, requireAuth, requirePermission, requireAccess);
 
   // Register system mode routes
-  registerSystemModeRoutes(app, requireAuth, requirePermission, requireAccess, policies);
+  registerSystemModeRoutes(app, requireAuth, requirePermission, requireAccess);
 
   // Register bootstrap routes (no auth required - intentionally public for initial setup)
   registerBootstrapRoutes(app);
@@ -387,7 +386,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GET /api/workers/:id - Get a specific worker (requires worker policy: staff or worker with matching email)
-  app.get("/api/workers/:id", requireAccess(policies.worker), async (req, res) => {
+  app.get("/api/workers/:id", requireAccess('worker.self'), async (req, res) => {
     try {
       const { id } = req.params;
       const worker = await storage.workers.getWorker(id);
@@ -571,7 +570,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Employer routes (protected with authentication and permissions)
   
   // GET /api/employers - Get all employers (requires employersView policy)
-  app.get("/api/employers", requireAuth, requireAccess(policies.employersView), async (req, res) => {
+  app.get("/api/employers", requireAuth, requireAccess('employers.view'), async (req, res) => {
     try {
       const includeInactive = req.query.includeInactive === 'true';
       const allEmployers = await storage.employers.getAllEmployers();
@@ -588,7 +587,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GET /api/employers/:id - Get a specific employer (requires employerUser policy)
-  app.get("/api/employers/:id", requireAuth, requireAccess(policies.employerUser), async (req, res) => {
+  app.get("/api/employers/:id", requireAuth, requireAccess('employer.self'), async (req, res) => {
     try {
       const { id } = req.params;
       const employer = await storage.employers.getEmployer(id);
@@ -605,7 +604,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GET /api/employers/:employerId/workers - Get workers for an employer (requires employerUser policy)
-  app.get("/api/employers/:employerId/workers", requireAuth, requireAccess(policies.employerUser), async (req, res) => {
+  app.get("/api/employers/:employerId/workers", requireAuth, requireAccess('employer.self'), async (req, res) => {
     try {
       const { employerId } = req.params;
       
@@ -751,7 +750,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // PUT /api/variables/address_validation_config - Update address validation configuration
-  app.put("/api/variables/address_validation_config", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/variables/address_validation_config", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       // Basic validation for the configuration update
       const { mode, local, google } = req.body;
@@ -814,7 +813,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // PUT /api/variables/phone_validation_config - Update phone validation configuration
   // Now updates the SMS provider selection and stores validation settings for each provider
-  app.put("/api/variables/phone_validation_config", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/variables/phone_validation_config", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { mode, local, twilio, fallback } = req.body;
       
@@ -915,7 +914,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Worker Benefits (WMB) routes
 
   // GET /api/workers/:workerId/benefits - Get all benefits for a worker (requires worker policy: staff or worker with matching email)
-  app.get("/api/workers/:workerId/benefits", requireAccess(policies.worker), async (req, res) => {
+  app.get("/api/workers/:workerId/benefits", requireAccess('worker.self'), async (req, res) => {
     try {
       const { workerId } = req.params;
       const benefits = await storage.workers.getWorkerBenefits(workerId);

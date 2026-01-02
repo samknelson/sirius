@@ -1,24 +1,37 @@
 import type { Express } from 'express';
-import { buildContext, evaluatePolicyDetailed, type AccessPolicy } from '../accessControl';
-import { requireAuth } from '../accessControl';
-import * as policies from '../policies';
+import { requireAuth, requireAccess, buildContext, checkAccess } from '../accessControl';
+import { accessPolicyRegistry } from '@shared/accessPolicies';
 
 /**
  * Register access policy evaluation routes
  */
 export function registerAccessPolicyRoutes(app: Express) {
-  // GET /api/access/policies - List all policies (requires admin.manage permission)
-  app.get("/api/access/policies", requireAuth, async (req, res) => {
+  // GET /api/access/policies - List all policies (requires admin permission)
+  app.get("/api/access/policies", requireAccess('admin'), async (req, res) => {
     try {
+      const { scope, entityType } = req.query;
+      
+      let policies = accessPolicyRegistry.getAll();
+      
+      // Filter by scope if provided
+      if (scope === 'route' || scope === 'entity') {
+        policies = accessPolicyRegistry.getByScope(scope);
+      }
+      
+      // Filter by entity type if provided
+      if (entityType && typeof entityType === 'string') {
+        policies = policies.filter(p => p.entityType === entityType);
+      }
+
       // Format policies for frontend display
-      const policyList = Object.entries(policies)
-        .filter(([key, value]) => key !== 'policies' && typeof value === 'object' && 'name' in value)
-        .map(([key, policy]) => ({
-          id: key,
-          name: (policy as AccessPolicy).name,
-          description: (policy as AccessPolicy).description || '',
-          requirements: (policy as AccessPolicy).requirements,
-        }));
+      const policyList = policies.map(policy => ({
+        id: policy.id,
+        name: policy.name,
+        description: policy.description,
+        scope: policy.scope,
+        entityType: policy.entityType,
+        rules: policy.rules,
+      }));
       
       res.json(policyList);
     } catch (error) {
@@ -27,33 +40,45 @@ export function registerAccessPolicyRoutes(app: Express) {
     }
   });
 
-  // GET /api/access/policies/:policyName - Check access policy (requires authentication)
-  app.get("/api/access/policies/:policyName", requireAuth, async (req, res) => {
+  // GET /api/access/policies/:policyId - Get policy details and check access
+  app.get("/api/access/policies/:policyId", requireAuth, async (req, res) => {
     try {
-      const { policyName } = req.params;
+      const { policyId } = req.params;
+      const { entityId } = req.query;
       
-      // Get the policy by name
-      const policy = (policies as any)[policyName];
+      // Get the policy by ID
+      const policy = accessPolicyRegistry.get(policyId);
       
       if (!policy) {
         return res.status(404).json({ 
-          message: `Policy '${policyName}' not found` 
+          message: `Policy '${policyId}' not found` 
         });
       }
       
       // Build context from request
       const context = await buildContext(req);
       
-      // Merge query params into context params for resource-specific policy checks
-      // This allows passing resource IDs (e.g., workerId) from the frontend
-      if (req.query) {
-        context.params = { ...context.params, ...req.query };
-      }
+      // Check access using the unified system
+      const result = await checkAccess(
+        policyId, 
+        context.user, 
+        entityId as string | undefined
+      );
       
-      // Evaluate policy with detailed results
-      const result = await evaluatePolicyDetailed(policy, context);
-      
-      res.json(result);
+      res.json({
+        policy: {
+          id: policy.id,
+          name: policy.name,
+          description: policy.description,
+          scope: policy.scope,
+          entityType: policy.entityType,
+        },
+        access: {
+          granted: result.granted,
+          reason: result.reason,
+        },
+        evaluatedAt: new Date().toISOString(),
+      });
     } catch (error) {
       console.error('Error evaluating policy:', error);
       res.status(500).json({ message: 'Failed to evaluate policy' });

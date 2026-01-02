@@ -1,6 +1,5 @@
 import type { Express, Request, Response } from "express";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 import { z } from "zod";
 import { serviceRegistry } from "../services/service-registry";
 import type { SmsTransport } from "../services/providers/sms";
@@ -8,7 +7,7 @@ import type { SmsTransport } from "../services/providers/sms";
 export function registerTwilioRoutes(app: Express) {
   app.get(
     "/api/config/sms",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const config = await serviceRegistry.getCategoryConfig('sms');
@@ -41,7 +40,7 @@ export function registerTwilioRoutes(app: Express) {
 
   app.post(
     "/api/config/sms/test",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         serviceRegistry.invalidateCache('sms');
@@ -59,7 +58,7 @@ export function registerTwilioRoutes(app: Express) {
 
   app.put(
     "/api/config/sms/provider",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const schema = z.object({
@@ -84,7 +83,7 @@ export function registerTwilioRoutes(app: Express) {
 
   app.get(
     "/api/config/sms/phone-numbers",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const smsTransport = await serviceRegistry.resolve<SmsTransport>('sms');
@@ -106,7 +105,7 @@ export function registerTwilioRoutes(app: Express) {
 
   app.put(
     "/api/config/sms/default-phone",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const schema = z.object({
@@ -141,7 +140,7 @@ export function registerTwilioRoutes(app: Express) {
 
   app.get(
     "/api/config/sms/default-phone",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const smsTransport = await serviceRegistry.resolve<SmsTransport>('sms');
@@ -161,7 +160,7 @@ export function registerTwilioRoutes(app: Express) {
 
   app.get(
     "/api/config/twilio",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const smsTransport = await serviceRegistry.resolve<SmsTransport>('sms');
@@ -196,7 +195,7 @@ export function registerTwilioRoutes(app: Express) {
 
   app.post(
     "/api/config/twilio/test",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         serviceRegistry.invalidateCache('sms');
@@ -229,7 +228,7 @@ export function registerTwilioRoutes(app: Express) {
 
   app.get(
     "/api/config/twilio/phone-numbers",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const smsTransport = await serviceRegistry.resolve<SmsTransport>('sms');
@@ -251,7 +250,7 @@ export function registerTwilioRoutes(app: Express) {
 
   app.put(
     "/api/config/twilio/default-phone",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const schema = z.object({
@@ -283,7 +282,7 @@ export function registerTwilioRoutes(app: Express) {
 
   app.get(
     "/api/config/twilio/default-phone",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const smsTransport = await serviceRegistry.resolve<SmsTransport>('sms');

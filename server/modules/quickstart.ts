@@ -3,7 +3,6 @@ import { z } from "zod";
 import { exportQuickstart, importQuickstart, listQuickstarts, deleteQuickstart } from "../services/quickstart";
 import { isAuthenticated } from "../replitAuth";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 
 const exportSchema = z.object({
   name: z.string().min(1).max(100).regex(/^[a-zA-Z0-9_-]+$/, "Name must contain only letters, numbers, hyphens, and underscores"),
@@ -22,7 +21,7 @@ export function registerQuickstartRoutes(app: Express) {
   app.get(
     "/api/quickstarts",
     isAuthenticated,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const quickstarts = await listQuickstarts();
@@ -38,7 +37,7 @@ export function registerQuickstartRoutes(app: Express) {
   app.post(
     "/api/quickstarts/export",
     isAuthenticated,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const { name } = exportSchema.parse(req.body);
@@ -59,7 +58,7 @@ export function registerQuickstartRoutes(app: Express) {
   app.post(
     "/api/quickstarts/import",
     isAuthenticated,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const { name } = importSchema.parse(req.body);
@@ -80,7 +79,7 @@ export function registerQuickstartRoutes(app: Express) {
   app.delete(
     "/api/quickstarts/:name",
     isAuthenticated,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const { name } = deleteSchema.parse({ name: req.params.name });

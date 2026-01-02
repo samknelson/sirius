@@ -5,8 +5,7 @@ export function registerSiteSettingsRoutes(
   app: Express,
   requireAuth: any,
   requirePermission: any,
-  requireAccess: any,
-  policies: any
+  requireAccess: any
 ) {
   // GET /api/site-settings - Get site settings (no auth required for public settings)
   app.get("/api/site-settings", async (req, res) => {
@@ -24,7 +23,7 @@ export function registerSiteSettingsRoutes(
   });
 
   // PUT /api/site-settings - Update site settings (requires admin permissions)
-  app.put("/api/site-settings", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/site-settings", requireAccess('admin'), async (req, res) => {
     try {
       const { siteName, footer } = req.body;
       

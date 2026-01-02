@@ -2,7 +2,6 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { insertContactSchema, type InsertContact } from "@shared/schema";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 import { z } from "zod";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -15,7 +14,7 @@ export function registerEmployerContactRoutes(
 ) {
   
   // GET /api/employer-contacts - Get all employer contacts with optional filtering (requires staff policy)
-  app.get("/api/employer-contacts", requireAuth, requireAccess(policies.staff), async (req, res) => {
+  app.get("/api/employer-contacts", requireAuth, requireAccess('staff'), async (req, res) => {
     try {
       const { employerId, contactName, contactTypeId } = req.query;
       
@@ -41,7 +40,7 @@ export function registerEmployerContactRoutes(
   });
   
   // GET /api/employers/:employerId/contacts - Get all contacts for an employer (requires employersView policy)
-  app.get("/api/employers/:employerId/contacts", requireAuth, requireAccess(policies.employersView), async (req, res) => {
+  app.get("/api/employers/:employerId/contacts", requireAuth, requireAccess('employers.view'), async (req, res) => {
     try {
       const { employerId } = req.params;
       const contacts = await storage.employerContacts.listByEmployer(employerId);
@@ -190,7 +189,7 @@ export function registerEmployerContactRoutes(
   });
 
   // GET /api/employer-contacts/:contactId/user - Get user linked to employer contact
-  app.get("/api/employer-contacts/:contactId/user", requireAccess(policies.employerUserManage), async (req, res) => {
+  app.get("/api/employer-contacts/:contactId/user", requireAccess('employer.userManage'), async (req, res) => {
     try {
       const { contactId } = req.params;
       
@@ -256,7 +255,7 @@ export function registerEmployerContactRoutes(
   });
 
   // POST /api/employer-contacts/:contactId/user - Create or update user linked to employer contact
-  app.post("/api/employer-contacts/:contactId/user", requireAccess(policies.employerUserManage), async (req, res) => {
+  app.post("/api/employer-contacts/:contactId/user", requireAccess('employer.userManage'), async (req, res) => {
     try {
       const { contactId } = req.params;
       
@@ -392,7 +391,7 @@ export function registerEmployerContactRoutes(
   });
 
   // POST /api/employer-contacts/user-status - Batch fetch user account status for multiple employer contacts
-  app.post("/api/employer-contacts/user-status", requireAuth, requireAccess(policies.employerUserManage), async (req, res) => {
+  app.post("/api/employer-contacts/user-status", requireAuth, requireAccess('employer.userManage'), async (req, res) => {
     try {
       // Validate request body with Zod
       const requestSchema = z.object({

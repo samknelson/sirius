@@ -1,23 +1,22 @@
 /**
  * Entity Access API Module
  * 
- * Provides API endpoints for checking entity-level access.
+ * Provides API endpoints for checking entity-level access using the unified policy system.
  */
 
 import { Express } from 'express';
 import { z } from 'zod';
-import { requireAuth, buildContext } from '../accessControl';
+import { requireAuth, requireAccess, buildContext, checkAccess } from '../accessControl';
 import { 
-  evaluateEntityAccess, 
-  evaluateEntityAccessBatch,
-  getEntityAccessCacheStats,
-  invalidateEntityAccessCache,
-  clearEntityAccessCache
-} from '../services/entity-access';
-import { entityAccessPolicyRegistry } from '@shared/entityAccessPolicies';
-import * as policies from '../policies';
-import { requireAccess } from '../accessControl';
+  evaluatePolicy,
+  evaluatePolicyBatch,
+  getAccessCacheStats,
+  invalidateAccessCache,
+  clearAccessCache
+} from '../services/access-policy-evaluator';
+import { accessPolicyRegistry } from '@shared/accessPolicies';
 import { logger } from '../logger';
+import { isComponentEnabled } from './components';
 
 const SERVICE = 'entity-access-api';
 
@@ -28,13 +27,13 @@ export function registerEntityAccessModule(app: Express, storage: any): void {
    * Check access to a specific entity
    * Query params:
    *   - policy: Policy ID (e.g., 'worker.view')
-   *   - entityId: Entity ID to check access for
+   *   - entityId: Entity ID to check access for (optional for route-level policies)
    */
   app.get('/api/access/check', requireAuth, async (req, res) => {
     try {
       const schema = z.object({
         policy: z.string(),
-        entityId: z.string(),
+        entityId: z.string().optional(),
       });
 
       const result = schema.safeParse(req.query);
@@ -53,13 +52,8 @@ export function registerEntityAccessModule(app: Express, storage: any): void {
         return res.status(401).json({ message: 'Authentication required' });
       }
 
-      // Evaluate access
-      const accessResult = await evaluateEntityAccess(
-        context.user,
-        policyId,
-        entityId,
-        storage
-      );
+      // Check access using the unified system
+      const accessResult = await checkAccess(policyId, context.user, entityId);
 
       res.json({
         granted: accessResult.granted,
@@ -86,7 +80,7 @@ export function registerEntityAccessModule(app: Express, storage: any): void {
     try {
       const schema = z.object({
         policy: z.string(),
-        entityIds: z.array(z.string()).max(100), // Limit batch size
+        entityIds: z.array(z.string()),
       });
 
       const result = schema.safeParse(req.body);
@@ -105,52 +99,88 @@ export function registerEntityAccessModule(app: Express, storage: any): void {
         return res.status(401).json({ message: 'Authentication required' });
       }
 
-      // Evaluate access for all entities
-      const accessResults = await evaluateEntityAccessBatch(
+      // Get access storage interface
+      const accessStorage = {
+        getUserPermissions: async (userId: string) => {
+          const permissions = await storage.users.getUserPermissions(userId);
+          return permissions.map((p: any) => p.key);
+        },
+        hasPermission: async (userId: string, permissionKey: string) => {
+          return storage.users.userHasPermission(userId, permissionKey);
+        },
+        getUserByReplitId: async (replitUserId: string) => {
+          return storage.users.getUserByReplitId(replitUserId);
+        },
+        getUser: async (userId: string) => {
+          return storage.users.getUser(userId);
+        },
+      };
+
+      // Evaluate batch access
+      const accessResults = await evaluatePolicyBatch(
         context.user,
         policyId,
         entityIds,
-        storage
+        storage,
+        accessStorage,
+        isComponentEnabled
       );
 
-      // Convert Map to object for JSON response
-      const results: Record<string, { granted: boolean; reason?: string }> = {};
-      accessResults.forEach((accessResult, entityId) => {
-        results[entityId] = {
-          granted: accessResult.granted,
-          reason: accessResult.reason,
+      // Convert Map to plain object
+      const resultsObject: Record<string, { granted: boolean; reason?: string }> = {};
+      accessResults.forEach((result, entityId) => {
+        resultsObject[entityId] = {
+          granted: result.granted,
+          reason: result.reason,
         };
       });
 
-      res.json({ results });
+      res.json({
+        policy: policyId,
+        results: resultsObject,
+      });
     } catch (error) {
-      logger.error('Error checking entity access batch', {
+      logger.error('Error checking batch entity access', {
         service: SERVICE,
         error: error instanceof Error ? error.message : String(error),
       });
-      res.status(500).json({ message: 'Failed to check access' });
+      res.status(500).json({ message: 'Failed to check batch access' });
     }
   });
 
   /**
    * GET /api/access/policies
    * 
-   * List all registered entity access policies
-   * Admin only
+   * List all registered access policies (admin only)
    */
-  app.get('/api/access/policies', requireAccess(policies.admin), async (req, res) => {
+  app.get('/api/access/policies', requireAccess('admin'), async (req, res) => {
     try {
-      const allPolicies = entityAccessPolicyRegistry.getAll();
-      res.json({ 
-        policies: allPolicies.map(p => ({
+      const { scope, entityType } = req.query;
+      
+      let policies = accessPolicyRegistry.getAll();
+      
+      // Filter by scope if provided
+      if (scope === 'route' || scope === 'entity') {
+        policies = accessPolicyRegistry.getByScope(scope);
+      }
+      
+      // Filter by entity type if provided
+      if (entityType && typeof entityType === 'string') {
+        policies = policies.filter(p => p.entityType === entityType);
+      }
+
+      res.json({
+        count: policies.length,
+        policies: policies.map(p => ({
           id: p.id,
           name: p.name,
           description: p.description,
+          scope: p.scope,
           entityType: p.entityType,
-        }))
+        })),
       });
     } catch (error) {
-      logger.error('Error listing entity access policies', {
+      logger.error('Error listing access policies', {
         service: SERVICE,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -161,12 +191,11 @@ export function registerEntityAccessModule(app: Express, storage: any): void {
   /**
    * GET /api/access/cache/stats
    * 
-   * Get cache statistics
-   * Admin only
+   * Get access cache statistics (admin only)
    */
-  app.get('/api/access/cache/stats', requireAccess(policies.admin), async (req, res) => {
+  app.get('/api/access/cache/stats', requireAccess('admin'), async (req, res) => {
     try {
-      const stats = getEntityAccessCacheStats();
+      const stats = getAccessCacheStats();
       res.json(stats);
     } catch (error) {
       res.status(500).json({ message: 'Failed to get cache stats' });
@@ -176,10 +205,9 @@ export function registerEntityAccessModule(app: Express, storage: any): void {
   /**
    * POST /api/access/cache/invalidate
    * 
-   * Invalidate cache entries matching a pattern
-   * Admin only
+   * Invalidate cache entries matching a pattern (admin only)
    */
-  app.post('/api/access/cache/invalidate', requireAccess(policies.admin), async (req, res) => {
+  app.post('/api/access/cache/invalidate', requireAccess('admin'), async (req, res) => {
     try {
       const schema = z.object({
         userId: z.string().optional(),
@@ -195,8 +223,12 @@ export function registerEntityAccessModule(app: Express, storage: any): void {
         });
       }
 
-      const count = invalidateEntityAccessCache(result.data);
-      res.json({ invalidated: count });
+      const count = invalidateAccessCache(result.data);
+
+      res.json({
+        message: 'Cache entries invalidated',
+        count,
+      });
     } catch (error) {
       res.status(500).json({ message: 'Failed to invalidate cache' });
     }
@@ -205,17 +237,17 @@ export function registerEntityAccessModule(app: Express, storage: any): void {
   /**
    * POST /api/access/cache/clear
    * 
-   * Clear all cache entries
-   * Admin only
+   * Clear all cache entries (admin only)
    */
-  app.post('/api/access/cache/clear', requireAccess(policies.admin), async (req, res) => {
+  app.post('/api/access/cache/clear', requireAccess('admin'), async (req, res) => {
     try {
-      clearEntityAccessCache();
-      res.json({ cleared: true });
+      clearAccessCache();
+
+      res.json({
+        message: 'Cache cleared',
+      });
     } catch (error) {
       res.status(500).json({ message: 'Failed to clear cache' });
     }
   });
-
-  logger.info('Entity access module registered', { service: SERVICE });
 }

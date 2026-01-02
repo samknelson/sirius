@@ -1,7 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 import { 
   getAllEligibilityPlugins, 
   getEligibilityPlugin,
@@ -28,7 +27,7 @@ export function registerEligibilityPluginRoutes(
   requirePermission: (permission: string) => (req: Request, res: Response, next: NextFunction) => void
 ) {
   
-  app.get("/api/eligibility-plugins", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/eligibility-plugins", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const enabledComponents = await getEnabledComponentIds();
       const registeredPlugins = eligibilityPluginRegistry.getAllFiltered(enabledComponents);
@@ -48,7 +47,7 @@ export function registerEligibilityPluginRoutes(
     }
   });
 
-  app.get("/api/eligibility-plugins/:id", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/eligibility-plugins/:id", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const plugin = getEligibilityPlugin(id);
@@ -78,7 +77,7 @@ export function registerEligibilityPluginRoutes(
     }
   });
 
-  app.post("/api/eligibility/evaluate", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/eligibility/evaluate", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const input = evaluateEligibilitySchema.parse(req.body);
       
@@ -122,7 +121,7 @@ export function registerEligibilityPluginRoutes(
     }
   });
 
-  app.post("/api/eligibility/validate-config", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/eligibility/validate-config", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { pluginKey, config } = req.body;
       

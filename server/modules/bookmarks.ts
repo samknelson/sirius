@@ -2,7 +2,6 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { insertBookmarkSchema } from "@shared/schema";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 import { enforceFloodLimit, FloodError } from "../flood";
 import { getEffectiveUser } from "./masquerade";
 
@@ -15,7 +14,7 @@ export function registerBookmarkRoutes(
   requirePermission: PermissionMiddleware
 ) {
   // GET /api/bookmarks - Get all bookmarks for the current user
-  app.get("/api/bookmarks", requireAccess(policies.bookmark), async (req, res) => {
+  app.get("/api/bookmarks", requireAccess('bookmark'), async (req, res) => {
     try {
       const user = req.user as any;
       const replitUserId = user.claims.sub;
@@ -34,7 +33,7 @@ export function registerBookmarkRoutes(
   });
 
   // GET /api/bookmarks/enriched - Get all bookmarks with display names pre-resolved
-  app.get("/api/bookmarks/enriched", requireAccess(policies.bookmark), async (req, res) => {
+  app.get("/api/bookmarks/enriched", requireAccess('bookmark'), async (req, res) => {
     try {
       const user = req.user as any;
       const replitUserId = user.claims.sub;
@@ -53,7 +52,7 @@ export function registerBookmarkRoutes(
   });
 
   // GET /api/bookmarks/check - Check if a specific entity is bookmarked
-  app.get("/api/bookmarks/check", requireAccess(policies.bookmark), async (req, res) => {
+  app.get("/api/bookmarks/check", requireAccess('bookmark'), async (req, res) => {
     try {
       const { entityType, entityId } = req.query;
       
@@ -78,7 +77,7 @@ export function registerBookmarkRoutes(
   });
 
   // POST /api/bookmarks - Create a new bookmark
-  app.post("/api/bookmarks", requireAccess(policies.bookmark), async (req, res) => {
+  app.post("/api/bookmarks", requireAccess('bookmark'), async (req, res) => {
     try {
       const user = req.user as any;
       const replitUserId = user.claims.sub;
@@ -123,7 +122,7 @@ export function registerBookmarkRoutes(
   });
 
   // DELETE /api/bookmarks/:id - Delete a bookmark by ID
-  app.delete("/api/bookmarks/:id", requireAccess(policies.bookmark), async (req, res) => {
+  app.delete("/api/bookmarks/:id", requireAccess('bookmark'), async (req, res) => {
     try {
       const { id } = req.params;
       const user = req.user as any;
@@ -157,7 +156,7 @@ export function registerBookmarkRoutes(
   });
 
   // DELETE /api/bookmarks/entity/:entityType/:entityId - Delete a bookmark by entity type and ID
-  app.delete("/api/bookmarks/entity/:entityType/:entityId", requireAccess(policies.bookmark), async (req, res) => {
+  app.delete("/api/bookmarks/entity/:entityType/:entityId", requireAccess('bookmark'), async (req, res) => {
     try {
       const { entityType, entityId } = req.params;
       

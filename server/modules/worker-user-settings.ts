@@ -1,7 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -20,7 +19,7 @@ export function registerWorkerUserSettingsRoutes(
   requirePermission: PermissionMiddleware
 ) {
   // GET /api/worker-user-settings - Get worker user role configuration
-  app.get("/api/worker-user-settings", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/worker-user-settings", requireAccess('admin'), async (req, res) => {
     try {
       const requiredVariable = await storage.variables.getByName('worker_user_roles_required');
       const optionalVariable = await storage.variables.getByName('worker_user_roles_optional');
@@ -35,7 +34,7 @@ export function registerWorkerUserSettingsRoutes(
   });
 
   // PUT /api/worker-user-settings - Update worker user role configuration
-  app.put("/api/worker-user-settings", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/worker-user-settings", requireAccess('admin'), async (req, res) => {
     try {
       const { required, optional } = req.body;
 

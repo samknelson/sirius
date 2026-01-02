@@ -1,7 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import type { IStorage } from "../storage";
-import { policies } from "../policies";
 import { runBenefitsScan } from "../services/benefits-scan";
 
 type RequireAccess = (policy: any) => (req: Request, res: Response, next: () => void) => void;
@@ -22,7 +21,7 @@ export function registerWorkerBenefitsScanRoutes(
   app.post(
     "/api/workers/:id/benefits/scan",
     requireAuth,
-    requireAccess(policies.workersManage),
+    requireAccess('workers.manage'),
     async (req, res) => {
       try {
         const { id: workerId } = req.params;

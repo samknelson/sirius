@@ -1,6 +1,5 @@
 import type { Express, Request, Response } from "express";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 import { z } from "zod";
 import { serviceRegistry } from "../services/service-registry";
 import type { EmailTransport } from "../services/providers/email";
@@ -8,7 +7,7 @@ import type { EmailTransport } from "../services/providers/email";
 export function registerEmailConfigRoutes(app: Express) {
   app.get(
     "/api/config/email",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const config = await serviceRegistry.getCategoryConfig('email');
@@ -41,7 +40,7 @@ export function registerEmailConfigRoutes(app: Express) {
 
   app.post(
     "/api/config/email/test",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         serviceRegistry.invalidateCache('email');
@@ -64,7 +63,7 @@ export function registerEmailConfigRoutes(app: Express) {
 
   app.put(
     "/api/config/email/provider",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const schema = z.object({
@@ -89,7 +88,7 @@ export function registerEmailConfigRoutes(app: Express) {
 
   app.get(
     "/api/config/email/default-from",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const emailTransport = await serviceRegistry.resolve<EmailTransport>('email');
@@ -110,7 +109,7 @@ export function registerEmailConfigRoutes(app: Express) {
 
   app.put(
     "/api/config/email/default-from",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const schema = z.object({
@@ -147,7 +146,7 @@ export function registerEmailConfigRoutes(app: Express) {
 
   app.get(
     "/api/config/sendgrid",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const emailTransport = await serviceRegistry.resolve<EmailTransport>('email');
@@ -181,7 +180,7 @@ export function registerEmailConfigRoutes(app: Express) {
 
   app.post(
     "/api/config/sendgrid/test",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         serviceRegistry.invalidateCache('email');

@@ -1,7 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -20,7 +19,7 @@ export function registerTrustProviderUserSettingsRoutes(
   requirePermission: PermissionMiddleware
 ) {
   // GET /api/trust-provider-user-settings - Get trust provider user role configuration
-  app.get("/api/trust-provider-user-settings", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/trust-provider-user-settings", requireAccess('admin'), async (req, res) => {
     try {
       const requiredVariable = await storage.variables.getByName('trust_provider_user_roles_required');
       const optionalVariable = await storage.variables.getByName('trust_provider_user_roles_optional');
@@ -35,7 +34,7 @@ export function registerTrustProviderUserSettingsRoutes(
   });
 
   // PUT /api/trust-provider-user-settings - Update trust provider user role configuration
-  app.put("/api/trust-provider-user-settings", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/trust-provider-user-settings", requireAccess('admin'), async (req, res) => {
     try {
       const { required, optional } = req.body;
 

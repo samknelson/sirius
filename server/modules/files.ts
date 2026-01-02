@@ -1,8 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { insertFileSchema } from "@shared/schema";
-import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
+import { requireAccess, checkAccess, buildContext } from "../accessControl";
 import { objectStorageService } from "../services/objectStorage";
 import multer from "multer";
 
@@ -23,7 +22,7 @@ export function registerFileRoutes(
 ) {
   app.post("/api/files", 
     upload.single('file'),
-    requireAccess(policies.filesUpload),
+    requireAccess('files.upload'),
     async (req, res) => {
       try {
         if (!req.file) {
@@ -82,11 +81,10 @@ export function registerFileRoutes(
       const files = await storage.files.list(filters);
       
       const filteredFiles = [];
+      const context = await buildContext(req);
       for (const file of files) {
         try {
-          const context = await import('../accessControl').then(m => m.buildContext(req));
-          context.params = { id: file.id };
-          const result = await import('../accessControl').then(m => m.evaluatePolicy(policies.filesRead, context));
+          const result = await checkAccess('file.read', context.user, file.id);
           if (result.granted) {
             filteredFiles.push(file);
           }
@@ -100,7 +98,7 @@ export function registerFileRoutes(
     }
   });
 
-  app.get("/api/files/:id", requireAccess(policies.filesRead), async (req, res) => {
+  app.get("/api/files/:id", requireAccess('file.read'), async (req, res) => {
     try {
       const { id } = req.params;
       const file = await storage.files.getById(id);
@@ -115,7 +113,7 @@ export function registerFileRoutes(
     }
   });
 
-  app.get("/api/files/:id/download", requireAccess(policies.filesRead), async (req, res) => {
+  app.get("/api/files/:id/download", requireAccess('file.read'), async (req, res) => {
     try {
       const { id } = req.params;
       const file = await storage.files.getById(id);
@@ -136,7 +134,7 @@ export function registerFileRoutes(
     }
   });
 
-  app.get("/api/files/:id/url", requireAccess(policies.filesRead), async (req, res) => {
+  app.get("/api/files/:id/url", requireAccess('file.read'), async (req, res) => {
     try {
       const { id } = req.params;
       const { expiresIn = 3600 } = req.query;
@@ -159,7 +157,7 @@ export function registerFileRoutes(
     }
   });
 
-  app.patch("/api/files/:id", requireAccess(policies.filesUpdate), async (req, res) => {
+  app.patch("/api/files/:id", requireAccess('file.update'), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -197,7 +195,7 @@ export function registerFileRoutes(
     }
   });
 
-  app.delete("/api/files/:id", requireAccess(policies.filesDelete), async (req, res) => {
+  app.delete("/api/files/:id", requireAccess('file.delete'), async (req, res) => {
     try {
       const { id } = req.params;
       

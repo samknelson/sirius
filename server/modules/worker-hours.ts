@@ -7,12 +7,11 @@ export function registerWorkerHoursRoutes(
   requireAuth: any,
   requirePermission: any,
   requireAccess: any,
-  policies: any,
   workerHoursStorage: WorkerHoursStorage,
   ledgerStorage: LedgerStorage
 ) {
   // GET /api/workers/:workerId/hours - Get hours for a worker with optional view parameter
-  app.get("/api/workers/:workerId/hours", requireAuth, requireAccess(policies.worker), async (req, res) => {
+  app.get("/api/workers/:workerId/hours", requireAuth, requireAccess('worker.self'), async (req, res) => {
     try {
       const { workerId } = req.params;
       const view = (req.query.view as string) || 'daily';

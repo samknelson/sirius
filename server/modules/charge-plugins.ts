@@ -1,7 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 import { chargePluginRegistry, getAllEnabledChargePlugins, isChargePluginEnabled } from "../charge-plugins/registry";
 import { type ChargePluginMetadata } from "../charge-plugins/types";
 import { z } from "zod";
@@ -18,7 +17,7 @@ export function registerChargePluginRoutes(
 ) {
   
   // GET /api/charge-plugins - Get all registered charge plugins (filtered by component status)
-  app.get("/api/charge-plugins", requireAuth, requireComponent("ledger"), requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/charge-plugins", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
     try {
       // Get only plugins whose required components are enabled
       const registeredPlugins = await getAllEnabledChargePlugins();
@@ -35,7 +34,7 @@ export function registerChargePluginRoutes(
   });
 
   // GET /api/charge-plugin-configs - Get all plugin configurations
-  app.get("/api/charge-plugin-configs", requireAuth, requireComponent("ledger"), requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/charge-plugin-configs", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
     try {
       const configs = await storage.chargePluginConfigs.getAll();
       res.json(configs);
@@ -46,7 +45,7 @@ export function registerChargePluginRoutes(
   });
 
   // GET /api/charge-plugin-configs/:id - Get a specific plugin configuration
-  app.get("/api/charge-plugin-configs/:id", requireAuth, requireComponent("ledger"), requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/charge-plugin-configs/:id", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const config = await storage.chargePluginConfigs.get(id);
@@ -63,7 +62,7 @@ export function registerChargePluginRoutes(
   });
 
   // GET /api/charge-plugin-configs/by-plugin/:pluginId - Get all configurations for a specific plugin
-  app.get("/api/charge-plugin-configs/by-plugin/:pluginId", requireAuth, requireComponent("ledger"), requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/charge-plugin-configs/by-plugin/:pluginId", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
     try {
       const { pluginId } = req.params;
       
@@ -82,7 +81,7 @@ export function registerChargePluginRoutes(
   });
 
   // POST /api/charge-plugin-configs - Create a new plugin configuration
-  app.post("/api/charge-plugin-configs", requireAuth, requireComponent("ledger"), requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/charge-plugin-configs", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
     try {
       // Validate request body
       const configData = insertChargePluginConfigSchema.parse(req.body);
@@ -130,7 +129,7 @@ export function registerChargePluginRoutes(
   });
 
   // PUT /api/charge-plugin-configs/:id - Update a plugin configuration
-  app.put("/api/charge-plugin-configs/:id", requireAuth, requireComponent("ledger"), requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/charge-plugin-configs/:id", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -179,7 +178,7 @@ export function registerChargePluginRoutes(
   });
 
   // DELETE /api/charge-plugin-configs/:id - Delete a plugin configuration
-  app.delete("/api/charge-plugin-configs/:id", requireAuth, requireComponent("ledger"), requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/charge-plugin-configs/:id", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       

@@ -2,7 +2,6 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { insertContactSchema, type InsertContact } from "@shared/schema";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 import { z } from "zod";
 import { storageLogger } from "../logger";
 
@@ -16,7 +15,7 @@ export function registerTrustProviderContactRoutes(
 ) {
 
   // GET /api/trust-provider-contacts - Get all provider contacts with optional filtering (requires staff policy)
-  app.get("/api/trust-provider-contacts", requireAuth, requireAccess(policies.staff), async (req, res) => {
+  app.get("/api/trust-provider-contacts", requireAuth, requireAccess('staff'), async (req, res) => {
     try {
       const { providerId, contactName, contactTypeId } = req.query;
       
@@ -42,7 +41,7 @@ export function registerTrustProviderContactRoutes(
   });
 
   // GET /api/trust-providers/:providerId/contacts - Get all contacts for a provider (requires staff policy)
-  app.get("/api/trust-providers/:providerId/contacts", requireAuth, requireAccess(policies.staff), async (req, res) => {
+  app.get("/api/trust-providers/:providerId/contacts", requireAuth, requireAccess('staff'), async (req, res) => {
     try {
       const { providerId } = req.params;
       const contacts = await storage.trustProviderContacts.listByProvider(providerId);
@@ -53,7 +52,7 @@ export function registerTrustProviderContactRoutes(
   });
 
   // POST /api/trust-providers/:providerId/contacts - Create a new contact for a provider (requires admin policy)
-  app.post("/api/trust-providers/:providerId/contacts", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/trust-providers/:providerId/contacts", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { providerId } = req.params;
       const parsed = insertContactSchema.extend({ 
@@ -87,7 +86,7 @@ export function registerTrustProviderContactRoutes(
   });
 
   // GET /api/trust-provider-contacts/:id - Get a single provider contact (requires staff policy)
-  app.get("/api/trust-provider-contacts/:id", requireAuth, requireAccess(policies.staff), async (req, res) => {
+  app.get("/api/trust-provider-contacts/:id", requireAuth, requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
       const providerContact = await storage.trustProviderContacts.get(id);
@@ -104,7 +103,7 @@ export function registerTrustProviderContactRoutes(
   });
 
   // PATCH /api/trust-provider-contacts/:id - Update a provider contact (requires admin policy)
-  app.patch("/api/trust-provider-contacts/:id", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.patch("/api/trust-provider-contacts/:id", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const updateSchema = z.object({
@@ -129,7 +128,7 @@ export function registerTrustProviderContactRoutes(
   });
 
   // PATCH /api/trust-provider-contacts/:id/contact/email - Update contact email (requires admin policy)
-  app.patch("/api/trust-provider-contacts/:id/contact/email", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.patch("/api/trust-provider-contacts/:id/contact/email", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const emailSchema = z.object({
@@ -155,7 +154,7 @@ export function registerTrustProviderContactRoutes(
   });
 
   // PATCH /api/trust-provider-contacts/:id/contact/name - Update contact name components (requires admin policy)
-  app.patch("/api/trust-provider-contacts/:id/contact/name", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.patch("/api/trust-provider-contacts/:id/contact/name", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const nameSchema = z.object({
@@ -185,7 +184,7 @@ export function registerTrustProviderContactRoutes(
   });
 
   // GET /api/trust-provider-contacts/:contactId/user - Get user linked to provider contact
-  app.get("/api/trust-provider-contacts/:contactId/user", requireAuth, requireAccess(policies.trustProviderUserManage), async (req, res) => {
+  app.get("/api/trust-provider-contacts/:contactId/user", requireAuth, requireAccess('trustProvider.userManage'), async (req, res) => {
     try {
       const { contactId } = req.params;
       
@@ -251,7 +250,7 @@ export function registerTrustProviderContactRoutes(
   });
 
   // POST /api/trust-provider-contacts/:contactId/user - Create or update user linked to provider contact
-  app.post("/api/trust-provider-contacts/:contactId/user", requireAuth, requireAccess(policies.trustProviderUserManage), async (req, res) => {
+  app.post("/api/trust-provider-contacts/:contactId/user", requireAuth, requireAccess('trustProvider.userManage'), async (req, res) => {
     try {
       const { contactId } = req.params;
       
@@ -480,7 +479,7 @@ export function registerTrustProviderContactRoutes(
   });
 
   // DELETE /api/trust-provider-contacts/:id - Delete a provider contact (requires admin policy)
-  app.delete("/api/trust-provider-contacts/:id", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/trust-provider-contacts/:id", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.trustProviderContacts.delete(id);

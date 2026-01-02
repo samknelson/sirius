@@ -1,7 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import type { IStorage } from "../storage";
-import { policies } from "../policies";
 import { enqueueMonthScan, processBatchQueueJobs, invalidateWorkerScans } from "../services/wmb-scan-queue";
 
 type RequireAccess = (policy: any) => (req: Request, res: Response, next: () => void) => void;
@@ -38,7 +37,7 @@ export function registerWmbScanQueueRoutes(
   app.get(
     "/api/wmb-scan/status",
     requireAuth,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const statuses = await storage.wmbScanQueue.getAllMonthStatuses();
@@ -53,7 +52,7 @@ export function registerWmbScanQueueRoutes(
   app.get(
     "/api/wmb-scan/status/:year/:month",
     requireAuth,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const month = parseInt(req.params.month);
@@ -80,7 +79,7 @@ export function registerWmbScanQueueRoutes(
   app.get(
     "/api/wmb-scan/summary",
     requireAuth,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const summary = await storage.wmbScanQueue.getPendingSummary();
@@ -95,7 +94,7 @@ export function registerWmbScanQueueRoutes(
   app.get(
     "/api/wmb-scan/detail/:id",
     requireAuth,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const { id } = req.params;
@@ -115,7 +114,7 @@ export function registerWmbScanQueueRoutes(
   app.get(
     "/api/wmb-scan/detail/:id/entries",
     requireAuth,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const { id } = req.params;
@@ -151,7 +150,7 @@ export function registerWmbScanQueueRoutes(
   app.get(
     "/api/wmb-scan/detail/:id/export",
     requireAuth,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const { id } = req.params;
@@ -242,7 +241,7 @@ export function registerWmbScanQueueRoutes(
   app.post(
     "/api/wmb-scan/enqueue-month",
     requireAuth,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const validationResult = enqueueMonthSchema.safeParse(req.body);
@@ -270,7 +269,7 @@ export function registerWmbScanQueueRoutes(
   app.post(
     "/api/wmb-scan/enqueue-worker/:workerId",
     requireAuth,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const { workerId } = req.params;
@@ -299,7 +298,7 @@ export function registerWmbScanQueueRoutes(
   app.post(
     "/api/wmb-scan/process-batch",
     requireAuth,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const validationResult = processBatchSchema.safeParse(req.body);
@@ -327,7 +326,7 @@ export function registerWmbScanQueueRoutes(
   app.post(
     "/api/wmb-scan/invalidate-worker/:workerId",
     requireAuth,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const { workerId } = req.params;
@@ -347,7 +346,7 @@ export function registerWmbScanQueueRoutes(
   app.post(
     "/api/wmb-scan/cancel/:statusId",
     requireAuth,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const { statusId } = req.params;
@@ -374,7 +373,7 @@ export function registerWmbScanQueueRoutes(
   app.post(
     "/api/wmb-scan/resume/:statusId",
     requireAuth,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const { statusId } = req.params;

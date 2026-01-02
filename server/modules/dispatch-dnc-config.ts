@@ -1,6 +1,5 @@
 import type { Express, Request, Response } from "express";
 import type { IStorage } from "../storage";
-import { policies } from "../policies";
 import { z } from "zod";
 
 type RequireAccess = (policy: any) => (req: Request, res: Response, next: () => void) => void;
@@ -31,7 +30,7 @@ export function registerDispatchDncConfigRoutes(
   app.get(
     "/api/config/dispatch/dnc",
     requireAuth,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (_req, res) => {
       try {
         const variable = await storage.variables.getByName(VARIABLE_NAME);
@@ -57,7 +56,7 @@ export function registerDispatchDncConfigRoutes(
   app.put(
     "/api/config/dispatch/dnc",
     requireAuth,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const parseResult = dispatchDncNotificationConfigSchema.safeParse(req.body);

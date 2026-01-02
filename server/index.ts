@@ -37,9 +37,10 @@ import { initLogNotifier } from "./modules/log-notifier";
 // Import dispatch eligibility plugins system
 import { initializeDispatchEligSystem } from "./services/dispatch-elig-plugins";
 
-// Import entity access policies (triggers registration)
-import "@shared/entityAccessPolicies.definitions";
+// Import unified access policies (triggers registration)
+import "@shared/accessPolicies.definitions";
 import { registerEntityAccessModule } from "./modules/entity-access";
+import { isComponentEnabled } from "./modules/components";
 
 // Helper function to redact sensitive data from responses before logging
 function redactSensitiveData(data: any): any {
@@ -123,22 +124,29 @@ app.use((req, res, next) => {
   initializePermissions();
   logger.info("Permission system initialized with core permissions", { source: "startup" });
   
-  // Initialize access control system
-  initAccessControl({
-    getUserPermissions: async (userId: string) => {
-      const permissions = await storage.users.getUserPermissions(userId);
-      return permissions.map(p => p.key);
+  // Initialize access control system with unified policy evaluator
+  initAccessControl(
+    // Access control storage interface
+    {
+      getUserPermissions: async (userId: string) => {
+        const permissions = await storage.users.getUserPermissions(userId);
+        return permissions.map(p => p.key);
+      },
+      hasPermission: async (userId: string, permissionKey: string) => {
+        return storage.users.userHasPermission(userId, permissionKey);
+      },
+      getUserByReplitId: async (replitUserId: string) => {
+        return storage.users.getUserByReplitId(replitUserId);
+      },
+      getUser: async (userId: string) => {
+        return storage.users.getUser(userId);
+      },
     },
-    hasPermission: async (userId: string, permissionKey: string) => {
-      return storage.users.userHasPermission(userId, permissionKey);
-    },
-    getUserByReplitId: async (replitUserId: string) => {
-      return storage.users.getUserByReplitId(replitUserId);
-    },
-    getUser: async (userId: string) => {
-      return storage.users.getUser(userId);
-    },
-  });
+    // Full storage for linkage resolvers
+    storage,
+    // Component flag checker
+    isComponentEnabled
+  );
   logger.info("Access control system initialized", { source: "startup" });
   
   // Initialize address validation service (loads or creates config)

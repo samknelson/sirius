@@ -7,7 +7,6 @@ import {
   assignPermissionSchema
 } from "@shared/schema";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 
 // Type for middleware functions that we'll accept from the main routes
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -22,7 +21,7 @@ export function registerUserRoutes(
   
   // GET /api/admin/users/search - Search users by email (admin only)
   // MIGRATED to new access control system
-  app.get("/api/admin/users/search", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/admin/users/search", requireAccess('admin'), async (req, res) => {
     try {
       const query = (req.query.q as string || '').toLowerCase();
       
@@ -54,7 +53,7 @@ export function registerUserRoutes(
   });
   
   // GET /api/admin/users/by-email/:email - Get user by email (admin only)
-  app.get("/api/admin/users/by-email/:email", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/admin/users/by-email/:email", requireAccess('admin'), async (req, res) => {
     try {
       const { email } = req.params;
       const decodedEmail = decodeURIComponent(email);
@@ -85,7 +84,7 @@ export function registerUserRoutes(
 
   // GET /api/admin/users - Get all users (admin only)
   // MIGRATED to new access control system
-  app.get("/api/admin/users", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/admin/users", requireAccess('admin'), async (req, res) => {
     try {
       const usersWithRoles = await storage.users.getAllUsersWithRoles();
       
@@ -112,7 +111,7 @@ export function registerUserRoutes(
 
   // POST /api/admin/users - Create user (admin only, email-based provisioning)
   // MIGRATED to new access control system
-  app.post("/api/admin/users", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/admin/users", requireAccess('admin'), async (req, res) => {
     try {
       const userData = createUserSchema.parse(req.body);
       
@@ -145,7 +144,7 @@ export function registerUserRoutes(
 
   // GET /api/admin/users/:id - Get user details (admin only)
   // MIGRATED to new access control system
-  app.get("/api/admin/users/:id", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/admin/users/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const user = await storage.users.getUser(id);
@@ -173,7 +172,7 @@ export function registerUserRoutes(
 
   // PUT /api/admin/users/:id/status - Update user status (admin only)
   // MIGRATED to new access control system
-  app.put("/api/admin/users/:id/status", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/admin/users/:id/status", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const { isActive } = req.body;
@@ -201,7 +200,7 @@ export function registerUserRoutes(
   
   // GET /api/admin/roles - Get all roles (admin only)
   // MIGRATED to new access control system
-  app.get("/api/admin/roles", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/admin/roles", requireAccess('admin'), async (req, res) => {
     try {
       const roles = await storage.users.getAllRoles();
       res.json(roles);
@@ -212,7 +211,7 @@ export function registerUserRoutes(
 
   // POST /api/admin/roles - Create role (admin only)
   // MIGRATED to new access control system
-  app.post("/api/admin/roles", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/admin/roles", requireAccess('admin'), async (req, res) => {
     try {
       const validatedData = insertRoleSchema.parse(req.body);
       const role = await storage.users.createRole(validatedData);
@@ -227,7 +226,7 @@ export function registerUserRoutes(
   });
 
   // PUT /api/admin/roles/:id - Update role (admin only)
-  app.put("/api/admin/roles/:id", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/admin/roles/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const validatedData = insertRoleSchema.partial().parse(req.body);
@@ -248,7 +247,7 @@ export function registerUserRoutes(
   });
 
   // DELETE /api/admin/roles/:id - Delete role (admin only)
-  app.delete("/api/admin/roles/:id", requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/admin/roles/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const success = await storage.users.deleteRole(id);
@@ -266,7 +265,7 @@ export function registerUserRoutes(
   // Permission management routes
   
   // GET /api/admin/permissions - Get all permissions (admin only)
-  app.get("/api/admin/permissions", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/admin/permissions", requireAccess('admin'), async (req, res) => {
     try {
       const permissions = await storage.users.getAllPermissions();
       res.json(permissions);
@@ -278,7 +277,7 @@ export function registerUserRoutes(
   // Logging routes
   
   // GET /api/users/:userId/logs - Get all logs related to a user (requires staff permission)
-  app.get("/api/users/:userId/logs", requireAuth, requireAccess(policies.staff), async (req, res) => {
+  app.get("/api/users/:userId/logs", requireAuth, requireAccess('staff'), async (req, res) => {
     try {
       const { userId } = req.params;
       const { module, operation, startDate, endDate } = req.query;
@@ -318,7 +317,7 @@ export function registerUserRoutes(
   });
   
   // GET /api/admin/users/:userId/roles - Get user roles (admin only)
-  app.get("/api/admin/users/:userId/roles", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/admin/users/:userId/roles", requireAccess('admin'), async (req, res) => {
     try {
       const { userId } = req.params;
       const roles = await storage.users.getUserRoles(userId);
@@ -329,7 +328,7 @@ export function registerUserRoutes(
   });
 
   // POST /api/admin/users/:userId/roles - Assign role to user (admin only)
-  app.post("/api/admin/users/:userId/roles", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/admin/users/:userId/roles", requireAccess('admin'), async (req, res) => {
     try {
       const { userId } = req.params;
       const { roleId } = assignRoleSchema.parse({ userId, ...req.body });
@@ -346,7 +345,7 @@ export function registerUserRoutes(
   });
 
   // DELETE /api/admin/users/:userId/roles/:roleId - Unassign role from user (admin only)
-  app.delete("/api/admin/users/:userId/roles/:roleId", requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/admin/users/:userId/roles/:roleId", requireAccess('admin'), async (req, res) => {
     try {
       const { userId, roleId } = req.params;
       const success = await storage.users.unassignRoleFromUser(userId, roleId);
@@ -362,7 +361,7 @@ export function registerUserRoutes(
   });
 
   // GET /api/admin/role-permissions - Get all role-permission assignments (admin only)
-  app.get("/api/admin/role-permissions", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/admin/role-permissions", requireAccess('admin'), async (req, res) => {
     try {
       const rolePermissions = await storage.users.getAllRolePermissions();
       res.json(rolePermissions);
@@ -372,7 +371,7 @@ export function registerUserRoutes(
   });
 
   // POST /api/admin/roles/:roleId/permissions - Assign permission to role (admin only)
-  app.post("/api/admin/roles/:roleId/permissions", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/admin/roles/:roleId/permissions", requireAccess('admin'), async (req, res) => {
     try {
       const { roleId } = req.params;
       const { permissionKey } = assignPermissionSchema.parse({ roleId, ...req.body });
@@ -393,7 +392,7 @@ export function registerUserRoutes(
   });
 
   // DELETE /api/admin/roles/:roleId/permissions/:permissionKey - Unassign permission from role (admin only)
-  app.delete("/api/admin/roles/:roleId/permissions/:permissionKey", requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/admin/roles/:roleId/permissions/:permissionKey", requireAccess('admin'), async (req, res) => {
     try {
       const { roleId, permissionKey } = req.params;
       const success = await storage.users.unassignPermissionFromRole(roleId, permissionKey);

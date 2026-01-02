@@ -1,6 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 import { getAllComponents, getComponentById, getDescendantComponentIds, getAncestorComponentIds, ComponentConfig, ComponentDefinition, ComponentSchemaState } from "../../shared/components";
 import {
   enableComponentSchema,
@@ -107,7 +106,7 @@ export function registerComponentRoutes(
   requirePermission: PermissionMiddleware
 ) {
   // GET /api/components/config - Get component configuration states
-  app.get("/api/components/config", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/components/config", requireAccess('admin'), async (req, res) => {
     try {
       const configs = await getComponentConfigs();
       res.json(configs);
@@ -117,7 +116,7 @@ export function registerComponentRoutes(
   });
 
   // PUT /api/components/config/:componentId - Update component enabled state
-  app.put("/api/components/config/:componentId", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/components/config/:componentId", requireAccess('admin'), async (req, res) => {
     try {
       const { componentId } = req.params;
       const { enabled, confirmDestructive, retainData } = req.body;
@@ -229,7 +228,7 @@ export function registerComponentRoutes(
   });
 
   // GET /api/components/:componentId/schema-info - Get schema information for a component
-  app.get("/api/components/:componentId/schema-info", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/components/:componentId/schema-info", requireAccess('admin'), async (req, res) => {
     try {
       const { componentId } = req.params;
       const component = getComponentById(componentId);
@@ -249,7 +248,7 @@ export function registerComponentRoutes(
   });
 
   // POST /api/components/:componentId/check-drift - Check schema drift for a component
-  app.post("/api/components/:componentId/check-drift", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/components/:componentId/check-drift", requireAccess('admin'), async (req, res) => {
     try {
       const { componentId } = req.params;
       const component = getComponentById(componentId);

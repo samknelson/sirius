@@ -2,7 +2,6 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { insertCronJobSchema } from "@shared/schema";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 import { cronScheduler, cronJobRegistry } from "../cron";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -14,7 +13,7 @@ export function registerCronJobRoutes(
   requirePermission: PermissionMiddleware
 ) {
   // GET /api/cron-jobs - List all cron jobs
-  app.get("/api/cron-jobs", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/cron-jobs", requireAccess('admin'), async (req, res) => {
     try {
       const jobs = await storage.cronJobs.list();
       
@@ -34,7 +33,7 @@ export function registerCronJobRoutes(
   });
 
   // GET /api/cron-jobs/:name - Get a specific cron job with latest run
-  app.get("/api/cron-jobs/:name", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/cron-jobs/:name", requireAccess('admin'), async (req, res) => {
     try {
       const { name } = req.params;
       const job = await storage.cronJobs.getByName(name);
@@ -62,7 +61,7 @@ export function registerCronJobRoutes(
   });
 
   // GET /api/cron-jobs/:name/runs - Get run history for a specific job
-  app.get("/api/cron-jobs/:name/runs", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/cron-jobs/:name/runs", requireAccess('admin'), async (req, res) => {
     try {
       const { name } = req.params;
       const job = await storage.cronJobs.getByName(name);
@@ -79,7 +78,7 @@ export function registerCronJobRoutes(
   });
 
   // PATCH /api/cron-jobs/:name - Update a cron job
-  app.patch("/api/cron-jobs/:name", requireAccess(policies.admin), async (req, res) => {
+  app.patch("/api/cron-jobs/:name", requireAccess('admin'), async (req, res) => {
     try {
       const { name } = req.params;
       
@@ -107,7 +106,7 @@ export function registerCronJobRoutes(
   });
 
   // POST /api/cron-jobs/:name/run - Manually trigger a cron job
-  app.post("/api/cron-jobs/:name/run", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/cron-jobs/:name/run", requireAccess('admin'), async (req, res) => {
     try {
       const { name } = req.params;
       const { mode = "live" } = req.body; // Accept mode from request body, default to "live"

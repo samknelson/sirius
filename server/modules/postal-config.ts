@@ -1,6 +1,5 @@
 import type { Express, Request, Response } from "express";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 import { z } from "zod";
 import { serviceRegistry } from "../services/service-registry";
 import type { PostalTransport, PostalAddress } from "../services/providers/postal";
@@ -8,7 +7,7 @@ import type { PostalTransport, PostalAddress } from "../services/providers/posta
 export function registerPostalConfigRoutes(app: Express) {
   app.get(
     "/api/config/postal",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const config = await serviceRegistry.getCategoryConfig('postal');
@@ -41,7 +40,7 @@ export function registerPostalConfigRoutes(app: Express) {
 
   app.post(
     "/api/config/postal/test",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         serviceRegistry.invalidateCache('postal');
@@ -64,7 +63,7 @@ export function registerPostalConfigRoutes(app: Express) {
 
   app.put(
     "/api/config/postal/provider",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const schema = z.object({
@@ -89,7 +88,7 @@ export function registerPostalConfigRoutes(app: Express) {
 
   app.get(
     "/api/config/postal/return-address",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const postalTransport = await serviceRegistry.resolve<PostalTransport>('postal');
@@ -109,7 +108,7 @@ export function registerPostalConfigRoutes(app: Express) {
 
   app.put(
     "/api/config/postal/return-address",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const schema = z.object({
@@ -151,7 +150,7 @@ export function registerPostalConfigRoutes(app: Express) {
 
   app.get(
     "/api/config/lob",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const postalTransport = await serviceRegistry.resolve<PostalTransport>('postal');
@@ -185,7 +184,7 @@ export function registerPostalConfigRoutes(app: Express) {
 
   app.post(
     "/api/config/lob/test",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         serviceRegistry.invalidateCache('postal');
@@ -217,7 +216,7 @@ export function registerPostalConfigRoutes(app: Express) {
 
   app.post(
     "/api/config/postal/verify-test-address",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req: Request, res: Response) => {
       try {
         const schema = z.object({

@@ -1,7 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 import { requireComponent } from "./components";
 import { employerMonthlyPluginConfigSchema } from "@shared/schema";
 import { getPluginMetadata } from "@shared/pluginMetadata";
@@ -35,7 +34,7 @@ export function registerDashboardRoutes(
   });
 
   // PUT /api/dashboard-plugins/config/:pluginId - Update a plugin's configuration
-  app.put("/api/dashboard-plugins/config/:pluginId", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/dashboard-plugins/config/:pluginId", requireAccess('admin'), async (req, res) => {
     try {
       const { pluginId } = req.params;
       const { enabled } = req.body;
@@ -61,7 +60,7 @@ export function registerDashboardRoutes(
   });
 
   // GET /api/dashboard-plugins/:pluginId/settings - Get plugin settings
-  app.get("/api/dashboard-plugins/:pluginId/settings", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/dashboard-plugins/:pluginId/settings", requireAccess('admin'), async (req, res) => {
     try {
       const { pluginId } = req.params;
       
@@ -119,7 +118,7 @@ export function registerDashboardRoutes(
   });
 
   // PUT /api/dashboard-plugins/:pluginId/settings - Update plugin settings
-  app.put("/api/dashboard-plugins/:pluginId/settings", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/dashboard-plugins/:pluginId/settings", requireAccess('admin'), async (req, res) => {
     try {
       const { pluginId } = req.params;
       const settings = req.body;

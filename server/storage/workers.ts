@@ -84,6 +84,7 @@ export interface WorkerStorage {
   updateWorkerStatus(workerId: string, denormWsId: string | null): Promise<Worker | undefined>;
   syncWorkerEmployerDenorm(workerId: string): Promise<void>;
   deleteWorker(id: string): Promise<boolean>;
+  updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined>;
   // Worker benefits methods
   getWorkerBenefits(workerId: string): Promise<any[]>;
   createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb>;

@@ -1,7 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 import { z } from "zod";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -20,7 +19,7 @@ export function registerWorkerUsersRoutes(
   requirePermission: PermissionMiddleware
 ) {
   // GET /api/workers/:id/user - Get user linked to worker
-  app.get("/api/workers/:id/user", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/workers/:id/user", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -99,7 +98,7 @@ export function registerWorkerUsersRoutes(
   });
 
   // POST /api/workers/:id/user - Create or update user linked to worker
-  app.post("/api/workers/:id/user", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/workers/:id/user", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       

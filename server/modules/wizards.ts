@@ -2,8 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import multer from "multer";
 import { storage } from "../storage";
 import { insertWizardSchema, wizardDataSchema, type WizardData } from "@shared/schema";
-import { requireAccess, buildContext, evaluatePolicy } from "../accessControl";
-import { policies } from "../policies";
+import { requireAccess, buildContext, checkAccess } from "../accessControl";
 import { wizardRegistry } from "../wizards/index.js";
 import { FeedWizard } from "../wizards/feed.js";
 import { objectStorageService } from "../services/objectStorage.js";
@@ -34,7 +33,7 @@ export function registerWizardRoutes(
   requireAuth: AuthMiddleware, 
   requirePermission: PermissionMiddleware
 ) {
-  app.get("/api/wizard-types", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/wizard-types", requireAccess('admin'), async (req, res) => {
     try {
       const { isComponentEnabled } = await import('./components.js');
       const allTypes = wizardRegistry.getAll();
@@ -65,7 +64,7 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizard-types/:typeName/steps", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/wizard-types/:typeName/steps", requireAccess('admin'), async (req, res) => {
     try {
       const { typeName } = req.params;
       const steps = await wizardRegistry.getStepsForType(typeName);
@@ -75,7 +74,7 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizard-types/:typeName/statuses", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/wizard-types/:typeName/statuses", requireAccess('admin'), async (req, res) => {
     try {
       const { typeName } = req.params;
       const statuses = await wizardRegistry.getStatusesForType(typeName);
@@ -85,7 +84,7 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizard-types/:typeName/fields", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/wizard-types/:typeName/fields", requireAccess('admin'), async (req, res) => {
     try {
       const { typeName } = req.params;
       const fields = await wizardRegistry.getFieldsForType(typeName);
@@ -98,7 +97,7 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizard-types/:typeName/launch-arguments", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/wizard-types/:typeName/launch-arguments", requireAccess('admin'), async (req, res) => {
     try {
       const { typeName } = req.params;
       const launchArguments = await wizardRegistry.getLaunchArgumentsForType(typeName);
@@ -108,7 +107,7 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizards", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/wizards", requireAccess('admin'), async (req, res) => {
     try {
       const { type, status, entityId } = req.query;
       
@@ -124,7 +123,7 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizards/employer-monthly/by-period", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/wizards/employer-monthly/by-period", requireAccess('admin'), async (req, res) => {
     try {
       const { year, month } = req.query;
       
@@ -143,7 +142,7 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizards/employer-monthly/employers", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/wizards/employer-monthly/employers", requireAccess('admin'), async (req, res) => {
     try {
       const { year, month, wizardType } = req.query;
       
@@ -178,7 +177,7 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizards/:id", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/wizards/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const wizard = await storage.wizards.getById(id);
@@ -193,7 +192,7 @@ export function registerWizardRoutes(
     }
   });
 
-  app.post("/api/wizards", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/wizards", requireAccess('admin'), async (req, res) => {
     try {
       const validatedData = insertWizardSchema.parse(req.body);
       
@@ -386,7 +385,7 @@ export function registerWizardRoutes(
     }
   });
 
-  app.patch("/api/wizards/:id", requireAccess(policies.admin), async (req, res) => {
+  app.patch("/api/wizards/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -496,7 +495,7 @@ export function registerWizardRoutes(
     }
   });
 
-  app.delete("/api/wizards/:id", requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/wizards/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -590,7 +589,7 @@ export function registerWizardRoutes(
     return true;
   }
 
-  app.post("/api/wizards/:id/steps/next", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/wizards/:id/steps/next", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const { payload } = req.body;
@@ -651,7 +650,7 @@ export function registerWizardRoutes(
     }
   });
 
-  app.post("/api/wizards/:id/steps/previous", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/wizards/:id/steps/previous", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -725,7 +724,7 @@ export function registerWizardRoutes(
       const context = await buildContext(req);
       
       // Check if user is admin first (admins can access all wizards)
-      const adminResult = await evaluatePolicy(policies.admin, context);
+      const adminResult = await checkAccess('admin', context.user);
       if (adminResult.granted) {
         req.wizard = wizard; // Attach wizard to request for use in handler
         return next();
@@ -733,18 +732,9 @@ export function registerWizardRoutes(
 
       // For entity-specific wizards, check entity-based access
       if (wizardType.entityType && wizard.entityId) {
-        // Build context with entity ID in params
-        const entityContext = {
-          ...context,
-          params: {
-            ...context.params,
-            [wizardType.entityType === 'employer' ? 'employerId' : 'workerId']: wizard.entityId
-          }
-        };
-
-        // Check appropriate policy based on entity type
-        const policy = wizardType.entityType === 'employer' ? policies.employerUser : policies.worker;
-        const result = await evaluatePolicy(policy, entityContext);
+        // Check appropriate entity policy based on entity type
+        const policyId = wizardType.entityType === 'employer' ? 'employer.self' : 'worker.self';
+        const result = await checkAccess(policyId, context.user, wizard.entityId);
         
         if (result.granted) {
           req.wizard = wizard; // Attach wizard to request for use in handler
@@ -1318,7 +1308,7 @@ export function registerWizardRoutes(
 
   // Generate a report for a report wizard
   app.post("/api/wizards/:id/generate-report",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const { id } = req.params;
@@ -1349,7 +1339,7 @@ export function registerWizardRoutes(
 
   // Get report data for a wizard
   app.get("/api/wizards/:id/report-data",
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const { id } = req.params;

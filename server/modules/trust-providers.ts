@@ -1,7 +1,6 @@
 import type { Express } from "express";
 import { storage } from "../storage";
 import { insertTrustProviderSchema, type InsertTrustProvider } from "@shared/schema";
-import { policies } from "../policies";
 import { requireComponent } from "./components";
 
 export function registerTrustProvidersRoutes(
@@ -105,7 +104,7 @@ export function registerTrustProvidersRoutes(
   });
 
   // GET /api/trust/provider/:id/logs - Get all logs related to a trust provider (requires staff permission)
-  app.get("/api/trust/provider/:id/logs", requireAuth, trustProvidersComponent, requireAccess(policies.staff), async (req, res) => {
+  app.get("/api/trust/provider/:id/logs", requireAuth, trustProvidersComponent, requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
       const { module, operation, startDate, endDate } = req.query;

@@ -2,7 +2,6 @@ import type { Express } from "express";
 import { storage } from "../storage";
 import { insertDispatchSchema, dispatchStatusEnum } from "@shared/schema";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 import { requireComponent } from "./components";
 
 export function registerDispatchesRoutes(
@@ -12,7 +11,7 @@ export function registerDispatchesRoutes(
 ) {
   const dispatchComponent = requireComponent("dispatch");
 
-  app.get("/api/dispatches/job/:jobId", dispatchComponent, requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/dispatches/job/:jobId", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { jobId } = req.params;
       
@@ -29,7 +28,7 @@ export function registerDispatchesRoutes(
     }
   });
 
-  app.get("/api/dispatches/worker/:workerId", dispatchComponent, requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/dispatches/worker/:workerId", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { workerId } = req.params;
       
@@ -46,7 +45,7 @@ export function registerDispatchesRoutes(
     }
   });
 
-  app.get("/api/dispatches/:id", dispatchComponent, requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/dispatches/:id", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const dispatch = await storage.dispatches.getWithRelations(id);
@@ -62,7 +61,7 @@ export function registerDispatchesRoutes(
     }
   });
 
-  app.post("/api/dispatches", dispatchComponent, requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/dispatches", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
       const parsed = insertDispatchSchema.safeParse(req.body);
       
@@ -90,7 +89,7 @@ export function registerDispatchesRoutes(
     }
   });
 
-  app.put("/api/dispatches/:id", dispatchComponent, requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/dispatches/:id", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const existing = await storage.dispatches.get(id);
@@ -130,7 +129,7 @@ export function registerDispatchesRoutes(
     }
   });
 
-  app.delete("/api/dispatches/:id", dispatchComponent, requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/dispatches/:id", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.dispatches.delete(id);

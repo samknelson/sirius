@@ -6,11 +6,10 @@ export function registerWorkerWshRoutes(
   requireAuth: any,
   requirePermission: any,
   requireAccess: any,
-  policies: any,
   workerWshStorage: WorkerWshStorage
 ) {
   // GET /api/workers/:workerId/wsh - Get work status history for a worker (requires worker policy: staff or worker with matching email)
-  app.get("/api/workers/:workerId/wsh", requireAuth, requireAccess(policies.worker), async (req, res) => {
+  app.get("/api/workers/:workerId/wsh", requireAuth, requireAccess('worker.self'), async (req, res) => {
     try {
       const { workerId } = req.params;
       const wshEntries = await workerWshStorage.getWorkerWsh(workerId);

@@ -1,6 +1,5 @@
 import type { Express, Request, Response } from "express";
 import type { IStorage } from "../storage";
-import { policies } from "../policies";
 import { staffAlertConfigSchema, type StaffAlertConfig } from "@shared/staffAlerts";
 
 type RequireAccess = (policy: any) => (req: Request, res: Response, next: () => void) => void;
@@ -17,7 +16,7 @@ export function registerStaffAlertRoutes(
   app.get(
     "/api/staff-alerts/users",
     requireAuth,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const users = await storage.users.getUsersWithAnyPermission(["staff", "admin"]);
@@ -41,7 +40,7 @@ export function registerStaffAlertRoutes(
   app.get(
     "/api/staff-alerts/:context",
     requireAuth,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const { context } = req.params;
@@ -99,7 +98,7 @@ export function registerStaffAlertRoutes(
   app.put(
     "/api/staff-alerts/:context",
     requireAuth,
-    requireAccess(policies.admin),
+    requireAccess('admin'),
     async (req, res) => {
       try {
         const { context } = req.params;

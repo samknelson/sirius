@@ -14,11 +14,10 @@ export function registerLogRoutes(
   app: Express,
   requireAuth: any,
   requirePermission: any,
-  requireAccess: any,
-  policies: any
+  requireAccess: any
 ) {
   // GET /api/logs - Get all logs with pagination and filtering (requires admin policy)
-  app.get("/api/logs", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/logs", requireAccess('admin'), async (req, res) => {
     try {
       const params = logsQuerySchema.parse(req.query);
       const result = await storage.logs.getLogs({
@@ -40,7 +39,7 @@ export function registerLogRoutes(
   });
 
   // GET /api/logs/filters - Get unique modules and operations for filter dropdowns (requires admin policy)
-  app.get("/api/logs/filters", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/logs/filters", requireAccess('admin'), async (req, res) => {
     try {
       const filters = await storage.logs.getLogFilters();
       res.json(filters);
@@ -54,7 +53,7 @@ export function registerLogRoutes(
   });
 
   // GET /api/logs/:id - Get a single log by ID (requires admin policy)
-  app.get("/api/logs/:id", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/logs/:id", requireAccess('admin'), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -78,7 +77,7 @@ export function registerLogRoutes(
   });
 
   // GET /api/workers/:workerId/logs - Get all logs related to a worker (requires staff permission)
-  app.get("/api/workers/:workerId/logs", requireAuth, requireAccess(policies.staff), async (req, res) => {
+  app.get("/api/workers/:workerId/logs", requireAuth, requireAccess('staff'), async (req, res) => {
     try {
       const { workerId } = req.params;
       const { module, operation, startDate, endDate } = req.query;
@@ -118,7 +117,7 @@ export function registerLogRoutes(
   });
 
   // GET /api/employers/:employerId/logs - Get all logs related to an employer (requires staff permission)
-  app.get("/api/employers/:employerId/logs", requireAuth, requireAccess(policies.staff), async (req, res) => {
+  app.get("/api/employers/:employerId/logs", requireAuth, requireAccess('staff'), async (req, res) => {
     try {
       const { employerId } = req.params;
       const { module, operation, startDate, endDate } = req.query;

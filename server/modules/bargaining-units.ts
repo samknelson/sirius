@@ -1,6 +1,5 @@
 import type { Express, Request, Response } from "express";
 import { IStorage } from "../storage";
-import { policies } from "../policies";
 import { insertBargainingUnitSchema } from "@shared/schema";
 import { z } from "zod";
 
@@ -15,7 +14,7 @@ export function registerBargainingUnitsRoutes(
   requireAccess: RequireAccess,
   storage: IStorage
 ) {
-  app.get("/api/bargaining-units", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/bargaining-units", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const allBargainingUnits = await storage.bargainingUnits.getAllBargainingUnits();
       res.json(allBargainingUnits);
@@ -25,7 +24,7 @@ export function registerBargainingUnitsRoutes(
     }
   });
 
-  app.get("/api/bargaining-units/:id", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/bargaining-units/:id", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const bargainingUnit = await storage.bargainingUnits.getBargainingUnitById(id);
@@ -39,7 +38,7 @@ export function registerBargainingUnitsRoutes(
     }
   });
 
-  app.post("/api/bargaining-units", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/bargaining-units", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const validated = insertBargainingUnitSchema.parse(req.body);
       
@@ -59,7 +58,7 @@ export function registerBargainingUnitsRoutes(
     }
   });
 
-  app.put("/api/bargaining-units/:id", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/bargaining-units/:id", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -88,7 +87,7 @@ export function registerBargainingUnitsRoutes(
     }
   });
 
-  app.delete("/api/bargaining-units/:id", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/bargaining-units/:id", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       

@@ -1,7 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 import { storageLogger } from "../logger";
 import { getRequestContext } from "../middleware/request-context";
 
@@ -59,7 +58,7 @@ export function registerMasqueradeRoutes(
   requirePermission: PermissionMiddleware
 ) {
   // POST /api/auth/masquerade/start - Start masquerading as another user
-  app.post("/api/auth/masquerade/start", requireAccess(policies.masquerade), async (req, res) => {
+  app.post("/api/auth/masquerade/start", requireAccess('masquerade'), async (req, res) => {
     try {
       const { userId } = req.body;
       const user = req.user as any;

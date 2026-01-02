@@ -1,7 +1,6 @@
 import type { Express, Request, Response } from "express";
 import Stripe from "stripe";
 import { requireAccess } from "../../accessControl";
-import { policies } from "../../policies";
 import { storage } from "../../storage";
 
 let stripe: Stripe | null = null;
@@ -17,7 +16,7 @@ function getStripeClient(): Stripe {
 }
 
 export function registerLedgerStripeRoutes(app: Express) {
-  app.get("/api/ledger/stripe/test", requireAccess(policies.ledgerStripeAdmin), async (req: Request, res: Response) => {
+  app.get("/api/ledger/stripe/test", requireAccess('ledger.stripe.admin'), async (req: Request, res: Response) => {
     try {
       const stripeClient = getStripeClient();
       
@@ -56,7 +55,7 @@ export function registerLedgerStripeRoutes(app: Express) {
     }
   });
 
-  app.get("/api/ledger/stripe/payment-types", requireAccess(policies.ledgerStripeAdmin), async (req: Request, res: Response) => {
+  app.get("/api/ledger/stripe/payment-types", requireAccess('ledger.stripe.admin'), async (req: Request, res: Response) => {
     try {
       const variable = await storage.variables.getByName('stripe_payment_methods');
       const paymentTypes = variable?.value || ['card'];
@@ -67,7 +66,7 @@ export function registerLedgerStripeRoutes(app: Express) {
     }
   });
 
-  app.put("/api/ledger/stripe/payment-types", requireAccess(policies.ledgerStripeAdmin), async (req: Request, res: Response) => {
+  app.put("/api/ledger/stripe/payment-types", requireAccess('ledger.stripe.admin'), async (req: Request, res: Response) => {
     try {
       const { paymentTypes } = req.body;
 
@@ -139,7 +138,7 @@ export function registerLedgerStripeRoutes(app: Express) {
     }
   });
 
-  app.get("/api/employers/:id/ledger/stripe/customer", requireAccess(policies.ledgerStripeAdmin), async (req: Request, res: Response) => {
+  app.get("/api/employers/:id/ledger/stripe/customer", requireAccess('ledger.stripe.admin'), async (req: Request, res: Response) => {
     try {
       const { id: employerId } = req.params;
       
@@ -228,7 +227,7 @@ export function registerLedgerStripeRoutes(app: Express) {
   });
 
   // List payment methods for an employer
-  app.get("/api/employers/:id/ledger/stripe/payment-methods", requireAccess(policies.ledgerStripeEmployer), async (req: Request, res: Response) => {
+  app.get("/api/employers/:id/ledger/stripe/payment-methods", requireAccess('ledger.stripe.employer'), async (req: Request, res: Response) => {
     try {
       const { id: employerId } = req.params;
       
@@ -299,7 +298,7 @@ export function registerLedgerStripeRoutes(app: Express) {
   });
 
   // Create a SetupIntent for adding a payment method
-  app.post("/api/employers/:id/ledger/stripe/setup-intent", requireAccess(policies.ledgerStripeEmployer), async (req: Request, res: Response) => {
+  app.post("/api/employers/:id/ledger/stripe/setup-intent", requireAccess('ledger.stripe.employer'), async (req: Request, res: Response) => {
     try {
       const { id: employerId } = req.params;
       
@@ -359,7 +358,7 @@ export function registerLedgerStripeRoutes(app: Express) {
   });
 
   // Attach a payment method to an employer
-  app.post("/api/employers/:id/ledger/stripe/payment-methods", requireAccess(policies.ledgerStripeEmployer), async (req: Request, res: Response) => {
+  app.post("/api/employers/:id/ledger/stripe/payment-methods", requireAccess('ledger.stripe.employer'), async (req: Request, res: Response) => {
     try {
       const { id: employerId } = req.params;
       const { paymentMethodId } = req.body;
@@ -426,7 +425,7 @@ export function registerLedgerStripeRoutes(app: Express) {
   });
 
   // Update payment method (enable/disable)
-  app.patch("/api/employers/:id/ledger/stripe/payment-methods/:pmId", requireAccess(policies.ledgerStripeEmployer), async (req: Request, res: Response) => {
+  app.patch("/api/employers/:id/ledger/stripe/payment-methods/:pmId", requireAccess('ledger.stripe.employer'), async (req: Request, res: Response) => {
     try {
       const { id: employerId, pmId } = req.params;
       const { isActive } = req.body;
@@ -455,7 +454,7 @@ export function registerLedgerStripeRoutes(app: Express) {
   });
 
   // Set payment method as default
-  app.post("/api/employers/:id/ledger/stripe/payment-methods/:pmId/set-default", requireAccess(policies.ledgerStripeEmployer), async (req: Request, res: Response) => {
+  app.post("/api/employers/:id/ledger/stripe/payment-methods/:pmId/set-default", requireAccess('ledger.stripe.employer'), async (req: Request, res: Response) => {
     try {
       const { id: employerId, pmId } = req.params;
 
@@ -479,7 +478,7 @@ export function registerLedgerStripeRoutes(app: Express) {
   });
 
   // Get full payment method details from Stripe
-  app.get("/api/employers/:id/ledger/stripe/payment-methods/:pmId/details", requireAccess(policies.ledgerStripeEmployer), async (req: Request, res: Response) => {
+  app.get("/api/employers/:id/ledger/stripe/payment-methods/:pmId/details", requireAccess('ledger.stripe.employer'), async (req: Request, res: Response) => {
     try {
       const { id: employerId, pmId } = req.params;
 
@@ -530,7 +529,7 @@ export function registerLedgerStripeRoutes(app: Express) {
   });
 
   // Delete payment method
-  app.delete("/api/employers/:id/ledger/stripe/payment-methods/:pmId", requireAccess(policies.ledgerStripeEmployer), async (req: Request, res: Response) => {
+  app.delete("/api/employers/:id/ledger/stripe/payment-methods/:pmId", requireAccess('ledger.stripe.employer'), async (req: Request, res: Response) => {
     try {
       const { id: employerId, pmId } = req.params;
 

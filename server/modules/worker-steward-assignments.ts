@@ -1,6 +1,5 @@
 import type { Express, Request, Response } from "express";
 import { IStorage } from "../storage";
-import { policies } from "../policies";
 import { insertWorkerStewardAssignmentSchema } from "@shared/schema";
 import { z } from "zod";
 import { assembleEmployerStewardDetails, assembleWorkerRepresentatives } from "../storage/worker-steward-assignments";
@@ -19,7 +18,7 @@ export function registerWorkerStewardAssignmentRoutes(
 ) {
   const stewardComponent = requireComponent("worker.steward");
 
-  app.get("/api/steward-assignments", requireAuth, stewardComponent, requireAccess(policies.workersView), async (req, res) => {
+  app.get("/api/steward-assignments", requireAuth, stewardComponent, requireAccess('workers.view'), async (req, res) => {
     try {
       const assignments = await storage.workerStewardAssignments.getAllAssignments();
       res.json(assignments);
@@ -29,7 +28,7 @@ export function registerWorkerStewardAssignmentRoutes(
     }
   });
 
-  app.get("/api/workers/:workerId/steward-assignments", requireAuth, requireAccess(policies.workersManage), async (req, res) => {
+  app.get("/api/workers/:workerId/steward-assignments", requireAuth, requireAccess('workers.manage'), async (req, res) => {
     try {
       const { workerId } = req.params;
       const assignments = await storage.workerStewardAssignments.getAssignmentsByWorkerId(workerId);
@@ -51,7 +50,7 @@ export function registerWorkerStewardAssignmentRoutes(
     }
   });
 
-  app.get("/api/employers/:employerId/stewards", requireAuth, requireAccess(policies.employerUser), async (req, res) => {
+  app.get("/api/employers/:employerId/stewards", requireAuth, requireAccess('employer.self'), async (req, res) => {
     try {
       const { employerId } = req.params;
       const stewards = await assembleEmployerStewardDetails(storage, employerId);
@@ -62,7 +61,7 @@ export function registerWorkerStewardAssignmentRoutes(
     }
   });
 
-  app.post("/api/workers/:workerId/steward-assignments", requireAuth, requireAccess(policies.workersManage), async (req, res) => {
+  app.post("/api/workers/:workerId/steward-assignments", requireAuth, requireAccess('workers.manage'), async (req, res) => {
     try {
       const { workerId } = req.params;
       const validated = insertWorkerStewardAssignmentSchema.parse({
@@ -91,7 +90,7 @@ export function registerWorkerStewardAssignmentRoutes(
     }
   });
 
-  app.patch("/api/workers/:workerId/steward-assignments/:id", requireAuth, requireAccess(policies.workersManage), async (req, res) => {
+  app.patch("/api/workers/:workerId/steward-assignments/:id", requireAuth, requireAccess('workers.manage'), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -112,7 +111,7 @@ export function registerWorkerStewardAssignmentRoutes(
     }
   });
 
-  app.delete("/api/workers/:workerId/steward-assignments/:id", requireAuth, requireAccess(policies.workersManage), async (req, res) => {
+  app.delete("/api/workers/:workerId/steward-assignments/:id", requireAuth, requireAccess('workers.manage'), async (req, res) => {
     try {
       const { id } = req.params;
       

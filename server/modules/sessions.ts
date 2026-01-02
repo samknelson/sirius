@@ -1,7 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { DatabaseStorage } from "../storage";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
@@ -10,7 +9,7 @@ export function registerSessionRoutes(
   requireAuth: AuthMiddleware,
   storage: DatabaseStorage
 ) {
-  app.get("/api/sessions", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/sessions", requireAccess('admin'), async (req, res) => {
     try {
       const sessions = await storage.sessions.getSessions();
       res.json(sessions);
@@ -20,7 +19,7 @@ export function registerSessionRoutes(
     }
   });
 
-  app.delete("/api/sessions/:sid", requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/sessions/:sid", requireAccess('admin'), async (req, res) => {
     try {
       const { sid } = req.params;
       const deleted = await storage.sessions.deleteSession(sid);
@@ -36,7 +35,7 @@ export function registerSessionRoutes(
     }
   });
 
-  app.get("/api/sessions/active-stats", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/sessions/active-stats", requireAccess('admin'), async (req, res) => {
     try {
       const stats = await storage.sessions.getActiveUsersStats(4);
       res.json(stats);

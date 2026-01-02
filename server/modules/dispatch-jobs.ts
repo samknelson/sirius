@@ -2,7 +2,6 @@ import type { Express } from "express";
 import { storage } from "../storage";
 import { insertDispatchJobSchema, dispatchJobStatusEnum } from "@shared/schema";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 import { requireComponent } from "./components";
 import type { DispatchJobFilters } from "../storage/dispatch-jobs";
 import { dispatchEligPluginRegistry } from "../services/dispatch-elig-plugin-registry";
@@ -16,7 +15,7 @@ export function registerDispatchJobsRoutes(
 ) {
   const dispatchComponent = requireComponent("dispatch");
 
-  app.get("/api/dispatch-jobs", dispatchComponent, requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/dispatch-jobs", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { 
         employerId, 
@@ -56,7 +55,7 @@ export function registerDispatchJobsRoutes(
     }
   });
 
-  app.get("/api/dispatch-jobs/:id", dispatchComponent, requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/dispatch-jobs/:id", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const job = await storage.dispatchJobs.getWithRelations(id);
@@ -72,7 +71,7 @@ export function registerDispatchJobsRoutes(
     }
   });
 
-  app.post("/api/dispatch-jobs", dispatchComponent, requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/dispatch-jobs", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
       const parsed = insertDispatchJobSchema.safeParse(req.body);
       
@@ -102,7 +101,7 @@ export function registerDispatchJobsRoutes(
     }
   });
 
-  app.put("/api/dispatch-jobs/:id", dispatchComponent, requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/dispatch-jobs/:id", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const existingJob = await storage.dispatchJobs.get(id);
@@ -172,7 +171,7 @@ export function registerDispatchJobsRoutes(
     }
   });
 
-  app.delete("/api/dispatch-jobs/:id", dispatchComponent, requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/dispatch-jobs/:id", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.dispatchJobs.delete(id);
@@ -188,7 +187,7 @@ export function registerDispatchJobsRoutes(
     }
   });
 
-  app.get("/api/dispatch-eligibility-plugins", dispatchComponent, requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/dispatch-eligibility-plugins", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
       const plugins = dispatchEligPluginRegistry.getAllPluginsMetadata();
       res.json(plugins);
@@ -197,7 +196,7 @@ export function registerDispatchJobsRoutes(
     }
   });
 
-  app.get("/api/dispatch-jobs/:id/eligible-workers", dispatchComponent, requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/dispatch-jobs/:id/eligible-workers", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const { limit: limitParam, offset: offsetParam, siriusId: siriusIdParam, name: nameParam } = req.query;
@@ -226,7 +225,7 @@ export function registerDispatchJobsRoutes(
     }
   });
 
-  app.get("/api/dispatch-jobs/:id/eligible-workers-sql", dispatchComponent, requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/dispatch-jobs/:id/eligible-workers-sql", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
       if (!isComponentEnabledSync("debug")) {
         res.status(403).json({ message: "Debug component is not enabled" });

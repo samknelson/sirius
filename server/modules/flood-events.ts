@@ -1,7 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { DatabaseStorage } from "../storage";
 import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
 import { floodEventRegistry } from "../flood/registry";
 import { z } from "zod";
 
@@ -12,7 +11,7 @@ export function registerFloodEventRoutes(
   requireAuth: AuthMiddleware,
   storage: DatabaseStorage
 ) {
-  app.get("/api/flood-events", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/flood-events", requireAccess('admin'), async (req, res) => {
     try {
       const eventType = req.query.event as string | undefined;
       const events = await storage.flood.listFloodEvents(eventType);
@@ -33,7 +32,7 @@ export function registerFloodEventRoutes(
     }
   });
 
-  app.get("/api/flood-events/types", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/flood-events/types", requireAccess('admin'), async (req, res) => {
     try {
       const types = await storage.flood.getDistinctEventTypes();
       res.json(types);
@@ -43,7 +42,7 @@ export function registerFloodEventRoutes(
     }
   });
 
-  app.delete("/api/flood-events/:id", requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/flood-events/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       await storage.flood.deleteFloodEvent(id);
@@ -54,7 +53,7 @@ export function registerFloodEventRoutes(
     }
   });
 
-  app.delete("/api/flood-events", requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/flood-events", requireAccess('admin'), async (req, res) => {
     try {
       const eventType = req.query.event as string | undefined;
       
@@ -72,7 +71,7 @@ export function registerFloodEventRoutes(
     }
   });
 
-  app.get("/api/flood-config/definitions", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/flood-config/definitions", requireAccess('admin'), async (req, res) => {
     try {
       const definitions = floodEventRegistry.getAllDefinitions();
       
@@ -113,7 +112,7 @@ export function registerFloodEventRoutes(
     windowSeconds: z.number().int().positive(),
   });
 
-  app.put("/api/flood-config/:eventName", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/flood-config/:eventName", requireAccess('admin'), async (req, res) => {
     try {
       const { eventName } = req.params;
       
@@ -150,7 +149,7 @@ export function registerFloodEventRoutes(
     }
   });
 
-  app.delete("/api/flood-config/:eventName", requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/flood-config/:eventName", requireAccess('admin'), async (req, res) => {
     try {
       const { eventName } = req.params;
       const variableName = `flood_${eventName}`;
