@@ -49,19 +49,22 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     },
   });
 
-  const { data: contact, isLoading: contactLoading } = useQuery<Contact>({
+  const { data: contact } = useQuery<Contact>({
     queryKey: ["/api/contacts", worker?.contactId],
     queryFn: async () => {
       const response = await fetch(`/api/contacts/${worker?.contactId}`);
       if (!response.ok) {
-        throw new Error("Contact not found");
+        // Return undefined if user doesn't have permission to view contact
+        return undefined;
       }
       return response.json();
     },
     enabled: !!worker?.contactId,
+    retry: false, // Don't retry on permission errors
   });
 
-  const isLoading = workerLoading || contactLoading;
+  // Only wait for worker to load - contact is optional (may fail due to permissions)
+  const isLoading = workerLoading;
   const isError = !!workerError;
 
   // Error/Not found state - check this BEFORE loading

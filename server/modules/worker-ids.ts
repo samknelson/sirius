@@ -8,7 +8,7 @@ export function registerWorkerIdsRoutes(
   requirePermission: any
 ) {
   // GET /api/workers/:workerId/ids - Get all IDs for a worker (requires worker policy: staff or worker with matching email)
-  app.get("/api/workers/:workerId/ids", requireAccess('worker.self'), async (req, res) => {
+  app.get("/api/workers/:workerId/ids", requireAccess('worker.self', req => req.params.workerId), async (req, res) => {
     try {
       const { workerId } = req.params;
       const workerIds = await storage.workerIds.getWorkerIdsByWorkerId(workerId);

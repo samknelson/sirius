@@ -918,7 +918,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Worker Benefits (WMB) routes
 
   // GET /api/workers/:workerId/benefits - Get all benefits for a worker (requires worker policy: staff or worker with matching email)
-  app.get("/api/workers/:workerId/benefits", requireAccess('worker.self'), async (req, res) => {
+  app.get("/api/workers/:workerId/benefits", requireAccess('worker.self', req => req.params.workerId), async (req, res) => {
     try {
       const { workerId } = req.params;
       const benefits = await storage.workers.getWorkerBenefits(workerId);

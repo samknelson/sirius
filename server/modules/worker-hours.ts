@@ -11,7 +11,7 @@ export function registerWorkerHoursRoutes(
   ledgerStorage: LedgerStorage
 ) {
   // GET /api/workers/:workerId/hours - Get hours for a worker with optional view parameter
-  app.get("/api/workers/:workerId/hours", requireAuth, requireAccess('worker.self'), async (req, res) => {
+  app.get("/api/workers/:workerId/hours", requireAuth, requireAccess('worker.self', (req: any) => req.params.workerId), async (req, res) => {
     try {
       const { workerId } = req.params;
       const view = (req.query.view as string) || 'daily';
