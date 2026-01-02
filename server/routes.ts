@@ -594,7 +594,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GET /api/employers/:id - Get a specific employer (requires employerUser policy)
-  app.get("/api/employers/:id", requireAuth, requireAccess('employer.self'), async (req, res) => {
+  app.get("/api/employers/:id", requireAuth, requireAccess('employer.self', (req) => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       const employer = await storage.employers.getEmployer(id);
@@ -611,7 +611,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GET /api/employers/:employerId/workers - Get workers for an employer (requires employerUser policy)
-  app.get("/api/employers/:employerId/workers", requireAuth, requireAccess('employer.self'), async (req, res) => {
+  app.get("/api/employers/:employerId/workers", requireAuth, requireAccess('employer.self', (req) => req.params.employerId), async (req, res) => {
     try {
       const { employerId } = req.params;
       

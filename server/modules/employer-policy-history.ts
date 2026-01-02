@@ -3,7 +3,7 @@ import { IStorage } from "../storage";
 import { insertEmployerPolicyHistorySchema } from "@shared/schema";
 import { z } from "zod";
 
-type RequireAccess = (policy: any) => (req: Request, res: Response, next: () => void) => void;
+type RequireAccess = (policy: string, getEntityId?: (req: Request) => string | undefined) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
 const createSchema = insertEmployerPolicyHistorySchema.omit({ createdAt: true });
@@ -15,7 +15,7 @@ export function registerEmployerPolicyHistoryRoutes(
   requireAccess: RequireAccess,
   storage: IStorage
 ) {
-  app.get("/api/employers/:employerId/policy-history", requireAuth, requireAccess('employer.self'), async (req, res) => {
+  app.get("/api/employers/:employerId/policy-history", requireAuth, requireAccess('employer.self', (req) => req.params.employerId), async (req, res) => {
     try {
       const { employerId } = req.params;
       

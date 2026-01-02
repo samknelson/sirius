@@ -5,7 +5,7 @@ import { z } from "zod";
 import { assembleEmployerStewardDetails, assembleWorkerRepresentatives } from "../storage/worker-steward-assignments";
 import { requireComponent } from "./components";
 
-type RequireAccess = (policy: any) => (req: Request, res: Response, next: () => void) => void;
+type RequireAccess = (policy: string, getEntityId?: (req: Request) => string | undefined) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
 const updateAssignmentSchema = insertWorkerStewardAssignmentSchema.partial();
@@ -50,7 +50,7 @@ export function registerWorkerStewardAssignmentRoutes(
     }
   });
 
-  app.get("/api/employers/:employerId/stewards", requireAuth, requireAccess('employer.self'), async (req, res) => {
+  app.get("/api/employers/:employerId/stewards", requireAuth, requireAccess('employer.self', (req) => req.params.employerId), async (req, res) => {
     try {
       const { employerId } = req.params;
       const stewards = await assembleEmployerStewardDetails(storage, employerId);
