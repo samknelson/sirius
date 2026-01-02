@@ -42,6 +42,16 @@ function validateDateRange(startDate: Date, endDate: Date | null | undefined): v
   }
 }
 
+function validateStartDateNotFuture(startDate: Date): void {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
+  if (start > today) {
+    throw new Error("Start date cannot be in the future");
+  }
+}
+
 async function getWorkerName(workerId: string): Promise<string> {
   const [worker] = await db
     .select({ contactId: workers.contactId, siriusId: workers.siriusId })
@@ -129,6 +139,7 @@ export function createWorkerBanStorage(): WorkerBanStorage {
     },
 
     async create(ban: InsertWorkerBan): Promise<WorkerBan> {
+      validateStartDateNotFuture(ban.startDate);
       validateDateRange(ban.startDate, ban.endDate);
       const active = calculateActive(ban.endDate);
       const [created] = await db
@@ -148,6 +159,9 @@ export function createWorkerBanStorage(): WorkerBanStorage {
       const startDate = ban.startDate !== undefined ? ban.startDate : existing.startDate;
       const endDate = ban.endDate !== undefined ? ban.endDate : existing.endDate;
       
+      if (ban.startDate !== undefined) {
+        validateStartDateNotFuture(startDate);
+      }
       validateDateRange(startDate, endDate);
       const active = calculateActive(endDate);
 
