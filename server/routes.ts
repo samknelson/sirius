@@ -390,7 +390,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GET /api/workers/:id - Get a specific worker (requires worker policy: staff or worker with matching email)
-  app.get("/api/workers/:id", requireAccess('worker.self'), async (req, res) => {
+  app.get("/api/workers/:id", requireAccess('worker.self', req => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       const worker = await storage.workers.getWorker(id);
