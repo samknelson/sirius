@@ -75,8 +75,8 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     retry: false, // Don't retry on permission errors
   });
 
-  // Only wait for worker to load - contact is optional (may fail due to permissions)
-  const isLoading = workerLoading;
+  // Wait for worker AND tab access to load - contact is optional (may fail due to permissions)
+  const isLoading = workerLoading || tabsLoading;
   const isError = !!workerError;
 
   // Error/Not found state - check this BEFORE loading
