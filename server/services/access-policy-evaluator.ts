@@ -193,6 +193,59 @@ const linkageResolvers: Record<LinkagePredicate, LinkageResolver> = {
 };
 
 /**
+ * Mapping from linkage predicates to their required entity types
+ * Used to infer entityType for route-level policies that use linkages
+ */
+const linkageEntityTypes: Record<LinkagePredicate, PolicyEntityType> = {
+  ownsWorker: 'worker',
+  workerBenefitProvider: 'worker',
+  workerEmploymentHistory: 'employer',
+  employerAssociation: 'employer',
+  providerAssociation: 'provider',
+  fileUploader: 'file',
+};
+
+/**
+ * Recursively find a linkage predicate in a rule
+ */
+function findLinkageInRule(rule: AccessRule): LinkagePredicate | undefined {
+  // Check for 'any' composition - recurse into each condition
+  if ('any' in rule) {
+    for (const condition of rule.any) {
+      const found = findLinkageInRule(condition as AccessRule);
+      if (found) return found;
+    }
+  }
+  // Check for 'all' composition - recurse into each condition
+  else if ('all' in rule) {
+    for (const condition of rule.all) {
+      const found = findLinkageInRule(condition as AccessRule);
+      if (found) return found;
+    }
+  }
+  // Simple condition with linkage
+  else if ((rule as AccessCondition).linkage) {
+    return (rule as AccessCondition).linkage;
+  }
+  return undefined;
+}
+
+/**
+ * Infer entity type from policy rules that have linkage requirements
+ * Recursively traverses nested any/all compositions
+ * Returns the first linkage's entity type found, or undefined
+ */
+function inferEntityTypeFromRules(rules: AccessRule[]): PolicyEntityType | undefined {
+  for (const rule of rules) {
+    const linkage = findLinkageInRule(rule);
+    if (linkage) {
+      return linkageEntityTypes[linkage];
+    }
+  }
+  return undefined;
+}
+
+/**
  * Storage interface for access control
  */
 export interface AccessControlStorage {
@@ -412,10 +465,13 @@ export async function evaluatePolicy(
     isAdmin = await accessStorage.hasPermission(user.id, 'admin');
   }
 
+  // Determine entityType - use policy's entityType, or infer from linkage rules
+  const effectiveEntityType = policy.entityType || inferEntityTypeFromRules(policy.rules);
+  
   // Build evaluation context
   const ctx: EvaluationContext = {
     user: user!,
-    entityType: policy.entityType,
+    entityType: effectiveEntityType,
     entityId,
     storage,
     accessStorage,
