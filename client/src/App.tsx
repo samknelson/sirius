@@ -1760,9 +1760,7 @@ function Router() {
       <Route path="/admin/users/masquerade">
         <ProtectedRoute policy="masquerade">
           <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <MasqueradePage />
-            </ConfigurationLayout>
+            <MasqueradePage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
