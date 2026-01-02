@@ -62,6 +62,9 @@ import workerDispatchStatusRouter from "./modules/worker-dispatch-status";
 import workerDispatchDncRouter from "./modules/worker-dispatch-dnc";
 import workerDispatchHfeRouter from "./modules/worker-dispatch-hfe";
 import workerBansRouter from "./modules/worker-bans";
+import { createWorkerDispatchStatusStorage } from "./storage/worker-dispatch-status";
+import { createWorkerDispatchDncStorage } from "./storage/worker-dispatch-dnc";
+import { createWorkerDispatchHfeStorage } from "./storage/worker-dispatch-hfe";
 import { requireComponent } from "./modules/components";
 import { registerWorkerStewardAssignmentRoutes } from "./modules/worker-steward-assignments";
 import { registerBtuCsgRoutes } from "./modules/sitespecific-btu-csg";
@@ -216,7 +219,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerWorkerUsersRoutes(app, requireAuth, requirePermission);
   
   // Register contact postal address management routes
-  registerContactPostalRoutes(app, requireAuth, requirePermission);
+  registerContactPostalRoutes(app, requireAuth, requirePermission, requireAccess);
   
   // Register phone number management routes
   registerPhoneNumberRoutes(app, requireAuth, requirePermission, requireAccess);
@@ -725,8 +728,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/contacts/:id - Get a contact by ID (requires workers.view permission)
-  app.get("/api/contacts/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  // GET /api/contacts/:id - Get a contact by ID (requires worker.self policy - staff or worker viewing own contact)
+  app.get("/api/contacts/:id", requireAuth, requireAccess('worker.self', async (req) => {
+    // Resolve the owning worker ID from the contact
+    const contact = await storage.contacts.getContact(req.params.id);
+    if (!contact) return undefined;
+    const worker = await storage.workers.getWorkerByContactId(contact.id);
+    return worker?.id;
+  }), async (req, res) => {
     try {
       const { id } = req.params;
       const contact = await storage.contacts.getContact(id);
@@ -986,19 +995,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register dispatches routes
   registerDispatchesRoutes(app, requireAuth, requirePermission);
 
-  // Register worker dispatch status routes
+  // Dispatch components and storage
   const dispatchComponent = requireComponent("dispatch");
+  const hfeComponent = requireComponent("dispatch.hfe");
+  const dispatchStatusStorage = createWorkerDispatchStatusStorage();
+  const dispatchDncStorage = createWorkerDispatchDncStorage();
+  const dispatchHfeStorage = createWorkerDispatchHfeStorage();
+
+  // Worker-accessible dispatch status route (worker.self policy)
+  app.get("/api/worker-dispatch-status/worker/:workerId", requireAuth, dispatchComponent, requireAccess('worker.self', req => req.params.workerId), async (req, res) => {
+    try {
+      const status = await dispatchStatusStorage.getByWorker(req.params.workerId);
+      res.json(status || null);
+    } catch (error) {
+      console.error("Error fetching worker dispatch status:", error);
+      res.status(500).json({ error: "Failed to fetch worker dispatch status" });
+    }
+  });
+
+  // Worker-accessible dispatch DNC route (worker.self policy)
+  app.get("/api/worker-dispatch-dnc/worker/:workerId", requireAuth, dispatchComponent, requireAccess('worker.self', req => req.params.workerId), async (req, res) => {
+    try {
+      const records = await dispatchDncStorage.getByWorker(req.params.workerId);
+      res.json(records);
+    } catch (error) {
+      console.error("Error fetching worker DNC records:", error);
+      res.status(500).json({ error: "Failed to fetch worker DNC records" });
+    }
+  });
+
+  // Worker-accessible dispatch HFE route (worker.self policy)
+  app.get("/api/worker-dispatch-hfe/worker/:workerId", requireAuth, dispatchComponent, hfeComponent, requireAccess('worker.self', req => req.params.workerId), async (req, res) => {
+    try {
+      const records = await dispatchHfeStorage.getByWorker(req.params.workerId);
+      res.json(records);
+    } catch (error) {
+      console.error("Error fetching worker HFE records:", error);
+      res.status(500).json({ error: "Failed to fetch worker HFE records" });
+    }
+  });
+
+  // Register worker dispatch status admin routes
   app.use("/api/worker-dispatch-status", requireAuth, dispatchComponent, requirePermission("workers.view"), workerDispatchStatusRouter);
 
-  // Register worker dispatch DNC routes
+  // Register worker dispatch DNC admin routes
   app.use("/api/worker-dispatch-dnc", requireAuth, dispatchComponent, requirePermission("workers.view"), workerDispatchDncRouter);
 
-  // Register worker dispatch HFE routes
-  const hfeComponent = requireComponent("dispatch.hfe");
+  // Register worker dispatch HFE admin routes
   app.use("/api/worker-dispatch-hfe", requireAuth, dispatchComponent, hfeComponent, requirePermission("workers.view"), workerDispatchHfeRouter);
 
-  // Register worker bans routes
-  app.use("/api/worker-bans", requireAuth, dispatchComponent, requirePermission("workers.view"), workerBansRouter);
+  // Worker-accessible ban routes (worker.self policy - workers can view their own bans)
+  app.get("/api/worker-bans/worker/:workerId", requireAuth, dispatchComponent, requireAccess('worker.self', req => req.params.workerId), async (req, res) => {
+    try {
+      const bans = await storage.workerBans.getByWorker(req.params.workerId);
+      res.json(bans);
+    } catch (error) {
+      console.error("Error fetching worker bans:", error);
+      res.status(500).json({ error: "Failed to fetch worker bans" });
+    }
+  });
+
+  app.get("/api/worker-bans/:id", requireAuth, dispatchComponent, requireAccess('worker.self', async (req) => {
+    const ban = await storage.workerBans.get(req.params.id);
+    return ban?.workerId;
+  }), async (req, res) => {
+    try {
+      const ban = await storage.workerBans.get(req.params.id);
+      if (!ban) {
+        return res.status(404).json({ error: "Worker ban not found" });
+      }
+      res.json(ban);
+    } catch (error) {
+      console.error("Error fetching worker ban:", error);
+      res.status(500).json({ error: "Failed to fetch worker ban" });
+    }
+  });
+
+  // Register worker bans admin routes (POST, PUT, DELETE require workers.manage)
+  app.use("/api/worker-bans", requireAuth, dispatchComponent, requirePermission("workers.manage"), workerBansRouter);
 
   // Register site-specific routes
   registerBtuCsgRoutes(app, requireAuth, requirePermission);

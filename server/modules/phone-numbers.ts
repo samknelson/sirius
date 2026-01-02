@@ -12,7 +12,7 @@ const updateSmsOptinSchema = z.object({
 // Type for middleware functions
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
-type PolicyMiddleware = (policy: any) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
+type PolicyMiddleware = (policy: any, getEntityId?: (req: Request) => string | undefined | Promise<string | undefined>) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
 const smsOptinStorage = createCommSmsOptinStorage();
 
@@ -55,8 +55,12 @@ export function registerPhoneNumberRoutes(
   requireAccess?: PolicyMiddleware
 ) {
   
-  // GET /api/contacts/:contactId/phone-numbers - Get all phone numbers for a contact
-  app.get("/api/contacts/:contactId/phone-numbers", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  // GET /api/contacts/:contactId/phone-numbers - Get all phone numbers for a contact (worker.self policy)
+  app.get("/api/contacts/:contactId/phone-numbers", requireAuth, requireAccess ? requireAccess('worker.self', async (req: any) => {
+    // Resolve the owning worker ID from the contact
+    const worker = await storage.workers.getWorkerByContactId(req.params.contactId);
+    return worker?.id;
+  }) : ((_req: any, _res: any, next: any) => next()), async (req, res) => {
     try {
       const { contactId } = req.params;
       const phoneNumbers = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(contactId);

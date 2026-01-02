@@ -115,11 +115,11 @@ export async function checkAccess(
  * Create an Express middleware that enforces an access policy by ID
  * 
  * @param policyId - The ID of the policy to enforce
- * @param getEntityId - Optional function to extract entity ID from request for entity-level checks
+ * @param getEntityId - Optional function to extract entity ID from request for entity-level checks (can be sync or async)
  */
 export function requireAccess(
   policyId: string,
-  getEntityId?: (req: Request) => string | undefined
+  getEntityId?: (req: Request) => string | undefined | Promise<string | undefined>
 ) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -128,7 +128,7 @@ export function requireAccess(
       }
 
       const context = await buildContext(req);
-      const entityId = getEntityId?.(req);
+      const entityId = await Promise.resolve(getEntityId?.(req));
 
       const result = await evaluatePolicy(
         context.user,

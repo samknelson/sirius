@@ -11,7 +11,8 @@ export function registerCardchecksRoutes(
 ) {
   const cardcheckComponent = requireComponent("cardcheck");
 
-  app.get("/api/workers/:workerId/cardchecks", requireAuth, cardcheckComponent, requirePermission("workers.view"), async (req, res) => {
+  // GET /api/workers/:workerId/cardchecks - Get cardchecks for a worker (worker.self policy)
+  app.get("/api/workers/:workerId/cardchecks", requireAuth, cardcheckComponent, requireAccess('worker.self', (req: any) => req.params.workerId), async (req, res) => {
     try {
       const { workerId } = req.params;
       const cardchecks = await storage.cardchecks.getCardchecksByWorkerId(workerId);
@@ -21,7 +22,11 @@ export function registerCardchecksRoutes(
     }
   });
 
-  app.get("/api/cardcheck/:id", requireAuth, cardcheckComponent, requirePermission("workers.view"), async (req, res) => {
+  // GET /api/cardcheck/:id - Get specific cardcheck (worker.self policy)
+  app.get("/api/cardcheck/:id", requireAuth, cardcheckComponent, requireAccess('worker.self', async (req: any) => {
+    const cardcheck = await storage.cardchecks.getCardcheckById(req.params.id);
+    return cardcheck?.workerId;
+  }), async (req, res) => {
     try {
       const { id } = req.params;
       const cardcheck = await storage.cardchecks.getCardcheckById(id);
