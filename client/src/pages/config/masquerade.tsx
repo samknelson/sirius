@@ -90,9 +90,10 @@ export default function MasqueradePage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Masquerade</h2>
+    <div className="container mx-auto py-8 max-w-7xl">
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold">Masquerade</h1>
         <p className="text-muted-foreground mt-1">
           Temporarily view the application as another user for support and troubleshooting
         </p>
@@ -227,6 +228,7 @@ export default function MasqueradePage() {
           </CardContent>
         </Card>
       )}
+      </div>
     </div>
   );
 }
