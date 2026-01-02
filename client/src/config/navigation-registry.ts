@@ -108,6 +108,15 @@ export const configSections: NavSection[] = [
     ],
   },
   {
+    id: "workers",
+    title: "Workers",
+    description: "Worker management and configuration",
+    icon: Users,
+    items: [
+      { path: "/config/workers/ban", label: "Ban Notifications", icon: Shield, testId: "nav-config-workers-ban", permission: "admin", requiresComponent: "worker.ban" },
+    ],
+  },
+  {
     id: "events",
     title: "Events",
     description: "Event management and configuration",
