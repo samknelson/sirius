@@ -48,6 +48,12 @@ const DEFAULT_CRON_JOBS: DefaultCronJob[] = [
     schedule: '0 5 * * *', // Daily at 5 AM
     isEnabled: true,
   },
+  {
+    name: 'sync-ban-active-status',
+    description: 'Synchronizes the active status of worker bans based on their expiration dates',
+    schedule: '0 6 * * *', // Daily at 6 AM
+    isEnabled: true,
+  },
 ];
 
 export async function bootstrapCronJobs(): Promise<void> {

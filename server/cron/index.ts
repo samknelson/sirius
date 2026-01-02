@@ -8,3 +8,4 @@ export { processWmbBatchHandler } from './jobs/processWmbBatch';
 export { deleteExpiredFloodEventsHandler } from './jobs/deleteExpiredFloodEvents';
 export { deleteExpiredHfeHandler } from './jobs/deleteExpiredHfe';
 export { sweepExpiredBanEligHandler } from './jobs/sweepExpiredBanElig';
+export { syncBanActiveStatusHandler } from './jobs/syncBanActiveStatus';
