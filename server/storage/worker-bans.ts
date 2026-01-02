@@ -36,6 +36,12 @@ function calculateActive(endDate: Date | null | undefined): boolean {
   return new Date(endDate) >= new Date();
 }
 
+function validateDateRange(startDate: Date, endDate: Date | null | undefined): void {
+  if (endDate && new Date(endDate) < new Date(startDate)) {
+    throw new Error("End date cannot be before start date");
+  }
+}
+
 async function getWorkerName(workerId: string): Promise<string> {
   const [worker] = await db
     .select({ contactId: workers.contactId, siriusId: workers.siriusId })
@@ -123,6 +129,7 @@ export function createWorkerBanStorage(): WorkerBanStorage {
     },
 
     async create(ban: InsertWorkerBan): Promise<WorkerBan> {
+      validateDateRange(ban.startDate, ban.endDate);
       const active = calculateActive(ban.endDate);
       const [created] = await db
         .insert(workerBans)
@@ -138,7 +145,10 @@ export function createWorkerBanStorage(): WorkerBanStorage {
       const existing = await this.get(id);
       if (!existing) return undefined;
 
+      const startDate = ban.startDate !== undefined ? ban.startDate : existing.startDate;
       const endDate = ban.endDate !== undefined ? ban.endDate : existing.endDate;
+      
+      validateDateRange(startDate, endDate);
       const active = calculateActive(endDate);
 
       const [updated] = await db
