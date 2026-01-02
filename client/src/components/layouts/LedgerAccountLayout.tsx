@@ -43,6 +43,9 @@ export function LedgerAccountLayout({ activeTab, children }: LedgerAccountLayout
     },
   });
 
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs } = useLedgerAccountTabAccess(id || "");
+
   const isLoading = accountLoading;
   const isError = !!accountError;
 
@@ -130,9 +133,6 @@ export function LedgerAccountLayout({ activeTab, children }: LedgerAccountLayout
       </div>
     );
   }
-
-  // Success state - render layout with tabs
-  const { tabs } = useLedgerAccountTabAccess(account.id);
 
   const contextValue: LedgerAccountLayoutContextValue = {
     account,

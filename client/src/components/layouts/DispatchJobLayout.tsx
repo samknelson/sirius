@@ -52,6 +52,9 @@ export function DispatchJobLayout({ activeTab, children }: DispatchJobLayoutProp
     },
   });
 
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs: mainTabs } = useDispatchJobTabAccess(id || "");
+
   const isLoading = jobLoading;
   const isError = !!jobError;
 
@@ -91,8 +94,6 @@ export function DispatchJobLayout({ activeTab, children }: DispatchJobLayoutProp
       </div>
     );
   }
-
-  const { tabs: mainTabs } = useDispatchJobTabAccess(job.id);
 
   return (
     <DispatchJobLayoutContext.Provider value={{ job, isLoading, isError }}>

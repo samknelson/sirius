@@ -71,6 +71,9 @@ export function BtuCsgLayout({ activeTab, children }: BtuCsgLayoutProps) {
     },
   });
 
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs } = useBtuCsgTabAccess(id || "");
+
   const isLoading = recordLoading;
   const isError = !!recordError;
 
@@ -156,8 +159,6 @@ export function BtuCsgLayout({ activeTab, children }: BtuCsgLayoutProps) {
       </div>
     );
   }
-
-  const { tabs } = useBtuCsgTabAccess(record.id);
 
   const contextValue: BtuCsgLayoutContextValue = {
     record,

@@ -42,6 +42,9 @@ export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
     queryKey: ["/api/ledger/payment-types"],
   });
 
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs: mainTabs } = useLedgerPaymentTabAccess(id || "");
+
   const isLoading = isLoadingPayment || isLoadingTypes;
   const isError = !!paymentError;
 
@@ -110,8 +113,6 @@ export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
 
   const paymentType = paymentTypes.find(pt => pt.id === payment.paymentType);
   const paymentTitle = getPaymentTitle(payment, paymentType);
-
-  const { tabs: mainTabs } = useLedgerPaymentTabAccess(id!);
 
   const contextValue: PaymentLayoutContextValue = {
     payment,

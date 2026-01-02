@@ -40,6 +40,9 @@ export default function DispatchJobTypeLayout({ children, activeTab }: DispatchJ
     queryKey: ["/api/dispatch-job-types", id],
   });
 
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs: mainTabs } = useDispatchJobTypeTabAccess(id || "");
+
   const jobTypeData = jobType?.data as JobTypeData | undefined;
   const IconComponent = jobTypeData?.icon ? iconMap[jobTypeData.icon] || Briefcase : Briefcase;
 
@@ -116,8 +119,6 @@ export default function DispatchJobTypeLayout({ children, activeTab }: DispatchJ
       </div>
     );
   }
-
-  const { tabs: mainTabs } = useDispatchJobTypeTabAccess(jobType.id);
 
   const contextValue: DispatchJobTypeLayoutContextValue = {
     jobType,

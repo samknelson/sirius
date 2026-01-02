@@ -36,6 +36,9 @@ export default function BargainingUnitLayout({ children, activeTab }: Bargaining
     queryKey: ["/api/bargaining-units", id],
   });
 
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs: mainTabs } = useBargainingUnitTabAccess(id || "");
+
   if (isLoading || !bargainingUnit) {
     return (
       <div className="bg-background text-foreground min-h-screen">
@@ -109,8 +112,6 @@ export default function BargainingUnitLayout({ children, activeTab }: Bargaining
       </div>
     );
   }
-
-  const { tabs: mainTabs } = useBargainingUnitTabAccess(bargainingUnit.id);
 
   const contextValue: BargainingUnitLayoutContextValue = {
     bargainingUnit,

@@ -45,6 +45,9 @@ export function CronJobLayout({ activeTab, children }: CronJobLayoutProps) {
     enabled: !!name,
   });
 
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs } = useCronJobTabAccess(name ? encodeURIComponent(name) : "");
+
   const isError = !!error;
 
   // Error/Not found state
@@ -131,9 +134,6 @@ export function CronJobLayout({ activeTab, children }: CronJobLayoutProps) {
       </div>
     );
   }
-
-  // Success state - render layout with tabs
-  const { tabs } = useCronJobTabAccess(encodeURIComponent(job.name));
 
   const contextValue: CronJobLayoutContextValue = {
     job,

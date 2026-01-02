@@ -43,6 +43,9 @@ export function TrustBenefitLayout({ activeTab, children }: TrustBenefitLayoutPr
     },
   });
 
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs } = useTrustBenefitTabAccess(id || "");
+
   const isLoading = benefitLoading;
   const isError = !!benefitError;
 
@@ -131,9 +134,6 @@ export function TrustBenefitLayout({ activeTab, children }: TrustBenefitLayoutPr
       </div>
     );
   }
-
-  // Success state
-  const { tabs } = useTrustBenefitTabAccess(benefit.id);
 
   const contextValue: TrustBenefitLayoutContextValue = {
     benefit,

@@ -62,6 +62,9 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
     enabled: !!hoursId,
   });
 
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs: mainTabs } = useWorkerHoursTabAccess(hoursId || "");
+
   const isError = !!error;
 
   if (error) {
@@ -134,8 +137,6 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
   }
 
   const hoursTitle = `${getMonthName(hoursEntry.month)} ${hoursEntry.day}, ${hoursEntry.year} - ${hoursEntry.employer?.name || "Unknown Employer"}`;
-
-  const { tabs: mainTabs } = useWorkerHoursTabAccess(hoursId!);
 
   const contextValue: WorkerHoursLayoutContextValue = {
     hoursEntry,

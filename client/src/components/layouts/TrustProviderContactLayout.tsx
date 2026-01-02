@@ -79,6 +79,9 @@ export function TrustProviderContactLayout({ children, activeTab }: TrustProvide
     enabled: !!trustProviderContact?.providerId,
   });
 
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs: mainTabs, subTabs: tabSubTabs } = useProviderContactTabAccess(id || "");
+
   if (isLoading) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -111,8 +114,6 @@ export function TrustProviderContactLayout({ children, activeTab }: TrustProvide
     );
   }
 
-  const { tabs: mainTabs, subTabs: tabSubTabs } = useProviderContactTabAccess(id);
-  
   // Get comm sub-tabs from the hierarchical structure
   const commSubTabs = tabSubTabs['comm'] || [];
   

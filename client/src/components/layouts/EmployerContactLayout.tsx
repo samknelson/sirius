@@ -65,6 +65,9 @@ export function EmployerContactLayout({ activeTab, children }: EmployerContactLa
     enabled: !!employerContact?.employerId,
   });
 
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs: mainTabs, subTabs: tabSubTabs } = useEmployerContactTabAccess(id || "");
+
   // Error/Not found state
   if (error) {
     return (
@@ -104,9 +107,6 @@ export function EmployerContactLayout({ activeTab, children }: EmployerContactLa
     );
   }
 
-  // Success state - render layout with tabs
-  const { tabs: mainTabs, subTabs: tabSubTabs } = useEmployerContactTabAccess(employerContact.id);
-  
   // Get comm sub-tabs from the hierarchical structure
   const commSubTabs = tabSubTabs['comm'] || [];
   

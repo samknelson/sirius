@@ -43,6 +43,9 @@ export function PolicyLayout({ activeTab, children }: PolicyLayoutProps) {
     },
   });
 
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs } = usePolicyTabAccess(id || "");
+
   const isLoading = policyLoading;
   const isError = !!policyError;
 
@@ -129,8 +132,6 @@ export function PolicyLayout({ activeTab, children }: PolicyLayoutProps) {
       </div>
     );
   }
-
-  const { tabs } = usePolicyTabAccess(policy.id);
 
   const contextValue: PolicyLayoutContextValue = {
     policy,

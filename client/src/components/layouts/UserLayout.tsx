@@ -75,6 +75,9 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
     enabled: !!user?.email,
   });
 
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs: mainTabs, subTabs: tabSubTabs } = useUserTabAccess(id || "");
+
   const isLoading = userLoading || contactLoading;
   const isError = !!userError;
 
@@ -166,8 +169,6 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
     ? `${user.firstName} ${user.lastName}`
     : user.firstName || user.lastName || user.email || user.id;
 
-  const { tabs: mainTabs, subTabs: tabSubTabs } = useUserTabAccess(user.id);
-  
   // Get sub-tabs from the hierarchical structure
   const contactSubTabs = tabSubTabs['contact'] || [];
   const commSubTabs = tabSubTabs['comm'] || [];
