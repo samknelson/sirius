@@ -624,7 +624,7 @@ function Router() {
       </Route>
 
       <Route path="/bookmarks">
-        <ProtectedRoute policy="bookmark">
+        <ProtectedRoute policy="staff">
           <AuthenticatedLayout>
             <Bookmarks />
           </AuthenticatedLayout>

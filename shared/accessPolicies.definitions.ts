@@ -96,10 +96,6 @@ defineRoutePolicy(
 permissionPolicy('benefits.view', 'benefits.view', 'View Benefits', 'Requires benefits.view permission');
 permissionPolicy('benefits.manage', 'benefits.manage', 'Manage Benefits', 'Requires benefits.manage permission');
 
-// --- Bookmarks ---
-
-permissionPolicy('bookmark', 'bookmark', 'Bookmark', 'Requires bookmark permission');
-
 // --- Masquerade ---
 
 defineRoutePolicy(
