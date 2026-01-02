@@ -149,46 +149,6 @@ export function registerEntityAccessModule(app: Express, storage: any): void {
   });
 
   /**
-   * GET /api/access/policies
-   * 
-   * List all registered access policies (admin only)
-   */
-  app.get('/api/access/policies', requireAccess('admin'), async (req, res) => {
-    try {
-      const { scope, entityType } = req.query;
-      
-      let policies = accessPolicyRegistry.getAll();
-      
-      // Filter by scope if provided
-      if (scope === 'route' || scope === 'entity') {
-        policies = accessPolicyRegistry.getByScope(scope);
-      }
-      
-      // Filter by entity type if provided
-      if (entityType && typeof entityType === 'string') {
-        policies = policies.filter(p => p.entityType === entityType);
-      }
-
-      res.json({
-        count: policies.length,
-        policies: policies.map(p => ({
-          id: p.id,
-          name: p.name,
-          description: p.description,
-          scope: p.scope,
-          entityType: p.entityType,
-        })),
-      });
-    } catch (error) {
-      logger.error('Error listing access policies', {
-        service: SERVICE,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      res.status(500).json({ message: 'Failed to list policies' });
-    }
-  });
-
-  /**
    * GET /api/access/cache/stats
    * 
    * Get access cache statistics (admin only)

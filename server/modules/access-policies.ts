@@ -30,7 +30,7 @@ export function registerAccessPolicyRoutes(app: Express) {
         description: policy.description,
         scope: policy.scope,
         entityType: policy.entityType,
-        rules: policy.rules,
+        requirements: policy.rules, // Frontend expects 'requirements' field
       }));
       
       res.json(policyList);
