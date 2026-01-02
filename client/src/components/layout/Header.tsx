@@ -302,10 +302,10 @@ export default function Header() {
                   </>
                 )}
 
-                {(hasComponent("trust.providers") || (hasPermission("admin") && hasComponent("trust.benefits.scan"))) && (
+                {((hasComponent("trust.providers") && hasPermission("workers.view")) || (hasPermission("admin") && hasComponent("trust.benefits.scan"))) && (
                   <>
                     <div className="text-sm font-medium text-muted-foreground px-4 py-2">Trust</div>
-                    {hasComponent("trust.providers") && (
+                    {hasComponent("trust.providers") && hasPermission("workers.view") && (
                       <Link href="/trust/providers" onClick={() => setMobileMenuOpen(false)}>
                         <Button
                           variant={location.startsWith("/trust/provider") ? "default" : "ghost"}
@@ -332,7 +332,7 @@ export default function Header() {
                   </Link>
                 )}
 
-                {hasComponent("event") && (
+                {hasComponent("event") && hasPermission("admin") && (
                   <Link href="/events" onClick={() => setMobileMenuOpen(false)}>
                     <Button
                       variant={location.startsWith("/events") ? "default" : "ghost"}
@@ -662,7 +662,7 @@ export default function Header() {
               </DropdownMenu>
             )}
 
-            {(hasComponent("trust.providers") || (hasPermission("admin") && hasComponent("trust.benefits.scan"))) && (
+            {((hasComponent("trust.providers") && hasPermission("workers.view")) || (hasPermission("admin") && hasComponent("trust.benefits.scan"))) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -676,7 +676,7 @@ export default function Header() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
-                  {hasComponent("trust.providers") && (
+                  {hasComponent("trust.providers") && hasPermission("workers.view") && (
                     <DropdownMenuItem asChild>
                       <Link href="/trust/providers" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-trust-providers">
@@ -700,7 +700,7 @@ export default function Header() {
               </DropdownMenu>
             )}
 
-            {hasComponent("event") && (
+            {hasComponent("event") && hasPermission("admin") && (
               <Link href="/events">
                 <Button
                   variant={location.startsWith("/events") ? "default" : "ghost"}
