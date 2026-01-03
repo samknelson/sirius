@@ -199,9 +199,9 @@ export const providerTabTree: HierarchicalTab[] = [
  * Policy entity tab tree
  */
 export const policyTabTree: HierarchicalTab[] = [
-  { id: 'details', label: 'Details', hrefTemplate: '/policies/{id}', permission: 'policies.view' },
+  { id: 'details', label: 'Details', hrefTemplate: '/policies/{id}', permission: 'staff' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/policies/{id}/edit', permission: 'policies.edit' },
-  { id: 'benefits', label: 'Benefits', hrefTemplate: '/policies/{id}/benefits', permission: 'policies.view' },
+  { id: 'benefits', label: 'Benefits', hrefTemplate: '/policies/{id}/benefits', permission: 'staff' },
 ];
 
 /**

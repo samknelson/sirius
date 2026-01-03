@@ -260,8 +260,3 @@ defineRoutePolicy(
   [{ authenticated: true, component: 'dispatch', permission: 'dispatch.view' }]
 );
 
-// ============================================================================
-// POLICY/COVERAGE MANAGEMENT
-// ============================================================================
-
-permissionPolicy('policies.view', 'policies.view', 'View Policies', 'Requires policies.view permission');
