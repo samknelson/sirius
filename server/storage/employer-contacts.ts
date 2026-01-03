@@ -7,6 +7,7 @@ import type { ContactsStorage } from "./contacts";
 export interface EmployerContactStorage {
   create(data: { employerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }>;
   listByEmployer(employerId: string): Promise<Array<EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>>;
+  listByContactId(contactId: string): Promise<Array<EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>>;
   getAll(filters?: { employerId?: string; contactName?: string; contactTypeId?: string }): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null } | null }>>;
   get(id: string): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
   update(id: string, data: { contactTypeId?: string | null }): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
@@ -58,6 +59,25 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
         .innerJoin(contacts, eq(employerContacts.contactId, contacts.id))
         .leftJoin(optionsEmployerContactType, eq(employerContacts.contactTypeId, optionsEmployerContactType.id))
         .where(eq(employerContacts.employerId, employerId));
+
+      return results.map(row => ({
+        ...row.employerContact,
+        contact: row.contact,
+        contactType: row.contactType,
+      }));
+    },
+
+    async listByContactId(contactId: string): Promise<Array<EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>> {
+      const results = await db
+        .select({
+          employerContact: employerContacts,
+          contact: contacts,
+          contactType: optionsEmployerContactType,
+        })
+        .from(employerContacts)
+        .innerJoin(contacts, eq(employerContacts.contactId, contacts.id))
+        .leftJoin(optionsEmployerContactType, eq(employerContacts.contactTypeId, optionsEmployerContactType.id))
+        .where(eq(employerContacts.contactId, contactId));
 
       return results.map(row => ({
         ...row.employerContact,

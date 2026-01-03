@@ -184,6 +184,40 @@ defineEntityPolicy(
   ]
 );
 
+// --- Contact Entity Policies ---
+
+defineEntityPolicy(
+  'contact.view',
+  'contact.view',
+  'View a specific contact record (via linked worker/employer/provider access)',
+  'contact',
+  [
+    // Staff can view any contact
+    { permission: 'staff' },
+    // User owns a worker that uses this contact
+    { permission: 'worker', linkage: 'contactWorkerOwner' },
+    // User is a benefit provider for a worker that uses this contact
+    { permission: 'trustprovider', linkage: 'contactWorkerProvider' },
+    // User is associated with an employer that uses this contact
+    { permission: 'employer', linkage: 'contactEmployerAssoc' },
+    // User is associated with a provider that uses this contact
+    { permission: 'trustprovider', linkage: 'contactProviderAssoc' },
+  ]
+);
+
+defineEntityPolicy(
+  'contact.edit',
+  'contact.edit',
+  'Edit a specific contact record (staff or workers editing their own contact)',
+  'contact',
+  [
+    // Staff can edit any contact
+    { permission: 'staff' },
+    // User owns a worker that uses this contact (self-service editing)
+    { permission: 'worker', linkage: 'contactWorkerOwner' },
+  ]
+);
+
 // ============================================================================
 // FILE ROUTE POLICIES
 // These are route-level policies for file operations

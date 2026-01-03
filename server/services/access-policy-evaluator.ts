@@ -190,6 +190,81 @@ const linkageResolvers: Record<LinkagePredicate, LinkageResolver> = {
     
     return file.uploadedByUserId === ctx.userId;
   },
+
+  contactWorkerOwner: async (ctx, storage) => {
+    if (ctx.entityType !== 'contact') return false;
+    
+    // Find the user's contact record
+    const userContact = await storage.contacts.getContactByEmail(ctx.userEmail);
+    if (!userContact) return false;
+    
+    // Find the worker record that the user owns (via their contact)
+    const userWorker = await storage.workers.getWorkerByContactId?.(userContact.id);
+    if (!userWorker) return false;
+    
+    // Check if the entity contact ID matches the user's worker's contact ID
+    // This ensures the user can only edit contacts associated with their own worker record
+    return userWorker.contactId === ctx.entityId;
+  },
+
+  contactWorkerProvider: async (ctx, storage) => {
+    if (ctx.entityType !== 'contact') return false;
+    
+    // Find workers that use this contact
+    const worker = await storage.workers.getWorkerByContactId?.(ctx.entityId);
+    if (!worker) return false;
+    
+    // Check if user is a provider for this worker's benefits
+    const userContact = await storage.contacts.getContactByEmail(ctx.userEmail);
+    if (!userContact) return false;
+    
+    const providerContacts = await storage.trustProviderContacts?.getByContactId?.(userContact.id);
+    if (!providerContacts || providerContacts.length === 0) return false;
+    
+    const workerBenefits = await storage.trustWmb?.getActiveByWorker?.(worker.id);
+    if (!workerBenefits || workerBenefits.length === 0) return false;
+    
+    const userProviderIds = providerContacts.map((pc: any) => pc.providerId);
+    return workerBenefits.some((wb: any) => userProviderIds.includes(wb.providerId));
+  },
+
+  contactEmployerAssoc: async (ctx, storage) => {
+    if (ctx.entityType !== 'contact') return false;
+    
+    // Find employer contacts that use this contact
+    const employerContacts = await storage.employerContacts.listByContactId?.(ctx.entityId);
+    if (!employerContacts || employerContacts.length === 0) return false;
+    
+    // Check if user is associated with any of these employers
+    const userContact = await storage.contacts.getContactByEmail(ctx.userEmail);
+    if (!userContact) return false;
+    
+    // Get employers that the user is a contact for
+    const userEmployerContacts = await storage.employerContacts.listByContactId?.(userContact.id);
+    if (!userEmployerContacts || userEmployerContacts.length === 0) return false;
+    
+    const userEmployerIds = userEmployerContacts.map((ec: any) => ec.employerId);
+    return employerContacts.some((ec: any) => userEmployerIds.includes(ec.employerId));
+  },
+
+  contactProviderAssoc: async (ctx, storage) => {
+    if (ctx.entityType !== 'contact') return false;
+    
+    // Find trust provider contacts that use this contact
+    const providerContacts = await storage.trustProviderContacts?.getByContactId?.(ctx.entityId);
+    if (!providerContacts || providerContacts.length === 0) return false;
+    
+    // Check if user is associated with any of these providers
+    const userContact = await storage.contacts.getContactByEmail(ctx.userEmail);
+    if (!userContact) return false;
+    
+    // Get providers that the user is a contact for
+    const userProviderContacts = await storage.trustProviderContacts?.getByContactId?.(userContact.id);
+    if (!userProviderContacts || userProviderContacts.length === 0) return false;
+    
+    const userProviderIds = userProviderContacts.map((pc: any) => pc.providerId);
+    return providerContacts.some((pc: any) => userProviderIds.includes(pc.providerId));
+  },
 };
 
 /**
@@ -203,6 +278,10 @@ const linkageEntityTypes: Record<LinkagePredicate, PolicyEntityType> = {
   employerAssociation: 'employer',
   providerAssociation: 'provider',
   fileUploader: 'file',
+  contactWorkerOwner: 'contact',
+  contactWorkerProvider: 'contact',
+  contactEmployerAssoc: 'contact',
+  contactProviderAssoc: 'contact',
 };
 
 /**

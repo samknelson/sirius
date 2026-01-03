@@ -49,11 +49,12 @@ interface VerifyAddressResult {
 interface AddressManagementProps {
   workerId: string;
   contactId: string;
+  canEdit?: boolean;
 }
 
 interface AddressFormData extends Omit<InsertContactPostal, 'contactId'> {}
 
-export default function AddressManagement({ workerId, contactId }: AddressManagementProps) {
+export default function AddressManagement({ workerId, contactId, canEdit = true }: AddressManagementProps) {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingAddress, setEditingAddress] = useState<ContactPostal | null>(null);
   const [viewingAddress, setViewingAddress] = useState<ContactPostal | null>(null);
@@ -362,13 +363,14 @@ export default function AddressManagement({ workerId, contactId }: AddressManage
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold text-foreground">Postal Addresses</h3>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-add-address">
-              <Plus size={16} className="mr-2" />
-              Add Address
-            </Button>
-          </DialogTrigger>
+        {canEdit && (
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-add-address">
+                <Plus size={16} className="mr-2" />
+                Add Address
+              </Button>
+            </DialogTrigger>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Add New Address</DialogTitle>
@@ -390,6 +392,7 @@ export default function AddressManagement({ workerId, contactId }: AddressManage
             />
           </DialogContent>
         </Dialog>
+        )}
       </div>
 
       {addresses.length === 0 ? (
@@ -398,12 +401,14 @@ export default function AddressManagement({ workerId, contactId }: AddressManage
             <MapPin className="text-muted-foreground mb-4" size={48} />
             <h3 className="text-lg font-medium text-foreground mb-2">No addresses yet</h3>
             <p className="text-muted-foreground text-center mb-4">
-              Add the first postal address for this worker
+              {canEdit ? "Add the first postal address for this worker" : "No postal addresses have been added yet"}
             </p>
-            <Button onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-first-address">
-              <Plus size={16} className="mr-2" />
-              Add Address
-            </Button>
+            {canEdit && (
+              <Button onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-first-address">
+                <Plus size={16} className="mr-2" />
+                Add Address
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (
@@ -444,33 +449,39 @@ export default function AddressManagement({ workerId, contactId }: AddressManage
                     >
                       <Mail size={14} />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleSetPrimary(address.id)}
-                      disabled={setPrimaryMutation.isPending}
-                      data-testid={`button-set-primary-${address.id}`}
-                      className={address.isPrimary ? "text-yellow-500 hover:text-yellow-600" : ""}
-                    >
-                      <Star size={16} fill={address.isPrimary ? "currentColor" : "none"} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEdit(address)}
-                      data-testid={`button-edit-address-${address.id}`}
-                    >
-                      <Edit size={14} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(address.id)}
-                      disabled={deleteAddressMutation.isPending}
-                      data-testid={`button-delete-address-${address.id}`}
-                    >
-                      <Trash2 size={14} className="text-destructive" />
-                    </Button>
+                    {canEdit && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleSetPrimary(address.id)}
+                        disabled={setPrimaryMutation.isPending}
+                        data-testid={`button-set-primary-${address.id}`}
+                        className={address.isPrimary ? "text-yellow-500 hover:text-yellow-600" : ""}
+                      >
+                        <Star size={16} fill={address.isPrimary ? "currentColor" : "none"} />
+                      </Button>
+                    )}
+                    {canEdit && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(address)}
+                        data-testid={`button-edit-address-${address.id}`}
+                      >
+                        <Edit size={14} />
+                      </Button>
+                    )}
+                    {canEdit && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(address.id)}
+                        disabled={deleteAddressMutation.isPending}
+                        data-testid={`button-delete-address-${address.id}`}
+                      >
+                        <Trash2 size={14} className="text-destructive" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardHeader>

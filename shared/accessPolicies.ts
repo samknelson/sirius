@@ -18,12 +18,16 @@ export type LinkagePredicate =
   | 'workerEmploymentHistory' // User (as worker) has employment history at this employer
   | 'employerAssociation'     // User is an employer contact for this employer
   | 'providerAssociation'     // User is a trust provider contact
-  | 'fileUploader';           // User uploaded the file
+  | 'fileUploader'            // User uploaded the file
+  | 'contactWorkerOwner'      // User owns a worker that uses this contact
+  | 'contactWorkerProvider'   // User is a provider for a worker that uses this contact
+  | 'contactEmployerAssoc'    // User is associated with an employer that uses this contact
+  | 'contactProviderAssoc';   // User is associated with a provider that uses this contact
 
 /**
  * Entity types that can have entity-level access policies
  */
-export type PolicyEntityType = 'worker' | 'employer' | 'provider' | 'policy' | 'file';
+export type PolicyEntityType = 'worker' | 'employer' | 'provider' | 'policy' | 'file' | 'contact';
 
 /**
  * Access condition - a single requirement that can grant or deny access

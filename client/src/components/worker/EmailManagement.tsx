@@ -30,9 +30,10 @@ interface EmailOptinResponse {
 interface EmailManagementProps {
   contactId: string;
   workerId: string;
+  canEdit?: boolean;
 }
 
-export default function EmailManagement({ contactId, workerId }: EmailManagementProps) {
+export default function EmailManagement({ contactId, workerId, canEdit = true }: EmailManagementProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [editedEmail, setEditedEmail] = useState<string>("");
@@ -298,14 +299,16 @@ export default function EmailManagement({ contactId, workerId }: EmailManagement
                     {contact?.email || "Not set"}
                   </p>
                 </div>
-                <Button
-                  onClick={handleEdit}
-                  variant="outline"
-                  size="sm"
-                  data-testid="button-edit-email"
-                >
-                  Edit
-                </Button>
+                {canEdit && (
+                  <Button
+                    onClick={handleEdit}
+                    variant="outline"
+                    size="sm"
+                    data-testid="button-edit-email"
+                  >
+                    Edit
+                  </Button>
+                )}
               </div>
             </div>
           ) : (
