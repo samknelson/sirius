@@ -2,7 +2,7 @@ import { definePolicy, registerPolicy, type PolicyContext } from '../index';
 
 const policy = definePolicy({
   id: 'cardcheck.edit',
-  description: 'Edit a specific cardcheck record (delegates to worker.edit)',
+  description: 'Edit a specific cardcheck record (delegates to worker.mine)',
   scope: 'entity',
   entityType: 'cardcheck',
   
@@ -21,9 +21,9 @@ const policy = definePolicy({
       return { granted: false, reason: 'Cardcheck has no associated worker' };
     }
     
-    const hasWorkerAccess = await ctx.checkPolicy('worker.edit', workerId);
+    const hasWorkerAccess = await ctx.checkPolicy('worker.mine', workerId);
     if (hasWorkerAccess) {
-      return { granted: true, reason: 'Has edit access to associated worker' };
+      return { granted: true, reason: 'User owns associated worker record' };
     }
     
     return { granted: false, reason: 'No edit access to this cardcheck' };
