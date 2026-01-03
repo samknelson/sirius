@@ -111,6 +111,19 @@ defineEntityPolicy(
   ]
 );
 
+defineEntityPolicy(
+  'worker.edit',
+  'worker.edit',
+  'Edit a specific worker record (excludes trust providers)',
+  'worker',
+  [
+    // Staff can edit any worker
+    { permission: 'staff' },
+    // Worker permission + owns this worker
+    { permission: 'worker', linkage: 'ownsWorker' },
+  ]
+);
+
 // --- Employer Entity Policies ---
 
 defineEntityPolicy(
