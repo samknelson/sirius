@@ -43,10 +43,14 @@ export function useAccessCheck(
   options: { enabled?: boolean } = {}
 ): UseAccessCheckReturn {
   const { user } = useAuth();
-  const enabled = options.enabled !== false && !!entityId && !!user;
+  const hasValidEntityId = !!entityId && entityId.length > 0;
+  const enabled = options.enabled !== false && hasValidEntityId && !!user;
 
   const query = useQuery<AccessCheckResult>({
-    queryKey: ['/api/access/check', { policyId, entityId }],
+    // Only include entityId in queryKey when it's valid to prevent bad cache entries
+    queryKey: hasValidEntityId 
+      ? ['/api/access/check', { policyId, entityId }]
+      : ['/api/access/check', { policyId, entityId: '__disabled__' }],
     enabled,
     staleTime: 5 * 60 * 1000, // 5 minutes - matches server cache TTL
     gcTime: 10 * 60 * 1000, // 10 minutes
