@@ -5,7 +5,6 @@ export interface ComponentPermission {
 
 export interface ComponentPolicy {
   id: string;
-  name: string;
   description: string;
   scope: 'route' | 'entity';
   entityType?: string;
@@ -214,7 +213,6 @@ export const componentRegistry: ComponentDefinition[] = [
     policies: [
       {
         id: "employer.dispatch",
-        name: "Employer Dispatch Access",
         description: "Access dispatch functionality for associated employers",
         scope: "entity",
         entityType: "employer",
@@ -225,7 +223,6 @@ export const componentRegistry: ComponentDefinition[] = [
       },
       {
         id: "employer.dispatch.manage",
-        name: "Employer Dispatch Management",
         description: "Manage dispatch functionality for associated employers",
         scope: "entity",
         entityType: "employer",

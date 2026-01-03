@@ -104,7 +104,7 @@ export function syncComponentPolicies(): void {
       if (!accessPolicyRegistry.has(componentPolicy.id)) {
         const accessPolicy: AccessPolicy = {
           id: componentPolicy.id,
-          name: componentPolicy.name,
+          name: componentPolicy.id,
           description: componentPolicy.description,
           scope: componentPolicy.scope,
           entityType: componentPolicy.entityType as any,

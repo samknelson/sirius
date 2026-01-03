@@ -115,7 +115,6 @@ export default function PoliciesPage() {
         if (!lowerFilter) return true;
         return (
           policy.id.toLowerCase().includes(lowerFilter) ||
-          policy.name.toLowerCase().includes(lowerFilter) ||
           (policy.description && policy.description.toLowerCase().includes(lowerFilter))
         );
       })
@@ -175,9 +174,8 @@ export default function PoliciesPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[180px]">Machine Name</TableHead>
-                <TableHead className="w-[180px]">Public Name</TableHead>
-                <TableHead className="w-[250px]">Description</TableHead>
+                <TableHead className="w-[200px]">Name</TableHead>
+                <TableHead className="w-[300px]">Description</TableHead>
                 <TableHead>Requirements</TableHead>
               </TableRow>
             </TableHeader>
@@ -186,9 +184,6 @@ export default function PoliciesPage() {
                 <TableRow key={policy.id} data-testid={`policy-${policy.id}`}>
                   <TableCell className="font-mono text-sm" data-testid={`policy-id-${policy.id}`}>
                     {policy.id}
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    {policy.name}
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {policy.description || '-'}
