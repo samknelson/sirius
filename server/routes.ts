@@ -432,7 +432,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // PUT /api/workers/:id - Update a worker's contact name, email, birth date, SSN, or gender
-  // Uses worker.edit policy - allows staff or workers editing their own record
+  // Uses worker.edit policy which allows staff or workers editing their own record
   app.put("/api/workers/:id", requireAuth, requireAccess('worker.edit', (req) => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;

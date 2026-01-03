@@ -120,13 +120,17 @@ const linkageResolvers: Record<LinkagePredicate, LinkageResolver> = {
   ownsWorker: async (ctx, storage) => {
     if (ctx.entityType !== 'worker') return false;
     
-    const worker = await storage.workers.getWorker(ctx.entityId);
-    if (!worker) return false;
+    // Find the user's contact record
+    const userContact = await storage.contacts.getContactByEmail(ctx.userEmail);
+    if (!userContact) return false;
     
-    const contact = await storage.contacts.getContact(worker.contactId);
-    if (!contact?.email) return false;
+    // Find the worker record that the user owns (via their contact ID)
+    const userWorker = await storage.workers.getWorkerByContactId?.(userContact.id);
+    if (!userWorker) return false;
     
-    return ctx.userEmail.toLowerCase() === contact.email.toLowerCase();
+    // Check if the entity worker ID matches the user's worker ID
+    // This is stable even after email changes since it uses contact ID linkage
+    return userWorker.id === ctx.entityId;
   },
 
   workerBenefitProvider: async (ctx, storage) => {
