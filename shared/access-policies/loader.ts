@@ -14,6 +14,8 @@ import './core/trust-provider-user-manage';
 import './ledger/staff';
 import './ledger/stripe-admin';
 import './ledger/stripe-employer';
+import './ledger/ea/view';
+import './ledger/ea/edit';
 
 import './employer/manage';
 import './employer/view';
@@ -23,6 +25,9 @@ import './employer/ledger';
 import './worker/view';
 import './worker/edit';
 import './worker/mine';
+import './worker/ledger';
+
+import './provider/ledger';
 
 import './cardcheck/view';
 import './cardcheck/edit';

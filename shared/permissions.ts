@@ -161,6 +161,16 @@ export function initializePermissions(): void {
       module: 'core'
     },
     {
+      key: 'worker.ledger',
+      description: 'Access to worker ledger functionality for worker users',
+      module: 'core'
+    },
+    {
+      key: 'provider.ledger',
+      description: 'Access to provider ledger functionality for provider users',
+      module: 'core'
+    },
+    {
       key: 'staff',
       description: 'Staff level access',
       module: 'core'
