@@ -8,7 +8,7 @@ const VALID_LINKAGES: Set<string> = new Set([
   'employerAssociation', 'providerAssociation', 'fileUploader',
   'contactWorkerOwner', 'contactWorkerProvider', 'contactEmployerAssoc',
   'contactProviderAssoc', 'cardcheckWorkerAccess', 'esigEntityAccess', 'fileEntityAccess',
-  'dncWorkerOwner', 'dncEmployLinkagePredicateerAssoc'
+  'dncWorkerOwner', 'dncEmployerAssoc'
 ]);
 
 const VALID_ENTITY_TYPES: Set<string> = new Set([

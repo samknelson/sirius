@@ -18,8 +18,8 @@ const SERVICE = 'policy-context';
 export interface AccessControlStorage {
   hasPermission(userId: string, permissionKey: string): Promise<boolean>;
   getUserPermissions(userId: string): Promise<string[]>;
-  getUser(userId: string): Promise<User | null>;
-  getUserByReplitId(replitId: string): Promise<User | null>;
+  getUser(userId: string): Promise<User | undefined>;
+  getUserByReplitId(replitId: string): Promise<User | undefined>;
 }
 
 /**
@@ -81,7 +81,7 @@ export function createPolicyContext(options: PolicyContextOptions): PolicyContex
       const registeredLoader = getEntityLoader(entityType);
       if (registeredLoader) {
         try {
-          return await registeredLoader(entityId, storage);
+          return await registeredLoader(entityId, storage) as T | null;
         } catch (error) {
           logger.error(`Error loading entity ${entityType}:${entityId} via registered loader`, { 
             service: SERVICE, 

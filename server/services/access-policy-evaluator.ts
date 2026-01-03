@@ -984,6 +984,13 @@ async function evaluateModularPolicy(
   
   // Execute the policy's evaluate function
   try {
+    if (!policy.evaluate) {
+      return {
+        granted: false,
+        reason: `Policy ${policyId} has no evaluate function`,
+        evaluatedAt: Date.now(),
+      };
+    }
     const policyResult = await policy.evaluate(ctx);
     const result: AccessResult = {
       granted: policyResult.granted,
@@ -1103,7 +1110,7 @@ export async function evaluatePolicy(
   checkComponent: ComponentChecker,
   entityId?: string,
   entityType?: string,
-  options: { skipCache?: boolean; entityData?: Record<string, any> } = {}
+  options: { skipCache?: boolean; entityData?: Record<string, any>; evaluationStack?: Set<string> } = {}
 ): Promise<AccessResult> {
   // Check for modular policy first (new architecture)
   if (hasModularPolicy(policyId)) {
