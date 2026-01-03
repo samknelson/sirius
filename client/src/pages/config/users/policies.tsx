@@ -2,61 +2,75 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Shield, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
-import { AccessRequirement, Policy } from '@/lib/policy-types';
+import { AccessRequirement, AccessCondition, Policy } from '@/lib/policy-types';
 
-function formatRequirement(req: AccessRequirement): { text: string; type: string } {
-  switch (req.type) {
-    case 'authenticated':
-      return { text: 'User must be authenticated', type: 'auth' };
-    
-    case 'permission':
-      return { text: `Requires permission: ${req.key}`, type: 'permission' };
-    
-    case 'anyPermission':
-      return { 
-        text: `Requires any of these permissions: ${req.keys.join(', ')}`, 
-        type: 'permission' 
-      };
-    
-    case 'allPermissions':
-      return { 
-        text: `Requires all of these permissions: ${req.keys.join(', ')}`, 
-        type: 'permission' 
-      };
-    
-    case 'component':
-      return { 
-        text: `Component "${req.componentId}" must be enabled`, 
-        type: 'component' 
-      };
-    
-    case 'ownership':
-      return { 
-        text: `User must own the ${req.resourceType}${req.resourceIdParam ? ` (ID from parameter: ${req.resourceIdParam})` : ''}`, 
-        type: 'ownership' 
-      };
-    
-    case 'anyOf':
-      return { 
-        text: `Must meet ANY of: ${req.options.map((opt: AccessRequirement) => formatRequirement(opt).text).join(' OR ')}`, 
-        type: 'complex' 
-      };
-    
-    case 'allOf':
-      return { 
-        text: `Must meet ALL of: ${req.options.map((opt: AccessRequirement) => formatRequirement(opt).text).join(' AND ')}`, 
-        type: 'complex' 
-      };
-    
-    case 'custom':
-      return { 
-        text: req.reason || 'Custom requirement check', 
-        type: 'custom' 
-      };
-    
-    default:
-      return { text: 'Unknown requirement', type: 'unknown' };
+/**
+ * Format a single access condition into human-readable text
+ */
+function formatCondition(condition: AccessCondition): { text: string; type: string } {
+  const parts: string[] = [];
+  let type = 'auth';
+  
+  if (condition.authenticated) {
+    parts.push('User must be authenticated');
   }
+  
+  if (condition.permission) {
+    parts.push(`Requires permission: ${condition.permission}`);
+    type = 'permission';
+  }
+  
+  if (condition.anyPermission && condition.anyPermission.length > 0) {
+    parts.push(`Requires any of: ${condition.anyPermission.join(', ')}`);
+    type = 'permission';
+  }
+  
+  if (condition.allPermissions && condition.allPermissions.length > 0) {
+    parts.push(`Requires all of: ${condition.allPermissions.join(', ')}`);
+    type = 'permission';
+  }
+  
+  if (condition.component) {
+    parts.push(`Component "${condition.component}" must be enabled`);
+    type = 'component';
+  }
+  
+  if (condition.linkage) {
+    parts.push(`Linkage: ${condition.linkage}`);
+    type = 'linkage';
+  }
+  
+  if (parts.length === 0) {
+    return { text: 'No specific requirements', type: 'unknown' };
+  }
+  
+  return { text: parts.join(' AND '), type };
+}
+
+/**
+ * Format an access requirement (which may be a condition or composition) into human-readable text
+ */
+function formatRequirement(req: AccessRequirement): { text: string; type: string } {
+  // Check if it's an "any" composition
+  if ('any' in req && Array.isArray(req.any)) {
+    const formatted = req.any.map(c => formatCondition(c).text);
+    return { 
+      text: `Must meet ANY of: ${formatted.join(' OR ')}`, 
+      type: 'complex' 
+    };
+  }
+  
+  // Check if it's an "all" composition
+  if ('all' in req && Array.isArray(req.all)) {
+    const formatted = req.all.map(c => formatCondition(c).text);
+    return { 
+      text: `Must meet ALL of: ${formatted.join(' AND ')}`, 
+      type: 'complex' 
+    };
+  }
+  
+  // Otherwise it's a single condition
+  return formatCondition(req as AccessCondition);
 }
 
 function getRequirementBadgeVariant(type: string) {
@@ -67,7 +81,7 @@ function getRequirementBadgeVariant(type: string) {
       return 'secondary';
     case 'component':
       return 'outline';
-    case 'ownership':
+    case 'linkage':
       return 'destructive';
     case 'complex':
       return 'default';
