@@ -51,6 +51,8 @@ export function SignatureModal({
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("entityType", docType);
+      formData.append("entityId", entityId);
       
       const response = await fetch("/api/esigs/upload-document", {
         method: "POST",

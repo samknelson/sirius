@@ -345,7 +345,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerCardchecksRoutes(app, requireAuth, requirePermission, requireAccess);
   
   // Register e-signature routes
-  registerEsigsRoutes(app, requireAuth, requirePermission, storage);
+  registerEsigsRoutes(app, requireAuth, requirePermission, requireAccess, storage);
 
   // Worker routes (protected with authentication and permissions)
   

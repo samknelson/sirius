@@ -91,6 +91,7 @@ export function registerEsigsRoutes(
   app: Express,
   requireAuth: any,
   requirePermission: any,
+  requireAccess: any,
   storage: IStorage
 ) {
   app.post("/api/esigs", requireAuth, async (req, res) => {
@@ -126,7 +127,7 @@ export function registerEsigsRoutes(
     }
   });
 
-  app.post("/api/esigs/upload-document", requireAuth, requirePermission("staff"), upload.single("file"), async (req, res) => {
+  app.post("/api/esigs/upload-document", requireAuth, upload.single("file"), async (req, res) => {
     try {
       const user = req.user as any;
       const replitUserId = user?.claims?.sub;
@@ -138,6 +139,59 @@ export function registerEsigsRoutes(
       const dbUser = await storage.users.getUserByReplitId(replitUserId);
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
+      }
+
+      // Entity-based access check
+      const { entityType, entityId } = req.body;
+      if (entityType && entityId) {
+        // Map entity type to the appropriate edit policy
+        const policyMap: Record<string, string> = {
+          cardcheck: "cardcheck.edit",
+        };
+        
+        const policyId = policyMap[entityType];
+        if (!policyId) {
+          return res.status(400).json({ message: `Unsupported entity type: ${entityType}` });
+        }
+        
+        // Use evaluatePolicy to check the policy dynamically
+        const { evaluatePolicy } = await import("../services/access-policy-evaluator");
+        const { getAccessStorage, getComponentChecker } = await import("../accessControl");
+        
+        const accessStorage = getAccessStorage();
+        const componentChecker = getComponentChecker();
+        
+        if (!accessStorage || !componentChecker) {
+          return res.status(500).json({ message: "Access control not initialized" });
+        }
+        
+        const accessResult = await evaluatePolicy(
+          dbUser,
+          policyId,
+          storage,
+          accessStorage,
+          componentChecker,
+          entityId
+        );
+        
+        if (!accessResult.granted) {
+          return res.status(403).json({ 
+            message: "Insufficient permissions",
+            policy: policyId,
+            reason: accessResult.reason
+          });
+        }
+      } else {
+        // No entity context provided - require staff permission
+        const { getAccessStorage: getAS } = await import("../accessControl");
+        const accessStorage = getAS();
+        if (!accessStorage) {
+          return res.status(500).json({ message: "Access control not initialized" });
+        }
+        const hasStaffPermission = await accessStorage.hasPermission(dbUser.id, "staff");
+        if (!hasStaffPermission) {
+          return res.status(403).json({ message: "Insufficient permissions" });
+        }
       }
 
       if (!req.file) {
