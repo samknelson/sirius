@@ -70,8 +70,8 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<Ledg
 }
 
 export function registerLedgerPaymentRoutes(app: Express) {
-  // GET /api/ledger/payment-types - Get all payment types
-  app.get("/api/ledger/payment-types", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
+  // GET /api/ledger/payment-types - Get all payment types (available to all authenticated users for dropdowns)
+  app.get("/api/ledger/payment-types", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
     try {
       const paymentTypes = await storage.options.ledgerPaymentTypes.getAllLedgerPaymentTypes();
       res.json(paymentTypes);
