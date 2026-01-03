@@ -319,7 +319,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/phone-numbers">
-        <ProtectedRoute policy="worker.view">
+        <ProtectedRoute tabId="phone-numbers" entityType="worker">
           <AuthenticatedLayout>
             <WorkerPhoneNumbers />
           </AuthenticatedLayout>
@@ -327,7 +327,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/comm/history">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute tabId="comm-history" entityType="worker">
           <AuthenticatedLayout>
             <WorkerCommHistory />
           </AuthenticatedLayout>
@@ -335,7 +335,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/comm/send-sms">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute tabId="send-sms" entityType="worker">
           <AuthenticatedLayout>
             <WorkerSendSms />
           </AuthenticatedLayout>
@@ -343,7 +343,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/comm/send-email">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute tabId="send-email" entityType="worker">
           <AuthenticatedLayout>
             <WorkerSendEmail />
           </AuthenticatedLayout>
@@ -351,7 +351,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/comm/send-postal">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute tabId="send-postal" entityType="worker">
           <AuthenticatedLayout>
             <WorkerSendPostal />
           </AuthenticatedLayout>
@@ -359,7 +359,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/comm/send-inapp">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute tabId="send-inapp" entityType="worker">
           <AuthenticatedLayout>
             <WorkerSendInApp />
           </AuthenticatedLayout>
@@ -375,7 +375,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/addresses">
-        <ProtectedRoute policy="worker.view">
+        <ProtectedRoute tabId="addresses" entityType="worker">
           <AuthenticatedLayout>
             <WorkerAddresses />
           </AuthenticatedLayout>
@@ -383,7 +383,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/name">
-        <ProtectedRoute policy="worker.view">
+        <ProtectedRoute tabId="name" entityType="worker">
           <AuthenticatedLayout>
             <WorkerName />
           </AuthenticatedLayout>
@@ -391,7 +391,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/email">
-        <ProtectedRoute policy="worker.view">
+        <ProtectedRoute tabId="email" entityType="worker">
           <AuthenticatedLayout>
             <WorkerEmail />
           </AuthenticatedLayout>
@@ -399,7 +399,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/ids">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute tabId="ids" entityType="worker">
           <AuthenticatedLayout>
             <WorkerIDs />
           </AuthenticatedLayout>
@@ -407,7 +407,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/birth-date">
-        <ProtectedRoute policy="worker.view">
+        <ProtectedRoute tabId="birth-date" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBirthDate />
           </AuthenticatedLayout>
@@ -415,7 +415,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/gender">
-        <ProtectedRoute policy="worker.view">
+        <ProtectedRoute tabId="gender" entityType="worker">
           <AuthenticatedLayout>
             <WorkerGender />
           </AuthenticatedLayout>
@@ -423,7 +423,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/work-status">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute tabId="work-status" entityType="worker">
           <AuthenticatedLayout>
             <WorkerWorkStatus />
           </AuthenticatedLayout>
@@ -431,7 +431,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/user">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="user" entityType="worker">
           <AuthenticatedLayout>
             <WorkerUserPage />
           </AuthenticatedLayout>
@@ -439,7 +439,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/bans">
-        <ProtectedRoute policy="worker.view" component="dispatch">
+        <ProtectedRoute tabId="bans" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBans />
           </AuthenticatedLayout>
@@ -447,7 +447,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/union/bargaining-unit">
-        <ProtectedRoute permission="staff" component="bargainingunits">
+        <ProtectedRoute tabId="bargaining-unit" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBargainingUnit />
           </AuthenticatedLayout>
@@ -455,7 +455,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/benefits/history">
-        <ProtectedRoute policy="worker.view">
+        <ProtectedRoute tabId="benefits-history" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBenefitsHistory />
           </AuthenticatedLayout>
@@ -463,7 +463,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/benefits/eligibility">
-        <ProtectedRoute policy="worker.view">
+        <ProtectedRoute tabId="benefits-eligibility" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBenefitsEligibility />
           </AuthenticatedLayout>
@@ -471,7 +471,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/benefits/scan">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute tabId="benefits-scan" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBenefitsScan />
           </AuthenticatedLayout>
@@ -479,7 +479,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/union/cardchecks">
-        <ProtectedRoute policy="worker.view" component="cardcheck">
+        <ProtectedRoute tabId="cardchecks" entityType="worker">
           <AuthenticatedLayout>
             <WorkerCardchecks />
           </AuthenticatedLayout>
@@ -487,7 +487,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/union/steward">
-        <ProtectedRoute permission="staff" component="worker.steward">
+        <ProtectedRoute tabId="steward" entityType="worker">
           <AuthenticatedLayout>
             <WorkerSteward />
           </AuthenticatedLayout>
@@ -495,7 +495,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/union/representatives">
-        <ProtectedRoute policy="worker.view" component="worker.steward">
+        <ProtectedRoute tabId="representatives" entityType="worker">
           <AuthenticatedLayout>
             <WorkerRepresentatives />
           </AuthenticatedLayout>
@@ -503,7 +503,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/dispatch/status">
-        <ProtectedRoute policy="worker.view" component="dispatch">
+        <ProtectedRoute tabId="dispatch-status" entityType="worker">
           <AuthenticatedLayout>
             <WorkerDispatchStatus />
           </AuthenticatedLayout>
@@ -511,7 +511,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/dispatch/do-not-call">
-        <ProtectedRoute policy="worker.view" component="dispatch">
+        <ProtectedRoute tabId="dispatch-dnc" entityType="worker">
           <AuthenticatedLayout>
             <WorkerDispatchDoNotCall />
           </AuthenticatedLayout>
@@ -519,7 +519,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/dispatch/hold-for-employer">
-        <ProtectedRoute policy="worker.view" component="dispatch.hfe">
+        <ProtectedRoute tabId="dispatch-hfe" entityType="worker">
           <AuthenticatedLayout>
             <WorkerDispatchHoldForEmployer />
           </AuthenticatedLayout>
@@ -527,7 +527,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/ledger/accounts">
-        <ProtectedRoute permission="staff" component="ledger">
+        <ProtectedRoute tabId="accounting" entityType="worker">
           <AuthenticatedLayout>
             <WorkerLedgerAccounts />
           </AuthenticatedLayout>
@@ -543,7 +543,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/employment/current">
-        <ProtectedRoute policy="worker.view">
+        <ProtectedRoute tabId="current" entityType="worker">
           <AuthenticatedLayout>
             <WorkerCurrentEmployment />
           </AuthenticatedLayout>
@@ -551,7 +551,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/employment/history">
-        <ProtectedRoute policy="worker.view">
+        <ProtectedRoute tabId="history" entityType="worker">
           <AuthenticatedLayout>
             <WorkerEmploymentHistory />
           </AuthenticatedLayout>
@@ -559,7 +559,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/employment/monthly">
-        <ProtectedRoute policy="worker.view">
+        <ProtectedRoute tabId="monthly" entityType="worker">
           <AuthenticatedLayout>
             <WorkerHoursMonthly />
           </AuthenticatedLayout>
@@ -567,7 +567,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/employment/daily">
-        <ProtectedRoute policy="worker.view">
+        <ProtectedRoute tabId="daily" entityType="worker">
           <AuthenticatedLayout>
             <WorkerHoursDaily />
           </AuthenticatedLayout>
@@ -593,7 +593,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/logs">
-        <ProtectedRoute policy="staff">
+        <ProtectedRoute tabId="logs" entityType="worker">
           <AuthenticatedLayout>
             <WorkerLogs />
           </AuthenticatedLayout>
@@ -601,7 +601,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/delete">
-        <ProtectedRoute policy="worker.view">
+        <ProtectedRoute tabId="delete" entityType="worker">
           <AuthenticatedLayout>
             <WorkerDelete />
           </AuthenticatedLayout>
@@ -609,7 +609,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id">
-        <ProtectedRoute policy="worker.view">
+        <ProtectedRoute tabId="details" entityType="worker">
           <AuthenticatedLayout>
             <WorkerView />
           </AuthenticatedLayout>
@@ -737,7 +737,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/edit">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute tabId="edit" entityType="employer">
           <AuthenticatedLayout>
             <EmployerEdit />
           </AuthenticatedLayout>
@@ -745,7 +745,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/workers">
-        <ProtectedRoute policy="employer.view">
+        <ProtectedRoute tabId="workers" entityType="employer">
           <AuthenticatedLayout>
             <EmployerWorkers />
           </AuthenticatedLayout>
@@ -753,7 +753,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/contacts">
-        <ProtectedRoute policy="employer.view">
+        <ProtectedRoute tabId="contacts" entityType="employer">
           <AuthenticatedLayout>
             <EmployerContacts />
           </AuthenticatedLayout>
@@ -761,7 +761,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/wizards">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="wizards" entityType="employer">
           <AuthenticatedLayout>
             <EmployerWizards />
           </AuthenticatedLayout>
@@ -929,7 +929,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/ledger/stripe/customer">
-        <ProtectedRoute permission="admin" component="ledger">
+        <ProtectedRoute tabId="customer" entityType="employer">
           <AuthenticatedLayout>
             <StripeCustomerPage />
           </AuthenticatedLayout>
@@ -937,7 +937,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/ledger/stripe/payment_methods">
-        <ProtectedRoute policy="ledger.stripe.employer" component="ledger">
+        <ProtectedRoute tabId="payment-methods" entityType="employer">
           <AuthenticatedLayout>
             <StripePaymentMethodsPage />
           </AuthenticatedLayout>
@@ -945,7 +945,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/ledger/accounts">
-        <ProtectedRoute policy="ledger.staff" component="ledger">
+        <ProtectedRoute tabId="accounts" entityType="employer">
           <AuthenticatedLayout>
             <EmployerLedgerAccountsWrapper />
           </AuthenticatedLayout>
@@ -953,7 +953,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/logs">
-        <ProtectedRoute policy="staff">
+        <ProtectedRoute tabId="logs" entityType="employer">
           <AuthenticatedLayout>
             <EmployerLogs />
           </AuthenticatedLayout>
@@ -961,7 +961,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/policy-history">
-        <ProtectedRoute policy="employer.view">
+        <ProtectedRoute tabId="policy-history" entityType="employer">
           <AuthenticatedLayout>
             <EmployerPolicyHistory />
           </AuthenticatedLayout>
@@ -969,7 +969,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/union/stewards">
-        <ProtectedRoute policy="employer.view" component="worker.steward">
+        <ProtectedRoute tabId="stewards" entityType="employer">
           <AuthenticatedLayout>
             <EmployerStewards />
           </AuthenticatedLayout>
@@ -977,7 +977,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/dispatch">
-        <ProtectedRoute policy="employer.view" component="dispatch">
+        <ProtectedRoute tabId="dispatch" entityType="employer">
           <AuthenticatedLayout>
             <EmployerDispatchPage />
           </AuthenticatedLayout>
@@ -985,7 +985,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id">
-        <ProtectedRoute policy="employer.view">
+        <ProtectedRoute tabId="details" entityType="employer">
           <AuthenticatedLayout>
             <EmployerView />
           </AuthenticatedLayout>
@@ -1009,7 +1009,7 @@ function Router() {
       </Route>
 
       <Route path="/events/:id/edit">
-        <ProtectedRoute permission="admin" component="event">
+        <ProtectedRoute tabId="edit" entityType="event">
           <AuthenticatedLayout>
             <EventEditPage />
           </AuthenticatedLayout>
@@ -1017,7 +1017,7 @@ function Router() {
       </Route>
 
       <Route path="/events/:id/delete">
-        <ProtectedRoute permission="admin" component="event">
+        <ProtectedRoute tabId="delete" entityType="event">
           <AuthenticatedLayout>
             <EventDeletePage />
           </AuthenticatedLayout>
@@ -1025,7 +1025,7 @@ function Router() {
       </Route>
 
       <Route path="/events/:id/register">
-        <ProtectedRoute permission="admin" component="event">
+        <ProtectedRoute tabId="register" entityType="event">
           <AuthenticatedLayout>
             <EventRegisterPage />
           </AuthenticatedLayout>
@@ -1033,7 +1033,7 @@ function Router() {
       </Route>
 
       <Route path="/events/:id/roster">
-        <ProtectedRoute permission="admin" component="event">
+        <ProtectedRoute tabId="roster" entityType="event">
           <AuthenticatedLayout>
             <EventRosterPage />
           </AuthenticatedLayout>
@@ -1041,7 +1041,7 @@ function Router() {
       </Route>
 
       <Route path="/events/:id/self-register">
-        <ProtectedRoute component="event">
+        <ProtectedRoute tabId="self-register" entityType="event">
           <AuthenticatedLayout>
             <EventSelfRegisterPage />
           </AuthenticatedLayout>
@@ -1049,7 +1049,7 @@ function Router() {
       </Route>
 
       <Route path="/events/:id">
-        <ProtectedRoute permission="admin" component="event">
+        <ProtectedRoute tabId="view" entityType="event">
           <AuthenticatedLayout>
             <EventViewPage />
           </AuthenticatedLayout>
@@ -1114,7 +1114,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-benefits/:id/edit">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute tabId="edit" entityType="trust_benefit">
           <AuthenticatedLayout>
             <TrustBenefitEdit />
           </AuthenticatedLayout>
@@ -1122,7 +1122,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-benefits/:id">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute tabId="details" entityType="trust_benefit">
           <AuthenticatedLayout>
             <TrustBenefitView />
           </AuthenticatedLayout>
@@ -1138,7 +1138,7 @@ function Router() {
       </Route>
 
       <Route path="/policies/:id/edit">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="edit" entityType="policy">
           <AuthenticatedLayout>
             <PolicyEdit />
           </AuthenticatedLayout>
@@ -1146,7 +1146,7 @@ function Router() {
       </Route>
 
       <Route path="/policies/:id/benefits">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="benefits" entityType="policy">
           <AuthenticatedLayout>
             <PolicyBenefits />
           </AuthenticatedLayout>
@@ -1154,7 +1154,7 @@ function Router() {
       </Route>
 
       <Route path="/policies/:id">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="details" entityType="policy">
           <AuthenticatedLayout>
             <PolicyView />
           </AuthenticatedLayout>
@@ -1186,7 +1186,7 @@ function Router() {
       </Route>
 
       <Route path="/trust/provider/:id/logs">
-        <ProtectedRoute policy="staff" component="trust.providers">
+        <ProtectedRoute tabId="logs" entityType="provider">
           <AuthenticatedLayout>
             <TrustProviderLogsPage />
           </AuthenticatedLayout>
@@ -1290,7 +1290,7 @@ function Router() {
       </Route>
 
       <Route path="/trust/provider/:id/contacts">
-        <ProtectedRoute policy="staff" component="trust.providers">
+        <ProtectedRoute tabId="contacts" entityType="provider">
           <AuthenticatedLayout>
             <TrustProviderContactsPage />
           </AuthenticatedLayout>
@@ -1298,7 +1298,7 @@ function Router() {
       </Route>
 
       <Route path="/trust/provider/:id/edit">
-        <ProtectedRoute permission="staff" component="trust.providers">
+        <ProtectedRoute tabId="edit" entityType="provider">
           <AuthenticatedLayout>
             <TrustProviderEditPage />
           </AuthenticatedLayout>
@@ -1306,7 +1306,7 @@ function Router() {
       </Route>
 
       <Route path="/trust/provider/:id">
-        <ProtectedRoute permission="staff" component="trust.providers">
+        <ProtectedRoute tabId="view" entityType="provider">
           <AuthenticatedLayout>
             <TrustProviderViewPage />
           </AuthenticatedLayout>
@@ -1323,7 +1323,7 @@ function Router() {
 
       {/* Bargaining Units routes */}
       <Route path="/bargaining-units/:id/edit">
-        <ProtectedRoute policy="staff" component="bargainingunits">
+        <ProtectedRoute tabId="edit" entityType="bargaining_unit">
           <AuthenticatedLayout>
             <BargainingUnitEditPage />
           </AuthenticatedLayout>
@@ -1331,7 +1331,7 @@ function Router() {
       </Route>
 
       <Route path="/bargaining-units/:id/delete">
-        <ProtectedRoute policy="staff" component="bargainingunits">
+        <ProtectedRoute tabId="delete" entityType="bargaining_unit">
           <AuthenticatedLayout>
             <BargainingUnitDeletePage />
           </AuthenticatedLayout>
@@ -1339,7 +1339,7 @@ function Router() {
       </Route>
 
       <Route path="/bargaining-units/:id">
-        <ProtectedRoute policy="staff" component="bargainingunits">
+        <ProtectedRoute tabId="view" entityType="bargaining_unit">
           <AuthenticatedLayout>
             <BargainingUnitViewPage />
           </AuthenticatedLayout>
@@ -1599,7 +1599,7 @@ function Router() {
       </Route>
 
       <Route path="/config/dispatch-job-type/:id">
-        <ProtectedRoute permission="admin" component="dispatch">
+        <ProtectedRoute tabId="view" entityType="dispatch_job_type">
           <AuthenticatedLayout>
             <DispatchJobTypeViewPage />
           </AuthenticatedLayout>
@@ -1607,7 +1607,7 @@ function Router() {
       </Route>
 
       <Route path="/config/dispatch-job-type/:id/edit">
-        <ProtectedRoute permission="admin" component="dispatch">
+        <ProtectedRoute tabId="edit" entityType="dispatch_job_type">
           <AuthenticatedLayout>
             <DispatchJobTypeEditPage />
           </AuthenticatedLayout>
@@ -1615,7 +1615,7 @@ function Router() {
       </Route>
 
       <Route path="/config/dispatch-job-type/:id/plugins">
-        <ProtectedRoute permission="admin" component="dispatch">
+        <ProtectedRoute tabId="plugins" entityType="dispatch_job_type">
           <AuthenticatedLayout>
             <DispatchJobTypePluginsPage />
           </AuthenticatedLayout>
@@ -1623,7 +1623,7 @@ function Router() {
       </Route>
 
       <Route path="/config/dispatch-job-type/:id/delete">
-        <ProtectedRoute permission="admin" component="dispatch">
+        <ProtectedRoute tabId="delete" entityType="dispatch_job_type">
           <AuthenticatedLayout>
             <DispatchJobTypeDeletePage />
           </AuthenticatedLayout>
@@ -1667,7 +1667,7 @@ function Router() {
       </Route>
 
       <Route path="/dispatch/job/:id">
-        <ProtectedRoute permission="admin" component="dispatch">
+        <ProtectedRoute tabId="details" entityType="dispatch_job">
           <AuthenticatedLayout>
             <DispatchJobDetailsPage />
           </AuthenticatedLayout>
@@ -1675,7 +1675,7 @@ function Router() {
       </Route>
 
       <Route path="/dispatch/job/:id/edit">
-        <ProtectedRoute permission="admin" component="dispatch">
+        <ProtectedRoute tabId="edit" entityType="dispatch_job">
           <AuthenticatedLayout>
             <DispatchJobEditPage />
           </AuthenticatedLayout>
@@ -1683,7 +1683,7 @@ function Router() {
       </Route>
 
       <Route path="/dispatch/job/:id/dispatches">
-        <ProtectedRoute permission="admin" component="dispatch">
+        <ProtectedRoute tabId="dispatches" entityType="dispatch_job">
           <AuthenticatedLayout>
             <DispatchJobDispatchesPage />
           </AuthenticatedLayout>
@@ -1691,7 +1691,7 @@ function Router() {
       </Route>
 
       <Route path="/dispatch/job/:id/eligible-workers">
-        <ProtectedRoute permission="admin" component="dispatch">
+        <ProtectedRoute tabId="eligible-workers" entityType="dispatch_job">
           <AuthenticatedLayout>
             <DispatchJobEligibleWorkersPage />
           </AuthenticatedLayout>
@@ -1928,7 +1928,7 @@ function Router() {
 
       {/* Ledger account detail pages */}
       <Route path="/ledger/accounts/:id/payments">
-        <ProtectedRoute policy="ledger.staff" component="ledger">
+        <ProtectedRoute tabId="payments" entityType="ledger_account">
           <AuthenticatedLayout>
             <AccountPayments />
           </AuthenticatedLayout>
@@ -1936,7 +1936,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/accounts/:id/transactions">
-        <ProtectedRoute policy="ledger.staff" component="ledger">
+        <ProtectedRoute tabId="transactions" entityType="ledger_account">
           <AuthenticatedLayout>
             <AccountTransactions />
           </AuthenticatedLayout>
@@ -1944,7 +1944,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/accounts/:id/participants">
-        <ProtectedRoute policy="ledger.staff" component="ledger">
+        <ProtectedRoute tabId="participants" entityType="ledger_account">
           <AuthenticatedLayout>
             <AccountParticipants />
           </AuthenticatedLayout>
@@ -1952,7 +1952,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/accounts/:id/settings">
-        <ProtectedRoute policy="ledger.staff" component="ledger">
+        <ProtectedRoute tabId="settings" entityType="ledger_account">
           <AuthenticatedLayout>
             <AccountSettings />
           </AuthenticatedLayout>
@@ -1960,7 +1960,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/accounts/:id/edit">
-        <ProtectedRoute policy="ledger.staff" component="ledger">
+        <ProtectedRoute tabId="edit" entityType="ledger_account">
           <AuthenticatedLayout>
             <LedgerAccountEdit />
           </AuthenticatedLayout>
@@ -1968,7 +1968,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/accounts/:id">
-        <ProtectedRoute policy="ledger.staff" component="ledger">
+        <ProtectedRoute tabId="view" entityType="ledger_account">
           <AuthenticatedLayout>
             <LedgerAccountView />
           </AuthenticatedLayout>
@@ -1985,7 +1985,7 @@ function Router() {
 
       {/* User detail page */}
       <Route path="/users/:id">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="details" entityType="user">
           <AuthenticatedLayout>
             <UserAccountPage />
           </AuthenticatedLayout>
@@ -1993,7 +1993,7 @@ function Router() {
       </Route>
 
       <Route path="/users/:id/logs">
-        <ProtectedRoute policy="staff">
+        <ProtectedRoute tabId="logs" entityType="user">
           <AuthenticatedLayout>
             <UserLogs />
           </AuthenticatedLayout>
@@ -2002,7 +2002,7 @@ function Router() {
 
       {/* User Contact sub-tabs */}
       <Route path="/users/:id/contact/email">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="email" entityType="user">
           <AuthenticatedLayout>
             <UserEmail />
           </AuthenticatedLayout>
@@ -2010,7 +2010,7 @@ function Router() {
       </Route>
 
       <Route path="/users/:id/contact/phone-numbers">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="phone-numbers" entityType="user">
           <AuthenticatedLayout>
             <UserPhoneNumbers />
           </AuthenticatedLayout>
@@ -2018,7 +2018,7 @@ function Router() {
       </Route>
 
       <Route path="/users/:id/contact/addresses">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="addresses" entityType="user">
           <AuthenticatedLayout>
             <UserAddresses />
           </AuthenticatedLayout>
@@ -2027,7 +2027,7 @@ function Router() {
 
       {/* User Comm sub-tabs */}
       <Route path="/users/:id/comm/history">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="comm-history" entityType="user">
           <AuthenticatedLayout>
             <UserCommHistory />
           </AuthenticatedLayout>
@@ -2035,7 +2035,7 @@ function Router() {
       </Route>
 
       <Route path="/users/:id/comm/send-sms">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="send-sms" entityType="user">
           <AuthenticatedLayout>
             <UserSendSms />
           </AuthenticatedLayout>
@@ -2043,7 +2043,7 @@ function Router() {
       </Route>
 
       <Route path="/users/:id/comm/send-email">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="send-email" entityType="user">
           <AuthenticatedLayout>
             <UserSendEmail />
           </AuthenticatedLayout>
@@ -2051,7 +2051,7 @@ function Router() {
       </Route>
 
       <Route path="/users/:id/comm/send-postal">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="send-postal" entityType="user">
           <AuthenticatedLayout>
             <UserSendPostal />
           </AuthenticatedLayout>
@@ -2059,7 +2059,7 @@ function Router() {
       </Route>
 
       <Route path="/users/:id/comm/send-inapp">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="send-inapp" entityType="user">
           <AuthenticatedLayout>
             <UserSendInApp />
           </AuthenticatedLayout>

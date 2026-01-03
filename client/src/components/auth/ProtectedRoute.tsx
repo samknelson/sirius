@@ -5,6 +5,7 @@ import { Redirect, useLocation } from 'wouter';
 import AccessDenied from './AccessDenied';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { getTabAccessRequirements, TabEntityType } from '@shared/tabRegistry';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -12,6 +13,8 @@ interface ProtectedRouteProps {
   policy?: string;
   component?: string;
   entityId?: string;
+  tabId?: string;
+  entityType?: TabEntityType;
 }
 
 interface DetailedPolicyResult {
@@ -43,9 +46,27 @@ class PolicyCheckError extends Error {
   }
 }
 
-export default function ProtectedRoute({ children, permission, policy, component, entityId }: ProtectedRouteProps) {
+export default function ProtectedRoute({ children, permission, policy, component, entityId, tabId, entityType }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading, authReady, hasPermission, hasComponent } = useAuth();
   const [location] = useLocation();
+
+  // Resolve access requirements from tab registry if tabId is provided
+  // This is the SINGLE SOURCE OF TRUTH for tab-linked routes
+  const tabAccess = tabId && entityType ? getTabAccessRequirements(entityType, tabId) : null;
+  
+  // If tabId was provided but lookup failed, fail closed with warning
+  const tabLookupFailed = !!(tabId && entityType && !tabAccess);
+  if (tabLookupFailed) {
+    console.error(
+      `[ProtectedRoute] Tab lookup failed for tabId="${tabId}" entityType="${entityType}". ` +
+      `This tab may not exist in the registry. Access denied (fail-closed).`
+    );
+  }
+  
+  // Use tab-derived access requirements if available, otherwise use explicit props
+  const effectivePermission = tabAccess?.permission ?? permission;
+  const effectivePolicy = tabAccess?.policyId ?? policy;
+  const effectiveComponent = tabAccess?.component ?? component;
 
   // Use explicit entityId prop if provided, otherwise extract from URL based on entity patterns
   // This handles nested routes like /workers/:id/contacts by finding the ID after known prefixes
@@ -74,13 +95,13 @@ export default function ProtectedRoute({ children, permission, policy, component
   
   // Check policy via API if policy prop is provided
   const { data: policyResult, isLoading: isPolicyLoading, isError: isPolicyError, error: policyError } = useQuery<DetailedPolicyResult, PolicyCheckError>({
-    queryKey: ['/api/access/policies', policy, resourceId],
+    queryKey: ['/api/access/policies', effectivePolicy, resourceId],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (resourceId) {
         params.set('entityId', resourceId);
       }
-      const url = `/api/access/policies/${policy}${params.toString() ? '?' + params.toString() : ''}`;
+      const url = `/api/access/policies/${effectivePolicy}${params.toString() ? '?' + params.toString() : ''}`;
       const response = await fetch(url);
       if (!response.ok) {
         let apiMessage = 'Unknown error';
@@ -94,12 +115,12 @@ export default function ProtectedRoute({ children, permission, policy, component
           `Policy check failed: ${apiMessage}`,
           response.status,
           apiMessage,
-          policy || 'unknown'
+          effectivePolicy || 'unknown'
         );
       }
       return response.json();
     },
-    enabled: isAuthenticated && !!policy,
+    enabled: isAuthenticated && !!effectivePolicy,
     staleTime: 30000, // 30 seconds
     retry: 2,
   });
@@ -125,8 +146,57 @@ export default function ProtectedRoute({ children, permission, policy, component
     return <Redirect to="/login" />;
   }
 
+  // Fail closed if tab lookup failed
+  if (tabLookupFailed) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background p-4">
+        <Card className="max-w-2xl w-full">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <Shield className="h-8 w-8 text-destructive" />
+              <div>
+                <CardTitle className="text-2xl">Access Configuration Error</CardTitle>
+                <CardDescription>
+                  Unable to verify access requirements for this page
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Tab Not Found in Registry</AlertTitle>
+              <AlertDescription>
+                The tab <span className="font-mono">{tabId}</span> for entity type <span className="font-mono">{entityType}</span> was not found in the tab registry.
+              </AlertDescription>
+            </Alert>
+
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>What does this mean?</AlertTitle>
+              <AlertDescription className="space-y-2">
+                <p>
+                  This route is configured to use tab-based access control, but the specified tab does not exist.
+                </p>
+                <p className="mt-2">This could mean:</p>
+                <ul className="list-disc list-inside space-y-1 ml-2">
+                  <li>The tabId prop in the route does not match any tab in the registry</li>
+                  <li>The entityType prop is incorrect for this route</li>
+                  <li>The tab was removed from the registry but the route was not updated</li>
+                </ul>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Access is denied (fail-closed) until this configuration is fixed.
+                </p>
+              </AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   // Check if required component is enabled
-  if (component && !hasComponent(component)) {
+  if (effectiveComponent && !hasComponent(effectiveComponent)) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="text-center max-w-md p-6">
@@ -135,7 +205,7 @@ export default function ProtectedRoute({ children, permission, policy, component
             This feature is not currently enabled for this application.
           </p>
           <p className="text-sm text-muted-foreground mt-2">
-            Required component: {component}
+            Required component: {effectiveComponent}
           </p>
         </div>
       </div>
@@ -143,7 +213,7 @@ export default function ProtectedRoute({ children, permission, policy, component
   }
 
   // Show loading while checking policy
-  if (policy && isPolicyLoading) {
+  if (effectivePolicy && isPolicyLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="flex items-center space-x-2">
@@ -155,7 +225,7 @@ export default function ProtectedRoute({ children, permission, policy, component
   }
 
   // Check policy-based access via API
-  if (policy) {
+  if (effectivePolicy) {
     // If there was an error fetching policy, fail closed (deny access)
     if (isPolicyError) {
       const errorDetails = policyError instanceof PolicyCheckError ? policyError : null;
@@ -264,7 +334,7 @@ export default function ProtectedRoute({ children, permission, policy, component
   }
 
   // If a specific permission is required, check if user has it
-  if (permission && !hasPermission(permission)) {
+  if (effectivePermission && !hasPermission(effectivePermission)) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
@@ -273,7 +343,7 @@ export default function ProtectedRoute({ children, permission, policy, component
             You don't have permission to access this page.
           </p>
           <p className="text-sm text-muted-foreground mt-2">
-            Required permission: {permission}
+            Required permission: {effectivePermission}
           </p>
         </div>
       </div>
