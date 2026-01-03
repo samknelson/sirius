@@ -186,7 +186,11 @@ export const componentRegistry: ComponentDefinition[] = [
       version: 1,
       schemaPath: "./shared/schema/dispatch/schema.ts",
       tables: ["options_dispatch_job_type", "dispatch_jobs", "dispatches", "worker_dispatch_status", "worker_dispatch_elig_denorm"]
-    }
+    },
+    permissions: [
+      { key: "employer.dispatch", description: "Employer access to dispatch functionality" },
+      { key: "employer.dispatch.manage", description: "Employer access to manage dispatch functionality" }
+    ]
   },
   {
     id: "dispatch.dnc",
