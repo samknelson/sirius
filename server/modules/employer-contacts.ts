@@ -39,7 +39,7 @@ export function registerEmployerContactRoutes(
     }
   });
   
-  // GET /api/employers/:employerId/contacts - Get all contacts for an employer (requires employersView policy)
+  // GET /api/employers/:employerId/contacts - Get all contacts for an employer (requires staff permission)
   app.get("/api/employers/:employerId/contacts", requireAuth, requireAccess('staff'), async (req, res) => {
     try {
       const { employerId } = req.params;

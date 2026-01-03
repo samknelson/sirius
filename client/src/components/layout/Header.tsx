@@ -74,7 +74,7 @@ export default function Header() {
   });
 
   // Check staff policy for Workers and Employers navigation
-  // Note: We use 'staff' instead of 'worker' or 'employersView' because those
+  // Note: We use 'staff' instead of 'worker' or 'employer.view' because those
   // policies have linkage rules that require entity context. For top-level navigation,
   // staff permission is what grants access to these sections.
   const { data: staffPolicy } = useQuery<PolicyAccessResponse>({

@@ -54,19 +54,6 @@ defineRoutePolicy(
   ]
 );
 
-// --- Employer Management ---
-
-// Route-level policy for employer access (staff or employer contact)
-defineRoutePolicy(
-  'employer.view',
-  'Employer View',
-  'Requires staff permission or employer permission with employer association',
-  [
-    { authenticated: true, permission: 'staff' },
-    { authenticated: true, permission: 'employer', linkage: 'employerAssociation' },
-  ]
-);
-
 // --- Masquerade ---
 
 defineRoutePolicy(
@@ -210,16 +197,6 @@ defineRoutePolicy(
   [
     { permission: 'staff' },
     { permission: 'worker', linkage: 'ownsWorker' },
-  ]
-);
-
-defineRoutePolicy(
-  'employer.self',
-  'Employer Self Access',
-  'Requires staff permission, or employer permission with employer association',
-  [
-    { permission: 'staff' },
-    { permission: 'employer', linkage: 'employerAssociation' },
   ]
 );
 

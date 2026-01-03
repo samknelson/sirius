@@ -745,7 +745,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/workers">
-        <ProtectedRoute policy="employerUser">
+        <ProtectedRoute policy="employer.view">
           <AuthenticatedLayout>
             <EmployerWorkers />
           </AuthenticatedLayout>
@@ -753,7 +753,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/contacts">
-        <ProtectedRoute policy="employersView">
+        <ProtectedRoute policy="employer.view">
           <AuthenticatedLayout>
             <EmployerContacts />
           </AuthenticatedLayout>
@@ -961,7 +961,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/policy-history">
-        <ProtectedRoute policy="employerUser">
+        <ProtectedRoute policy="employer.view">
           <AuthenticatedLayout>
             <EmployerPolicyHistory />
           </AuthenticatedLayout>
@@ -969,7 +969,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/union/stewards">
-        <ProtectedRoute policy="employerUser" component="worker.steward">
+        <ProtectedRoute policy="employer.view" component="worker.steward">
           <AuthenticatedLayout>
             <EmployerStewards />
           </AuthenticatedLayout>
@@ -977,7 +977,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/dispatch">
-        <ProtectedRoute policy="employerUser" component="dispatch">
+        <ProtectedRoute policy="employer.view" component="dispatch">
           <AuthenticatedLayout>
             <EmployerDispatchPage />
           </AuthenticatedLayout>
@@ -985,7 +985,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id">
-        <ProtectedRoute policy="employerUser">
+        <ProtectedRoute policy="employer.view">
           <AuthenticatedLayout>
             <EmployerView />
           </AuthenticatedLayout>
@@ -993,7 +993,7 @@ function Router() {
       </Route>
 
       <Route path="/employers">
-        <ProtectedRoute policy="employersView">
+        <ProtectedRoute policy="staff">
           <AuthenticatedLayout>
             <Employers />
           </AuthenticatedLayout>

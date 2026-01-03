@@ -15,7 +15,7 @@ export function registerEmployerPolicyHistoryRoutes(
   requireAccess: RequireAccess,
   storage: IStorage
 ) {
-  app.get("/api/employers/:employerId/policy-history", requireAuth, requireAccess('employer.self', (req) => req.params.employerId), async (req, res) => {
+  app.get("/api/employers/:employerId/policy-history", requireAuth, requireAccess('employer.view', (req) => req.params.employerId), async (req, res) => {
     try {
       const { employerId } = req.params;
       

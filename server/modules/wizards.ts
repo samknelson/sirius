@@ -733,7 +733,7 @@ export function registerWizardRoutes(
       // For entity-specific wizards, check entity-based access
       if (wizardType.entityType && wizard.entityId) {
         // Check appropriate entity policy based on entity type
-        const policyId = wizardType.entityType === 'employer' ? 'employer.self' : 'worker.self';
+        const policyId = wizardType.entityType === 'employer' ? 'employer.view' : 'worker.self';
         const result = await checkAccess(policyId, context.user, wizard.entityId);
         
         if (result.granted) {

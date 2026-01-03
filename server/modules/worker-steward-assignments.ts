@@ -50,7 +50,7 @@ export function registerWorkerStewardAssignmentRoutes(
     }
   });
 
-  app.get("/api/employers/:employerId/stewards", requireAuth, requireAccess('employer.self', (req) => req.params.employerId), async (req, res) => {
+  app.get("/api/employers/:employerId/stewards", requireAuth, requireAccess('employer.view', (req) => req.params.employerId), async (req, res) => {
     try {
       const { employerId } = req.params;
       const stewards = await assembleEmployerStewardDetails(storage, employerId);
