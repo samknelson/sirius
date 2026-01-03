@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Employer } from "@shared/schema";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Eye, Trash2 } from "lucide-react";
@@ -55,6 +56,8 @@ function formatCurrency(amount: string | number): string {
 function WorkerHoursContent() {
   const { worker } = useWorkerLayout();
   const { toast } = useToast();
+  const { hasPermission } = useAuth();
+  const canEdit = hasPermission('staff');
   
   const showLedgerNotifications = (notifications: LedgerNotification[] | undefined) => {
     if (!notifications || notifications.length === 0) return;
@@ -198,15 +201,16 @@ function WorkerHoursContent() {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <CardTitle>Hours History</CardTitle>
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" data-testid="button-add-hours" onClick={resetForm}>
-                <Plus size={16} className="mr-2" />
-                Add Hours Entry
-              </Button>
-            </DialogTrigger>
+          {canEdit && (
+            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" data-testid="button-add-hours" onClick={resetForm}>
+                  <Plus size={16} className="mr-2" />
+                  Add Hours Entry
+                </Button>
+              </DialogTrigger>
             <DialogContent data-testid="dialog-add-hours">
               <DialogHeader>
                 <DialogTitle>Add Hours Entry</DialogTitle>
@@ -322,6 +326,7 @@ function WorkerHoursContent() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          )}
         </div>
       </CardHeader>
       <CardContent>
@@ -372,24 +377,28 @@ function WorkerHoursContent() {
                           <Eye size={16} />
                         </Button>
                       </Link>
-                      <Link href={`/hours/${entry.id}/edit`}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          data-testid={`button-edit-hours-${entry.id}`}
-                        >
-                          <Pencil size={16} />
-                        </Button>
-                      </Link>
-                      <Link href={`/hours/${entry.id}/delete`}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          data-testid={`button-delete-hours-${entry.id}`}
-                        >
-                          <Trash2 size={16} className="text-destructive" />
-                        </Button>
-                      </Link>
+                      {canEdit && (
+                        <>
+                          <Link href={`/hours/${entry.id}/edit`}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              data-testid={`button-edit-hours-${entry.id}`}
+                            >
+                              <Pencil size={16} />
+                            </Button>
+                          </Link>
+                          <Link href={`/hours/${entry.id}/delete`}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              data-testid={`button-delete-hours-${entry.id}`}
+                            >
+                              <Trash2 size={16} className="text-destructive" />
+                            </Button>
+                          </Link>
+                        </>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
