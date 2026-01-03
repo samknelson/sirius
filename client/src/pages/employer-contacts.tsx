@@ -15,6 +15,7 @@ import { Trash2, Plus, Eye, Phone, MapPin, User } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useAccessCheck } from "@/hooks/use-access-check";
 import type { EmployerContactType, PhoneNumber, ContactPostal } from "@shared/schema";
 import { generateDisplayName } from "@shared/schema";
 
@@ -68,6 +69,8 @@ function EmployerContactsContent() {
   const { employer } = useEmployerLayout();
   const { toast } = useToast();
   const [isAddingContact, setIsAddingContact] = useState(false);
+
+  const { canAccess: canManage } = useAccessCheck('employer.manage', employer.id);
 
   const { data: contacts, isLoading: contactsLoading } = useQuery<EmployerContactResponse[]>({
     queryKey: ["/api/employers", employer.id, "contacts"],
@@ -243,9 +246,9 @@ function EmployerContactsContent() {
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle>Contacts</CardTitle>
-          {!isAddingContact && (
+          {!isAddingContact && canManage && (
             <Button
               onClick={() => setIsAddingContact(true)}
               size="sm"
@@ -448,26 +451,28 @@ function EmployerContactsContent() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Link href={`/employer-contacts/${contact.id}`}>
+                  {canManage && (
+                    <div className="flex items-center gap-2">
+                      <Link href={`/employer-contacts/${contact.id}`}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          data-testid={`button-view-contact-${contact.id}`}
+                        >
+                          <Eye size={16} />
+                        </Button>
+                      </Link>
                       <Button
                         variant="ghost"
                         size="sm"
-                        data-testid={`button-view-contact-${contact.id}`}
+                        onClick={() => deleteMutation.mutate(contact.id)}
+                        disabled={deleteMutation.isPending}
+                        data-testid={`button-delete-contact-${contact.id}`}
                       >
-                        <Eye size={16} />
+                        <Trash2 size={16} className="text-destructive" />
                       </Button>
-                    </Link>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteMutation.mutate(contact.id)}
-                      disabled={deleteMutation.isPending}
-                      data-testid={`button-delete-contact-${contact.id}`}
-                    >
-                      <Trash2 size={16} className="text-destructive" />
-                    </Button>
-                  </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
