@@ -16,6 +16,7 @@ export interface AccessCondition {
   allPermissions?: string[];
   component?: string;
   linkage?: string;
+  policy?: string;
 }
 
 /**

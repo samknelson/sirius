@@ -14,73 +14,94 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
-/**
- * Format a single access condition into human-readable text
- */
-function formatCondition(condition: AccessCondition): { text: string; type: string } {
-  const parts: string[] = [];
-  let type = 'auth';
-  
-  if (condition.authenticated) {
-    parts.push('User must be authenticated');
-  }
-  
-  if (condition.permission) {
-    parts.push(`Requires permission: ${condition.permission}`);
-    type = 'permission';
-  }
-  
-  if (condition.anyPermission && condition.anyPermission.length > 0) {
-    parts.push(`Requires any of: ${condition.anyPermission.join(', ')}`);
-    type = 'permission';
-  }
-  
-  if (condition.allPermissions && condition.allPermissions.length > 0) {
-    parts.push(`Requires all of: ${condition.allPermissions.join(', ')}`);
-    type = 'permission';
-  }
-  
-  if (condition.component) {
-    parts.push(`Component "${condition.component}" must be enabled`);
-    type = 'component';
-  }
-  
-  if (condition.linkage) {
-    parts.push(`Linkage: ${condition.linkage}`);
-    type = 'linkage';
-  }
-  
-  if (parts.length === 0) {
-    return { text: 'No specific requirements', type: 'unknown' };
-  }
-  
-  return { text: parts.join(' AND '), type };
+interface ConditionPart {
+  text: string;
+  type: string;
 }
 
 /**
- * Format an access requirement (which may be a condition or composition) into human-readable text
+ * Format a single access condition into human-readable parts
+ * Returns an array of parts, each with its own type for proper badge rendering
  */
-function formatRequirement(req: AccessRequirement): { text: string; type: string } {
+function formatConditionParts(condition: AccessCondition): ConditionPart[] {
+  const parts: ConditionPart[] = [];
+  
+  if (condition.authenticated) {
+    parts.push({ text: 'User must be authenticated', type: 'auth' });
+  }
+  
+  if (condition.permission) {
+    parts.push({ text: `Requires permission: ${condition.permission}`, type: 'permission' });
+  }
+  
+  if (condition.anyPermission && condition.anyPermission.length > 0) {
+    parts.push({ text: `Requires any of: ${condition.anyPermission.join(', ')}`, type: 'permission' });
+  }
+  
+  if (condition.allPermissions && condition.allPermissions.length > 0) {
+    parts.push({ text: `Requires all of: ${condition.allPermissions.join(', ')}`, type: 'permission' });
+  }
+  
+  if (condition.component) {
+    parts.push({ text: `Component "${condition.component}" must be enabled`, type: 'component' });
+  }
+  
+  if (condition.linkage) {
+    parts.push({ text: `Linkage: ${condition.linkage}`, type: 'linkage' });
+  }
+  
+  if (condition.policy) {
+    parts.push({ text: `Requires policy: ${condition.policy}`, type: 'policy' });
+  }
+  
+  if (parts.length === 0) {
+    return [{ text: 'No specific requirements', type: 'unknown' }];
+  }
+  
+  return parts;
+}
+
+/**
+ * Format a single access condition into human-readable text (legacy for complex compositions)
+ */
+function formatCondition(condition: AccessCondition): { text: string; type: string } {
+  const parts = formatConditionParts(condition);
+  if (parts.length === 0) {
+    return { text: 'No specific requirements', type: 'unknown' };
+  }
+  if (parts.length === 1) {
+    return parts[0];
+  }
+  return { 
+    text: parts.map(p => p.text).join(' AND '), 
+    type: parts.length > 1 ? 'complex' : parts[0].type 
+  };
+}
+
+/**
+ * Format an access requirement into an array of parts for rendering with individual badges
+ */
+function formatRequirementParts(req: AccessRequirement): ConditionPart[] {
   // Check if it's an "any" composition
   if ('any' in req && Array.isArray(req.any)) {
     const formatted = req.any.map(c => formatCondition(c).text);
-    return { 
+    return [{ 
       text: `Must meet ANY of: ${formatted.join(' OR ')}`, 
       type: 'complex' 
-    };
+    }];
   }
   
   // Check if it's an "all" composition
   if ('all' in req && Array.isArray(req.all)) {
     const formatted = req.all.map(c => formatCondition(c).text);
-    return { 
+    return [{ 
       text: `Must meet ALL of: ${formatted.join(' AND ')}`, 
       type: 'complex' 
-    };
+    }];
   }
   
-  // Otherwise it's a single condition
-  return formatCondition(req as AccessCondition);
+  // Otherwise it's a single condition - return individual parts
+  return formatConditionParts(req as AccessCondition);
 }
 
 function getRequirementBadgeVariant(type: string) {
@@ -93,6 +114,8 @@ function getRequirementBadgeVariant(type: string) {
       return 'outline';
     case 'linkage':
       return 'destructive';
+    case 'policy':
+      return 'outline';
     case 'complex':
       return 'default';
     default:
@@ -189,22 +212,27 @@ export default function PoliciesPage() {
                     {policy.description || '-'}
                   </TableCell>
                   <TableCell>
-                    <div className="space-y-1">
-                      {policy.requirements.map((req, index) => {
-                        const formatted = formatRequirement(req);
+                    <div className="space-y-2">
+                      {policy.requirements.map((req, reqIndex) => {
+                        const parts = formatRequirementParts(req);
                         return (
                           <div
-                            key={index}
-                            className="flex items-center gap-2 flex-wrap text-sm"
-                            data-testid={`requirement-${policy.id}-${index}`}
+                            key={reqIndex}
+                            className="flex items-start gap-2 flex-wrap text-sm"
+                            data-testid={`requirement-${policy.id}-${reqIndex}`}
                           >
-                            <Badge 
-                              variant={getRequirementBadgeVariant(formatted.type)}
-                              className="text-xs"
-                            >
-                              {formatted.type}
-                            </Badge>
-                            <span>{formatted.text}</span>
+                            {parts.map((part, partIndex) => (
+                              <div key={partIndex} className="flex items-center gap-1">
+                                {partIndex > 0 && <span className="text-muted-foreground text-xs">AND</span>}
+                                <Badge 
+                                  variant={getRequirementBadgeVariant(part.type)}
+                                  className="text-xs"
+                                >
+                                  {part.type}
+                                </Badge>
+                                <span>{part.text}</span>
+                              </div>
+                            ))}
                           </div>
                         );
                       })}
