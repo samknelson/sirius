@@ -347,7 +347,7 @@ function WorkerHoursContent() {
                 <TableHead>Employment Status</TableHead>
                 <TableHead>Home</TableHead>
                 <TableHead className="text-right">Hours</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                {canEdit && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -366,41 +366,39 @@ function WorkerHoursContent() {
                     )}
                   </TableCell>
                   <TableCell className="text-right">{entry.hours?.toFixed(2) || "-"}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Link href={`/hours/${entry.id}`}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          data-testid={`button-view-hours-${entry.id}`}
-                        >
-                          <Eye size={16} />
-                        </Button>
-                      </Link>
-                      {canEdit && (
-                        <>
-                          <Link href={`/hours/${entry.id}/edit`}>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              data-testid={`button-edit-hours-${entry.id}`}
-                            >
-                              <Pencil size={16} />
-                            </Button>
-                          </Link>
-                          <Link href={`/hours/${entry.id}/delete`}>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              data-testid={`button-delete-hours-${entry.id}`}
-                            >
-                              <Trash2 size={16} className="text-destructive" />
-                            </Button>
-                          </Link>
-                        </>
-                      )}
-                    </div>
-                  </TableCell>
+                  {canEdit && (
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Link href={`/hours/${entry.id}`}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`button-view-hours-${entry.id}`}
+                          >
+                            <Eye size={16} />
+                          </Button>
+                        </Link>
+                        <Link href={`/hours/${entry.id}/edit`}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`button-edit-hours-${entry.id}`}
+                          >
+                            <Pencil size={16} />
+                          </Button>
+                        </Link>
+                        <Link href={`/hours/${entry.id}/delete`}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`button-delete-hours-${entry.id}`}
+                          >
+                            <Trash2 size={16} className="text-destructive" />
+                          </Button>
+                        </Link>
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
