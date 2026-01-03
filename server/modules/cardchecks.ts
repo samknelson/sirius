@@ -42,7 +42,7 @@ export function registerCardchecksRoutes(
     }
   });
 
-  app.post("/api/workers/:workerId/cardchecks", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
+  app.post("/api/workers/:workerId/cardchecks", requireAuth, cardcheckComponent, requireAccess('worker.edit', (req: any) => req.params.workerId), async (req, res) => {
     try {
       const { workerId } = req.params;
       
@@ -71,7 +71,10 @@ export function registerCardchecksRoutes(
     }
   });
 
-  app.patch("/api/cardcheck/:id", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
+  app.patch("/api/cardcheck/:id", requireAuth, cardcheckComponent, requireAccess('worker.edit', async (req: any) => {
+    const cardcheck = await storage.cardchecks.getCardcheckById(req.params.id);
+    return cardcheck?.workerId;
+  }), async (req, res) => {
     try {
       const { id } = req.params;
       

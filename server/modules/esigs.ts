@@ -91,6 +91,7 @@ export function registerEsigsRoutes(
   app: Express,
   requireAuth: any,
   requirePermission: any,
+  requireAccess: any,
   storage: IStorage
 ) {
   app.post("/api/esigs", requireAuth, async (req, res) => {
