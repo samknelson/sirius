@@ -41,33 +41,42 @@ export function registerFileRoutes(
         // Check access based on entity type and id if provided
         // This allows users to upload files to entities they can edit
         if (entityType && entityId) {
-          let policyToCheck: string | null = null;
-          
           // Map entity types to their edit policies
-          if (entityType === 'esig') {
-            policyToCheck = 'esig.edit';
-          } else if (entityType === 'cardcheck') {
-            policyToCheck = 'cardcheck.edit';
-          } else if (entityType === 'worker') {
-            policyToCheck = 'worker.edit';
-          } else if (entityType === 'employer') {
-            policyToCheck = 'employer.view'; // employers may have different rules
-          }
-          // Add more entity types as needed
+          const entityPolicyMap: Record<string, string> = {
+            'esig': 'esig.edit',
+            'cardcheck': 'cardcheck.edit',
+            'worker': 'worker.edit',
+            'employer': 'employer.view',
+            // Add more entity types as needed
+          };
           
-          if (policyToCheck) {
-            const accessResult = await checkAccess(policyToCheck, context.user, entityId);
-            if (!accessResult.granted) {
-              logger.warn('File upload denied - insufficient entity access', {
-                service: 'files',
-                userId: (req.user as any).id,
-                entityType,
-                entityId,
-                policy: policyToCheck,
-              });
-              return res.status(403).json({ message: "Insufficient permissions to upload to this entity" });
-            }
+          const policyToCheck = entityPolicyMap[entityType];
+          
+          if (!policyToCheck) {
+            // Unknown entity type - deny access to prevent bypass
+            logger.warn('File upload denied - unrecognized entity type', {
+              service: 'files',
+              userId: (req.user as any).id,
+              entityType,
+              entityId,
+            });
+            return res.status(400).json({ message: "Unrecognized entity type" });
           }
+          
+          const accessResult = await checkAccess(policyToCheck, context.user, entityId);
+          if (!accessResult.granted) {
+            logger.warn('File upload denied - insufficient entity access', {
+              service: 'files',
+              userId: (req.user as any).id,
+              entityType,
+              entityId,
+              policy: policyToCheck,
+            });
+            return res.status(403).json({ message: "Insufficient permissions to upload to this entity" });
+          }
+        } else if (entityType || entityId) {
+          // Partial entity context provided - require both
+          return res.status(400).json({ message: "Both entityType and entityId are required for entity-scoped uploads" });
         } else {
           // No entity context - fall back to files.upload permission check
           const hasUploadPermission = await checkAccess('files.upload', context.user);
