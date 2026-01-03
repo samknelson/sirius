@@ -53,6 +53,13 @@ export interface AccessCondition {
   
   /** Required linkage to the entity (for entity-level checks) */
   linkage?: LinkagePredicate;
+  
+  /** 
+   * Reference another policy that must also pass.
+   * For entity-level policies, the same entityId is used.
+   * This enables composite policies like "requires employer.dispatch permission AND employer.mine policy".
+   */
+  policy?: string;
 }
 
 /**

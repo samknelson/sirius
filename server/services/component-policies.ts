@@ -1,0 +1,139 @@
+import { componentRegistry, ComponentDefinition, ComponentPolicy } from "../../shared/components";
+import { accessPolicyRegistry, AccessPolicy, AccessCondition, AccessRule, LinkagePredicate } from "../../shared/accessPolicies";
+import { isComponentEnabledSync } from "./component-cache";
+import { logger } from "../logger";
+
+const VALID_LINKAGES: Set<string> = new Set([
+  'ownsWorker', 'workerBenefitProvider', 'workerEmploymentHistory', 
+  'employerAssociation', 'providerAssociation', 'fileUploader',
+  'contactWorkerOwner', 'contactWorkerProvider', 'contactEmployerAssoc',
+  'contactProviderAssoc', 'cardcheckWorkerAccess', 'esigEntityAccess', 'fileEntityAccess'
+]);
+
+const VALID_ENTITY_TYPES: Set<string> = new Set([
+  'worker', 'employer', 'provider', 'policy', 'file', 'contact', 'cardcheck', 'esig'
+]);
+
+/**
+ * Validate a component policy definition
+ * Returns an error message if invalid, or null if valid
+ * 
+ * Note: Referenced policies are validated against existing registry entries.
+ * If a policy references another policy from the same component batch, 
+ * that reference may not exist yet - we log a warning but allow registration.
+ */
+function validatePolicy(policy: ComponentPolicy, componentId: string): string | null {
+  if (!policy.id) {
+    return `Policy in component '${componentId}' is missing an id`;
+  }
+  
+  if (policy.scope === 'entity' && !policy.entityType) {
+    return `Entity-scoped policy '${policy.id}' in component '${componentId}' is missing entityType`;
+  }
+  
+  if (policy.entityType && !VALID_ENTITY_TYPES.has(policy.entityType)) {
+    return `Policy '${policy.id}' in component '${componentId}' has invalid entityType: ${policy.entityType}`;
+  }
+  
+  for (const rule of policy.rules) {
+    if (rule.linkage && !VALID_LINKAGES.has(rule.linkage)) {
+      return `Policy '${policy.id}' in component '${componentId}' has invalid linkage: ${rule.linkage}`;
+    }
+    
+    // Check that referenced policies exist in the registry
+    // Note: Core policies should already be registered, component policies may be in same batch
+    if (rule.policy) {
+      if (!accessPolicyRegistry.has(rule.policy)) {
+        // Log warning for missing policy references
+        // This isn't necessarily an error - the referenced policy might be:
+        // 1. From the same component being registered in this batch
+        // 2. From another component that hasn't been enabled yet
+        logger.warn(`Policy '${policy.id}' references unknown policy '${rule.policy}'`, {
+          service: "component-policies",
+          componentId,
+          policyId: policy.id,
+          referencedPolicy: rule.policy
+        });
+      }
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Convert a ComponentPolicyRule to an AccessCondition
+ */
+function convertRule(rule: ComponentPolicy['rules'][0]): AccessCondition {
+  return {
+    authenticated: rule.authenticated,
+    permission: rule.permission,
+    anyPermission: rule.anyPermission,
+    allPermissions: rule.allPermissions,
+    component: rule.component,
+    linkage: rule.linkage as LinkagePredicate,
+    policy: rule.policy,
+  };
+}
+
+/**
+ * Sync component-defined policies to the access policy registry.
+ * Called during startup after components are loaded.
+ * Only registers policies for enabled components.
+ */
+export function syncComponentPolicies(): void {
+  const enabledComponents = componentRegistry.filter(component => 
+    isComponentEnabledSync(component.id) && component.policies && component.policies.length > 0
+  );
+
+  let registeredCount = 0;
+
+  for (const component of enabledComponents) {
+    for (const componentPolicy of component.policies!) {
+      // Validate policy definition
+      const validationError = validatePolicy(componentPolicy, component.id);
+      if (validationError) {
+        logger.error(`Invalid component policy: ${validationError}`, {
+          service: "component-policies",
+          componentId: component.id,
+          policyId: componentPolicy.id
+        });
+        continue; // Skip invalid policies
+      }
+      
+      if (!accessPolicyRegistry.has(componentPolicy.id)) {
+        const accessPolicy: AccessPolicy = {
+          id: componentPolicy.id,
+          name: componentPolicy.name,
+          description: componentPolicy.description,
+          scope: componentPolicy.scope,
+          entityType: componentPolicy.entityType as any,
+          rules: componentPolicy.rules.map(rule => convertRule(rule)) as AccessRule[],
+        };
+        
+        accessPolicyRegistry.register(accessPolicy);
+        registeredCount++;
+        
+        logger.debug(`Registered policy from component`, { 
+          service: "component-policies",
+          policyId: componentPolicy.id, 
+          componentId: component.id 
+        });
+      }
+    }
+  }
+
+  if (registeredCount > 0) {
+    logger.info(`Component policies registered`, { 
+      service: "component-policies",
+      count: registeredCount 
+    });
+  }
+}
+
+/**
+ * Get all components that define policies
+ */
+export function getComponentsWithPolicies(): ComponentDefinition[] {
+  return componentRegistry.filter(c => c.policies && c.policies.length > 0);
+}

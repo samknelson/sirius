@@ -11,6 +11,7 @@ import { captureRequestContext } from "./middleware/request-context";
 import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler, deleteExpiredHfeHandler, sweepExpiredBanEligHandler, syncBanActiveStatusHandler } from "./cron";
 import { loadComponentCache } from "./services/component-cache";
 import { syncComponentPermissions } from "./services/component-permissions";
+import { syncComponentPolicies } from "./services/component-policies";
 import { runMigrations } from "../scripts/migrate";
 import { initializeWebSocket } from "./services/websocket";
 import { getSession } from "./replitAuth";
@@ -181,6 +182,10 @@ app.use((req, res, next) => {
   // Register permissions from enabled components
   syncComponentPermissions();
   logger.info("Component permissions synced", { source: "startup" });
+
+  // Register policies from enabled components
+  syncComponentPolicies();
+  logger.info("Component policies synced", { source: "startup" });
 
   // Initialize dispatch eligibility plugin system
   await initializeDispatchEligSystem();

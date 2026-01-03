@@ -3,6 +3,25 @@ export interface ComponentPermission {
   description: string;
 }
 
+export interface ComponentPolicy {
+  id: string;
+  name: string;
+  description: string;
+  scope: 'route' | 'entity';
+  entityType?: string;
+  rules: ComponentPolicyRule[];
+}
+
+export interface ComponentPolicyRule {
+  permission?: string;
+  anyPermission?: string[];
+  allPermissions?: string[];
+  component?: string;
+  linkage?: string;
+  policy?: string;
+  authenticated?: boolean;
+}
+
 export interface ComponentDefinition {
   id: string;
   name: string;
@@ -12,6 +31,7 @@ export interface ComponentDefinition {
   managesSchema?: boolean;
   schemaManifest?: ComponentSchemaManifest;
   permissions?: ComponentPermission[];
+  policies?: ComponentPolicy[];
 }
 
 export interface ComponentConfig {
@@ -190,6 +210,30 @@ export const componentRegistry: ComponentDefinition[] = [
     permissions: [
       { key: "employer.dispatch", description: "Employer access to dispatch functionality" },
       { key: "employer.dispatch.manage", description: "Employer access to manage dispatch functionality" }
+    ],
+    policies: [
+      {
+        id: "employer.dispatch",
+        name: "Employer Dispatch Access",
+        description: "Access dispatch functionality for associated employers",
+        scope: "entity",
+        entityType: "employer",
+        rules: [
+          { permission: "staff" },
+          { permission: "employer.dispatch", policy: "employer.mine" }
+        ]
+      },
+      {
+        id: "employer.dispatch.manage",
+        name: "Employer Dispatch Management",
+        description: "Manage dispatch functionality for associated employers",
+        scope: "entity",
+        entityType: "employer",
+        rules: [
+          { permission: "staff" },
+          { permission: "employer.dispatch.manage", policy: "employer.mine" }
+        ]
+      }
     ]
   },
   {

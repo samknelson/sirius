@@ -481,6 +481,8 @@ interface EvaluationContext {
   storage: any;
   accessStorage: AccessControlStorage;
   checkComponent: ComponentChecker;
+  /** Track policies being evaluated to detect cycles */
+  evaluatingPolicies?: Set<string>;
 }
 
 /**
@@ -566,6 +568,62 @@ async function evaluateCondition(
       if (!hasLinkage) {
         return { passed: false, reason: 'Linkage check failed' };
       }
+    }
+  }
+
+  // Check referenced policy (with cycle detection)
+  if (condition.policy) {
+    // Clone the evaluation stack for this branch to avoid sibling branches corrupting state
+    const evaluatingPolicies = new Set(ctx.evaluatingPolicies || []);
+    
+    // Build cycle key using the referenced policy and current entityId context
+    const referencedCycleKey = ctx.entityId 
+      ? `${condition.policy}:${ctx.entityId}` 
+      : condition.policy;
+    
+    // Check for cycles BEFORE adding to set
+    if (evaluatingPolicies.has(referencedCycleKey)) {
+      logger.warn(`Cycle detected in policy evaluation: ${condition.policy}`, { 
+        service: SERVICE, 
+        policyId: ctx.policyId,
+        referencedPolicy: condition.policy 
+      });
+      return { passed: false, reason: `Cycle detected: ${condition.policy}` };
+    }
+    
+    // Get the referenced policy
+    const referencedPolicy = accessPolicyRegistry.get(condition.policy);
+    if (!referencedPolicy) {
+      return { passed: false, reason: `Referenced policy not found: ${condition.policy}` };
+    }
+    
+    // Add the referenced policy to the cloned set (push onto stack)
+    evaluatingPolicies.add(referencedCycleKey);
+    
+    // Build new context for the referenced policy evaluation
+    // IMPORTANT: Preserve entityId so entity-level policies work correctly
+    const nestedCtx: EvaluationContext = {
+      ...ctx,
+      policyId: condition.policy,
+      entityType: referencedPolicy.entityType || ctx.entityType,
+      entityId: ctx.entityId, // Explicitly preserve entityId for entity-scoped policies
+      evaluatingPolicies, // Pass the cloned set to avoid corrupting sibling branches
+    };
+    
+    // Evaluate each rule of the referenced policy (OR - any rule grants access)
+    let policyPassed = false;
+    for (const rule of referencedPolicy.rules) {
+      const result = await evaluateRule(rule, nestedCtx);
+      if (result.passed) {
+        policyPassed = true;
+        break;
+      }
+    }
+    
+    // No need to pop from set - we used a cloned set so it's discarded after this scope
+    
+    if (!policyPassed) {
+      return { passed: false, reason: `Referenced policy '${condition.policy}' denied access` };
     }
   }
 
