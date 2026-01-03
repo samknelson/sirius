@@ -25,6 +25,7 @@ async function evaluateLedgerEaAccess(ctx: PolicyContext): Promise<{ granted: bo
       policyId = 'worker.ledger';
       break;
     case 'provider':
+    case 'trust_provider':
       policyId = 'provider.ledger';
       break;
     default:
