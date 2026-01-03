@@ -81,15 +81,22 @@ export function registerPhoneNumberRoutes(
   });
 
   // GET /api/phone-numbers/:id - Get specific phone number
-  app.get("/api/phone-numbers/:id", requireAuth, requirePermission("staff"), async (req, res) => {
+  // Uses contact.view policy
+  app.get("/api/phone-numbers/:id", requireAuth, async (req, res, next) => {
+    if (!requireAccess) return next();
+    
+    // Get phone number to find contactId for access check
+    const phoneNumber = await storage.contacts.phoneNumbers.getPhoneNumber(req.params.id);
+    if (!phoneNumber) {
+      return res.status(404).json({ message: "Phone number not found" });
+    }
+    
+    // Store phone number on request for handler
+    (req as any).phoneRecord = phoneNumber;
+    return requireAccess('contact.view', () => phoneNumber.contactId)(req, res, next);
+  }, async (req, res) => {
     try {
-      const { id } = req.params;
-      const phoneNumber = await storage.contacts.phoneNumbers.getPhoneNumber(id);
-      
-      if (!phoneNumber) {
-        return res.status(404).json({ message: "Phone number not found" });
-      }
-      
+      const phoneNumber = (req as any).phoneRecord;
       res.json(phoneNumber);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch phone number" });
@@ -97,7 +104,11 @@ export function registerPhoneNumberRoutes(
   });
 
   // POST /api/contacts/:contactId/phone-numbers - Create new phone number for a contact
-  app.post("/api/contacts/:contactId/phone-numbers", requireAuth, requirePermission("staff"), async (req, res) => {
+  // Uses contact.edit policy with contactId from params
+  app.post("/api/contacts/:contactId/phone-numbers", requireAuth, async (req, res, next) => {
+    if (!requireAccess) return next();
+    return requireAccess('contact.edit', () => req.params.contactId)(req, res, next);
+  }, async (req, res) => {
     try {
       const { contactId } = req.params;
       
@@ -136,7 +147,20 @@ export function registerPhoneNumberRoutes(
   });
 
   // PUT /api/phone-numbers/:id - Update phone number
-  app.put("/api/phone-numbers/:id", requireAuth, requirePermission("staff"), async (req, res) => {
+  // Uses contact.edit policy - lookup phone number first to get contactId
+  app.put("/api/phone-numbers/:id", requireAuth, async (req, res, next) => {
+    if (!requireAccess) return next();
+    
+    // Get phone number to find contactId for access check
+    const phoneNumber = await storage.contacts.phoneNumbers.getPhoneNumber(req.params.id);
+    if (!phoneNumber) {
+      return res.status(404).json({ message: "Phone number not found" });
+    }
+    
+    // Store phone number on request
+    (req as any).phoneRecord = phoneNumber;
+    return requireAccess('contact.edit', () => phoneNumber.contactId)(req, res, next);
+  }, async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -185,15 +209,23 @@ export function registerPhoneNumberRoutes(
   });
 
   // PUT /api/phone-numbers/:id/set-primary - Set phone number as primary
-  app.put("/api/phone-numbers/:id/set-primary", requireAuth, requirePermission("staff"), async (req, res) => {
+  // Uses contact.edit policy - lookup phone number first to get contactId
+  app.put("/api/phone-numbers/:id/set-primary", requireAuth, async (req, res, next) => {
+    if (!requireAccess) return next();
+    
+    // Get phone number to find contactId for access check
+    const phoneNumber = await storage.contacts.phoneNumbers.getPhoneNumber(req.params.id);
+    if (!phoneNumber) {
+      return res.status(404).json({ message: "Phone number not found" });
+    }
+    
+    // Store phone number on request
+    (req as any).phoneRecord = phoneNumber;
+    return requireAccess('contact.edit', () => phoneNumber.contactId)(req, res, next);
+  }, async (req, res) => {
     try {
       const { id } = req.params;
-      
-      // First get the phone number to know the contactId
-      const currentPhoneNumber = await storage.contacts.phoneNumbers.getPhoneNumber(id);
-      if (!currentPhoneNumber) {
-        return res.status(404).json({ message: "Phone number not found" });
-      }
+      const currentPhoneNumber = (req as any).phoneRecord;
       
       const updatedPhoneNumber = await storage.contacts.phoneNumbers.setPhoneNumberAsPrimary(id, currentPhoneNumber.contactId);
       
@@ -211,7 +243,18 @@ export function registerPhoneNumberRoutes(
   });
 
   // DELETE /api/phone-numbers/:id - Delete phone number
-  app.delete("/api/phone-numbers/:id", requireAuth, requirePermission("staff"), async (req, res) => {
+  // Uses contact.edit policy - lookup phone number first to get contactId
+  app.delete("/api/phone-numbers/:id", requireAuth, async (req, res, next) => {
+    if (!requireAccess) return next();
+    
+    // Get phone number to find contactId for access check
+    const phoneNumber = await storage.contacts.phoneNumbers.getPhoneNumber(req.params.id);
+    if (!phoneNumber) {
+      return res.status(404).json({ message: "Phone number not found" });
+    }
+    
+    return requireAccess('contact.edit', () => phoneNumber.contactId)(req, res, next);
+  }, async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.contacts.phoneNumbers.deletePhoneNumber(id);
@@ -227,7 +270,20 @@ export function registerPhoneNumberRoutes(
   });
 
   // POST /api/phone-numbers/:id/revalidate - Re-validate phone number and update sms_optin record
-  app.post("/api/phone-numbers/:id/revalidate", requireAuth, requirePermission("staff"), async (req, res) => {
+  // Uses contact.edit policy - lookup phone number first to get contactId
+  app.post("/api/phone-numbers/:id/revalidate", requireAuth, async (req, res, next) => {
+    if (!requireAccess) return next();
+    
+    // Get phone number to find contactId for access check
+    const phoneNumber = await storage.contacts.phoneNumbers.getPhoneNumber(req.params.id);
+    if (!phoneNumber) {
+      return res.status(404).json({ message: "Phone number not found" });
+    }
+    
+    // Store phone number on request
+    (req as any).phoneRecord = phoneNumber;
+    return requireAccess('contact.edit', () => phoneNumber.contactId)(req, res, next);
+  }, async (req, res) => {
     try {
       const { id } = req.params;
       
