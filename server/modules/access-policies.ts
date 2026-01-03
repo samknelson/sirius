@@ -180,6 +180,16 @@ export function registerAccessPolicyRoutes(app: Express) {
         return res.status(500).json({ message: 'Access control not initialized' });
       }
 
+      // Resolve entity ID for employer_contact - policies need employer ID, not contact ID
+      let resolvedEntityId = entityId;
+      if (entityType === 'employer_contact') {
+        const employerContact = await storage.employerContacts.get(entityId);
+        if (!employerContact) {
+          return res.status(404).json({ message: 'Employer contact not found' });
+        }
+        resolvedEntityId = employerContact.employerId;
+      }
+
       // Security: First check if user has base access to this entity type
       // This prevents users from probing tab access for entities they can't access at all
       // Map entity types to their corresponding base access policies
@@ -187,7 +197,7 @@ export function registerAccessPolicyRoutes(app: Express) {
         worker: 'worker.view',
         employer: 'employer.view',
         provider: 'provider',
-        employer_contact: 'employer.view',
+        employer_contact: 'employer.manage',
         provider_contact: 'provider',
         policy: 'authenticated',
         event: 'authenticated',
@@ -203,7 +213,7 @@ export function registerAccessPolicyRoutes(app: Express) {
         user: 'admin',
       };
       const basePolicy = entityPolicyMap[entityType] || 'authenticated';
-      const baseAccessResult = await checkAccess(basePolicy, context.user, entityId);
+      const baseAccessResult = await checkAccess(basePolicy, context.user, resolvedEntityId);
       
       if (!baseAccessResult.granted) {
         // User has no access to this entity - return 403 to avoid oracle attacks
@@ -229,8 +239,8 @@ export function registerAccessPolicyRoutes(app: Express) {
         // Check policy or permission if component passed
         if (granted) {
           if (tab.policyId) {
-            // Check policy with entity context
-            const policyResult = await checkAccess(tab.policyId, context.user, entityId);
+            // Check policy with entity context (use resolved ID for employer_contact)
+            const policyResult = await checkAccess(tab.policyId, context.user, resolvedEntityId);
             granted = policyResult.granted;
             reason = policyResult.reason;
           } else if (tab.permission) {
