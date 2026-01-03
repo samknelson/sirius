@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useBtuCsgTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface BtuCsgRecord {
   id: string;
@@ -73,6 +74,10 @@ export function BtuCsgLayout({ activeTab, children }: BtuCsgLayoutProps) {
 
   // Hook must be called before any conditional returns (React rules of hooks)
   const { tabs } = useBtuCsgTabAccess(id || "");
+
+  // Set page title based on record name
+  const recordName = record ? `${record.firstName || ""} ${record.lastName || ""}`.trim() : "";
+  usePageTitle(recordName || undefined);
 
   const isLoading = recordLoading;
   const isError = !!recordError;

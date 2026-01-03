@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import type { DispatchJobWithRelations } from "../../../../server/storage/dispatch-jobs";
 import { useDispatchJobTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface DispatchJobLayoutContextValue {
   job: DispatchJobWithRelations;
@@ -54,6 +55,9 @@ export function DispatchJobLayout({ activeTab, children }: DispatchJobLayoutProp
 
   // Hook must be called before any conditional returns (React rules of hooks)
   const { tabs: mainTabs } = useDispatchJobTabAccess(id || "");
+
+  // Set page title based on job title
+  usePageTitle(job?.title);
 
   const isLoading = jobLoading;
   const isError = !!jobError;

@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import type { BargainingUnit } from "@shared/schema";
 import { createContext, useContext } from "react";
 import { useBargainingUnitTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface BargainingUnitLayoutContextValue {
   bargainingUnit: BargainingUnit;
@@ -38,6 +39,9 @@ export default function BargainingUnitLayout({ children, activeTab }: Bargaining
 
   // Hook must be called before any conditional returns (React rules of hooks)
   const { tabs: mainTabs } = useBargainingUnitTabAccess(id || "");
+
+  // Set page title based on bargaining unit name
+  usePageTitle(bargainingUnit?.name);
 
   if (isLoading || !bargainingUnit) {
     return (

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ChevronRight, FileText } from "lucide-react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface EALayoutProps {
   activeTab: string;
@@ -68,6 +69,9 @@ export function EALayout({ activeTab, children }: EALayoutProps) {
     queryKey: ['/api/workers', ea?.entityId],
     enabled: !!ea?.entityId && ea?.entityType === 'worker',
   });
+
+  // Set page title based on account name
+  usePageTitle(account?.name);
 
   if (eaLoading) {
     return (

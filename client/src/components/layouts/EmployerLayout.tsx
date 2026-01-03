@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BookmarkButton } from "@/components/ui/bookmark-button";
 import { DebugRecordViewer } from "@/components/debug/DebugRecordViewer";
 import { useEmployerTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface EmployerLayoutContextValue {
   employer: Employer;
@@ -53,6 +54,9 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
   } = useEmployerTabAccess(id || '');
 
   const isLoading = employerLoading || tabAccessLoading;
+
+  // Set page title based on employer name
+  usePageTitle(employer?.name);
 
   // Terminology is now applied centrally in useTabAccess hook
   const mainTabs = tabs;

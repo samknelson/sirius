@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BookmarkButton } from "@/components/ui/bookmark-button";
 import { DebugRecordViewer } from "@/components/debug/DebugRecordViewer";
 import { useWorkerTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface WorkerLayoutContextValue {
   worker: Worker;
@@ -68,6 +69,12 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
 
   const isLoading = workerLoading || tabsLoading;
   const isError = !!workerError;
+
+  // Set page title based on worker name
+  const workerName = contact
+    ? `${contact.given || ""} ${contact.family || ""}`.trim()
+    : worker?.id || "";
+  usePageTitle(workerName || undefined);
 
   // Terminology is now applied centrally in useTabAccess hook
   const mainTabs = tabs;

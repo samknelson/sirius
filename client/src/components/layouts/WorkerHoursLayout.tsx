@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmploymentStatus } from "@/lib/entity-types";
 import { useWorkerHoursTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface WorkerHoursEntry {
   id: string;
@@ -64,6 +65,12 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
 
   // Hook must be called before any conditional returns (React rules of hooks)
   const { tabs: mainTabs } = useWorkerHoursTabAccess(hoursId || "");
+
+  // Set page title based on hours entry period
+  const hoursTitle = hoursEntry 
+    ? `${getMonthName(hoursEntry.month)} ${hoursEntry.year}` 
+    : undefined;
+  usePageTitle(hoursTitle);
 
   const isError = !!error;
 

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Users } from "lucide-react";
 import { createContext, useContext } from "react";
 import { useProviderContactTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface Contact {
   id: string;
@@ -81,6 +82,12 @@ export function TrustProviderContactLayout({ children, activeTab }: TrustProvide
 
   // Hook must be called before any conditional returns (React rules of hooks)
   const { tabs: mainTabs, subTabs: tabSubTabs } = useProviderContactTabAccess(id || "");
+
+  // Set page title based on contact name
+  const contactName = trustProviderContact?.contact
+    ? `${trustProviderContact.contact.given || ""} ${trustProviderContact.contact.family || ""}`.trim() || trustProviderContact.contact.displayName
+    : "";
+  usePageTitle(contactName || undefined);
 
   if (isLoading) {
     return (

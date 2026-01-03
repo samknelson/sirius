@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUserTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface UserDetails {
   id: string;
@@ -77,6 +78,10 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
 
   // Hook must be called before any conditional returns (React rules of hooks)
   const { tabs: mainTabs, subTabs: tabSubTabs } = useUserTabAccess(id || "");
+
+  // Set page title based on user name
+  const userName = user ? `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email || "" : "";
+  usePageTitle(userName || undefined);
 
   const isLoading = userLoading || contactLoading;
   const isError = !!userError;

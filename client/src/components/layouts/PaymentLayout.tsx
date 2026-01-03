@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getPaymentTitle } from "@/lib/payment-utils";
 import { useLedgerPaymentTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface PaymentLayoutContextValue {
   payment: LedgerPayment;
@@ -44,6 +45,11 @@ export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
 
   // Hook must be called before any conditional returns (React rules of hooks)
   const { tabs: mainTabs } = useLedgerPaymentTabAccess(id || "");
+
+  // Set page title based on payment title
+  const paymentTypeForTitle = paymentTypes.find(t => t.id === payment?.paymentType);
+  const pageTitleText = payment ? getPaymentTitle(payment, paymentTypeForTitle) : undefined;
+  usePageTitle(pageTitleText);
 
   const isLoading = isLoadingPayment || isLoadingTypes;
   const isError = !!paymentError;

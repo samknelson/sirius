@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePolicyTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface PolicyLayoutContextValue {
   policy: Policy;
@@ -45,6 +46,9 @@ export function PolicyLayout({ activeTab, children }: PolicyLayoutProps) {
 
   // Hook must be called before any conditional returns (React rules of hooks)
   const { tabs } = usePolicyTabAccess(id || "");
+
+  // Set page title based on policy name
+  usePageTitle(policy?.name);
 
   const isLoading = policyLoading;
   const isError = !!policyError;

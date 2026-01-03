@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import type { Event, EventType, EventOccurrence } from "@shared/schema";
 import { createContext, useContext } from "react";
 import { useEventTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 const iconMap: Record<string, LucideIcon> = {
   Calendar, Users, MapPin, Video, Presentation, Mic, Ticket, Star, Heart, Clock,
@@ -52,6 +53,9 @@ export default function EventLayout({ children, activeTab }: EventLayoutProps) {
   });
 
   const { tabs: mainTabs } = useEventTabAccess(id);
+
+  // Set page title based on event title
+  usePageTitle(event?.title);
 
   const getEventType = (eventTypeId: string | null) => {
     if (!eventTypeId) return undefined;

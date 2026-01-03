@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import type { TrustProvider } from "@shared/schema";
 import { createContext, useContext, useMemo } from "react";
 import { useProviderTabAccess, ResolvedTab } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface TrustProviderLayoutContextValue {
   provider: TrustProvider | undefined;
@@ -59,6 +60,9 @@ export default function TrustProviderLayout({ children, activeTab }: TrustProvid
   }, [activeTab, getActiveRoot]);
 
   const subTabs = activeRoot?.children;
+
+  // Set page title based on provider name
+  usePageTitle(provider?.name);
 
   if (isLoading || !provider) {
     return (

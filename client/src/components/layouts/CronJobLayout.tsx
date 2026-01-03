@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { CronJob } from "@/lib/cron-types";
 import { useCronJobTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface CronJobLayoutContextValue {
   job: CronJob;
@@ -47,6 +48,9 @@ export function CronJobLayout({ activeTab, children }: CronJobLayoutProps) {
 
   // Hook must be called before any conditional returns (React rules of hooks)
   const { tabs } = useCronJobTabAccess(name ? encodeURIComponent(name) : "");
+
+  // Set page title based on cron job name
+  usePageTitle(job?.name);
 
   const isError = !!error;
 

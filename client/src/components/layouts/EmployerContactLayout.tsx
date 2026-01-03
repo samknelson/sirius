@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEmployerContactTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface EmployerContactDetail {
   id: string;
@@ -67,6 +68,12 @@ export function EmployerContactLayout({ activeTab, children }: EmployerContactLa
 
   // Hook must be called before any conditional returns (React rules of hooks)
   const { tabs: mainTabs, subTabs: tabSubTabs } = useEmployerContactTabAccess(id || "");
+
+  // Set page title based on contact name
+  const contactName = employerContact?.contact
+    ? `${employerContact.contact.given || ""} ${employerContact.contact.family || ""}`.trim() || employerContact.contact.displayName
+    : "";
+  usePageTitle(contactName || undefined);
 
   // Error/Not found state
   if (error) {

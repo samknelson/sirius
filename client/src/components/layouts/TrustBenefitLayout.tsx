@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTrustBenefitTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface TrustBenefitLayoutContextValue {
   benefit: TrustBenefit;
@@ -45,6 +46,9 @@ export function TrustBenefitLayout({ activeTab, children }: TrustBenefitLayoutPr
 
   // Hook must be called before any conditional returns (React rules of hooks)
   const { tabs } = useTrustBenefitTabAccess(id || "");
+
+  // Set page title based on benefit name
+  usePageTitle(benefit?.name);
 
   const isLoading = benefitLoading;
   const isError = !!benefitError;

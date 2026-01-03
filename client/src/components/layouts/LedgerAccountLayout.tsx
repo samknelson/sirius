@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LedgerAccountWithDetails } from "@/lib/ledger-types";
 import { useLedgerAccountTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface LedgerAccountLayoutContextValue {
   account: LedgerAccountWithDetails;
@@ -45,6 +46,9 @@ export function LedgerAccountLayout({ activeTab, children }: LedgerAccountLayout
 
   // Hook must be called before any conditional returns (React rules of hooks)
   const { tabs } = useLedgerAccountTabAccess(id || "");
+
+  // Set page title based on account name
+  usePageTitle(account?.name);
 
   const isLoading = accountLoading;
   const isError = !!accountError;

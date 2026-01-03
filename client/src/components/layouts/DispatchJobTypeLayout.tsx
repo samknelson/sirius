@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import type { DispatchJobType, JobTypeData } from "@shared/schema";
 import { createContext, useContext } from "react";
 import { useDispatchJobTypeTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 const iconMap: Record<string, LucideIcon> = {
   Briefcase, Truck, HardHat, Wrench, Clock, Calendar, ClipboardList, Package, MapPin, Users,
@@ -42,6 +43,9 @@ export default function DispatchJobTypeLayout({ children, activeTab }: DispatchJ
 
   // Hook must be called before any conditional returns (React rules of hooks)
   const { tabs: mainTabs } = useDispatchJobTypeTabAccess(id || "");
+
+  // Set page title based on job type name
+  usePageTitle(jobType?.name);
 
   const jobTypeData = jobType?.data as JobTypeData | undefined;
   const IconComponent = jobTypeData?.icon ? iconMap[jobTypeData.icon] || Briefcase : Briefcase;

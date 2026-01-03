@@ -9,6 +9,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useState, useMemo } from "react";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import {
   configSections,
   getAllPoliciesNeeded,
@@ -31,6 +32,9 @@ interface ComponentConfig {
 export default function ConfigurationLayout({ children }: ConfigurationLayoutProps) {
   const [location] = useLocation();
   const { hasPermission } = useAuth();
+  
+  // Set page title for configuration section
+  usePageTitle("Configuration");
   
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
