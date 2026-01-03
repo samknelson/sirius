@@ -1,33 +1,13 @@
 /**
- * Unified Access Policy Framework
+ * Access Policy Types
  * 
- * A single declarative policy system that works for both:
- * - Route-level access control (Express middleware)
- * - Entity-level access control (on-demand checks with caching)
+ * Core types for the access policy system. Policies are defined as modular files
+ * in shared/access-policies/ with custom evaluate functions.
  * 
- * Policies are defined declaratively and evaluated by a unified engine.
+ * LEGACY NOTE: The declarative registry (accessPolicyRegistry) and related types
+ * (AccessPolicy, AccessRule, etc.) are retained for backwards compatibility with
+ * the policy listing API. New policies should use the modular system exclusively.
  */
-
-/**
- * Linkage predicate types - define how a user can be associated with an entity
- * Used for entity-level access checks (e.g., "can this user view worker X?")
- */
-export type LinkagePredicate = 
-  | 'ownsWorker'              // User's email matches worker's contact email
-  | 'workerBenefitProvider'   // User is a provider for a benefit the worker receives
-  | 'workerEmploymentHistory' // User (as worker) has employment history at this employer
-  | 'employerAssociation'     // User is an employer contact for this employer
-  | 'providerAssociation'     // User is a trust provider contact
-  | 'fileUploader'            // User uploaded the file
-  | 'contactWorkerOwner'      // User owns a worker that uses this contact
-  | 'contactWorkerProvider'   // User is a provider for a worker that uses this contact
-  | 'contactEmployerAssoc'    // User is associated with an employer that uses this contact
-  | 'contactProviderAssoc'    // User is associated with a provider that uses this contact
-  | 'cardcheckWorkerAccess'   // Delegates to worker.view/edit via cardcheck.workerId
-  | 'esigEntityAccess'        // Delegates to entity policy based on esig doc_type
-  | 'fileEntityAccess'        // Delegates to entity policy based on file entity_type
-  | 'dncWorkerOwner'          // User owns the worker associated with this DNC record
-  | 'dncEmployerAssoc';       // User is associated with the employer on this DNC record
 
 /**
  * Entity types that can have entity-level access policies
@@ -70,8 +50,11 @@ export interface AccessCondition {
   /** Required component to be enabled */
   component?: string;
   
-  /** Required linkage to the entity (for entity-level checks) */
-  linkage?: LinkagePredicate;
+  /** 
+   * Legacy linkage predicate (deprecated - use modular policies with custom evaluate functions)
+   * Retained for backwards compatibility with existing declarative policy definitions.
+   */
+  linkage?: string;
   
   /** 
    * Reference another policy that must also pass.
@@ -262,29 +245,6 @@ export function permissionPolicy(
   );
 }
 
-/**
- * Helper to check if a condition requires linkage evaluation
- */
-export function conditionRequiresLinkage(condition: AccessCondition): boolean {
-  return !!condition.linkage;
-}
-
-/**
- * Helper to check if a rule requires linkage evaluation
- */
-export function ruleRequiresLinkage(rule: AccessRule): boolean {
-  if ('any' in rule) {
-    return rule.any.some(conditionRequiresLinkage);
-  }
-  if ('all' in rule) {
-    return rule.all.some(conditionRequiresLinkage);
-  }
-  return conditionRequiresLinkage(rule);
-}
-
-/**
- * Helper to check if a policy requires entity context
- */
-export function policyRequiresEntityContext(policy: AccessPolicy): boolean {
-  return policy.scope === 'entity' || policy.rules.some(ruleRequiresLinkage);
-}
+// NOTE: conditionRequiresLinkage, ruleRequiresLinkage, and policyRequiresEntityContext
+// functions were removed as they were only used by the legacy declarative evaluator.
+// All policy evaluation now uses modular policies in shared/access-policies/.
