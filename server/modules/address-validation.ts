@@ -22,8 +22,8 @@ export function registerAddressValidationRoutes(
   requireAuth: AuthMiddleware, 
   requirePermission: PermissionMiddleware
 ) {
-  // POST /api/addresses/parse - Parse a raw address string
-  app.post("/api/addresses/parse", requireAuth, requirePermission("staff"), async (req, res) => {
+  // POST /api/addresses/parse - Parse a raw address string (any authenticated user can parse)
+  app.post("/api/addresses/parse", requireAuth, async (req, res) => {
     try {
       const parseRequest: ParseAddressRequest = req.body;
       
@@ -44,8 +44,8 @@ export function registerAddressValidationRoutes(
     }
   });
 
-  // POST /api/addresses/validate - Validate an address
-  app.post("/api/addresses/validate", requireAuth, requirePermission("staff"), async (req, res) => {
+  // POST /api/addresses/validate - Validate an address (any authenticated user can validate)
+  app.post("/api/addresses/validate", requireAuth, async (req, res) => {
     try {
       const addressData = addressInputSchema.parse(req.body);
       
