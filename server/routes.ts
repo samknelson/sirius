@@ -432,13 +432,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // PUT /api/workers/:id - Update a worker's contact name, email, birth date, SSN, or gender
-  // Uses worker.edit policy which allows staff or workers editing their own record
-  app.put("/api/workers/:id", requireAuth, requireAccess('worker.edit', (req) => req.params.id), async (req, res) => {
+  // Email updates require staff permission; other fields allow worker self-service via worker.edit
+  app.put("/api/workers/:id", requireAuth, async (req, res, next) => {
+    const { email } = req.body;
+    
+    // Email updates are staff-only (emails shouldn't be self-service editable)
+    if (email !== undefined) {
+      return requirePermission("staff")(req, res, next);
+    }
+    
+    // Other fields use worker.edit policy (allows staff or workers editing their own record)
+    return requireAccess('worker.edit', (req: any) => req.params.id)(req, res, next);
+  }, async (req, res) => {
     try {
       const { id } = req.params;
       const { name, nameComponents, email, birthDate, ssn, gender, genderNota } = req.body;
       
-      // Handle email updates
+      // Handle email updates (staff only)
       if (email !== undefined) {
         const worker = await storage.workers.updateWorkerContactEmail(id, email);
         
