@@ -138,7 +138,7 @@ export function registerLedgerStripeRoutes(app: Express) {
     }
   });
 
-  app.get("/api/employers/:id/ledger/stripe/customer", requireAccess('ledger.stripe.admin'), async (req: Request, res: Response) => {
+  app.get("/api/employers/:id/ledger/stripe/customer", requireAccess('ledger.stripe.employer', (req) => req.params.id), async (req: Request, res: Response) => {
     try {
       const { id: employerId } = req.params;
       
