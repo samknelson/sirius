@@ -833,7 +833,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute policy="employer.manage">
           <AuthenticatedLayout>
             <EmployerContactView />
           </AuthenticatedLayout>
@@ -841,7 +841,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/edit">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute policy="employer.manage">
           <AuthenticatedLayout>
             <EmployerContactEdit />
           </AuthenticatedLayout>
@@ -849,7 +849,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/name">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute policy="employer.manage">
           <AuthenticatedLayout>
             <EmployerContactName />
           </AuthenticatedLayout>
@@ -857,7 +857,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/email">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute policy="employer.manage">
           <AuthenticatedLayout>
             <EmployerContactEmail />
           </AuthenticatedLayout>
@@ -865,7 +865,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/phone-numbers">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute policy="employer.manage">
           <AuthenticatedLayout>
             <EmployerContactPhoneNumbers />
           </AuthenticatedLayout>
@@ -873,7 +873,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/addresses">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute policy="employer.manage">
           <AuthenticatedLayout>
             <EmployerContactAddresses />
           </AuthenticatedLayout>

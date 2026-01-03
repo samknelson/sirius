@@ -302,12 +302,12 @@ export const workerHoursTabTree: HierarchicalTab[] = [
  * Employer contact entity tab tree
  */
 export const employerContactTabTree: HierarchicalTab[] = [
-  { id: 'view', label: 'View', hrefTemplate: '/employer-contacts/{id}', permission: 'staff' },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/employer-contacts/{id}/edit', permission: 'employers.edit' },
-  { id: 'name', label: 'Name', hrefTemplate: '/employer-contacts/{id}/name', permission: 'employers.edit' },
-  { id: 'email', label: 'Email', hrefTemplate: '/employer-contacts/{id}/email', permission: 'employers.edit' },
-  { id: 'phone-numbers', label: 'Phone Numbers', hrefTemplate: '/employer-contacts/{id}/phone-numbers', permission: 'employers.edit' },
-  { id: 'addresses', label: 'Addresses', hrefTemplate: '/employer-contacts/{id}/addresses', permission: 'employers.edit' },
+  { id: 'view', label: 'View', hrefTemplate: '/employer-contacts/{id}', policyId: 'employer.manage' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/employer-contacts/{id}/edit', policyId: 'employer.manage' },
+  { id: 'name', label: 'Name', hrefTemplate: '/employer-contacts/{id}/name', policyId: 'employer.manage' },
+  { id: 'email', label: 'Email', hrefTemplate: '/employer-contacts/{id}/email', policyId: 'employer.manage' },
+  { id: 'phone-numbers', label: 'Phone Numbers', hrefTemplate: '/employer-contacts/{id}/phone-numbers', policyId: 'employer.manage' },
+  { id: 'addresses', label: 'Addresses', hrefTemplate: '/employer-contacts/{id}/addresses', policyId: 'employer.manage' },
   { 
     id: 'comm', 
     label: 'Comm', 
@@ -321,7 +321,7 @@ export const employerContactTabTree: HierarchicalTab[] = [
       { id: 'send-inapp', label: 'Send In-App', hrefTemplate: '/employer-contacts/{id}/comm/send-inapp', permission: 'communication.send' },
     ],
   },
-  { id: 'user', label: 'User', hrefTemplate: '/employer-contacts/{id}/user', permission: 'users.view' },
+  { id: 'user', label: 'User', hrefTemplate: '/employer-contacts/{id}/user', policyId: 'employer.manage' },
 ];
 
 /**
