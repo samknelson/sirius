@@ -21,8 +21,8 @@ export function registerLedgerAccountRoutes(app: Express) {
       res.status(500).json({ message: "Failed to fetch currencies" });
     }
   });
-  // GET /api/ledger/accounts - Get all ledger accounts
-  app.get("/api/ledger/accounts", requireComponent("ledger"), requireAccess('ledger.staff'), async (req, res) => {
+  // GET /api/ledger/accounts - Get all ledger accounts (accessible to all authenticated users)
+  app.get("/api/ledger/accounts", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
     try {
       const accounts = await storage.ledger.accounts.getAll();
       res.json(accounts);
