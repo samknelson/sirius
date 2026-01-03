@@ -56,21 +56,10 @@ defineRoutePolicy(
 
 // --- Employer Management ---
 
-// Route-level policy for viewing employer pages (staff or employer contact)
+// Route-level policy for employer access (staff or employer contact)
 defineRoutePolicy(
-  'employersView',
-  'Employer View Access',
-  'Requires staff or employer permission to view employer data',
-  [
-    { authenticated: true, permission: 'staff' },
-    { authenticated: true, permission: 'employer', linkage: 'employerAssociation' },
-  ]
-);
-
-// Route-level policy for employer portal access (staff or employer contact)
-defineRoutePolicy(
-  'employerUser',
-  'Employer Portal Access',
+  'employer.view',
+  'Employer View',
   'Requires staff permission or employer permission with employer association',
   [
     { authenticated: true, permission: 'staff' },
