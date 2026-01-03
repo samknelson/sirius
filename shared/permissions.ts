@@ -199,6 +199,16 @@ export function initializePermissions(): void {
       key: 'worker.steward',
       description: 'Access to shop steward functionality for workers',
       module: 'core'
+    },
+    {
+      key: 'employer.dispatch',
+      description: 'Employer access to dispatch functionality',
+      module: 'core'
+    },
+    {
+      key: 'employer.dispatch.manage',
+      description: 'Employer access to manage dispatch functionality',
+      module: 'core'
     }
   ];
 
