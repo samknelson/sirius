@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertWorkerSchema, type InsertEmployer, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
+import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type InsertEmployer, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
 import { z } from "zod";
 import { registerUserRoutes } from "./modules/users";
 import { registerVariableRoutes } from "./modules/variables";
@@ -1058,6 +1058,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching worker HFE records:", error);
       res.status(500).json({ error: "Failed to fetch worker HFE records" });
+    }
+  });
+
+  // Worker-accessible dispatch HFE create route (worker.edit policy)
+  // Validate body first, then check permissions with validated workerId
+  app.post("/api/worker-dispatch-hfe", requireAuth, dispatchComponent, hfeComponent, async (req, res, next) => {
+    try {
+      const validated = insertWorkerDispatchHfeSchema.parse(req.body);
+      (req as any).validatedBody = validated;
+      next();
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid data", details: error.errors });
+      }
+      return res.status(400).json({ error: "Invalid request body" });
+    }
+  }, requireAccess('worker.edit', req => (req as any).validatedBody.workerId), async (req, res) => {
+    try {
+      const validated = (req as any).validatedBody;
+      const entry = await dispatchHfeStorage.create(validated);
+      res.status(201).json(entry);
+    } catch (error) {
+      console.error("Error creating HFE entry:", error);
+      res.status(500).json({ error: "Failed to create HFE entry" });
+    }
+  });
+
+  // Worker-accessible dispatch HFE update route (worker.edit policy)
+  app.put("/api/worker-dispatch-hfe/:id", requireAuth, dispatchComponent, hfeComponent, requireAccess('worker.edit', async (req) => {
+    const entry = await dispatchHfeStorage.get(req.params.id);
+    return entry?.workerId;
+  }), async (req, res) => {
+    try {
+      const validated = insertWorkerDispatchHfeSchema.partial().parse(req.body);
+      const entry = await dispatchHfeStorage.update(req.params.id, validated);
+      if (!entry) {
+        return res.status(404).json({ error: "HFE entry not found" });
+      }
+      res.json(entry);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid data", details: error.errors });
+      }
+      console.error("Error updating HFE entry:", error);
+      res.status(500).json({ error: "Failed to update HFE entry" });
+    }
+  });
+
+  // Worker-accessible dispatch HFE delete route (worker.edit policy)
+  app.delete("/api/worker-dispatch-hfe/:id", requireAuth, dispatchComponent, hfeComponent, requireAccess('worker.edit', async (req) => {
+    const entry = await dispatchHfeStorage.get(req.params.id);
+    return entry?.workerId;
+  }), async (req, res) => {
+    try {
+      const deleted = await dispatchHfeStorage.delete(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "HFE entry not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting HFE entry:", error);
+      res.status(500).json({ error: "Failed to delete HFE entry" });
     }
   });
 
