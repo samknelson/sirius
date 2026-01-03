@@ -26,7 +26,7 @@ export function useBargainingUnitLayout() {
 
 interface BargainingUnitLayoutProps {
   children: React.ReactNode;
-  activeTab: "view" | "edit" | "delete";
+  activeTab: string;
 }
 
 export default function BargainingUnitLayout({ children, activeTab }: BargainingUnitLayoutProps) {

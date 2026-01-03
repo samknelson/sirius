@@ -25,7 +25,7 @@ export function useTrustBenefitLayout() {
 }
 
 interface TrustBenefitLayoutProps {
-  activeTab: "details" | "edit";
+  activeTab: string;
   children: ReactNode;
 }
 

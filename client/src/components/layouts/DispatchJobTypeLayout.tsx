@@ -30,7 +30,7 @@ export function useDispatchJobTypeLayout() {
 
 interface DispatchJobTypeLayoutProps {
   children: React.ReactNode;
-  activeTab: "view" | "edit" | "delete" | "plugins";
+  activeTab: string;
 }
 
 export default function DispatchJobTypeLayout({ children, activeTab }: DispatchJobTypeLayoutProps) {

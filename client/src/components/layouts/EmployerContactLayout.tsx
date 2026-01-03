@@ -47,7 +47,7 @@ export function useEmployerContactLayout() {
 }
 
 interface EmployerContactLayoutProps {
-  activeTab: "view" | "edit" | "email" | "name" | "phone-numbers" | "addresses" | "user" | "comm" | "comm-history" | "send-sms" | "send-email" | "send-postal" | "send-inapp";
+  activeTab: string;
   children: ReactNode;
 }
 

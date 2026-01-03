@@ -28,7 +28,7 @@ export function usePaymentLayout() {
 
 interface PaymentLayoutProps {
   children: ReactNode;
-  activeTab: "view" | "edit";
+  activeTab: string;
 }
 
 export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {

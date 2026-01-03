@@ -37,7 +37,7 @@ export function useUserLayout() {
 }
 
 interface UserLayoutProps {
-  activeTab: "details" | "logs" | "email" | "phone-numbers" | "addresses" | "comm-history" | "send-sms" | "send-email" | "send-postal" | "send-inapp";
+  activeTab: string;
   children: ReactNode;
 }
 

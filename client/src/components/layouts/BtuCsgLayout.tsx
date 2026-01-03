@@ -46,7 +46,7 @@ export function useBtuCsgLayout() {
 }
 
 interface BtuCsgLayoutProps {
-  activeTab: "view" | "edit";
+  activeTab: string;
   children: ReactNode;
 }
 

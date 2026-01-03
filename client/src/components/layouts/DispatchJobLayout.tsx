@@ -26,7 +26,7 @@ export function useDispatchJobLayout() {
 }
 
 interface DispatchJobLayoutProps {
-  activeTab: "details" | "edit" | "dispatches" | "eligible-workers";
+  activeTab: string;
   children: ReactNode;
 }
 

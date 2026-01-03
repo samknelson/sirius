@@ -36,7 +36,7 @@ export function useEventLayout() {
 
 interface EventLayoutProps {
   children: React.ReactNode;
-  activeTab: "view" | "edit" | "delete" | "register" | "roster" | "self-register";
+  activeTab: string;
 }
 
 export default function EventLayout({ children, activeTab }: EventLayoutProps) {

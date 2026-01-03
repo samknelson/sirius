@@ -25,7 +25,7 @@ export function usePolicyLayout() {
 }
 
 interface PolicyLayoutProps {
-  activeTab: "details" | "edit" | "benefits";
+  activeTab: string;
   children: ReactNode;
 }
 

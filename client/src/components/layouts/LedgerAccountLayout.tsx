@@ -25,7 +25,7 @@ export function useLedgerAccountLayout() {
 }
 
 interface LedgerAccountLayoutProps {
-  activeTab: "view" | "edit" | "payments" | "transactions" | "participants" | "settings";
+  activeTab: string;
   children: ReactNode;
 }
 

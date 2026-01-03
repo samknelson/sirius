@@ -26,7 +26,7 @@ export function useCronJobLayout() {
 }
 
 interface CronJobLayoutProps {
-  activeTab: "view" | "settings" | "history";
+  activeTab: string;
   children: ReactNode;
 }
 

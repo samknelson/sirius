@@ -63,7 +63,7 @@ export function useTrustProviderContactLayout() {
 
 interface TrustProviderContactLayoutProps {
   children: React.ReactNode;
-  activeTab: "view" | "edit" | "name" | "email" | "phone-numbers" | "addresses" | "user" | "comm" | "comm-history" | "send-sms" | "send-email" | "send-postal" | "send-inapp";
+  activeTab: string;
 }
 
 export function TrustProviderContactLayout({ children, activeTab }: TrustProviderContactLayoutProps) {

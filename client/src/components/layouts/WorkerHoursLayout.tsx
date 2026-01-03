@@ -41,7 +41,7 @@ export function useWorkerHoursLayout() {
 
 interface WorkerHoursLayoutProps {
   children: ReactNode;
-  activeTab: "view" | "edit" | "delete";
+  activeTab: string;
 }
 
 function getMonthName(month: number): string {

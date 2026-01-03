@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface EALayoutProps {
-  activeTab: "view" | "invoices" | "payments" | "transactions";
+  activeTab: string;
   children: ReactNode;
 }
 
