@@ -120,10 +120,13 @@ export function registerAccessPolicyRoutes(app: Express) {
       }
       
       // For ledger EA entities, look up the EA to get its entity type and ID
+      // Set resolvedEntityId to the underlying entity (employer/worker/provider ID)
+      // so policy delegation can correctly evaluate entity-level access
       if (entityType === 'ea' && entityId) {
         const ea = await storage.ledger.ea.get(entityId as string);
         if (ea) {
           entityData = { entityType: ea.entityType, entityId: ea.entityId };
+          resolvedEntityId = ea.entityId;
         }
       }
       

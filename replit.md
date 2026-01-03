@@ -45,7 +45,7 @@ The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI),
 -   **Bookmarks**: User-specific, entity-agnostic bookmarking.
 -   **Dashboard Plugin System**: Extensible architecture for customizable widgets.
 -   **Components Feature Flag System**: Centralized registry for managing application features with dependency management and access control, cached in memory.
--   **Ledger System**: Manages financial transactions including accounts, payments, and integrity reports.
+-   **Ledger System**: Manages financial transactions including accounts, payments, and integrity reports. EA (Entity Account) access uses `ledger.ea.view` and `ledger.ea.edit` policies that delegate to entity-specific policies (`employer.ledger`, `worker.ledger`, `provider.ledger`) based on the EA's entity type. Staff-only admin pages (payment routes, payment types config, accounts list) use `ledger.staff` policy.
 -   **Wizards**: Flexible workflow state management for multi-step processes and report generation.
 -   **File Storage System**: Comprehensive file management with metadata and access control.
 -   **Worker Hours & Employment Views**: Tracks worker hours and employment history, with auto-sync for work status.
