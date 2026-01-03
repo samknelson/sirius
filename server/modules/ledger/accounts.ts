@@ -7,7 +7,7 @@ import { requireComponent } from "../components";
 
 export function registerLedgerAccountRoutes(app: Express) {
   // GET /api/ledger/currencies - Get all available currencies
-  app.get("/api/ledger/currencies", requireComponent("ledger"), requireAccess('ledger.staff'), async (req, res) => {
+  app.get("/api/ledger/currencies", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const currencies = getAllCurrencies().map(c => ({
         code: c.code,
@@ -32,7 +32,7 @@ export function registerLedgerAccountRoutes(app: Express) {
   });
 
   // GET /api/ledger/accounts/:id - Get a specific ledger account
-  app.get("/api/ledger/accounts/:id", requireComponent("ledger"), requireAccess('ledger.staff'), async (req, res) => {
+  app.get("/api/ledger/accounts/:id", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
       const account = await storage.ledger.accounts.get(id);
@@ -53,7 +53,7 @@ export function registerLedgerAccountRoutes(app: Express) {
   });
 
   // POST /api/ledger/accounts - Create a new ledger account
-  app.post("/api/ledger/accounts", requireComponent("ledger"), requireAccess('ledger.staff'), async (req, res) => {
+  app.post("/api/ledger/accounts", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const validatedData = insertLedgerAccountSchema.parse(req.body);
       
@@ -76,7 +76,7 @@ export function registerLedgerAccountRoutes(app: Express) {
   });
 
   // PUT /api/ledger/accounts/:id - Update a ledger account
-  app.put("/api/ledger/accounts/:id", requireComponent("ledger"), requireAccess('ledger.staff'), async (req, res) => {
+  app.put("/api/ledger/accounts/:id", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
       const validatedData = insertLedgerAccountSchema.partial().parse(req.body);
@@ -102,7 +102,7 @@ export function registerLedgerAccountRoutes(app: Express) {
   });
 
   // PATCH /api/ledger/accounts/:id - Update account data field only
-  app.patch("/api/ledger/accounts/:id", requireComponent("ledger"), requireAccess('ledger.staff'), async (req, res) => {
+  app.patch("/api/ledger/accounts/:id", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
       const { data } = req.body;
@@ -133,7 +133,7 @@ export function registerLedgerAccountRoutes(app: Express) {
   });
 
   // DELETE /api/ledger/accounts/:id - Delete a ledger account
-  app.delete("/api/ledger/accounts/:id", requireComponent("ledger"), requireAccess('ledger.staff'), async (req, res) => {
+  app.delete("/api/ledger/accounts/:id", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
       const success = await storage.ledger.accounts.delete(id);
@@ -150,7 +150,7 @@ export function registerLedgerAccountRoutes(app: Express) {
   });
 
   // GET /api/ledger/accounts/:id/participants - Get account participants with pagination
-  app.get("/api/ledger/accounts/:id/participants", requireComponent("ledger"), requireAccess('ledger.staff'), async (req, res) => {
+  app.get("/api/ledger/accounts/:id/participants", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
       const limit = parseInt(req.query.limit as string) || 20;
@@ -164,7 +164,7 @@ export function registerLedgerAccountRoutes(app: Express) {
   });
 
   // GET /api/ledger/accounts/:id/transactions - Get ledger entries for an account
-  app.get("/api/ledger/accounts/:id/transactions", requireComponent("ledger"), requireAccess('ledger.staff'), async (req, res) => {
+  app.get("/api/ledger/accounts/:id/transactions", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
       

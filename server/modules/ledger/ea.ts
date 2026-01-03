@@ -16,7 +16,7 @@ async function checkEaAccessInline(req: Request, res: Response, ea: { entityType
 
 export function registerLedgerEaRoutes(app: Express) {
   // GET /api/ledger/ea - Get all ledger EA entries (staff only)
-  app.get("/api/ledger/ea", requireComponent("ledger"), requireAccess('ledger.staff'), async (req, res) => {
+  app.get("/api/ledger/ea", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const entries = await storage.ledger.ea.getAll();
       res.json(entries);

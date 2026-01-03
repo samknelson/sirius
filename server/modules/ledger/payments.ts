@@ -61,7 +61,7 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<Ledg
 
 export function registerLedgerPaymentRoutes(app: Express) {
   // GET /api/ledger/payment-types - Get all payment types
-  app.get("/api/ledger/payment-types", requireComponent("ledger"), requireAccess('ledger.staff'), async (req, res) => {
+  app.get("/api/ledger/payment-types", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const paymentTypes = await storage.options.ledgerPaymentTypes.getAllLedgerPaymentTypes();
       res.json(paymentTypes);
@@ -71,7 +71,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
   });
 
   // GET /api/ledger/payments/ea/:eaId - Get all payments for a specific EA entry
-  app.get("/api/ledger/payments/ea/:eaId", requireComponent("ledger"), requireAccess('ledger.staff'), async (req, res) => {
+  app.get("/api/ledger/payments/ea/:eaId", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const { eaId } = req.params;
       const payments = await storage.ledger.payments.getByLedgerEaId(eaId);
@@ -82,7 +82,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
   });
 
   // GET /api/ledger/accounts/:accountId/payments - Get all payments for a specific account with entity data
-  app.get("/api/ledger/accounts/:accountId/payments", requireComponent("ledger"), requireAccess('ledger.staff'), async (req, res) => {
+  app.get("/api/ledger/accounts/:accountId/payments", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const { accountId } = req.params;
       const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
@@ -101,7 +101,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
   });
 
   // GET /api/ledger/payments/:id - Get a specific payment
-  app.get("/api/ledger/payments/:id", requireComponent("ledger"), requireAccess('ledger.staff'), async (req, res) => {
+  app.get("/api/ledger/payments/:id", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
       const payment = await storage.ledger.payments.get(id);
@@ -118,7 +118,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
   });
 
   // GET /api/ledger/payments/:id/transactions - Get ledger entries for a payment
-  app.get("/api/ledger/payments/:id/transactions", requireComponent("ledger"), requireAccess('ledger.staff'), async (req, res) => {
+  app.get("/api/ledger/payments/:id/transactions", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
       const transactions = await storage.ledger.entries.getTransactions({
@@ -132,7 +132,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
   });
 
   // POST /api/ledger/payments - Create a new payment
-  app.post("/api/ledger/payments", requireComponent("ledger"), requireAccess('ledger.staff'), async (req, res) => {
+  app.post("/api/ledger/payments", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       // Convert date strings to Date objects
       const processedBody = {
@@ -168,7 +168,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
   });
 
   // PUT /api/ledger/payments/:id - Update a payment
-  app.put("/api/ledger/payments/:id", requireComponent("ledger"), requireAccess('ledger.staff'), async (req, res) => {
+  app.put("/api/ledger/payments/:id", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -212,7 +212,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
   });
 
   // DELETE /api/ledger/payments/:id - Delete a payment
-  app.delete("/api/ledger/payments/:id", requireComponent("ledger"), requireAccess('ledger.staff'), async (req, res) => {
+  app.delete("/api/ledger/payments/:id", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
       
