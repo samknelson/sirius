@@ -1,9 +1,38 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+/**
+ * Custom error class that preserves HTTP response details
+ */
+export class ApiError extends Error {
+  status: number;
+  data: any;
+
+  constructor(status: number, message: string, data?: any) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.data = data;
+  }
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    let data: any = null;
+    let message = res.statusText;
+    
+    try {
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await res.json();
+        message = data.message || res.statusText;
+      } else {
+        message = (await res.text()) || res.statusText;
+      }
+    } catch {
+      // If parsing fails, use status text
+    }
+    
+    throw new ApiError(res.status, `${res.status}: ${message}`, data);
   }
 }
 

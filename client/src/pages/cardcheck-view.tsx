@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, ApiError } from "@/lib/queryClient";
 import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -187,11 +187,36 @@ export default function CardcheckViewPage() {
   }
 
   if (error || !cardcheck) {
+    // Check if this is an access denied error (403)
+    const apiError = error instanceof ApiError ? error : null;
+    const errorData = apiError?.data;
+    const isAccessDenied = apiError?.status === 403 || errorData?.error === 'ACCESS_DENIED';
+    
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Card>
           <CardContent className="py-12 text-center">
-            <p className="text-destructive">Cardcheck not found.</p>
+            {isAccessDenied ? (
+              <>
+                <Shield className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
+                <p className="text-muted-foreground mb-2">
+                  You don't have permission to view this cardcheck.
+                </p>
+                {errorData?.policy && (
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Required policy: <code className="bg-muted px-1 py-0.5 rounded">{errorData.policy}</code>
+                  </p>
+                )}
+                {errorData?.message && errorData.message !== 'Access denied' && (
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Reason: {errorData.message}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-destructive">Cardcheck not found.</p>
+            )}
             <Link href="/workers">
               <Button variant="outline" className="mt-4">
                 <ArrowLeft className="h-4 w-4 mr-2" />

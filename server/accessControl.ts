@@ -142,6 +142,9 @@ export function requireAccess(
       if (!result.granted) {
         return res.status(403).json({
           message: result.reason || 'Access denied',
+          error: 'ACCESS_DENIED',
+          policy: policyId,
+          entityId: entityId || null,
         });
       }
 
