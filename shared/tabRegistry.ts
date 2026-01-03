@@ -160,7 +160,7 @@ export const workerTabTree: HierarchicalTab[] = [
  * Employer entity tab tree
  */
 export const employerTabTree: HierarchicalTab[] = [
-  { id: 'details', label: 'Details', hrefTemplate: '/employers/{id}', permission: 'staff' },
+  { id: 'details', label: 'Details', hrefTemplate: '/employers/{id}', policyId: 'employer.view' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/employers/{id}/edit', permission: 'employers.edit' },
   { id: 'workers', label: 'Workers', hrefTemplate: '/employers/{id}/workers', permission: 'staff' },
   { id: 'contacts', label: 'Contacts', hrefTemplate: '/employers/{id}/contacts', permission: 'staff' },
