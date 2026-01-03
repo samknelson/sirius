@@ -41,8 +41,8 @@ import { initializeDispatchEligSystem } from "./services/dispatch-elig-plugins";
 // Import worker ban notifications
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
 
-// Import unified access policies (triggers registration)
-import "@shared/accessPolicies.definitions";
+// Import modular access policies (triggers registration via loader)
+import "@shared/access-policies/loader";
 import { registerEntityAccessModule } from "./modules/entity-access";
 import { isComponentEnabled } from "./modules/components";
 
