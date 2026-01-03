@@ -358,7 +358,7 @@ async function evaluateDelegatingLinkage(
       return { passed: false, reason: 'cardcheckWorkerAccess requires cardcheck entity' };
     }
     
-    const cardcheck = await ctx.storage.cardchecks?.get?.(ctx.entityId);
+    const cardcheck = await ctx.storage.cardchecks?.getCardcheckById?.(ctx.entityId);
     if (!cardcheck) {
       return { passed: false, reason: 'Cardcheck not found' };
     }
@@ -391,7 +391,7 @@ async function evaluateDelegatingLinkage(
       return { passed: false, reason: 'esigEntityAccess requires esig entity' };
     }
     
-    const esig = await ctx.storage.esigs?.get?.(ctx.entityId);
+    const esig = await ctx.storage.esigs?.getEsigById?.(ctx.entityId);
     if (!esig) {
       return { passed: false, reason: 'Esig not found' };
     }
