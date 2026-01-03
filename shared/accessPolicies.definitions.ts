@@ -217,26 +217,6 @@ defineEntityPolicy(
   ]
 );
 
-defineEntityPolicy(
-  'worker.bans.view',
-  'View Worker Bans',
-  'View bans for a specific worker',
-  'worker',
-  [
-    { permission: 'staff' },
-  ]
-);
-
-defineEntityPolicy(
-  'worker.bans.edit',
-  'Edit Worker Bans',
-  'Create or modify bans for a specific worker',
-  'worker',
-  [
-    { permission: 'workers.manage' },
-  ]
-);
-
 // --- Employer Entity Policies ---
 
 defineEntityPolicy(
