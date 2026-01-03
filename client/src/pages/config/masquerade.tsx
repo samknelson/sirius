@@ -1,16 +1,26 @@
 import { useState, useEffect } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { UserCog, Loader2, AlertTriangle, Check } from 'lucide-react';
+import { UserCog, Loader2, AlertTriangle, Check, History } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { User } from '@/lib/user-types';
+
+interface RecentMasquerade {
+  userId: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  timestamp: string;
+}
 
 export default function MasqueradePage() {
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -19,6 +29,10 @@ export default function MasqueradePage() {
   const [isSearching, setIsSearching] = useState(false);
   const { toast } = useToast();
   const { masquerade } = useAuth();
+
+  const { data: recentData, isLoading: isLoadingRecent } = useQuery<{ recentMasquerades: RecentMasquerade[] }>({
+    queryKey: ['/api/auth/masquerade/recent'],
+  });
 
   // Debounced search effect
   useEffect(() => {
@@ -123,6 +137,60 @@ export default function MasqueradePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {recentData?.recentMasquerades && recentData.recentMasquerades.length > 0 && (
+              <>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <History className="h-4 w-4" />
+                    Quick Select from Recent
+                  </Label>
+                  <Select
+                    onValueChange={(userId) => {
+                      const recent = recentData.recentMasquerades.find(m => m.userId === userId);
+                      if (recent) {
+                        setSelectedUser({
+                          id: recent.userId,
+                          email: recent.email,
+                          firstName: recent.firstName,
+                          lastName: recent.lastName,
+                        } as User);
+                        setSearchQuery('');
+                      }
+                    }}
+                    disabled={!!selectedUser}
+                  >
+                    <SelectTrigger data-testid="select-recent-masquerade">
+                      <SelectValue placeholder="Select a recently masqueraded user..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {recentData.recentMasquerades.map((recent) => {
+                        const name = [recent.firstName, recent.lastName].filter(Boolean).join(' ') || 'No name';
+                        return (
+                          <SelectItem 
+                            key={recent.userId} 
+                            value={recent.userId}
+                            data-testid={`recent-user-${recent.userId}`}
+                          >
+                            <div className="flex flex-col">
+                              <span>{recent.email}</span>
+                              <span className="text-xs text-muted-foreground">{name}</span>
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="relative">
+                  <Separator className="my-2" />
+                  <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
+                    or search
+                  </span>
+                </div>
+              </>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="user-search">Search User by Email</Label>
               <div className="relative">
