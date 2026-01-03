@@ -92,13 +92,13 @@ export function createPolicyContext(options: PolicyContextOptions): PolicyContex
       }
       
       const fallbackLoaderMap: Record<string, (id: string) => Promise<any>> = {
-        'worker': async (id) => storage.workers?.get?.(id),
-        'employer': async (id) => storage.employers?.get?.(id),
-        'contact': async (id) => storage.contacts?.get?.(id),
-        'file': async (id) => storage.files?.get?.(id),
-        'cardcheck': async (id) => storage.cardchecks?.get?.(id),
-        'esig': async (id) => storage.esigs?.get?.(id),
-        'worker.dispatch.dnc': async (id) => storage.workerDispatchDnc?.get?.(id),
+        'worker': async (id) => storage.workers?.getWorkerById?.(id),
+        'employer': async (id) => storage.employers?.getEmployerById?.(id),
+        'contact': async (id) => storage.contacts?.getContactById?.(id),
+        'file': async (id) => storage.files?.getFileById?.(id),
+        'cardcheck': async (id) => storage.cardchecks?.getCardcheckById?.(id),
+        'esig': async (id) => storage.esigs?.getEsigById?.(id),
+        'worker.dispatch.dnc': async (id) => storage.workerDispatchDnc?.getById?.(id),
       };
       
       const fallbackLoader = fallbackLoaderMap[entityType];
