@@ -7,6 +7,15 @@ export interface TrustBenefit {
 }
 
 /**
+ * Attribute predicate - checks a field value on the entity record
+ */
+export interface AttributePredicate {
+  path: string;
+  op: 'eq' | 'neq';
+  value: string | number | boolean;
+}
+
+/**
  * Access condition from the server - matches the AccessCondition interface
  */
 export interface AccessCondition {
@@ -17,6 +26,7 @@ export interface AccessCondition {
   component?: string;
   linkage?: string;
   policy?: string;
+  attributes?: AttributePredicate[];
 }
 
 /**

@@ -12,12 +12,49 @@ import {
   AccessResult,
   LinkagePredicate,
   PolicyEntityType,
+  AttributePredicate,
   buildCacheKey,
   accessPolicyRegistry,
   policyRequiresEntityContext,
 } from '@shared/accessPolicies';
 import { logger } from '../logger';
 import type { User } from '@shared/schema';
+
+/**
+ * Entity loader function type
+ * Loads an entity record by its ID for attribute evaluation
+ */
+export type EntityLoader = (entityId: string, storage: any) => Promise<Record<string, any> | null>;
+
+/**
+ * Registry of entity loaders by entity type
+ */
+const entityLoaders = new Map<string, EntityLoader>();
+
+/**
+ * Register an entity loader for a specific entity type
+ * Used for attribute-based access checks
+ */
+export function registerEntityLoader(entityType: string, loader: EntityLoader): void {
+  if (entityLoaders.has(entityType)) {
+    logger.warn(`Entity loader for '${entityType}' already registered, overwriting`, { service: SERVICE });
+  }
+  entityLoaders.set(entityType, loader);
+}
+
+/**
+ * Get the entity loader for a specific entity type
+ */
+export function getEntityLoader(entityType: string): EntityLoader | undefined {
+  return entityLoaders.get(entityType);
+}
+
+/**
+ * Clear all entity loaders (for testing)
+ */
+export function clearEntityLoaders(): void {
+  entityLoaders.clear();
+}
 
 const SERVICE = 'access-policy-evaluator';
 
@@ -271,7 +308,50 @@ const linkageResolvers: Record<LinkagePredicate, LinkageResolver> = {
   cardcheckWorkerAccess: async () => false,
   esigEntityAccess: async () => false,
   fileEntityAccess: async () => false,
+
+  // DNC linkages - check if user owns the worker or is associated with the employer on the DNC
+  dncWorkerOwner: async (ctx, storage) => {
+    if (ctx.entityType !== 'worker.dispatch.dnc') return false;
+    
+    // Get the DNC record using injected storage
+    const dnc = await storage.workerDispatchDnc?.get?.(ctx.entityId);
+    if (!dnc) return false;
+    
+    // Find user's contact by email
+    const contact = await storage.contacts.getContactByEmail(ctx.userEmail);
+    if (!contact) return false;
+    
+    // Find the worker that the user owns
+    const userWorker = await storage.workers.getWorkerByContactId?.(contact.id);
+    if (!userWorker) return false;
+    
+    // Check if the DNC's workerId matches the user's worker
+    return dnc.workerId === userWorker.id;
+  },
+
+  dncEmployerAssoc: async (ctx, storage) => {
+    if (ctx.entityType !== 'worker.dispatch.dnc') return false;
+    
+    // Get the DNC record using injected storage
+    const dnc = await storage.workerDispatchDnc?.get?.(ctx.entityId);
+    if (!dnc) return false;
+    
+    // Find user's contact by email
+    const contact = await storage.contacts.getContactByEmail(ctx.userEmail);
+    if (!contact) return false;
+    
+    // Check if user is an employer contact for the DNC's employer
+    const employerContacts = await storage.employerContacts.listByEmployer(dnc.employerId);
+    return employerContacts.some((ec: any) => ec.contactId === contact.id);
+  },
 };
+
+// Register the DNC entity loader for attribute evaluation
+// Uses storage.workerDispatchDnc which is injected at evaluation time
+registerEntityLoader('worker.dispatch.dnc', async (entityId: string, storage: any) => {
+  const dnc = await storage.workerDispatchDnc?.get?.(entityId);
+  return dnc || null;
+});
 
 /**
  * Mapping from linkage predicates to their required entity types
@@ -291,6 +371,8 @@ const linkageEntityTypes: Record<LinkagePredicate, PolicyEntityType> = {
   cardcheckWorkerAccess: 'cardcheck',
   esigEntityAccess: 'esig',
   fileEntityAccess: 'file',
+  dncWorkerOwner: 'worker.dispatch.dnc',
+  dncEmployerAssoc: 'worker.dispatch.dnc',
 };
 
 /**
@@ -476,13 +558,91 @@ type ComponentChecker = (componentId: string) => Promise<boolean>;
 interface EvaluationContext {
   user: User;
   policyId: string;
-  entityType?: PolicyEntityType;
+  entityType?: PolicyEntityType | string;
   entityId?: string;
   storage: any;
   accessStorage: AccessControlStorage;
   checkComponent: ComponentChecker;
   /** Track policies being evaluated to detect cycles */
   evaluatingPolicies?: Set<string>;
+  /** Cached entity record for attribute evaluation (loaded once per evaluation) */
+  entityRecordCache?: Map<string, Record<string, any> | null>;
+}
+
+/**
+ * Get or load the entity record for attribute evaluation
+ */
+async function getEntityRecord(
+  ctx: EvaluationContext
+): Promise<Record<string, any> | null> {
+  if (!ctx.entityType || !ctx.entityId) {
+    return null;
+  }
+
+  // Check cache first
+  const cacheKey = `${ctx.entityType}:${ctx.entityId}`;
+  if (ctx.entityRecordCache?.has(cacheKey)) {
+    return ctx.entityRecordCache.get(cacheKey) || null;
+  }
+
+  // Load via entity loader
+  const loader = entityLoaders.get(ctx.entityType);
+  if (!loader) {
+    logger.debug(`No entity loader registered for type: ${ctx.entityType}`, { service: SERVICE });
+    return null;
+  }
+
+  const record = await loader(ctx.entityId, ctx.storage);
+  
+  // Cache the result
+  if (!ctx.entityRecordCache) {
+    ctx.entityRecordCache = new Map();
+  }
+  ctx.entityRecordCache.set(cacheKey, record);
+
+  return record;
+}
+
+/**
+ * Evaluate attribute predicates against the entity record
+ */
+async function evaluateAttributes(
+  predicates: AttributePredicate[],
+  ctx: EvaluationContext
+): Promise<{ passed: boolean; reason?: string }> {
+  const record = await getEntityRecord(ctx);
+  
+  if (!record) {
+    return { 
+      passed: false, 
+      reason: `Cannot evaluate attributes: entity record not found for ${ctx.entityType}:${ctx.entityId}` 
+    };
+  }
+
+  for (const predicate of predicates) {
+    const actualValue = record[predicate.path];
+    let matches: boolean;
+
+    switch (predicate.op) {
+      case 'eq':
+        matches = actualValue === predicate.value;
+        break;
+      case 'neq':
+        matches = actualValue !== predicate.value;
+        break;
+      default:
+        return { passed: false, reason: `Unknown attribute operator: ${predicate.op}` };
+    }
+
+    if (!matches) {
+      return { 
+        passed: false, 
+        reason: `Attribute check failed: ${predicate.path} ${predicate.op} ${predicate.value} (actual: ${actualValue})` 
+      };
+    }
+  }
+
+  return { passed: true };
 }
 
 /**
@@ -560,7 +720,7 @@ async function evaluateCondition(
       const linkageCtx: LinkageContext = {
         userId: ctx.user.id,
         userEmail: ctx.user.email,
-        entityType: ctx.entityType,
+        entityType: ctx.entityType as PolicyEntityType,
         entityId: ctx.entityId,
       };
 
@@ -624,6 +784,18 @@ async function evaluateCondition(
     
     if (!policyPassed) {
       return { passed: false, reason: `Referenced policy '${condition.policy}' denied access` };
+    }
+  }
+
+  // Check attribute predicates (requires entity context and loader)
+  if (condition.attributes && condition.attributes.length > 0) {
+    if (!ctx.entityType || !ctx.entityId) {
+      return { passed: false, reason: 'Attribute check requires entity context' };
+    }
+    
+    const attributeResult = await evaluateAttributes(condition.attributes, ctx);
+    if (!attributeResult.passed) {
+      return attributeResult;
     }
   }
 

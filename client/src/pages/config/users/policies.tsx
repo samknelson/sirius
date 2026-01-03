@@ -54,6 +54,14 @@ function formatConditionParts(condition: AccessCondition): ConditionPart[] {
     parts.push({ text: `Requires policy: ${condition.policy}`, type: 'policy' });
   }
   
+  if (condition.attributes && condition.attributes.length > 0) {
+    const attrTexts = condition.attributes.map(attr => {
+      const opText = attr.op === 'eq' ? '=' : '!=';
+      return `${attr.path} ${opText} "${attr.value}"`;
+    });
+    parts.push({ text: `Attributes: ${attrTexts.join(', ')}`, type: 'attribute' });
+  }
+  
   if (parts.length === 0) {
     return [{ text: 'No specific requirements', type: 'unknown' }];
   }
@@ -116,6 +124,8 @@ function getRequirementBadgeVariant(type: string) {
       return 'destructive';
     case 'policy':
       return 'outline';
+    case 'attribute':
+      return 'secondary';
     case 'complex':
       return 'default';
     default:

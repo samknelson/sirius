@@ -25,12 +25,31 @@ export type LinkagePredicate =
   | 'contactProviderAssoc'    // User is associated with a provider that uses this contact
   | 'cardcheckWorkerAccess'   // Delegates to worker.view/edit via cardcheck.workerId
   | 'esigEntityAccess'        // Delegates to entity policy based on esig doc_type
-  | 'fileEntityAccess';       // Delegates to entity policy based on file entity_type
+  | 'fileEntityAccess'        // Delegates to entity policy based on file entity_type
+  | 'dncWorkerOwner'          // User owns the worker associated with this DNC record
+  | 'dncEmployerAssoc';       // User is associated with the employer on this DNC record
 
 /**
  * Entity types that can have entity-level access policies
  */
-export type PolicyEntityType = 'worker' | 'employer' | 'provider' | 'policy' | 'file' | 'contact' | 'cardcheck' | 'esig';
+export type PolicyEntityType = 'worker' | 'employer' | 'provider' | 'policy' | 'file' | 'contact' | 'cardcheck' | 'esig' | 'worker.dispatch.dnc';
+
+/**
+ * Attribute predicate operator
+ */
+export type AttributeOperator = 'eq' | 'neq';
+
+/**
+ * Attribute predicate - checks a field value on the entity record
+ */
+export interface AttributePredicate {
+  /** Path to the field on the entity record (e.g., "type", "status") */
+  path: string;
+  /** Comparison operator */
+  op: AttributeOperator;
+  /** Expected value */
+  value: string | number | boolean;
+}
 
 /**
  * Access condition - a single requirement that can grant or deny access
@@ -60,6 +79,12 @@ export interface AccessCondition {
    * This enables composite policies like "requires employer.dispatch permission AND employer.mine policy".
    */
   policy?: string;
+  
+  /**
+   * Attribute predicates - check field values on the entity record.
+   * All predicates must pass (AND). Requires entity loader to be registered for the entity type.
+   */
+  attributes?: AttributePredicate[];
 }
 
 /**

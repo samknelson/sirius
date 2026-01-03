@@ -11,6 +11,12 @@ export interface ComponentPolicy {
   rules: ComponentPolicyRule[];
 }
 
+export interface ComponentPolicyRuleAttribute {
+  path: string;
+  op: 'eq' | 'neq';
+  value: string | number | boolean;
+}
+
 export interface ComponentPolicyRule {
   permission?: string;
   anyPermission?: string[];
@@ -19,6 +25,7 @@ export interface ComponentPolicyRule {
   linkage?: string;
   policy?: string;
   authenticated?: boolean;
+  attributes?: ComponentPolicyRuleAttribute[];
 }
 
 export interface ComponentDefinition {
@@ -244,7 +251,34 @@ export const componentRegistry: ComponentDefinition[] = [
       version: 1,
       schemaPath: "./shared/schema/dispatch/dnc-schema.ts",
       tables: ["worker_dispatch_dnc"]
-    }
+    },
+    permissions: [
+      { key: "worker", description: "Worker access to their own data" }
+    ],
+    policies: [
+      {
+        id: "worker.dispatch.dnc.view",
+        description: "View DNC records associated with the user's worker or employer",
+        scope: "entity",
+        entityType: "worker.dispatch.dnc",
+        rules: [
+          { permission: "staff" },
+          { permission: "worker", linkage: "dncWorkerOwner" },
+          { permission: "employer.dispatch", linkage: "dncEmployerAssoc" }
+        ]
+      },
+      {
+        id: "worker.dispatch.dnc.edit",
+        description: "Edit DNC records - workers edit type='worker', employers edit type='employer'",
+        scope: "entity",
+        entityType: "worker.dispatch.dnc",
+        rules: [
+          { permission: "staff" },
+          { permission: "worker", linkage: "dncWorkerOwner", attributes: [{ path: "type", op: "eq", value: "worker" }] },
+          { permission: "employer.dispatch.manage", linkage: "dncEmployerAssoc", attributes: [{ path: "type", op: "eq", value: "employer" }] }
+        ]
+      }
+    ]
   },
   {
     id: "dispatch.hfe",

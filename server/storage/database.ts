@@ -36,6 +36,7 @@ import { type WorkerStewardAssignmentStorage, createWorkerStewardAssignmentStora
 import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./sitespecific-btu-csg";
 import { type BtuEmployerMapStorage, createBtuEmployerMapStorage, btuEmployerMapLoggingConfig } from "./sitespecific-btu-employer-map";
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
+import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./worker-dispatch-dnc";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "../db";
 import { optionsEmploymentStatus, employers, workers, contacts } from "@shared/schema";
@@ -83,6 +84,7 @@ export interface IStorage {
   btuCsg: BtuCsgStorage;
   btuEmployerMap: BtuEmployerMapStorage;
   workerBans: WorkerBanStorage;
+  workerDispatchDnc: WorkerDispatchDncStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -127,6 +129,7 @@ export class DatabaseStorage implements IStorage {
   btuCsg: BtuCsgStorage;
   btuEmployerMap: BtuEmployerMapStorage;
   workerBans: WorkerBanStorage;
+  workerDispatchDnc: WorkerDispatchDncStorage;
 
   constructor() {
     this.variables = withStorageLogging(createVariableStorage(), variableLoggingConfig);
@@ -234,6 +237,7 @@ export class DatabaseStorage implements IStorage {
     this.btuCsg = withStorageLogging(createBtuCsgStorage(), btuCsgLoggingConfig);
     this.btuEmployerMap = withStorageLogging(createBtuEmployerMapStorage(), btuEmployerMapLoggingConfig);
     this.workerBans = withStorageLogging(createWorkerBanStorage(), workerBanLoggingConfig);
+    this.workerDispatchDnc = withStorageLogging(createWorkerDispatchDncStorage(), workerDispatchDncLoggingConfig);
   }
 }
 

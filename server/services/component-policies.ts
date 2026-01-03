@@ -1,5 +1,5 @@
-import { componentRegistry, ComponentDefinition, ComponentPolicy } from "../../shared/components";
-import { accessPolicyRegistry, AccessPolicy, AccessCondition, AccessRule, LinkagePredicate } from "../../shared/accessPolicies";
+import { componentRegistry, ComponentDefinition, ComponentPolicy, ComponentPolicyRuleAttribute } from "../../shared/components";
+import { accessPolicyRegistry, AccessPolicy, AccessCondition, AccessRule, LinkagePredicate, AttributePredicate } from "../../shared/accessPolicies";
 import { isComponentEnabledSync } from "./component-cache";
 import { logger } from "../logger";
 
@@ -7,12 +7,16 @@ const VALID_LINKAGES: Set<string> = new Set([
   'ownsWorker', 'workerBenefitProvider', 'workerEmploymentHistory', 
   'employerAssociation', 'providerAssociation', 'fileUploader',
   'contactWorkerOwner', 'contactWorkerProvider', 'contactEmployerAssoc',
-  'contactProviderAssoc', 'cardcheckWorkerAccess', 'esigEntityAccess', 'fileEntityAccess'
+  'contactProviderAssoc', 'cardcheckWorkerAccess', 'esigEntityAccess', 'fileEntityAccess',
+  'dncWorkerOwner', 'dncEmployerAssoc'
 ]);
 
 const VALID_ENTITY_TYPES: Set<string> = new Set([
-  'worker', 'employer', 'provider', 'policy', 'file', 'contact', 'cardcheck', 'esig'
+  'worker', 'employer', 'provider', 'policy', 'file', 'contact', 'cardcheck', 'esig',
+  'worker.dispatch.dnc'
 ]);
+
+const VALID_ATTRIBUTE_OPS: Set<string> = new Set(['eq', 'neq']);
 
 /**
  * Validate a component policy definition
@@ -56,6 +60,26 @@ function validatePolicy(policy: ComponentPolicy, componentId: string): string | 
         });
       }
     }
+    
+    // Validate attribute predicates
+    if (rule.attributes && rule.attributes.length > 0) {
+      // Attributes require entity scope (or at least an entityType)
+      if (policy.scope !== 'entity' && !policy.entityType) {
+        return `Policy '${policy.id}' has attributes but is not entity-scoped`;
+      }
+      
+      for (const attr of rule.attributes) {
+        if (!attr.path) {
+          return `Policy '${policy.id}' has attribute predicate with missing path`;
+        }
+        if (!VALID_ATTRIBUTE_OPS.has(attr.op)) {
+          return `Policy '${policy.id}' has invalid attribute operator: ${attr.op}`;
+        }
+        if (attr.value === undefined || attr.value === null) {
+          return `Policy '${policy.id}' has attribute predicate with missing value for path '${attr.path}'`;
+        }
+      }
+    }
   }
   
   return null;
@@ -73,6 +97,7 @@ function convertRule(rule: ComponentPolicy['rules'][0]): AccessCondition {
     component: rule.component,
     linkage: rule.linkage as LinkagePredicate,
     policy: rule.policy,
+    attributes: rule.attributes as AttributePredicate[] | undefined,
   };
 }
 
