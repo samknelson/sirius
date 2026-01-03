@@ -85,6 +85,7 @@ export default function ProtectedRoute({ children, permission, policy, component
       'dispatch': 'dispatch',
       'ledger': 'ledger',
       'employer-contacts': 'employer_contact',
+      'ea': 'ea',
     };
     
     for (let i = 0; i < segments.length - 1; i++) {

@@ -221,11 +221,13 @@ export async function buildContext(req: Request): Promise<AccessContext> {
  * @param policyId - The ID of the policy to evaluate
  * @param user - The authenticated user (null if not authenticated)
  * @param entityId - Optional entity ID for entity-level checks
+ * @param entityData - Optional entity data for policies that need additional context
  */
 export async function checkAccess(
   policyId: string,
   user: User | null,
-  entityId?: string
+  entityId?: string,
+  entityData?: Record<string, any>
 ): Promise<{ granted: boolean; reason?: string }> {
   if (!storage || !componentChecker || !fullStorage) {
     throw new Error('Access control not initialized');
@@ -237,7 +239,9 @@ export async function checkAccess(
     fullStorage,
     storage,
     componentChecker,
-    entityId
+    entityId,
+    undefined, // entityType - use policy's default
+    { entityData }
   );
 
   return {

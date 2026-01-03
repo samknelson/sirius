@@ -777,7 +777,7 @@ function Router() {
       </Route>
 
       <Route path="/ea/:id">
-        <ProtectedRoute policy="ledger.staff" component="ledger">
+        <ProtectedRoute policy="ledger.ea.view" component="ledger">
           <AuthenticatedLayout>
             <EAView />
           </AuthenticatedLayout>
@@ -785,7 +785,7 @@ function Router() {
       </Route>
 
       <Route path="/ea/:id/invoices">
-        <ProtectedRoute policy="ledger.staff" component="ledger">
+        <ProtectedRoute policy="ledger.ea.view" component="ledger">
           <AuthenticatedLayout>
             <EAInvoices />
           </AuthenticatedLayout>
@@ -793,7 +793,7 @@ function Router() {
       </Route>
 
       <Route path="/ea/:id/payments">
-        <ProtectedRoute policy="ledger.staff" component="ledger">
+        <ProtectedRoute policy="ledger.ea.view" component="ledger">
           <AuthenticatedLayout>
             <EAPayments />
           </AuthenticatedLayout>
@@ -801,7 +801,7 @@ function Router() {
       </Route>
 
       <Route path="/ea/:id/transactions">
-        <ProtectedRoute policy="ledger.staff" component="ledger">
+        <ProtectedRoute policy="ledger.ea.view" component="ledger">
           <AuthenticatedLayout>
             <EATransactions />
           </AuthenticatedLayout>

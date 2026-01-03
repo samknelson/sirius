@@ -112,9 +112,19 @@ export function registerAccessPolicyRoutes(app: Express) {
       // Resolve entityId based on entityType if needed
       // For employer_contact, resolve the employerId from the contact
       let resolvedEntityId = entityId as string | undefined;
+      let entityData: Record<string, any> | undefined;
+      
       if (entityType === 'employer_contact' && entityId) {
         const employerContact = await storage.employerContacts.get(entityId as string);
         resolvedEntityId = employerContact?.employerId;
+      }
+      
+      // For ledger EA entities, look up the EA to get its entity type and ID
+      if (entityType === 'ea' && entityId) {
+        const ea = await storage.ledger.ea.get(entityId as string);
+        if (ea) {
+          entityData = { entityType: ea.entityType, entityId: ea.entityId };
+        }
       }
       
       // Build context from request
@@ -124,7 +134,8 @@ export function registerAccessPolicyRoutes(app: Express) {
       const result = await checkAccess(
         policyId, 
         context.user, 
-        resolvedEntityId
+        resolvedEntityId,
+        entityData
       );
       
       res.json({
