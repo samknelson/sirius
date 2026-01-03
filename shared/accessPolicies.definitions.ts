@@ -124,6 +124,19 @@ defineEntityPolicy(
   ]
 );
 
+defineEntityPolicy(
+  'worker.mine',
+  'worker.mine',
+  'Access own worker record (identical criteria to worker.edit)',
+  'worker',
+  [
+    // Staff can access any worker
+    { permission: 'staff' },
+    // Worker permission + owns this worker
+    { permission: 'worker', linkage: 'ownsWorker' },
+  ]
+);
+
 // --- Employer Entity Policies ---
 
 defineEntityPolicy(
@@ -138,6 +151,19 @@ defineEntityPolicy(
     { permission: 'employer', linkage: 'employerAssociation' },
     // Worker with employment history at this employer
     { permission: 'worker', linkage: 'workerEmploymentHistory' },
+  ]
+);
+
+defineEntityPolicy(
+  'employer.mine',
+  'employer.mine',
+  'Access associated employer record (no worker access)',
+  'employer',
+  [
+    // Staff can access any employer
+    { permission: 'staff' },
+    // Employer permission + associated with this employer
+    { permission: 'employer', linkage: 'employerAssociation' },
   ]
 );
 
