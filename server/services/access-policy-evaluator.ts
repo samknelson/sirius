@@ -185,10 +185,10 @@ const linkageResolvers: Record<LinkagePredicate, LinkageResolver> = {
   fileUploader: async (ctx, storage) => {
     if (ctx.entityType !== 'file') return false;
     
-    const file = await storage.fileMetadata?.getFileMetadata?.(ctx.entityId);
+    const file = await storage.files?.getById?.(ctx.entityId);
     if (!file) return false;
     
-    return file.uploadedByUserId === ctx.userId;
+    return file.uploadedBy === ctx.userId;
   },
 
   contactWorkerOwner: async (ctx, storage) => {
@@ -424,15 +424,16 @@ async function evaluateDelegatingLinkage(
       return { passed: false, reason: 'fileEntityAccess requires file entity' };
     }
     
-    const file = await ctx.storage.fileMetadata?.getFileMetadata?.(ctx.entityId);
+    const file = await ctx.storage.files?.getById?.(ctx.entityId);
     if (!file) {
       return { passed: false, reason: 'File not found' };
     }
     
     // Delegate based on entity_type
-    if (file.entityType === 'esig') {
-      // Delegate to esig policy
-      const esigPolicyId = 'esig.edit';
+    if (file.entityType === 'esig' && file.entityId) {
+      // Delegate to esig policy - use view for reading
+      // Determine the correct policy based on the original policy being evaluated
+      const esigPolicyId = ctx.policyId?.includes('.edit') ? 'esig.edit' : 'esig.view';
       
       const esigResult = await evaluatePolicyInternal(
         ctx.user,
