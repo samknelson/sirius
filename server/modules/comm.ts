@@ -85,8 +85,8 @@ export function registerCommRoutes(
   requireAccess?: PolicyMiddleware
 ) {
   
-  // GET /api/contacts/:contactId/comm - Get communication records for a contact (worker.self policy)
-  app.get("/api/contacts/:contactId/comm", requireAuth, requireAccess ? requireAccess('worker.self', async (req: any) => {
+  // GET /api/contacts/:contactId/comm - Get communication records for a contact (worker.view policy)
+  app.get("/api/contacts/:contactId/comm", requireAuth, requireAccess ? requireAccess('worker.view', async (req: any) => {
     // Resolve the owning worker ID from the contact
     const worker = await storage.workers.getWorkerByContactId(req.params.contactId);
     return worker?.id;

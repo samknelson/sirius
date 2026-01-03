@@ -11,6 +11,7 @@ interface ProtectedRouteProps {
   permission?: string;
   policy?: string;
   component?: string;
+  entityId?: string;
 }
 
 interface DetailedPolicyResult {
@@ -42,12 +43,34 @@ class PolicyCheckError extends Error {
   }
 }
 
-export default function ProtectedRoute({ children, permission, policy, component }: ProtectedRouteProps) {
+export default function ProtectedRoute({ children, permission, policy, component, entityId }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading, authReady, hasPermission, hasComponent } = useAuth();
   const [location] = useLocation();
 
-  // Extract resource ID from URL path if present (e.g., /workers/:id)
-  const resourceId = location.split('/').filter(Boolean).pop();
+  // Use explicit entityId prop if provided, otherwise extract from URL based on entity patterns
+  // This handles nested routes like /workers/:id/contacts by finding the ID after known prefixes
+  const extractEntityIdFromUrl = (path: string): string | undefined => {
+    const segments = path.split('/').filter(Boolean);
+    
+    // Known entity URL patterns: /{entityType}/{id}/...
+    const entityPrefixes = ['workers', 'employers', 'providers', 'policies', 'events', 'bargaining-units', 'csgs', 'dispatch', 'ledger'];
+    
+    for (let i = 0; i < segments.length - 1; i++) {
+      if (entityPrefixes.includes(segments[i])) {
+        const potentialId = segments[i + 1];
+        // Skip if the next segment is a known sub-route name (not an ID)
+        const subRouteNames = ['new', 'create', 'list', 'search'];
+        if (!subRouteNames.includes(potentialId)) {
+          return potentialId;
+        }
+      }
+    }
+    
+    // Fall back to last segment
+    return segments.pop();
+  };
+  
+  const resourceId = entityId || extractEntityIdFromUrl(location);
   
   // Check policy via API if policy prop is provided
   const { data: policyResult, isLoading: isPolicyLoading, isError: isPolicyError, error: policyError } = useQuery<DetailedPolicyResult, PolicyCheckError>({

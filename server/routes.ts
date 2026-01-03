@@ -392,8 +392,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/workers/:id - Get a specific worker (requires worker policy: staff or worker with matching email)
-  app.get("/api/workers/:id", requireAccess('worker.self', req => req.params.id), async (req, res) => {
+  // GET /api/workers/:id - Get a specific worker (requires worker.view policy: staff or worker with matching email)
+  app.get("/api/workers/:id", requireAccess('worker.view', req => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       const worker = await storage.workers.getWorker(id);
@@ -728,8 +728,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/contacts/:id - Get a contact by ID (requires worker.self policy - staff or worker viewing own contact)
-  app.get("/api/contacts/:id", requireAuth, requireAccess('worker.self', async (req) => {
+  // GET /api/contacts/:id - Get a contact by ID (requires worker.view policy - staff or worker viewing own contact)
+  app.get("/api/contacts/:id", requireAuth, requireAccess('worker.view', async (req) => {
     // Resolve the owning worker ID from the contact
     const contact = await storage.contacts.getContact(req.params.id);
     if (!contact) return undefined;
@@ -926,8 +926,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Worker Benefits (WMB) routes
 
-  // GET /api/workers/:workerId/benefits - Get all benefits for a worker (requires worker policy: staff or worker with matching email)
-  app.get("/api/workers/:workerId/benefits", requireAccess('worker.self', req => req.params.workerId), async (req, res) => {
+  // GET /api/workers/:workerId/benefits - Get all benefits for a worker (requires worker.view policy: staff or worker with matching email)
+  app.get("/api/workers/:workerId/benefits", requireAccess('worker.view', req => req.params.workerId), async (req, res) => {
     try {
       const { workerId } = req.params;
       const benefits = await storage.workers.getWorkerBenefits(workerId);
@@ -1002,8 +1002,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const dispatchDncStorage = createWorkerDispatchDncStorage();
   const dispatchHfeStorage = createWorkerDispatchHfeStorage();
 
-  // Worker-accessible dispatch status route (worker.self policy)
-  app.get("/api/worker-dispatch-status/worker/:workerId", requireAuth, dispatchComponent, requireAccess('worker.self', req => req.params.workerId), async (req, res) => {
+  // Worker-accessible dispatch status route (worker.view policy)
+  app.get("/api/worker-dispatch-status/worker/:workerId", requireAuth, dispatchComponent, requireAccess('worker.view', req => req.params.workerId), async (req, res) => {
     try {
       const status = await dispatchStatusStorage.getByWorker(req.params.workerId);
       res.json(status || null);
@@ -1013,8 +1013,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Worker-accessible dispatch DNC route (worker.self policy)
-  app.get("/api/worker-dispatch-dnc/worker/:workerId", requireAuth, dispatchComponent, requireAccess('worker.self', req => req.params.workerId), async (req, res) => {
+  // Worker-accessible dispatch DNC route (worker.view policy)
+  app.get("/api/worker-dispatch-dnc/worker/:workerId", requireAuth, dispatchComponent, requireAccess('worker.view', req => req.params.workerId), async (req, res) => {
     try {
       const records = await dispatchDncStorage.getByWorker(req.params.workerId);
       res.json(records);
@@ -1024,8 +1024,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Worker-accessible dispatch HFE route (worker.self policy)
-  app.get("/api/worker-dispatch-hfe/worker/:workerId", requireAuth, dispatchComponent, hfeComponent, requireAccess('worker.self', req => req.params.workerId), async (req, res) => {
+  // Worker-accessible dispatch HFE route (worker.view policy)
+  app.get("/api/worker-dispatch-hfe/worker/:workerId", requireAuth, dispatchComponent, hfeComponent, requireAccess('worker.view', req => req.params.workerId), async (req, res) => {
     try {
       const records = await dispatchHfeStorage.getByWorker(req.params.workerId);
       res.json(records);
@@ -1044,8 +1044,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register worker dispatch HFE admin routes
   app.use("/api/worker-dispatch-hfe", requireAuth, dispatchComponent, hfeComponent, requirePermission("staff"), workerDispatchHfeRouter);
 
-  // Worker-accessible ban routes (worker.self policy - workers can view their own bans)
-  app.get("/api/worker-bans/worker/:workerId", requireAuth, dispatchComponent, requireAccess('worker.self', req => req.params.workerId), async (req, res) => {
+  // Worker-accessible ban routes (worker.view policy - workers can view their own bans)
+  app.get("/api/worker-bans/worker/:workerId", requireAuth, dispatchComponent, requireAccess('worker.view', req => req.params.workerId), async (req, res) => {
     try {
       const bans = await storage.workerBans.getByWorker(req.params.workerId);
       res.json(bans);
@@ -1055,7 +1055,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/worker-bans/:id", requireAuth, dispatchComponent, requireAccess('worker.self', async (req) => {
+  app.get("/api/worker-bans/:id", requireAuth, dispatchComponent, requireAccess('worker.view', async (req) => {
     const ban = await storage.workerBans.get(req.params.id);
     return ban?.workerId;
   }), async (req, res) => {

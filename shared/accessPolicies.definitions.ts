@@ -40,20 +40,6 @@ defineRoutePolicy(
   [{ authenticated: true, permission: 'staff' }]
 );
 
-// --- Worker Management ---
-
-// Route-level policy for individual worker pages (staff or worker owner)
-// This is used as a route guard; entity-level checks use worker.view
-defineRoutePolicy(
-  'worker',
-  'worker',
-  'Requires staff permission or worker permission with matching worker',
-  [
-    { authenticated: true, permission: 'staff' },
-    { authenticated: true, permission: 'worker', linkage: 'ownsWorker' },
-  ]
-);
-
 // --- Masquerade ---
 
 defineRoutePolicy(
@@ -182,21 +168,6 @@ defineEntityPolicy(
     { linkage: 'fileUploader' },
     // Users with files.delete permission
     { permission: 'files.delete' },
-  ]
-);
-
-// ============================================================================
-// SPECIAL ROUTE POLICIES WITH ENTITY CONTEXT
-// These are route-level but use linkage predicates for ownership checks
-// ============================================================================
-
-defineRoutePolicy(
-  'worker.self',
-  'worker.self',
-  'Requires staff permission, or worker permission with matching worker',
-  [
-    { permission: 'staff' },
-    { permission: 'worker', linkage: 'ownsWorker' },
   ]
 );
 

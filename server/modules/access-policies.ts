@@ -152,7 +152,7 @@ export function registerAccessPolicyRoutes(app: Express) {
       // This prevents users from probing tab access for entities they can't access at all
       // Map entity types to their corresponding base access policies
       const entityPolicyMap: Record<string, string> = {
-        worker: 'worker',
+        worker: 'worker.view',
         employer: 'employer.view',
         provider: 'provider',
         employer_contact: 'employer.view',

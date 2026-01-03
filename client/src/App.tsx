@@ -601,7 +601,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/delete">
-        <ProtectedRoute policy="worker">
+        <ProtectedRoute policy="worker.view">
           <AuthenticatedLayout>
             <WorkerDelete />
           </AuthenticatedLayout>
@@ -609,7 +609,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id">
-        <ProtectedRoute policy="worker">
+        <ProtectedRoute policy="worker.view">
           <AuthenticatedLayout>
             <WorkerView />
           </AuthenticatedLayout>

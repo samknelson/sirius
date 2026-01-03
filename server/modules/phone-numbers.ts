@@ -56,7 +56,7 @@ export function registerPhoneNumberRoutes(
 ) {
   
   // GET /api/contacts/:contactId/phone-numbers - Get all phone numbers for a contact
-  // Uses worker.self policy for worker contacts, staff policy for non-worker contacts (employer contacts, etc.)
+  // Uses worker.view policy for worker contacts, staff policy for non-worker contacts (employer contacts, etc.)
   app.get("/api/contacts/:contactId/phone-numbers", requireAuth, async (req, res, next) => {
     if (!requireAccess) return next();
     
@@ -64,8 +64,8 @@ export function registerPhoneNumberRoutes(
     const worker = await storage.workers.getWorkerByContactId(req.params.contactId);
     
     if (worker) {
-      // Worker contact - use worker.self policy with worker ID
-      return requireAccess('worker.self', () => worker.id)(req, res, next);
+      // Worker contact - use worker.view policy with worker ID
+      return requireAccess('worker.view', () => worker.id)(req, res, next);
     } else {
       // Non-worker contact (employer contact, etc.) - require staff permission
       return requireAccess('staff')(req, res, next);
