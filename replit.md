@@ -22,7 +22,7 @@ The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI),
     const session = req.session as any;
     const { dbUser } = await getEffectiveUser(session, replitUserId);
     ```
--   **Access Control**: Centralized, declarative role-based access control. Entity-based access policies with server-side LRU caching.
+-   **Access Control**: Centralized, declarative role-based access control. Entity-based access policies with server-side LRU caching. Components can define their own permissions and policies via `ComponentDefinition`, which are automatically registered when the component is enabled. Policy references allow composite rules (e.g., `staff OR (permission AND another-policy)`) with cycle detection.
 -   **Logging**: Winston logging with a PostgreSQL backend for audit trails.
 -   **Data Storage**: PostgreSQL (Neon Database) managed with Drizzle ORM.
 -   **Object Storage**: Replit Object Storage (Google Cloud Storage backend) for persistent file storage.
