@@ -398,8 +398,15 @@ async function evaluateDelegatingLinkage(
     
     // Delegate based on doc_type
     if (esig.docType === 'cardcheck') {
-      // Delegate to cardcheck policy
-      const cardcheckPolicyId = 'cardcheck.edit'; // esig access implies edit capability
+      // Look up the cardcheck that references this esig (reverse lookup)
+      const cardcheck = await ctx.storage.cardchecks?.getCardcheckByEsigId?.(ctx.entityId);
+      if (!cardcheck) {
+        return { passed: false, reason: 'Cardcheck not found for this esig' };
+      }
+      
+      // Determine policy based on context - view operations get view access
+      const isViewOnly = ctx.policyId?.includes('.view') || ctx.policyId?.includes('.read');
+      const cardcheckPolicyId = isViewOnly ? 'cardcheck.view' : 'cardcheck.edit';
       
       const cardcheckResult = await evaluatePolicyInternal(
         ctx.user,
@@ -407,7 +414,7 @@ async function evaluateDelegatingLinkage(
         ctx.storage,
         ctx.accessStorage,
         ctx.checkComponent,
-        esig.entityId,
+        cardcheck.id,
         'cardcheck'
       );
       

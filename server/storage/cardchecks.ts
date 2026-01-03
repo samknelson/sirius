@@ -14,6 +14,7 @@ export interface CardcheckStatusSummary {
 export interface CardcheckStorage {
   getAllCardchecks(): Promise<Cardcheck[]>;
   getCardcheckById(id: string): Promise<Cardcheck | undefined>;
+  getCardcheckByEsigId(esigId: string): Promise<Cardcheck | undefined>;
   getCardchecksByWorkerId(workerId: string): Promise<Cardcheck[]>;
   getCardchecksByDefinitionId(definitionId: string): Promise<Cardcheck[]>;
   getCardcheckStatusSummary(): Promise<CardcheckStatusSummary[]>;
@@ -33,6 +34,14 @@ export function createCardcheckStorage(): CardcheckStorage {
         .select()
         .from(cardchecks)
         .where(eq(cardchecks.id, id));
+      return cardcheck || undefined;
+    },
+
+    async getCardcheckByEsigId(esigId: string): Promise<Cardcheck | undefined> {
+      const [cardcheck] = await db
+        .select()
+        .from(cardchecks)
+        .where(eq(cardchecks.esigId, esigId));
       return cardcheck || undefined;
     },
 
