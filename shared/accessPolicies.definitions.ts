@@ -155,6 +155,8 @@ defineEntityPolicy(
     { permission: 'staff' },
     // Users with files.read-private
     { permission: 'files.read-private' },
+    // Delegate to entity policy based on file's entity_type
+    { linkage: 'fileEntityAccess' },
   ]
 );
 
@@ -168,6 +170,8 @@ defineEntityPolicy(
     { linkage: 'fileUploader' },
     // Users with files.update permission
     { permission: 'files.update' },
+    // Delegate to entity policy based on file's entity_type
+    { linkage: 'fileEntityAccess' },
   ]
 );
 
@@ -181,6 +185,64 @@ defineEntityPolicy(
     { linkage: 'fileUploader' },
     // Users with files.delete permission
     { permission: 'files.delete' },
+    // Delegate to entity policy based on file's entity_type
+    { linkage: 'fileEntityAccess' },
+  ]
+);
+
+// --- Cardcheck Entity Policies ---
+
+defineEntityPolicy(
+  'cardcheck.view',
+  'cardcheck.view',
+  'View a specific cardcheck record (delegates to worker.view)',
+  'cardcheck',
+  [
+    // Staff can view any cardcheck
+    { permission: 'staff' },
+    // Delegate to worker.view via cardcheck.workerId
+    { linkage: 'cardcheckWorkerAccess' },
+  ]
+);
+
+defineEntityPolicy(
+  'cardcheck.edit',
+  'cardcheck.edit',
+  'Edit a specific cardcheck record (delegates to worker.edit)',
+  'cardcheck',
+  [
+    // Staff can edit any cardcheck
+    { permission: 'staff' },
+    // Delegate to worker.edit via cardcheck.workerId
+    { linkage: 'cardcheckWorkerAccess' },
+  ]
+);
+
+// --- Esig Entity Policies ---
+
+defineEntityPolicy(
+  'esig.view',
+  'esig.view',
+  'View a specific esig record (delegates based on doc_type)',
+  'esig',
+  [
+    // Staff can view any esig
+    { permission: 'staff' },
+    // Delegate to entity policy based on doc_type
+    { linkage: 'esigEntityAccess' },
+  ]
+);
+
+defineEntityPolicy(
+  'esig.edit',
+  'esig.edit',
+  'Edit a specific esig record (delegates based on doc_type)',
+  'esig',
+  [
+    // Staff can edit any esig
+    { permission: 'staff' },
+    // Delegate to entity policy based on doc_type
+    { linkage: 'esigEntityAccess' },
   ]
 );
 

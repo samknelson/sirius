@@ -22,12 +22,15 @@ export type LinkagePredicate =
   | 'contactWorkerOwner'      // User owns a worker that uses this contact
   | 'contactWorkerProvider'   // User is a provider for a worker that uses this contact
   | 'contactEmployerAssoc'    // User is associated with an employer that uses this contact
-  | 'contactProviderAssoc';   // User is associated with a provider that uses this contact
+  | 'contactProviderAssoc'    // User is associated with a provider that uses this contact
+  | 'cardcheckWorkerAccess'   // Delegates to worker.view/edit via cardcheck.workerId
+  | 'esigEntityAccess'        // Delegates to entity policy based on esig doc_type
+  | 'fileEntityAccess';       // Delegates to entity policy based on file entity_type
 
 /**
  * Entity types that can have entity-level access policies
  */
-export type PolicyEntityType = 'worker' | 'employer' | 'provider' | 'policy' | 'file' | 'contact';
+export type PolicyEntityType = 'worker' | 'employer' | 'provider' | 'policy' | 'file' | 'contact' | 'cardcheck' | 'esig';
 
 /**
  * Access condition - a single requirement that can grant or deny access

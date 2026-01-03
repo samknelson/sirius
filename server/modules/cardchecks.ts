@@ -22,11 +22,8 @@ export function registerCardchecksRoutes(
     }
   });
 
-  // GET /api/cardcheck/:id - Get specific cardcheck (worker.view policy)
-  app.get("/api/cardcheck/:id", requireAuth, cardcheckComponent, requireAccess('worker.view', async (req: any) => {
-    const cardcheck = await storage.cardchecks.getCardcheckById(req.params.id);
-    return cardcheck?.workerId;
-  }), async (req, res) => {
+  // GET /api/cardcheck/:id - Get specific cardcheck (cardcheck.view policy)
+  app.get("/api/cardcheck/:id", requireAuth, cardcheckComponent, requireAccess('cardcheck.view', (req: any) => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       const cardcheck = await storage.cardchecks.getCardcheckById(id);
@@ -71,10 +68,7 @@ export function registerCardchecksRoutes(
     }
   });
 
-  app.patch("/api/cardcheck/:id", requireAuth, cardcheckComponent, requireAccess('worker.edit', async (req: any) => {
-    const cardcheck = await storage.cardchecks.getCardcheckById(req.params.id);
-    return cardcheck?.workerId;
-  }), async (req, res) => {
+  app.patch("/api/cardcheck/:id", requireAuth, cardcheckComponent, requireAccess('cardcheck.edit', (req: any) => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -138,11 +132,8 @@ export function registerCardchecksRoutes(
     }
   });
 
-  // POST /api/cardcheck/:id/sign - Sign a cardcheck (worker.edit policy)
-  app.post("/api/cardcheck/:id/sign", requireAuth, cardcheckComponent, requireAccess('worker.edit', async (req: any) => {
-    const cardcheck = await storage.cardchecks.getCardcheckById(req.params.id);
-    return cardcheck?.workerId;
-  }), async (req, res) => {
+  // POST /api/cardcheck/:id/sign - Sign a cardcheck (cardcheck.edit policy)
+  app.post("/api/cardcheck/:id/sign", requireAuth, cardcheckComponent, requireAccess('cardcheck.edit', (req: any) => req.params.id), async (req, res) => {
     try {
       const { id: cardcheckId } = req.params;
       const user = req.user as any;

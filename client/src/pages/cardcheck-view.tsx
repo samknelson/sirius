@@ -65,11 +65,11 @@ export default function CardcheckViewPage() {
     enabled: hasComponent("bargainingunits") && !!cardcheck?.bargainingUnitId,
   });
 
-  // Check worker.edit access for the cardcheck's worker
+  // Check cardcheck.edit access for this cardcheck
   const { canAccess: hasEditAccess, isLoading: isAccessLoading } = useAccessCheck(
-    'worker.edit',
-    cardcheck?.workerId,
-    { enabled: !!cardcheck?.workerId }
+    'cardcheck.edit',
+    cardcheck?.id,
+    { enabled: !!cardcheck?.id }
   );
 
   const handleSignSuccess = () => {

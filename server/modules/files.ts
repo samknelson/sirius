@@ -4,6 +4,7 @@ import { insertFileSchema } from "@shared/schema";
 import { requireAccess, checkAccess, buildContext } from "../accessControl";
 import { objectStorageService } from "../services/objectStorage";
 import multer from "multer";
+import { logger } from "../logger";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -22,7 +23,7 @@ export function registerFileRoutes(
 ) {
   app.post("/api/files", 
     upload.single('file'),
-    requireAccess('files.upload'),
+    requireAuth,
     async (req, res) => {
       try {
         if (!req.file) {
@@ -33,6 +34,46 @@ export function registerFileRoutes(
         
         if (!req.user) {
           return res.status(401).json({ message: "Authentication required" });
+        }
+
+        const context = await buildContext(req);
+        
+        // Check access based on entity type and id if provided
+        // This allows users to upload files to entities they can edit
+        if (entityType && entityId) {
+          let policyToCheck: string | null = null;
+          
+          // Map entity types to their edit policies
+          if (entityType === 'esig') {
+            policyToCheck = 'esig.edit';
+          } else if (entityType === 'cardcheck') {
+            policyToCheck = 'cardcheck.edit';
+          } else if (entityType === 'worker') {
+            policyToCheck = 'worker.edit';
+          } else if (entityType === 'employer') {
+            policyToCheck = 'employer.view'; // employers may have different rules
+          }
+          // Add more entity types as needed
+          
+          if (policyToCheck) {
+            const accessResult = await checkAccess(policyToCheck, context.user, entityId);
+            if (!accessResult.granted) {
+              logger.warn('File upload denied - insufficient entity access', {
+                service: 'files',
+                userId: (req.user as any).id,
+                entityType,
+                entityId,
+                policy: policyToCheck,
+              });
+              return res.status(403).json({ message: "Insufficient permissions to upload to this entity" });
+            }
+          }
+        } else {
+          // No entity context - fall back to files.upload permission check
+          const hasUploadPermission = await checkAccess('files.upload', context.user);
+          if (!hasUploadPermission.granted) {
+            return res.status(403).json({ message: "Insufficient permissions to upload files" });
+          }
         }
 
         const uploadResult = await objectStorageService.uploadFile({

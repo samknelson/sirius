@@ -265,6 +265,12 @@ const linkageResolvers: Record<LinkagePredicate, LinkageResolver> = {
     const userProviderIds = userProviderContacts.map((pc: any) => pc.providerId);
     return providerContacts.some((pc: any) => userProviderIds.includes(pc.providerId));
   },
+
+  // Delegation linkages - these are handled specially by evaluateDelegatingLinkage
+  // They return false here because the actual check is done via policy delegation
+  cardcheckWorkerAccess: async () => false,
+  esigEntityAccess: async () => false,
+  fileEntityAccess: async () => false,
 };
 
 /**
@@ -282,6 +288,9 @@ const linkageEntityTypes: Record<LinkagePredicate, PolicyEntityType> = {
   contactWorkerProvider: 'contact',
   contactEmployerAssoc: 'contact',
   contactProviderAssoc: 'contact',
+  cardcheckWorkerAccess: 'cardcheck',
+  esigEntityAccess: 'esig',
+  fileEntityAccess: 'file',
 };
 
 /**
@@ -332,6 +341,119 @@ export interface AccessControlStorage {
   hasPermission(userId: string, permissionKey: string): Promise<boolean>;
   getUserByReplitId(replitUserId: string): Promise<User | undefined>;
   getUser(userId: string): Promise<User | undefined>;
+}
+
+/**
+ * Delegation linkages - these resolve the entity to a different policy
+ * Returns null if not a delegation linkage, otherwise returns the result
+ */
+async function evaluateDelegatingLinkage(
+  linkage: LinkagePredicate,
+  ctx: EvaluationContext
+): Promise<{ passed: boolean; reason?: string } | null> {
+  // Only handle delegation linkages
+  if (linkage === 'cardcheckWorkerAccess') {
+    // Cardcheck -> Worker delegation
+    if (ctx.entityType !== 'cardcheck') {
+      return { passed: false, reason: 'cardcheckWorkerAccess requires cardcheck entity' };
+    }
+    
+    const cardcheck = await ctx.storage.cardchecks?.get?.(ctx.entityId);
+    if (!cardcheck) {
+      return { passed: false, reason: 'Cardcheck not found' };
+    }
+    
+    if (!cardcheck.workerId) {
+      return { passed: false, reason: 'Cardcheck has no associated worker' };
+    }
+    
+    // Determine which worker policy to check based on original policy
+    // If evaluating cardcheck.edit, check worker.edit; if cardcheck.view, check worker.view
+    const workerPolicyId = ctx.entityType === 'cardcheck' ? 
+      (accessPolicyRegistry.get('cardcheck.edit') ? 'worker.edit' : 'worker.view') : 'worker.view';
+    
+    // Recursively evaluate worker policy
+    const workerResult = await evaluatePolicyInternal(
+      ctx.user,
+      workerPolicyId,
+      ctx.storage,
+      ctx.accessStorage,
+      ctx.checkComponent,
+      cardcheck.workerId,
+      'worker'
+    );
+    
+    return { passed: workerResult.granted, reason: workerResult.reason };
+  }
+  
+  if (linkage === 'esigEntityAccess') {
+    // Esig -> Entity delegation based on doc_type
+    if (ctx.entityType !== 'esig') {
+      return { passed: false, reason: 'esigEntityAccess requires esig entity' };
+    }
+    
+    const esig = await ctx.storage.esigs?.get?.(ctx.entityId);
+    if (!esig) {
+      return { passed: false, reason: 'Esig not found' };
+    }
+    
+    // Delegate based on doc_type
+    if (esig.docType === 'cardcheck') {
+      // Delegate to cardcheck policy
+      const cardcheckPolicyId = 'cardcheck.edit'; // esig access implies edit capability
+      
+      const cardcheckResult = await evaluatePolicyInternal(
+        ctx.user,
+        cardcheckPolicyId,
+        ctx.storage,
+        ctx.accessStorage,
+        ctx.checkComponent,
+        esig.entityId,
+        'cardcheck'
+      );
+      
+      return { passed: cardcheckResult.granted, reason: cardcheckResult.reason };
+    }
+    
+    // Unknown doc_type - deny by default
+    return { passed: false, reason: `Unknown esig doc_type: ${esig.docType}` };
+  }
+  
+  if (linkage === 'fileEntityAccess') {
+    // File -> Entity delegation based on entity_type
+    if (ctx.entityType !== 'file') {
+      return { passed: false, reason: 'fileEntityAccess requires file entity' };
+    }
+    
+    const file = await ctx.storage.fileMetadata?.getFileMetadata?.(ctx.entityId);
+    if (!file) {
+      return { passed: false, reason: 'File not found' };
+    }
+    
+    // Delegate based on entity_type
+    if (file.entityType === 'esig') {
+      // Delegate to esig policy
+      const esigPolicyId = 'esig.edit';
+      
+      const esigResult = await evaluatePolicyInternal(
+        ctx.user,
+        esigPolicyId,
+        ctx.storage,
+        ctx.accessStorage,
+        ctx.checkComponent,
+        file.entityId,
+        'esig'
+      );
+      
+      return { passed: esigResult.granted, reason: esigResult.reason };
+    }
+    
+    // Other entity types - deny by default (can be extended later)
+    return { passed: false, reason: `Unknown file entity_type: ${file.entityType}` };
+  }
+  
+  // Not a delegation linkage
+  return null;
 }
 
 /**
@@ -408,22 +530,32 @@ async function evaluateCondition(
       return { passed: false, reason: 'Linkage check requires entity context' };
     }
 
-    const resolver = linkageResolvers[condition.linkage];
-    if (!resolver) {
-      logger.warn(`Unknown linkage predicate: ${condition.linkage}`, { service: SERVICE });
-      return { passed: false, reason: `Unknown linkage predicate: ${condition.linkage}` };
-    }
+    // Handle delegation linkages specially
+    const delegationResult = await evaluateDelegatingLinkage(condition.linkage, ctx);
+    if (delegationResult !== null) {
+      if (!delegationResult.passed) {
+        return { passed: false, reason: delegationResult.reason || 'Delegation check failed' };
+      }
+      // Delegation passed, continue to other condition checks
+    } else {
+      // Standard linkage resolver
+      const resolver = linkageResolvers[condition.linkage];
+      if (!resolver) {
+        logger.warn(`Unknown linkage predicate: ${condition.linkage}`, { service: SERVICE });
+        return { passed: false, reason: `Unknown linkage predicate: ${condition.linkage}` };
+      }
 
-    const linkageCtx: LinkageContext = {
-      userId: ctx.user.id,
-      userEmail: ctx.user.email,
-      entityType: ctx.entityType,
-      entityId: ctx.entityId,
-    };
+      const linkageCtx: LinkageContext = {
+        userId: ctx.user.id,
+        userEmail: ctx.user.email,
+        entityType: ctx.entityType,
+        entityId: ctx.entityId,
+      };
 
-    const hasLinkage = await resolver(linkageCtx, ctx.storage);
-    if (!hasLinkage) {
-      return { passed: false, reason: 'Linkage check failed' };
+      const hasLinkage = await resolver(linkageCtx, ctx.storage);
+      if (!hasLinkage) {
+        return { passed: false, reason: 'Linkage check failed' };
+      }
     }
   }
 
@@ -463,6 +595,67 @@ async function evaluateRule(
 
   // Simple condition
   return evaluateCondition(rule as AccessCondition, ctx);
+}
+
+/**
+ * Internal policy evaluation that supports explicit entityType override
+ * Used for delegation where we need to evaluate a policy for a different entity type
+ */
+async function evaluatePolicyInternal(
+  user: User,
+  policyId: string,
+  storage: any,
+  accessStorage: AccessControlStorage,
+  checkComponent: ComponentChecker,
+  entityId: string,
+  entityTypeOverride: PolicyEntityType
+): Promise<AccessResult> {
+  const policy = accessPolicyRegistry.get(policyId);
+  if (!policy) {
+    return {
+      granted: false,
+      reason: `Unknown policy: ${policyId}`,
+      evaluatedAt: Date.now(),
+    };
+  }
+
+  // Check if user is admin (bypass all checks)
+  const isAdmin = await accessStorage.hasPermission(user.id, 'admin');
+  if (isAdmin) {
+    return {
+      granted: true,
+      reason: 'Admin bypass',
+      evaluatedAt: Date.now(),
+    };
+  }
+
+  // Build evaluation context with explicit entityType
+  const ctx: EvaluationContext = {
+    user,
+    entityType: entityTypeOverride,
+    entityId,
+    storage,
+    accessStorage,
+    checkComponent,
+  };
+
+  // Evaluate rules (OR - any rule grants access)
+  for (const rule of policy.rules) {
+    const result = await evaluateRule(rule, ctx);
+    if (result.passed) {
+      return {
+        granted: true,
+        reason: 'Access granted',
+        evaluatedAt: Date.now(),
+      };
+    }
+  }
+
+  return {
+    granted: false,
+    reason: 'No matching access rule',
+    evaluatedAt: Date.now(),
+  };
 }
 
 /**
