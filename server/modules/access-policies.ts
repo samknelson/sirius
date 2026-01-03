@@ -46,11 +46,12 @@ export function registerAccessPolicyRoutes(app: Express) {
     try {
       const { scope, entityType } = req.query;
       
-      let policies = accessPolicyRegistry.getAll();
+      // Get policies from modular registry (primary source)
+      let policies = getAllModularPolicies();
       
       // Filter by scope if provided
       if (scope === 'route' || scope === 'entity') {
-        policies = accessPolicyRegistry.getByScope(scope);
+        policies = getModularPoliciesByScope(scope);
       }
       
       // Filter by entity type if provided
@@ -61,11 +62,11 @@ export function registerAccessPolicyRoutes(app: Express) {
       // Format policies for frontend display
       const policyList = policies.map(policy => ({
         id: policy.id,
-        name: policy.name,
-        description: policy.description,
+        name: policy.id,
+        description: policy.description || '',
         scope: policy.scope,
         entityType: policy.entityType,
-        requirements: policy.rules, // Frontend expects 'requirements' field
+        requirements: policy.rules || [],
       }));
       
       res.json(policyList);
