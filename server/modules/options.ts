@@ -635,7 +635,7 @@ export function registerOptionsRoutes(
 
   // Ledger Payment Type routes
 
-  // GET /api/ledger-payment-types - Get all ledger payment types (requires ledgerStaff policy)
+  // GET /api/ledger-payment-types - Get all ledger payment types (requires ledger.staff policy)
   app.get("/api/ledger-payment-types", requireAccess('ledger.staff'), async (req, res) => {
     try {
       const paymentTypes = await storage.options.ledgerPaymentTypes.getAllLedgerPaymentTypes();
@@ -645,7 +645,7 @@ export function registerOptionsRoutes(
     }
   });
 
-  // GET /api/ledger-payment-types/:id - Get a specific ledger payment type (requires ledgerStaff policy)
+  // GET /api/ledger-payment-types/:id - Get a specific ledger payment type (requires ledger.staff policy)
   app.get("/api/ledger-payment-types/:id", requireAccess('ledger.staff'), async (req, res) => {
     try {
       const { id } = req.params;
@@ -662,7 +662,7 @@ export function registerOptionsRoutes(
     }
   });
 
-  // POST /api/ledger-payment-types - Create a new ledger payment type (requires ledgerStaff policy)
+  // POST /api/ledger-payment-types - Create a new ledger payment type (requires ledger.staff policy)
   app.post("/api/ledger-payment-types", requireAccess('ledger.staff'), async (req, res) => {
     try {
       const { name, description, sequence, currencyCode, category } = req.body;
@@ -687,7 +687,7 @@ export function registerOptionsRoutes(
     }
   });
 
-  // PUT /api/ledger-payment-types/:id - Update a ledger payment type (requires ledgerStaff policy)
+  // PUT /api/ledger-payment-types/:id - Update a ledger payment type (requires ledger.staff policy)
   app.put("/api/ledger-payment-types/:id", requireAccess('ledger.staff'), async (req, res) => {
     try {
       const { id } = req.params;
@@ -746,7 +746,7 @@ export function registerOptionsRoutes(
     }
   });
 
-  // DELETE /api/ledger-payment-types/:id - Delete a ledger payment type (requires ledgerStaff policy)
+  // DELETE /api/ledger-payment-types/:id - Delete a ledger payment type (requires ledger.staff policy)
   app.delete("/api/ledger-payment-types/:id", requireAccess('ledger.staff'), async (req, res) => {
     try {
       const { id } = req.params;

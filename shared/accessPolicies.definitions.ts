@@ -72,6 +72,17 @@ defineRoutePolicy(
   ]
 );
 
+// Route-level policy for employer portal access (staff or employer contact)
+defineRoutePolicy(
+  'employerUser',
+  'Employer Portal Access',
+  'Requires staff permission or employer permission with employer association',
+  [
+    { authenticated: true, permission: 'staff' },
+    { authenticated: true, permission: 'employer', linkage: 'employerAssociation' },
+  ]
+);
+
 // --- Masquerade ---
 
 defineRoutePolicy(
@@ -90,13 +101,6 @@ defineRoutePolicy(
   [{ authenticated: true, component: 'ledger', permission: 'ledger.staff' }]
 );
 
-// Alias for backward compatibility with client code
-defineRoutePolicy(
-  'ledgerStaff',
-  'Ledger Staff Access (Alias)',
-  'Requires ledger component and ledger.staff permission',
-  [{ authenticated: true, component: 'ledger', permission: 'ledger.staff' }]
-);
 
 defineRoutePolicy(
   'ledger.stripe.admin',

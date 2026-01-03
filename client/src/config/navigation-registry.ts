@@ -141,7 +141,7 @@ export const configSections: NavSection[] = [
     description: "Financial ledger and payment configuration",
     icon: Wallet,
     items: [
-      { path: "/config/ledger/payment-types", label: "Payment Types", icon: Wallet, testId: "nav-ledger-payment-types", policy: "ledgerStaff" },
+      { path: "/config/ledger/payment-types", label: "Payment Types", icon: Wallet, testId: "nav-ledger-payment-types", policy: "ledger.staff" },
       { path: "/config/ledger/charge-plugins", label: "Charge Plugins", icon: Zap, testId: "nav-ledger-charge-plugins", permission: "admin" },
     ],
     subsections: [
@@ -151,9 +151,9 @@ export const configSections: NavSection[] = [
         description: "Stripe payment integration settings",
         icon: CreditCard,
         items: [
-          { path: "/config/ledger/stripe/settings", label: "Settings", icon: Settings, testId: "nav-ledger-stripe-settings", policy: "ledgerStripeAdmin" },
-          { path: "/config/ledger/stripe/test", label: "Test Connection", icon: Activity, testId: "nav-ledger-stripe-test", policy: "ledgerStripeAdmin" },
-          { path: "/config/ledger/stripe/payment-types", label: "Payment Methods", icon: CreditCard, testId: "nav-ledger-stripe-payment-types", policy: "ledgerStripeAdmin" },
+          { path: "/config/ledger/stripe/settings", label: "Settings", icon: Settings, testId: "nav-ledger-stripe-settings", policy: "ledger.stripe.admin" },
+          { path: "/config/ledger/stripe/test", label: "Test Connection", icon: Activity, testId: "nav-ledger-stripe-test", policy: "ledger.stripe.admin" },
+          { path: "/config/ledger/stripe/payment-types", label: "Payment Methods", icon: CreditCard, testId: "nav-ledger-stripe-payment-types", policy: "ledger.stripe.admin" },
         ],
       },
     ],

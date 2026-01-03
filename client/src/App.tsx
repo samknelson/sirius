@@ -777,7 +777,7 @@ function Router() {
       </Route>
 
       <Route path="/ea/:id">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.staff" component="ledger">
           <AuthenticatedLayout>
             <EAView />
           </AuthenticatedLayout>
@@ -785,7 +785,7 @@ function Router() {
       </Route>
 
       <Route path="/ea/:id/invoices">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.staff" component="ledger">
           <AuthenticatedLayout>
             <EAInvoices />
           </AuthenticatedLayout>
@@ -793,7 +793,7 @@ function Router() {
       </Route>
 
       <Route path="/ea/:id/payments">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.staff" component="ledger">
           <AuthenticatedLayout>
             <EAPayments />
           </AuthenticatedLayout>
@@ -801,7 +801,7 @@ function Router() {
       </Route>
 
       <Route path="/ea/:id/transactions">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.staff" component="ledger">
           <AuthenticatedLayout>
             <EATransactions />
           </AuthenticatedLayout>
@@ -809,7 +809,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/payment/:id">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.staff" component="ledger">
           <AuthenticatedLayout>
             <PaymentView />
           </AuthenticatedLayout>
@@ -817,7 +817,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/payment/:id/edit">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.staff" component="ledger">
           <AuthenticatedLayout>
             <PaymentEdit />
           </AuthenticatedLayout>
@@ -937,7 +937,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/ledger/stripe/payment_methods">
-        <ProtectedRoute policy="ledgerStripeEmployer" component="ledger">
+        <ProtectedRoute policy="ledger.stripe.employer" component="ledger">
           <AuthenticatedLayout>
             <StripePaymentMethodsPage />
           </AuthenticatedLayout>
@@ -945,7 +945,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/ledger/accounts">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.staff" component="ledger">
           <AuthenticatedLayout>
             <EmployerLedgerAccountsWrapper />
           </AuthenticatedLayout>
@@ -1847,7 +1847,7 @@ function Router() {
       </Route>
 
       <Route path="/config/ledger/stripe/settings">
-        <ProtectedRoute policy="ledgerStripeAdmin" component="ledger">
+        <ProtectedRoute policy="ledger.stripe.admin" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <StripeSettingsPage />
@@ -1857,7 +1857,7 @@ function Router() {
       </Route>
 
       <Route path="/config/ledger/stripe/test">
-        <ProtectedRoute policy="ledgerStripeAdmin" component="ledger">
+        <ProtectedRoute policy="ledger.stripe.admin" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <StripeTestPage />
@@ -1867,7 +1867,7 @@ function Router() {
       </Route>
 
       <Route path="/config/ledger/stripe/payment-types">
-        <ProtectedRoute policy="ledgerStripeAdmin" component="ledger">
+        <ProtectedRoute policy="ledger.stripe.admin" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PaymentTypesPage />
@@ -1877,7 +1877,7 @@ function Router() {
       </Route>
 
       <Route path="/config/ledger/payment-types">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.staff" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <LedgerPaymentTypesPage />
@@ -1928,7 +1928,7 @@ function Router() {
 
       {/* Ledger account detail pages */}
       <Route path="/ledger/accounts/:id/payments">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.staff" component="ledger">
           <AuthenticatedLayout>
             <AccountPayments />
           </AuthenticatedLayout>
@@ -1936,7 +1936,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/accounts/:id/transactions">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.staff" component="ledger">
           <AuthenticatedLayout>
             <AccountTransactions />
           </AuthenticatedLayout>
@@ -1944,7 +1944,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/accounts/:id/participants">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.staff" component="ledger">
           <AuthenticatedLayout>
             <AccountParticipants />
           </AuthenticatedLayout>
@@ -1952,7 +1952,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/accounts/:id/settings">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.staff" component="ledger">
           <AuthenticatedLayout>
             <AccountSettings />
           </AuthenticatedLayout>
@@ -1960,7 +1960,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/accounts/:id/edit">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.staff" component="ledger">
           <AuthenticatedLayout>
             <LedgerAccountEdit />
           </AuthenticatedLayout>
@@ -1968,7 +1968,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/accounts/:id">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.staff" component="ledger">
           <AuthenticatedLayout>
             <LedgerAccountView />
           </AuthenticatedLayout>
@@ -1976,7 +1976,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/accounts">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.staff" component="ledger">
           <AuthenticatedLayout>
             <LedgerAccountsPage />
           </AuthenticatedLayout>

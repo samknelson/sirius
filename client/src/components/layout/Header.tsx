@@ -67,9 +67,9 @@ export default function Header() {
   // Type for policy access check response
   type PolicyAccessResponse = { access: { granted: boolean } };
 
-  // Check ledgerStaff policy for Accounts navigation
+  // Check ledger.staff policy for Accounts navigation
   const { data: ledgerStaffPolicy } = useQuery<PolicyAccessResponse>({
-    queryKey: ["/api/access/policies/ledgerStaff"],
+    queryKey: ["/api/access/policies/ledger.staff"],
     staleTime: 30000,
   });
 
