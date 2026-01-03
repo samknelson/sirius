@@ -311,7 +311,7 @@ function Router() {
 
       {/* Protected routes */}
       <Route path="/workers/add">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkersAdd />
           </AuthenticatedLayout>
@@ -319,7 +319,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/phone-numbers">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerPhoneNumbers />
           </AuthenticatedLayout>
@@ -327,7 +327,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/comm/history">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerCommHistory />
           </AuthenticatedLayout>
@@ -335,7 +335,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/comm/send-sms">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerSendSms />
           </AuthenticatedLayout>
@@ -343,7 +343,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/comm/send-email">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerSendEmail />
           </AuthenticatedLayout>
@@ -351,7 +351,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/comm/send-postal">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerSendPostal />
           </AuthenticatedLayout>
@@ -359,7 +359,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/comm/send-inapp">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerSendInApp />
           </AuthenticatedLayout>
@@ -367,7 +367,7 @@ function Router() {
       </Route>
 
       <Route path="/comm/:commId">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <CommDetail />
           </AuthenticatedLayout>
@@ -375,7 +375,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/addresses">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerAddresses />
           </AuthenticatedLayout>
@@ -383,7 +383,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/name">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerName />
           </AuthenticatedLayout>
@@ -391,7 +391,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/email">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerEmail />
           </AuthenticatedLayout>
@@ -399,7 +399,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/ids">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerIDs />
           </AuthenticatedLayout>
@@ -407,7 +407,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/birth-date">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerBirthDate />
           </AuthenticatedLayout>
@@ -415,7 +415,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/gender">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerGender />
           </AuthenticatedLayout>
@@ -423,7 +423,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/work-status">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerWorkStatus />
           </AuthenticatedLayout>
@@ -439,7 +439,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/bans">
-        <ProtectedRoute permission="workers.view" component="dispatch">
+        <ProtectedRoute permission="staff" component="dispatch">
           <AuthenticatedLayout>
             <WorkerBans />
           </AuthenticatedLayout>
@@ -447,7 +447,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/union/bargaining-unit">
-        <ProtectedRoute permission="workers.view" component="bargainingunits">
+        <ProtectedRoute permission="staff" component="bargainingunits">
           <AuthenticatedLayout>
             <WorkerBargainingUnit />
           </AuthenticatedLayout>
@@ -455,7 +455,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/benefits/history">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerBenefitsHistory />
           </AuthenticatedLayout>
@@ -463,7 +463,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/benefits/eligibility">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerBenefitsEligibility />
           </AuthenticatedLayout>
@@ -471,7 +471,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/benefits/scan">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerBenefitsScan />
           </AuthenticatedLayout>
@@ -479,7 +479,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/union/cardchecks">
-        <ProtectedRoute permission="workers.view" component="cardcheck">
+        <ProtectedRoute permission="staff" component="cardcheck">
           <AuthenticatedLayout>
             <WorkerCardchecks />
           </AuthenticatedLayout>
@@ -487,7 +487,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/union/steward">
-        <ProtectedRoute permission="workers.view" component="worker.steward">
+        <ProtectedRoute permission="staff" component="worker.steward">
           <AuthenticatedLayout>
             <WorkerSteward />
           </AuthenticatedLayout>
@@ -495,7 +495,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/union/representatives">
-        <ProtectedRoute permission="workers.view" component="worker.steward">
+        <ProtectedRoute permission="staff" component="worker.steward">
           <AuthenticatedLayout>
             <WorkerRepresentatives />
           </AuthenticatedLayout>
@@ -503,7 +503,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/dispatch/status">
-        <ProtectedRoute permission="workers.view" component="dispatch">
+        <ProtectedRoute permission="staff" component="dispatch">
           <AuthenticatedLayout>
             <WorkerDispatchStatus />
           </AuthenticatedLayout>
@@ -511,7 +511,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/dispatch/do-not-call">
-        <ProtectedRoute permission="workers.view" component="dispatch">
+        <ProtectedRoute permission="staff" component="dispatch">
           <AuthenticatedLayout>
             <WorkerDispatchDoNotCall />
           </AuthenticatedLayout>
@@ -519,7 +519,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/dispatch/hold-for-employer">
-        <ProtectedRoute permission="workers.view" component="dispatch.hfe">
+        <ProtectedRoute permission="staff" component="dispatch.hfe">
           <AuthenticatedLayout>
             <WorkerDispatchHoldForEmployer />
           </AuthenticatedLayout>
@@ -527,7 +527,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/ledger/accounts">
-        <ProtectedRoute permission="workers.view" component="ledger">
+        <ProtectedRoute permission="staff" component="ledger">
           <AuthenticatedLayout>
             <WorkerLedgerAccounts />
           </AuthenticatedLayout>
@@ -535,7 +535,7 @@ function Router() {
       </Route>
 
       <Route path="/cardchecks/:id">
-        <ProtectedRoute permission="workers.view" component="cardcheck">
+        <ProtectedRoute permission="staff" component="cardcheck">
           <AuthenticatedLayout>
             <CardcheckViewPage />
           </AuthenticatedLayout>
@@ -543,7 +543,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/employment/current">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerCurrentEmployment />
           </AuthenticatedLayout>
@@ -551,7 +551,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/employment/history">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerEmploymentHistory />
           </AuthenticatedLayout>
@@ -559,7 +559,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/employment/monthly">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerHoursMonthly />
           </AuthenticatedLayout>
@@ -567,7 +567,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/employment/daily">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkerHoursDaily />
           </AuthenticatedLayout>
@@ -575,19 +575,19 @@ function Router() {
       </Route>
 
       <Route path="/hours/:hoursId">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <WorkerHoursView />
         </ProtectedRoute>
       </Route>
 
       <Route path="/hours/:hoursId/edit">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute permission="staff">
           <WorkerHoursEdit />
         </ProtectedRoute>
       </Route>
 
       <Route path="/hours/:hoursId/delete">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute permission="staff">
           <WorkerHoursDelete />
         </ProtectedRoute>
       </Route>
@@ -617,7 +617,7 @@ function Router() {
       </Route>
 
       <Route path="/workers">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <Workers />
           </AuthenticatedLayout>
@@ -729,7 +729,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/add">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployersAdd />
           </AuthenticatedLayout>
@@ -737,7 +737,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/edit">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployerEdit />
           </AuthenticatedLayout>
@@ -833,7 +833,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployerContactView />
           </AuthenticatedLayout>
@@ -841,7 +841,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/edit">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployerContactEdit />
           </AuthenticatedLayout>
@@ -849,7 +849,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/name">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployerContactName />
           </AuthenticatedLayout>
@@ -857,7 +857,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/email">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployerContactEmail />
           </AuthenticatedLayout>
@@ -865,7 +865,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/phone-numbers">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployerContactPhoneNumbers />
           </AuthenticatedLayout>
@@ -873,7 +873,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/addresses">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployerContactAddresses />
           </AuthenticatedLayout>
@@ -889,7 +889,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/comm/history">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployerContactCommHistory />
           </AuthenticatedLayout>
@@ -897,7 +897,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/comm/send-sms">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployerContactSendSms />
           </AuthenticatedLayout>
@@ -905,7 +905,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/comm/send-email">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployerContactSendEmail />
           </AuthenticatedLayout>
@@ -913,7 +913,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/comm/send-postal">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployerContactSendPostal />
           </AuthenticatedLayout>
@@ -921,7 +921,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/comm/send-inapp">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployerContactSendInApp />
           </AuthenticatedLayout>
@@ -1106,7 +1106,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-benefits/add">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <TrustBenefitsAdd />
           </AuthenticatedLayout>
@@ -1114,7 +1114,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-benefits/:id/edit">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <TrustBenefitEdit />
           </AuthenticatedLayout>
@@ -1122,7 +1122,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-benefits/:id">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <TrustBenefitView />
           </AuthenticatedLayout>
@@ -1130,7 +1130,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-benefits">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <TrustBenefits />
           </AuthenticatedLayout>
@@ -1162,7 +1162,7 @@ function Router() {
       </Route>
 
       <Route path="/cardcheck-definitions">
-        <ProtectedRoute permission="workers.view" component="cardcheck">
+        <ProtectedRoute permission="staff" component="cardcheck">
           <AuthenticatedLayout>
             <CardcheckDefinitionsPage />
           </AuthenticatedLayout>
@@ -1170,7 +1170,7 @@ function Router() {
       </Route>
 
       <Route path="/cardcheck-definitions/:id/edit">
-        <ProtectedRoute permission="workers.manage" component="cardcheck">
+        <ProtectedRoute permission="staff" component="cardcheck">
           <AuthenticatedLayout>
             <CardcheckDefinitionEditPage />
           </AuthenticatedLayout>
@@ -1178,7 +1178,7 @@ function Router() {
       </Route>
 
       <Route path="/cardcheck-definitions/:id">
-        <ProtectedRoute permission="workers.view" component="cardcheck">
+        <ProtectedRoute permission="staff" component="cardcheck">
           <AuthenticatedLayout>
             <CardcheckDefinitionViewPage />
           </AuthenticatedLayout>
@@ -1298,7 +1298,7 @@ function Router() {
       </Route>
 
       <Route path="/trust/provider/:id/edit">
-        <ProtectedRoute permission="workers.manage" component="trust.providers">
+        <ProtectedRoute permission="staff" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderEditPage />
           </AuthenticatedLayout>
@@ -1306,7 +1306,7 @@ function Router() {
       </Route>
 
       <Route path="/trust/provider/:id">
-        <ProtectedRoute permission="workers.view" component="trust.providers">
+        <ProtectedRoute permission="staff" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderViewPage />
           </AuthenticatedLayout>
@@ -1314,7 +1314,7 @@ function Router() {
       </Route>
 
       <Route path="/trust/providers">
-        <ProtectedRoute permission="workers.view" component="trust.providers">
+        <ProtectedRoute permission="staff" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProvidersPage />
           </AuthenticatedLayout>
@@ -1356,7 +1356,7 @@ function Router() {
 
       {/* Stewards route */}
       <Route path="/stewards">
-        <ProtectedRoute permission="workers.view" component="worker.steward">
+        <ProtectedRoute permission="staff" component="worker.steward">
           <AuthenticatedLayout>
             <Stewards />
           </AuthenticatedLayout>

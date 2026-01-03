@@ -92,11 +92,11 @@ export const workerTabTree: HierarchicalTab[] = [
     id: 'identity', label: 'Identity', hrefTemplate: '/workers/{id}/name', policyId: 'worker',
     children: [
       { id: 'name', label: 'Name', hrefTemplate: '/workers/{id}/name', policyId: 'worker' },
-      { id: 'ids', label: 'IDs', hrefTemplate: '/workers/{id}/ids', permission: 'workers.view' },
+      { id: 'ids', label: 'IDs', hrefTemplate: '/workers/{id}/ids', permission: 'staff' },
       { id: 'birth-date', label: 'Birth Date', hrefTemplate: '/workers/{id}/birth-date', policyId: 'worker' },
       { id: 'gender', label: 'Gender', hrefTemplate: '/workers/{id}/gender', policyId: 'worker' },
       { id: 'work-status', label: 'Work Status', hrefTemplate: '/workers/{id}/work-status', policyId: 'worker' },
-      { id: 'user', label: 'User', hrefTemplate: '/workers/{id}/user', permission: 'workers.view' },
+      { id: 'user', label: 'User', hrefTemplate: '/workers/{id}/user', permission: 'staff' },
       { id: 'bans', label: 'Bans', hrefTemplate: '/workers/{id}/bans', policyId: 'worker', component: 'dispatch' },
     ]
   },
@@ -132,7 +132,7 @@ export const workerTabTree: HierarchicalTab[] = [
     children: [
       { id: 'benefits-history', label: 'History', hrefTemplate: '/workers/{id}/benefits/history', policyId: 'worker' },
       { id: 'benefits-eligibility', label: 'Eligibility', hrefTemplate: '/workers/{id}/benefits/eligibility', policyId: 'worker' },
-      { id: 'benefits-scan', label: 'Scan', hrefTemplate: '/workers/{id}/benefits/scan', permission: 'workers.view' },
+      { id: 'benefits-scan', label: 'Scan', hrefTemplate: '/workers/{id}/benefits/scan', permission: 'staff' },
     ]
   },
   { 
@@ -153,7 +153,7 @@ export const workerTabTree: HierarchicalTab[] = [
     ]
   },
   { id: 'accounting', label: 'Accounting', hrefTemplate: '/workers/{id}/ledger/accounts', permission: 'ledger.view', component: 'ledger' },
-  { id: 'logs', label: 'Logs', hrefTemplate: '/workers/{id}/logs', permission: 'workers.view' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/workers/{id}/logs', permission: 'staff' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/workers/{id}/delete', permission: 'workers.delete' },
 ];
 
@@ -294,7 +294,7 @@ export const trustBenefitTabTree: HierarchicalTab[] = [
  * Worker hours entry tab tree
  */
 export const workerHoursTabTree: HierarchicalTab[] = [
-  { id: 'view', label: 'View', hrefTemplate: '/worker-hours/{id}', permission: 'workers.view' },
+  { id: 'view', label: 'View', hrefTemplate: '/worker-hours/{id}', permission: 'staff' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/worker-hours/{id}/edit', permission: 'workers.edit' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/worker-hours/{id}/delete', permission: 'workers.delete' },
 ];
