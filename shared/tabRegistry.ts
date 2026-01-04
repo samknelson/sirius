@@ -188,10 +188,10 @@ export const employerTabTree: HierarchicalTab[] = [
  * Provider entity tab tree
  */
 export const providerTabTree: HierarchicalTab[] = [
-  { id: 'view', label: 'View', hrefTemplate: '/trust/provider/{id}', permission: 'trust.view' },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/trust/provider/{id}/edit', permission: 'trust.edit' },
-  { id: 'contacts', label: 'Contacts', hrefTemplate: '/trust/provider/{id}/contacts', permission: 'trust.view' },
-  { id: 'logs', label: 'Logs', hrefTemplate: '/trust/provider/{id}/logs', permission: 'trust.view' },
+  { id: 'view', label: 'View', hrefTemplate: '/trust/provider/{id}', policyId: 'trust.provider.mine' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/trust/provider/{id}/edit', permission: 'staff' },
+  { id: 'contacts', label: 'Contacts', hrefTemplate: '/trust/provider/{id}/contacts', policyId: 'trust.provider.mine' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/trust/provider/{id}/logs', permission: 'staff' },
 ];
 
 /**
@@ -285,8 +285,8 @@ export const ledgerPaymentTabTree: HierarchicalTab[] = [
  * Trust benefit entity tab tree
  */
 export const trustBenefitTabTree: HierarchicalTab[] = [
-  { id: 'details', label: 'Details', hrefTemplate: '/trust-benefits/{id}', permission: 'trust.view' },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/trust-benefits/{id}/edit', permission: 'trust.edit' },
+  { id: 'details', label: 'Details', hrefTemplate: '/trust-benefits/{id}', permission: 'staff' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/trust-benefits/{id}/edit', permission: 'staff' },
 ];
 
 /**
