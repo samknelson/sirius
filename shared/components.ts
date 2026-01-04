@@ -87,6 +87,10 @@ export const componentRegistry: ComponentDefinition[] = [
       {
         key: "employer.ledger",
         description: "Access to employer ledger functionality for employer users"
+      },
+      {
+        key: "worker.ledger",
+        description: "Access to worker ledger functionality for worker users"
       }
     ]
   },
@@ -159,7 +163,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Worker Login",
     description: "Ability for workers to log in",
     enabledByDefault: false,
-    category: "authentication"
+    category: "authentication",
+    permissions: [
+      {
+        key: "worker",
+        description: "Worker level access"
+      }
+    ]
   },
   {
     id: "worker.steward",
@@ -172,7 +182,13 @@ export const componentRegistry: ComponentDefinition[] = [
       version: 1,
       schemaPath: "./shared/schema/worker/steward/schema.ts",
       tables: ["worker_steward_assignments"]
-    }
+    },
+    permissions: [
+      {
+        key: "worker.steward",
+        description: "Access to shop steward functionality for workers"
+      }
+    ]
   },
   {
     id: "trust.providers.login",

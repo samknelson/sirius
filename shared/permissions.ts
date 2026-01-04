@@ -156,18 +156,8 @@ export function initializePermissions(): void {
       module: 'core'
     },
     {
-      key: 'worker.ledger',
-      description: 'Access to worker ledger functionality for worker users',
-      module: 'core'
-    },
-    {
       key: 'staff',
       description: 'Staff level access',
-      module: 'core'
-    },
-    {
-      key: 'worker',
-      description: 'Worker level access',
       module: 'core'
     },
     {
@@ -175,11 +165,6 @@ export function initializePermissions(): void {
       description: 'Administrator level access',
       module: 'core'
     },
-    {
-      key: 'worker.steward',
-      description: 'Access to shop steward functionality for workers',
-      module: 'core'
-    }
   ];
 
   permissionRegistry.registerMany(corePermissions);
