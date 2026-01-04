@@ -219,9 +219,9 @@ export const eventTabTree: HierarchicalTab[] = [
  * Bargaining unit entity tab tree
  */
 export const bargainingUnitTabTree: HierarchicalTab[] = [
-  { id: 'view', label: 'View', hrefTemplate: '/bargaining-units/{id}', permission: 'bargainingunits.view' },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/bargaining-units/{id}/edit', permission: 'bargainingunits.edit' },
-  { id: 'delete', label: 'Delete', hrefTemplate: '/bargaining-units/{id}/delete', permission: 'bargainingunits.delete' },
+  { id: 'view', label: 'View', hrefTemplate: '/bargaining-units/{id}', permission: 'staff' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/bargaining-units/{id}/edit', permission: 'staff' },
+  { id: 'delete', label: 'Delete', hrefTemplate: '/bargaining-units/{id}/delete', permission: 'staff' },
 ];
 
 /**
