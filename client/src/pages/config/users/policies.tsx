@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface ConditionPart {
   text: string;
@@ -133,6 +134,7 @@ function getRequirementBadgeVariant(type: string) {
 }
 
 export default function PoliciesPage() {
+  usePageTitle("Access Policies");
   const [filterText, setFilterText] = useState('');
   
   const { data: policies = [], isLoading } = useQuery<Policy[]>({

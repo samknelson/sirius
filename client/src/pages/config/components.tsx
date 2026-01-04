@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Info, Database, AlertTriangle, Loader2, Archive, Trash2, Shield } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { getAllComponents, ComponentDefinition, ComponentConfig } from "@shared/components";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface SchemaInfo {
   componentId: string;
@@ -30,6 +31,7 @@ interface PendingAction {
 }
 
 export default function ComponentsConfigPage() {
+  usePageTitle("Components");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   

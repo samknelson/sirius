@@ -4,8 +4,10 @@ import { Users, Shield, Key, UserCheck } from 'lucide-react';
 import UsersManagement from '@/components/admin/UsersManagement';
 import RolesManagement from '@/components/admin/RolesManagement';
 import PermissionsManagement from '@/components/admin/PermissionsManagement';
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 export default function UserManagementConfigPage() {
+  usePageTitle("User Management");
   return (
     <div className="space-y-6">
       <div>

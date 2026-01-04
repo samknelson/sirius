@@ -1,8 +1,10 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Key } from 'lucide-react';
 import PermissionsManagement from '@/components/admin/PermissionsManagement';
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 export default function PermissionsPage() {
+  usePageTitle("Permissions");
   return (
     <div className="container mx-auto py-8 max-w-7xl">
       <div className="mb-6">

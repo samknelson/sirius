@@ -1,8 +1,10 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield } from 'lucide-react';
 import RolesManagement from '@/components/admin/RolesManagement';
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 export default function RolesPage() {
+  usePageTitle("Roles");
   return (
     <div className="container mx-auto py-8 max-w-7xl">
       <div className="mb-6">
