@@ -41,6 +41,14 @@ const policy = definePolicy({
   description: 'View ledger entity assignments - requires staff OR appropriate entity ledger policy',
   scope: 'entity',
   component: 'ledger',
+  
+  describeRequirements: () => [
+    { permission: 'staff' },
+    { policy: 'employer.ledger', attribute: 'for employer entity accounts' },
+    { policy: 'worker.ledger', attribute: 'for worker entity accounts' },
+    { policy: 'provider.ledger', attribute: 'for provider entity accounts' }
+  ],
+  
   evaluate: evaluateLedgerEaAccess,
 });
 
