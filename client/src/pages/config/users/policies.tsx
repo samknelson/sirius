@@ -205,6 +205,7 @@ export default function PoliciesPage() {
               <TableRow>
                 <TableHead className="w-[200px]">Name</TableHead>
                 <TableHead className="w-[300px]">Description</TableHead>
+                <TableHead className="w-[140px]">Component</TableHead>
                 <TableHead>Requirements</TableHead>
               </TableRow>
             </TableHeader>
@@ -216,6 +217,15 @@ export default function PoliciesPage() {
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {policy.description || '-'}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {policy.component ? (
+                      <Badge variant="outline" className="font-mono text-xs">
+                        {policy.component}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <div className="space-y-2">

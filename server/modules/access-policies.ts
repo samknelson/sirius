@@ -45,7 +45,8 @@ export function registerAccessPolicyRoutes(app: Express) {
   // GET /api/access/policies - List all policies (requires admin permission)
   app.get("/api/access/policies", requireAccess('admin'), async (req, res) => {
     try {
-      const { scope, entityType } = req.query;
+      const { scope, entityType, enabledOnly } = req.query;
+      const componentChecker = getComponentChecker();
       
       // Get policies from modular registry (primary source)
       let policies = getAllModularPolicies();
@@ -58,6 +59,19 @@ export function registerAccessPolicyRoutes(app: Express) {
       // Filter by entity type if provided
       if (entityType && typeof entityType === 'string') {
         policies = policies.filter(p => p.entityType === entityType);
+      }
+      
+      // Filter out policies whose required component is disabled
+      if (enabledOnly === 'true' && componentChecker) {
+        const enabledPolicies = [];
+        for (const policy of policies) {
+          if (!policy.component) {
+            enabledPolicies.push(policy);
+          } else if (await componentChecker(policy.component)) {
+            enabledPolicies.push(policy);
+          }
+        }
+        policies = enabledPolicies;
       }
 
       // Format policies for frontend display
@@ -74,6 +88,7 @@ export function registerAccessPolicyRoutes(app: Express) {
           description: policy.description || '',
           scope: policy.scope,
           entityType: policy.entityType,
+          component: policy.component,
           requirements,
         };
       });

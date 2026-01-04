@@ -42,5 +42,7 @@ export interface Policy {
   id: string;
   name: string;
   description: string;
+  /** Required component for this policy to be active */
+  component?: string;
   requirements: AccessRequirement[];
 }

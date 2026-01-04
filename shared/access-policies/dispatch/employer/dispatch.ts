@@ -5,6 +5,7 @@ const policy = definePolicy({
   description: 'Access dispatch functionality for associated employers',
   scope: 'entity',
   entityType: 'employer',
+  component: 'dispatch',
   
   describeRequirements: () => [
     { permission: 'staff' },
