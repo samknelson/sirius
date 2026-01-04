@@ -2,7 +2,7 @@ import { definePolicy, registerPolicy, type PolicyContext } from '../../index';
 
 const policy = definePolicy({
   id: 'employer.dispatch',
-  description: 'Access dispatch functionality for associated employers',
+  description: 'Access employer dispatch',
   scope: 'entity',
   entityType: 'employer',
   component: 'dispatch',

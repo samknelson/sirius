@@ -2,7 +2,7 @@ import { definePolicy, registerPolicy, type PolicyContext } from '../../index';
 
 const policy = definePolicy({
   id: 'worker.dispatch.dnc.edit',
-  description: 'Create/edit dispatch DNC records',
+  description: 'Edit do-not-call records',
   scope: 'entity',
   entityType: 'worker.dispatch.dnc',
   component: 'dispatch.dnc',
