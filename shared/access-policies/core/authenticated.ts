@@ -2,7 +2,7 @@ import { definePolicy, registerPolicy } from '../index';
 
 const policy = definePolicy({
   id: 'authenticated',
-  description: 'Requires user to be authenticated',
+  description: 'Authenticated user access',
   scope: 'route',
   rules: [{ authenticated: true }],
 });

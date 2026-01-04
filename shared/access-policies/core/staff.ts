@@ -2,7 +2,7 @@ import { definePolicy, registerPolicy } from '../index';
 
 const policy = definePolicy({
   id: 'staff',
-  description: 'Requires staff permission',
+  description: 'Staff-level access',
   scope: 'route',
   rules: [{ permission: 'staff' }],
 });

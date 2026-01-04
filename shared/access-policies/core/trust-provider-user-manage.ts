@@ -2,7 +2,7 @@ import { definePolicy, registerPolicy } from '../index';
 
 const policy = definePolicy({
   id: 'trustProvider.userManage',
-  description: 'Requires trust.providers.login component and trustprovider.usermanage permission',
+  description: 'Manage trust provider user accounts',
   scope: 'route',
   component: 'trust.providers.login',
   rules: [{ component: 'trust.providers.login', permission: 'trustprovider.usermanage' }],
