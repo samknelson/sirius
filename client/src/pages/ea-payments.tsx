@@ -38,7 +38,8 @@ interface LedgerNotification {
 function EAPaymentsContent() {
   const { id } = useParams<{ id: string }>();
   const { currencyCode } = useEALayout();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const isStaff = hasPermission('staff');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [merchant, setMerchant] = useState("");
   const [checkTransactionNumber, setCheckTransactionNumber] = useState("");
@@ -504,28 +505,30 @@ function EAPaymentsContent() {
               <Download className="h-4 w-4 mr-2" />
               Export CSV
             </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button data-testid="button-add-payment">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add
-                  <ChevronDown className="h-4 w-4 ml-2" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {paymentTypes
-                  .filter((type) => type.currencyCode === currencyCode)
-                  .map((type) => (
-                  <DropdownMenuItem
-                    key={type.id}
-                    onClick={() => openDialogWithPaymentType(type.id)}
-                    data-testid={`menu-item-${type.id}`}
-                  >
-                    {type.name}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {isStaff && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button data-testid="button-add-payment">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add
+                    <ChevronDown className="h-4 w-4 ml-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {paymentTypes
+                    .filter((type) => type.currencyCode === currencyCode)
+                    .map((type) => (
+                    <DropdownMenuItem
+                      key={type.id}
+                      onClick={() => openDialogWithPaymentType(type.id)}
+                      data-testid={`menu-item-${type.id}`}
+                    >
+                      {type.name}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogContent className="max-w-md">
               <DialogHeader>
@@ -935,7 +938,7 @@ function EAPaymentsContent() {
                       <ArrowUpDown className="ml-2 h-4 w-4" />
                     </Button>
                   </TableHead>
-                  <TableHead></TableHead>
+                  {isStaff && <TableHead></TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -967,15 +970,17 @@ function EAPaymentsContent() {
                       <TableCell data-testid={`text-date-cleared-${payment.id}`}>
                         {payment.dateCleared ? new Date(payment.dateCleared).toLocaleDateString() : "-"}
                       </TableCell>
-                      <TableCell>
-                        <Link 
-                          href={`/ledger/payment/${payment.id}`}
-                          className="text-primary hover:underline"
-                          data-testid={`link-view-${payment.id}`}
-                        >
-                          View
-                        </Link>
-                      </TableCell>
+                      {isStaff && (
+                        <TableCell>
+                          <Link 
+                            href={`/ledger/payment/${payment.id}`}
+                            className="text-primary hover:underline"
+                            data-testid={`link-view-${payment.id}`}
+                          >
+                            View
+                          </Link>
+                        </TableCell>
+                      )}
                     </TableRow>
                   );
                 })}
