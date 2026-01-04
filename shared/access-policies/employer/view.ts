@@ -2,7 +2,7 @@ import { definePolicy, registerPolicy, type PolicyContext } from '../index';
 
 const policy = definePolicy({
   id: 'employer.view',
-  description: 'View a specific employer record',
+  description: 'View employer details',
   scope: 'entity',
   entityType: 'employer',
   

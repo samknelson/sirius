@@ -2,7 +2,7 @@ import { definePolicy, registerPolicy, type PolicyContext } from '../index';
 
 const policy = definePolicy({
   id: 'employer.mine',
-  description: 'Access associated employer record (no worker access)',
+  description: 'Access your associated employer',
   scope: 'entity',
   entityType: 'employer',
   

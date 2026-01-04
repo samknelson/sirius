@@ -2,7 +2,7 @@ import { definePolicy, registerPolicy, type PolicyContext } from '../index';
 
 const policy = definePolicy({
   id: 'employer.manage',
-  description: 'Requires staff permission, OR both employer.manage permission and employer.mine policy',
+  description: 'Manage employer operations',
   scope: 'route',
   
   describeRequirements: () => [
