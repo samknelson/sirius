@@ -26,6 +26,7 @@ import './worker/mine';
 import './worker/ledger';
 
 import './trust/provider/ledger';
+import './trust/provider/mine';
 
 import './cardcheck/view';
 import './cardcheck/edit';

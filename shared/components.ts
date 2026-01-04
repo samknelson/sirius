@@ -198,11 +198,11 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "authentication",
     permissions: [
       {
-        key: "provider",
+        key: "trust.provider",
         description: "Provider level access"
       },
       {
-        key: "provider.manage",
+        key: "trust.provider.manage",
         description: "Manage provider user accounts"
       },
       {
