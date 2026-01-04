@@ -33,9 +33,6 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
   const [location] = useLocation();
   const { hasPermission } = useAuth();
   
-  // Set page title for configuration section
-  usePageTitle("Configuration");
-  
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
   const { data: componentConfig = [] } = useQuery<ComponentConfig[]>({
