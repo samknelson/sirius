@@ -233,9 +233,9 @@ export function registerAccessPolicyRoutes(app: Express) {
       const entityPolicyMap: Record<string, string> = {
         worker: 'worker.view',
         employer: 'employer.view',
-        provider: 'provider',
+        provider: 'trust.provider.mine',
         employer_contact: 'employer.manage',
-        provider_contact: 'provider',
+        provider_contact: 'trust.provider.mine',
         policy: 'authenticated',
         event: 'authenticated',
         bargaining_unit: 'authenticated',
