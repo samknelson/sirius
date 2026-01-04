@@ -151,9 +151,9 @@ export const configSections: NavSection[] = [
         description: "Stripe payment integration settings",
         icon: CreditCard,
         items: [
-          { path: "/config/ledger/stripe/settings", label: "Settings", icon: Settings, testId: "nav-ledger-stripe-settings", policy: "ledger.stripe.admin" },
-          { path: "/config/ledger/stripe/test", label: "Test Connection", icon: Activity, testId: "nav-ledger-stripe-test", policy: "ledger.stripe.admin" },
-          { path: "/config/ledger/stripe/payment-types", label: "Payment Methods", icon: CreditCard, testId: "nav-ledger-stripe-payment-types", policy: "ledger.stripe.admin" },
+          { path: "/config/ledger/stripe/settings", label: "Settings", icon: Settings, testId: "nav-ledger-stripe-settings", policy: "admin" },
+          { path: "/config/ledger/stripe/test", label: "Test Connection", icon: Activity, testId: "nav-ledger-stripe-test", policy: "admin" },
+          { path: "/config/ledger/stripe/payment-types", label: "Payment Methods", icon: CreditCard, testId: "nav-ledger-stripe-payment-types", policy: "admin" },
         ],
       },
     ],

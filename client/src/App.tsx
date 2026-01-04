@@ -1847,7 +1847,7 @@ function Router() {
       </Route>
 
       <Route path="/config/ledger/stripe/settings">
-        <ProtectedRoute policy="ledger.stripe.admin" component="ledger">
+        <ProtectedRoute policy="admin" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <StripeSettingsPage />
@@ -1857,7 +1857,7 @@ function Router() {
       </Route>
 
       <Route path="/config/ledger/stripe/test">
-        <ProtectedRoute policy="ledger.stripe.admin" component="ledger">
+        <ProtectedRoute policy="admin" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <StripeTestPage />
@@ -1867,7 +1867,7 @@ function Router() {
       </Route>
 
       <Route path="/config/ledger/stripe/payment-types">
-        <ProtectedRoute policy="ledger.stripe.admin" component="ledger">
+        <ProtectedRoute policy="admin" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PaymentTypesPage />

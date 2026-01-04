@@ -16,7 +16,7 @@ function getStripeClient(): Stripe {
 }
 
 export function registerLedgerStripeRoutes(app: Express) {
-  app.get("/api/ledger/stripe/test", requireAccess('ledger.stripe.admin'), async (req: Request, res: Response) => {
+  app.get("/api/ledger/stripe/test", requireAccess('admin'), async (req: Request, res: Response) => {
     try {
       const stripeClient = getStripeClient();
       
@@ -55,7 +55,7 @@ export function registerLedgerStripeRoutes(app: Express) {
     }
   });
 
-  app.get("/api/ledger/stripe/payment-types", requireAccess('ledger.stripe.admin'), async (req: Request, res: Response) => {
+  app.get("/api/ledger/stripe/payment-types", requireAccess('admin'), async (req: Request, res: Response) => {
     try {
       const variable = await storage.variables.getByName('stripe_payment_methods');
       const paymentTypes = variable?.value || ['card'];
@@ -66,7 +66,7 @@ export function registerLedgerStripeRoutes(app: Express) {
     }
   });
 
-  app.put("/api/ledger/stripe/payment-types", requireAccess('ledger.stripe.admin'), async (req: Request, res: Response) => {
+  app.put("/api/ledger/stripe/payment-types", requireAccess('admin'), async (req: Request, res: Response) => {
     try {
       const { paymentTypes } = req.body;
 

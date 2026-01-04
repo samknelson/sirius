@@ -11,7 +11,6 @@ import './core/staff';
 import './core/masquerade';
 import './trust/provider/manage';
 
-import './ledger/stripe-admin';
 import './ledger/stripe-employer';
 import './ledger/ea/view';
 import './ledger/ea/edit';
