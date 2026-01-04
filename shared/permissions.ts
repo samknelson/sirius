@@ -156,11 +156,6 @@ export function initializePermissions(): void {
       module: 'core'
     },
     {
-      key: 'employer.ledger',
-      description: 'Access to employer ledger functionality for employer users',
-      module: 'core'
-    },
-    {
       key: 'worker.ledger',
       description: 'Access to worker ledger functionality for worker users',
       module: 'core'
@@ -171,11 +166,6 @@ export function initializePermissions(): void {
       module: 'core'
     },
     {
-      key: 'employer',
-      description: 'Employer level access',
-      module: 'core'
-    },
-    {
       key: 'worker',
       description: 'Worker level access',
       module: 'core'
@@ -183,11 +173,6 @@ export function initializePermissions(): void {
     {
       key: 'admin',
       description: 'Administrator level access',
-      module: 'core'
-    },
-    {
-      key: 'employer.manage',
-      description: 'Manage user accounts for employer contacts',
       module: 'core'
     },
     {

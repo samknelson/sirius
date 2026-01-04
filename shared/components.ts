@@ -82,7 +82,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Ledger",
     description: "Functionality for tracking charges and payments",
     enabledByDefault: false,
-    category: "core"
+    category: "core",
+    permissions: [
+      {
+        key: "employer.ledger",
+        description: "Access to employer ledger functionality for employer users"
+      }
+    ]
   },
   {
     id: "ledger.stripe",
@@ -136,7 +142,17 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Employer Login",
     description: "Ability for employers to log in",
     enabledByDefault: false,
-    category: "authentication"
+    category: "authentication",
+    permissions: [
+      {
+        key: "employer",
+        description: "Employer level access"
+      },
+      {
+        key: "employer.manage",
+        description: "Manage user accounts for employer contacts"
+      }
+    ]
   },
   {
     id: "worker.login",
