@@ -277,8 +277,8 @@ export const ledgerAccountTabTree: HierarchicalTab[] = [
  * Ledger payment entity tab tree (staff-only admin pages)
  */
 export const ledgerPaymentTabTree: HierarchicalTab[] = [
-  { id: 'view', label: 'View', hrefTemplate: '/ledger/payments/{id}', policyId: 'staff', component: 'ledger' },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/ledger/payments/{id}/edit', policyId: 'staff', component: 'ledger' },
+  { id: 'view', label: 'View', hrefTemplate: '/ledger/payment/{id}', policyId: 'staff', component: 'ledger' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/ledger/payment/{id}/edit', policyId: 'staff', component: 'ledger' },
 ];
 
 /**
