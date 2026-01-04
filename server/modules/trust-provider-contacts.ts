@@ -184,7 +184,7 @@ export function registerTrustProviderContactRoutes(
   });
 
   // GET /api/trust-provider-contacts/:contactId/user - Get user linked to provider contact
-  app.get("/api/trust-provider-contacts/:contactId/user", requireAuth, requireAccess('trustProvider.userManage'), async (req, res) => {
+  app.get("/api/trust-provider-contacts/:contactId/user", requireAuth, requireAccess('trust.provider.manage'), async (req, res) => {
     try {
       const { contactId } = req.params;
       
@@ -250,7 +250,7 @@ export function registerTrustProviderContactRoutes(
   });
 
   // POST /api/trust-provider-contacts/:contactId/user - Create or update user linked to provider contact
-  app.post("/api/trust-provider-contacts/:contactId/user", requireAuth, requireAccess('trustProvider.userManage'), async (req, res) => {
+  app.post("/api/trust-provider-contacts/:contactId/user", requireAuth, requireAccess('trust.provider.manage'), async (req, res) => {
     try {
       const { contactId } = req.params;
       

@@ -9,7 +9,7 @@ import './core/authenticated';
 import './core/admin';
 import './core/staff';
 import './core/masquerade';
-import './core/trust-provider-user-manage';
+import './trust/provider/manage';
 
 import './ledger/stripe-admin';
 import './ledger/stripe-employer';
