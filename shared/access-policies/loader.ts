@@ -42,9 +42,9 @@ import './file/delete';
 import './contact/view';
 import './contact/edit';
 
-import './dispatch/dnc/view';
-import './dispatch/dnc/edit';
-import './dispatch/employer/dispatch';
-import './dispatch/employer/dispatch-manage';
+import './employer/dispatch';
+import './employer/dispatch/manage';
+import './worker/dispatch/dnc/view';
+import './worker/dispatch/dnc/edit';
 
 export { getAllPolicies, getPolicy, hasPolicy } from './index';

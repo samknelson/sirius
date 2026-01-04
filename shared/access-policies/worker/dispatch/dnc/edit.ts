@@ -1,4 +1,4 @@
-import { definePolicy, registerPolicy, type PolicyContext } from '../../index';
+import { definePolicy, registerPolicy, type PolicyContext } from '../../../index';
 
 const policy = definePolicy({
   id: 'worker.dispatch.dnc.edit',
