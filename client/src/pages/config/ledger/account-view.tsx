@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,6 +19,7 @@ import { Trash2, Loader2 } from "lucide-react";
 import { LedgerAccountLayout, useLedgerAccountLayout } from "@/components/layouts/LedgerAccountLayout";
 
 function AccountDetailsContent() {
+  usePageTitle("Account Details");
   const { account } = useLedgerAccountLayout();
   const { toast } = useToast();
   const [, setLocation] = useLocation();

@@ -1,8 +1,10 @@
 import { LedgerAccountLayout } from "@/components/layouts/LedgerAccountLayout";
 import { LedgerTransactionsView } from "@/components/ledger/LedgerTransactionsView";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useParams } from "wouter";
 
 function AccountTransactionsContent() {
+  usePageTitle("Account Transactions");
   const { id } = useParams<{ id: string }>();
 
   return (

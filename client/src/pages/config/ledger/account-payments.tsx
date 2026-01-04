@@ -1,4 +1,5 @@
 import { LedgerAccountLayout } from "@/components/layouts/LedgerAccountLayout";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -21,6 +22,7 @@ type SortField = "amount" | "dateCreated" | "dateReceived" | "dateCleared" | "en
 type SortDirection = "asc" | "desc";
 
 function AccountPaymentsContent() {
+  usePageTitle("Account Payments");
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
   

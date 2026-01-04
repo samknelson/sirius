@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import {
   Card,
   CardContent,
@@ -21,6 +22,7 @@ import {
 import { apiRequest } from "@/lib/queryClient";
 
 export default function PostalAddressesConfigPage() {
+  usePageTitle("Address Settings");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: config, isLoading, error } = useAddressValidationConfig();

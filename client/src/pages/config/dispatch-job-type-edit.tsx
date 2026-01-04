@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -213,6 +214,7 @@ function DispatchJobTypeEditContent() {
 }
 
 export default function DispatchJobTypeEditPage() {
+  usePageTitle("Edit Job Type");
   return (
     <DispatchJobTypeLayout activeTab="edit">
       <DispatchJobTypeEditContent />

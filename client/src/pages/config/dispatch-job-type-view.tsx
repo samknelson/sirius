@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DispatchJobTypeLayout, useDispatchJobTypeLayout } from "@/components/layouts/DispatchJobTypeLayout";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Briefcase, Truck, HardHat, Wrench, Clock, Calendar, ClipboardList, Package, MapPin, Users, type LucideIcon } from "lucide-react";
 import type { JobTypeData } from "@shared/schema";
 
@@ -72,6 +73,7 @@ function DispatchJobTypeViewContent() {
 }
 
 export default function DispatchJobTypeViewPage() {
+  usePageTitle("Job Type Details");
   return (
     <DispatchJobTypeLayout activeTab="view">
       <DispatchJobTypeViewContent />

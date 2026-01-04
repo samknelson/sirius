@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,6 +24,7 @@ interface RecentMasquerade {
 }
 
 export default function MasqueradePage() {
+  usePageTitle("Masquerade");
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [searchResults, setSearchResults] = useState<User[]>([]);

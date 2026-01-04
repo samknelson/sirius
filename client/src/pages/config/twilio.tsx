@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +68,7 @@ interface TestConnectionResult {
 }
 
 export default function TwilioConfigPage() {
+  usePageTitle("Twilio Settings");
   const { toast } = useToast();
 
   const { data: smsConfig, isLoading: isLoadingSmsConfig } = useQuery<SmsConfig>({

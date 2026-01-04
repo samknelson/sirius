@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Loader2, Save, RotateCcw, Type, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -82,6 +83,7 @@ function TermEditor({ termKey, definition, currentSingular, currentPlural, onCha
 }
 
 export default function TerminologyConfigPage() {
+  usePageTitle("Terminology");
   const { toast } = useToast();
   const { terminology, updateTerminology, resetTerminology, isUpdating } = useTerminology();
   const [localTerms, setLocalTerms] = useState<TerminologyDictionary>({});

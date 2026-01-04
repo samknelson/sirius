@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Link } from "wouter";
 import { Users, Plus, Loader2, Trash2, Eye } from "lucide-react";
 import { BargainingUnit } from "@shared/schema";
@@ -27,6 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
 export default function BargainingUnitsConfigPage() {
+  usePageTitle("Bargaining Units");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);

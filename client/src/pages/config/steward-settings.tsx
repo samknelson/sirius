@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Loader2, Save, Users, AlertTriangle } from "lucide-react";
 import { Variable, RolePermission } from "@shared/schema";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ const DEFAULT_CONFIG: StewardConfig = {
 };
 
 export default function StewardSettingsPage() {
+  usePageTitle("Steward Settings");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [config, setConfig] = useState<StewardConfig>(DEFAULT_CONFIG);

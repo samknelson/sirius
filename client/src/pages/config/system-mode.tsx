@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -27,6 +28,7 @@ const modeDescriptions: Record<SystemMode, { label: string; description: string;
 };
 
 export default function SystemModePage() {
+  usePageTitle("System Mode");
   const { toast } = useToast();
 
   const { data: systemMode, isLoading } = useQuery<SystemModeResponse>({

@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -26,6 +27,7 @@ interface ChargePluginConfig {
 }
 
 export default function ChargePluginsListPage() {
+  usePageTitle("Charge Plugins");
   const { toast } = useToast();
 
   // Fetch all registered plugins

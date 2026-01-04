@@ -1,5 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DispatchJobTypeLayout, useDispatchJobTypeLayout } from "@/components/layouts/DispatchJobTypeLayout";
@@ -78,6 +79,7 @@ function DispatchJobTypeDeleteContent() {
 }
 
 export default function DispatchJobTypeDeletePage() {
+  usePageTitle("Delete Job Type");
   return (
     <DispatchJobTypeLayout activeTab="delete">
       <DispatchJobTypeDeleteContent />

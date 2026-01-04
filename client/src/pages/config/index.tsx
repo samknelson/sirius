@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import {
@@ -15,6 +16,7 @@ interface ComponentConfig {
 }
 
 export default function ConfigurationLandingPage() {
+  usePageTitle("Configuration");
   const { hasPermission } = useAuth();
 
   const { data: componentConfig = [] } = useQuery<ComponentConfig[]>({

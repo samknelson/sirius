@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -150,6 +151,7 @@ function DispatchJobTypePluginsContent() {
 }
 
 export default function DispatchJobTypePluginsPage() {
+  usePageTitle("Job Type Plugins");
   return (
     <DispatchJobTypeLayout activeTab="plugins">
       <DispatchJobTypePluginsContent />

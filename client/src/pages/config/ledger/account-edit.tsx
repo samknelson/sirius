@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,6 +15,7 @@ import { Save } from "lucide-react";
 import { LedgerAccountLayout, useLedgerAccountLayout } from "@/components/layouts/LedgerAccountLayout";
 
 function AccountEditContent() {
+  usePageTitle("Edit Account");
   const { account } = useLedgerAccountLayout();
   const { toast } = useToast();
   const queryClient = useQueryClient();
