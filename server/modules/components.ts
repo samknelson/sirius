@@ -150,9 +150,11 @@ export function registerComponentRoutes(
       }
 
       // When enabling, check if any ancestor components are disabled
+      // Only check ancestors that actually exist in the component registry
       if (enabled) {
         const ancestorIds = getAncestorComponentIds(componentId);
-        const disabledAncestors = ancestorIds.filter(id => !isComponentEnabledSync(id));
+        const existingAncestorIds = ancestorIds.filter(id => getComponentById(id) !== undefined);
+        const disabledAncestors = existingAncestorIds.filter(id => !isComponentEnabledSync(id));
         
         if (disabledAncestors.length > 0) {
           const ancestorNames = disabledAncestors.map(id => {
