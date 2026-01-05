@@ -1,6 +1,6 @@
 {
-  "version": "1.0.0",
-  "createdAt": "2026-01-05T20:41:01.639Z",
+  "version": "1.1.0",
+  "createdAt": "2026-01-05T20:55:41.340Z",
   "tables": {
     "optionsGender": [
       {
@@ -109,6 +109,30 @@
             }
           ]
         }
+      }
+    ],
+    "optionsEmployerContactType": [
+      {
+        "id": "2764f2ef-42ee-4496-aea9-3bd1f9755a8a",
+        "name": "Primary Contact",
+        "description": null,
+        "data": {
+          "icon": "User"
+        }
+      },
+      {
+        "id": "5d4efab1-e5b0-4880-8d48-3c94a0ca21e0",
+        "name": "Location",
+        "description": null,
+        "data": {
+          "icon": "Building"
+        }
+      },
+      {
+        "id": "83233ec8-8de1-4da7-ac42-c303c0e22c3e",
+        "name": "Manager",
+        "description": "Hotel or property manager",
+        "data": null
       }
     ],
     "contacts": [
@@ -632,6 +656,7 @@
         "createdAt": "2026-01-05T19:44:27.845Z"
       }
     ],
+    "contactPostal": [],
     "employers": [
       {
         "id": "6d293842-87e4-4667-a14b-3763f057a636",
@@ -661,6 +686,7 @@
         "denormPolicyId": null
       }
     ],
+    "employerContacts": [],
     "workers": [
       {
         "id": "worker-w001",
@@ -825,6 +851,7 @@
         "bargainingUnitId": null
       }
     ],
+    "workerBans": [],
     "workerHours": [
       {
         "id": "3426d916-4287-40dc-b403-ba5c0fcf207d",
@@ -1761,6 +1788,8 @@
         "seniorityDate": "2020-01-01T00:00:00.000Z"
       }
     ],
+    "workerDispatchDnc": [],
+    "workerDispatchHfe": [],
     "dispatchJobs": [
       {
         "id": "3d707ff9-b349-4895-b8f8-90c3d4b0e4e9",

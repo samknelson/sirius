@@ -2,8 +2,12 @@ import { db } from "../server/db";
 import { 
   contacts, 
   phoneNumbers, 
+  contactPostal,
   employers, 
+  employerContacts,
+  optionsEmployerContactType,
   workers, 
+  workerBans,
   workerHours,
   optionsGender,
   optionsEmployerType,
@@ -14,6 +18,8 @@ import {
   dispatchJobs,
   dispatches,
 } from "../shared/schema";
+import { workerDispatchDnc } from "../shared/schema/dispatch/dnc-schema";
+import { workerDispatchHfe } from "../shared/schema/dispatch/hfe-schema";
 import { sql } from "drizzle-orm";
 import * as fs from "fs";
 import * as path from "path";
@@ -28,12 +34,18 @@ interface DemoSnapshot {
     optionsEmploymentStatus: any[];
     optionsWorkerWs: any[];
     optionsDispatchJobType: any[];
+    optionsEmployerContactType: any[];
     contacts: any[];
     phoneNumbers: any[];
+    contactPostal: any[];
     employers: any[];
+    employerContacts: any[];
     workers: any[];
+    workerBans: any[];
     workerHours: any[];
     workerDispatchStatus: any[];
+    workerDispatchDnc: any[];
+    workerDispatchHfe: any[];
     dispatchJobs: any[];
     dispatches: any[];
   };
@@ -107,15 +119,21 @@ async function resetDemo(): Promise<void> {
         dispatches,
         dispatch_jobs,
         worker_dispatch_status,
+        worker_dispatch_dnc,
+        worker_dispatch_hfe,
         worker_hours,
+        worker_bans,
         workers,
+        employer_contacts,
         employers,
+        contact_postal,
         contact_phone,
         contacts,
         options_dispatch_job_type,
         options_worker_ws,
         options_employment_status,
         options_employer_type,
+        options_employer_contact_type,
         options_gender
       RESTART IDENTITY CASCADE
     `);
@@ -148,6 +166,11 @@ async function resetDemo(): Promise<void> {
       console.log(`  - Inserted ${snapshot.tables.optionsDispatchJobType.length} options_dispatch_job_type records`);
     }
 
+    if (snapshot.tables.optionsEmployerContactType?.length > 0) {
+      await db.insert(optionsEmployerContactType).values(snapshot.tables.optionsEmployerContactType);
+      console.log(`  - Inserted ${snapshot.tables.optionsEmployerContactType.length} options_employer_contact_type records`);
+    }
+
     if (snapshot.tables.contacts.length > 0) {
       await db.insert(contacts).values(snapshot.tables.contacts);
       console.log(`  - Inserted ${snapshot.tables.contacts.length} contacts records`);
@@ -159,14 +182,31 @@ async function resetDemo(): Promise<void> {
       console.log(`  - Inserted ${records.length} phone_numbers records`);
     }
 
+    if (snapshot.tables.contactPostal?.length > 0) {
+      const records = parseDateStrings(snapshot.tables.contactPostal, ['createdAt']);
+      await db.insert(contactPostal).values(records);
+      console.log(`  - Inserted ${records.length} contact_postal records`);
+    }
+
     if (snapshot.tables.employers.length > 0) {
       await db.insert(employers).values(snapshot.tables.employers);
       console.log(`  - Inserted ${snapshot.tables.employers.length} employers records`);
     }
 
+    if (snapshot.tables.employerContacts?.length > 0) {
+      await db.insert(employerContacts).values(snapshot.tables.employerContacts);
+      console.log(`  - Inserted ${snapshot.tables.employerContacts.length} employer_contacts records`);
+    }
+
     if (snapshot.tables.workers.length > 0) {
       await db.insert(workers).values(snapshot.tables.workers);
       console.log(`  - Inserted ${snapshot.tables.workers.length} workers records`);
+    }
+
+    if (snapshot.tables.workerBans?.length > 0) {
+      const records = parseDateStrings(snapshot.tables.workerBans, ['startDate', 'endDate']);
+      await db.insert(workerBans).values(records);
+      console.log(`  - Inserted ${records.length} worker_bans records`);
     }
 
     if (snapshot.tables.workerHours.length > 0) {
@@ -178,6 +218,16 @@ async function resetDemo(): Promise<void> {
       const records = parseDateStrings(snapshot.tables.workerDispatchStatus, ['seniorityDate']);
       await db.insert(workerDispatchStatus).values(records);
       console.log(`  - Inserted ${records.length} worker_dispatch_status records`);
+    }
+
+    if (snapshot.tables.workerDispatchDnc?.length > 0) {
+      await db.insert(workerDispatchDnc).values(snapshot.tables.workerDispatchDnc);
+      console.log(`  - Inserted ${snapshot.tables.workerDispatchDnc.length} worker_dispatch_dnc records`);
+    }
+
+    if (snapshot.tables.workerDispatchHfe?.length > 0) {
+      await db.insert(workerDispatchHfe).values(snapshot.tables.workerDispatchHfe);
+      console.log(`  - Inserted ${snapshot.tables.workerDispatchHfe.length} worker_dispatch_hfe records`);
     }
 
     if (snapshot.tables.dispatchJobs.length > 0) {

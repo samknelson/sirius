@@ -2,8 +2,12 @@ import { db } from "../server/db";
 import { 
   contacts, 
   phoneNumbers, 
+  contactPostal,
   employers, 
+  employerContacts,
+  optionsEmployerContactType,
   workers, 
+  workerBans,
   workerHours,
   optionsGender,
   optionsEmployerType,
@@ -14,6 +18,8 @@ import {
   dispatchJobs,
   dispatches,
 } from "../shared/schema";
+import { workerDispatchDnc } from "../shared/schema/dispatch/dnc-schema";
+import { workerDispatchHfe } from "../shared/schema/dispatch/hfe-schema";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -26,12 +32,18 @@ interface DemoSnapshot {
     optionsEmploymentStatus: any[];
     optionsWorkerWs: any[];
     optionsDispatchJobType: any[];
+    optionsEmployerContactType: any[];
     contacts: any[];
     phoneNumbers: any[];
+    contactPostal: any[];
     employers: any[];
+    employerContacts: any[];
     workers: any[];
+    workerBans: any[];
     workerHours: any[];
     workerDispatchStatus: any[];
+    workerDispatchDnc: any[];
+    workerDispatchHfe: any[];
     dispatchJobs: any[];
     dispatches: any[];
   };
@@ -46,7 +58,7 @@ async function createSnapshot(): Promise<void> {
   console.log("Creating demo data snapshot...\n");
 
   const snapshot: DemoSnapshot = {
-    version: "1.0.0",
+    version: "1.1.0",
     createdAt: new Date().toISOString(),
     tables: {
       optionsGender: [],
@@ -54,12 +66,18 @@ async function createSnapshot(): Promise<void> {
       optionsEmploymentStatus: [],
       optionsWorkerWs: [],
       optionsDispatchJobType: [],
+      optionsEmployerContactType: [],
       contacts: [],
       phoneNumbers: [],
+      contactPostal: [],
       employers: [],
+      employerContacts: [],
       workers: [],
+      workerBans: [],
       workerHours: [],
       workerDispatchStatus: [],
+      workerDispatchDnc: [],
+      workerDispatchHfe: [],
       dispatchJobs: [],
       dispatches: [],
     },
@@ -72,16 +90,22 @@ async function createSnapshot(): Promise<void> {
     snapshot.tables.optionsEmploymentStatus = await db.select().from(optionsEmploymentStatus);
     snapshot.tables.optionsWorkerWs = await db.select().from(optionsWorkerWs);
     snapshot.tables.optionsDispatchJobType = await db.select().from(optionsDispatchJobType);
+    snapshot.tables.optionsEmployerContactType = await db.select().from(optionsEmployerContactType);
 
     console.log("Fetching entity tables...");
     snapshot.tables.contacts = await db.select().from(contacts);
     snapshot.tables.phoneNumbers = await db.select().from(phoneNumbers);
+    snapshot.tables.contactPostal = await db.select().from(contactPostal);
     snapshot.tables.employers = await db.select().from(employers);
+    snapshot.tables.employerContacts = await db.select().from(employerContacts);
     snapshot.tables.workers = await db.select().from(workers);
+    snapshot.tables.workerBans = await db.select().from(workerBans);
 
     console.log("Fetching relationship tables...");
     snapshot.tables.workerHours = await db.select().from(workerHours);
     snapshot.tables.workerDispatchStatus = await db.select().from(workerDispatchStatus);
+    snapshot.tables.workerDispatchDnc = await db.select().from(workerDispatchDnc);
+    snapshot.tables.workerDispatchHfe = await db.select().from(workerDispatchHfe);
 
     console.log("Fetching dispatch tables...");
     snapshot.tables.dispatchJobs = await db.select().from(dispatchJobs);
