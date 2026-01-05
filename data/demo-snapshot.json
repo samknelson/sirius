@@ -1,6 +1,6 @@
 {
   "version": "1.1.0",
-  "createdAt": "2026-01-05T21:15:08.132Z",
+  "createdAt": "2026-01-05T21:16:01.166Z",
   "tables": {
     "optionsGender": [
       {
@@ -732,23 +732,6 @@
       }
     ],
     "contactPostal": [
-      {
-        "id": "13620f37-a7e1-40f6-a444-0d9e4e1e0da1",
-        "contactId": "contact-w013",
-        "friendlyName": null,
-        "street": "48 Elwyn Avenue Carnegie",
-        "city": "PA",
-        "state": "PA",
-        "postalCode": "15106",
-        "country": "United States",
-        "isPrimary": true,
-        "isActive": true,
-        "validationResponse": null,
-        "latitude": null,
-        "longitude": null,
-        "accuracy": null,
-        "createdAt": "2026-01-05T21:00:02.066Z"
-      },
       {
         "id": "addr-w001",
         "contactId": "contact-w001",
