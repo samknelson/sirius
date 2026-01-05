@@ -1,6 +1,6 @@
 {
   "version": "1.1.0",
-  "createdAt": "2026-01-05T21:19:42.668Z",
+  "createdAt": "2026-01-05T21:19:25.913Z",
   "tables": {
     "optionsGender": [
       {
@@ -1212,9 +1212,7 @@
         "ssn": "011231231",
         "denormWsId": null,
         "denormHomeEmployerId": "6d293842-87e4-4667-a14b-3763f057a636",
-        "denormEmployerIds": [
-          "6d293842-87e4-4667-a14b-3763f057a636"
-        ],
+        "denormEmployerIds": ["6d293842-87e4-4667-a14b-3763f057a636"],
         "bargainingUnitId": null
       }
     ],
