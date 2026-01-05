@@ -257,6 +257,94 @@ export function registerBtuCsgRoutes(
     }
   });
 
+  // Get employer suggestions based on location mappings
+  // Analyzes existing confirmed mappings to suggest employers for locations
+  app.get("/api/sitespecific/btu/employer-map/suggestions", requireAuth, componentMiddleware, async (req, res) => {
+    try {
+      const tableExists = await employerMapStorage.tableExists();
+      if (!tableExists) {
+        return res.status(503).json({ 
+          message: "Employer map table does not exist. Please enable the BTU component first." 
+        });
+      }
+      
+      // Get all mapping records
+      const allRecords = await employerMapStorage.getAll();
+      
+      // Get all system employers for validation
+      const employers = await storage.employers.getAllEmployers();
+      const systemEmployerNames = new Set(employers.map(e => e.name));
+      
+      // Build location → employer mapping from confirmed records (where employer exists)
+      const locationToEmployers: Map<string, Map<string, number>> = new Map();
+      
+      for (const record of allRecords) {
+        // Only learn from records where the employer actually exists in the system
+        if (record.locationId && record.employerName && systemEmployerNames.has(record.employerName)) {
+          if (!locationToEmployers.has(record.locationId)) {
+            locationToEmployers.set(record.locationId, new Map());
+          }
+          const employerCounts = locationToEmployers.get(record.locationId)!;
+          employerCounts.set(record.employerName, (employerCounts.get(record.employerName) || 0) + 1);
+        }
+      }
+      
+      // Also try matching by location title (normalized)
+      const locationTitleToEmployers: Map<string, Map<string, number>> = new Map();
+      
+      for (const record of allRecords) {
+        if (record.locationTitle && record.employerName && systemEmployerNames.has(record.employerName)) {
+          const normalizedTitle = record.locationTitle.toLowerCase().trim();
+          if (!locationTitleToEmployers.has(normalizedTitle)) {
+            locationTitleToEmployers.set(normalizedTitle, new Map());
+          }
+          const employerCounts = locationTitleToEmployers.get(normalizedTitle)!;
+          employerCounts.set(record.employerName, (employerCounts.get(record.employerName) || 0) + 1);
+        }
+      }
+      
+      // Build suggestions for each unique location
+      const suggestions: Record<string, { primary: string | null; alternates: string[] }> = {};
+      
+      // Get unique locationIds from all records
+      const uniqueLocationIds = Array.from(new Set(allRecords.map(r => r.locationId).filter(Boolean) as string[]));
+      
+      for (const locationId of uniqueLocationIds) {
+        const employerCounts = locationToEmployers.get(locationId);
+        if (employerCounts && employerCounts.size > 0) {
+          // Sort by count descending
+          const sorted = Array.from(employerCounts.entries()).sort((a: [string, number], b: [string, number]) => b[1] - a[1]);
+          suggestions[locationId] = {
+            primary: sorted[0][0],
+            alternates: sorted.slice(1, 4).map((entry: [string, number]) => entry[0])
+          };
+        }
+      }
+      
+      // Also build suggestions by location title for fallback
+      const titleSuggestions: Record<string, { primary: string | null; alternates: string[] }> = {};
+      
+      const titleEntries = Array.from(locationTitleToEmployers.entries());
+      for (const [normalizedTitle, employerCounts] of titleEntries) {
+        if (employerCounts.size > 0) {
+          const sorted = Array.from(employerCounts.entries()).sort((a: [string, number], b: [string, number]) => b[1] - a[1]);
+          titleSuggestions[normalizedTitle] = {
+            primary: sorted[0][0],
+            alternates: sorted.slice(1, 4).map((entry: [string, number]) => entry[0])
+          };
+        }
+      }
+      
+      res.json({ 
+        byLocationId: suggestions,
+        byLocationTitle: titleSuggestions
+      });
+    } catch (error: any) {
+      console.error("Failed to get employer suggestions:", error);
+      res.status(500).json({ message: "Failed to get employer suggestions" });
+    }
+  });
+
   app.get("/api/sitespecific/btu/employer-map/:id", requireAuth, componentMiddleware, async (req, res) => {
     try {
       const tableExists = await employerMapStorage.tableExists();

@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus, Trash2, Loader2, AlertTriangle, Download, Search, X, Map, Pencil, Upload, CheckCircle2 } from "lucide-react";
+import { Plus, Trash2, Loader2, AlertTriangle, Download, Search, X, Map, Pencil, Upload, CheckCircle2, Lightbulb } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -61,6 +62,16 @@ interface ImportResult {
   errors: Array<{ row: number; error: string }>;
 }
 
+interface EmployerSuggestion {
+  primary: string | null;
+  alternates: string[];
+}
+
+interface SuggestionsData {
+  byLocationId: Record<string, EmployerSuggestion>;
+  byLocationTitle: Record<string, EmployerSuggestion>;
+}
+
 export default function BtuEmployerMapListPage() {
   const { toast } = useToast();
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -93,9 +104,33 @@ export default function BtuEmployerMapListPage() {
     queryKey: ["/api/sitespecific/btu/employer-map/system-employers"],
   });
 
+  const { data: suggestionsData } = useQuery<SuggestionsData>({
+    queryKey: ["/api/sitespecific/btu/employer-map/suggestions"],
+  });
+
   const systemEmployerNames = useMemo(() => {
     return new Set(systemEmployersData?.employerNames || []);
   }, [systemEmployersData]);
+
+  // Helper to get employer suggestion for a record
+  const getSuggestionForRecord = (record: BtuEmployerMap): string | null => {
+    if (!suggestionsData) return null;
+    
+    // First try by locationId
+    if (record.locationId && suggestionsData.byLocationId[record.locationId]) {
+      return suggestionsData.byLocationId[record.locationId].primary;
+    }
+    
+    // Fallback to location title (normalized)
+    if (record.locationTitle) {
+      const normalizedTitle = record.locationTitle.toLowerCase().trim();
+      if (suggestionsData.byLocationTitle[normalizedTitle]) {
+        return suggestionsData.byLocationTitle[normalizedTitle].primary;
+      }
+    }
+    
+    return null;
+  };
 
   const form = useForm<FormValues>({
     defaultValues: {
@@ -449,6 +484,15 @@ export default function BtuEmployerMapListPage() {
   };
 
   const openEditDialog = (record: BtuEmployerMap) => {
+    // Pre-fill employer with suggestion if employer is missing or doesn't exist
+    let employerNameValue = record.employerName || "";
+    if (!record.employerName || (systemEmployersLoaded && !systemEmployerNames.has(record.employerName))) {
+      const suggestion = getSuggestionForRecord(record);
+      if (suggestion && !record.employerName) {
+        employerNameValue = suggestion;
+      }
+    }
+    
     form.reset({
       departmentId: record.departmentId || "",
       departmentTitle: record.departmentTitle || "",
@@ -456,11 +500,25 @@ export default function BtuEmployerMapListPage() {
       locationTitle: record.locationTitle || "",
       jobCode: record.jobCode || "",
       jobTitle: record.jobTitle || "",
-      employerName: record.employerName || "",
+      employerName: employerNameValue,
       secondaryEmployerName: record.secondaryEmployerName || "",
       bargainingUnitId: record.bargainingUnitId || "",
     });
     setEditRecord(record);
+  };
+
+  const handleApplySuggestion = (recordId: string, suggestedEmployer: string) => {
+    updateMutation.mutate({ 
+      id: recordId, 
+      data: { employerName: suggestedEmployer } as FormValues 
+    }, {
+      onSuccess: () => {
+        toast({
+          title: "Suggestion Applied",
+          description: `Employer set to "${suggestedEmployer}"`,
+        });
+      }
+    });
   };
 
   const onSubmit = (data: FormValues) => {
@@ -656,7 +714,7 @@ export default function BtuEmployerMapListPage() {
                   <TableCell data-testid={`text-job-title-${record.id}`}>{record.jobTitle || "-"}</TableCell>
                   <TableCell className="font-medium" data-testid={`text-employer-${record.id}`}>
                     {record.employerName ? (
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         {systemEmployersLoaded && (
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -674,8 +732,58 @@ export default function BtuEmployerMapListPage() {
                           </Tooltip>
                         )}
                         <span>{record.employerName}</span>
+                        {systemEmployersLoaded && !systemEmployerNames.has(record.employerName) && (() => {
+                          const suggestion = getSuggestionForRecord(record);
+                          if (suggestion) {
+                            return (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge 
+                                    variant="secondary" 
+                                    className="cursor-pointer text-xs gap-1"
+                                    onClick={() => handleApplySuggestion(record.id, suggestion)}
+                                    data-testid={`badge-suggestion-${record.id}`}
+                                  >
+                                    <Lightbulb className="h-3 w-3" />
+                                    {suggestion}
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Click to apply suggested employer based on location
+                                </TooltipContent>
+                              </Tooltip>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
-                    ) : "-"}
+                    ) : (() => {
+                      const suggestion = getSuggestionForRecord(record);
+                      if (suggestion) {
+                        return (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-muted-foreground">-</span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge 
+                                  variant="secondary" 
+                                  className="cursor-pointer text-xs gap-1"
+                                  onClick={() => handleApplySuggestion(record.id, suggestion)}
+                                  data-testid={`badge-suggestion-${record.id}`}
+                                >
+                                  <Lightbulb className="h-3 w-3" />
+                                  {suggestion}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                Click to apply suggested employer based on location
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                        );
+                      }
+                      return "-";
+                    })()}
                   </TableCell>
                   <TableCell data-testid={`text-secondary-employer-${record.id}`}>
                     {record.secondaryEmployerName ? (
