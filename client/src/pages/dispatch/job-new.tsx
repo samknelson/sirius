@@ -36,6 +36,7 @@ const formSchema = z.object({
   jobTypeId: z.string().min(1, "Job type is required"),
   status: z.enum(dispatchJobStatusEnum),
   startDate: z.string().min(1, "Start date is required"),
+  workerCount: z.string().optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -61,15 +62,18 @@ export default function DispatchJobNewPage() {
       jobTypeId: "",
       status: "draft",
       startDate: format(new Date(), "yyyy-MM-dd"),
+      workerCount: "",
     },
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: FormData) => {
+      const workerCountNum = data.workerCount ? parseInt(data.workerCount, 10) : null;
       return apiRequest("POST", "/api/dispatch-jobs", {
         ...data,
         jobTypeId: data.jobTypeId || null,
-        startDate: new Date(data.startDate).toISOString(),
+        startDate: data.startDate, // Send as YYYY-MM-DD string, backend handles timezone
+        workerCount: workerCountNum,
       });
     },
     onSuccess: (newJob) => {
@@ -240,6 +244,26 @@ export default function DispatchJobNewPage() {
                   )}
                 />
               </div>
+
+              <FormField
+                control={form.control}
+                name="workerCount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Worker Count</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="number"
+                        min={1}
+                        placeholder="Number of workers"
+                        data-testid="input-workercount"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <div className="flex items-center gap-2 pt-4">
                 <Button

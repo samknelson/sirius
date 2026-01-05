@@ -89,7 +89,7 @@ function DispatchJobEditContent() {
       return apiRequest("PUT", `/api/dispatch-jobs/${job.id}`, {
         ...data,
         jobTypeId: data.jobTypeId || null,
-        startDate: new Date(data.startDate).toISOString(),
+        startDate: data.startDate, // Send as YYYY-MM-DD string, backend handles timezone
         workerCount: workerCountNum,
       });
     },

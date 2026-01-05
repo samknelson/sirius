@@ -73,7 +73,14 @@ export function registerDispatchJobsRoutes(
 
   app.post("/api/dispatch-jobs", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
-      const parsed = insertDispatchJobSchema.safeParse(req.body);
+      // Pre-process date to avoid timezone issues
+      const body = { ...req.body };
+      if (body.startDate && typeof body.startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.startDate)) {
+        const [year, month, day] = body.startDate.split('-').map(Number);
+        body.startDate = new Date(year, month - 1, day, 12, 0, 0);
+      }
+      
+      const parsed = insertDispatchJobSchema.safeParse(body);
       
       if (!parsed.success) {
         res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
@@ -111,7 +118,7 @@ export function registerDispatchJobsRoutes(
         return;
       }
       
-      const { employerId, jobTypeId, title, description, status, startDate, data } = req.body;
+      const { employerId, jobTypeId, title, description, status, startDate, workerCount, data } = req.body;
       const updates: any = {};
       
       if (employerId !== undefined) {
@@ -157,7 +164,18 @@ export function registerDispatchJobsRoutes(
       }
       
       if (startDate !== undefined) {
-        updates.startDate = new Date(startDate);
+        // Parse date string as local date to avoid timezone shift
+        // If it's a YYYY-MM-DD string, parse it as local noon to avoid boundary issues
+        if (typeof startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+          const [year, month, day] = startDate.split('-').map(Number);
+          updates.startDate = new Date(year, month - 1, day, 12, 0, 0);
+        } else {
+          updates.startDate = new Date(startDate);
+        }
+      }
+      
+      if (workerCount !== undefined) {
+        updates.workerCount = workerCount === null ? null : parseInt(workerCount, 10);
       }
       
       if (data !== undefined) {
