@@ -260,7 +260,9 @@ export const componentRegistry: ComponentDefinition[] = [
     },
     permissions: [
       { key: "employer.dispatch", description: "Employer access to dispatch functionality" },
-      { key: "employer.dispatch.manage", description: "Employer access to manage dispatch functionality" }
+      { key: "employer.dispatch.manage", description: "Employer access to manage dispatch functionality" },
+      { key: "dispatch.edit", description: "Edit dispatch jobs and job types" },
+      { key: "dispatch.delete", description: "Delete dispatch job types" }
     ],
     policies: [
       {
