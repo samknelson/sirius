@@ -17,7 +17,7 @@ const policy = definePolicy({
       return { granted: true, reason: 'Staff access' };
     }
     
-    if (await ctx.checkPolicy('employer.mine')) {
+    if (await ctx.checkPolicy('employer.mine', ctx.entityId)) {
       return { granted: true, reason: 'Associated with this employer' };
     }
     
