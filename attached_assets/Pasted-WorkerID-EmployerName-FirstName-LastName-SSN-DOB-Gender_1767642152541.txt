@@ -1,0 +1,16 @@
+WorkerID,EmployerName,FirstName,LastName,SSN,DOB,Gender,AddressLine1,AddressLine2,City,State,Zip,Phone,DispatchStatus,SeniorityDate,Hours_2025_07,Hours_2025_08,Hours_2025_09,Hours_2025_10,Hours_2025_11,Hours_2025_12
+W001,Riverside Hotel,Jasmine,Nguyen,545-23-7812,1992-04-18,F,1124 W 7th St,Apt 12,Los Angeles,CA,90017,(213) 555-0111,Available,2016-06-15,120,135,80,140,110,90
+W002,Riverside Hotel,Carlos,Hernandez,612-44-1903,1987-09-02,M,2710 E Cesar E Chavez Ave,,Los Angeles,CA,90033,(323) 555-0112,Available,2012-03-10,160,150,155,140,165,158
+W003,Riverside Hotel,Monica,Santos,589-71-4026,1996-01-27,F,4920 S Broadway,Unit 5,Los Angeles,CA,90037,(213) 555-0113,Unavailable,2019-08-01,0,40,60,20,0,0
+W004,Riverside Hotel,DeShawn,Turner,601-55-8934,1990-11-13,M,845 N Vermont Ave,Apt 3B,Los Angeles,CA,90029,(213) 555-0114,Available,2014-02-20,98,112,120,126,134,140
+W005,Riverside Hotel,Andrea,Lopez,633-82-4179,1998-06-05,F,6101 W Sunset Blvd,,Los Angeles,CA,90028,(323) 555-0115,Available,2021-05-03,75,88,92,110,84,96
+W006,Downtown Suites,Kevin,Park,574-60-2918,1985-02-22,M,330 S Hope St,Floor 8,Los Angeles,CA,90071,(213) 555-0116,Unavailable,2010-09-12,140,130,0,0,0,0
+W007,Downtown Suites,Sofia,Martinez,659-14-7632,1993-12-30,F,1515 S Figueroa St,Apt 220,Los Angeles,CA,90015,(213) 555-0117,Available,2017-04-09,110,120,115,122,118,125
+W008,Downtown Suites,Tyler,Brooks,522-93-5084,2000-08-19,NB,902 N Alvarado St,Unit 9,Los Angeles,CA,90026,(213) 555-0118,Available,2022-06-01,45,60,72,50,65,70
+W009,Downtown Suites,Nina,Patel,618-37-9501,1991-03-11,F,4400 S Sepulveda Blvd,Ste 200,Los Angeles,CA,90034,(310) 555-0119,Available,2015-01-05,155,160,148,152,158,162
+W010,Downtown Suites,Jordan,Reed,556-88-3147,1989-07-07,M,730 S Hill St,Apt 14C,Los Angeles,CA,90014,(213) 555-0120,Unavailable,2013-11-18,90,0,0,80,0,0
+W011,Airport Inn,Grace,Kim,640-26-7815,1997-10-25,F,2050 N Highland Ave,Apt 6,Los Angeles,CA,90068,(323) 555-0121,Available,2020-02-14,130,128,132,136,120,124
+W012,Airport Inn,Isaac,Watson,503-91-6642,1983-05-16,M,8750 Sepulveda Blvd,Unit 110,Los Angeles,CA,91343,(818) 555-0122,Available,2009-07-21,170,165,160,168,172,175
+W013,Airport Inn,Leila,Ahmed,628-54-9021,1994-02-09,F,1000 Wilshire Blvd,Apt 704,Los Angeles,CA,90017,(213) 555-0123,Available,2018-10-30,60,74,82,90,88,95
+W014,Airport Inn,Noah,Diaz,517-69-3480,1999-09-14,M,5400 Crenshaw Blvd,,Los Angeles,CA,90043,(323) 555-0124,Unavailable,2021-09-01,0,0,35,0,20,0
+W015,Airport Inn,Maya,Chen,591-42-1768,1988-12-01,F,2101 E 1st St,Apt 2A,Los Angeles,CA,90033,(323) 555-0125,Available,2012-06-25,125,140,135,120,130,145
