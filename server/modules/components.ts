@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { requireAccess } from "../services/access-policy-evaluator";
-import { getAllComponents, getComponentById, getDescendantComponentIds, getAncestorComponentIds, ComponentConfig, ComponentDefinition, ComponentSchemaState } from "../../shared/components";
+import { getAllComponents, getComponentById, ComponentConfig, ComponentDefinition, ComponentSchemaState } from "../../shared/components";
 import {
   enableComponentSchema,
   disableComponentSchema,
@@ -128,46 +128,6 @@ export function registerComponentRoutes(
       const component = getComponentById(componentId);
       if (!component) {
         return res.status(404).json({ message: "Component not found" });
-      }
-
-      // When disabling, check if any descendant components are still enabled
-      if (!enabled) {
-        const descendantIds = getDescendantComponentIds(componentId);
-        const enabledDescendants = descendantIds.filter(id => isComponentEnabledSync(id));
-        
-        if (enabledDescendants.length > 0) {
-          const descendantNames = enabledDescendants.map(id => {
-            const desc = getComponentById(id);
-            return desc ? desc.name : id;
-          });
-          
-          return res.status(400).json({
-            message: `Cannot disable "${component.name}" because the following dependent components are still enabled. Please disable them first.`,
-            enabledDescendants: enabledDescendants,
-            enabledDescendantNames: descendantNames
-          });
-        }
-      }
-
-      // When enabling, check if any ancestor components are disabled
-      // Only check ancestors that actually exist in the component registry
-      if (enabled) {
-        const ancestorIds = getAncestorComponentIds(componentId);
-        const existingAncestorIds = ancestorIds.filter(id => getComponentById(id) !== undefined);
-        const disabledAncestors = existingAncestorIds.filter(id => !isComponentEnabledSync(id));
-        
-        if (disabledAncestors.length > 0) {
-          const ancestorNames = disabledAncestors.map(id => {
-            const anc = getComponentById(id);
-            return anc ? anc.name : id;
-          });
-          
-          return res.status(400).json({
-            message: `Cannot enable "${component.name}" because the following parent components are disabled. Please enable them first.`,
-            disabledAncestors: disabledAncestors,
-            disabledAncestorNames: ancestorNames
-          });
-        }
       }
 
       const shouldRetainData = retainData !== false;
