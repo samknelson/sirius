@@ -11,6 +11,7 @@ import {
   optionsEmploymentStatus,
   optionsEventType,
   optionsDispatchJobType,
+  optionsSkills,
   type GenderOption, 
   type InsertGenderOption,
   type WorkerIdType, 
@@ -32,7 +33,9 @@ import {
   type EventType,
   type InsertEventType,
   type DispatchJobType,
-  type InsertDispatchJobType
+  type InsertDispatchJobType,
+  type OptionsSkill,
+  type InsertOptionsSkill
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
@@ -256,6 +259,7 @@ export interface OptionsStorage {
   employmentStatus: EmploymentStatusStorage;
   eventTypes: EventTypeStorage;
   dispatchJobTypes: DispatchJobTypeStorage;
+  skills: SkillsStorage;
 }
 
 export function createOptionsStorage(): OptionsStorage {
@@ -649,6 +653,39 @@ export function createOptionsStorage(): OptionsStorage {
         const result = await db.delete(optionsDispatchJobType).where(eq(optionsDispatchJobType.id, id)).returning();
         return result.length > 0;
       }
+    },
+
+    skills: {
+      async getAll(): Promise<OptionsSkill[]> {
+        return db.select().from(optionsSkills).orderBy(optionsSkills.name);
+      },
+
+      async get(id: string): Promise<OptionsSkill | undefined> {
+        const [skill] = await db.select().from(optionsSkills).where(eq(optionsSkills.id, id));
+        return skill || undefined;
+      },
+
+      async create(skill: InsertOptionsSkill): Promise<OptionsSkill> {
+        const [newSkill] = await db
+          .insert(optionsSkills)
+          .values(skill)
+          .returning();
+        return newSkill;
+      },
+
+      async update(id: string, skillUpdate: Partial<InsertOptionsSkill>): Promise<OptionsSkill | undefined> {
+        const [skill] = await db
+          .update(optionsSkills)
+          .set(skillUpdate)
+          .where(eq(optionsSkills.id, id))
+          .returning();
+        return skill || undefined;
+      },
+
+      async delete(id: string): Promise<boolean> {
+        const result = await db.delete(optionsSkills).where(eq(optionsSkills.id, id)).returning();
+        return result.length > 0;
+      }
     }
   };
 }
@@ -726,3 +763,4 @@ export function createEmployerTypeStorage(): EmployerTypeStorage {
     }
   };
 }
+

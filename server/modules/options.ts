@@ -1226,4 +1226,107 @@ export function registerOptionsRoutes(
       res.status(500).json({ message: "Failed to delete dispatch job type" });
     }
   });
+
+  // Skill Options routes
+
+  // GET /api/skill-options - Get all skill options
+  app.get("/api/skill-options", requireAuth, requirePermission("staff"), async (req, res) => {
+    try {
+      const skills = await storage.options.skills.getAll();
+      res.json(skills);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch skill options" });
+    }
+  });
+
+  // GET /api/skill-options/:id - Get a specific skill option
+  app.get("/api/skill-options/:id", requireAuth, requirePermission("staff"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const skill = await storage.options.skills.get(id);
+      
+      if (!skill) {
+        res.status(404).json({ message: "Skill option not found" });
+        return;
+      }
+      
+      res.json(skill);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch skill option" });
+    }
+  });
+
+  // POST /api/skill-options - Create a new skill option (requires admin permission)
+  app.post("/api/skill-options", requireAccess('admin'), async (req, res) => {
+    try {
+      const { name, description, data } = req.body;
+      
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ message: "Name is required" });
+      }
+      
+      const skill = await storage.options.skills.create({
+        name: name.trim(),
+        description: description && typeof description === 'string' ? description.trim() : null,
+        data: data && typeof data === 'object' ? data : null,
+      });
+      
+      res.status(201).json(skill);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to create skill option" });
+    }
+  });
+
+  // PUT /api/skill-options/:id - Update a skill option (requires admin permission)
+  app.put("/api/skill-options/:id", requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, description, data } = req.body;
+      
+      const updates: any = {};
+      
+      if (name !== undefined) {
+        if (typeof name !== 'string' || !name.trim()) {
+          return res.status(400).json({ message: "Name must be a non-empty string" });
+        }
+        updates.name = name.trim();
+      }
+      
+      if (description !== undefined) {
+        updates.description = description && typeof description === 'string' ? description.trim() : null;
+      }
+      
+      if (data !== undefined) {
+        updates.data = data && typeof data === 'object' ? data : null;
+      }
+      
+      const skill = await storage.options.skills.update(id, updates);
+      
+      if (!skill) {
+        res.status(404).json({ message: "Skill option not found" });
+        return;
+      }
+      
+      res.json(skill);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to update skill option" });
+    }
+  });
+
+  // DELETE /api/skill-options/:id - Delete a skill option (requires admin permission)
+  app.delete("/api/skill-options/:id", requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.options.skills.delete(id);
+      
+      if (!deleted) {
+        res.status(404).json({ message: "Skill option not found" });
+        return;
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete skill option" });
+    }
+  });
 }
