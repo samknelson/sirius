@@ -191,6 +191,13 @@ export const componentRegistry: ComponentDefinition[] = [
     ]
   },
   {
+    id: "worker.skills",
+    name: "Worker Skills",
+    description: "Management of worker skills and qualifications",
+    enabledByDefault: false,
+    category: "core"
+  },
+  {
     id: "trust.providers.login",
     name: "Trust Provider Login",
     description: "Ability for trust provider contacts to log in",
