@@ -70,6 +70,8 @@ interface EmployerSuggestion {
 interface SuggestionsData {
   byLocationId: Record<string, EmployerSuggestion>;
   byLocationTitle: Record<string, EmployerSuggestion>;
+  secondaryByLocationId: Record<string, EmployerSuggestion>;
+  secondaryByLocationTitle: Record<string, EmployerSuggestion>;
 }
 
 export default function BtuEmployerMapListPage() {
@@ -126,6 +128,26 @@ export default function BtuEmployerMapListPage() {
       const normalizedTitle = record.locationTitle.toLowerCase().trim();
       if (suggestionsData.byLocationTitle[normalizedTitle]) {
         return suggestionsData.byLocationTitle[normalizedTitle].primary;
+      }
+    }
+    
+    return null;
+  };
+
+  // Helper to get secondary employer suggestion for a record
+  const getSecondarySuggestionForRecord = (record: BtuEmployerMap): string | null => {
+    if (!suggestionsData) return null;
+    
+    // First try by locationId
+    if (record.locationId && suggestionsData.secondaryByLocationId?.[record.locationId]) {
+      return suggestionsData.secondaryByLocationId[record.locationId].primary;
+    }
+    
+    // Fallback to location title (normalized)
+    if (record.locationTitle) {
+      const normalizedTitle = record.locationTitle.toLowerCase().trim();
+      if (suggestionsData.secondaryByLocationTitle?.[normalizedTitle]) {
+        return suggestionsData.secondaryByLocationTitle[normalizedTitle].primary;
       }
     }
     
@@ -508,14 +530,54 @@ export default function BtuEmployerMapListPage() {
   };
 
   const handleApplySuggestion = (recordId: string, suggestedEmployer: string) => {
+    const record = records.find(r => r.id === recordId);
+    if (!record) return;
+    
     updateMutation.mutate({ 
       id: recordId, 
-      data: { employerName: suggestedEmployer } as FormValues 
+      data: {
+        departmentId: record.departmentId || "",
+        departmentTitle: record.departmentTitle || "",
+        locationId: record.locationId || "",
+        locationTitle: record.locationTitle || "",
+        jobCode: record.jobCode || "",
+        jobTitle: record.jobTitle || "",
+        employerName: suggestedEmployer,
+        secondaryEmployerName: record.secondaryEmployerName || "",
+        bargainingUnitId: record.bargainingUnitId || "",
+      }
     }, {
       onSuccess: () => {
         toast({
           title: "Suggestion Applied",
           description: `Employer set to "${suggestedEmployer}"`,
+        });
+      }
+    });
+  };
+
+  const handleApplySecondarySuggestion = (recordId: string, suggestedEmployer: string) => {
+    const record = records.find(r => r.id === recordId);
+    if (!record) return;
+    
+    updateMutation.mutate({ 
+      id: recordId, 
+      data: {
+        departmentId: record.departmentId || "",
+        departmentTitle: record.departmentTitle || "",
+        locationId: record.locationId || "",
+        locationTitle: record.locationTitle || "",
+        jobCode: record.jobCode || "",
+        jobTitle: record.jobTitle || "",
+        employerName: record.employerName || "",
+        secondaryEmployerName: suggestedEmployer,
+        bargainingUnitId: record.bargainingUnitId || "",
+      }
+    }, {
+      onSuccess: () => {
+        toast({
+          title: "Suggestion Applied",
+          description: `Secondary employer set to "${suggestedEmployer}"`,
         });
       }
     });
@@ -787,7 +849,7 @@ export default function BtuEmployerMapListPage() {
                   </TableCell>
                   <TableCell data-testid={`text-secondary-employer-${record.id}`}>
                     {record.secondaryEmployerName ? (
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         {systemEmployersLoaded && (
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -805,8 +867,58 @@ export default function BtuEmployerMapListPage() {
                           </Tooltip>
                         )}
                         <span>{record.secondaryEmployerName}</span>
+                        {systemEmployersLoaded && !systemEmployerNames.has(record.secondaryEmployerName) && (() => {
+                          const suggestion = getSecondarySuggestionForRecord(record);
+                          if (suggestion) {
+                            return (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge 
+                                    variant="secondary" 
+                                    className="cursor-pointer text-xs gap-1"
+                                    onClick={() => handleApplySecondarySuggestion(record.id, suggestion)}
+                                    data-testid={`badge-secondary-suggestion-${record.id}`}
+                                  >
+                                    <Lightbulb className="h-3 w-3" />
+                                    {suggestion}
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Click to apply suggested secondary employer based on location
+                                </TooltipContent>
+                              </Tooltip>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
-                    ) : "-"}
+                    ) : (() => {
+                      const suggestion = getSecondarySuggestionForRecord(record);
+                      if (suggestion) {
+                        return (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-muted-foreground">-</span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge 
+                                  variant="secondary" 
+                                  className="cursor-pointer text-xs gap-1"
+                                  onClick={() => handleApplySecondarySuggestion(record.id, suggestion)}
+                                  data-testid={`badge-secondary-suggestion-${record.id}`}
+                                >
+                                  <Lightbulb className="h-3 w-3" />
+                                  {suggestion}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                Click to apply suggested secondary employer based on location
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                        );
+                      }
+                      return "-";
+                    })()}
                   </TableCell>
                   <TableCell data-testid={`text-bargaining-unit-${record.id}`}>
                     {bargainingUnits.find(bu => bu.id === record.bargainingUnitId)?.siriusId || "-"}

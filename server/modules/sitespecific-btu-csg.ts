@@ -281,6 +281,8 @@ export function registerBtuCsgRoutes(
       
       // Build location → employer mapping from confirmed records (where employer exists)
       const locationToEmployers: Map<string, Map<string, number>> = new Map();
+      // Also build location → secondary employer mapping
+      const locationToSecondaryEmployers: Map<string, Map<string, number>> = new Map();
       
       for (const record of allRecords) {
         // Only learn from records where the employer actually exists in the system
@@ -291,10 +293,19 @@ export function registerBtuCsgRoutes(
           const employerCounts = locationToEmployers.get(record.locationId)!;
           employerCounts.set(record.employerName, (employerCounts.get(record.employerName) || 0) + 1);
         }
+        // Track secondary employer mappings
+        if (record.locationId && record.secondaryEmployerName && systemEmployerNames.has(record.secondaryEmployerName)) {
+          if (!locationToSecondaryEmployers.has(record.locationId)) {
+            locationToSecondaryEmployers.set(record.locationId, new Map());
+          }
+          const employerCounts = locationToSecondaryEmployers.get(record.locationId)!;
+          employerCounts.set(record.secondaryEmployerName, (employerCounts.get(record.secondaryEmployerName) || 0) + 1);
+        }
       }
       
       // Also try matching by location title (normalized)
       const locationTitleToEmployers: Map<string, Map<string, number>> = new Map();
+      const locationTitleToSecondaryEmployers: Map<string, Map<string, number>> = new Map();
       
       for (const record of allRecords) {
         if (record.locationTitle && record.employerName && systemEmployerNames.has(record.employerName)) {
@@ -305,10 +316,20 @@ export function registerBtuCsgRoutes(
           const employerCounts = locationTitleToEmployers.get(normalizedTitle)!;
           employerCounts.set(record.employerName, (employerCounts.get(record.employerName) || 0) + 1);
         }
+        // Track secondary employer by location title
+        if (record.locationTitle && record.secondaryEmployerName && systemEmployerNames.has(record.secondaryEmployerName)) {
+          const normalizedTitle = record.locationTitle.toLowerCase().trim();
+          if (!locationTitleToSecondaryEmployers.has(normalizedTitle)) {
+            locationTitleToSecondaryEmployers.set(normalizedTitle, new Map());
+          }
+          const employerCounts = locationTitleToSecondaryEmployers.get(normalizedTitle)!;
+          employerCounts.set(record.secondaryEmployerName, (employerCounts.get(record.secondaryEmployerName) || 0) + 1);
+        }
       }
       
       // Build suggestions for each unique location
       const suggestions: Record<string, { primary: string | null; alternates: string[] }> = {};
+      const secondarySuggestions: Record<string, { primary: string | null; alternates: string[] }> = {};
       
       // Get unique locationIds from all records
       const uniqueLocationIds = Array.from(new Set(allRecords.map(r => r.locationId).filter(Boolean) as string[]));
@@ -323,10 +344,20 @@ export function registerBtuCsgRoutes(
             alternates: sorted.slice(1, 4).map((entry: [string, number]) => entry[0])
           };
         }
+        // Build secondary employer suggestions
+        const secondaryCounts = locationToSecondaryEmployers.get(locationId);
+        if (secondaryCounts && secondaryCounts.size > 0) {
+          const sorted = Array.from(secondaryCounts.entries()).sort((a: [string, number], b: [string, number]) => b[1] - a[1]);
+          secondarySuggestions[locationId] = {
+            primary: sorted[0][0],
+            alternates: sorted.slice(1, 4).map((entry: [string, number]) => entry[0])
+          };
+        }
       }
       
       // Also build suggestions by location title for fallback
       const titleSuggestions: Record<string, { primary: string | null; alternates: string[] }> = {};
+      const secondaryTitleSuggestions: Record<string, { primary: string | null; alternates: string[] }> = {};
       
       const titleEntries = Array.from(locationTitleToEmployers.entries());
       for (const [normalizedTitle, employerCounts] of titleEntries) {
@@ -339,9 +370,22 @@ export function registerBtuCsgRoutes(
         }
       }
       
+      const secondaryTitleEntries = Array.from(locationTitleToSecondaryEmployers.entries());
+      for (const [normalizedTitle, employerCounts] of secondaryTitleEntries) {
+        if (employerCounts.size > 0) {
+          const sorted = Array.from(employerCounts.entries()).sort((a: [string, number], b: [string, number]) => b[1] - a[1]);
+          secondaryTitleSuggestions[normalizedTitle] = {
+            primary: sorted[0][0],
+            alternates: sorted.slice(1, 4).map((entry: [string, number]) => entry[0])
+          };
+        }
+      }
+      
       res.json({ 
         byLocationId: suggestions,
-        byLocationTitle: titleSuggestions
+        byLocationTitle: titleSuggestions,
+        secondaryByLocationId: secondarySuggestions,
+        secondaryByLocationTitle: secondaryTitleSuggestions
       });
     } catch (error: any) {
       console.error("Failed to get employer suggestions:", error);
