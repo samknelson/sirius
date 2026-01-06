@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Plus, Edit, Trash2, Save, X } from "lucide-react";
+import { IconPicker, renderIcon } from "@/components/ui/icon-picker";
 import {
   Table,
   TableBody,
@@ -42,7 +43,7 @@ export default function SkillOptionsPage() {
   
   const [formName, setFormName] = useState("");
   const [formDescription, setFormDescription] = useState("");
-  const [formIcon, setFormIcon] = useState("");
+  const [formIcon, setFormIcon] = useState<string | undefined>(undefined);
   
   const { data: skillOptions = [], isLoading } = useQuery<SkillOption[]>({
     queryKey: ["/api/skill-options"],
@@ -120,14 +121,14 @@ export default function SkillOptionsPage() {
   const resetForm = () => {
     setFormName("");
     setFormDescription("");
-    setFormIcon("");
+    setFormIcon(undefined);
   };
 
   const handleEdit = (skill: SkillOption) => {
     setEditingId(skill.id);
     setFormName(skill.name);
     setFormDescription(skill.description || "");
-    setFormIcon(skill.data?.icon || "");
+    setFormIcon(skill.data?.icon || undefined);
   };
 
   const handleCancelEdit = () => {
@@ -148,7 +149,7 @@ export default function SkillOptionsPage() {
       id: editingId!,
       name: formName.trim(),
       description: formDescription.trim() || null,
-      data: formIcon.trim() ? { icon: formIcon.trim() } : null,
+      data: formIcon ? { icon: formIcon } : null,
     });
   };
 
@@ -164,7 +165,7 @@ export default function SkillOptionsPage() {
     createMutation.mutate({
       name: formName.trim(),
       description: formDescription.trim() || null,
-      data: formIcon.trim() ? { icon: formIcon.trim() } : null,
+      data: formIcon ? { icon: formIcon } : null,
     });
   };
 
@@ -204,15 +205,31 @@ export default function SkillOptionsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Icon</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Description</TableHead>
-                  <TableHead>Icon</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {skillOptions.map((skill) => (
                   <TableRow key={skill.id} data-testid={`row-skill-option-${skill.id}`}>
+                    <TableCell data-testid={`icon-${skill.id}`}>
+                      {editingId === skill.id ? (
+                        <IconPicker
+                          value={formIcon}
+                          onChange={setFormIcon}
+                          placeholder="Select icon"
+                          data-testid={`picker-edit-icon-${skill.id}`}
+                        />
+                      ) : (
+                        skill.data?.icon ? (
+                          renderIcon(skill.data.icon, "h-5 w-5 text-muted-foreground")
+                        ) : (
+                          <span className="text-muted-foreground italic">None</span>
+                        )
+                      )}
+                    </TableCell>
                     <TableCell data-testid={`text-name-${skill.id}`}>
                       {editingId === skill.id ? (
                         <Input
@@ -235,22 +252,6 @@ export default function SkillOptionsPage() {
                         />
                       ) : (
                         skill.description || <span className="text-muted-foreground italic">None</span>
-                      )}
-                    </TableCell>
-                    <TableCell data-testid={`text-icon-${skill.id}`}>
-                      {editingId === skill.id ? (
-                        <Input
-                          value={formIcon}
-                          onChange={(e) => setFormIcon(e.target.value)}
-                          placeholder="Icon name (optional)"
-                          data-testid={`input-edit-icon-${skill.id}`}
-                        />
-                      ) : (
-                        skill.data?.icon ? (
-                          <code className="text-xs bg-muted px-2 py-1 rounded">{skill.data.icon}</code>
-                        ) : (
-                          <span className="text-muted-foreground italic">None</span>
-                        )
                       )}
                     </TableCell>
                     <TableCell className="text-right">
@@ -336,17 +337,13 @@ export default function SkillOptionsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="add-icon">Icon Name</Label>
-              <Input
-                id="add-icon"
+              <Label>Icon</Label>
+              <IconPicker
                 value={formIcon}
-                onChange={(e) => setFormIcon(e.target.value)}
-                placeholder="e.g., wrench, zap, hammer (optional)"
-                data-testid="input-add-icon"
+                onChange={setFormIcon}
+                placeholder="Select an icon (optional)"
+                data-testid="picker-add-icon"
               />
-              <p className="text-xs text-muted-foreground">
-                Optional: Enter a Lucide icon name to display with this skill.
-              </p>
             </div>
           </div>
           <DialogFooter>
