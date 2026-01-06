@@ -135,20 +135,31 @@ export default function BtuEmployerMapListPage() {
   };
 
   // Helper to get secondary employer suggestion for a record
+  // Only returns a suggestion if it differs from the primary employer (or primary suggestion)
   const getSecondarySuggestionForRecord = (record: BtuEmployerMap): string | null => {
     if (!suggestionsData) return null;
     
+    // Get the primary employer (either the record's current employer or the primary suggestion)
+    const primaryEmployer = record.employerName || getSuggestionForRecord(record);
+    
+    let secondarySuggestion: string | null = null;
+    
     // First try by locationId
     if (record.locationId && suggestionsData.secondaryByLocationId?.[record.locationId]) {
-      return suggestionsData.secondaryByLocationId[record.locationId].primary;
+      secondarySuggestion = suggestionsData.secondaryByLocationId[record.locationId].primary;
     }
     
     // Fallback to location title (normalized)
-    if (record.locationTitle) {
+    if (!secondarySuggestion && record.locationTitle) {
       const normalizedTitle = record.locationTitle.toLowerCase().trim();
       if (suggestionsData.secondaryByLocationTitle?.[normalizedTitle]) {
-        return suggestionsData.secondaryByLocationTitle[normalizedTitle].primary;
+        secondarySuggestion = suggestionsData.secondaryByLocationTitle[normalizedTitle].primary;
       }
+    }
+    
+    // Only return the suggestion if it differs from the primary employer
+    if (secondarySuggestion && secondarySuggestion !== primaryEmployer) {
+      return secondarySuggestion;
     }
     
     return null;
