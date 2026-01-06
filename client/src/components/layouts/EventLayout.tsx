@@ -6,6 +6,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import type { Event, EventType, EventOccurrence } from "@shared/schema";
 import { createContext, useContext } from "react";
+import { useEventTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 const iconMap: Record<string, LucideIcon> = {
   Calendar, Users, MapPin, Video, Presentation, Mic, Ticket, Star, Heart, Clock,
@@ -35,7 +37,7 @@ export function useEventLayout() {
 
 interface EventLayoutProps {
   children: React.ReactNode;
-  activeTab: "view" | "edit" | "delete" | "register" | "roster" | "self-register";
+  activeTab: string;
 }
 
 export default function EventLayout({ children, activeTab }: EventLayoutProps) {
@@ -49,6 +51,11 @@ export default function EventLayout({ children, activeTab }: EventLayoutProps) {
   const { data: eventTypes = [] } = useQuery<EventType[]>({
     queryKey: ["/api/event-types"],
   });
+
+  const { tabs: mainTabs } = useEventTabAccess(id);
+
+  // Set page title based on event title
+  usePageTitle(event?.title);
 
   const getEventType = (eventTypeId: string | null) => {
     if (!eventTypeId) return undefined;
@@ -141,22 +148,6 @@ export default function EventLayout({ children, activeTab }: EventLayoutProps) {
   const IconComponent = getEventTypeIcon(event.eventTypeId);
   const eventType = getEventType(event.eventTypeId);
   const category = eventType?.category;
-
-  // Success state - render layout with tabs
-  const mainTabs = [
-    { id: "view", label: "View", href: `/events/${event.id}` },
-    { id: "edit", label: "Edit", href: `/events/${event.id}/edit` },
-    { id: "delete", label: "Delete", href: `/events/${event.id}/delete` },
-  ];
-  
-  // Add category-specific tabs for membership events
-  if (category === "membership") {
-    mainTabs.push(
-      { id: "register", label: "Register", href: `/events/${event.id}/register` },
-      { id: "roster", label: "Roster", href: `/events/${event.id}/roster` },
-      { id: "self-register", label: "Self Register", href: `/events/${event.id}/self-register` }
-    );
-  }
 
   const contextValue: EventLayoutContextValue = {
     event,

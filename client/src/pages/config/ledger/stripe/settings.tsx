@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -22,6 +23,7 @@ interface LedgerPaymentType {
 }
 
 export default function StripeSettingsPage() {
+  usePageTitle("Stripe Settings");
   const { toast } = useToast();
   const [selectedPaymentTypeId, setSelectedPaymentTypeId] = useState<string>("");
 

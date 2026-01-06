@@ -11,7 +11,8 @@ export function registerCardchecksRoutes(
 ) {
   const cardcheckComponent = requireComponent("cardcheck");
 
-  app.get("/api/workers/:workerId/cardchecks", requireAuth, cardcheckComponent, requirePermission("workers.view"), async (req, res) => {
+  // GET /api/workers/:workerId/cardchecks - Get cardchecks for a worker (worker.view policy)
+  app.get("/api/workers/:workerId/cardchecks", requireAuth, cardcheckComponent, requireAccess('worker.view', (req: any) => req.params.workerId), async (req, res) => {
     try {
       const { workerId } = req.params;
       const cardchecks = await storage.cardchecks.getCardchecksByWorkerId(workerId);
@@ -21,7 +22,8 @@ export function registerCardchecksRoutes(
     }
   });
 
-  app.get("/api/cardcheck/:id", requireAuth, cardcheckComponent, requirePermission("workers.view"), async (req, res) => {
+  // GET /api/cardcheck/:id - Get specific cardcheck (cardcheck.view policy)
+  app.get("/api/cardcheck/:id", requireAuth, cardcheckComponent, requireAccess('cardcheck.view', (req: any) => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       const cardcheck = await storage.cardchecks.getCardcheckById(id);
@@ -37,7 +39,7 @@ export function registerCardchecksRoutes(
     }
   });
 
-  app.post("/api/workers/:workerId/cardchecks", requireAuth, cardcheckComponent, requirePermission("workers.manage"), async (req, res) => {
+  app.post("/api/workers/:workerId/cardchecks", requireAuth, cardcheckComponent, requireAccess('worker.edit', (req: any) => req.params.workerId), async (req, res) => {
     try {
       const { workerId } = req.params;
       
@@ -66,7 +68,7 @@ export function registerCardchecksRoutes(
     }
   });
 
-  app.patch("/api/cardcheck/:id", requireAuth, cardcheckComponent, requirePermission("workers.manage"), async (req, res) => {
+  app.patch("/api/cardcheck/:id", requireAuth, cardcheckComponent, requireAccess('cardcheck.edit', (req: any) => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -104,7 +106,7 @@ export function registerCardchecksRoutes(
     }
   });
 
-  app.delete("/api/cardcheck/:id", requireAuth, cardcheckComponent, requirePermission("workers.manage"), async (req, res) => {
+  app.delete("/api/cardcheck/:id", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -121,12 +123,68 @@ export function registerCardchecksRoutes(
     }
   });
 
-  app.get("/api/cardchecks/status-summary", requireAuth, cardcheckComponent, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/cardchecks/status-summary", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
     try {
       const summary = await storage.cardchecks.getCardcheckStatusSummary();
       res.json(summary);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch cardcheck status summary" });
+    }
+  });
+
+  // POST /api/cardcheck/:id/sign - Sign a cardcheck (cardcheck.edit policy)
+  app.post("/api/cardcheck/:id/sign", requireAuth, cardcheckComponent, requireAccess('cardcheck.edit', (req: any) => req.params.id), async (req, res) => {
+    try {
+      const { id: cardcheckId } = req.params;
+      const user = req.user as any;
+      const replitUserId = user?.claims?.sub;
+      
+      if (!replitUserId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const dbUser = await storage.users.getUserByReplitId(replitUserId);
+      if (!dbUser) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const existingCardcheck = await storage.cardchecks.getCardcheckById(cardcheckId);
+      if (!existingCardcheck) {
+        return res.status(404).json({ message: "Cardcheck not found" });
+      }
+
+      if (existingCardcheck.status === "signed") {
+        return res.status(400).json({ message: "Cardcheck is already signed" });
+      }
+
+      if (existingCardcheck.status === "revoked") {
+        return res.status(400).json({ message: "Cannot sign a revoked cardcheck" });
+      }
+
+      const { docRender, esigData, signatureType, docType = "cardcheck", rate } = req.body;
+
+      if (!docRender || !esigData) {
+        return res.status(400).json({ message: "Missing required signing data" });
+      }
+
+      // Extract fileId from esigData if signing with uploaded document
+      const fileId = signatureType === "upload" && esigData?.value ? esigData.value : undefined;
+
+      const result = await storage.esigs.signCardcheck({
+        cardcheckId,
+        userId: dbUser.id,
+        docRender,
+        docType,
+        esigData,
+        signatureType,
+        fileId,
+        rate: rate !== undefined ? Number(rate) : undefined,
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("Failed to sign cardcheck:", error);
+      res.status(500).json({ message: "Failed to sign cardcheck" });
     }
   });
 }

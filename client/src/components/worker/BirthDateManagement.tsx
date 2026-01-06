@@ -11,9 +11,10 @@ import { Loader2, Save, Calendar } from "lucide-react";
 
 interface BirthDateManagementProps {
   contactId: string;
+  canEdit?: boolean;
 }
 
-export default function BirthDateManagement({ contactId }: BirthDateManagementProps) {
+export default function BirthDateManagement({ contactId, canEdit = true }: BirthDateManagementProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [editedBirthDate, setEditedBirthDate] = useState<string>("");
@@ -121,14 +122,16 @@ export default function BirthDateManagement({ contactId }: BirthDateManagementPr
                   })() : "Not set"}
                 </p>
               </div>
-              <Button
-                onClick={handleEdit}
-                variant="outline"
-                size="sm"
-                data-testid="button-edit-birthdate"
-              >
-                Edit
-              </Button>
+              {canEdit && (
+                <Button
+                  onClick={handleEdit}
+                  variant="outline"
+                  size="sm"
+                  data-testid="button-edit-birthdate"
+                >
+                  Edit
+                </Button>
+              )}
             </div>
           </div>
         ) : (

@@ -5,6 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useEmployerContactTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface EmployerContactDetail {
   id: string;
@@ -46,7 +48,7 @@ export function useEmployerContactLayout() {
 }
 
 interface EmployerContactLayoutProps {
-  activeTab: "view" | "edit" | "email" | "name" | "phone-numbers" | "addresses" | "user" | "comm" | "comm-history" | "send-sms" | "send-email" | "send-postal" | "send-inapp";
+  activeTab: string;
   children: ReactNode;
 }
 
@@ -63,6 +65,15 @@ export function EmployerContactLayout({ activeTab, children }: EmployerContactLa
     queryKey: ["/api/employers", employerContact?.employerId],
     enabled: !!employerContact?.employerId,
   });
+
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs: mainTabs, subTabs: tabSubTabs } = useEmployerContactTabAccess(id || "");
+
+  // Set page title based on contact name
+  const contactName = employerContact?.contact
+    ? `${employerContact.contact.given || ""} ${employerContact.contact.family || ""}`.trim() || employerContact.contact.displayName
+    : "";
+  usePageTitle(contactName || undefined);
 
   // Error/Not found state
   if (error) {
@@ -103,26 +114,9 @@ export function EmployerContactLayout({ activeTab, children }: EmployerContactLa
     );
   }
 
-  // Success state - render layout with tabs
-  const mainTabs = [
-    { id: "view", label: "View", href: `/employer-contacts/${employerContact.id}` },
-    { id: "edit", label: "Edit", href: `/employer-contacts/${employerContact.id}/edit` },
-    { id: "name", label: "Name", href: `/employer-contacts/${employerContact.id}/name` },
-    { id: "email", label: "Email", href: `/employer-contacts/${employerContact.id}/email` },
-    { id: "phone-numbers", label: "Phone Numbers", href: `/employer-contacts/${employerContact.id}/phone-numbers` },
-    { id: "addresses", label: "Addresses", href: `/employer-contacts/${employerContact.id}/addresses` },
-    { id: "comm", label: "Comm", href: `/employer-contacts/${employerContact.id}/comm/history` },
-    { id: "user", label: "User", href: `/employer-contacts/${employerContact.id}/user` },
-  ];
-
-  const commSubTabs = [
-    { id: "comm-history", label: "History", href: `/employer-contacts/${employerContact.id}/comm/history` },
-    { id: "send-sms", label: "Send SMS", href: `/employer-contacts/${employerContact.id}/comm/send-sms` },
-    { id: "send-email", label: "Send Email", href: `/employer-contacts/${employerContact.id}/comm/send-email` },
-    { id: "send-postal", label: "Send Postal", href: `/employer-contacts/${employerContact.id}/comm/send-postal` },
-    { id: "send-inapp", label: "Send In-App", href: `/employer-contacts/${employerContact.id}/comm/send-inapp` },
-  ];
-
+  // Get comm sub-tabs from the hierarchical structure
+  const commSubTabs = tabSubTabs['comm'] || [];
+  
   const isCommSubTab = ["comm-history", "send-sms", "send-email", "send-postal", "send-inapp"].includes(activeTab);
   const showCommSubTabs = isCommSubTab;
 

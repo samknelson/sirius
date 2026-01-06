@@ -1,11 +1,13 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 
 export default function PhoneNumbersConfigPage() {
+  usePageTitle("Phone Number Settings");
   const [, setLocation] = useLocation();
 
   useEffect(() => {

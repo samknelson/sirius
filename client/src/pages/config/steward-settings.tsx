@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Loader2, Save, Users, AlertTriangle } from "lucide-react";
 import { Variable, RolePermission } from "@shared/schema";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Role } from "@/lib/entity-types";
 
 const VARIABLE_NAME = "worker_steward_config";
-const STEWARD_PERMISSION = "workers.steward";
+const STEWARD_PERMISSION = "worker.steward";
 
 interface StewardConfig {
   role: string | null;
@@ -29,6 +30,7 @@ const DEFAULT_CONFIG: StewardConfig = {
 };
 
 export default function StewardSettingsPage() {
+  usePageTitle("Steward Settings");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [config, setConfig] = useState<StewardConfig>(DEFAULT_CONFIG);
@@ -175,8 +177,8 @@ export default function StewardSettingsPage() {
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>No Eligible Roles Found</AlertTitle>
               <AlertDescription>
-                No roles have been assigned the "workers.steward" permission. To configure a steward role, 
-                first go to <strong>Config &gt; Users &gt; Roles</strong> and assign the "workers.steward" 
+                No roles have been assigned the "worker.steward" permission. To configure a steward role, 
+                first go to <strong>Config &gt; Users &gt; Roles</strong> and assign the "worker.steward" 
                 permission to at least one role.
               </AlertDescription>
             </Alert>

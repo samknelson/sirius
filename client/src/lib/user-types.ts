@@ -9,4 +9,5 @@ export interface User {
   isActive: boolean;
   createdAt?: string;
   lastLogin?: string;
+  workerId?: string | null;
 }

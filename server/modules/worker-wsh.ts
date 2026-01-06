@@ -6,11 +6,10 @@ export function registerWorkerWshRoutes(
   requireAuth: any,
   requirePermission: any,
   requireAccess: any,
-  policies: any,
   workerWshStorage: WorkerWshStorage
 ) {
-  // GET /api/workers/:workerId/wsh - Get work status history for a worker (requires worker policy: staff or worker with matching email)
-  app.get("/api/workers/:workerId/wsh", requireAuth, requireAccess(policies.worker), async (req, res) => {
+  // GET /api/workers/:workerId/wsh - Get work status history for a worker (requires worker.view policy: staff or worker with matching email)
+  app.get("/api/workers/:workerId/wsh", requireAuth, requireAccess('worker.view', (req: any) => req.params.workerId), async (req, res) => {
     try {
       const { workerId } = req.params;
       const wshEntries = await workerWshStorage.getWorkerWsh(workerId);
@@ -22,7 +21,7 @@ export function registerWorkerWshRoutes(
   });
 
   // POST /api/workers/:workerId/wsh - Create a new work status history entry for a worker (requires workers.manage permission)
-  app.post("/api/workers/:workerId/wsh", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  app.post("/api/workers/:workerId/wsh", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { workerId } = req.params;
       const { date, wsId, data } = req.body;
@@ -45,7 +44,7 @@ export function registerWorkerWshRoutes(
   });
 
   // PATCH /api/worker-wsh/:id - Update a worker work status history entry (requires workers.manage permission)
-  app.patch("/api/worker-wsh/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  app.patch("/api/worker-wsh/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
       const { date, wsId, data } = req.body;
@@ -71,7 +70,7 @@ export function registerWorkerWshRoutes(
   });
 
   // DELETE /api/worker-wsh/:id - Delete a worker work status history entry (requires workers.manage permission)
-  app.delete("/api/worker-wsh/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  app.delete("/api/worker-wsh/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await workerWshStorage.deleteWorkerWsh(id);

@@ -11,7 +11,7 @@ export function registerCardcheckDefinitionsRoutes(
 ) {
   const cardcheckComponent = requireComponent("cardcheck");
 
-  app.get("/api/cardcheck/definitions", requireAuth, cardcheckComponent, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/cardcheck/definitions", requireAuth, cardcheckComponent, async (req, res) => {
     try {
       const definitions = await storage.cardcheckDefinitions.getAllCardcheckDefinitions();
       res.json(definitions);
@@ -20,7 +20,7 @@ export function registerCardcheckDefinitionsRoutes(
     }
   });
 
-  app.get("/api/cardcheck/definition/:id", requireAuth, cardcheckComponent, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/cardcheck/definition/:id", requireAuth, cardcheckComponent, async (req, res) => {
     try {
       const { id } = req.params;
       const definition = await storage.cardcheckDefinitions.getCardcheckDefinitionById(id);
@@ -36,7 +36,7 @@ export function registerCardcheckDefinitionsRoutes(
     }
   });
 
-  app.post("/api/cardcheck/definitions", requireAuth, cardcheckComponent, requirePermission("workers.manage"), async (req, res) => {
+  app.post("/api/cardcheck/definitions", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
     try {
       const parsed = insertCardcheckDefinitionSchema.safeParse(req.body);
       
@@ -54,7 +54,7 @@ export function registerCardcheckDefinitionsRoutes(
     }
   });
 
-  app.patch("/api/cardcheck/definition/:id", requireAuth, cardcheckComponent, requirePermission("workers.manage"), async (req, res) => {
+  app.patch("/api/cardcheck/definition/:id", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -86,7 +86,7 @@ export function registerCardcheckDefinitionsRoutes(
     }
   });
 
-  app.delete("/api/cardcheck/definition/:id", requireAuth, cardcheckComponent, requirePermission("workers.manage"), async (req, res) => {
+  app.delete("/api/cardcheck/definition/:id", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
       

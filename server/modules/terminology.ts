@@ -45,8 +45,7 @@ export function registerTerminologyRoutes(
   app: Express,
   requireAuth: any,
   requirePermission: any,
-  requireAccess: any,
-  policies: any
+  requireAccess: any
 ) {
   app.get("/api/terminology", async (req, res) => {
     try {
@@ -66,7 +65,7 @@ export function registerTerminologyRoutes(
     }
   });
 
-  app.put("/api/terminology", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/terminology", requireAccess('admin'), async (req, res) => {
     try {
       const { terminology } = req.body;
       
@@ -111,7 +110,7 @@ export function registerTerminologyRoutes(
     }
   });
 
-  app.post("/api/terminology/reset", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/terminology/reset", requireAccess('admin'), async (req, res) => {
     try {
       const existingVariable = await storage.variables.getByName(TERMINOLOGY_VARIABLE_NAME);
       

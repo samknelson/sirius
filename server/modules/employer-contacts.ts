@@ -1,12 +1,19 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { insertContactSchema, type InsertContact } from "@shared/schema";
-import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
+import { requireAccess } from "../services/access-policy-evaluator";
 import { z } from "zod";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
+
+async function getEmployerIdFromContactId(req: Request): Promise<string | undefined> {
+  const contactId = req.params.contactId || req.params.id;
+  if (!contactId) return undefined;
+  
+  const employerContact = await storage.employerContacts.get(contactId);
+  return employerContact?.employerId;
+}
 
 export function registerEmployerContactRoutes(
   app: Express, 
@@ -15,7 +22,7 @@ export function registerEmployerContactRoutes(
 ) {
   
   // GET /api/employer-contacts - Get all employer contacts with optional filtering (requires staff policy)
-  app.get("/api/employer-contacts", requireAuth, requireAccess(policies.staff), async (req, res) => {
+  app.get("/api/employer-contacts", requireAuth, requireAccess('staff'), async (req, res) => {
     try {
       const { employerId, contactName, contactTypeId } = req.query;
       
@@ -40,8 +47,8 @@ export function registerEmployerContactRoutes(
     }
   });
   
-  // GET /api/employers/:employerId/contacts - Get all contacts for an employer (requires employersView policy)
-  app.get("/api/employers/:employerId/contacts", requireAuth, requireAccess(policies.employersView), async (req, res) => {
+  // GET /api/employers/:employerId/contacts - Get all contacts for an employer
+  app.get("/api/employers/:employerId/contacts", requireAuth, requireAccess('employer.mine', (req) => req.params.employerId), async (req, res) => {
     try {
       const { employerId } = req.params;
       const contacts = await storage.employerContacts.listByEmployer(employerId);
@@ -51,8 +58,8 @@ export function registerEmployerContactRoutes(
     }
   });
 
-  // POST /api/employers/:employerId/contacts - Create a new contact for an employer (requires workers.manage permission)
-  app.post("/api/employers/:employerId/contacts", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  // POST /api/employers/:employerId/contacts - Create a new contact for an employer
+  app.post("/api/employers/:employerId/contacts", requireAuth, requireAccess('employer.manage', (req) => req.params.employerId), async (req, res) => {
     try {
       const { employerId } = req.params;
       const parsed = insertContactSchema.extend({ 
@@ -87,8 +94,8 @@ export function registerEmployerContactRoutes(
     }
   });
 
-  // GET /api/employer-contacts/:id - Get a single employer contact (requires workers.view or workers.manage permission)
-  app.get("/api/employer-contacts/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  // GET /api/employer-contacts/:id - Get a single employer contact
+  app.get("/api/employer-contacts/:id", requireAuth, requireAccess('employer.manage', getEmployerIdFromContactId), async (req, res) => {
     try {
       const { id } = req.params;
       const employerContact = await storage.employerContacts.get(id);
@@ -104,8 +111,8 @@ export function registerEmployerContactRoutes(
     }
   });
 
-  // PATCH /api/employer-contacts/:id - Update an employer contact (requires workers.manage permission)
-  app.patch("/api/employer-contacts/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  // PATCH /api/employer-contacts/:id - Update an employer contact
+  app.patch("/api/employer-contacts/:id", requireAuth, requireAccess('employer.manage', getEmployerIdFromContactId), async (req, res) => {
     try {
       const { id } = req.params;
       const { contactTypeId, email, nameComponents } = req.body;
@@ -174,8 +181,8 @@ export function registerEmployerContactRoutes(
     }
   });
 
-  // DELETE /api/employer-contacts/:id - Delete an employer contact (requires workers.manage permission)
-  app.delete("/api/employer-contacts/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  // DELETE /api/employer-contacts/:id - Delete an employer contact
+  app.delete("/api/employer-contacts/:id", requireAuth, requireAccess('employer.manage', getEmployerIdFromContactId), async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.employerContacts.delete(id);
@@ -192,7 +199,7 @@ export function registerEmployerContactRoutes(
   });
 
   // GET /api/employer-contacts/:contactId/user - Get user linked to employer contact
-  app.get("/api/employer-contacts/:contactId/user", requireAccess(policies.employerUserManage), async (req, res) => {
+  app.get("/api/employer-contacts/:contactId/user", requireAccess('employer.manage', getEmployerIdFromContactId), async (req, res) => {
     try {
       const { contactId } = req.params;
       
@@ -258,7 +265,7 @@ export function registerEmployerContactRoutes(
   });
 
   // POST /api/employer-contacts/:contactId/user - Create or update user linked to employer contact
-  app.post("/api/employer-contacts/:contactId/user", requireAccess(policies.employerUserManage), async (req, res) => {
+  app.post("/api/employer-contacts/:contactId/user", requireAccess('employer.manage', getEmployerIdFromContactId), async (req, res) => {
     try {
       const { contactId } = req.params;
       
@@ -394,7 +401,7 @@ export function registerEmployerContactRoutes(
   });
 
   // POST /api/employer-contacts/user-status - Batch fetch user account status for multiple employer contacts
-  app.post("/api/employer-contacts/user-status", requireAuth, requireAccess(policies.employerUserManage), async (req, res) => {
+  app.post("/api/employer-contacts/user-status", requireAuth, requireAccess('staff'), async (req, res) => {
     try {
       // Validate request body with Zod
       const requestSchema = z.object({

@@ -1,5 +1,6 @@
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import HourFixedConfigFormPage from "@/plugins/charge-plugins/hour-fixed/ConfigFormPage";
@@ -18,6 +19,7 @@ interface ChargePluginMetadata {
 
 // This page routes to the correct form component based on pluginId
 export default function ChargePluginFormPage() {
+  usePageTitle("Charge Plugin Form");
   const { pluginId } = useParams<{ pluginId: string }>();
 
   const { data: plugins = [], isLoading } = useQuery<ChargePluginMetadata[]>({

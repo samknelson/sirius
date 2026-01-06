@@ -157,6 +157,16 @@ import {
   eventParticipantLoggingConfig,
 } from "./events";
 import {
+  type DispatchJobStorage,
+  createDispatchJobStorage,
+  dispatchJobLoggingConfig,
+} from "./dispatch-jobs";
+import {
+  type DispatchStorage,
+  createDispatchStorage,
+  dispatchLoggingConfig,
+} from "./dispatches";
+import {
   type WorkerStewardAssignmentStorage,
   createWorkerStewardAssignmentStorage,
   workerStewardAssignmentLoggingConfig,
@@ -171,6 +181,16 @@ import {
   createBtuEmployerMapStorage,
   btuEmployerMapLoggingConfig,
 } from "./sitespecific-btu-employer-map";
+import {
+  type WorkerBanStorage,
+  createWorkerBanStorage,
+  workerBanLoggingConfig,
+} from "./worker-bans";
+import {
+  type WorkerDispatchDncStorage,
+  createWorkerDispatchDncStorage,
+  workerDispatchDncLoggingConfig,
+} from "./worker-dispatch-dnc";
 import {
   withStorageLogging,
   type StorageLoggingConfig,
@@ -220,9 +240,13 @@ export interface IStorage {
   events: EventStorage;
   eventOccurrences: EventOccurrenceStorage;
   eventParticipants: EventParticipantStorage;
+  dispatchJobs: DispatchJobStorage;
+  dispatches: DispatchStorage;
   workerStewardAssignments: WorkerStewardAssignmentStorage;
   btuCsg: BtuCsgStorage;
   btuEmployerMap: BtuEmployerMapStorage;
+  workerBans: WorkerBanStorage;
+  workerDispatchDnc: WorkerDispatchDncStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -261,9 +285,13 @@ export class DatabaseStorage implements IStorage {
   events: EventStorage;
   eventOccurrences: EventOccurrenceStorage;
   eventParticipants: EventParticipantStorage;
+  dispatchJobs: DispatchJobStorage;
+  dispatches: DispatchStorage;
   workerStewardAssignments: WorkerStewardAssignmentStorage;
   btuCsg: BtuCsgStorage;
   btuEmployerMap: BtuEmployerMapStorage;
+  workerBans: WorkerBanStorage;
+  workerDispatchDnc: WorkerDispatchDncStorage;
 
   constructor() {
     this.variables = withStorageLogging(
@@ -396,6 +424,14 @@ export class DatabaseStorage implements IStorage {
       createEventParticipantStorage(),
       eventParticipantLoggingConfig,
     );
+    this.dispatchJobs = withStorageLogging(
+      createDispatchJobStorage(),
+      dispatchJobLoggingConfig,
+    );
+    this.dispatches = withStorageLogging(
+      createDispatchStorage(),
+      dispatchLoggingConfig,
+    );
     this.workerStewardAssignments = withStorageLogging(
       createWorkerStewardAssignmentStorage(),
       workerStewardAssignmentLoggingConfig,
@@ -407,6 +443,14 @@ export class DatabaseStorage implements IStorage {
     this.btuEmployerMap = withStorageLogging(
       createBtuEmployerMapStorage(),
       btuEmployerMapLoggingConfig,
+    );
+    this.workerBans = withStorageLogging(
+      createWorkerBanStorage(),
+      workerBanLoggingConfig,
+    );
+    this.workerDispatchDnc = withStorageLogging(
+      createWorkerDispatchDncStorage(),
+      workerDispatchDncLoggingConfig,
     );
   }
 }

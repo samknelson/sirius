@@ -7,6 +7,8 @@ import { ArrowLeft, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getPaymentTitle } from "@/lib/payment-utils";
+import { useLedgerPaymentTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface PaymentLayoutContextValue {
   payment: LedgerPayment;
@@ -27,7 +29,7 @@ export function usePaymentLayout() {
 
 interface PaymentLayoutProps {
   children: ReactNode;
-  activeTab: "view" | "edit";
+  activeTab: string;
 }
 
 export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
@@ -40,6 +42,14 @@ export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
   const { data: paymentTypes = [], isLoading: isLoadingTypes } = useQuery<LedgerPaymentType[]>({
     queryKey: ["/api/ledger/payment-types"],
   });
+
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs: mainTabs } = useLedgerPaymentTabAccess(id || "");
+
+  // Set page title based on payment title
+  const paymentTypeForTitle = paymentTypes.find(t => t.id === payment?.paymentType);
+  const pageTitleText = payment ? getPaymentTitle(payment, paymentTypeForTitle) : undefined;
+  usePageTitle(pageTitleText);
 
   const isLoading = isLoadingPayment || isLoadingTypes;
   const isError = !!paymentError;
@@ -109,11 +119,6 @@ export function PaymentLayout({ children, activeTab }: PaymentLayoutProps) {
 
   const paymentType = paymentTypes.find(pt => pt.id === payment.paymentType);
   const paymentTitle = getPaymentTitle(payment, paymentType);
-
-  const mainTabs = [
-    { id: "view", label: "View", href: `/ledger/payment/${id}` },
-    { id: "edit", label: "Edit", href: `/ledger/payment/${id}/edit` },
-  ];
 
   const contextValue: PaymentLayoutContextValue = {
     payment,

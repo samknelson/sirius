@@ -1,8 +1,10 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users } from 'lucide-react';
 import UsersManagement from '@/components/admin/UsersManagement';
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 export default function UsersListPage() {
+  usePageTitle("Users");
   return (
     <div className="container mx-auto py-8 max-w-7xl">
       <div className="mb-6">

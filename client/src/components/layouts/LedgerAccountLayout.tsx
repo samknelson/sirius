@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LedgerAccountWithDetails } from "@/lib/ledger-types";
+import { useLedgerAccountTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface LedgerAccountLayoutContextValue {
   account: LedgerAccountWithDetails;
@@ -24,7 +26,7 @@ export function useLedgerAccountLayout() {
 }
 
 interface LedgerAccountLayoutProps {
-  activeTab: "view" | "edit" | "payments" | "transactions" | "participants" | "settings";
+  activeTab: string;
   children: ReactNode;
 }
 
@@ -41,6 +43,12 @@ export function LedgerAccountLayout({ activeTab, children }: LedgerAccountLayout
       return response.json();
     },
   });
+
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs } = useLedgerAccountTabAccess(id || "");
+
+  // Set page title based on account name
+  usePageTitle(account?.name);
 
   const isLoading = accountLoading;
   const isError = !!accountError;
@@ -129,16 +137,6 @@ export function LedgerAccountLayout({ activeTab, children }: LedgerAccountLayout
       </div>
     );
   }
-
-  // Success state - render layout with tabs
-  const tabs = [
-    { id: "view", label: "View", href: `/ledger/accounts/${account.id}` },
-    { id: "edit", label: "Edit", href: `/ledger/accounts/${account.id}/edit` },
-    { id: "payments", label: "Payments", href: `/ledger/accounts/${account.id}/payments` },
-    { id: "transactions", label: "Transactions", href: `/ledger/accounts/${account.id}/transactions` },
-    { id: "participants", label: "Participants", href: `/ledger/accounts/${account.id}/participants` },
-    { id: "settings", label: "Settings", href: `/ledger/accounts/${account.id}/settings` },
-  ];
 
   const contextValue: LedgerAccountLayoutContextValue = {
     account,

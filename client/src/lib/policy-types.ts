@@ -6,20 +6,43 @@ export interface TrustBenefit {
   isActive?: boolean;
 }
 
+/**
+ * Attribute predicate - checks a field value on the entity record
+ */
+export interface AttributePredicate {
+  path: string;
+  op: 'eq' | 'neq';
+  value: string | number | boolean;
+}
+
+/**
+ * Access condition from the server - matches the AccessCondition interface
+ */
+export interface AccessCondition {
+  authenticated?: boolean;
+  permission?: string;
+  anyPermission?: string[];
+  allPermissions?: string[];
+  component?: string;
+  policy?: string;
+  attributes?: AttributePredicate[];
+  /** Simple attribute description for custom policy requirements (e.g., "associated with employer") */
+  attribute?: string;
+}
+
+/**
+ * Access rule - can be a single condition or composition
+ */
 export type AccessRequirement =
-  | { type: 'authenticated' }
-  | { type: 'permission'; key: string }
-  | { type: 'anyPermission'; keys: string[] }
-  | { type: 'allPermissions'; keys: string[] }
-  | { type: 'component'; componentId: string }
-  | { type: 'ownership'; resourceType: string; resourceIdParam?: string }
-  | { type: 'anyOf'; options: AccessRequirement[] }
-  | { type: 'allOf'; options: AccessRequirement[] }
-  | { type: 'custom'; reason?: string };
+  | AccessCondition
+  | { any: AccessCondition[] }
+  | { all: AccessCondition[] };
 
 export interface Policy {
   id: string;
   name: string;
   description: string;
+  /** Required component for this policy to be active */
+  component?: string;
   requirements: AccessRequirement[];
 }

@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BookmarkButton } from "@/components/ui/bookmark-button";
-import { useAuth } from "@/contexts/AuthContext";
-import { useTerm } from "@/contexts/TerminologyContext";
+import { DebugRecordViewer } from "@/components/debug/DebugRecordViewer";
+import { useEmployerTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface EmployerLayoutContextValue {
   employer: Employer;
@@ -27,14 +28,13 @@ export function useEmployerLayout() {
 }
 
 interface EmployerLayoutProps {
-  activeTab: "details" | "edit" | "workers" | "contacts" | "wizards" | "accounting" | "accounts" | "payment-methods" | "customer" | "logs" | "policy-history" | "union" | "stewards";
+  activeTab: string;
   children: ReactNode;
 }
 
+
 export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
   const { id } = useParams<{ id: string }>();
-  const { hasPermission, hasComponent } = useAuth();
-  const term = useTerm();
 
   const { data: employer, isLoading: employerLoading, error: employerError } = useQuery<Employer>({
     queryKey: ["/api/employers", id],
@@ -47,10 +47,26 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
     },
   });
 
-  const isLoading = employerLoading;
-  const isError = !!employerError;
+  const { 
+    tabs,
+    getActiveRoot,
+    isLoading: tabAccessLoading 
+  } = useEmployerTabAccess(id || '');
 
-  // Error/Not found state - check this BEFORE loading
+  const isLoading = employerLoading || tabAccessLoading;
+
+  // Set page title based on employer name
+  usePageTitle(employer?.name);
+
+  // Terminology is now applied centrally in useTabAccess hook
+  const mainTabs = tabs;
+  
+  const activeRoot = useMemo(() => {
+    return getActiveRoot(activeTab);
+  }, [activeTab, getActiveRoot]);
+
+  const subTabs = activeRoot?.children;
+
   if (employerError) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -74,7 +90,6 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
     );
   }
 
-  // Loading state - check this AFTER error handling
   if (isLoading || !employer) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -88,50 +103,6 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
       </div>
     );
   }
-
-  // Success state - render layout with tabs
-  const mainTabs = [
-    { id: "details", label: "Details", href: `/employers/${employer.id}` },
-    { id: "edit", label: "Edit", href: `/employers/${employer.id}/edit` },
-    { id: "workers", label: "Workers", href: `/employers/${employer.id}/workers` },
-    { id: "contacts", label: "Contacts", href: `/employers/${employer.id}/contacts` },
-    { id: "policy-history", label: "Policy History", href: `/employers/${employer.id}/policy-history` },
-    { id: "wizards", label: "Wizards", href: `/employers/${employer.id}/wizards` },
-    { id: "logs", label: "Logs", href: `/employers/${employer.id}/logs` },
-  ];
-
-  // Add accounting tab if user has permission
-  const hasAccountingAccess = hasPermission('admin') || hasPermission('ledger.staff') || hasPermission('ledger.employer');
-  if (hasAccountingAccess) {
-    mainTabs.push(
-      { id: "accounting", label: "Accounting", href: `/employers/${employer.id}/ledger/accounts` }
-    );
-  }
-
-  // Add Union tab if worker.steward component is enabled
-  const hasUnionAccess = hasComponent('worker.steward');
-  if (hasUnionAccess) {
-    mainTabs.push(
-      { id: "union", label: "Union", href: `/employers/${employer.id}/union/stewards` }
-    );
-  }
-
-  const accountingSubTabs = [
-    { id: "accounts", label: "Accounts", href: `/employers/${employer.id}/ledger/accounts` },
-    { id: "payment-methods", label: "Payment Methods", href: `/employers/${employer.id}/ledger/stripe/payment_methods` },
-    { id: "customer", label: "Customer", href: `/employers/${employer.id}/ledger/stripe/customer` },
-  ];
-
-  const unionSubTabs = [
-    { id: "stewards", label: term("steward", { plural: true }), href: `/employers/${employer.id}/union/stewards` },
-  ];
-
-  // Determine if we're in a sub-tab
-  const isAccountingSubTab = ["accounts", "payment-methods", "customer"].includes(activeTab);
-  const showAccountingSubTabs = isAccountingSubTab;
-  
-  const isUnionSubTab = ["stewards"].includes(activeTab);
-  const showUnionSubTabs = isUnionSubTab;
 
   const contextValue: EmployerLayoutContextValue = {
     employer,
@@ -155,6 +126,7 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
               <BookmarkButton entityType="employer" entityId={employer.id} entityName={employer.name} />
             </div>
             <div className="flex items-center space-x-4">
+              <DebugRecordViewer record={employer} entityLabel="Employer" />
               <Link href="/employers">
                 <Button variant="ghost" size="sm" data-testid="button-back-to-employers">
                   <ArrowLeft size={16} className="mr-2" />
@@ -166,12 +138,12 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
         </div>
       </section>
 
-      {/* Main Tab Navigation */}
+      {/* Main Tab Navigation - rendered dynamically from registry */}
       <section className="bg-card border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center space-x-2 py-3">
             {mainTabs.map((tab) => {
-              const isActive = tab.id === activeTab || (tab.id === "accounting" && isAccountingSubTab) || (tab.id === "union" && isUnionSubTab);
+              const isActive = tab.id === activeRoot?.id;
               return isActive ? (
                 <Button
                   key={tab.id}
@@ -197,44 +169,12 @@ export function EmployerLayout({ activeTab, children }: EmployerLayoutProps) {
         </div>
       </section>
 
-      {/* Accounting Sub-Tab Navigation */}
-      {showAccountingSubTabs && (
+      {/* Sub-Tab Navigation - rendered dynamically when parent has children */}
+      {subTabs && subTabs.length > 0 && (
         <section className="bg-muted/30 border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center space-x-2 py-2 pl-4">
-              {accountingSubTabs.map((tab) => (
-                tab.id === activeTab ? (
-                  <Button
-                    key={tab.id}
-                    variant="secondary"
-                    size="sm"
-                    data-testid={`button-employer-${tab.id}`}
-                  >
-                    {tab.label}
-                  </Button>
-                ) : (
-                  <Link key={tab.id} href={tab.href}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      data-testid={`button-employer-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  </Link>
-                )
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Union Sub-Tab Navigation */}
-      {showUnionSubTabs && (
-        <section className="bg-muted/30 border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center space-x-2 py-2 pl-4">
-              {unionSubTabs.map((tab) => (
+              {subTabs.map((tab) => (
                 tab.id === activeTab ? (
                   <Button
                     key={tab.id}

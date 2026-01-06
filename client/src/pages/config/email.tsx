@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -57,6 +58,7 @@ interface DefaultFromAddress {
 }
 
 export default function EmailConfigPage() {
+  usePageTitle("Email Settings");
   const { toast } = useToast();
   const [fromEmail, setFromEmail] = useState("");
   const [fromName, setFromName] = useState("");

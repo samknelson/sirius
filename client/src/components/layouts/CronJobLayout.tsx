@@ -7,6 +7,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { CronJob } from "@/lib/cron-types";
+import { useCronJobTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface CronJobLayoutContextValue {
   job: CronJob;
@@ -25,7 +27,7 @@ export function useCronJobLayout() {
 }
 
 interface CronJobLayoutProps {
-  activeTab: "view" | "settings" | "history";
+  activeTab: string;
   children: ReactNode;
 }
 
@@ -43,6 +45,12 @@ export function CronJobLayout({ activeTab, children }: CronJobLayoutProps) {
     },
     enabled: !!name,
   });
+
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs } = useCronJobTabAccess(name ? encodeURIComponent(name) : "");
+
+  // Set page title based on cron job name
+  usePageTitle(job?.name);
 
   const isError = !!error;
 
@@ -130,13 +138,6 @@ export function CronJobLayout({ activeTab, children }: CronJobLayoutProps) {
       </div>
     );
   }
-
-  // Success state - render layout with tabs
-  const tabs = [
-    { id: "view", label: "View", href: `/cron-jobs/${encodeURIComponent(job.name)}/view` },
-    { id: "settings", label: "Settings", href: `/cron-jobs/${encodeURIComponent(job.name)}/settings` },
-    { id: "history", label: "History", href: `/cron-jobs/${encodeURIComponent(job.name)}/history` },
-  ];
 
   const contextValue: CronJobLayoutContextValue = {
     job,

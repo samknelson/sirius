@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { useBtuCsgTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface BtuCsgRecord {
   id: string;
@@ -45,7 +47,7 @@ export function useBtuCsgLayout() {
 }
 
 interface BtuCsgLayoutProps {
-  activeTab: "view" | "edit";
+  activeTab: string;
   children: ReactNode;
 }
 
@@ -69,6 +71,13 @@ export function BtuCsgLayout({ activeTab, children }: BtuCsgLayoutProps) {
       return response.json();
     },
   });
+
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs } = useBtuCsgTabAccess(id || "");
+
+  // Set page title based on record name
+  const recordName = record ? `${record.firstName || ""} ${record.lastName || ""}`.trim() : "";
+  usePageTitle(recordName || undefined);
 
   const isLoading = recordLoading;
   const isError = !!recordError;
@@ -155,11 +164,6 @@ export function BtuCsgLayout({ activeTab, children }: BtuCsgLayoutProps) {
       </div>
     );
   }
-
-  const tabs = [
-    { id: "view", label: "View", href: `/sitespecific/btu/csg/${record.id}` },
-    { id: "edit", label: "Edit", href: `/sitespecific/btu/csg/${record.id}/edit` },
-  ];
 
   const contextValue: BtuCsgLayoutContextValue = {
     record,

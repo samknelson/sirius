@@ -2811,38 +2811,23 @@
       },
       {
         "roleId": "f4af19fc-2166-4e2b-b202-61a0335cb533",
-        "permissionKey": "workers.manage",
-        "assignedAt": "2025-09-23T20:14:17.658Z"
-      },
-      {
-        "roleId": "f4af19fc-2166-4e2b-b202-61a0335cb533",
-        "permissionKey": "workers.view",
+        "permissionKey": "staff",
         "assignedAt": "2025-09-23T20:14:17.658Z"
       },
       {
         "roleId": "d9e68151-64ea-49b5-953f-51325edb72dd",
-        "permissionKey": "workers.manage",
-        "assignedAt": "2025-09-23T20:14:17.658Z"
-      },
-      {
-        "roleId": "d9e68151-64ea-49b5-953f-51325edb72dd",
-        "permissionKey": "workers.view",
+        "permissionKey": "staff",
         "assignedAt": "2025-09-23T20:14:17.658Z"
       },
       {
         "roleId": "4ba546aa-d8ae-4804-91b3-39f07cb54d7f",
-        "permissionKey": "workers.view",
+        "permissionKey": "staff",
         "assignedAt": "2025-09-23T20:14:17.658Z"
       },
       {
         "roleId": "f4af19fc-2166-4e2b-b202-61a0335cb533",
         "permissionKey": "variables.manage",
         "assignedAt": "2025-09-24T10:45:01.724Z"
-      },
-      {
-        "roleId": "d9e68151-64ea-49b5-953f-51325edb72dd",
-        "permissionKey": "staff",
-        "assignedAt": "2025-11-04T20:38:26.507Z"
       },
       {
         "roleId": "35cdd921-35af-4ca0-a66b-8b38827399fd",
@@ -2866,12 +2851,12 @@
       },
       {
         "roleId": "d9e68151-64ea-49b5-953f-51325edb72dd",
-        "permissionKey": "employer.usermanage",
+        "permissionKey": "employer.manage",
         "assignedAt": "2025-11-10T14:26:01.487Z"
       },
       {
         "roleId": "c1d07544-e08c-49a3-8d3f-318e080754f2",
-        "permissionKey": "employer.usermanage",
+        "permissionKey": "employer.manage",
         "assignedAt": "2025-11-10T14:26:08.252Z"
       }
     ],

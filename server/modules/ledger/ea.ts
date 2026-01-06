@@ -1,14 +1,22 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
 import { storage } from "../../storage";
 import { insertLedgerEaSchema } from "@shared/schema";
-import { policies } from "../../policies";
-import { requireAccess } from "../../accessControl";
+import { requireAccess, checkAccessInline } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { generateInvoicePdf } from "../../utils/pdfGenerator";
 
+async function checkEaAccessInline(req: Request, res: Response, ea: { entityType: string; entityId: string }, policyId: string): Promise<boolean> {
+  const result = await checkAccessInline(req, policyId, ea.entityId, { entityType: ea.entityType, entityId: ea.entityId });
+  if (!result.granted) {
+    res.status(403).json({ message: "Access denied" });
+    return false;
+  }
+  return true;
+}
+
 export function registerLedgerEaRoutes(app: Express) {
-  // GET /api/ledger/ea - Get all ledger EA entries
-  app.get("/api/ledger/ea", requireComponent("ledger"), requireAccess(policies.ledgerStaff), async (req, res) => {
+  // GET /api/ledger/ea - Get all ledger EA entries (staff only)
+  app.get("/api/ledger/ea", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const entries = await storage.ledger.ea.getAll();
       res.json(entries);
@@ -18,7 +26,10 @@ export function registerLedgerEaRoutes(app: Express) {
   });
 
   // GET /api/ledger/ea/entity/:entityType/:entityId - Get ledger EA entries for an entity
-  app.get("/api/ledger/ea/entity/:entityType/:entityId", requireComponent("ledger"), requireAccess(policies.ledgerStaff), async (req, res) => {
+  app.get("/api/ledger/ea/entity/:entityType/:entityId", requireComponent("ledger"), requireAccess('ledger.ea.view', {
+    getEntityId: (req) => req.params.entityId,
+    getEntityData: (req) => ({ entityType: req.params.entityType, entityId: req.params.entityId })
+  }), async (req, res) => {
     try {
       const { entityType, entityId } = req.params;
       const entries = await storage.ledger.ea.getByEntity(entityType, entityId);
@@ -29,7 +40,7 @@ export function registerLedgerEaRoutes(app: Express) {
   });
 
   // GET /api/ledger/ea/:id - Get a specific ledger EA entry
-  app.get("/api/ledger/ea/:id", requireComponent("ledger"), requireAccess(policies.ledgerStaff), async (req, res) => {
+  app.get("/api/ledger/ea/:id", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
     try {
       const { id } = req.params;
       const entry = await storage.ledger.ea.get(id);
@@ -39,6 +50,8 @@ export function registerLedgerEaRoutes(app: Express) {
         return;
       }
       
+      if (!await checkEaAccessInline(req, res, entry, 'ledger.ea.view')) return;
+      
       res.json(entry);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch ledger EA entry" });
@@ -46,7 +59,10 @@ export function registerLedgerEaRoutes(app: Express) {
   });
 
   // POST /api/ledger/ea - Create a new ledger EA entry
-  app.post("/api/ledger/ea", requireComponent("ledger"), requireAccess(policies.ledgerStaff), async (req, res) => {
+  app.post("/api/ledger/ea", requireComponent("ledger"), requireAccess('ledger.ea.edit', {
+    getEntityId: (req) => req.body.entityId,
+    getEntityData: (req) => ({ entityType: req.body.entityType, entityId: req.body.entityId })
+  }), async (req, res) => {
     try {
       const validatedData = insertLedgerEaSchema.parse(req.body);
       const entry = await storage.ledger.ea.create(validatedData);
@@ -61,17 +77,21 @@ export function registerLedgerEaRoutes(app: Express) {
   });
 
   // PUT /api/ledger/ea/:id - Update a ledger EA entry
-  app.put("/api/ledger/ea/:id", requireComponent("ledger"), requireAccess(policies.ledgerStaff), async (req, res) => {
+  app.put("/api/ledger/ea/:id", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
     try {
       const { id } = req.params;
-      const validatedData = insertLedgerEaSchema.partial().parse(req.body);
       
-      const entry = await storage.ledger.ea.update(id, validatedData);
-      
-      if (!entry) {
+      // Fetch existing EA to check access
+      const existing = await storage.ledger.ea.get(id);
+      if (!existing) {
         res.status(404).json({ message: "Ledger EA entry not found" });
         return;
       }
+      
+      if (!await checkEaAccessInline(req, res, existing, 'ledger.ea.edit')) return;
+      
+      const validatedData = insertLedgerEaSchema.partial().parse(req.body);
+      const entry = await storage.ledger.ea.update(id, validatedData);
       
       res.json(entry);
     } catch (error) {
@@ -84,16 +104,20 @@ export function registerLedgerEaRoutes(app: Express) {
   });
 
   // DELETE /api/ledger/ea/:id - Delete a ledger EA entry
-  app.delete("/api/ledger/ea/:id", requireComponent("ledger"), requireAccess(policies.ledgerStaff), async (req, res) => {
+  app.delete("/api/ledger/ea/:id", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
     try {
       const { id } = req.params;
-      const success = await storage.ledger.ea.delete(id);
       
-      if (!success) {
+      // Fetch existing EA to check access
+      const existing = await storage.ledger.ea.get(id);
+      if (!existing) {
         res.status(404).json({ message: "Ledger EA entry not found" });
         return;
       }
       
+      if (!await checkEaAccessInline(req, res, existing, 'ledger.ea.edit')) return;
+      
+      const success = await storage.ledger.ea.delete(id);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete ledger EA entry" });
@@ -101,7 +125,7 @@ export function registerLedgerEaRoutes(app: Express) {
   });
 
   // GET /api/ledger/ea/:id/balance - Get the current balance for an EA
-  app.get("/api/ledger/ea/:id/balance", requireComponent("ledger"), requireAccess(policies.ledgerStaff), async (req, res) => {
+  app.get("/api/ledger/ea/:id/balance", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -111,6 +135,8 @@ export function registerLedgerEaRoutes(app: Express) {
         res.status(404).json({ message: "Ledger EA entry not found" });
         return;
       }
+
+      if (!await checkEaAccessInline(req, res, ea, 'ledger.ea.view')) return;
 
       const balance = await storage.ledger.ea.getBalance(id);
       res.json({ balance });
@@ -120,7 +146,7 @@ export function registerLedgerEaRoutes(app: Express) {
   });
 
   // GET /api/ledger/ea/:id/transactions - Get ledger entries for an EA
-  app.get("/api/ledger/ea/:id/transactions", requireComponent("ledger"), requireAccess(policies.ledgerStaff), async (req, res) => {
+  app.get("/api/ledger/ea/:id/transactions", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -130,6 +156,8 @@ export function registerLedgerEaRoutes(app: Express) {
         res.status(404).json({ message: "Ledger EA entry not found" });
         return;
       }
+
+      if (!await checkEaAccessInline(req, res, ea, 'ledger.ea.view')) return;
 
       // Get all transactions for this EA
       const transactions = await storage.ledger.entries.getTransactions({ eaId: id });
@@ -140,7 +168,7 @@ export function registerLedgerEaRoutes(app: Express) {
   });
 
   // GET /api/ledger/ea/:id/invoices - Get invoice list for an EA
-  app.get("/api/ledger/ea/:id/invoices", requireComponent("ledger"), requireAccess(policies.ledgerStaff), async (req, res) => {
+  app.get("/api/ledger/ea/:id/invoices", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -151,6 +179,8 @@ export function registerLedgerEaRoutes(app: Express) {
         return;
       }
 
+      if (!await checkEaAccessInline(req, res, ea, 'ledger.ea.view')) return;
+
       // Get invoice summaries
       const invoices = await storage.ledger.invoices.listForEa(id);
       res.json(invoices);
@@ -160,7 +190,7 @@ export function registerLedgerEaRoutes(app: Express) {
   });
 
   // GET /api/ledger/ea/:id/invoices/:month/:year - Get invoice details
-  app.get("/api/ledger/ea/:id/invoices/:month/:year", requireComponent("ledger"), requireAccess(policies.ledgerStaff), async (req, res) => {
+  app.get("/api/ledger/ea/:id/invoices/:month/:year", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
     try {
       const { id, month, year } = req.params;
       
@@ -170,6 +200,8 @@ export function registerLedgerEaRoutes(app: Express) {
         res.status(404).json({ message: "Ledger EA entry not found" });
         return;
       }
+
+      if (!await checkEaAccessInline(req, res, ea, 'ledger.ea.view')) return;
 
       // Get invoice details
       const invoice = await storage.ledger.invoices.getDetails(
@@ -190,7 +222,7 @@ export function registerLedgerEaRoutes(app: Express) {
   });
 
   // GET /api/ledger/ea/:id/invoices/:month/:year/pdf - Download invoice as PDF
-  app.get("/api/ledger/ea/:id/invoices/:month/:year/pdf", requireComponent("ledger"), requireAccess(policies.ledgerStaff), async (req, res) => {
+  app.get("/api/ledger/ea/:id/invoices/:month/:year/pdf", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
     try {
       const { id, month, year } = req.params;
       
@@ -200,6 +232,8 @@ export function registerLedgerEaRoutes(app: Express) {
         res.status(404).json({ message: "Ledger EA entry not found" });
         return;
       }
+
+      if (!await checkEaAccessInline(req, res, ea, 'ledger.ea.view')) return;
 
       // Get account info
       const account = await storage.ledger.accounts.get(ea.accountId);

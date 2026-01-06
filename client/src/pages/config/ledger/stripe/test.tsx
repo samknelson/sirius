@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +36,7 @@ interface StripeTestResponse {
 }
 
 export default function StripeTestPage() {
+  usePageTitle("Stripe Test");
   const { data, isLoading, error, refetch, isFetching } = useQuery<StripeTestResponse>({
     queryKey: ["/api/ledger/stripe/test"],
     retry: false,

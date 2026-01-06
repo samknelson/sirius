@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useParams } from "wouter";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { LedgerAccountLayout, useLedgerAccountLayout } from "@/components/layouts/LedgerAccountLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +18,7 @@ interface AccountData {
 }
 
 function AccountSettingsContent() {
+  usePageTitle("Account Settings");
   const { account } = useLedgerAccountLayout();
   const { toast } = useToast();
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Settings, Loader2, CheckCircle } from "lucide-react";
 import { Policy, Variable } from "@shared/schema";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import { apiRequest } from "@/lib/queryClient";
 const VARIABLE_NAME = "policy_default";
 
 export default function DefaultPolicyPage() {
+  usePageTitle("Default Policy");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedPolicyId, setSelectedPolicyId] = useState<string>("");

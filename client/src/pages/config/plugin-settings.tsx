@@ -1,5 +1,6 @@
 import { useParams, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useCallback } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
@@ -9,6 +10,7 @@ import { ChevronLeft } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 
 export default function PluginSettingsPage() {
+  usePageTitle("Plugin Settings");
   const { pluginId } = useParams<{ pluginId: string }>();
   const [_, navigate] = useLocation();
   const queryClient = useQueryClient();

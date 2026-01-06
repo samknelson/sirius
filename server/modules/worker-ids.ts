@@ -1,15 +1,14 @@
 import type { Express } from "express";
 import { storage } from "../storage";
-import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
+import { requireAccess } from "../services/access-policy-evaluator";
 
 export function registerWorkerIdsRoutes(
   app: Express,
   requireAuth: any,
   requirePermission: any
 ) {
-  // GET /api/workers/:workerId/ids - Get all IDs for a worker (requires worker policy: staff or worker with matching email)
-  app.get("/api/workers/:workerId/ids", requireAccess(policies.worker), async (req, res) => {
+  // GET /api/workers/:workerId/ids - Get all IDs for a worker (requires worker.view policy: staff or worker with matching email)
+  app.get("/api/workers/:workerId/ids", requireAccess('worker.view', req => req.params.workerId), async (req, res) => {
     try {
       const { workerId } = req.params;
       const workerIds = await storage.workerIds.getWorkerIdsByWorkerId(workerId);
@@ -21,7 +20,7 @@ export function registerWorkerIdsRoutes(
   });
 
   // GET /api/worker-ids/:id - Get a specific worker ID (requires workers.view permission)
-  app.get("/api/worker-ids/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/worker-ids/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
       const workerId = await storage.workerIds.getWorkerId(id);
@@ -38,7 +37,7 @@ export function registerWorkerIdsRoutes(
   });
 
   // POST /api/workers/:workerId/ids - Create a new worker ID (requires workers.manage permission)
-  app.post("/api/workers/:workerId/ids", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  app.post("/api/workers/:workerId/ids", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { workerId } = req.params;
       const { typeId, value } = req.body;
@@ -100,7 +99,7 @@ export function registerWorkerIdsRoutes(
   });
 
   // PUT /api/worker-ids/:id - Update a worker ID (requires workers.manage permission)
-  app.put("/api/worker-ids/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  app.put("/api/worker-ids/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
       const { typeId, value } = req.body;
@@ -176,7 +175,7 @@ export function registerWorkerIdsRoutes(
   });
 
   // DELETE /api/worker-ids/:id - Delete a worker ID (requires workers.manage permission)
-  app.delete("/api/worker-ids/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  app.delete("/api/worker-ids/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.workerIds.deleteWorkerId(id);

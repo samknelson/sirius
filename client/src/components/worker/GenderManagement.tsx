@@ -20,9 +20,10 @@ interface GenderOption {
 
 interface GenderManagementProps {
   contactId: string;
+  canEdit?: boolean;
 }
 
-export default function GenderManagement({ contactId }: GenderManagementProps) {
+export default function GenderManagement({ contactId, canEdit = true }: GenderManagementProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [editedGender, setEditedGender] = useState<string>("");
@@ -149,14 +150,16 @@ export default function GenderManagement({ contactId }: GenderManagementProps) {
                   {contact?.genderCalc || "Not set"}
                 </p>
               </div>
-              <Button
-                onClick={handleEdit}
-                variant="outline"
-                size="sm"
-                data-testid="button-edit-gender"
-              >
-                Edit
-              </Button>
+              {canEdit && (
+                <Button
+                  onClick={handleEdit}
+                  variant="outline"
+                  size="sm"
+                  data-testid="button-edit-gender"
+                >
+                  Edit
+                </Button>
+              )}
             </div>
           </div>
         ) : (

@@ -1,4 +1,4 @@
-import { createContext, useContext, ReactNode } from "react";
+import { createContext, useContext, ReactNode, useMemo } from "react";
 import { User, ArrowLeft } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BookmarkButton } from "@/components/ui/bookmark-button";
-import { useAuth } from "@/contexts/AuthContext";
-import { useTerm } from "@/contexts/TerminologyContext";
+import { DebugRecordViewer } from "@/components/debug/DebugRecordViewer";
+import { useWorkerTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface WorkerLayoutContextValue {
   worker: Worker;
@@ -28,14 +29,19 @@ export function useWorkerLayout() {
 }
 
 interface WorkerLayoutProps {
-  activeTab: "details" | "identity" | "name" | "email" | "ids" | "addresses" | "phone-numbers" | "birth-date" | "gender" | "work-status" | "user" | "employment" | "current" | "history" | "monthly" | "daily" | "comm" | "comm-history" | "send-sms" | "send-email" | "send-postal" | "send-inapp" | "benefits" | "benefits-history" | "benefits-eligibility" | "benefits-scan" | "union" | "cardchecks" | "bargaining-unit" | "steward" | "representatives" | "accounting" | "logs" | "delete";
+  activeTab: string;
   children: ReactNode;
 }
 
+
 export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
   const { id } = useParams<{ id: string }>();
-  const { hasComponent } = useAuth();
-  const term = useTerm();
+  
+  const { 
+    tabs,
+    getActiveRoot,
+    isLoading: tabsLoading 
+  } = useWorkerTabAccess(id);
 
   const { data: worker, isLoading: workerLoading, error: workerError } = useQuery<Worker>({
     queryKey: ["/api/workers", id],
@@ -48,22 +54,37 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     },
   });
 
-  const { data: contact, isLoading: contactLoading } = useQuery<Contact>({
+  const { data: contact } = useQuery<Contact>({
     queryKey: ["/api/contacts", worker?.contactId],
     queryFn: async () => {
       const response = await fetch(`/api/contacts/${worker?.contactId}`);
       if (!response.ok) {
-        throw new Error("Contact not found");
+        return undefined;
       }
       return response.json();
     },
     enabled: !!worker?.contactId,
+    retry: false,
   });
 
-  const isLoading = workerLoading || contactLoading;
+  const isLoading = workerLoading || tabsLoading;
   const isError = !!workerError;
 
-  // Error/Not found state - check this BEFORE loading
+  // Set page title based on worker name
+  const workerName = contact
+    ? `${contact.given || ""} ${contact.family || ""}`.trim()
+    : worker?.id || "";
+  usePageTitle(workerName || undefined);
+
+  // Terminology is now applied centrally in useTabAccess hook
+  const mainTabs = tabs;
+  
+  const activeRoot = useMemo(() => {
+    return getActiveRoot(activeTab);
+  }, [activeTab, getActiveRoot]);
+
+  const subTabs = activeRoot?.children;
+
   if (workerError) {
     return (
       <div className="bg-background text-foreground min-h-screen">
@@ -111,7 +132,6 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     );
   }
 
-  // Loading state - check this AFTER error handling
   if (isLoading || !worker) {
     return (
       <div className="bg-background text-foreground min-h-screen">
@@ -149,80 +169,6 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
     );
   }
 
-  // Success state - render layout with tabs
-  // Check if any union-related components are enabled to show the Union tab
-  const hasUnionTab = hasComponent("cardcheck") || hasComponent("bargainingunits") || hasComponent("worker.steward");
-  
-  const mainTabs = [
-    { id: "details", label: "Details", href: `/workers/${worker.id}` },
-    { id: "identity", label: "Identity", href: `/workers/${worker.id}/name` },
-    { id: "contact", label: "Contact", href: `/workers/${worker.id}/email` },
-    { id: "comm", label: "Comm", href: `/workers/${worker.id}/comm/history` },
-    { id: "employment", label: "Employment", href: `/workers/${worker.id}/employment/current` },
-    { id: "benefits", label: "Benefits", href: `/workers/${worker.id}/benefits/history` },
-    ...(hasUnionTab ? [{ id: "union", label: "Union", href: `/workers/${worker.id}/union/cardchecks` }] : []),
-    ...(hasComponent("ledger") ? [{ id: "accounting", label: "Accounting", href: `/workers/${worker.id}/ledger/accounts` }] : []),
-    { id: "logs", label: "Logs", href: `/workers/${worker.id}/logs` },
-    { id: "delete", label: "Delete", href: `/workers/${worker.id}/delete` },
-  ];
-
-  const identitySubTabs = [
-    { id: "name", label: "Name", href: `/workers/${worker.id}/name` },
-    { id: "ids", label: "IDs", href: `/workers/${worker.id}/ids` },
-    { id: "birth-date", label: "Birth Date", href: `/workers/${worker.id}/birth-date` },
-    { id: "gender", label: "Gender", href: `/workers/${worker.id}/gender` },
-    { id: "work-status", label: "Work Status", href: `/workers/${worker.id}/work-status` },
-    { id: "user", label: "User", href: `/workers/${worker.id}/user` },
-  ];
-
-  const unionSubTabs = [
-    ...(hasComponent("cardcheck") ? [{ id: "cardchecks", label: "Cardchecks", href: `/workers/${worker.id}/union/cardchecks` }] : []),
-    ...(hasComponent("bargainingunits") ? [{ id: "bargaining-unit", label: "Bargaining Unit", href: `/workers/${worker.id}/union/bargaining-unit` }] : []),
-    ...(hasComponent("worker.steward") ? [{ id: "steward", label: term("steward"), href: `/workers/${worker.id}/union/steward` }] : []),
-    ...(hasComponent("worker.steward") ? [{ id: "representatives", label: "Representatives", href: `/workers/${worker.id}/union/representatives` }] : []),
-  ];
-
-  const contactSubTabs = [
-    { id: "email", label: "Email", href: `/workers/${worker.id}/email` },
-    { id: "addresses", label: "Addresses", href: `/workers/${worker.id}/addresses` },
-    { id: "phone-numbers", label: "Phone Numbers", href: `/workers/${worker.id}/phone-numbers` },
-  ];
-
-  const commSubTabs = [
-    { id: "comm-history", label: "History", href: `/workers/${worker.id}/comm/history` },
-    { id: "send-sms", label: "Send SMS", href: `/workers/${worker.id}/comm/send-sms` },
-    { id: "send-email", label: "Send Email", href: `/workers/${worker.id}/comm/send-email` },
-    { id: "send-postal", label: "Send Postal", href: `/workers/${worker.id}/comm/send-postal` },
-    { id: "send-inapp", label: "Send In-App", href: `/workers/${worker.id}/comm/send-inapp` },
-  ];
-
-  const employmentSubTabs = [
-    { id: "current", label: "Current", href: `/workers/${worker.id}/employment/current` },
-    { id: "history", label: "History", href: `/workers/${worker.id}/employment/history` },
-    { id: "monthly", label: "Monthly", href: `/workers/${worker.id}/employment/monthly` },
-    { id: "daily", label: "Daily", href: `/workers/${worker.id}/employment/daily` },
-  ];
-
-  const benefitsSubTabs = [
-    { id: "benefits-history", label: "History", href: `/workers/${worker.id}/benefits/history` },
-    { id: "benefits-eligibility", label: "Eligibility", href: `/workers/${worker.id}/benefits/eligibility` },
-    { id: "benefits-scan", label: "Scan", href: `/workers/${worker.id}/benefits/scan` },
-  ];
-
-  // Determine if we're in a sub-tab
-  const isIdentitySubTab = ["name", "ids", "birth-date", "gender", "work-status", "user"].includes(activeTab);
-  const isContactSubTab = ["email", "addresses", "phone-numbers"].includes(activeTab);
-  const isCommSubTab = ["comm-history", "send-sms", "send-email", "send-postal", "send-inapp"].includes(activeTab);
-  const isEmploymentSubTab = ["current", "history", "monthly", "daily"].includes(activeTab);
-  const isBenefitsSubTab = ["benefits-history", "benefits-eligibility", "benefits-scan"].includes(activeTab);
-  const isUnionSubTab = ["cardchecks", "bargaining-unit", "steward", "representatives"].includes(activeTab);
-  const showIdentitySubTabs = isIdentitySubTab;
-  const showContactSubTabs = isContactSubTab;
-  const showCommSubTabs = isCommSubTab;
-  const showEmploymentSubTabs = isEmploymentSubTab;
-  const showBenefitsSubTabs = isBenefitsSubTab;
-  const showUnionSubTabs = isUnionSubTab;
-
   const contextValue: WorkerLayoutContextValue = {
     worker,
     contact,
@@ -242,11 +188,12 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
                   <User className="text-primary-foreground" size={16} />
                 </div>
                 <h1 className="text-xl font-semibold text-foreground" data-testid={`text-worker-name-${worker.id}`}>
-                  {contact?.displayName || 'Loading...'}
+                  {contact?.displayName || `Worker ${worker.id.slice(0, 8)}`}
                 </h1>
-                <BookmarkButton entityType="worker" entityId={worker.id} entityName={contact?.displayName} />
+                <BookmarkButton entityType="worker" entityId={worker.id} entityName={contact?.displayName || `Worker ${worker.id.slice(0, 8)}`} />
               </div>
               <div className="flex items-center space-x-4">
+                <DebugRecordViewer record={worker} entityLabel="Worker" />
                 <Link href="/workers">
                   <Button variant="ghost" size="sm" data-testid="button-back-to-workers">
                     <ArrowLeft size={16} className="mr-2" />
@@ -258,12 +205,12 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
           </div>
         </header>
 
-        {/* Main Tab Navigation */}
+        {/* Main Tab Navigation - rendered dynamically from registry */}
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center space-x-2 py-3">
               {mainTabs.map((tab) => {
-                const isActive = tab.id === activeTab || (tab.id === "identity" && isIdentitySubTab) || (tab.id === "contact" && isContactSubTab) || (tab.id === "comm" && isCommSubTab) || (tab.id === "employment" && isEmploymentSubTab) || (tab.id === "benefits" && isBenefitsSubTab) || (tab.id === "union" && isUnionSubTab);
+                const isActive = tab.id === activeRoot?.id;
                 return isActive ? (
                   <Button
                     key={tab.id}
@@ -289,172 +236,12 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
           </div>
         </div>
 
-        {/* Identity Sub-Tab Navigation */}
-        {showIdentitySubTabs && (
+        {/* Sub-Tab Navigation - rendered dynamically when parent has children */}
+        {subTabs && subTabs.length > 0 && (
           <div className="bg-muted/30 border-b border-border">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex items-center space-x-2 py-2 pl-4">
-                {identitySubTabs.map((tab) => (
-                  tab.id === activeTab ? (
-                    <Button
-                      key={tab.id}
-                      variant="secondary"
-                      size="sm"
-                      data-testid={`button-worker-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  ) : (
-                    <Link key={tab.id} href={tab.href}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        data-testid={`button-worker-${tab.id}`}
-                      >
-                        {tab.label}
-                      </Button>
-                    </Link>
-                  )
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Contact Sub-Tab Navigation */}
-        {showContactSubTabs && (
-          <div className="bg-muted/30 border-b border-border">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex items-center space-x-2 py-2 pl-4">
-                {contactSubTabs.map((tab) => (
-                  tab.id === activeTab ? (
-                    <Button
-                      key={tab.id}
-                      variant="secondary"
-                      size="sm"
-                      data-testid={`button-worker-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  ) : (
-                    <Link key={tab.id} href={tab.href}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        data-testid={`button-worker-${tab.id}`}
-                      >
-                        {tab.label}
-                      </Button>
-                    </Link>
-                  )
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Comm Sub-Tab Navigation */}
-        {showCommSubTabs && (
-          <div className="bg-muted/30 border-b border-border">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex items-center space-x-2 py-2 pl-4">
-                {commSubTabs.map((tab) => (
-                  tab.id === activeTab ? (
-                    <Button
-                      key={tab.id}
-                      variant="secondary"
-                      size="sm"
-                      data-testid={`button-worker-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  ) : (
-                    <Link key={tab.id} href={tab.href}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        data-testid={`button-worker-${tab.id}`}
-                      >
-                        {tab.label}
-                      </Button>
-                    </Link>
-                  )
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Employment Sub-Tab Navigation */}
-        {showEmploymentSubTabs && (
-          <div className="bg-muted/30 border-b border-border">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex items-center space-x-2 py-2 pl-4">
-                {employmentSubTabs.map((tab) => (
-                  tab.id === activeTab ? (
-                    <Button
-                      key={tab.id}
-                      variant="secondary"
-                      size="sm"
-                      data-testid={`button-worker-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  ) : (
-                    <Link key={tab.id} href={tab.href}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        data-testid={`button-worker-${tab.id}`}
-                      >
-                        {tab.label}
-                      </Button>
-                    </Link>
-                  )
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Benefits Sub-Tab Navigation */}
-        {showBenefitsSubTabs && (
-          <div className="bg-muted/30 border-b border-border">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex items-center space-x-2 py-2 pl-4">
-                {benefitsSubTabs.map((tab) => (
-                  tab.id === activeTab ? (
-                    <Button
-                      key={tab.id}
-                      variant="secondary"
-                      size="sm"
-                      data-testid={`button-worker-${tab.id}`}
-                    >
-                      {tab.label}
-                    </Button>
-                  ) : (
-                    <Link key={tab.id} href={tab.href}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        data-testid={`button-worker-${tab.id}`}
-                      >
-                        {tab.label}
-                      </Button>
-                    </Link>
-                  )
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Union Sub-Tab Navigation */}
-        {showUnionSubTabs && (
-          <div className="bg-muted/30 border-b border-border">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex items-center space-x-2 py-2 pl-4">
-                {unionSubTabs.map((tab) => (
+                {subTabs.map((tab) => (
                   tab.id === activeTab ? (
                     <Button
                       key={tab.id}

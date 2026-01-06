@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTerm } from "@/contexts/TerminologyContext";
+import { useMyEmployers } from "@/hooks/useMyEmployers";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import {
@@ -28,6 +29,7 @@ import {
   FileWarning,
   Map,
   Upload,
+  Briefcase,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -64,11 +66,26 @@ export default function Header() {
     queryKey: ["/api/system-mode"],
   });
 
-  // Check ledgerStaff policy for Accounts navigation
-  const { data: ledgerStaffPolicy } = useQuery<{ allowed: boolean }>({
-    queryKey: ["/api/access/policies/ledgerStaff"],
+  // Type for policy access check response
+  type PolicyAccessResponse = { access: { granted: boolean } };
+
+  // Check staff policy for Accounts navigation (ledger component also required)
+  const { data: ledgerStaffPolicy } = useQuery<PolicyAccessResponse>({
+    queryKey: ["/api/access/policies/staff"],
     staleTime: 30000,
   });
+
+  // Check staff policy for Workers and Employers navigation
+  // Note: We use 'staff' instead of 'worker' or 'employer.view' because those
+  // policies require entity context. For top-level navigation,
+  // staff permission is what grants access to these sections.
+  const { data: staffPolicy } = useQuery<PolicyAccessResponse>({
+    queryKey: ["/api/access/policies/staff"],
+    staleTime: 30000,
+  });
+
+  // Get employers associated with the current user's contact
+  const { employers: myEmployers, hasSingleEmployer, hasMultipleEmployers } = useMyEmployers();
 
   const handleLogout = async () => {
     try {
@@ -165,62 +182,15 @@ export default function Header() {
                   </Button>
                 </Link>
 
-                <div className="text-sm font-medium text-muted-foreground px-4 py-2">Workers</div>
-                <Link href="/workers" onClick={() => setMobileMenuOpen(false)}>
-                  <Button
-                    variant={location === "/workers" ? "default" : "ghost"}
-                    className="w-full justify-start pl-8"
-                    data-testid="mobile-nav-workers-list"
-                  >
-                    <List className="h-4 w-4 mr-2" />
-                    List
-                  </Button>
-                </Link>
-                {hasComponent("cardcheck") && (
-                  <Link href="/cardcheck-definitions" onClick={() => setMobileMenuOpen(false)}>
+                {hasPermission("worker") && user?.workerId && (
+                  <Link href={`/workers/${user.workerId}`} onClick={() => setMobileMenuOpen(false)}>
                     <Button
-                      variant={location.startsWith("/cardcheck") ? "default" : "ghost"}
-                      className="w-full justify-start pl-8"
-                      data-testid="mobile-nav-cardcheck-definitions"
+                      variant={location === `/workers/${user.workerId}` ? "default" : "ghost"}
+                      className="w-full justify-start"
+                      data-testid="mobile-nav-my-worker"
                     >
-                      <ClipboardCheck className="h-4 w-4 mr-2" />
-                      Cardchecks
-                    </Button>
-                  </Link>
-                )}
-                {hasComponent("bargainingunits") && (
-                  <Link href="/bargaining-units" onClick={() => setMobileMenuOpen(false)}>
-                    <Button
-                      variant={location.startsWith("/bargaining-units") ? "default" : "ghost"}
-                      className="w-full justify-start pl-8"
-                      data-testid="mobile-nav-bargaining-units"
-                    >
-                      <Users className="h-4 w-4 mr-2" />
-                      Bargaining Units
-                    </Button>
-                  </Link>
-                )}
-                {hasComponent("worker.steward") && (
-                  <Link href="/stewards" onClick={() => setMobileMenuOpen(false)}>
-                    <Button
-                      variant={location === "/stewards" ? "default" : "ghost"}
-                      className="w-full justify-start pl-8"
-                      data-testid="mobile-nav-stewards"
-                    >
-                      <Shield className="h-4 w-4 mr-2" />
-                      {term("steward", { plural: true })}
-                    </Button>
-                  </Link>
-                )}
-                {hasComponent("sitespecific.btu") && (
-                  <Link href="/sitespecific/btu/csgs" onClick={() => setMobileMenuOpen(false)}>
-                    <Button
-                      variant={location.startsWith("/sitespecific/btu/csg") ? "default" : "ghost"}
-                      className="w-full justify-start pl-8"
-                      data-testid="mobile-nav-class-size-grievances"
-                    >
-                      <FileWarning className="h-4 w-4 mr-2" />
-                      Class Size Grievances
+                      <User className="h-4 w-4 mr-2" />
+                      My Worker
                     </Button>
                   </Link>
                 )}
@@ -237,55 +207,166 @@ export default function Header() {
                   </Link>
                 )}
 
-                <Link href="/employers" onClick={() => setMobileMenuOpen(false)}>
-                  <Button
-                    variant={location.startsWith("/employers") ? "default" : "ghost"}
-                    className="w-full justify-start"
-                    data-testid="mobile-nav-employers"
-                  >
-                    <Building2 className="h-4 w-4 mr-2" />
-                    Employers
-                  </Button>
-                </Link>
-
-                <Link href="/employer-contacts/all" onClick={() => setMobileMenuOpen(false)}>
-                  <Button
-                    variant={location.startsWith("/employer-contacts") ? "default" : "ghost"}
-                    className="w-full justify-start pl-8"
-                    data-testid="mobile-nav-employer-contacts"
-                  >
-                    <Users className="h-4 w-4 mr-2" />
-                    Employer Contacts
-                  </Button>
-                </Link>
-
-                <Link href="/employers/monthly-uploads" onClick={() => setMobileMenuOpen(false)}>
-                  <Button
-                    variant={location === "/employers/monthly-uploads" ? "default" : "ghost"}
-                    className="w-full justify-start pl-8"
-                    data-testid="mobile-nav-monthly-uploads"
-                  >
-                    <Calendar className="h-4 w-4 mr-2" />
-                    Monthly Uploads
-                  </Button>
-                </Link>
-                {hasComponent("sitespecific.btu") && (
-                  <Link href="/sitespecific/btu/employer-map" onClick={() => setMobileMenuOpen(false)}>
+                {hasSingleEmployer && (
+                  <Link href={`/employers/${myEmployers[0].id}`} onClick={() => setMobileMenuOpen(false)}>
                     <Button
-                      variant={location === "/sitespecific/btu/employer-map" ? "default" : "ghost"}
-                      className="w-full justify-start pl-8"
-                      data-testid="mobile-nav-employer-map"
+                      variant={location === `/employers/${myEmployers[0].id}` ? "default" : "ghost"}
+                      className="w-full justify-start"
+                      data-testid="mobile-nav-my-employer"
                     >
-                      <Map className="h-4 w-4 mr-2" />
-                      Employer Map
+                      <Building2 className="h-4 w-4 mr-2" />
+                      My Employer
                     </Button>
                   </Link>
                 )}
 
-                {(hasComponent("trust.providers") || (hasPermission("admin") && hasComponent("trust.benefits.scan"))) && (
+                {hasMultipleEmployers && (
+                  <>
+                    <div className="text-sm font-medium text-muted-foreground px-4 py-2">My Employers</div>
+                    {myEmployers.map((employer) => (
+                      <Link key={employer.id} href={`/employers/${employer.id}`} onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location === `/employers/${employer.id}` ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid={`mobile-nav-my-employer-${employer.id}`}
+                        >
+                          <Building2 className="h-4 w-4 mr-2" />
+                          {employer.name}
+                        </Button>
+                      </Link>
+                    ))}
+                  </>
+                )}
+
+                {staffPolicy?.access?.granted && (
+                  <>
+                    <div className="text-sm font-medium text-muted-foreground px-4 py-2">Workers</div>
+                    <Link href="/workers" onClick={() => setMobileMenuOpen(false)}>
+                      <Button
+                        variant={location === "/workers" ? "default" : "ghost"}
+                        className="w-full justify-start pl-8"
+                        data-testid="mobile-nav-workers-list"
+                      >
+                        <List className="h-4 w-4 mr-2" />
+                        List
+                      </Button>
+                    </Link>
+                    {hasComponent("cardcheck") && (
+                      <Link href="/cardcheck-definitions" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location.startsWith("/cardcheck") ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-cardcheck-definitions"
+                        >
+                          <ClipboardCheck className="h-4 w-4 mr-2" />
+                          Cardchecks
+                        </Button>
+                      </Link>
+                    )}
+                    {hasComponent("bargainingunits") && (
+                      <Link href="/bargaining-units" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location.startsWith("/bargaining-units") ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-bargaining-units"
+                        >
+                          <Users className="h-4 w-4 mr-2" />
+                          Bargaining Units
+                        </Button>
+                      </Link>
+                    )}
+                    {hasComponent("worker.steward") && (
+                      <Link href="/stewards" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location === "/stewards" ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-stewards"
+                        >
+                          <Shield className="h-4 w-4 mr-2" />
+                          {term("steward", { plural: true })}
+                        </Button>
+                      </Link>
+                    )}
+                    {hasComponent("sitespecific.btu") && (
+                      <Link href="/sitespecific/btu/csgs" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location.startsWith("/sitespecific/btu/csg") ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-class-size-grievances"
+                        >
+                          <FileWarning className="h-4 w-4 mr-2" />
+                          Class Size Grievances
+                        </Button>
+                      </Link>
+                    )}
+                  </>
+                )}
+
+                {staffPolicy?.access?.granted && (
+                  <>
+                    <Link href="/employers" onClick={() => setMobileMenuOpen(false)}>
+                      <Button
+                        variant={location.startsWith("/employers") ? "default" : "ghost"}
+                        className="w-full justify-start"
+                        data-testid="mobile-nav-employers"
+                      >
+                        <Building2 className="h-4 w-4 mr-2" />
+                        Employers
+                      </Button>
+                    </Link>
+
+                    <Link href="/employer-contacts/all" onClick={() => setMobileMenuOpen(false)}>
+                      <Button
+                        variant={location.startsWith("/employer-contacts") ? "default" : "ghost"}
+                        className="w-full justify-start pl-8"
+                        data-testid="mobile-nav-employer-contacts"
+                      >
+                        <Users className="h-4 w-4 mr-2" />
+                        Employer Contacts
+                      </Button>
+                    </Link>
+
+                    <Link href="/employers/monthly-uploads" onClick={() => setMobileMenuOpen(false)}>
+                      <Button
+                        variant={location === "/employers/monthly-uploads" ? "default" : "ghost"}
+                        className="w-full justify-start pl-8"
+                        data-testid="mobile-nav-monthly-uploads"
+                      >
+                        <Calendar className="h-4 w-4 mr-2" />
+                        Monthly Uploads
+                      </Button>
+                    </Link>
+                    {hasComponent("sitespecific.btu") && (
+                      <Link href="/sitespecific/btu/employer-map" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location === "/sitespecific/btu/employer-map" ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-employer-map"
+                        >
+                          <Map className="h-4 w-4 mr-2" />
+                          Employer Map
+                        </Button>
+                      </Link>
+                    )}
+                    {hasComponent("dispatch") && (
+                      <Link href="/dispatch/jobs" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location.startsWith("/dispatch") ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-dispatch-jobs"
+                        >
+                          <Briefcase className="h-4 w-4 mr-2" />
+                          Dispatch Jobs
+                        </Button>
+                      </Link>
+                    )}
+                  </>
+                )}
+
+                {((hasComponent("trust.providers") && hasPermission("staff")) || (hasPermission("admin") && hasComponent("trust.benefits.scan"))) && (
                   <>
                     <div className="text-sm font-medium text-muted-foreground px-4 py-2">Trust</div>
-                    {hasComponent("trust.providers") && (
+                    {hasComponent("trust.providers") && hasPermission("staff") && (
                       <Link href="/trust/providers" onClick={() => setMobileMenuOpen(false)}>
                         <Button
                           variant={location.startsWith("/trust/provider") ? "default" : "ghost"}
@@ -312,7 +393,7 @@ export default function Header() {
                   </Link>
                 )}
 
-                {hasComponent("event") && (
+                {hasComponent("event") && hasPermission("admin") && (
                   <Link href="/events" onClick={() => setMobileMenuOpen(false)}>
                     <Button
                       variant={location.startsWith("/events") ? "default" : "ghost"}
@@ -325,7 +406,7 @@ export default function Header() {
                   </Link>
                 )}
 
-                {ledgerStaffPolicy?.allowed && (
+                {ledgerStaffPolicy?.access?.granted && (
                   <Link href="/ledger/accounts" onClick={() => setMobileMenuOpen(false)}>
                     <Button
                       variant={location.startsWith("/ledger/accounts") ? "default" : "ghost"}
@@ -381,9 +462,9 @@ export default function Header() {
                         Policies
                       </Button>
                     </Link>
-                    <Link href="/config/masquerade" onClick={() => setMobileMenuOpen(false)}>
+                    <Link href="/admin/users/masquerade" onClick={() => setMobileMenuOpen(false)}>
                       <Button
-                        variant={location === "/config/masquerade" ? "default" : "ghost"}
+                        variant={location === "/admin/users/masquerade" ? "default" : "ghost"}
                         className="w-full justify-start pl-8"
                         data-testid="mobile-nav-users-masquerade"
                       >
@@ -514,131 +595,189 @@ export default function Header() {
               </Button>
             </Link>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            {hasPermission("worker") && user?.workerId && (
+              <Link href={`/workers/${user.workerId}`}>
                 <Button
-                  variant={location === "/workers" || location.startsWith("/cardcheck") || location.startsWith("/bargaining-units") || location === "/stewards" || location.startsWith("/sitespecific/btu/csg") ? "default" : "ghost"}
+                  variant={location === `/workers/${user.workerId}` ? "default" : "ghost"}
                   size="sm"
-                  data-testid="nav-workers"
+                  data-testid="nav-my-worker"
                 >
-                  <Users className="h-4 w-4 mr-2" />
-                  Workers
-                  <ChevronDown className="h-4 w-4 ml-2" />
+                  <User className="h-4 w-4 mr-2" />
+                  My Worker
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuItem asChild>
-                  <Link href="/workers" className="w-full">
-                    <div className="flex items-center cursor-pointer" data-testid="menu-workers-list">
-                      <List className="h-4 w-4 mr-2" />
-                      List
-                    </div>
-                  </Link>
-                </DropdownMenuItem>
-                {hasComponent("cardcheck") && (
-                  <DropdownMenuItem asChild>
-                    <Link href="/cardcheck-definitions" className="w-full">
-                      <div className="flex items-center cursor-pointer" data-testid="menu-cardcheck-definitions">
-                        <ClipboardCheck className="h-4 w-4 mr-2" />
-                        Cardchecks
-                      </div>
-                    </Link>
-                  </DropdownMenuItem>
-                )}
-                {hasComponent("bargainingunits") && (
-                  <DropdownMenuItem asChild>
-                    <Link href="/bargaining-units" className="w-full">
-                      <div className="flex items-center cursor-pointer" data-testid="menu-bargaining-units">
-                        <Users className="h-4 w-4 mr-2" />
-                        Bargaining Units
-                      </div>
-                    </Link>
-                  </DropdownMenuItem>
-                )}
-                {hasComponent("worker.steward") && (
-                  <DropdownMenuItem asChild>
-                    <Link href="/stewards" className="w-full">
-                      <div className="flex items-center cursor-pointer" data-testid="menu-stewards">
-                        <Shield className="h-4 w-4 mr-2" />
-                        {term("steward", { plural: true })}
-                      </div>
-                    </Link>
-                  </DropdownMenuItem>
-                )}
-                {hasComponent("sitespecific.btu") && (
-                  <DropdownMenuItem asChild>
-                    <Link href="/sitespecific/btu/csgs" className="w-full">
-                      <div className="flex items-center cursor-pointer" data-testid="menu-class-size-grievances">
-                        <FileWarning className="h-4 w-4 mr-2" />
-                        Class Size Grievances
-                      </div>
-                    </Link>
-                  </DropdownMenuItem>
-                )}
-                {hasComponent("sitespecific.btu") && hasPermission("admin") && (
-                  <DropdownMenuItem asChild>
-                    <Link href="/sitespecific/btu/worker-import" className="w-full">
-                      <div className="flex items-center cursor-pointer" data-testid="menu-btu-worker-import">
-                        <Upload className="h-4 w-4 mr-2" />
-                        Worker Import
-                      </div>
-                    </Link>
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              </Link>
+            )}
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            {hasSingleEmployer && (
+              <Link href={`/employers/${myEmployers[0].id}`}>
                 <Button
-                  variant={location.startsWith("/employers") || location.startsWith("/employer-contacts") ? "default" : "ghost"}
+                  variant={location === `/employers/${myEmployers[0].id}` ? "default" : "ghost"}
                   size="sm"
-                  data-testid="nav-employers"
+                  data-testid="nav-my-employer"
                 >
                   <Building2 className="h-4 w-4 mr-2" />
-                  Employers
-                  <ChevronDown className="h-4 w-4 ml-2" />
+                  My Employer
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuItem asChild>
-                  <Link href="/employers" className="w-full">
-                    <div className="flex items-center cursor-pointer" data-testid="menu-employers-list">
-                      <Building2 className="h-4 w-4 mr-2" />
-                      Employers
-                    </div>
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/employer-contacts/all" className="w-full">
-                    <div className="flex items-center cursor-pointer" data-testid="menu-employer-contacts-all">
-                      <Users className="h-4 w-4 mr-2" />
-                      Employer Contacts
-                    </div>
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/employers/monthly-uploads" className="w-full">
-                    <div className="flex items-center cursor-pointer" data-testid="menu-monthly-uploads">
-                      <Calendar className="h-4 w-4 mr-2" />
-                      Monthly Uploads
-                    </div>
-                  </Link>
-                </DropdownMenuItem>
-                {hasComponent("sitespecific.btu") && (
+              </Link>
+            )}
+
+            {hasMultipleEmployers && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={myEmployers.some(e => location === `/employers/${e.id}`) ? "default" : "ghost"}
+                    size="sm"
+                    data-testid="nav-my-employer"
+                  >
+                    <Building2 className="h-4 w-4 mr-2" />
+                    My Employer
+                    <ChevronDown className="h-4 w-4 ml-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {myEmployers.map((employer) => (
+                    <DropdownMenuItem key={employer.id} asChild>
+                      <Link href={`/employers/${employer.id}`} className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid={`menu-my-employer-${employer.id}`}>
+                          <Building2 className="h-4 w-4 mr-2" />
+                          {employer.name}
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
+            {staffPolicy?.access?.granted && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={location === "/workers" || location.startsWith("/cardcheck") || location.startsWith("/bargaining-units") || location === "/stewards" || location.startsWith("/sitespecific/btu/csg") ? "default" : "ghost"}
+                    size="sm"
+                    data-testid="nav-workers"
+                  >
+                    <Users className="h-4 w-4 mr-2" />
+                    Workers
+                    <ChevronDown className="h-4 w-4 ml-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
                   <DropdownMenuItem asChild>
-                    <Link href="/sitespecific/btu/employer-map" className="w-full">
-                      <div className="flex items-center cursor-pointer" data-testid="menu-employer-map">
-                        <Map className="h-4 w-4 mr-2" />
-                        Employer Map
+                    <Link href="/workers" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-workers-list">
+                        <List className="h-4 w-4 mr-2" />
+                        List
                       </div>
                     </Link>
                   </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  {hasComponent("cardcheck") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/cardcheck-definitions" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-cardcheck-definitions">
+                          <ClipboardCheck className="h-4 w-4 mr-2" />
+                          Cardchecks
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasComponent("bargainingunits") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/bargaining-units" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-bargaining-units">
+                          <Users className="h-4 w-4 mr-2" />
+                          Bargaining Units
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasComponent("worker.steward") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/stewards" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-stewards">
+                          <Shield className="h-4 w-4 mr-2" />
+                          {term("steward", { plural: true })}
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasComponent("sitespecific.btu") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/sitespecific/btu/csgs" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-class-size-grievances">
+                          <FileWarning className="h-4 w-4 mr-2" />
+                          Class Size Grievances
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
 
-            {(hasComponent("trust.providers") || (hasPermission("admin") && hasComponent("trust.benefits.scan"))) && (
+            {staffPolicy?.access?.granted && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={location.startsWith("/employers") || location.startsWith("/employer-contacts") || location.startsWith("/dispatch") ? "default" : "ghost"}
+                    size="sm"
+                    data-testid="nav-employers"
+                  >
+                    <Building2 className="h-4 w-4 mr-2" />
+                    Employers
+                    <ChevronDown className="h-4 w-4 ml-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem asChild>
+                    <Link href="/employers" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-employers-list">
+                        <Building2 className="h-4 w-4 mr-2" />
+                        Employers
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/employer-contacts/all" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-employer-contacts-all">
+                        <Users className="h-4 w-4 mr-2" />
+                        Employer Contacts
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/employers/monthly-uploads" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-monthly-uploads">
+                        <Calendar className="h-4 w-4 mr-2" />
+                        Monthly Uploads
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                  {hasComponent("sitespecific.btu") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/sitespecific/btu/employer-map" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-employer-map">
+                          <Map className="h-4 w-4 mr-2" />
+                          Employer Map
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasComponent("dispatch") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/dispatch/jobs" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-dispatch-jobs">
+                          <Briefcase className="h-4 w-4 mr-2" />
+                          Dispatch Jobs
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
+            {((hasComponent("trust.providers") && hasPermission("staff")) || (hasPermission("admin") && hasComponent("trust.benefits.scan"))) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -652,7 +791,7 @@ export default function Header() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
-                  {hasComponent("trust.providers") && (
+                  {hasComponent("trust.providers") && hasPermission("staff") && (
                     <DropdownMenuItem asChild>
                       <Link href="/trust/providers" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-trust-providers">
@@ -676,7 +815,7 @@ export default function Header() {
               </DropdownMenu>
             )}
 
-            {hasComponent("event") && (
+            {hasComponent("event") && hasPermission("admin") && (
               <Link href="/events">
                 <Button
                   variant={location.startsWith("/events") ? "default" : "ghost"}
@@ -689,7 +828,7 @@ export default function Header() {
               </Link>
             )}
 
-            {ledgerStaffPolicy?.allowed && (
+            {ledgerStaffPolicy?.access?.granted && (
               <Link href="/ledger/accounts">
                 <Button
                   variant={location.startsWith("/ledger/accounts") ? "default" : "ghost"}
@@ -706,7 +845,7 @@ export default function Header() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    variant={location.startsWith("/admin/users") || location === "/config/masquerade" ? "default" : "ghost"}
+                    variant={location.startsWith("/admin/users") ? "default" : "ghost"}
                     size="sm"
                     data-testid="nav-users"
                   >
@@ -750,7 +889,7 @@ export default function Header() {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
-                    <Link href="/config/masquerade" className="w-full">
+                    <Link href="/admin/users/masquerade" className="w-full">
                       <div className="flex items-center cursor-pointer" data-testid="menu-users-masquerade">
                         <UserCog className="h-4 w-4 mr-2" />
                         Masquerade

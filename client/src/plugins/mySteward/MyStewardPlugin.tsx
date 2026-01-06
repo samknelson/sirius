@@ -56,76 +56,9 @@ export function MyStewardPlugin({ enabledComponents }: DashboardPluginProps) {
     return null;
   }
 
-  if (!data.worker) {
-    return (
-      <Card data-testid="plugin-my-steward">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            My {term("steward")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground" data-testid="text-no-worker">
-            This user is not associated with a worker.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!data.employer) {
-    return (
-      <Card data-testid="plugin-my-steward">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            My {term("steward")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground" data-testid="text-no-employer">
-            No home employer found.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!data.bargainingUnit) {
-    return (
-      <Card data-testid="plugin-my-steward">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            My {term("steward")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground" data-testid="text-no-bargaining-unit">
-            No bargaining unit is assigned.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (data.stewards.length === 0) {
-    return (
-      <Card data-testid="plugin-my-steward">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            My {term("steward")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground" data-testid="text-no-steward">
-            No {term("steward", { lowercase: true })} is found for {data.bargainingUnit.name} at {data.employer.name}.
-          </p>
-        </CardContent>
-      </Card>
-    );
+  // Hide plugin if no steward can be determined
+  if (!data.worker || !data.employer || !data.bargainingUnit || data.stewards.length === 0) {
+    return null;
   }
 
   return (

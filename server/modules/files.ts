@@ -1,10 +1,10 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { insertFileSchema } from "@shared/schema";
-import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
+import { requireAccess, checkAccess, buildContext } from "../services/access-policy-evaluator";
 import { objectStorageService } from "../services/objectStorage";
 import multer from "multer";
+import { logger } from "../logger";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -23,7 +23,7 @@ export function registerFileRoutes(
 ) {
   app.post("/api/files", 
     upload.single('file'),
-    requireAccess(policies.filesUpload),
+    requireAuth,
     async (req, res) => {
       try {
         if (!req.file) {
@@ -34,6 +34,55 @@ export function registerFileRoutes(
         
         if (!req.user) {
           return res.status(401).json({ message: "Authentication required" });
+        }
+
+        const context = await buildContext(req);
+        
+        // Check access based on entity type and id if provided
+        // This allows users to upload files to entities they can edit
+        if (entityType && entityId) {
+          // Map entity types to their edit policies
+          const entityPolicyMap: Record<string, string> = {
+            'esig': 'esig.edit',
+            'cardcheck': 'cardcheck.edit',
+            'worker': 'worker.edit',
+            'employer': 'employer.view',
+            // Add more entity types as needed
+          };
+          
+          const policyToCheck = entityPolicyMap[entityType];
+          
+          if (!policyToCheck) {
+            // Unknown entity type - deny access to prevent bypass
+            logger.warn('File upload denied - unrecognized entity type', {
+              service: 'files',
+              userId: (req.user as any).id,
+              entityType,
+              entityId,
+            });
+            return res.status(400).json({ message: "Unrecognized entity type" });
+          }
+          
+          const accessResult = await checkAccess(policyToCheck, context.user, entityId);
+          if (!accessResult.granted) {
+            logger.warn('File upload denied - insufficient entity access', {
+              service: 'files',
+              userId: (req.user as any).id,
+              entityType,
+              entityId,
+              policy: policyToCheck,
+            });
+            return res.status(403).json({ message: "Insufficient permissions to upload to this entity" });
+          }
+        } else if (entityType || entityId) {
+          // Partial entity context provided - require both
+          return res.status(400).json({ message: "Both entityType and entityId are required for entity-scoped uploads" });
+        } else {
+          // No entity context - fall back to files.upload permission check
+          const hasUploadPermission = await checkAccess('files.upload', context.user);
+          if (!hasUploadPermission.granted) {
+            return res.status(403).json({ message: "Insufficient permissions to upload files" });
+          }
         }
 
         const uploadResult = await objectStorageService.uploadFile({
@@ -82,11 +131,10 @@ export function registerFileRoutes(
       const files = await storage.files.list(filters);
       
       const filteredFiles = [];
+      const context = await buildContext(req);
       for (const file of files) {
         try {
-          const context = await import('../accessControl').then(m => m.buildContext(req));
-          context.params = { id: file.id };
-          const result = await import('../accessControl').then(m => m.evaluatePolicy(policies.filesRead, context));
+          const result = await checkAccess('file.read', context.user, file.id);
           if (result.granted) {
             filteredFiles.push(file);
           }
@@ -100,7 +148,7 @@ export function registerFileRoutes(
     }
   });
 
-  app.get("/api/files/:id", requireAccess(policies.filesRead), async (req, res) => {
+  app.get("/api/files/:id", requireAccess('file.read'), async (req, res) => {
     try {
       const { id } = req.params;
       const file = await storage.files.getById(id);
@@ -115,7 +163,7 @@ export function registerFileRoutes(
     }
   });
 
-  app.get("/api/files/:id/download", requireAccess(policies.filesRead), async (req, res) => {
+  app.get("/api/files/:id/download", requireAccess('file.read', (req) => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       const file = await storage.files.getById(id);
@@ -136,7 +184,7 @@ export function registerFileRoutes(
     }
   });
 
-  app.get("/api/files/:id/url", requireAccess(policies.filesRead), async (req, res) => {
+  app.get("/api/files/:id/url", requireAccess('file.read', (req) => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       const { expiresIn = 3600 } = req.query;
@@ -159,7 +207,7 @@ export function registerFileRoutes(
     }
   });
 
-  app.patch("/api/files/:id", requireAccess(policies.filesUpdate), async (req, res) => {
+  app.patch("/api/files/:id", requireAccess('file.update', (req) => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -197,7 +245,7 @@ export function registerFileRoutes(
     }
   });
 
-  app.delete("/api/files/:id", requireAccess(policies.filesDelete), async (req, res) => {
+  app.delete("/api/files/:id", requireAccess('file.delete', (req) => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       

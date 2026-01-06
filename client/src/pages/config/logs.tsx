@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -60,6 +61,7 @@ interface FiltersResponse {
 }
 
 export default function LogsPage() {
+  usePageTitle("System Logs");
   const [page, setPage] = useState(1);
   const [limit] = useState(50);
   const [moduleFilter, setModuleFilter] = useState<string>("");

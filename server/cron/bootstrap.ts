@@ -36,6 +36,24 @@ const DEFAULT_CRON_JOBS: DefaultCronJob[] = [
     schedule: '0 * * * *', // Every hour at minute 0
     isEnabled: true,
   },
+  {
+    name: 'delete-expired-hfe',
+    description: 'Deletes Hold for Employer entries where the hold date has passed',
+    schedule: '0 4 * * *', // Daily at 4 AM
+    isEnabled: true,
+  },
+  {
+    name: 'sweep-expired-ban-elig',
+    description: 'Clears dispatch eligibility entries for expired worker bans',
+    schedule: '0 5 * * *', // Daily at 5 AM
+    isEnabled: true,
+  },
+  {
+    name: 'sync-ban-active-status',
+    description: 'Synchronizes the active status of worker bans based on their expiration dates',
+    schedule: '0 6 * * *', // Daily at 6 AM
+    isEnabled: true,
+  },
 ];
 
 export async function bootstrapCronJobs(): Promise<void> {

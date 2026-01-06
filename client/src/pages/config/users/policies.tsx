@@ -1,62 +1,117 @@
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Shield, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Shield, Search } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
-import { AccessRequirement, Policy } from '@/lib/policy-types';
+import { Input } from '@/components/ui/input';
+import { AccessRequirement, AccessCondition, Policy } from '@/lib/policy-types';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
-function formatRequirement(req: AccessRequirement): { text: string; type: string } {
-  switch (req.type) {
-    case 'authenticated':
-      return { text: 'User must be authenticated', type: 'auth' };
-    
-    case 'permission':
-      return { text: `Requires permission: ${req.key}`, type: 'permission' };
-    
-    case 'anyPermission':
-      return { 
-        text: `Requires any of these permissions: ${req.keys.join(', ')}`, 
-        type: 'permission' 
-      };
-    
-    case 'allPermissions':
-      return { 
-        text: `Requires all of these permissions: ${req.keys.join(', ')}`, 
-        type: 'permission' 
-      };
-    
-    case 'component':
-      return { 
-        text: `Component "${req.componentId}" must be enabled`, 
-        type: 'component' 
-      };
-    
-    case 'ownership':
-      return { 
-        text: `User must own the ${req.resourceType}${req.resourceIdParam ? ` (ID from parameter: ${req.resourceIdParam})` : ''}`, 
-        type: 'ownership' 
-      };
-    
-    case 'anyOf':
-      return { 
-        text: `Must meet ANY of: ${req.options.map((opt: AccessRequirement) => formatRequirement(opt).text).join(' OR ')}`, 
-        type: 'complex' 
-      };
-    
-    case 'allOf':
-      return { 
-        text: `Must meet ALL of: ${req.options.map((opt: AccessRequirement) => formatRequirement(opt).text).join(' AND ')}`, 
-        type: 'complex' 
-      };
-    
-    case 'custom':
-      return { 
-        text: req.reason || 'Custom requirement check', 
-        type: 'custom' 
-      };
-    
-    default:
-      return { text: 'Unknown requirement', type: 'unknown' };
+interface ConditionPart {
+  text: string;
+  type: string;
+}
+
+/**
+ * Format a single access condition into human-readable parts
+ * Returns an array of parts, each with its own type for proper badge rendering
+ */
+function formatConditionParts(condition: AccessCondition): ConditionPart[] {
+  const parts: ConditionPart[] = [];
+  
+  if (condition.authenticated) {
+    parts.push({ text: 'User must be authenticated', type: 'auth' });
   }
+  
+  if (condition.permission) {
+    parts.push({ text: `Requires permission: ${condition.permission}`, type: 'permission' });
+  }
+  
+  if (condition.anyPermission && condition.anyPermission.length > 0) {
+    parts.push({ text: `Requires any of: ${condition.anyPermission.join(', ')}`, type: 'permission' });
+  }
+  
+  if (condition.allPermissions && condition.allPermissions.length > 0) {
+    parts.push({ text: `Requires all of: ${condition.allPermissions.join(', ')}`, type: 'permission' });
+  }
+  
+  if (condition.component) {
+    parts.push({ text: `Component "${condition.component}" must be enabled`, type: 'component' });
+  }
+  
+  if (condition.policy) {
+    parts.push({ text: `Requires policy: ${condition.policy}`, type: 'policy' });
+  }
+  
+  if (condition.attributes && condition.attributes.length > 0) {
+    const attrTexts = condition.attributes.map(attr => {
+      const opText = attr.op === 'eq' ? '=' : '!=';
+      return `${attr.path} ${opText} "${attr.value}"`;
+    });
+    parts.push({ text: `Attributes: ${attrTexts.join(', ')}`, type: 'attribute' });
+  }
+  
+  // Handle simple attribute string (from describeRequirements)
+  if (condition.attribute) {
+    parts.push({ text: condition.attribute, type: 'attribute' });
+  }
+  
+  if (parts.length === 0) {
+    return [{ text: 'No specific requirements', type: 'unknown' }];
+  }
+  
+  return parts;
+}
+
+/**
+ * Format a single access condition into human-readable text (legacy for complex compositions)
+ */
+function formatCondition(condition: AccessCondition): { text: string; type: string } {
+  const parts = formatConditionParts(condition);
+  if (parts.length === 0) {
+    return { text: 'No specific requirements', type: 'unknown' };
+  }
+  if (parts.length === 1) {
+    return parts[0];
+  }
+  return { 
+    text: parts.map(p => p.text).join(' AND '), 
+    type: parts.length > 1 ? 'complex' : parts[0].type 
+  };
+}
+
+/**
+ * Format an access requirement into an array of parts for rendering with individual badges
+ */
+function formatRequirementParts(req: AccessRequirement): ConditionPart[] {
+  // Check if it's an "any" composition
+  if ('any' in req && Array.isArray(req.any)) {
+    const formatted = req.any.map(c => formatCondition(c).text);
+    return [{ 
+      text: `Must meet ANY of: ${formatted.join(' OR ')}`, 
+      type: 'complex' 
+    }];
+  }
+  
+  // Check if it's an "all" composition
+  if ('all' in req && Array.isArray(req.all)) {
+    const formatted = req.all.map(c => formatCondition(c).text);
+    return [{ 
+      text: `Must meet ALL of: ${formatted.join(' AND ')}`, 
+      type: 'complex' 
+    }];
+  }
+  
+  // Otherwise it's a single condition - return individual parts
+  return formatConditionParts(req as AccessCondition);
 }
 
 function getRequirementBadgeVariant(type: string) {
@@ -67,8 +122,10 @@ function getRequirementBadgeVariant(type: string) {
       return 'secondary';
     case 'component':
       return 'outline';
-    case 'ownership':
-      return 'destructive';
+    case 'policy':
+      return 'outline';
+    case 'attribute':
+      return 'secondary';
     case 'complex':
       return 'default';
     default:
@@ -77,9 +134,23 @@ function getRequirementBadgeVariant(type: string) {
 }
 
 export default function PoliciesPage() {
+  usePageTitle("Access Policies");
+  const [filterText, setFilterText] = useState('');
+  
   const { data: policies = [], isLoading } = useQuery<Policy[]>({
-    queryKey: ["/api/access/policies"],
+    queryKey: ["/api/access/policies?enabledOnly=true"],
   });
+
+  const filteredAndSortedPolicies = useMemo(() => {
+    const lowerFilter = filterText.toLowerCase().trim();
+    
+    return policies
+      .filter(policy => {
+        if (!lowerFilter) return true;
+        return policy.id.toLowerCase().includes(lowerFilter);
+      })
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }, [policies, filterText]);
 
   if (isLoading) {
     return (
@@ -112,72 +183,83 @@ export default function PoliciesPage() {
             Policies
           </CardTitle>
           <CardDescription>
-            Declarative access control policies used throughout the application
+            Declarative access control policies used throughout the application. Users with the "admin" permission bypass all policy checks.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-6">
-            {policies.map((policy) => (
-              <div
-                key={policy.id}
-                className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-900"
-                data-testid={`policy-${policy.id}`}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="font-semibold text-lg flex items-center gap-2">
-                      <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500" />
-                      {policy.name}
-                    </h3>
-                    {policy.description && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {policy.description}
-                      </p>
-                    )}
-                  </div>
-                  <Badge variant="outline" data-testid={`policy-id-${policy.id}`}>
-                    {policy.id}
-                  </Badge>
-                </div>
-
-                <div className="mt-3 space-y-2">
-                  <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                    <AlertCircle className="h-4 w-4" />
-                    Requirements:
-                  </div>
-                  <ul className="space-y-2 ml-6">
-                    {policy.requirements.map((req, index) => {
-                      const formatted = formatRequirement(req);
-                      return (
-                        <li
-                          key={index}
-                          className="flex items-start gap-2 text-sm"
-                          data-testid={`requirement-${policy.id}-${index}`}
-                        >
-                          <span className="mt-1">•</span>
-                          <div className="flex-1 flex items-center gap-2 flex-wrap">
-                            <span>{formatted.text}</span>
-                            <Badge 
-                              variant={getRequirementBadgeVariant(formatted.type)}
-                              className="text-xs"
-                            >
-                              {formatted.type}
-                            </Badge>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
-                  <p className="text-xs text-muted-foreground italic">
-                    Note: Users with the "admin" permission bypass all policy checks and are automatically granted access.
-                  </p>
-                </div>
-              </div>
-            ))}
+          <div className="mb-4">
+            <div className="relative max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Filter by name..."
+                value={filterText}
+                onChange={(e) => setFilterText(e.target.value)}
+                className="pl-9"
+                data-testid="input-filter-policies"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              Showing {filteredAndSortedPolicies.length} of {policies.length} policies
+            </p>
           </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[200px]">Name</TableHead>
+                <TableHead className="w-[300px]">Description</TableHead>
+                <TableHead className="w-[140px]">Component</TableHead>
+                <TableHead>Requirements</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredAndSortedPolicies.map((policy) => (
+                <TableRow key={policy.id} data-testid={`policy-${policy.id}`}>
+                  <TableCell className="font-mono text-sm" data-testid={`policy-id-${policy.id}`}>
+                    {policy.id}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
+                    {policy.description || '-'}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {policy.component ? (
+                      <Badge variant="outline" className="font-mono text-xs">
+                        {policy.component}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="space-y-2">
+                      {policy.requirements.map((req, reqIndex) => {
+                        const parts = formatRequirementParts(req);
+                        return (
+                          <div
+                            key={reqIndex}
+                            className="flex items-start gap-2 flex-wrap text-sm"
+                            data-testid={`requirement-${policy.id}-${reqIndex}`}
+                          >
+                            {parts.map((part, partIndex) => (
+                              <div key={partIndex} className="flex items-center gap-1">
+                                {partIndex > 0 && <span className="text-muted-foreground text-xs">AND</span>}
+                                <Badge 
+                                  variant={getRequirementBadgeVariant(part.type)}
+                                  className="text-xs"
+                                >
+                                  {part.type}
+                                </Badge>
+                                <span>{part.text}</span>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </div>

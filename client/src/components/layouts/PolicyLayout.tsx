@@ -6,6 +6,8 @@ import { Policy } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePolicyTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface PolicyLayoutContextValue {
   policy: Policy;
@@ -24,7 +26,7 @@ export function usePolicyLayout() {
 }
 
 interface PolicyLayoutProps {
-  activeTab: "details" | "edit" | "benefits";
+  activeTab: string;
   children: ReactNode;
 }
 
@@ -41,6 +43,12 @@ export function PolicyLayout({ activeTab, children }: PolicyLayoutProps) {
       return response.json();
     },
   });
+
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs } = usePolicyTabAccess(id || "");
+
+  // Set page title based on policy name
+  usePageTitle(policy?.name);
 
   const isLoading = policyLoading;
   const isError = !!policyError;
@@ -128,12 +136,6 @@ export function PolicyLayout({ activeTab, children }: PolicyLayoutProps) {
       </div>
     );
   }
-
-  const tabs = [
-    { id: "details", label: "Details", href: `/policies/${policy.id}` },
-    { id: "edit", label: "Edit", href: `/policies/${policy.id}/edit` },
-    { id: "benefits", label: "Benefits", href: `/policies/${policy.id}/benefits` },
-  ];
 
   const contextValue: PolicyLayoutContextValue = {
     policy,

@@ -6,6 +6,8 @@ import { TrustBenefit } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useTrustBenefitTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface TrustBenefitLayoutContextValue {
   benefit: TrustBenefit;
@@ -24,7 +26,7 @@ export function useTrustBenefitLayout() {
 }
 
 interface TrustBenefitLayoutProps {
-  activeTab: "details" | "edit";
+  activeTab: string;
   children: ReactNode;
 }
 
@@ -41,6 +43,12 @@ export function TrustBenefitLayout({ activeTab, children }: TrustBenefitLayoutPr
       return response.json();
     },
   });
+
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs } = useTrustBenefitTabAccess(id || "");
+
+  // Set page title based on benefit name
+  usePageTitle(benefit?.name);
 
   const isLoading = benefitLoading;
   const isError = !!benefitError;
@@ -130,12 +138,6 @@ export function TrustBenefitLayout({ activeTab, children }: TrustBenefitLayoutPr
       </div>
     );
   }
-
-  // Success state
-  const tabs = [
-    { id: "details", label: "Details", href: `/trust-benefits/${benefit.id}` },
-    { id: "edit", label: "Edit", href: `/trust-benefits/${benefit.id}/edit` },
-  ];
 
   const contextValue: TrustBenefitLayoutContextValue = {
     benefit,

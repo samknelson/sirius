@@ -1,5 +1,6 @@
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { chargePluginUIRegistry } from "@/plugins/charge-plugins";
@@ -13,6 +14,7 @@ interface ChargePluginMetadata {
 }
 
 export default function ChargePluginConfigPage() {
+  usePageTitle("Charge Plugin Config");
   const params = useParams<{ pluginId: string }>();
   const pluginId = params.pluginId || "";
 

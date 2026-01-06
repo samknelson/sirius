@@ -3,6 +3,60 @@ import { pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, j
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export {
+  optionsDispatchJobType,
+  dispatchJobs,
+  dispatchJobStatusEnum,
+  insertDispatchJobTypeSchema,
+  insertDispatchJobSchema,
+  dispatches,
+  dispatchStatusEnum,
+  insertDispatchSchema,
+  workerDispatchStatus,
+  workerDispatchStatusEnum,
+  insertWorkerDispatchStatusSchema,
+  workerDispatchEligDenorm,
+  insertWorkerDispatchEligDenormSchema,
+  type DispatchJobStatus,
+  type InsertDispatchJobType,
+  type DispatchJobType,
+  type InsertDispatchJob,
+  type DispatchJob,
+  type DispatchStatus,
+  type InsertDispatch,
+  type Dispatch,
+  type WorkerDispatchStatusOption,
+  type InsertWorkerDispatchStatus,
+  type WorkerDispatchStatus,
+  type InsertWorkerDispatchEligDenorm,
+  type WorkerDispatchEligDenorm,
+} from "./schema/dispatch/schema";
+
+export {
+  workerDispatchDnc,
+  dispatchWorkerDncTypeEnum,
+  insertWorkerDispatchDncSchema,
+  type DispatchWorkerDncType,
+  type InsertWorkerDispatchDnc,
+  type WorkerDispatchDnc,
+} from "./schema/dispatch/dnc-schema";
+
+export {
+  workerDispatchHfe,
+  insertWorkerDispatchHfeSchema,
+  type InsertWorkerDispatchHfe,
+  type WorkerDispatchHfe,
+} from "./schema/dispatch/hfe-schema";
+
+export {
+  eligibilityPluginConfigSchema,
+  jobTypeEligibilitySchema,
+  type EligibilityPluginConfig,
+  type JobTypeEligibility,
+  type EligibilityPluginMetadata,
+  type JobTypeData,
+} from "./schema/dispatch/eligibility-config";
+
 // Session storage table for Replit Auth
 export const sessions = pgTable(
   "sessions",
@@ -26,6 +80,7 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
   lastLogin: timestamp("last_login"),
+  data: jsonb("data"),
 });
 
 export const roles = pgTable("roles", {
@@ -77,6 +132,17 @@ export const workers = pgTable("workers", {
   denormHomeEmployerId: varchar("denorm_home_employer_id").references(() => employers.id, { onDelete: 'set null' }),
   denormEmployerIds: varchar("denorm_employer_ids").array(),
   bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),
+});
+
+export const workerBans = pgTable("worker_bans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
+  type: varchar("type"),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date"),
+  active: boolean("active").default(true),
+  message: text("message"),
+  data: jsonb("data"),
 });
 
 export const employers = pgTable("employers", {
@@ -604,6 +670,18 @@ export const insertWorkerSchema = createInsertSchema(workers).omit({
   contactId: true, // Contact will be managed automatically
 });
 
+export const workerBanTypeEnum = ["dispatch"] as const;
+export type WorkerBanType = typeof workerBanTypeEnum[number];
+
+export const insertWorkerBanSchema = createInsertSchema(workerBans).omit({
+  id: true,
+  active: true, // Auto-calculated based on end_date
+}).extend({
+  startDate: z.coerce.date(),
+  endDate: z.coerce.date().optional().nullable(),
+  type: z.enum(workerBanTypeEnum).optional().nullable(),
+});
+
 export const insertEmployerSchema = createInsertSchema(employers).omit({
   id: true,
 });
@@ -836,6 +914,9 @@ export type Contact = typeof contacts.$inferSelect;
 
 export type InsertWorker = z.infer<typeof insertWorkerSchema>;
 export type Worker = typeof workers.$inferSelect;
+
+export type InsertWorkerBan = z.infer<typeof insertWorkerBanSchema>;
+export type WorkerBan = typeof workerBans.$inferSelect;
 
 export type InsertEmployer = z.infer<typeof insertEmployerSchema>;
 export type Employer = typeof employers.$inferSelect;

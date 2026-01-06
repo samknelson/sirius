@@ -5,8 +5,7 @@ export function registerSystemModeRoutes(
   app: Express,
   requireAuth: any,
   requirePermission: any,
-  requireAccess: any,
-  policies: any
+  requireAccess: any
 ) {
   // GET /api/system-mode - Get current system mode (no auth required for indicator display)
   app.get("/api/system-mode", async (req, res) => {
@@ -20,7 +19,7 @@ export function registerSystemModeRoutes(
   });
 
   // PUT /api/system-mode - Update system mode (requires admin policy)
-  app.put("/api/system-mode", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/system-mode", requireAccess('admin'), async (req, res) => {
     try {
       const { mode } = req.body;
       

@@ -10,6 +10,7 @@ import {
   optionsWorkerWs,
   optionsEmploymentStatus,
   optionsEventType,
+  optionsDispatchJobType,
   type GenderOption, 
   type InsertGenderOption,
   type WorkerIdType, 
@@ -29,7 +30,9 @@ import {
   type EmploymentStatus,
   type InsertEmploymentStatus,
   type EventType,
-  type InsertEventType
+  type InsertEventType,
+  type DispatchJobType,
+  type InsertDispatchJobType
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
@@ -181,6 +184,36 @@ export interface EventTypeStorage {
   delete(id: string): Promise<boolean>;
 }
 
+export interface DispatchJobTypeStorage {
+  getAll(): Promise<DispatchJobType[]>;
+  get(id: string): Promise<DispatchJobType | undefined>;
+  create(jobType: InsertDispatchJobType): Promise<DispatchJobType>;
+  update(id: string, jobType: Partial<InsertDispatchJobType>): Promise<DispatchJobType | undefined>;
+  delete(id: string): Promise<boolean>;
+}
+
+export const dispatchJobTypeLoggingConfig: StorageLoggingConfig<DispatchJobTypeStorage> = {
+  module: 'options.dispatchJobTypes',
+  methods: {
+    create: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.name || 'new dispatch job type',
+      after: async (args, result) => result
+    },
+    update: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      before: async (args, storage) => await storage.get(args[0]),
+      after: async (args, result) => result
+    },
+    delete: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      before: async (args, storage) => await storage.get(args[0])
+    }
+  }
+};
+
 export const eventTypeLoggingConfig: StorageLoggingConfig<EventTypeStorage> = {
   module: 'options.eventTypes',
   methods: {
@@ -222,6 +255,7 @@ export interface OptionsStorage {
   workerWs: WorkerWsStorage;
   employmentStatus: EmploymentStatusStorage;
   eventTypes: EventTypeStorage;
+  dispatchJobTypes: DispatchJobTypeStorage;
 }
 
 export function createOptionsStorage(): OptionsStorage {
@@ -580,6 +614,39 @@ export function createOptionsStorage(): OptionsStorage {
 
       async delete(id: string): Promise<boolean> {
         const result = await db.delete(optionsEventType).where(eq(optionsEventType.id, id)).returning();
+        return result.length > 0;
+      }
+    },
+
+    dispatchJobTypes: {
+      async getAll(): Promise<DispatchJobType[]> {
+        return db.select().from(optionsDispatchJobType);
+      },
+
+      async get(id: string): Promise<DispatchJobType | undefined> {
+        const [jobType] = await db.select().from(optionsDispatchJobType).where(eq(optionsDispatchJobType.id, id));
+        return jobType || undefined;
+      },
+
+      async create(insertJobType: InsertDispatchJobType): Promise<DispatchJobType> {
+        const [jobType] = await db
+          .insert(optionsDispatchJobType)
+          .values(insertJobType)
+          .returning();
+        return jobType;
+      },
+
+      async update(id: string, jobTypeUpdate: Partial<InsertDispatchJobType>): Promise<DispatchJobType | undefined> {
+        const [jobType] = await db
+          .update(optionsDispatchJobType)
+          .set(jobTypeUpdate)
+          .where(eq(optionsDispatchJobType.id, id))
+          .returning();
+        return jobType || undefined;
+      },
+
+      async delete(id: string): Promise<boolean> {
+        const result = await db.delete(optionsDispatchJobType).where(eq(optionsDispatchJobType.id, id)).returning();
         return result.length > 0;
       }
     }

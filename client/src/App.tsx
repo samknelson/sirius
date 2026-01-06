@@ -5,211 +5,250 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { TerminologyProvider } from "@/contexts/TerminologyContext";
+import { PageTitleProvider } from "@/contexts/PageTitleContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// Import charge plugin UIs to register them (side effect import)
+import "@/plugins/charge-plugins";
+
+// Essential pages loaded eagerly for fast initial render
 import LoginPage from "@/pages/login";
 import UnauthorizedPage from "@/pages/unauthorized";
-import Bootstrap from "@/pages/bootstrap";
-import SmsOptinPage from "@/pages/sms-optin";
-import Dashboard from "@/pages/dashboard";
-import Bookmarks from "@/pages/bookmarks";
-import AlertsPage, { AlertsRedirect } from "@/pages/alerts";
-import Reports from "@/pages/reports";
-import ReportType from "@/pages/report-type";
-import Workers from "@/pages/workers";
-import WorkersAdd from "@/pages/workers-add";
-import WorkerView from "@/pages/worker-view";
-import WorkerName from "@/pages/worker-name";
-import WorkerEmail from "@/pages/worker-email";
-import WorkerIDs from "@/pages/worker-ids";
-import WorkerBirthDate from "@/pages/worker-birth-date";
-import WorkerGender from "@/pages/worker-gender";
-import WorkerWorkStatus from "@/pages/worker-work-status";
-import WorkerUserPage from "@/pages/worker-user";
-import WorkerBargainingUnit from "@/pages/worker-bargaining-unit";
-import WorkerSteward from "@/pages/worker-steward";
-import WorkerRepresentatives from "@/pages/worker-representatives";
-import WorkerLedgerAccounts from "@/pages/worker-ledger-accounts";
-import Stewards from "@/pages/stewards";
-import WorkerBenefitsHistory from "@/pages/worker-benefits-history";
-import WorkerBenefitsEligibility from "@/pages/worker-benefits-eligibility";
-import WorkerBenefitsScan from "@/pages/worker-benefits-scan";
-import WorkerCurrentEmployment from "@/pages/worker-current-employment";
-import WorkerEmploymentHistory from "@/pages/worker-employment-history";
-import WorkerHoursMonthly from "@/pages/worker-hours-monthly";
-import WorkerHoursDaily from "@/pages/worker-hours-daily";
-import WorkerHoursView from "@/pages/worker-hours-view";
-import WorkerHoursEdit from "@/pages/worker-hours-edit";
-import WorkerHoursDelete from "@/pages/worker-hours-delete";
-import WorkerLogs from "@/pages/worker-logs";
-import WorkerAddresses from "@/pages/worker-addresses";
-import WorkerPhoneNumbers from "@/pages/worker-phone-numbers";
-import WorkerCommHistory from "@/pages/worker-comm-history";
-import WorkerSendSms from "@/pages/worker-send-sms";
-import WorkerSendEmail from "@/pages/worker-send-email";
-import WorkerSendPostal from "@/pages/worker-send-postal";
-import WorkerSendInApp from "@/pages/worker-send-inapp";
-import CommDetail from "@/pages/comm-detail";
-import WorkerDelete from "@/pages/worker-delete";
-import Employers from "@/pages/employers";
-import EmployersAdd from "@/pages/employers-add";
-import EmployerView from "@/pages/employer-view";
-import EmployerEdit from "@/pages/employer-edit";
-import EmployerWorkers from "@/pages/employer-workers";
-import EmployerContacts from "@/pages/employer-contacts";
-import EmployerWizards from "@/pages/employer-wizards";
-import EmployersMonthlyUploads from "@/pages/employers-monthly-uploads";
-import AllEmployerContacts from "@/pages/all-employer-contacts";
-import EmployerContactView from "@/pages/employer-contact-view";
-import EmployerContactEdit from "@/pages/employer-contact-edit";
-import EmployerContactName from "@/pages/employer-contact-name";
-import EmployerContactEmail from "@/pages/employer-contact-email";
-import EmployerContactPhoneNumbers from "@/pages/employer-contact-phone-numbers";
-import EmployerContactAddresses from "@/pages/employer-contact-addresses";
-import EmployerContactUser from "@/pages/employer-contact-user";
-import EmployerContactCommHistory from "@/pages/employer-contact-comm-history";
-import EmployerContactSendSms from "@/pages/employer-contact-send-sms";
-import EmployerContactSendEmail from "@/pages/employer-contact-send-email";
-import EmployerContactSendPostal from "@/pages/employer-contact-send-postal";
-import EmployerContactSendInApp from "@/pages/employer-contact-send-inapp";
-import EmployerLogs from "@/pages/employer-logs";
-import EmployerPolicyHistory from "@/pages/employer-policy-history";
-import EmployerStewards from "@/pages/employer-stewards";
-import WizardView from "@/pages/wizard-view";
-import StripeCustomerPage from "@/pages/employers/stripe-customer";
-import StripePaymentMethodsPage from "@/pages/employers/stripe-payment-methods";
-import EmployerLedgerAccountsWrapper from "@/pages/employer-ledger-accounts-wrapper";
-import EAView from "@/pages/ea-view";
-import EAInvoices from "@/pages/ea-invoices";
-import EAPayments from "@/pages/ea-payments";
-import EATransactions from "@/pages/ea-transactions";
-import PaymentView from "@/pages/payment-view";
-import PaymentEdit from "@/pages/payment-edit";
-import TrustBenefits from "@/pages/trust-benefits";
-import TrustBenefitsAdd from "@/pages/trust-benefits-add";
-import TrustBenefitView from "@/pages/trust-benefit-view";
-import TrustBenefitEdit from "@/pages/trust-benefit-edit";
-import TrustProvidersPage from "@/pages/trust-providers";
-import TrustProviderViewPage from "@/pages/trust-provider-view";
-import TrustProviderEditPage from "@/pages/trust-provider-edit";
-import TrustProviderContactsPage from "@/pages/trust-provider-contacts";
-import TrustProviderContactView from "@/pages/trust-provider-contact-view";
-import TrustProviderContactEdit from "@/pages/trust-provider-contact-edit";
-import TrustProviderContactName from "@/pages/trust-provider-contact-name";
-import TrustProviderContactEmail from "@/pages/trust-provider-contact-email";
-import TrustProviderContactPhoneNumbers from "@/pages/trust-provider-contact-phone-numbers";
-import TrustProviderContactAddresses from "@/pages/trust-provider-contact-addresses";
-import TrustProviderContactUser from "@/pages/trust-provider-contact-user";
-import TrustProviderContactCommHistory from "@/pages/trust-provider-contact-comm-history";
-import TrustProviderContactSendSms from "@/pages/trust-provider-contact-send-sms";
-import TrustProviderContactSendEmail from "@/pages/trust-provider-contact-send-email";
-import TrustProviderContactSendPostal from "@/pages/trust-provider-contact-send-postal";
-import TrustProviderContactSendInApp from "@/pages/trust-provider-contact-send-inapp";
-import TrustProviderLogsPage from "@/pages/trust-provider-logs";
-import BargainingUnitsPage from "@/pages/bargaining-units";
-import BargainingUnitViewPage from "@/pages/bargaining-unit-view";
-import BargainingUnitEditPage from "@/pages/bargaining-unit-edit";
-import BargainingUnitDeletePage from "@/pages/bargaining-unit-delete";
-import AdminUsersPage from "@/pages/admin/users";
-import UserAccountPage from "@/pages/admin/user-account";
-import UserLogs from "@/pages/admin/user-logs";
-import UserEmail from "@/pages/admin/user-email";
-import UserPhoneNumbers from "@/pages/admin/user-phone-numbers";
-import UserAddresses from "@/pages/admin/user-addresses";
-import UserCommHistory from "@/pages/admin/user-comm-history";
-import UserSendSms from "@/pages/admin/user-send-sms";
-import UserSendEmail from "@/pages/admin/user-send-email";
-import UserSendPostal from "@/pages/admin/user-send-postal";
-import UserSendInApp from "@/pages/admin/user-send-inapp";
-import AdminRolesPage from "@/pages/admin/roles";
-import AdminPermissionsPage from "@/pages/admin/permissions";
-import WmbScanQueue from "@/pages/admin/wmb-scan-queue";
-import WmbScanDetail from "@/pages/admin/wmb-scan-detail";
-import AdminQuickstarts from "@/pages/admin-quickstarts";
-import CronJobs from "@/pages/cron-jobs";
-import CronJobView from "@/pages/cron-job-view";
-import CronJobSettings from "@/pages/cron-job-settings";
-import CronJobHistory from "@/pages/cron-job-history";
+import NotFound from "@/pages/not-found";
+
+// Lazy-loaded pages
+const Bootstrap = lazy(() => import("@/pages/bootstrap"));
+const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const Bookmarks = lazy(() => import("@/pages/bookmarks"));
+const AlertsPage = lazy(() => import("@/pages/alerts").then(m => ({ default: m.default })));
+const AlertsRedirect = lazy(() => import("@/pages/alerts").then(m => ({ default: m.AlertsRedirect })));
+const Reports = lazy(() => import("@/pages/reports"));
+const ReportType = lazy(() => import("@/pages/report-type"));
+const Workers = lazy(() => import("@/pages/workers"));
+const WorkersAdd = lazy(() => import("@/pages/workers-add"));
+const WorkerView = lazy(() => import("@/pages/worker-view"));
+const WorkerName = lazy(() => import("@/pages/worker-name"));
+const WorkerEmail = lazy(() => import("@/pages/worker-email"));
+const WorkerIDs = lazy(() => import("@/pages/worker-ids"));
+const WorkerBirthDate = lazy(() => import("@/pages/worker-birth-date"));
+const WorkerGender = lazy(() => import("@/pages/worker-gender"));
+const WorkerWorkStatus = lazy(() => import("@/pages/worker-work-status"));
+const WorkerUserPage = lazy(() => import("@/pages/worker-user"));
+const WorkerBargainingUnit = lazy(() => import("@/pages/worker-bargaining-unit"));
+const WorkerSteward = lazy(() => import("@/pages/worker-steward"));
+const WorkerRepresentatives = lazy(() => import("@/pages/worker-representatives"));
+const WorkerDispatchStatus = lazy(() => import("@/pages/workers/dispatch-status"));
+const WorkerDispatchDoNotCall = lazy(() => import("@/pages/workers/dispatch-do-not-call"));
+const WorkerDispatchHoldForEmployer = lazy(() => import("@/pages/workers/dispatch-hold-for-employer"));
+const WorkerBans = lazy(() => import("@/pages/workers/bans"));
+const WorkerLedgerAccounts = lazy(() => import("@/pages/worker-ledger-accounts"));
+const Stewards = lazy(() => import("@/pages/stewards"));
+const WorkerBenefitsHistory = lazy(() => import("@/pages/worker-benefits-history"));
+const WorkerBenefitsEligibility = lazy(() => import("@/pages/worker-benefits-eligibility"));
+const WorkerBenefitsScan = lazy(() => import("@/pages/worker-benefits-scan"));
+const WorkerCurrentEmployment = lazy(() => import("@/pages/worker-current-employment"));
+const WorkerEmploymentHistory = lazy(() => import("@/pages/worker-employment-history"));
+const WorkerHoursMonthly = lazy(() => import("@/pages/worker-hours-monthly"));
+const WorkerHoursDaily = lazy(() => import("@/pages/worker-hours-daily"));
+const WorkerHoursView = lazy(() => import("@/pages/worker-hours-view"));
+const WorkerHoursEdit = lazy(() => import("@/pages/worker-hours-edit"));
+const WorkerHoursDelete = lazy(() => import("@/pages/worker-hours-delete"));
+const WorkerLogs = lazy(() => import("@/pages/worker-logs"));
+const WorkerAddresses = lazy(() => import("@/pages/worker-addresses"));
+const WorkerPhoneNumbers = lazy(() => import("@/pages/worker-phone-numbers"));
+const WorkerCommHistory = lazy(() => import("@/pages/worker-comm-history"));
+const WorkerSendSms = lazy(() => import("@/pages/worker-send-sms"));
+const WorkerSendEmail = lazy(() => import("@/pages/worker-send-email"));
+const WorkerSendPostal = lazy(() => import("@/pages/worker-send-postal"));
+const WorkerSendInApp = lazy(() => import("@/pages/worker-send-inapp"));
+const CommDetail = lazy(() => import("@/pages/comm-detail"));
+const WorkerDelete = lazy(() => import("@/pages/worker-delete"));
+const Employers = lazy(() => import("@/pages/employers"));
+const EmployersAdd = lazy(() => import("@/pages/employers-add"));
+const EmployerView = lazy(() => import("@/pages/employer-view"));
+const EmployerEdit = lazy(() => import("@/pages/employer-edit"));
+const EmployerWorkers = lazy(() => import("@/pages/employer-workers"));
+const EmployerContacts = lazy(() => import("@/pages/employer-contacts"));
+const EmployerWizards = lazy(() => import("@/pages/employer-wizards"));
+const EmployersMonthlyUploads = lazy(() => import("@/pages/employers-monthly-uploads"));
+const AllEmployerContacts = lazy(() => import("@/pages/all-employer-contacts"));
+const EmployerContactView = lazy(() => import("@/pages/employer-contact-view"));
+const EmployerContactEdit = lazy(() => import("@/pages/employer-contact-edit"));
+const EmployerContactName = lazy(() => import("@/pages/employer-contact-name"));
+const EmployerContactEmail = lazy(() => import("@/pages/employer-contact-email"));
+const EmployerContactPhoneNumbers = lazy(() => import("@/pages/employer-contact-phone-numbers"));
+const EmployerContactAddresses = lazy(() => import("@/pages/employer-contact-addresses"));
+const EmployerContactUser = lazy(() => import("@/pages/employer-contact-user"));
+const EmployerContactCommHistory = lazy(() => import("@/pages/employer-contact-comm-history"));
+const EmployerContactSendSms = lazy(() => import("@/pages/employer-contact-send-sms"));
+const EmployerContactSendEmail = lazy(() => import("@/pages/employer-contact-send-email"));
+const EmployerContactSendPostal = lazy(() => import("@/pages/employer-contact-send-postal"));
+const EmployerContactSendInApp = lazy(() => import("@/pages/employer-contact-send-inapp"));
+const EmployerLogs = lazy(() => import("@/pages/employer-logs"));
+const EmployerPolicyHistory = lazy(() => import("@/pages/employer-policy-history"));
+const EmployerStewards = lazy(() => import("@/pages/employer-stewards"));
+const EmployerDispatchPage = lazy(() => import("@/pages/employers/dispatch"));
+const WizardView = lazy(() => import("@/pages/wizard-view"));
+const StripeCustomerPage = lazy(() => import("@/pages/employers/stripe-customer"));
+const StripePaymentMethodsPage = lazy(() => import("@/pages/employers/stripe-payment-methods"));
+const EmployerLedgerAccountsWrapper = lazy(() => import("@/pages/employer-ledger-accounts-wrapper"));
+const EAView = lazy(() => import("@/pages/ea-view"));
+const EAInvoices = lazy(() => import("@/pages/ea-invoices"));
+const EAPayments = lazy(() => import("@/pages/ea-payments"));
+const EATransactions = lazy(() => import("@/pages/ea-transactions"));
+const PaymentView = lazy(() => import("@/pages/payment-view"));
+const PaymentEdit = lazy(() => import("@/pages/payment-edit"));
+const TrustBenefits = lazy(() => import("@/pages/trust-benefits"));
+const TrustBenefitsAdd = lazy(() => import("@/pages/trust-benefits-add"));
+const TrustBenefitView = lazy(() => import("@/pages/trust-benefit-view"));
+const TrustBenefitEdit = lazy(() => import("@/pages/trust-benefit-edit"));
+const TrustProvidersPage = lazy(() => import("@/pages/trust-providers"));
+const TrustProviderViewPage = lazy(() => import("@/pages/trust-provider-view"));
+const TrustProviderEditPage = lazy(() => import("@/pages/trust-provider-edit"));
+const TrustProviderContactsPage = lazy(() => import("@/pages/trust-provider-contacts"));
+const TrustProviderContactView = lazy(() => import("@/pages/trust-provider-contact-view"));
+const TrustProviderContactEdit = lazy(() => import("@/pages/trust-provider-contact-edit"));
+const TrustProviderContactName = lazy(() => import("@/pages/trust-provider-contact-name"));
+const TrustProviderContactEmail = lazy(() => import("@/pages/trust-provider-contact-email"));
+const TrustProviderContactPhoneNumbers = lazy(() => import("@/pages/trust-provider-contact-phone-numbers"));
+const TrustProviderContactAddresses = lazy(() => import("@/pages/trust-provider-contact-addresses"));
+const TrustProviderContactUser = lazy(() => import("@/pages/trust-provider-contact-user"));
+const TrustProviderContactCommHistory = lazy(() => import("@/pages/trust-provider-contact-comm-history"));
+const TrustProviderContactSendSms = lazy(() => import("@/pages/trust-provider-contact-send-sms"));
+const TrustProviderContactSendEmail = lazy(() => import("@/pages/trust-provider-contact-send-email"));
+const TrustProviderContactSendPostal = lazy(() => import("@/pages/trust-provider-contact-send-postal"));
+const TrustProviderContactSendInApp = lazy(() => import("@/pages/trust-provider-contact-send-inapp"));
+const TrustProviderLogsPage = lazy(() => import("@/pages/trust-provider-logs"));
+const BargainingUnitsPage = lazy(() => import("@/pages/bargaining-units"));
+const BargainingUnitViewPage = lazy(() => import("@/pages/bargaining-unit-view"));
+const BargainingUnitEditPage = lazy(() => import("@/pages/bargaining-unit-edit"));
+const BargainingUnitDeletePage = lazy(() => import("@/pages/bargaining-unit-delete"));
+const AdminUsersPage = lazy(() => import("@/pages/admin/users"));
+const UserAccountPage = lazy(() => import("@/pages/admin/user-account"));
+const UserLogs = lazy(() => import("@/pages/admin/user-logs"));
+const UserEmail = lazy(() => import("@/pages/admin/user-email"));
+const UserPhoneNumbers = lazy(() => import("@/pages/admin/user-phone-numbers"));
+const UserAddresses = lazy(() => import("@/pages/admin/user-addresses"));
+const UserCommHistory = lazy(() => import("@/pages/admin/user-comm-history"));
+const UserSendSms = lazy(() => import("@/pages/admin/user-send-sms"));
+const UserSendEmail = lazy(() => import("@/pages/admin/user-send-email"));
+const UserSendPostal = lazy(() => import("@/pages/admin/user-send-postal"));
+const UserSendInApp = lazy(() => import("@/pages/admin/user-send-inapp"));
+const AdminRolesPage = lazy(() => import("@/pages/admin/roles"));
+const AdminPermissionsPage = lazy(() => import("@/pages/admin/permissions"));
+const WmbScanQueue = lazy(() => import("@/pages/admin/wmb-scan-queue"));
+const WmbScanDetail = lazy(() => import("@/pages/admin/wmb-scan-detail"));
+const AdminQuickstarts = lazy(() => import("@/pages/admin-quickstarts"));
+const CronJobs = lazy(() => import("@/pages/cron-jobs"));
+const CronJobView = lazy(() => import("@/pages/cron-job-view"));
+const CronJobSettings = lazy(() => import("@/pages/cron-job-settings"));
+const CronJobHistory = lazy(() => import("@/pages/cron-job-history"));
 import AdminLayout from "@/components/layouts/AdminLayout";
 import ConfigurationLayout from "@/components/layouts/ConfigurationLayout";
-import UsersListPage from "@/pages/config/users/list";
-import RolesPage from "@/pages/config/users/roles";
-import PermissionsPage from "@/pages/config/users/permissions";
-import PoliciesPage from "@/pages/config/users/policies";
-import EmployerUserSettingsPage from "@/pages/config/users/employer-settings";
-import TrustProviderUserSettingsPage from "@/pages/config/users/trust-provider-settings";
-import WorkerUserSettingsPage from "@/pages/config/users/worker-settings";
-import SessionsPage from "@/pages/sessions";
-import FloodEventsPage from "@/pages/flood-events";
-import FloodEventsConfigPage from "@/pages/flood-events-config";
-import PostalAddressesConfigPage from "@/pages/config/addresses";
-import PhoneNumbersConfigPage from "@/pages/config/phone-numbers";
-import GenderOptionsPage from "@/pages/config/gender-options";
-import WorkerIDTypesPage from "@/pages/config/worker-id-types";
-import WorkerWorkStatusesPage from "@/pages/config/worker-work-statuses";
-import StewardSettingsPage from "@/pages/config/steward-settings";
-import EmploymentStatusesPage from "@/pages/config/employment-statuses";
-import TrustBenefitTypesPage from "@/pages/config/trust-benefit-types";
-import EmployerContactTypesPage from "@/pages/config/employer-contact-types";
-import EmployerTypesPage from "@/pages/config/employer-types";
-import ProviderContactTypesPage from "@/pages/config/provider-contact-types";
-import EventTypesPage from "@/pages/config/event-types";
-import MasqueradePage from "@/pages/config/masquerade";
-import SystemModePage from "@/pages/config/system-mode";
-import DefaultPolicyPage from "@/pages/config/default-policy";
-import TwilioConfigPage from "@/pages/config/twilio";
-import EmailConfigPage from "@/pages/config/email";
-import PostalConfigPage from "@/pages/config/postal";
-import LogsPage from "@/pages/config/logs";
-import DashboardPluginsConfigPage from "@/pages/config/dashboard-plugins";
-import PluginSettingsPage from "@/pages/config/plugin-settings";
-import ComponentsConfigPage from "@/pages/config/components";
-import StripeTestPage from "@/pages/config/ledger/stripe/test";
-import StripeSettingsPage from "@/pages/config/ledger/stripe/settings";
-import PaymentTypesPage from "@/pages/config/ledger/stripe/payment-types";
-import LedgerPaymentTypesPage from "@/pages/config/ledger-payment-types";
-import ChargePluginsListPage from "@/pages/config/ledger/charge-plugins-list";
-import ChargePluginConfigPage from "@/pages/config/ledger/charge-plugin-config";
-import ChargePluginFormPage from "@/pages/config/ledger/charge-plugin-form";
-import ConfigurationLandingPage from "@/pages/config/index";
+const UsersListPage = lazy(() => import("@/pages/config/users/list"));
+const RolesPage = lazy(() => import("@/pages/config/users/roles"));
+const PermissionsPage = lazy(() => import("@/pages/config/users/permissions"));
+const PoliciesPage = lazy(() => import("@/pages/config/users/policies"));
+const EmployerUserSettingsPage = lazy(() => import("@/pages/config/users/employer-settings"));
+const TrustProviderUserSettingsPage = lazy(() => import("@/pages/config/users/trust-provider-settings"));
+const WorkerUserSettingsPage = lazy(() => import("@/pages/config/users/worker-settings"));
+const SessionsPage = lazy(() => import("@/pages/sessions"));
+const FloodEventsPage = lazy(() => import("@/pages/flood-events"));
+const FloodEventsConfigPage = lazy(() => import("@/pages/flood-events-config"));
+const PostalAddressesConfigPage = lazy(() => import("@/pages/config/addresses"));
+const PhoneNumbersConfigPage = lazy(() => import("@/pages/config/phone-numbers"));
+const GenderOptionsPage = lazy(() => import("@/pages/config/gender-options"));
+const WorkerIDTypesPage = lazy(() => import("@/pages/config/worker-id-types"));
+const WorkerWorkStatusesPage = lazy(() => import("@/pages/config/worker-work-statuses"));
+const StewardSettingsPage = lazy(() => import("@/pages/config/steward-settings"));
+const EmploymentStatusesPage = lazy(() => import("@/pages/config/employment-statuses"));
+const TrustBenefitTypesPage = lazy(() => import("@/pages/config/trust-benefit-types"));
+const EmployerContactTypesPage = lazy(() => import("@/pages/config/employer-contact-types"));
+const EmployerTypesPage = lazy(() => import("@/pages/config/employer-types"));
+const ProviderContactTypesPage = lazy(() => import("@/pages/config/provider-contact-types"));
+const EventTypesPage = lazy(() => import("@/pages/config/event-types"));
+const DispatchJobTypesPage = lazy(() => import("@/pages/config/dispatch-job-types"));
+const DispatchJobTypeViewPage = lazy(() => import("@/pages/config/dispatch-job-type-view"));
+const DispatchJobTypeEditPage = lazy(() => import("@/pages/config/dispatch-job-type-edit"));
+const DispatchJobTypeDeletePage = lazy(() => import("@/pages/config/dispatch-job-type-delete"));
+const DispatchJobTypePluginsPage = lazy(() => import("@/pages/config/dispatch-job-type-plugins"));
+const DispatchDncConfigPage = lazy(() => import("@/pages/config/dispatch-dnc"));
+const WorkerBanConfigPage = lazy(() => import("@/pages/config/workers-ban"));
+const DispatchJobsPage = lazy(() => import("@/pages/dispatch/jobs"));
+const DispatchJobDetailsPage = lazy(() => import("@/pages/dispatch/job-details"));
+const DispatchJobEditPage = lazy(() => import("@/pages/dispatch/job-edit"));
+const DispatchJobDispatchesPage = lazy(() => import("@/pages/dispatch/job-dispatches"));
+const DispatchJobEligibleWorkersPage = lazy(() => import("@/pages/dispatch/job-eligible-workers"));
+const DispatchJobNewPage = lazy(() => import("@/pages/dispatch/job-new"));
+const MasqueradePage = lazy(() => import("@/pages/config/masquerade"));
+const SystemModePage = lazy(() => import("@/pages/config/system-mode"));
+const DefaultPolicyPage = lazy(() => import("@/pages/config/default-policy"));
+const TwilioConfigPage = lazy(() => import("@/pages/config/twilio"));
+const EmailConfigPage = lazy(() => import("@/pages/config/email"));
+const PostalConfigPage = lazy(() => import("@/pages/config/postal"));
+const LogsPage = lazy(() => import("@/pages/config/logs"));
+const DashboardPluginsConfigPage = lazy(() => import("@/pages/config/dashboard-plugins"));
+const PluginSettingsPage = lazy(() => import("@/pages/config/plugin-settings"));
+const ComponentsConfigPage = lazy(() => import("@/pages/config/components"));
+const StripeTestPage = lazy(() => import("@/pages/config/ledger/stripe/test"));
+const StripeSettingsPage = lazy(() => import("@/pages/config/ledger/stripe/settings"));
+const PaymentTypesPage = lazy(() => import("@/pages/config/ledger/stripe/payment-types"));
+const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-types"));
+const ChargePluginsListPage = lazy(() => import("@/pages/config/ledger/charge-plugins-list"));
+const ChargePluginConfigPage = lazy(() => import("@/pages/config/ledger/charge-plugin-config"));
+const ChargePluginFormPage = lazy(() => import("@/pages/config/ledger/charge-plugin-form"));
+const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
+const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
+const LedgerAccountView = lazy(() => import("@/pages/config/ledger/account-view"));
+const LedgerAccountEdit = lazy(() => import("@/pages/config/ledger/account-edit"));
+const AccountPayments = lazy(() => import("@/pages/config/ledger/account-payments"));
+const AccountTransactions = lazy(() => import("@/pages/config/ledger/account-transactions"));
+const AccountParticipants = lazy(() => import("@/pages/account-participants"));
+const AccountSettings = lazy(() => import("@/pages/config/ledger/account-settings"));
+const SiteInformation = lazy(() => import("@/pages/site-information"));
+const TerminologyConfigPage = lazy(() => import("@/pages/config/terminology"));
+const PolicyView = lazy(() => import("@/pages/policy-view"));
+const PolicyEdit = lazy(() => import("@/pages/policy-edit"));
+const PolicyBenefits = lazy(() => import("@/pages/policy-benefits"));
+const PoliciesConfigPage = lazy(() => import("@/pages/config/policies"));
+const BargainingUnitsConfigPage = lazy(() => import("@/pages/config/bargaining-units"));
+const CardcheckDefinitionsPage = lazy(() => import("@/pages/cardcheck-definitions"));
+const CardcheckDefinitionViewPage = lazy(() => import("@/pages/cardcheck-definition-view"));
+const CardcheckDefinitionEditPage = lazy(() => import("@/pages/cardcheck-definition-edit"));
+const WorkerCardchecks = lazy(() => import("@/pages/worker-cardchecks"));
+const CardcheckViewPage = lazy(() => import("@/pages/cardcheck-view"));
+const EventsListPage = lazy(() => import("@/pages/events"));
+const EventViewPage = lazy(() => import("@/pages/event-view"));
+const EventEditPage = lazy(() => import("@/pages/event-edit"));
+const EventDeletePage = lazy(() => import("@/pages/event-delete"));
+const EventRegisterPage = lazy(() => import("@/pages/event-register"));
+const EventRosterPage = lazy(() => import("@/pages/event-roster"));
+const EventSelfRegisterPage = lazy(() => import("@/pages/event-self-register"));
+const BtuCsgListPage = lazy(() => import("@/pages/sitespecific/btu/csg-list"));
+const BtuCsgViewPage = lazy(() => import("@/pages/sitespecific/btu/csg-view"));
+const BtuCsgEditPage = lazy(() => import("@/pages/sitespecific/btu/csg-edit"));
+const BtuCsgNewPage = lazy(() => import("@/pages/sitespecific/btu/csg-new"));
+const BtuEmployerMapListPage = lazy(() => import("@/pages/sitespecific/btu/employer-map-list"));
+const BtuWorkerImportPage = lazy(() => import("@/pages/sitespecific/btu/worker-import"));
 
-// Import charge plugin UIs to register them
-import "@/plugins/charge-plugins";
-import LedgerAccountsPage from "@/pages/config/ledger/accounts";
-import LedgerAccountView from "@/pages/config/ledger/account-view";
-import LedgerAccountEdit from "@/pages/config/ledger/account-edit";
-import AccountPayments from "@/pages/config/ledger/account-payments";
-import AccountTransactions from "@/pages/config/ledger/account-transactions";
-import AccountParticipants from "@/pages/account-participants";
-import AccountSettings from "@/pages/config/ledger/account-settings";
-import SiteInformation from "@/pages/site-information";
-import TerminologyConfigPage from "@/pages/config/terminology";
-import PolicyView from "@/pages/policy-view";
-import PolicyEdit from "@/pages/policy-edit";
-import PolicyBenefits from "@/pages/policy-benefits";
-import PoliciesConfigPage from "@/pages/config/policies";
-import BargainingUnitsConfigPage from "@/pages/config/bargaining-units";
-import CardcheckDefinitionsPage from "@/pages/cardcheck-definitions";
-import CardcheckDefinitionViewPage from "@/pages/cardcheck-definition-view";
-import CardcheckDefinitionEditPage from "@/pages/cardcheck-definition-edit";
-import WorkerCardchecks from "@/pages/worker-cardchecks";
-import CardcheckViewPage from "@/pages/cardcheck-view";
-import EventsListPage from "@/pages/events";
-import EventViewPage from "@/pages/event-view";
-import EventEditPage from "@/pages/event-edit";
-import EventDeletePage from "@/pages/event-delete";
-import EventRegisterPage from "@/pages/event-register";
-import EventRosterPage from "@/pages/event-roster";
-import EventSelfRegisterPage from "@/pages/event-self-register";
-import BtuCsgListPage from "@/pages/sitespecific/btu/csg-list";
-import BtuCsgViewPage from "@/pages/sitespecific/btu/csg-view";
-import BtuCsgEditPage from "@/pages/sitespecific/btu/csg-edit";
-import BtuCsgNewPage from "@/pages/sitespecific/btu/csg-new";
-import BtuEmployerMapListPage from "@/pages/sitespecific/btu/employer-map-list";
-import BtuWorkerImportPage from "@/pages/sitespecific/btu/worker-import";
-import NotFound from "@/pages/not-found";
+// Loading fallback component
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <div className="space-y-4 w-full max-w-md">
+        <Skeleton className="h-8 w-3/4" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-5/6" />
+        <Skeleton className="h-32 w-full" />
+      </div>
+    </div>
+  );
+}
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -263,16 +302,17 @@ function Router() {
   }
 
   return (
-    <Switch>
-      {/* Public routes */}
-      <Route path="/bootstrap" component={Bootstrap} />
-      <Route path="/login" component={LoginPage} />
-      <Route path="/unauthorized" component={UnauthorizedPage} />
-      <Route path="/sms/optin/:token" component={SmsOptinPage} />
+    <Suspense fallback={<PageLoader />}>
+      <Switch>
+        {/* Public routes */}
+        <Route path="/bootstrap" component={Bootstrap} />
+        <Route path="/login" component={LoginPage} />
+        <Route path="/unauthorized" component={UnauthorizedPage} />
+        <Route path="/sms/optin/:token" component={SmsOptinPage} />
 
       {/* Protected routes */}
       <Route path="/workers/add">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <WorkersAdd />
           </AuthenticatedLayout>
@@ -280,7 +320,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/phone-numbers">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="phone-numbers" entityType="worker">
           <AuthenticatedLayout>
             <WorkerPhoneNumbers />
           </AuthenticatedLayout>
@@ -288,7 +328,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/comm/history">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="comm-history" entityType="worker">
           <AuthenticatedLayout>
             <WorkerCommHistory />
           </AuthenticatedLayout>
@@ -296,7 +336,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/comm/send-sms">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="send-sms" entityType="worker">
           <AuthenticatedLayout>
             <WorkerSendSms />
           </AuthenticatedLayout>
@@ -304,7 +344,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/comm/send-email">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="send-email" entityType="worker">
           <AuthenticatedLayout>
             <WorkerSendEmail />
           </AuthenticatedLayout>
@@ -312,7 +352,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/comm/send-postal">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="send-postal" entityType="worker">
           <AuthenticatedLayout>
             <WorkerSendPostal />
           </AuthenticatedLayout>
@@ -320,7 +360,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/comm/send-inapp">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="send-inapp" entityType="worker">
           <AuthenticatedLayout>
             <WorkerSendInApp />
           </AuthenticatedLayout>
@@ -328,7 +368,7 @@ function Router() {
       </Route>
 
       <Route path="/comm/:commId">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <CommDetail />
           </AuthenticatedLayout>
@@ -336,7 +376,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/addresses">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="addresses" entityType="worker">
           <AuthenticatedLayout>
             <WorkerAddresses />
           </AuthenticatedLayout>
@@ -344,7 +384,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/name">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="name" entityType="worker">
           <AuthenticatedLayout>
             <WorkerName />
           </AuthenticatedLayout>
@@ -352,7 +392,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/email">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="email" entityType="worker">
           <AuthenticatedLayout>
             <WorkerEmail />
           </AuthenticatedLayout>
@@ -360,7 +400,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/ids">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="ids" entityType="worker">
           <AuthenticatedLayout>
             <WorkerIDs />
           </AuthenticatedLayout>
@@ -368,7 +408,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/birth-date">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="birth-date" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBirthDate />
           </AuthenticatedLayout>
@@ -376,7 +416,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/gender">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="gender" entityType="worker">
           <AuthenticatedLayout>
             <WorkerGender />
           </AuthenticatedLayout>
@@ -384,7 +424,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/work-status">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="work-status" entityType="worker">
           <AuthenticatedLayout>
             <WorkerWorkStatus />
           </AuthenticatedLayout>
@@ -392,15 +432,23 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/user">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="user" entityType="worker">
           <AuthenticatedLayout>
             <WorkerUserPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
+      <Route path="/workers/:id/bans">
+        <ProtectedRoute tabId="bans" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerBans />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/:id/union/bargaining-unit">
-        <ProtectedRoute permission="workers.view" component="bargainingunits">
+        <ProtectedRoute tabId="bargaining-unit" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBargainingUnit />
           </AuthenticatedLayout>
@@ -408,7 +456,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/benefits/history">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="benefits-history" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBenefitsHistory />
           </AuthenticatedLayout>
@@ -416,7 +464,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/benefits/eligibility">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="benefits-eligibility" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBenefitsEligibility />
           </AuthenticatedLayout>
@@ -424,7 +472,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/benefits/scan">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="benefits-scan" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBenefitsScan />
           </AuthenticatedLayout>
@@ -432,7 +480,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/union/cardchecks">
-        <ProtectedRoute permission="workers.view" component="cardcheck">
+        <ProtectedRoute tabId="cardchecks" entityType="worker">
           <AuthenticatedLayout>
             <WorkerCardchecks />
           </AuthenticatedLayout>
@@ -440,7 +488,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/union/steward">
-        <ProtectedRoute permission="workers.view" component="worker.steward">
+        <ProtectedRoute tabId="steward" entityType="worker">
           <AuthenticatedLayout>
             <WorkerSteward />
           </AuthenticatedLayout>
@@ -448,15 +496,39 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/union/representatives">
-        <ProtectedRoute permission="workers.view" component="worker.steward">
+        <ProtectedRoute tabId="representatives" entityType="worker">
           <AuthenticatedLayout>
             <WorkerRepresentatives />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
+      <Route path="/workers/:id/dispatch/status">
+        <ProtectedRoute tabId="dispatch-status" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerDispatchStatus />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/dispatch/do-not-call">
+        <ProtectedRoute tabId="dispatch-dnc" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerDispatchDoNotCall />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/dispatch/hold-for-employer">
+        <ProtectedRoute tabId="dispatch-hfe" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerDispatchHoldForEmployer />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/:id/ledger/accounts">
-        <ProtectedRoute permission="workers.view" component="ledger">
+        <ProtectedRoute tabId="accounting" entityType="worker">
           <AuthenticatedLayout>
             <WorkerLedgerAccounts />
           </AuthenticatedLayout>
@@ -464,7 +536,7 @@ function Router() {
       </Route>
 
       <Route path="/cardchecks/:id">
-        <ProtectedRoute permission="workers.view" component="cardcheck">
+        <ProtectedRoute component="cardcheck">
           <AuthenticatedLayout>
             <CardcheckViewPage />
           </AuthenticatedLayout>
@@ -472,7 +544,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/employment/current">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="current" entityType="worker">
           <AuthenticatedLayout>
             <WorkerCurrentEmployment />
           </AuthenticatedLayout>
@@ -480,7 +552,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/employment/history">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="history" entityType="worker">
           <AuthenticatedLayout>
             <WorkerEmploymentHistory />
           </AuthenticatedLayout>
@@ -488,7 +560,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/employment/monthly">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="monthly" entityType="worker">
           <AuthenticatedLayout>
             <WorkerHoursMonthly />
           </AuthenticatedLayout>
@@ -496,7 +568,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/employment/daily">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="daily" entityType="worker">
           <AuthenticatedLayout>
             <WorkerHoursDaily />
           </AuthenticatedLayout>
@@ -504,25 +576,25 @@ function Router() {
       </Route>
 
       <Route path="/hours/:hoursId">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <WorkerHoursView />
         </ProtectedRoute>
       </Route>
 
       <Route path="/hours/:hoursId/edit">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute permission="staff">
           <WorkerHoursEdit />
         </ProtectedRoute>
       </Route>
 
       <Route path="/hours/:hoursId/delete">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute permission="staff">
           <WorkerHoursDelete />
         </ProtectedRoute>
       </Route>
 
       <Route path="/workers/:id/logs">
-        <ProtectedRoute policy="staff">
+        <ProtectedRoute tabId="logs" entityType="worker">
           <AuthenticatedLayout>
             <WorkerLogs />
           </AuthenticatedLayout>
@@ -530,7 +602,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/delete">
-        <ProtectedRoute policy="worker">
+        <ProtectedRoute tabId="delete" entityType="worker">
           <AuthenticatedLayout>
             <WorkerDelete />
           </AuthenticatedLayout>
@@ -538,7 +610,7 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id">
-        <ProtectedRoute policy="worker">
+        <ProtectedRoute tabId="details" entityType="worker">
           <AuthenticatedLayout>
             <WorkerView />
           </AuthenticatedLayout>
@@ -546,7 +618,7 @@ function Router() {
       </Route>
 
       <Route path="/workers">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <Workers />
           </AuthenticatedLayout>
@@ -554,7 +626,7 @@ function Router() {
       </Route>
 
       <Route path="/bookmarks">
-        <ProtectedRoute policy="bookmark">
+        <ProtectedRoute policy="staff">
           <AuthenticatedLayout>
             <Bookmarks />
           </AuthenticatedLayout>
@@ -658,7 +730,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/add">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployersAdd />
           </AuthenticatedLayout>
@@ -666,7 +738,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/edit">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute tabId="edit" entityType="employer">
           <AuthenticatedLayout>
             <EmployerEdit />
           </AuthenticatedLayout>
@@ -674,7 +746,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/workers">
-        <ProtectedRoute policy="employerUser">
+        <ProtectedRoute tabId="workers" entityType="employer">
           <AuthenticatedLayout>
             <EmployerWorkers />
           </AuthenticatedLayout>
@@ -682,7 +754,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/contacts">
-        <ProtectedRoute policy="employersView">
+        <ProtectedRoute tabId="contacts" entityType="employer">
           <AuthenticatedLayout>
             <EmployerContacts />
           </AuthenticatedLayout>
@@ -690,7 +762,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/wizards">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="wizards" entityType="employer">
           <AuthenticatedLayout>
             <EmployerWizards />
           </AuthenticatedLayout>
@@ -706,7 +778,7 @@ function Router() {
       </Route>
 
       <Route path="/ea/:id">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.ea.view" component="ledger">
           <AuthenticatedLayout>
             <EAView />
           </AuthenticatedLayout>
@@ -714,7 +786,7 @@ function Router() {
       </Route>
 
       <Route path="/ea/:id/invoices">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.ea.view" component="ledger">
           <AuthenticatedLayout>
             <EAInvoices />
           </AuthenticatedLayout>
@@ -722,7 +794,7 @@ function Router() {
       </Route>
 
       <Route path="/ea/:id/payments">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.ea.view" component="ledger">
           <AuthenticatedLayout>
             <EAPayments />
           </AuthenticatedLayout>
@@ -730,7 +802,7 @@ function Router() {
       </Route>
 
       <Route path="/ea/:id/transactions">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="ledger.ea.view" component="ledger">
           <AuthenticatedLayout>
             <EATransactions />
           </AuthenticatedLayout>
@@ -738,7 +810,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/payment/:id">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="staff" component="ledger">
           <AuthenticatedLayout>
             <PaymentView />
           </AuthenticatedLayout>
@@ -746,7 +818,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/payment/:id/edit">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="staff" component="ledger">
           <AuthenticatedLayout>
             <PaymentEdit />
           </AuthenticatedLayout>
@@ -762,7 +834,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute policy="employer.manage">
           <AuthenticatedLayout>
             <EmployerContactView />
           </AuthenticatedLayout>
@@ -770,7 +842,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/edit">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute policy="employer.manage">
           <AuthenticatedLayout>
             <EmployerContactEdit />
           </AuthenticatedLayout>
@@ -778,7 +850,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/name">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute policy="employer.manage">
           <AuthenticatedLayout>
             <EmployerContactName />
           </AuthenticatedLayout>
@@ -786,7 +858,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/email">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute policy="employer.manage">
           <AuthenticatedLayout>
             <EmployerContactEmail />
           </AuthenticatedLayout>
@@ -794,7 +866,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/phone-numbers">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute policy="employer.manage">
           <AuthenticatedLayout>
             <EmployerContactPhoneNumbers />
           </AuthenticatedLayout>
@@ -802,7 +874,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/addresses">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute policy="employer.manage">
           <AuthenticatedLayout>
             <EmployerContactAddresses />
           </AuthenticatedLayout>
@@ -810,7 +882,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/user">
-        <ProtectedRoute policy="employerUserManage">
+        <ProtectedRoute policy="employer.manage">
           <AuthenticatedLayout>
             <EmployerContactUser />
           </AuthenticatedLayout>
@@ -818,7 +890,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/comm/history">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployerContactCommHistory />
           </AuthenticatedLayout>
@@ -826,7 +898,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/comm/send-sms">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployerContactSendSms />
           </AuthenticatedLayout>
@@ -834,7 +906,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/comm/send-email">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployerContactSendEmail />
           </AuthenticatedLayout>
@@ -842,7 +914,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/comm/send-postal">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployerContactSendPostal />
           </AuthenticatedLayout>
@@ -850,7 +922,7 @@ function Router() {
       </Route>
 
       <Route path="/employer-contacts/:id/comm/send-inapp">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <EmployerContactSendInApp />
           </AuthenticatedLayout>
@@ -858,7 +930,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/ledger/stripe/customer">
-        <ProtectedRoute permission="admin" component="ledger">
+        <ProtectedRoute tabId="customer" entityType="employer">
           <AuthenticatedLayout>
             <StripeCustomerPage />
           </AuthenticatedLayout>
@@ -866,7 +938,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/ledger/stripe/payment_methods">
-        <ProtectedRoute policy="ledgerStripeEmployer" component="ledger">
+        <ProtectedRoute tabId="payment-methods" entityType="employer">
           <AuthenticatedLayout>
             <StripePaymentMethodsPage />
           </AuthenticatedLayout>
@@ -874,7 +946,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/ledger/accounts">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute tabId="accounts" entityType="employer">
           <AuthenticatedLayout>
             <EmployerLedgerAccountsWrapper />
           </AuthenticatedLayout>
@@ -882,7 +954,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/logs">
-        <ProtectedRoute policy="staff">
+        <ProtectedRoute tabId="logs" entityType="employer">
           <AuthenticatedLayout>
             <EmployerLogs />
           </AuthenticatedLayout>
@@ -890,7 +962,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/policy-history">
-        <ProtectedRoute policy="employerUser">
+        <ProtectedRoute tabId="policy-history" entityType="employer">
           <AuthenticatedLayout>
             <EmployerPolicyHistory />
           </AuthenticatedLayout>
@@ -898,15 +970,23 @@ function Router() {
       </Route>
 
       <Route path="/employers/:id/union/stewards">
-        <ProtectedRoute policy="employerUser" component="worker.steward">
+        <ProtectedRoute tabId="stewards" entityType="employer">
           <AuthenticatedLayout>
             <EmployerStewards />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
+      <Route path="/employers/:id/dispatch">
+        <ProtectedRoute tabId="dispatch" entityType="employer">
+          <AuthenticatedLayout>
+            <EmployerDispatchPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/employers/:id">
-        <ProtectedRoute policy="employerUser">
+        <ProtectedRoute tabId="details" entityType="employer">
           <AuthenticatedLayout>
             <EmployerView />
           </AuthenticatedLayout>
@@ -914,7 +994,7 @@ function Router() {
       </Route>
 
       <Route path="/employers">
-        <ProtectedRoute policy="employersView">
+        <ProtectedRoute policy="staff">
           <AuthenticatedLayout>
             <Employers />
           </AuthenticatedLayout>
@@ -930,7 +1010,7 @@ function Router() {
       </Route>
 
       <Route path="/events/:id/edit">
-        <ProtectedRoute permission="admin" component="event">
+        <ProtectedRoute tabId="edit" entityType="event">
           <AuthenticatedLayout>
             <EventEditPage />
           </AuthenticatedLayout>
@@ -938,7 +1018,7 @@ function Router() {
       </Route>
 
       <Route path="/events/:id/delete">
-        <ProtectedRoute permission="admin" component="event">
+        <ProtectedRoute tabId="delete" entityType="event">
           <AuthenticatedLayout>
             <EventDeletePage />
           </AuthenticatedLayout>
@@ -946,7 +1026,7 @@ function Router() {
       </Route>
 
       <Route path="/events/:id/register">
-        <ProtectedRoute permission="admin" component="event">
+        <ProtectedRoute tabId="register" entityType="event">
           <AuthenticatedLayout>
             <EventRegisterPage />
           </AuthenticatedLayout>
@@ -954,7 +1034,7 @@ function Router() {
       </Route>
 
       <Route path="/events/:id/roster">
-        <ProtectedRoute permission="admin" component="event">
+        <ProtectedRoute tabId="roster" entityType="event">
           <AuthenticatedLayout>
             <EventRosterPage />
           </AuthenticatedLayout>
@@ -962,7 +1042,7 @@ function Router() {
       </Route>
 
       <Route path="/events/:id/self-register">
-        <ProtectedRoute component="event">
+        <ProtectedRoute tabId="self-register" entityType="event">
           <AuthenticatedLayout>
             <EventSelfRegisterPage />
           </AuthenticatedLayout>
@@ -970,7 +1050,7 @@ function Router() {
       </Route>
 
       <Route path="/events/:id">
-        <ProtectedRoute permission="admin" component="event">
+        <ProtectedRoute tabId="view" entityType="event">
           <AuthenticatedLayout>
             <EventViewPage />
           </AuthenticatedLayout>
@@ -1035,7 +1115,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-benefits/add">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <TrustBenefitsAdd />
           </AuthenticatedLayout>
@@ -1043,7 +1123,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-benefits/:id/edit">
-        <ProtectedRoute permission="workers.manage">
+        <ProtectedRoute tabId="edit" entityType="trust_benefit">
           <AuthenticatedLayout>
             <TrustBenefitEdit />
           </AuthenticatedLayout>
@@ -1051,7 +1131,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-benefits/:id">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute tabId="details" entityType="trust_benefit">
           <AuthenticatedLayout>
             <TrustBenefitView />
           </AuthenticatedLayout>
@@ -1059,7 +1139,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-benefits">
-        <ProtectedRoute permission="workers.view">
+        <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
             <TrustBenefits />
           </AuthenticatedLayout>
@@ -1067,7 +1147,7 @@ function Router() {
       </Route>
 
       <Route path="/policies/:id/edit">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="edit" entityType="policy">
           <AuthenticatedLayout>
             <PolicyEdit />
           </AuthenticatedLayout>
@@ -1075,7 +1155,7 @@ function Router() {
       </Route>
 
       <Route path="/policies/:id/benefits">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="benefits" entityType="policy">
           <AuthenticatedLayout>
             <PolicyBenefits />
           </AuthenticatedLayout>
@@ -1083,7 +1163,7 @@ function Router() {
       </Route>
 
       <Route path="/policies/:id">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="details" entityType="policy">
           <AuthenticatedLayout>
             <PolicyView />
           </AuthenticatedLayout>
@@ -1091,7 +1171,7 @@ function Router() {
       </Route>
 
       <Route path="/cardcheck-definitions">
-        <ProtectedRoute permission="workers.view" component="cardcheck">
+        <ProtectedRoute permission="staff" component="cardcheck">
           <AuthenticatedLayout>
             <CardcheckDefinitionsPage />
           </AuthenticatedLayout>
@@ -1099,7 +1179,7 @@ function Router() {
       </Route>
 
       <Route path="/cardcheck-definitions/:id/edit">
-        <ProtectedRoute permission="workers.manage" component="cardcheck">
+        <ProtectedRoute permission="staff" component="cardcheck">
           <AuthenticatedLayout>
             <CardcheckDefinitionEditPage />
           </AuthenticatedLayout>
@@ -1107,7 +1187,7 @@ function Router() {
       </Route>
 
       <Route path="/cardcheck-definitions/:id">
-        <ProtectedRoute permission="workers.view" component="cardcheck">
+        <ProtectedRoute permission="staff" component="cardcheck">
           <AuthenticatedLayout>
             <CardcheckDefinitionViewPage />
           </AuthenticatedLayout>
@@ -1115,7 +1195,7 @@ function Router() {
       </Route>
 
       <Route path="/trust/provider/:id/logs">
-        <ProtectedRoute policy="staff" component="trust.providers">
+        <ProtectedRoute tabId="logs" entityType="provider">
           <AuthenticatedLayout>
             <TrustProviderLogsPage />
           </AuthenticatedLayout>
@@ -1219,7 +1299,7 @@ function Router() {
       </Route>
 
       <Route path="/trust/provider/:id/contacts">
-        <ProtectedRoute policy="staff" component="trust.providers">
+        <ProtectedRoute tabId="contacts" entityType="provider">
           <AuthenticatedLayout>
             <TrustProviderContactsPage />
           </AuthenticatedLayout>
@@ -1227,7 +1307,7 @@ function Router() {
       </Route>
 
       <Route path="/trust/provider/:id/edit">
-        <ProtectedRoute permission="workers.manage" component="trust.providers">
+        <ProtectedRoute tabId="edit" entityType="provider">
           <AuthenticatedLayout>
             <TrustProviderEditPage />
           </AuthenticatedLayout>
@@ -1235,7 +1315,7 @@ function Router() {
       </Route>
 
       <Route path="/trust/provider/:id">
-        <ProtectedRoute permission="workers.view" component="trust.providers">
+        <ProtectedRoute tabId="view" entityType="provider">
           <AuthenticatedLayout>
             <TrustProviderViewPage />
           </AuthenticatedLayout>
@@ -1243,7 +1323,7 @@ function Router() {
       </Route>
 
       <Route path="/trust/providers">
-        <ProtectedRoute permission="workers.view" component="trust.providers">
+        <ProtectedRoute permission="staff" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProvidersPage />
           </AuthenticatedLayout>
@@ -1252,7 +1332,7 @@ function Router() {
 
       {/* Bargaining Units routes */}
       <Route path="/bargaining-units/:id/edit">
-        <ProtectedRoute policy="staff" component="bargainingunits">
+        <ProtectedRoute tabId="edit" entityType="bargaining_unit">
           <AuthenticatedLayout>
             <BargainingUnitEditPage />
           </AuthenticatedLayout>
@@ -1260,7 +1340,7 @@ function Router() {
       </Route>
 
       <Route path="/bargaining-units/:id/delete">
-        <ProtectedRoute policy="staff" component="bargainingunits">
+        <ProtectedRoute tabId="delete" entityType="bargaining_unit">
           <AuthenticatedLayout>
             <BargainingUnitDeletePage />
           </AuthenticatedLayout>
@@ -1268,7 +1348,7 @@ function Router() {
       </Route>
 
       <Route path="/bargaining-units/:id">
-        <ProtectedRoute policy="staff" component="bargainingunits">
+        <ProtectedRoute tabId="view" entityType="bargaining_unit">
           <AuthenticatedLayout>
             <BargainingUnitViewPage />
           </AuthenticatedLayout>
@@ -1285,7 +1365,7 @@ function Router() {
 
       {/* Stewards route */}
       <Route path="/stewards">
-        <ProtectedRoute permission="workers.view" component="worker.steward">
+        <ProtectedRoute permission="staff" component="worker.steward">
           <AuthenticatedLayout>
             <Stewards />
           </AuthenticatedLayout>
@@ -1529,6 +1609,116 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/dispatch-job-types">
+        <ProtectedRoute permission="admin" component="dispatch">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DispatchJobTypesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/dispatch-job-type/:id">
+        <ProtectedRoute tabId="view" entityType="dispatch_job_type">
+          <AuthenticatedLayout>
+            <DispatchJobTypeViewPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/dispatch-job-type/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="dispatch_job_type">
+          <AuthenticatedLayout>
+            <DispatchJobTypeEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/dispatch-job-type/:id/plugins">
+        <ProtectedRoute tabId="plugins" entityType="dispatch_job_type">
+          <AuthenticatedLayout>
+            <DispatchJobTypePluginsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/dispatch-job-type/:id/delete">
+        <ProtectedRoute tabId="delete" entityType="dispatch_job_type">
+          <AuthenticatedLayout>
+            <DispatchJobTypeDeletePage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/dispatch/dnc">
+        <ProtectedRoute permission="admin" component="dispatch.dnc">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DispatchDncConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/workers/ban">
+        <ProtectedRoute permission="admin" component="worker.ban">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WorkerBanConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/jobs">
+        <ProtectedRoute permission="admin" component="dispatch">
+          <AuthenticatedLayout>
+            <DispatchJobsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job/new">
+        <ProtectedRoute permission="admin" component="dispatch">
+          <AuthenticatedLayout>
+            <DispatchJobNewPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job/:id">
+        <ProtectedRoute tabId="details" entityType="dispatch_job">
+          <AuthenticatedLayout>
+            <DispatchJobDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="dispatch_job">
+          <AuthenticatedLayout>
+            <DispatchJobEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job/:id/dispatches">
+        <ProtectedRoute tabId="dispatches" entityType="dispatch_job">
+          <AuthenticatedLayout>
+            <DispatchJobDispatchesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job/:id/eligible-workers">
+        <ProtectedRoute tabId="eligible-workers" entityType="dispatch_job">
+          <AuthenticatedLayout>
+            <DispatchJobEligibleWorkersPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/provider-contact-types">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
@@ -1589,12 +1779,10 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/masquerade">
+      <Route path="/admin/users/masquerade">
         <ProtectedRoute policy="masquerade">
           <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <MasqueradePage />
-            </ConfigurationLayout>
+            <MasqueradePage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1680,7 +1868,7 @@ function Router() {
       </Route>
 
       <Route path="/config/ledger/stripe/settings">
-        <ProtectedRoute policy="ledgerStripeAdmin" component="ledger">
+        <ProtectedRoute policy="admin" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <StripeSettingsPage />
@@ -1690,7 +1878,7 @@ function Router() {
       </Route>
 
       <Route path="/config/ledger/stripe/test">
-        <ProtectedRoute policy="ledgerStripeAdmin" component="ledger">
+        <ProtectedRoute policy="admin" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <StripeTestPage />
@@ -1700,7 +1888,7 @@ function Router() {
       </Route>
 
       <Route path="/config/ledger/stripe/payment-types">
-        <ProtectedRoute policy="ledgerStripeAdmin" component="ledger">
+        <ProtectedRoute policy="admin" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PaymentTypesPage />
@@ -1710,7 +1898,7 @@ function Router() {
       </Route>
 
       <Route path="/config/ledger/payment-types">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="staff" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <LedgerPaymentTypesPage />
@@ -1761,7 +1949,7 @@ function Router() {
 
       {/* Ledger account detail pages */}
       <Route path="/ledger/accounts/:id/payments">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute tabId="payments" entityType="ledger_account">
           <AuthenticatedLayout>
             <AccountPayments />
           </AuthenticatedLayout>
@@ -1769,7 +1957,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/accounts/:id/transactions">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute tabId="transactions" entityType="ledger_account">
           <AuthenticatedLayout>
             <AccountTransactions />
           </AuthenticatedLayout>
@@ -1777,7 +1965,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/accounts/:id/participants">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute tabId="participants" entityType="ledger_account">
           <AuthenticatedLayout>
             <AccountParticipants />
           </AuthenticatedLayout>
@@ -1785,7 +1973,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/accounts/:id/settings">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute tabId="settings" entityType="ledger_account">
           <AuthenticatedLayout>
             <AccountSettings />
           </AuthenticatedLayout>
@@ -1793,7 +1981,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/accounts/:id/edit">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute tabId="edit" entityType="ledger_account">
           <AuthenticatedLayout>
             <LedgerAccountEdit />
           </AuthenticatedLayout>
@@ -1801,7 +1989,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/accounts/:id">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute tabId="view" entityType="ledger_account">
           <AuthenticatedLayout>
             <LedgerAccountView />
           </AuthenticatedLayout>
@@ -1809,7 +1997,7 @@ function Router() {
       </Route>
 
       <Route path="/ledger/accounts">
-        <ProtectedRoute policy="ledgerStaff" component="ledger">
+        <ProtectedRoute policy="staff" component="ledger">
           <AuthenticatedLayout>
             <LedgerAccountsPage />
           </AuthenticatedLayout>
@@ -1818,7 +2006,7 @@ function Router() {
 
       {/* User detail page */}
       <Route path="/users/:id">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="details" entityType="user">
           <AuthenticatedLayout>
             <UserAccountPage />
           </AuthenticatedLayout>
@@ -1826,7 +2014,7 @@ function Router() {
       </Route>
 
       <Route path="/users/:id/logs">
-        <ProtectedRoute policy="staff">
+        <ProtectedRoute tabId="logs" entityType="user">
           <AuthenticatedLayout>
             <UserLogs />
           </AuthenticatedLayout>
@@ -1835,7 +2023,7 @@ function Router() {
 
       {/* User Contact sub-tabs */}
       <Route path="/users/:id/contact/email">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="email" entityType="user">
           <AuthenticatedLayout>
             <UserEmail />
           </AuthenticatedLayout>
@@ -1843,7 +2031,7 @@ function Router() {
       </Route>
 
       <Route path="/users/:id/contact/phone-numbers">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="phone-numbers" entityType="user">
           <AuthenticatedLayout>
             <UserPhoneNumbers />
           </AuthenticatedLayout>
@@ -1851,7 +2039,7 @@ function Router() {
       </Route>
 
       <Route path="/users/:id/contact/addresses">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="addresses" entityType="user">
           <AuthenticatedLayout>
             <UserAddresses />
           </AuthenticatedLayout>
@@ -1860,7 +2048,7 @@ function Router() {
 
       {/* User Comm sub-tabs */}
       <Route path="/users/:id/comm/history">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="comm-history" entityType="user">
           <AuthenticatedLayout>
             <UserCommHistory />
           </AuthenticatedLayout>
@@ -1868,7 +2056,7 @@ function Router() {
       </Route>
 
       <Route path="/users/:id/comm/send-sms">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="send-sms" entityType="user">
           <AuthenticatedLayout>
             <UserSendSms />
           </AuthenticatedLayout>
@@ -1876,7 +2064,7 @@ function Router() {
       </Route>
 
       <Route path="/users/:id/comm/send-email">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="send-email" entityType="user">
           <AuthenticatedLayout>
             <UserSendEmail />
           </AuthenticatedLayout>
@@ -1884,7 +2072,7 @@ function Router() {
       </Route>
 
       <Route path="/users/:id/comm/send-postal">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="send-postal" entityType="user">
           <AuthenticatedLayout>
             <UserSendPostal />
           </AuthenticatedLayout>
@@ -1892,7 +2080,7 @@ function Router() {
       </Route>
 
       <Route path="/users/:id/comm/send-inapp">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute tabId="send-inapp" entityType="user">
           <AuthenticatedLayout>
             <UserSendInApp />
           </AuthenticatedLayout>
@@ -2041,7 +2229,8 @@ function Router() {
 
       {/* 404 for unmatched routes */}
       <Route component={NotFound} />
-    </Switch>
+      </Switch>
+    </Suspense>
   );
 }
 
@@ -2051,8 +2240,10 @@ function App() {
       <TooltipProvider>
         <AuthProvider>
           <TerminologyProvider>
-            <Toaster />
-            <Router />
+            <PageTitleProvider>
+              <Toaster />
+              <Router />
+            </PageTitleProvider>
           </TerminologyProvider>
         </AuthProvider>
       </TooltipProvider>

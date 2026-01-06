@@ -5,6 +5,7 @@ import { insertContactPostalSchema } from "@shared/schema";
 // Type for middleware functions that we'll accept from the main routes
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
+type PolicyMiddleware = (policy: any, getEntityId?: (req: Request) => string | undefined | Promise<string | undefined>) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
 // Helper function to extract geographic coordinates from Google validation response
 function extractGeometryFromValidationResponse(validationResponse: any): {
@@ -34,11 +35,33 @@ function extractGeometryFromValidationResponse(validationResponse: any): {
 export function registerContactPostalRoutes(
   app: Express, 
   requireAuth: AuthMiddleware, 
-  requirePermission: PermissionMiddleware
+  requirePermission: PermissionMiddleware,
+  requireAccess?: PolicyMiddleware
 ) {
   
   // GET /api/contacts/:contactId/addresses - Get all addresses for a contact
-  app.get("/api/contacts/:contactId/addresses", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  // Uses worker.view policy for worker contacts, employer.manage for employer contacts, staff policy for others
+  app.get("/api/contacts/:contactId/addresses", requireAuth, async (req, res, next) => {
+    if (!requireAccess) return next();
+    
+    // Check if this contact belongs to a worker
+    const worker = await storage.workers.getWorkerByContactId(req.params.contactId);
+    
+    if (worker) {
+      // Worker contact - use worker.view policy with worker ID
+      return requireAccess('worker.view', () => worker.id)(req, res, next);
+    }
+    
+    // Check if this contact belongs to an employer contact
+    const employerContacts = await storage.employerContacts.listByContactId(req.params.contactId);
+    if (employerContacts && employerContacts.length > 0) {
+      // Employer contact - use employer.manage policy with employer ID
+      return requireAccess('employer.manage', () => employerContacts[0].employerId)(req, res, next);
+    }
+    
+    // Other contact types - require staff permission
+    return requireAccess('staff')(req, res, next);
+  }, async (req, res) => {
     try {
       const { contactId } = req.params;
       const addresses = await storage.contacts.addresses.getContactPostalByContact(contactId);
@@ -49,15 +72,23 @@ export function registerContactPostalRoutes(
   });
 
   // GET /api/addresses/:id - Get specific address
-  app.get("/api/addresses/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  // Uses contact.view policy
+  app.get("/api/addresses/:id", requireAuth, async (req, res, next) => {
+    if (!requireAccess) return next();
+    
+    // Get address to find contactId for access check
+    const address = await storage.contacts.addresses.getContactPostal(req.params.id);
+    if (!address) {
+      return res.status(404).json({ message: "Address not found" });
+    }
+    
+    // Store address on request for handler to avoid duplicate lookup
+    (req as any).addressRecord = address;
+    return requireAccess('contact.view', () => address.contactId)(req, res, next);
+  }, async (req, res) => {
     try {
-      const { id } = req.params;
-      const address = await storage.contacts.addresses.getContactPostal(id);
-      
-      if (!address) {
-        return res.status(404).json({ message: "Address not found" });
-      }
-      
+      // Use stored address from middleware
+      const address = (req as any).addressRecord;
       res.json(address);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch address" });
@@ -65,7 +96,11 @@ export function registerContactPostalRoutes(
   });
 
   // POST /api/contacts/:contactId/addresses - Create new address for a contact
-  app.post("/api/contacts/:contactId/addresses", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  // Uses contact.edit policy with contactId from params
+  app.post("/api/contacts/:contactId/addresses", requireAuth, async (req, res, next) => {
+    if (!requireAccess) return next();
+    return requireAccess('contact.edit', () => req.params.contactId)(req, res, next);
+  }, async (req, res) => {
     try {
       const { contactId } = req.params;
       
@@ -92,7 +127,20 @@ export function registerContactPostalRoutes(
   });
 
   // PUT /api/addresses/:id - Update address
-  app.put("/api/addresses/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  // Uses contact.edit policy - lookup address first to get contactId
+  app.put("/api/addresses/:id", requireAuth, async (req, res, next) => {
+    if (!requireAccess) return next();
+    
+    // Get address to find contactId for access check
+    const address = await storage.contacts.addresses.getContactPostal(req.params.id);
+    if (!address) {
+      return res.status(404).json({ message: "Address not found" });
+    }
+    
+    // Store address on request to avoid duplicate lookup
+    (req as any).addressRecord = address;
+    return requireAccess('contact.edit', () => address.contactId)(req, res, next);
+  }, async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -124,15 +172,23 @@ export function registerContactPostalRoutes(
   });
 
   // PUT /api/addresses/:id/set-primary - Set address as primary
-  app.put("/api/addresses/:id/set-primary", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  // Uses contact.edit policy - lookup address first to get contactId
+  app.put("/api/addresses/:id/set-primary", requireAuth, async (req, res, next) => {
+    if (!requireAccess) return next();
+    
+    // Get address to find contactId for access check
+    const address = await storage.contacts.addresses.getContactPostal(req.params.id);
+    if (!address) {
+      return res.status(404).json({ message: "Address not found" });
+    }
+    
+    // Store address on request
+    (req as any).addressRecord = address;
+    return requireAccess('contact.edit', () => address.contactId)(req, res, next);
+  }, async (req, res) => {
     try {
       const { id } = req.params;
-      
-      // First get the address to know the contactId
-      const currentAddress = await storage.contacts.addresses.getContactPostal(id);
-      if (!currentAddress) {
-        return res.status(404).json({ message: "Address not found" });
-      }
+      const currentAddress = (req as any).addressRecord;
       
       const updatedAddress = await storage.contacts.addresses.setAddressAsPrimary(id, currentAddress.contactId);
       
@@ -150,7 +206,18 @@ export function registerContactPostalRoutes(
   });
 
   // DELETE /api/addresses/:id - Delete address
-  app.delete("/api/addresses/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  // Uses contact.edit policy - lookup address first to get contactId
+  app.delete("/api/addresses/:id", requireAuth, async (req, res, next) => {
+    if (!requireAccess) return next();
+    
+    // Get address to find contactId for access check
+    const address = await storage.contacts.addresses.getContactPostal(req.params.id);
+    if (!address) {
+      return res.status(404).json({ message: "Address not found" });
+    }
+    
+    return requireAccess('contact.edit', () => address.contactId)(req, res, next);
+  }, async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.contacts.addresses.deleteContactPostal(id);

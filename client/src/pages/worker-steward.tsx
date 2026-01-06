@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const VARIABLE_NAME = "worker_steward_config";
-const STEWARD_PERMISSION = "workers.steward";
+const STEWARD_PERMISSION = "worker.steward";
 const NONE_VALUE = "__none__";
 
 interface StewardConfig {
@@ -64,7 +64,7 @@ function StewardAssignmentsSection() {
   });
 
   const { data: employers = [] } = useQuery<Employer[]>({
-    queryKey: ["/api/employers"],
+    queryKey: ["/api/employers/lookup"],
   });
 
   const { data: bargainingUnits = [] } = useQuery<BargainingUnit[]>({
@@ -522,7 +522,7 @@ function WorkerStewardContent() {
             <AlertTitle>Configuration Issue</AlertTitle>
             <AlertDescription>
               The configured {term("steward", { lowercase: true })} role &ldquo;{stewardRole?.name || stewardConfig.role}&rdquo; no longer has the 
-              &ldquo;workers.steward&rdquo; permission. Please update the configuration in <strong>Config &gt; Workers &gt; {term("steward")}</strong>.
+              &ldquo;worker.steward&rdquo; permission. Please update the configuration in <strong>Config &gt; Workers &gt; {term("steward")}</strong>.
             </AlertDescription>
           </Alert>
         </CardContent>

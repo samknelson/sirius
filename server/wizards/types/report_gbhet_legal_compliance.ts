@@ -10,6 +10,7 @@ export class ReportGbhetLegalCompliance extends WizardReport {
   displayName = 'GBHET Legal Compliance Check';
   description = 'Identifies workers with 80+ hours in a work month who are missing the legal benefit after the 3-month lag (e.g., January work → April benefit)';
   category = 'Compliance';
+  requiredComponent = 'sitespecific.gbhet.legal';
 
   getPrimaryKeyField(): string {
     return 'recordKey';

@@ -12,6 +12,7 @@ import { Loader2, Save, User } from "lucide-react";
 interface NameManagementProps {
   workerId: string;
   contactId: string;
+  canEdit?: boolean;
 }
 
 interface NameComponents {
@@ -23,7 +24,7 @@ interface NameComponents {
   credentials: string;
 }
 
-export default function NameManagement({ workerId, contactId }: NameManagementProps) {
+export default function NameManagement({ workerId, contactId, canEdit = true }: NameManagementProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [nameComponents, setNameComponents] = useState<NameComponents>({
@@ -141,14 +142,16 @@ export default function NameManagement({ workerId, contactId }: NameManagementPr
                   {contact?.displayName || "No name set"}
                 </p>
               </div>
-              <Button
-                onClick={handleEdit}
-                variant="outline"
-                size="sm"
-                data-testid="button-edit-name"
-              >
-                Edit
-              </Button>
+              {canEdit && (
+                <Button
+                  onClick={handleEdit}
+                  variant="outline"
+                  size="sm"
+                  data-testid="button-edit-name"
+                >
+                  Edit
+                </Button>
+              )}
             </div>
           </div>
         ) : (

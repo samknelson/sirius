@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Users } from "lucide-react";
 import { createContext, useContext } from "react";
+import { useProviderContactTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface Contact {
   id: string;
@@ -62,7 +64,7 @@ export function useTrustProviderContactLayout() {
 
 interface TrustProviderContactLayoutProps {
   children: React.ReactNode;
-  activeTab: "view" | "edit" | "name" | "email" | "phone-numbers" | "addresses" | "user" | "comm" | "comm-history" | "send-sms" | "send-email" | "send-postal" | "send-inapp";
+  activeTab: string;
 }
 
 export function TrustProviderContactLayout({ children, activeTab }: TrustProviderContactLayoutProps) {
@@ -77,6 +79,15 @@ export function TrustProviderContactLayout({ children, activeTab }: TrustProvide
     queryKey: ["/api/trust/provider", trustProviderContact?.providerId],
     enabled: !!trustProviderContact?.providerId,
   });
+
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs: mainTabs, subTabs: tabSubTabs } = useProviderContactTabAccess(id || "");
+
+  // Set page title based on contact name
+  const contactName = trustProviderContact?.contact
+    ? `${trustProviderContact.contact.given || ""} ${trustProviderContact.contact.family || ""}`.trim() || trustProviderContact.contact.displayName
+    : "";
+  usePageTitle(contactName || undefined);
 
   if (isLoading) {
     return (
@@ -110,25 +121,9 @@ export function TrustProviderContactLayout({ children, activeTab }: TrustProvide
     );
   }
 
-  const mainTabs = [
-    { id: "view", label: "View", href: `/trust-provider-contacts/${id}` },
-    { id: "edit", label: "Edit", href: `/trust-provider-contacts/${id}/edit` },
-    { id: "name", label: "Name", href: `/trust-provider-contacts/${id}/name` },
-    { id: "email", label: "Email", href: `/trust-provider-contacts/${id}/email` },
-    { id: "phone-numbers", label: "Phone Numbers", href: `/trust-provider-contacts/${id}/phone-numbers` },
-    { id: "addresses", label: "Addresses", href: `/trust-provider-contacts/${id}/addresses` },
-    { id: "comm", label: "Comm", href: `/trust-provider-contacts/${id}/comm/history` },
-    { id: "user", label: "User", href: `/trust-provider-contacts/${id}/user` },
-  ];
-
-  const commSubTabs = [
-    { id: "comm-history", label: "History", href: `/trust-provider-contacts/${id}/comm/history` },
-    { id: "send-sms", label: "Send SMS", href: `/trust-provider-contacts/${id}/comm/send-sms` },
-    { id: "send-email", label: "Send Email", href: `/trust-provider-contacts/${id}/comm/send-email` },
-    { id: "send-postal", label: "Send Postal", href: `/trust-provider-contacts/${id}/comm/send-postal` },
-    { id: "send-inapp", label: "Send In-App", href: `/trust-provider-contacts/${id}/comm/send-inapp` },
-  ];
-
+  // Get comm sub-tabs from the hierarchical structure
+  const commSubTabs = tabSubTabs['comm'] || [];
+  
   const isCommSubTab = ["comm-history", "send-sms", "send-email", "send-postal", "send-inapp"].includes(activeTab);
   const showCommSubTabs = isCommSubTab;
 

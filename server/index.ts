@@ -5,11 +5,12 @@ import { initializePermissions } from "@shared/permissions";
 import { addressValidationService } from "./services/address-validation";
 import { logger } from "./logger";
 import { setupAuth } from "./replitAuth";
-import { initAccessControl } from "./accessControl";
+import { initAccessControl } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
-import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler } from "./cron";
+import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler, deleteExpiredHfeHandler, sweepExpiredBanEligHandler, syncBanActiveStatusHandler } from "./cron";
 import { loadComponentCache } from "./services/component-cache";
+import { syncComponentPermissions } from "./services/component-permissions";
 import { runMigrations } from "../scripts/migrate";
 import { initializeWebSocket } from "./services/websocket";
 import { getSession } from "./replitAuth";
@@ -32,6 +33,17 @@ import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
 
 // Import log notifier module
 import { initLogNotifier } from "./modules/log-notifier";
+
+// Import dispatch eligibility plugins system
+import { initializeDispatchEligSystem } from "./services/dispatch-elig-plugins";
+
+// Import worker ban notifications
+import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
+
+// Import modular access policies (triggers registration via loader)
+import "@shared/access-policies/loader";
+import { registerEntityAccessModule } from "./modules/entity-access";
+import { isComponentEnabled } from "./modules/components";
 
 // Helper function to redact sensitive data from responses before logging
 function redactSensitiveData(data: any): any {
@@ -115,22 +127,29 @@ app.use((req, res, next) => {
   initializePermissions();
   logger.info("Permission system initialized with core permissions", { source: "startup" });
   
-  // Initialize access control system
-  initAccessControl({
-    getUserPermissions: async (userId: string) => {
-      const permissions = await storage.users.getUserPermissions(userId);
-      return permissions.map(p => p.key);
+  // Initialize access control system with unified policy evaluator
+  initAccessControl(
+    // Access control storage interface
+    {
+      getUserPermissions: async (userId: string) => {
+        const permissions = await storage.users.getUserPermissions(userId);
+        return permissions.map(p => p.key);
+      },
+      hasPermission: async (userId: string, permissionKey: string) => {
+        return storage.users.userHasPermission(userId, permissionKey);
+      },
+      getUserByReplitId: async (replitUserId: string) => {
+        return storage.users.getUserByReplitId(replitUserId);
+      },
+      getUser: async (userId: string) => {
+        return storage.users.getUser(userId);
+      },
     },
-    hasPermission: async (userId: string, permissionKey: string) => {
-      return storage.users.userHasPermission(userId, permissionKey);
-    },
-    getUserByReplitId: async (replitUserId: string) => {
-      return storage.users.getUserByReplitId(replitUserId);
-    },
-    getUser: async (userId: string) => {
-      return storage.users.getUser(userId);
-    },
-  });
+    // Full storage for entity loaders
+    storage,
+    // Component flag checker
+    isComponentEnabled
+  );
   logger.info("Access control system initialized", { source: "startup" });
   
   // Initialize address validation service (loads or creates config)
@@ -159,6 +178,18 @@ app.use((req, res, next) => {
   await loadComponentCache();
   logger.info("Component cache initialized", { source: "startup" });
 
+  // Register permissions from enabled components
+  syncComponentPermissions();
+  logger.info("Component permissions synced", { source: "startup" });
+
+  // Initialize dispatch eligibility plugin system
+  await initializeDispatchEligSystem();
+  logger.info("Dispatch eligibility system initialized", { source: "startup" });
+
+  // Initialize worker ban notifications
+  initWorkerBanNotifications();
+  logger.info("Worker ban notifications initialized", { source: "startup" });
+
   // Register charge plugin event listeners
   // Note: Charge plugins are currently called directly from storage for backwards compatibility.
   // The listener is available for future use when we fully migrate to event-driven execution.
@@ -169,6 +200,9 @@ app.use((req, res, next) => {
   registerCronJob('delete-old-cron-logs', deleteOldCronLogsHandler);
   registerCronJob('process-wmb-batch', processWmbBatchHandler);
   registerCronJob('delete-expired-flood-events', deleteExpiredFloodEventsHandler);
+  registerCronJob('delete-expired-hfe', deleteExpiredHfeHandler);
+  registerCronJob('sweep-expired-ban-elig', sweepExpiredBanEligHandler);
+  registerCronJob('sync-ban-active-status', syncBanActiveStatusHandler);
   logger.info("Cron job handlers registered", { source: "startup" });
 
   // Register flood events
@@ -192,6 +226,10 @@ app.use((req, res, next) => {
 
   // Setup request context middleware (captures user and IP for logging)
   app.use(captureRequestContext);
+
+  // Register entity access module
+  registerEntityAccessModule(app, storage);
+  logger.info("Entity access module registered", { source: "startup" });
 
   const server = await registerRoutes(app);
 

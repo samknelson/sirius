@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -47,6 +48,7 @@ const AVAILABLE_PAYMENT_TYPES = [
 ];
 
 export default function PaymentTypesPage() {
+  usePageTitle("Payment Types");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const isInitialized = useRef(false);

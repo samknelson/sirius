@@ -8,7 +8,7 @@ export function registerTrustBenefitsRoutes(
   requirePermission: any
 ) {
   // GET /api/trust-benefits - Get all trust benefits (requires workers.view permission)
-  app.get("/api/trust-benefits", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/trust-benefits", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const includeInactive = req.query.includeInactive === 'true';
       const allBenefits = await storage.trustBenefits.getAllTrustBenefits();
@@ -24,7 +24,7 @@ export function registerTrustBenefitsRoutes(
   });
 
   // GET /api/trust-benefits/:id - Get a specific trust benefit (requires workers.view permission)
-  app.get("/api/trust-benefits/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/trust-benefits/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
       const benefit = await storage.trustBenefits.getTrustBenefit(id);
@@ -41,7 +41,7 @@ export function registerTrustBenefitsRoutes(
   });
 
   // POST /api/trust-benefits - Create a new trust benefit (requires workers.manage permission)
-  app.post("/api/trust-benefits", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  app.post("/api/trust-benefits", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const parsed = insertTrustBenefitSchema.safeParse(req.body);
       
@@ -57,7 +57,7 @@ export function registerTrustBenefitsRoutes(
   });
 
   // PUT /api/trust-benefits/:id - Update a trust benefit (requires workers.manage permission)
-  app.put("/api/trust-benefits/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  app.put("/api/trust-benefits/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
       const { name, benefitType, isActive, description } = req.body;
@@ -104,7 +104,7 @@ export function registerTrustBenefitsRoutes(
   });
 
   // DELETE /api/trust-benefits/:id - Delete a trust benefit (requires workers.manage permission)
-  app.delete("/api/trust-benefits/:id", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  app.delete("/api/trust-benefits/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.trustBenefits.deleteTrustBenefit(id);

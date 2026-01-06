@@ -7,8 +7,10 @@ import {
 } from "@/components/ui/card";
 import { Users } from "lucide-react";
 import UsersManagement from "@/components/admin/UsersManagement";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 export default function AdminUsersPage() {
+  usePageTitle("User Management");
   return (
     <div className="space-y-6">
       <div>

@@ -58,16 +58,9 @@ function WorkerBenefitsContent() {
     },
   });
 
-  // Fetch all employers
+  // Fetch all employers (using lookup endpoint for all authenticated users)
   const { data: employers = [] } = useQuery<Employer[]>({
-    queryKey: ["/api/employers"],
-    queryFn: async () => {
-      const response = await fetch("/api/employers");
-      if (!response.ok) {
-        throw new Error("Failed to fetch employers");
-      }
-      return response.json();
-    },
+    queryKey: ["/api/employers/lookup"],
   });
 
   // Create mutation

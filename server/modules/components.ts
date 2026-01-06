@@ -1,7 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
-import { getAllComponents, getComponentById, ComponentConfig, ComponentDefinition, ComponentSchemaState } from "../../shared/components";
+import { requireAccess } from "../services/access-policy-evaluator";
+import { getAllComponents, getComponentById, getDescendantComponentIds, getAncestorComponentIds, ComponentConfig, ComponentDefinition, ComponentSchemaState } from "../../shared/components";
 import {
   enableComponentSchema,
   disableComponentSchema,
@@ -15,6 +14,7 @@ import {
   loadComponentCache,
   updateComponentCache,
 } from "../services/component-cache";
+import { syncComponentPermissions } from "../services/component-permissions";
 
 // Type for middleware functions
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -106,7 +106,7 @@ export function registerComponentRoutes(
   requirePermission: PermissionMiddleware
 ) {
   // GET /api/components/config - Get component configuration states
-  app.get("/api/components/config", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/components/config", requireAccess('admin'), async (req, res) => {
     try {
       const configs = await getComponentConfigs();
       res.json(configs);
@@ -116,7 +116,7 @@ export function registerComponentRoutes(
   });
 
   // PUT /api/components/config/:componentId - Update component enabled state
-  app.put("/api/components/config/:componentId", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/components/config/:componentId", requireAccess('admin'), async (req, res) => {
     try {
       const { componentId } = req.params;
       const { enabled, confirmDestructive, retainData } = req.body;
@@ -128,6 +128,44 @@ export function registerComponentRoutes(
       const component = getComponentById(componentId);
       if (!component) {
         return res.status(404).json({ message: "Component not found" });
+      }
+
+      // When disabling, check if any descendant components are still enabled
+      if (!enabled) {
+        const descendantIds = getDescendantComponentIds(componentId);
+        const enabledDescendants = descendantIds.filter(id => isComponentEnabledSync(id));
+        
+        if (enabledDescendants.length > 0) {
+          const descendantNames = enabledDescendants.map(id => {
+            const desc = getComponentById(id);
+            return desc ? desc.name : id;
+          });
+          
+          return res.status(400).json({
+            message: `Cannot disable "${component.name}" because the following dependent components are still enabled. Please disable them first.`,
+            enabledDescendants: enabledDescendants,
+            enabledDescendantNames: descendantNames
+          });
+        }
+      }
+
+      // When enabling, check if any ancestor components are disabled
+      if (enabled) {
+        const ancestorIds = getAncestorComponentIds(componentId);
+        const disabledAncestors = ancestorIds.filter(id => !isComponentEnabledSync(id));
+        
+        if (disabledAncestors.length > 0) {
+          const ancestorNames = disabledAncestors.map(id => {
+            const anc = getComponentById(id);
+            return anc ? anc.name : id;
+          });
+          
+          return res.status(400).json({
+            message: `Cannot enable "${component.name}" because the following parent components are disabled. Please enable them first.`,
+            disabledAncestors: disabledAncestors,
+            disabledAncestorNames: ancestorNames
+          });
+        }
       }
 
       const shouldRetainData = retainData !== false;
@@ -171,6 +209,9 @@ export function registerComponentRoutes(
 
       await updateComponentCache(componentId, enabled);
 
+      // Sync permissions from enabled components (registers any new permissions)
+      syncComponentPermissions();
+
       const effectiveEnabled = await isComponentEnabled(componentId);
 
       res.json({
@@ -187,7 +228,7 @@ export function registerComponentRoutes(
   });
 
   // GET /api/components/:componentId/schema-info - Get schema information for a component
-  app.get("/api/components/:componentId/schema-info", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/components/:componentId/schema-info", requireAccess('admin'), async (req, res) => {
     try {
       const { componentId } = req.params;
       const component = getComponentById(componentId);
@@ -207,7 +248,7 @@ export function registerComponentRoutes(
   });
 
   // POST /api/components/:componentId/check-drift - Check schema drift for a component
-  app.post("/api/components/:componentId/check-drift", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/components/:componentId/check-drift", requireAccess('admin'), async (req, res) => {
     try {
       const { componentId } = req.params;
       const component = getComponentById(componentId);

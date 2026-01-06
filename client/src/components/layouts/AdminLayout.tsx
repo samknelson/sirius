@@ -2,6 +2,7 @@ import { Link, useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Users, Shield, Key, UserCheck, Database } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -30,6 +31,9 @@ const adminNavItems = [
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const [location] = useLocation();
+
+  // Set page title for admin section
+  usePageTitle("System Administration");
 
   return (
     <div className="p-6 max-w-7xl mx-auto">

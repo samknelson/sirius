@@ -1,8 +1,10 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Key } from 'lucide-react';
 import PermissionsManagement from '@/components/admin/PermissionsManagement';
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 export default function AdminPermissionsPage() {
+  usePageTitle("Permissions");
   return (
     <div className="space-y-6">
       <div>

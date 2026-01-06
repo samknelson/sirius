@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import type { TrustProvider } from "@shared/schema";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useMemo } from "react";
+import { useProviderTabAccess, ResolvedTab } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface TrustProviderLayoutContextValue {
   provider: TrustProvider | undefined;
@@ -25,14 +27,14 @@ export function useTrustProviderLayout() {
 
 interface TrustProviderLayoutProps {
   children: React.ReactNode;
-  activeTab: "view" | "edit" | "contacts" | "logs";
+  activeTab: string;
 }
 
 export default function TrustProviderLayout({ children, activeTab }: TrustProviderLayoutProps) {
   const { id } = useParams<{ id: string }>();
   const [location] = useLocation();
 
-  const { data: provider, isLoading, error } = useQuery<TrustProvider>({
+  const { data: provider, isLoading: providerLoading, error } = useQuery<TrustProvider>({
     queryKey: ["/api/trust/provider", id],
     queryFn: async () => {
       const response = await fetch(`/api/trust/provider/${id}`);
@@ -43,7 +45,25 @@ export default function TrustProviderLayout({ children, activeTab }: TrustProvid
     },
   });
 
-  // Loading state
+  const { 
+    tabs,
+    getActiveRoot,
+    isLoading: tabAccessLoading 
+  } = useProviderTabAccess(id || '');
+  
+  const isLoading = providerLoading || tabAccessLoading;
+
+  const mainTabs = tabs;
+  
+  const activeRoot = useMemo(() => {
+    return getActiveRoot(activeTab);
+  }, [activeTab, getActiveRoot]);
+
+  const subTabs = activeRoot?.children;
+
+  // Set page title based on provider name
+  usePageTitle(provider?.name);
+
   if (isLoading || !provider) {
     return (
       <div className="bg-background text-foreground min-h-screen">
@@ -81,7 +101,6 @@ export default function TrustProviderLayout({ children, activeTab }: TrustProvid
     );
   }
 
-  // Error state
   if (error) {
     return (
       <div className="bg-background text-foreground min-h-screen">
@@ -119,14 +138,6 @@ export default function TrustProviderLayout({ children, activeTab }: TrustProvid
     );
   }
 
-  // Success state - render layout with tabs
-  const mainTabs = [
-    { id: "view", label: "View", href: `/trust/provider/${provider.id}` },
-    { id: "edit", label: "Edit", href: `/trust/provider/${provider.id}/edit` },
-    { id: "contacts", label: "Contacts", href: `/trust/provider/${provider.id}/contacts` },
-    { id: "logs", label: "Logs", href: `/trust/provider/${provider.id}/logs` },
-  ];
-
   const contextValue: TrustProviderLayoutContextValue = {
     provider,
     isLoading: false,
@@ -160,12 +171,12 @@ export default function TrustProviderLayout({ children, activeTab }: TrustProvid
           </div>
         </header>
 
-        {/* Main Tab Navigation */}
+        {/* Main Tab Navigation - rendered dynamically from registry */}
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center space-x-2 py-3">
               {mainTabs.map((tab) => {
-                const isActive = tab.id === activeTab;
+                const isActive = tab.id === activeRoot?.id;
                 return isActive ? (
                   <Button
                     key={tab.id}
@@ -190,6 +201,38 @@ export default function TrustProviderLayout({ children, activeTab }: TrustProvid
             </div>
           </div>
         </div>
+
+        {/* Sub-Tab Navigation - rendered dynamically when parent has children */}
+        {subTabs && subTabs.length > 0 && (
+          <div className="bg-muted/30 border-b border-border">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex items-center space-x-2 py-2 pl-4">
+                {subTabs.map((tab) => (
+                  tab.id === activeTab ? (
+                    <Button
+                      key={tab.id}
+                      variant="secondary"
+                      size="sm"
+                      data-testid={`button-provider-${tab.id}`}
+                    >
+                      {tab.label}
+                    </Button>
+                  ) : (
+                    <Link key={tab.id} href={tab.href}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid={`button-provider-${tab.id}`}
+                      >
+                        {tab.label}
+                      </Button>
+                    </Link>
+                  )
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

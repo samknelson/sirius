@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -13,6 +14,7 @@ import { getAllPlugins } from "@/plugins/registry";
 import { PluginConfig } from "@/plugins/types";
 
 export default function DashboardPluginsConfigPage() {
+  usePageTitle("Dashboard Plugins");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   

@@ -146,16 +146,6 @@ export function initializePermissions(): void {
   // Register core permissions
   const corePermissions: PermissionDefinition[] = [
     {
-      key: 'workers.manage', 
-      description: 'Create, update, and delete worker records',
-      module: 'core'
-    },
-    {
-      key: 'workers.view',
-      description: 'View worker records and information',
-      module: 'core'
-    },
-    {
       key: 'bookmark',
       description: 'Create and manage bookmarks for workers and employers',
       module: 'core'
@@ -166,33 +156,8 @@ export function initializePermissions(): void {
       module: 'core'
     },
     {
-      key: 'ledger.employer',
-      description: 'Access to employer ledger functionality',
-      module: 'core'
-    },
-    {
-      key: 'ledger.staff',
-      description: 'Access to staff ledger functionality',
-      module: 'core'
-    },
-    {
       key: 'staff',
       description: 'Staff level access',
-      module: 'core'
-    },
-    {
-      key: 'provider',
-      description: 'Provider level access',
-      module: 'core'
-    },
-    {
-      key: 'employer',
-      description: 'Employer level access',
-      module: 'core'
-    },
-    {
-      key: 'worker',
-      description: 'Worker level access',
       module: 'core'
     },
     {
@@ -200,16 +165,6 @@ export function initializePermissions(): void {
       description: 'Administrator level access',
       module: 'core'
     },
-    {
-      key: 'employer.usermanage',
-      description: 'Manage user accounts for employer contacts',
-      module: 'core'
-    },
-    {
-      key: 'workers.steward',
-      description: 'Access to shop steward functionality for workers',
-      module: 'core'
-    }
   ];
 
   permissionRegistry.registerMany(corePermissions);

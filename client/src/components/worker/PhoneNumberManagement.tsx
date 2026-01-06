@@ -69,9 +69,10 @@ type PhoneNumberFormData = z.infer<typeof phoneNumberFormSchema>;
 
 interface PhoneNumberManagementProps {
   contactId: string;
+  canEdit?: boolean;
 }
 
-export function PhoneNumberManagement({ contactId }: PhoneNumberManagementProps) {
+export function PhoneNumberManagement({ contactId, canEdit = true }: PhoneNumberManagementProps) {
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingPhoneNumber, setEditingPhoneNumber] = useState<PhoneNumber | null>(null);
@@ -321,13 +322,15 @@ export function PhoneNumberManagement({ contactId }: PhoneNumberManagementProps)
           <Phone size={20} />
           Phone Numbers
         </h3>
-        <Button onClick={() => {
-          form.reset();
-          setIsAddDialogOpen(true);
-        }} data-testid="button-add-phone-number">
-          <Plus size={16} className="mr-2" />
-          Add Phone Number
-        </Button>
+        {canEdit && (
+          <Button onClick={() => {
+            form.reset();
+            setIsAddDialogOpen(true);
+          }} data-testid="button-add-phone-number">
+            <Plus size={16} className="mr-2" />
+            Add Phone Number
+          </Button>
+        )}
       </div>
 
       {/* Add Phone Number Dialog */}
@@ -851,12 +854,14 @@ export function PhoneNumberManagement({ contactId }: PhoneNumberManagementProps)
             <Phone className="text-muted-foreground mb-4" size={48} />
             <h3 className="text-lg font-medium text-foreground mb-2">No phone numbers yet</h3>
             <p className="text-muted-foreground text-center mb-4">
-              Add the first phone number for this worker
+              {canEdit ? "Add the first phone number for this worker" : "No phone numbers have been added yet"}
             </p>
-            <Button onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-first-phone">
-              <Plus size={16} className="mr-2" />
-              Add Phone Number
-            </Button>
+            {canEdit && (
+              <Button onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-first-phone">
+                <Plus size={16} className="mr-2" />
+                Add Phone Number
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (
@@ -879,16 +884,18 @@ export function PhoneNumberManagement({ contactId }: PhoneNumberManagementProps)
                     )}
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleSetPrimary(phoneNumber.id)}
-                      disabled={setPrimaryMutation.isPending}
-                      data-testid={`button-set-primary-phone-${phoneNumber.id}`}
-                      className={phoneNumber.isPrimary ? "text-yellow-500 hover:text-yellow-600" : ""}
-                    >
-                      <Star size={16} fill={phoneNumber.isPrimary ? "currentColor" : "none"} />
-                    </Button>
+                    {canEdit && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleSetPrimary(phoneNumber.id)}
+                        disabled={setPrimaryMutation.isPending}
+                        data-testid={`button-set-primary-phone-${phoneNumber.id}`}
+                        className={phoneNumber.isPrimary ? "text-yellow-500 hover:text-yellow-600" : ""}
+                      >
+                        <Star size={16} fill={phoneNumber.isPrimary ? "currentColor" : "none"} />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -906,23 +913,27 @@ export function PhoneNumberManagement({ contactId }: PhoneNumberManagementProps)
                     >
                       <MessageSquare size={14} />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEdit(phoneNumber)}
-                      data-testid={`button-edit-phone-${phoneNumber.id}`}
-                    >
-                      <Edit size={14} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(phoneNumber.id)}
-                      disabled={deletePhoneNumberMutation.isPending}
-                      data-testid={`button-delete-phone-${phoneNumber.id}`}
-                    >
-                      <Trash2 size={14} className="text-destructive" />
-                    </Button>
+                    {canEdit && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(phoneNumber)}
+                        data-testid={`button-edit-phone-${phoneNumber.id}`}
+                      >
+                        <Edit size={14} />
+                      </Button>
+                    )}
+                    {canEdit && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(phoneNumber.id)}
+                        disabled={deletePhoneNumberMutation.isPending}
+                        data-testid={`button-delete-phone-${phoneNumber.id}`}
+                      >
+                        <Trash2 size={14} className="text-destructive" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardHeader>

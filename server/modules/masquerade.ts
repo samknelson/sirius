@@ -1,7 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
-import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
+import { requireAccess } from "../services/access-policy-evaluator";
 import { storageLogger } from "../logger";
 import { getRequestContext } from "../middleware/request-context";
 
@@ -59,7 +58,7 @@ export function registerMasqueradeRoutes(
   requirePermission: PermissionMiddleware
 ) {
   // POST /api/auth/masquerade/start - Start masquerading as another user
-  app.post("/api/auth/masquerade/start", requireAccess(policies.masquerade), async (req, res) => {
+  app.post("/api/auth/masquerade/start", requireAccess('masquerade'), async (req, res) => {
     try {
       const { userId } = req.body;
       const user = req.user as any;
@@ -94,6 +93,41 @@ export function registerMasqueradeRoutes(
       await new Promise((resolve, reject) => {
         session.save((err: any) => err ? reject(err) : resolve(undefined));
       });
+      
+      // Record this masquerade in the user's recent masquerades list
+      try {
+        const currentData = await storage.users.getUserData(originalUser.id) || {};
+        const recentMasquerades = (currentData.recentMasquerades as Array<{
+          userId: string;
+          email: string;
+          firstName: string | null;
+          lastName: string | null;
+          timestamp: string;
+        }>) || [];
+        
+        // Remove existing entry for this user if present
+        const filteredList = recentMasquerades.filter(m => m.userId !== targetUser.id);
+        
+        // Add new entry at the beginning
+        const newEntry = {
+          userId: targetUser.id,
+          email: targetUser.email,
+          firstName: targetUser.firstName,
+          lastName: targetUser.lastName,
+          timestamp: new Date().toISOString(),
+        };
+        
+        // Keep only the most recent 10
+        const updatedList = [newEntry, ...filteredList].slice(0, 10);
+        
+        await storage.users.updateUserData(originalUser.id, {
+          ...currentData,
+          recentMasquerades: updatedList,
+        });
+      } catch (err) {
+        console.error("Failed to update recent masquerades:", err);
+        // Non-fatal error - continue with masquerade
+      }
       
       // Log masquerade start
       const originalName = originalUser.firstName && originalUser.lastName
@@ -219,6 +253,34 @@ export function registerMasqueradeRoutes(
       res.json({ message: "Masquerade stopped successfully" });
     } catch (error) {
       res.status(500).json({ message: "Failed to stop masquerade" });
+    }
+  });
+
+  // GET /api/auth/masquerade/recent - Get recent masquerade targets
+  app.get("/api/auth/masquerade/recent", requireAccess('masquerade'), async (req, res) => {
+    try {
+      const user = req.user as any;
+      const replitUserId = user.claims.sub;
+      
+      // Get the user making the request (not masqueraded)
+      const currentUser = await storage.users.getUserByReplitId(replitUserId);
+      if (!currentUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      const userData = await storage.users.getUserData(currentUser.id);
+      const recentMasquerades = (userData?.recentMasquerades as Array<{
+        userId: string;
+        email: string;
+        firstName: string | null;
+        lastName: string | null;
+        timestamp: string;
+      }>) || [];
+      
+      res.json({ recentMasquerades });
+    } catch (error) {
+      console.error("Failed to get recent masquerades:", error);
+      res.status(500).json({ message: "Failed to get recent masquerades" });
     }
   });
 }

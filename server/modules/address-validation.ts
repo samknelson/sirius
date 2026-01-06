@@ -2,8 +2,7 @@ import { Express, Request, Response, NextFunction } from "express";
 import { addressValidationService, AddressInput } from "../services/address-validation";
 import { z } from "zod";
 import { ParseAddressRequest } from "@shared/schema";
-import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
+import { requireAccess } from "../services/access-policy-evaluator";
 
 // Middleware types
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void;
@@ -23,8 +22,8 @@ export function registerAddressValidationRoutes(
   requireAuth: AuthMiddleware, 
   requirePermission: PermissionMiddleware
 ) {
-  // POST /api/addresses/parse - Parse a raw address string
-  app.post("/api/addresses/parse", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  // POST /api/addresses/parse - Parse a raw address string (any authenticated user can parse)
+  app.post("/api/addresses/parse", requireAuth, async (req, res) => {
     try {
       const parseRequest: ParseAddressRequest = req.body;
       
@@ -45,8 +44,8 @@ export function registerAddressValidationRoutes(
     }
   });
 
-  // POST /api/addresses/validate - Validate an address
-  app.post("/api/addresses/validate", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  // POST /api/addresses/validate - Validate an address (any authenticated user can validate)
+  app.post("/api/addresses/validate", requireAuth, async (req, res) => {
     try {
       const addressData = addressInputSchema.parse(req.body);
       
@@ -67,7 +66,7 @@ export function registerAddressValidationRoutes(
   });
 
   // GET /api/addresses/validation-config - Get current validation configuration (admin only)
-  app.get("/api/addresses/validation-config", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/addresses/validation-config", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const config = await addressValidationService.getConfig();
       res.json(config);
@@ -78,7 +77,7 @@ export function registerAddressValidationRoutes(
   });
 
   // PUT /api/addresses/validation-config - Update validation configuration (admin only)
-  app.put("/api/addresses/validation-config", requireAuth, requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/addresses/validation-config", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       await addressValidationService.updateConfig(req.body);
       const updatedConfig = await addressValidationService.getConfig();

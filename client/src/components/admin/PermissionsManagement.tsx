@@ -103,23 +103,6 @@ export default function PermissionsManagement() {
     unassignPermissionMutation.mutate({ roleId, permissionKey });
   };
 
-  const getPermissionCategory = (key: string) => {
-    const category = key.split('.')[0];
-    switch (category) {
-      case 'admin':
-        return 'Admin';
-      case 'workers':
-        return 'Workers';
-      default:
-        return 'System';
-    }
-  };
-
-  const getPermissionAction = (key: string) => {
-    const parts = key.split('.');
-    return parts[parts.length - 1];
-  };
-
   const getPermissionsForRole = (roleId: string): string[] => {
     return rolePermissions
       .filter(rp => rp.roleId === roleId)
@@ -245,8 +228,7 @@ export default function PermissionsManagement() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Permission Key</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Action</TableHead>
+                  <TableHead>Component</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Assigned Roles</TableHead>
                 </TableRow>
@@ -266,13 +248,14 @@ export default function PermissionsManagement() {
                           </code>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" data-testid={`badge-category-${permission.key}`}>
-                          {getPermissionCategory(permission.key)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell data-testid={`text-action-${permission.key}`}>
-                        {getPermissionAction(permission.key)}
+                      <TableCell data-testid={`text-component-${permission.key}`}>
+                        {permission.module ? (
+                          <Badge variant="outline">
+                            {permission.module}
+                          </Badge>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">core</span>
+                        )}
                       </TableCell>
                       <TableCell data-testid={`text-permission-description-${permission.key}`}>
                         {permission.description || 'No description provided'}

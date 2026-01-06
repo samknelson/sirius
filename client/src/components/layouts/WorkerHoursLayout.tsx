@@ -7,6 +7,8 @@ import { ArrowLeft, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmploymentStatus } from "@/lib/entity-types";
+import { useWorkerHoursTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface WorkerHoursEntry {
   id: string;
@@ -40,7 +42,7 @@ export function useWorkerHoursLayout() {
 
 interface WorkerHoursLayoutProps {
   children: ReactNode;
-  activeTab: "view" | "edit" | "delete";
+  activeTab: string;
 }
 
 function getMonthName(month: number): string {
@@ -60,6 +62,15 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
     },
     enabled: !!hoursId,
   });
+
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs: mainTabs } = useWorkerHoursTabAccess(hoursId || "");
+
+  // Set page title based on hours entry period
+  const hoursTitle = hoursEntry 
+    ? `${getMonthName(hoursEntry.month)} ${hoursEntry.year}` 
+    : undefined;
+  usePageTitle(hoursTitle);
 
   const isError = !!error;
 
@@ -132,13 +143,7 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
     );
   }
 
-  const hoursTitle = `${getMonthName(hoursEntry.month)} ${hoursEntry.day}, ${hoursEntry.year} - ${hoursEntry.employer?.name || "Unknown Employer"}`;
-
-  const mainTabs = [
-    { id: "view", label: "View", href: `/hours/${hoursId}` },
-    { id: "edit", label: "Edit", href: `/hours/${hoursId}/edit` },
-    { id: "delete", label: "Delete", href: `/hours/${hoursId}/delete` },
-  ];
+  const hoursHeaderTitle = `${getMonthName(hoursEntry.month)} ${hoursEntry.day}, ${hoursEntry.year} - ${hoursEntry.employer?.name || "Unknown Employer"}`;
 
   const contextValue: WorkerHoursLayoutContextValue = {
     hoursEntry,
@@ -157,7 +162,7 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
                   <Clock className="text-primary-foreground" size={16} />
                 </div>
                 <h1 className="text-xl font-semibold text-foreground" data-testid="text-hours-title">
-                  {hoursTitle}
+                  {hoursHeaderTitle}
                 </h1>
               </div>
               <Link href={`/workers/${hoursEntry.workerId}/employment/daily`}>

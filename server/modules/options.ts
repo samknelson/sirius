@@ -1,8 +1,7 @@
 import type { Express } from "express";
 import { storage } from "../storage";
 import { insertWorkerWsSchema, updateWorkerWsSchema, insertEmploymentStatusSchema, updateEmploymentStatusSchema, insertTrustBenefitTypeSchema, insertTrustProviderTypeSchema, insertEventTypeSchema } from "@shared/schema";
-import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
+import { requireAccess } from "../services/access-policy-evaluator";
 
 export function registerOptionsRoutes(
   app: Express,
@@ -12,7 +11,7 @@ export function registerOptionsRoutes(
   // Worker ID Type routes
   
   // GET /api/worker-id-types - Get all worker ID types (requires workers.view permission)
-  app.get("/api/worker-id-types", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/worker-id-types", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const workerIdTypes = await storage.options.workerIdTypes.getAllWorkerIdTypes();
       res.json(workerIdTypes);
@@ -22,7 +21,7 @@ export function registerOptionsRoutes(
   });
 
   // GET /api/worker-id-types/:id - Get a specific worker ID type (requires workers.view permission)
-  app.get("/api/worker-id-types/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/worker-id-types/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
       const workerIdType = await storage.options.workerIdTypes.getWorkerIdType(id);
@@ -39,7 +38,7 @@ export function registerOptionsRoutes(
   });
 
   // POST /api/worker-id-types - Create a new worker ID type (requires admin permission)
-  app.post("/api/worker-id-types", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/worker-id-types", requireAccess('admin'), async (req, res) => {
     try {
       const { name, sequence, validator } = req.body;
       
@@ -60,7 +59,7 @@ export function registerOptionsRoutes(
   });
 
   // PUT /api/worker-id-types/:id - Update a worker ID type (requires admin permission)
-  app.put("/api/worker-id-types/:id", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/worker-id-types/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const { name, sequence, validator } = req.body;
@@ -105,7 +104,7 @@ export function registerOptionsRoutes(
   });
 
   // DELETE /api/worker-id-types/:id - Delete a worker ID type (requires admin permission)
-  app.delete("/api/worker-id-types/:id", requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/worker-id-types/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.options.workerIdTypes.deleteWorkerIdType(id);
@@ -123,8 +122,8 @@ export function registerOptionsRoutes(
 
   // Employer Contact Type routes
 
-  // GET /api/employer-contact-types - Get all employer contact types (requires admin permission)
-  app.get("/api/employer-contact-types", requireAccess(policies.admin), async (req, res) => {
+  // GET /api/employer-contact-types - Get all employer contact types (available to all authenticated users)
+  app.get("/api/employer-contact-types", requireAccess('authenticated'), async (req, res) => {
     try {
       const contactTypes = await storage.options.employerContactTypes.getAll();
       res.json(contactTypes);
@@ -133,8 +132,8 @@ export function registerOptionsRoutes(
     }
   });
 
-  // GET /api/employer-contact-types/:id - Get a specific employer contact type (requires admin permission)
-  app.get("/api/employer-contact-types/:id", requireAccess(policies.admin), async (req, res) => {
+  // GET /api/employer-contact-types/:id - Get a specific employer contact type (available to all authenticated users)
+  app.get("/api/employer-contact-types/:id", requireAccess('authenticated'), async (req, res) => {
     try {
       const { id } = req.params;
       const contactType = await storage.options.employerContactTypes.get(id);
@@ -151,7 +150,7 @@ export function registerOptionsRoutes(
   });
 
   // POST /api/employer-contact-types - Create a new employer contact type (requires admin permission)
-  app.post("/api/employer-contact-types", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/employer-contact-types", requireAccess('admin'), async (req, res) => {
     try {
       const { name, description, data } = req.body;
       
@@ -172,7 +171,7 @@ export function registerOptionsRoutes(
   });
 
   // PUT /api/employer-contact-types/:id - Update an employer contact type (requires admin permission)
-  app.put("/api/employer-contact-types/:id", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/employer-contact-types/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const { name, description, data } = req.body;
@@ -214,7 +213,7 @@ export function registerOptionsRoutes(
   });
 
   // DELETE /api/employer-contact-types/:id - Delete an employer contact type (requires admin permission)
-  app.delete("/api/employer-contact-types/:id", requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/employer-contact-types/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id} = req.params;
       const deleted = await storage.options.employerContactTypes.delete(id);
@@ -233,7 +232,7 @@ export function registerOptionsRoutes(
   // Employer Type routes
 
   // GET /api/employer-types - Get all employer types (requires admin permission)
-  app.get("/api/employer-types", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/employer-types", requireAccess('admin'), async (req, res) => {
     try {
       const employerTypes = await storage.options.employerTypes.getAll();
       res.json(employerTypes);
@@ -243,7 +242,7 @@ export function registerOptionsRoutes(
   });
 
   // GET /api/employer-types/:id - Get a specific employer type (requires admin permission)
-  app.get("/api/employer-types/:id", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/employer-types/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const employerType = await storage.options.employerTypes.get(id);
@@ -260,7 +259,7 @@ export function registerOptionsRoutes(
   });
 
   // POST /api/employer-types - Create a new employer type (requires admin permission)
-  app.post("/api/employer-types", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/employer-types", requireAccess('admin'), async (req, res) => {
     try {
       const { name, description, sequence, data } = req.body;
       
@@ -282,7 +281,7 @@ export function registerOptionsRoutes(
   });
 
   // PUT /api/employer-types/:id - Update an employer type (requires admin permission)
-  app.put("/api/employer-types/:id", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/employer-types/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const { name, description, sequence, data } = req.body;
@@ -331,7 +330,7 @@ export function registerOptionsRoutes(
   });
 
   // DELETE /api/employer-types/:id - Delete an employer type (requires admin permission)
-  app.delete("/api/employer-types/:id", requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/employer-types/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.options.employerTypes.delete(id);
@@ -350,7 +349,7 @@ export function registerOptionsRoutes(
   // Provider Contact Type routes
 
   // GET /api/provider-contact-types - Get all provider contact types (requires admin permission)
-  app.get("/api/provider-contact-types", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/provider-contact-types", requireAccess('admin'), async (req, res) => {
     try {
       const contactTypes = await storage.options.trustProviderTypes.getAll();
       res.json(contactTypes);
@@ -360,7 +359,7 @@ export function registerOptionsRoutes(
   });
 
   // GET /api/provider-contact-types/:id - Get a specific provider contact type (requires admin permission)
-  app.get("/api/provider-contact-types/:id", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/provider-contact-types/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const contactType = await storage.options.trustProviderTypes.get(id);
@@ -377,7 +376,7 @@ export function registerOptionsRoutes(
   });
 
   // POST /api/provider-contact-types - Create a new provider contact type (requires admin permission)
-  app.post("/api/provider-contact-types", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/provider-contact-types", requireAccess('admin'), async (req, res) => {
     try {
       const { name, description } = req.body;
       
@@ -397,7 +396,7 @@ export function registerOptionsRoutes(
   });
 
   // PUT /api/provider-contact-types/:id - Update a provider contact type (requires admin permission)
-  app.put("/api/provider-contact-types/:id", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/provider-contact-types/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const { name, description } = req.body;
@@ -435,7 +434,7 @@ export function registerOptionsRoutes(
   });
 
   // DELETE /api/provider-contact-types/:id - Delete a provider contact type (requires admin permission)
-  app.delete("/api/provider-contact-types/:id", requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/provider-contact-types/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id} = req.params;
       const deleted = await storage.options.trustProviderTypes.delete(id);
@@ -454,7 +453,7 @@ export function registerOptionsRoutes(
   // Worker Work Status routes
 
   // GET /api/worker-work-statuses - Get all worker work statuses (requires admin permission)
-  app.get("/api/worker-work-statuses", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/worker-work-statuses", requireAccess('admin'), async (req, res) => {
     try {
       const statuses = await storage.options.workerWs.getAll();
       res.json(statuses);
@@ -464,7 +463,7 @@ export function registerOptionsRoutes(
   });
 
   // GET /api/worker-work-statuses/:id - Get a specific worker work status (requires admin permission)
-  app.get("/api/worker-work-statuses/:id", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/worker-work-statuses/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const status = await storage.options.workerWs.get(id);
@@ -481,7 +480,7 @@ export function registerOptionsRoutes(
   });
 
   // POST /api/worker-work-statuses - Create a new worker work status (requires admin permission)
-  app.post("/api/worker-work-statuses", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/worker-work-statuses", requireAccess('admin'), async (req, res) => {
     try {
       const validation = insertWorkerWsSchema.safeParse(req.body);
       
@@ -501,7 +500,7 @@ export function registerOptionsRoutes(
   });
 
   // PUT /api/worker-work-statuses/:id - Update a worker work status (requires admin permission)
-  app.put("/api/worker-work-statuses/:id", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/worker-work-statuses/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const validation = updateWorkerWsSchema.safeParse(req.body);
@@ -527,7 +526,7 @@ export function registerOptionsRoutes(
   });
 
   // DELETE /api/worker-work-statuses/:id - Delete a worker work status (requires admin permission)
-  app.delete("/api/worker-work-statuses/:id", requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/worker-work-statuses/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.options.workerWs.delete(id);
@@ -546,7 +545,7 @@ export function registerOptionsRoutes(
   // Employment Status routes
 
   // GET /api/employment-statuses - Get all employment statuses (requires admin permission)
-  app.get("/api/employment-statuses", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/employment-statuses", requireAccess('admin'), async (req, res) => {
     try {
       const statuses = await storage.options.employmentStatus.getAll();
       res.json(statuses);
@@ -556,7 +555,7 @@ export function registerOptionsRoutes(
   });
 
   // GET /api/employment-statuses/:id - Get a specific employment status (requires admin permission)
-  app.get("/api/employment-statuses/:id", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/employment-statuses/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const status = await storage.options.employmentStatus.get(id);
@@ -573,7 +572,7 @@ export function registerOptionsRoutes(
   });
 
   // POST /api/employment-statuses - Create a new employment status (requires admin permission)
-  app.post("/api/employment-statuses", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/employment-statuses", requireAccess('admin'), async (req, res) => {
     try {
       const validation = insertEmploymentStatusSchema.safeParse(req.body);
       
@@ -592,7 +591,7 @@ export function registerOptionsRoutes(
   });
 
   // PUT /api/employment-statuses/:id - Update an employment status (requires admin permission)
-  app.put("/api/employment-statuses/:id", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/employment-statuses/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const validation = updateEmploymentStatusSchema.safeParse(req.body);
@@ -618,7 +617,7 @@ export function registerOptionsRoutes(
   });
 
   // DELETE /api/employment-statuses/:id - Delete an employment status (requires admin permission)
-  app.delete("/api/employment-statuses/:id", requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/employment-statuses/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.options.employmentStatus.delete(id);
@@ -636,8 +635,8 @@ export function registerOptionsRoutes(
 
   // Ledger Payment Type routes
 
-  // GET /api/ledger-payment-types - Get all ledger payment types (requires ledgerStaff policy)
-  app.get("/api/ledger-payment-types", requireAccess(policies.ledgerStaff), async (req, res) => {
+  // GET /api/ledger-payment-types - Get all ledger payment types (requires staff policy)
+  app.get("/api/ledger-payment-types", requireAccess('staff'), async (req, res) => {
     try {
       const paymentTypes = await storage.options.ledgerPaymentTypes.getAllLedgerPaymentTypes();
       res.json(paymentTypes);
@@ -646,8 +645,8 @@ export function registerOptionsRoutes(
     }
   });
 
-  // GET /api/ledger-payment-types/:id - Get a specific ledger payment type (requires ledgerStaff policy)
-  app.get("/api/ledger-payment-types/:id", requireAccess(policies.ledgerStaff), async (req, res) => {
+  // GET /api/ledger-payment-types/:id - Get a specific ledger payment type (requires staff policy)
+  app.get("/api/ledger-payment-types/:id", requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
       const paymentType = await storage.options.ledgerPaymentTypes.getLedgerPaymentType(id);
@@ -663,8 +662,8 @@ export function registerOptionsRoutes(
     }
   });
 
-  // POST /api/ledger-payment-types - Create a new ledger payment type (requires ledgerStaff policy)
-  app.post("/api/ledger-payment-types", requireAccess(policies.ledgerStaff), async (req, res) => {
+  // POST /api/ledger-payment-types - Create a new ledger payment type (requires staff policy)
+  app.post("/api/ledger-payment-types", requireAccess('staff'), async (req, res) => {
     try {
       const { name, description, sequence, currencyCode, category } = req.body;
       
@@ -688,8 +687,8 @@ export function registerOptionsRoutes(
     }
   });
 
-  // PUT /api/ledger-payment-types/:id - Update a ledger payment type (requires ledgerStaff policy)
-  app.put("/api/ledger-payment-types/:id", requireAccess(policies.ledgerStaff), async (req, res) => {
+  // PUT /api/ledger-payment-types/:id - Update a ledger payment type (requires staff policy)
+  app.put("/api/ledger-payment-types/:id", requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
       const { name, description, sequence, currencyCode, category } = req.body;
@@ -747,8 +746,8 @@ export function registerOptionsRoutes(
     }
   });
 
-  // DELETE /api/ledger-payment-types/:id - Delete a ledger payment type (requires ledgerStaff policy)
-  app.delete("/api/ledger-payment-types/:id", requireAccess(policies.ledgerStaff), async (req, res) => {
+  // DELETE /api/ledger-payment-types/:id - Delete a ledger payment type (requires staff policy)
+  app.delete("/api/ledger-payment-types/:id", requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.options.ledgerPaymentTypes.deleteLedgerPaymentType(id);
@@ -767,7 +766,7 @@ export function registerOptionsRoutes(
   // Gender Options routes
 
   // GET /api/gender-options - Get all gender options (requires workers.view permission)
-  app.get("/api/gender-options", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/gender-options", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const genderOptions = await storage.options.gender.getAllGenderOptions();
       res.json(genderOptions);
@@ -777,7 +776,7 @@ export function registerOptionsRoutes(
   });
 
   // GET /api/gender-options/:id - Get a specific gender option (requires workers.view permission)
-  app.get("/api/gender-options/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/gender-options/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
       const genderOption = await storage.options.gender.getGenderOption(id);
@@ -794,7 +793,7 @@ export function registerOptionsRoutes(
   });
 
   // POST /api/gender-options - Create a new gender option (requires admin permission)
-  app.post("/api/gender-options", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/gender-options", requireAccess('admin'), async (req, res) => {
     try {
       const { name, code, nota, sequence } = req.body;
       
@@ -823,7 +822,7 @@ export function registerOptionsRoutes(
   });
 
   // PUT /api/gender-options/:id - Update a gender option (requires admin permission)
-  app.put("/api/gender-options/:id", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/gender-options/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const { name, code, nota, sequence } = req.body;
@@ -875,7 +874,7 @@ export function registerOptionsRoutes(
   });
 
   // DELETE /api/gender-options/:id - Delete a gender option (requires admin permission)
-  app.delete("/api/gender-options/:id", requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/gender-options/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.options.gender.deleteGenderOption(id);
@@ -894,7 +893,7 @@ export function registerOptionsRoutes(
   // Trust Benefit Types routes
 
   // GET /api/trust-benefit-types - Get all trust benefit types (requires workers.view permission)
-  app.get("/api/trust-benefit-types", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/trust-benefit-types", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const trustBenefitTypes = await storage.options.trustBenefitTypes.getAllTrustBenefitTypes();
       res.json(trustBenefitTypes);
@@ -904,7 +903,7 @@ export function registerOptionsRoutes(
   });
 
   // GET /api/trust-benefit-types/:id - Get a specific trust benefit type (requires workers.view permission)
-  app.get("/api/trust-benefit-types/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/trust-benefit-types/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
       const trustBenefitType = await storage.options.trustBenefitTypes.getTrustBenefitType(id);
@@ -921,7 +920,7 @@ export function registerOptionsRoutes(
   });
 
   // POST /api/trust-benefit-types - Create a new trust benefit type (requires admin permission)
-  app.post("/api/trust-benefit-types", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/trust-benefit-types", requireAccess('admin'), async (req, res) => {
     try {
       const parsedData = insertTrustBenefitTypeSchema.safeParse(req.body);
       
@@ -945,7 +944,7 @@ export function registerOptionsRoutes(
   });
 
   // PUT /api/trust-benefit-types/:id - Update a trust benefit type (requires admin permission)
-  app.put("/api/trust-benefit-types/:id", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/trust-benefit-types/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const parsedData = insertTrustBenefitTypeSchema.partial().safeParse(req.body);
@@ -976,7 +975,7 @@ export function registerOptionsRoutes(
   });
 
   // DELETE /api/trust-benefit-types/:id - Delete a trust benefit type (requires admin permission)
-  app.delete("/api/trust-benefit-types/:id", requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/trust-benefit-types/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.options.trustBenefitTypes.deleteTrustBenefitType(id);
@@ -995,7 +994,7 @@ export function registerOptionsRoutes(
   // Event Type routes
 
   // GET /api/event-types - Get all event types (requires admin permission + event component)
-  app.get("/api/event-types", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/event-types", requireAccess('admin'), async (req, res) => {
     try {
       const eventTypes = await storage.options.eventTypes.getAll();
       res.json(eventTypes);
@@ -1005,7 +1004,7 @@ export function registerOptionsRoutes(
   });
 
   // GET /api/event-types/:id - Get a specific event type (requires admin permission)
-  app.get("/api/event-types/:id", requireAccess(policies.admin), async (req, res) => {
+  app.get("/api/event-types/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const eventType = await storage.options.eventTypes.get(id);
@@ -1022,7 +1021,7 @@ export function registerOptionsRoutes(
   });
 
   // POST /api/event-types - Create a new event type (requires admin permission)
-  app.post("/api/event-types", requireAccess(policies.admin), async (req, res) => {
+  app.post("/api/event-types", requireAccess('admin'), async (req, res) => {
     try {
       const { name, description, data, siriusId, category, config } = req.body;
       
@@ -1054,7 +1053,7 @@ export function registerOptionsRoutes(
   });
 
   // PUT /api/event-types/:id - Update an event type (requires admin permission)
-  app.put("/api/event-types/:id", requireAccess(policies.admin), async (req, res) => {
+  app.put("/api/event-types/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const { name, description, data, siriusId, category, config } = req.body;
@@ -1109,7 +1108,7 @@ export function registerOptionsRoutes(
   });
 
   // DELETE /api/event-types/:id - Delete an event type (requires admin permission)
-  app.delete("/api/event-types/:id", requireAccess(policies.admin), async (req, res) => {
+  app.delete("/api/event-types/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.options.eventTypes.delete(id);
@@ -1122,6 +1121,109 @@ export function registerOptionsRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete event type" });
+    }
+  });
+
+  // Dispatch Job Type routes
+
+  // GET /api/dispatch-job-types - Get all dispatch job types (requires admin permission)
+  app.get("/api/dispatch-job-types", requireAccess('admin'), async (req, res) => {
+    try {
+      const jobTypes = await storage.options.dispatchJobTypes.getAll();
+      res.json(jobTypes);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch dispatch job types" });
+    }
+  });
+
+  // GET /api/dispatch-job-types/:id - Get a specific dispatch job type (requires admin permission)
+  app.get("/api/dispatch-job-types/:id", requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const jobType = await storage.options.dispatchJobTypes.get(id);
+      
+      if (!jobType) {
+        res.status(404).json({ message: "Dispatch job type not found" });
+        return;
+      }
+      
+      res.json(jobType);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch dispatch job type" });
+    }
+  });
+
+  // POST /api/dispatch-job-types - Create a new dispatch job type (requires admin permission)
+  app.post("/api/dispatch-job-types", requireAccess('admin'), async (req, res) => {
+    try {
+      const { name, description, data } = req.body;
+      
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ message: "Name is required" });
+      }
+      
+      const jobType = await storage.options.dispatchJobTypes.create({
+        name: name.trim(),
+        description: description && typeof description === 'string' ? description.trim() : null,
+        data: data && typeof data === 'object' ? data : null,
+      });
+      
+      res.status(201).json(jobType);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to create dispatch job type" });
+    }
+  });
+
+  // PUT /api/dispatch-job-types/:id - Update a dispatch job type (requires admin permission)
+  app.put("/api/dispatch-job-types/:id", requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, description, data } = req.body;
+      
+      const updates: any = {};
+      
+      if (name !== undefined) {
+        if (typeof name !== 'string' || !name.trim()) {
+          return res.status(400).json({ message: "Name must be a non-empty string" });
+        }
+        updates.name = name.trim();
+      }
+      
+      if (description !== undefined) {
+        updates.description = description && typeof description === 'string' ? description.trim() : null;
+      }
+      
+      if (data !== undefined) {
+        updates.data = data && typeof data === 'object' ? data : null;
+      }
+      
+      const jobType = await storage.options.dispatchJobTypes.update(id, updates);
+      
+      if (!jobType) {
+        res.status(404).json({ message: "Dispatch job type not found" });
+        return;
+      }
+      
+      res.json(jobType);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to update dispatch job type" });
+    }
+  });
+
+  // DELETE /api/dispatch-job-types/:id - Delete a dispatch job type (requires admin permission)
+  app.delete("/api/dispatch-job-types/:id", requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.options.dispatchJobTypes.delete(id);
+      
+      if (!deleted) {
+        res.status(404).json({ message: "Dispatch job type not found" });
+        return;
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete dispatch job type" });
     }
   });
 }

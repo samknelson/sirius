@@ -1,0 +1,109 @@
+import { db } from "../../db";
+import { workerDispatchEligDenorm, workerBans } from "@shared/schema";
+import { eq, sql } from "drizzle-orm";
+import { logger } from "../../logger";
+import type { CronJobHandler, CronJobContext, CronJobSummary } from "../registry";
+
+const BAN_CATEGORY = "ban";
+
+function startOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function isBanCurrentlyActive(ban: { startDate: Date; endDate: Date | null }): boolean {
+  const today = startOfDay(new Date());
+  const startDay = startOfDay(new Date(ban.startDate));
+  if (startDay > today) return false;
+  if (!ban.endDate) return true;
+  const endDay = startOfDay(new Date(ban.endDate));
+  return endDay >= today;
+}
+
+export const sweepExpiredBanEligHandler: CronJobHandler = {
+  description: 'Clears dispatch eligibility entries for expired worker bans',
+  requiresComponent: 'dispatch.ban',
+
+  async execute(context: CronJobContext): Promise<CronJobSummary> {
+    logger.info('Starting expired ban eligibility sweep', {
+      service: 'cron-sweep-ban-elig',
+      jobId: context.jobId,
+      mode: context.mode,
+    });
+
+    let workersProcessed = 0;
+    let entriesRemoved = 0;
+
+    try {
+      const workersWithBanElig = await db
+        .selectDistinct({ workerId: workerDispatchEligDenorm.workerId })
+        .from(workerDispatchEligDenorm)
+        .where(eq(workerDispatchEligDenorm.category, BAN_CATEGORY));
+
+      for (const { workerId } of workersWithBanElig) {
+        const bans = await db
+          .select()
+          .from(workerBans)
+          .where(eq(workerBans.workerId, workerId));
+
+        const activeDispatchBans = bans.filter(
+          ban => ban.type === "dispatch" && isBanCurrentlyActive(ban)
+        );
+
+        if (activeDispatchBans.length === 0) {
+          if (context.mode === 'live') {
+            const deleted = await db
+              .delete(workerDispatchEligDenorm)
+              .where(sql`${workerDispatchEligDenorm.workerId} = ${workerId} AND ${workerDispatchEligDenorm.category} = ${BAN_CATEGORY}`)
+              .returning();
+            entriesRemoved += deleted.length;
+          } else {
+            const toDelete = await db
+              .select()
+              .from(workerDispatchEligDenorm)
+              .where(sql`${workerDispatchEligDenorm.workerId} = ${workerId} AND ${workerDispatchEligDenorm.category} = ${BAN_CATEGORY}`);
+            entriesRemoved += toDelete.length;
+          }
+          
+          logger.debug(`Cleared expired ban eligibility for worker`, {
+            service: 'cron-sweep-ban-elig',
+            workerId,
+            mode: context.mode,
+          });
+        }
+
+        workersProcessed++;
+      }
+
+      logger.info('Completed expired ban eligibility sweep', {
+        service: 'cron-sweep-ban-elig',
+        jobId: context.jobId,
+        mode: context.mode,
+        workersProcessed,
+        entriesRemoved,
+      });
+
+      return {
+        success: true,
+        message: context.mode === 'live'
+          ? `Processed ${workersProcessed} workers, removed ${entriesRemoved} expired ban eligibility entries`
+          : `[TEST] Would process ${workersProcessed} workers, would remove ${entriesRemoved} expired ban eligibility entries`,
+        stats: {
+          workersProcessed,
+          entriesRemoved,
+        },
+      };
+    } catch (error) {
+      logger.error('Failed to sweep expired ban eligibility', {
+        service: 'cron-sweep-ban-elig',
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      return {
+        success: false,
+        message: `Failed to sweep expired ban eligibility: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  },
+};

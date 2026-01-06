@@ -9,10 +9,11 @@ import { handleStatusCallback } from "../services/comm-status/handler";
 import { serviceRegistry } from "../services/service-registry";
 import type { PostalTransport, PostalAddress } from "../services/providers/postal";
 import { broadcastAlertUpdate } from "../services/websocket";
+import { getEffectiveUser } from "./masquerade";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
-type PolicyMiddleware = (policy: any) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
+type PolicyMiddleware = (policy: any, getEntityId?: (req: Request) => string | undefined | Promise<string | undefined>) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
 const commStorage = createCommStorage();
 const smsOptinStorage = createCommSmsOptinStorage();
@@ -85,7 +86,12 @@ export function registerCommRoutes(
   requireAccess?: PolicyMiddleware
 ) {
   
-  app.get("/api/contacts/:contactId/comm", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  // GET /api/contacts/:contactId/comm - Get communication records for a contact (worker.view policy)
+  app.get("/api/contacts/:contactId/comm", requireAuth, requireAccess ? requireAccess('worker.view', async (req: any) => {
+    // Resolve the owning worker ID from the contact
+    const worker = await storage.workers.getWorkerByContactId(req.params.contactId);
+    return worker?.id;
+  }) : ((_req: any, _res: any, next: any) => next()), async (req, res) => {
     try {
       const { contactId } = req.params;
       const records = await commStorage.getCommsByContactWithDetails(contactId);
@@ -96,7 +102,7 @@ export function registerCommRoutes(
     }
   });
 
-  app.get("/api/comm/:id", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/comm/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
       const record = await commStorage.getCommWithDetails(id);
@@ -112,7 +118,7 @@ export function registerCommRoutes(
     }
   });
 
-  app.post("/api/contacts/:contactId/sms", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  app.post("/api/contacts/:contactId/sms", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { contactId } = req.params;
       
@@ -162,7 +168,7 @@ export function registerCommRoutes(
     }
   });
 
-  app.post("/api/contacts/:contactId/email", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  app.post("/api/contacts/:contactId/email", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { contactId } = req.params;
       
@@ -214,7 +220,7 @@ export function registerCommRoutes(
     }
   });
 
-  app.post("/api/contacts/:contactId/postal", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  app.post("/api/contacts/:contactId/postal", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { contactId } = req.params;
       
@@ -271,7 +277,7 @@ export function registerCommRoutes(
     }
   });
 
-  app.get("/api/contacts/:contactId/user-lookup", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/contacts/:contactId/user-lookup", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { contactId } = req.params;
       
@@ -309,7 +315,7 @@ export function registerCommRoutes(
     }
   });
 
-  app.post("/api/contacts/:contactId/inapp", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  app.post("/api/contacts/:contactId/inapp", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { contactId } = req.params;
       
@@ -359,7 +365,7 @@ export function registerCommRoutes(
     }
   });
 
-  app.get("/api/phone-numbers/:phoneNumber/sms-optin", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/phone-numbers/:phoneNumber/sms-optin", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { phoneNumber } = req.params;
       const optin = await smsOptinStorage.getSmsOptinByPhoneNumber(phoneNumber);
@@ -390,7 +396,7 @@ export function registerCommRoutes(
     await handleStatusCallback(req, res, commId);
   });
 
-  app.get("/api/comm/:id/logs", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/comm/:id/logs", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
       const { module, operation, startDate, endDate } = req.query;
@@ -423,7 +429,7 @@ export function registerCommRoutes(
     message: "At least one of optin or allowlist must be provided",
   });
 
-  app.get("/api/email-optin/:email", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/email-optin/:email", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { email } = req.params;
       const optin = await emailOptinStorage.getEmailOptinByEmail(email);
@@ -449,7 +455,7 @@ export function registerCommRoutes(
     }
   });
 
-  app.put("/api/email-optin/:email", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  app.put("/api/email-optin/:email", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { email } = req.params;
       
@@ -535,7 +541,7 @@ export function registerCommRoutes(
     message: "At least one of optin or allowlist must be provided",
   });
 
-  app.post("/api/postal/verify-address", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  app.post("/api/postal/verify-address", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const parsed = addressVerificationSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -580,7 +586,7 @@ export function registerCommRoutes(
     }
   });
 
-  app.get("/api/postal-optin/:canonicalAddress", requireAuth, requirePermission("workers.view"), async (req, res) => {
+  app.get("/api/postal-optin/:canonicalAddress", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { canonicalAddress } = req.params;
       const decodedAddress = decodeURIComponent(canonicalAddress);
@@ -609,7 +615,7 @@ export function registerCommRoutes(
     }
   });
 
-  app.put("/api/postal-optin/:canonicalAddress", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  app.put("/api/postal-optin/:canonicalAddress", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { canonicalAddress } = req.params;
       const decodedAddress = decodeURIComponent(canonicalAddress);
@@ -667,7 +673,7 @@ export function registerCommRoutes(
     }
   });
 
-  app.post("/api/postal/verify-and-register", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  app.post("/api/postal/verify-and-register", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const parsed = addressVerificationSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -761,7 +767,7 @@ export function registerCommRoutes(
     }
   });
 
-  app.get("/api/postal/templates", requireAuth, requirePermission("workers.manage"), async (req, res) => {
+  app.get("/api/postal/templates", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       let postalProvider: PostalTransport;
       try {
@@ -793,7 +799,11 @@ export function registerCommRoutes(
   // Get unread count for the current user
   app.get("/api/alerts/unread-count", requireAuth, async (req, res) => {
     try {
-      const dbUser = (req as any).user?.dbUser;
+      const user = (req as any).user;
+      const replitUserId = user?.claims?.sub;
+      const session = req.session as any;
+      const { dbUser } = await getEffectiveUser(session, replitUserId);
+      
       if (!dbUser?.id) {
         return res.status(401).json({ message: "User not authenticated" });
       }
@@ -809,7 +819,11 @@ export function registerCommRoutes(
   // Get all alerts for the current user (with optional status filter)
   app.get("/api/alerts", requireAuth, async (req, res) => {
     try {
-      const dbUser = (req as any).user?.dbUser;
+      const user = (req as any).user;
+      const replitUserId = user?.claims?.sub;
+      const session = req.session as any;
+      const { dbUser } = await getEffectiveUser(session, replitUserId);
+      
       if (!dbUser?.id) {
         return res.status(401).json({ message: "User not authenticated" });
       }
@@ -834,7 +848,11 @@ export function registerCommRoutes(
   // Get a specific alert by ID
   app.get("/api/alerts/:id", requireAuth, async (req, res) => {
     try {
-      const dbUser = (req as any).user?.dbUser;
+      const user = (req as any).user;
+      const replitUserId = user?.claims?.sub;
+      const session = req.session as any;
+      const { dbUser } = await getEffectiveUser(session, replitUserId);
+      
       if (!dbUser?.id) {
         return res.status(401).json({ message: "User not authenticated" });
       }
@@ -861,7 +879,11 @@ export function registerCommRoutes(
   // Mark an alert as read
   app.patch("/api/alerts/:id/read", requireAuth, async (req, res) => {
     try {
-      const dbUser = (req as any).user?.dbUser;
+      const user = (req as any).user;
+      const replitUserId = user?.claims?.sub;
+      const session = req.session as any;
+      const { dbUser } = await getEffectiveUser(session, replitUserId);
+      
       if (!dbUser?.id) {
         return res.status(401).json({ message: "User not authenticated" });
       }
@@ -886,7 +908,11 @@ export function registerCommRoutes(
   // Mark all alerts as read for current user
   app.patch("/api/alerts/mark-all-read", requireAuth, async (req, res) => {
     try {
-      const dbUser = (req as any).user?.dbUser;
+      const user = (req as any).user;
+      const replitUserId = user?.claims?.sub;
+      const session = req.session as any;
+      const { dbUser } = await getEffectiveUser(session, replitUserId);
+      
       if (!dbUser?.id) {
         return res.status(401).json({ message: "User not authenticated" });
       }

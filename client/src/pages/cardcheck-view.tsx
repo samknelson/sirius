@@ -1,15 +1,16 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useParams, useLocation } from "wouter";
-import { Loader2, ArrowLeft, User, FileText, Calendar, CheckCircle, XCircle, Clock, Square, CheckSquare, DollarSign } from "lucide-react";
+import { Loader2, ArrowLeft, User, FileText, Calendar, CheckCircle, XCircle, Clock, Square, CheckSquare, DollarSign, Shield } from "lucide-react";
 import { Cardcheck, CardcheckDefinition, Worker, Contact, BargainingUnit } from "@shared/schema";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAccessCheck } from "@/hooks/use-access-check";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, ApiError } from "@/lib/queryClient";
 import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,7 +34,7 @@ export default function CardcheckViewPage() {
   const id = params.id;
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { hasComponent } = useAuth();
+  const { hasComponent, hasPermission } = useAuth();
   const [signModalOpen, setSignModalOpen] = useState(false);
   const [checkedBoxes, setCheckedBoxes] = useState<Record<number, boolean>>({});
   const [rateValue, setRateValue] = useState<string>("");
@@ -63,6 +64,13 @@ export default function CardcheckViewPage() {
     queryKey: ["/api/bargaining-units", cardcheck?.bargainingUnitId],
     enabled: hasComponent("bargainingunits") && !!cardcheck?.bargainingUnitId,
   });
+
+  // Check cardcheck.edit access for this cardcheck
+  const { canAccess: hasEditAccess, isLoading: isAccessLoading } = useAccessCheck(
+    'cardcheck.edit',
+    cardcheck?.id,
+    { enabled: !!cardcheck?.id }
+  );
 
   const handleSignSuccess = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/cardcheck", id] });
@@ -154,7 +162,7 @@ export default function CardcheckViewPage() {
         description: "Cardcheck deleted successfully.",
       });
       if (cardcheck?.workerId) {
-        setLocation(`/workers/${cardcheck.workerId}/cardchecks`);
+        setLocation(`/workers/${cardcheck.workerId}/union/cardchecks`);
       } else {
         setLocation("/workers");
       }
@@ -179,13 +187,71 @@ export default function CardcheckViewPage() {
   }
 
   if (error || !cardcheck) {
+    // Check if this is an access denied error (403)
+    const apiError = error instanceof ApiError ? error : null;
+    const errorData = apiError?.data;
+    const isAccessDenied = apiError?.status === 403 || errorData?.error === 'ACCESS_DENIED';
+    
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Card>
           <CardContent className="py-12 text-center">
-            <p className="text-destructive">Cardcheck not found.</p>
+            {isAccessDenied ? (
+              <>
+                <Shield className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
+                <p className="text-muted-foreground mb-2">
+                  You don't have permission to view this cardcheck.
+                </p>
+                {errorData?.policy && (
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Required policy: <code className="bg-muted px-1 py-0.5 rounded">{errorData.policy}</code>
+                  </p>
+                )}
+                {errorData?.message && errorData.message !== 'Access denied' && (
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Reason: {errorData.message}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-destructive">Cardcheck not found.</p>
+            )}
             <Link href="/workers">
               <Button variant="outline" className="mt-4">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back to Workers
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Check access to view/edit this cardcheck (worker.edit on the associated worker)
+  if (isAccessLoading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasEditAccess) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Shield className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+            <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
+            <p className="text-muted-foreground mb-4">
+              You don't have permission to view this cardcheck.
+            </p>
+            <Link href="/workers">
+              <Button variant="outline">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back to Workers
               </Button>
@@ -224,7 +290,7 @@ export default function CardcheckViewPage() {
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4">
             {cardcheck.workerId && (
-              <Link href={`/workers/${cardcheck.workerId}/cardchecks`}>
+              <Link href={`/workers/${cardcheck.workerId}/union/cardchecks`}>
                 <Button variant="ghost" size="icon" data-testid="button-back">
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
@@ -272,11 +338,6 @@ export default function CardcheckViewPage() {
                       </p>
                     </div>
                   )}
-                  <Link href={`/workers/${worker.id}`}>
-                    <Button variant="outline" size="sm" className="mt-2">
-                      View Worker
-                    </Button>
-                  </Link>
                 </div>
               ) : (
                 <p className="text-muted-foreground">Loading worker info...</p>
@@ -493,30 +554,32 @@ export default function CardcheckViewPage() {
             </AlertDialog>
           )}
 
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="outline" className="text-destructive" data-testid="button-delete">
-                Delete
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete Cardcheck?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to delete this cardcheck? This action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction 
-                  onClick={() => deleteMutation.mutate()}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
+          {hasPermission('staff') && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" className="text-destructive" data-testid="button-delete">
                   Delete
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Cardcheck?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to delete this cardcheck? This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction 
+                    onClick={() => deleteMutation.mutate()}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </div>
       </div>
 

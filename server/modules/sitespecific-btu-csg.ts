@@ -1,12 +1,12 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { requireAccess } from "../accessControl";
-import { policies } from "../policies";
+import { requireAccess } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
 import { storage } from "../storage";
 import type { InsertBtuCsgRecord } from "../storage/sitespecific-btu-csg";
 import type { InsertBtuEmployerMap } from "../storage/sitespecific-btu-employer-map";
 import { insertBtuEmployerMapSchema } from "../../shared/schema/sitespecific/btu/schema";
 import { z } from "zod";
+import { getEffectiveUser } from "./masquerade";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -63,12 +63,16 @@ export function registerBtuCsgRoutes(
         school: null,
       };
 
-      const user = (req as any).user?.dbUser;
-      if (!user?.email) {
+      const user = (req as any).user;
+      const replitUserId = user?.claims?.sub;
+      const session = req.session as any;
+      const { dbUser } = await getEffectiveUser(session, replitUserId);
+      
+      if (!dbUser?.email) {
         return res.json(prefillData);
       }
 
-      const contact = await storage.contacts.getContactByEmail(user.email);
+      const contact = await storage.contacts.getContactByEmail(dbUser.email);
       if (contact) {
         prefillData.firstName = contact.given || null;
         prefillData.lastName = contact.family || null;
@@ -80,7 +84,7 @@ export function registerBtuCsgRoutes(
         }
       }
 
-      const worker = await storage.workers.getWorkerByContactEmail(user.email);
+      const worker = await storage.workers.getWorkerByContactEmail(dbUser.email);
       if (worker && worker.denormHomeEmployerId) {
         const employer = await storage.employers.getEmployer(worker.denormHomeEmployerId);
         if (employer) {

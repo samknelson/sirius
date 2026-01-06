@@ -34,6 +34,8 @@ export interface UserStorage {
   getAllUsers(): Promise<User[]>;
   getAllUsersWithRoles(): Promise<(User & { roles: Role[] })[]>;
   hasAnyUsers(): Promise<boolean>;
+  updateUserData(id: string, data: Record<string, unknown>): Promise<User | undefined>;
+  getUserData(id: string): Promise<Record<string, unknown> | null>;
   
   // Role operations
   getAllRoles(): Promise<Role[]>;
@@ -223,6 +225,20 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
       return (result?.count ?? 0) > 0;
     },
 
+    async updateUserData(id: string, data: Record<string, unknown>): Promise<User | undefined> {
+      const [user] = await db
+        .update(users)
+        .set({ data, updatedAt: new Date() })
+        .where(eq(users.id, id))
+        .returning();
+      return user || undefined;
+    },
+
+    async getUserData(id: string): Promise<Record<string, unknown> | null> {
+      const [user] = await db.select({ data: users.data }).from(users).where(eq(users.id, id));
+      return (user?.data as Record<string, unknown>) || null;
+    },
+
     // Role operations
     async getAllRoles(): Promise<Role[]> {
       return db.select().from(roles).orderBy(roles.sequence, roles.name);
@@ -324,6 +340,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
           createdAt: users.createdAt,
           updatedAt: users.updatedAt,
           lastLogin: users.lastLogin,
+          data: users.data,
         })
         .from(userRoles)
         .innerJoin(users, eq(userRoles.userId, users.id))
@@ -451,6 +468,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
           createdAt: users.createdAt,
           updatedAt: users.updatedAt,
           lastLogin: users.lastLogin,
+          data: users.data,
         })
         .from(users)
         .innerJoin(userRoles, eq(users.id, userRoles.userId))

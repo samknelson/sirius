@@ -6,6 +6,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import type { BargainingUnit } from "@shared/schema";
 import { createContext, useContext } from "react";
+import { useBargainingUnitTabAccess } from "@/hooks/useTabAccess";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 interface BargainingUnitLayoutContextValue {
   bargainingUnit: BargainingUnit;
@@ -25,7 +27,7 @@ export function useBargainingUnitLayout() {
 
 interface BargainingUnitLayoutProps {
   children: React.ReactNode;
-  activeTab: "view" | "edit" | "delete";
+  activeTab: string;
 }
 
 export default function BargainingUnitLayout({ children, activeTab }: BargainingUnitLayoutProps) {
@@ -34,6 +36,12 @@ export default function BargainingUnitLayout({ children, activeTab }: Bargaining
   const { data: bargainingUnit, isLoading, error } = useQuery<BargainingUnit>({
     queryKey: ["/api/bargaining-units", id],
   });
+
+  // Hook must be called before any conditional returns (React rules of hooks)
+  const { tabs: mainTabs } = useBargainingUnitTabAccess(id || "");
+
+  // Set page title based on bargaining unit name
+  usePageTitle(bargainingUnit?.name);
 
   if (isLoading || !bargainingUnit) {
     return (
@@ -108,12 +116,6 @@ export default function BargainingUnitLayout({ children, activeTab }: Bargaining
       </div>
     );
   }
-
-  const mainTabs = [
-    { id: "view", label: "View", href: `/bargaining-units/${bargainingUnit.id}` },
-    { id: "edit", label: "Edit", href: `/bargaining-units/${bargainingUnit.id}/edit` },
-    { id: "delete", label: "Delete", href: `/bargaining-units/${bargainingUnit.id}/delete` },
-  ];
 
   const contextValue: BargainingUnitLayoutContextValue = {
     bargainingUnit,
