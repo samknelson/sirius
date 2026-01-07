@@ -10,6 +10,7 @@ import {
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
+import { eventBus, EventType } from "../services/event-bus";
 
 export interface WorkerSkillWithDetails extends WorkerSkill {
   skill?: OptionsSkill | null;
@@ -117,14 +118,36 @@ export function createWorkerSkillStorage(): WorkerSkillStorage {
         .insert(workerSkills)
         .values(insertData)
         .returning();
+      
+      setImmediate(() => {
+        eventBus.emit(EventType.WORKER_SKILL_SAVED, {
+          workerSkillId: result.id,
+          workerId: result.workerId,
+          skillId: result.skillId,
+        });
+      });
+      
       return result;
     },
 
     async delete(id: string, message?: string): Promise<boolean> {
-      const result = await db
+      const [deleted] = await db
         .delete(workerSkills)
-        .where(eq(workerSkills.id, id));
-      return (result.rowCount ?? 0) > 0;
+        .where(eq(workerSkills.id, id))
+        .returning();
+      
+      if (deleted) {
+        setImmediate(() => {
+          eventBus.emit(EventType.WORKER_SKILL_SAVED, {
+            workerSkillId: deleted.id,
+            workerId: deleted.workerId,
+            skillId: deleted.skillId,
+            isDeleted: true,
+          });
+        });
+      }
+      
+      return !!deleted;
     },
   };
 }

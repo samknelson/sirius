@@ -3,6 +3,7 @@ import { dispatchEligPluginRegistry } from "../dispatch-elig-plugin-registry";
 import { dispatchBanPlugin, backfillDispatchBanEligibility } from "./ban";
 import { dispatchDncPlugin } from "./dnc";
 import { dispatchHfePlugin } from "./hfe";
+import { dispatchSkillPlugin, backfillDispatchSkillEligibility } from "./skill";
 import { dispatchStatusPlugin } from "./status";
 
 /**
@@ -14,6 +15,7 @@ export function registerDispatchEligPlugins(): void {
   dispatchEligPluginRegistry.register(dispatchBanPlugin);
   dispatchEligPluginRegistry.register(dispatchDncPlugin);
   dispatchEligPluginRegistry.register(dispatchHfePlugin);
+  dispatchEligPluginRegistry.register(dispatchSkillPlugin);
   dispatchEligPluginRegistry.register(dispatchStatusPlugin);
   
   logger.info("Dispatch eligibility plugins registered", {
@@ -43,6 +45,24 @@ export async function initializeDispatchEligSystem(): Promise<void> {
     }
   } catch (error) {
     logger.error("Failed to backfill ban eligibility during startup", {
+      service: "dispatch-elig-plugins",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  // Backfill eligibility data for existing worker skills
+  // This ensures pre-existing skills are accounted for in eligibility checks
+  try {
+    const result = await backfillDispatchSkillEligibility();
+    if (result.workersProcessed > 0) {
+      logger.info("Skill eligibility backfill completed during startup", {
+        service: "dispatch-elig-plugins",
+        workersProcessed: result.workersProcessed,
+        entriesCreated: result.entriesCreated,
+      });
+    }
+  } catch (error) {
+    logger.error("Failed to backfill skill eligibility during startup", {
       service: "dispatch-elig-plugins",
       error: error instanceof Error ? error.message : String(error),
     });

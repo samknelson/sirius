@@ -16,10 +16,13 @@ export interface EligibilityCondition {
    * - "not_exists": Worker must NOT have a row with this category and value
    * - "exists_or_none": Worker must either have no rows with this category, OR have one matching the value
    * - "not_exists_category": Worker must NOT have ANY row with this category (value is ignored in query but used for documentation)
+   * - "exists_all": Worker must have rows with this category for ALL values in the array
    */
-  type: "exists" | "not_exists" | "exists_or_none" | "not_exists_category";
-  /** The value to check. Can be a static value or derived from job context. For not_exists_category, this is informational only. */
+  type: "exists" | "not_exists" | "exists_or_none" | "not_exists_category" | "exists_all";
+  /** The value to check. Can be a static value or derived from job context. For not_exists_category, this is informational only. For exists_all, this is a comma-separated list of values. */
   value: string;
+  /** For exists_all: array of values that must all exist. */
+  values?: string[];
 }
 
 /**
@@ -78,7 +81,7 @@ export interface DispatchEligPlugin {
    * @param config - Per-plugin configuration from the job type
    * @returns The condition to add to the query, or null if no condition needed
    */
-  getEligibilityCondition(context: EligibilityQueryContext, config: EligibilityPluginConfig["config"]): EligibilityCondition | null;
+  getEligibilityCondition(context: EligibilityQueryContext, config: EligibilityPluginConfig["config"]): EligibilityCondition | null | Promise<EligibilityCondition | null>;
 }
 
 class DispatchEligPluginRegistry {

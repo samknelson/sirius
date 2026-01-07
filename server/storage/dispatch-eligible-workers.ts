@@ -93,7 +93,7 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
       continue;
     }
 
-    const condition = plugin.getEligibilityCondition(context, pluginConfig.config);
+    const condition = await Promise.resolve(plugin.getEligibilityCondition(context, pluginConfig.config));
     if (condition) {
       appliedConditions.push({ pluginId: pluginConfig.pluginId, condition });
     }
@@ -120,7 +120,7 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
     .innerJoin(contacts, eq(workers.contactId, contacts.id))
     .$dynamic();
 
-  const whereConditions = appliedConditions.map(({ condition }) => {
+  const whereConditions = appliedConditions.flatMap(({ condition }) => {
     switch (condition.type) {
       case "exists": {
         const subquery = db
@@ -131,7 +131,7 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
             eq(workerDispatchEligDenorm.category, condition.category),
             eq(workerDispatchEligDenorm.value, condition.value)
           ));
-        return exists(subquery);
+        return [exists(subquery)];
       }
       
       case "not_exists": {
@@ -143,7 +143,7 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
             eq(workerDispatchEligDenorm.category, condition.category),
             eq(workerDispatchEligDenorm.value, condition.value)
           ));
-        return notExists(subquery);
+        return [notExists(subquery)];
       }
       
       case "exists_or_none": {
@@ -162,10 +162,10 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
             eq(workerDispatchEligDenorm.workerId, workers.id),
             eq(workerDispatchEligDenorm.category, condition.category)
           ));
-        return or(
+        return [or(
           exists(valueSubquery),
           notExists(categorySubquery)
-        );
+        )];
       }
       
       case "not_exists_category": {
@@ -176,14 +176,32 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
             eq(workerDispatchEligDenorm.workerId, workers.id),
             eq(workerDispatchEligDenorm.category, condition.category)
           ));
-        return notExists(categorySubquery);
+        return [notExists(categorySubquery)];
+      }
+      
+      case "exists_all": {
+        const valuesToCheck = condition.values || [];
+        if (valuesToCheck.length === 0) {
+          return [];
+        }
+        return valuesToCheck.map(value => {
+          const subquery = db
+            .select({ one: sql`1` })
+            .from(workerDispatchEligDenorm)
+            .where(and(
+              eq(workerDispatchEligDenorm.workerId, workers.id),
+              eq(workerDispatchEligDenorm.category, condition.category),
+              eq(workerDispatchEligDenorm.value, value)
+            ));
+          return exists(subquery);
+        });
       }
       
       default:
         logger.warn(`Unknown condition type: ${(condition as EligibilityCondition).type}`, {
           service: "dispatch-eligible-workers",
         });
-        return sql`true`;
+        return [sql`true`];
     }
   });
 
