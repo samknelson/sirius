@@ -2,9 +2,11 @@ import { pgTable, varchar, date, integer } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { employers } from "../../schema";
 
 export const edlsSheets = pgTable("edls_sheets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
   title: varchar("title", { length: 255 }).notNull(),
   date: date("date").notNull(),
   workerCount: integer("worker_count").notNull().default(0),
