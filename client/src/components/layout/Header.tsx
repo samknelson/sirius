@@ -711,6 +711,16 @@ export default function Header() {
                       </Link>
                     </DropdownMenuItem>
                   )}
+                  {hasComponent("sitespecific.btu") && hasPermission("admin") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/sitespecific/btu/worker-import" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-btu-worker-import">
+                          <Upload className="h-4 w-4 mr-2" />
+                          Worker Import
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
