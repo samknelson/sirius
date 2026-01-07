@@ -370,6 +370,20 @@ export const componentRegistry: ComponentDefinition[] = [
     permissions: [
       { key: "debug", description: "Access to debug tools and raw data viewers" }
     ]
+  },
+  {
+    id: "edls",
+    name: "Employer Day Labor Scheduler",
+    description: "Day labor scheduling functionality for employers",
+    enabledByDefault: false,
+    category: "core"
+  },
+  {
+    id: "sitespecific.freeman",
+    name: "Freeman Customization",
+    description: "Custom functionality for Freeman",
+    enabledByDefault: false,
+    category: "site-specific"
   }
 ];
 
