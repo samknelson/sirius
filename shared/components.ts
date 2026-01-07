@@ -376,7 +376,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Employer Day Labor Scheduler",
     description: "Day labor scheduling functionality for employers",
     enabledByDefault: false,
-    category: "core"
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/edls/schema.ts",
+      tables: ["edls_sheets"]
+    }
   },
   {
     id: "sitespecific.freeman",

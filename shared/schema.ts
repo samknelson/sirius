@@ -644,6 +644,13 @@ export {
   type InsertWorkerSkill,
 } from "./schema/worker/skills/schema";
 
+export {
+  edlsSheets,
+  insertEdlsSheetsSchema,
+  type EdlsSheet,
+  type InsertEdlsSheet,
+} from "./schema/edls/schema";
+
 // Zod schemas for validation
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
