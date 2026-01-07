@@ -66,6 +66,7 @@ import { registerWorkerSkillsRoutes } from "./modules/worker-skills";
 import { requireComponent } from "./modules/components";
 import { registerWorkerStewardAssignmentRoutes } from "./modules/worker-steward-assignments";
 import { registerBtuCsgRoutes } from "./modules/sitespecific-btu-csg";
+import { registerEdlsSheetsRoutes } from "./modules/edls-sheets";
 import { registerTerminologyRoutes } from "./modules/terminology";
 import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
@@ -1092,6 +1093,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register site-specific routes
   registerBtuCsgRoutes(app, requireAuth, requirePermission);
+
+  // Register EDLS routes
+  registerEdlsSheetsRoutes(app, requireAuth, requirePermission);
 
   const httpServer = createServer(app);
   return httpServer;

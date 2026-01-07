@@ -29,6 +29,7 @@ import {
   FileWarning,
   Map,
   Briefcase,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -344,6 +345,18 @@ export default function Header() {
                         >
                           <Briefcase className="h-4 w-4 mr-2" />
                           Dispatch Jobs
+                        </Button>
+                      </Link>
+                    )}
+                    {hasComponent("edls") && (
+                      <Link href="/edls/sheets" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location.startsWith("/edls") ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-edls-sheets"
+                        >
+                          <FileSpreadsheet className="h-4 w-4 mr-2" />
+                          Day Labor Sheets
                         </Button>
                       </Link>
                     )}
@@ -706,7 +719,7 @@ export default function Header() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    variant={location.startsWith("/employers") || location.startsWith("/employer-contacts") || location.startsWith("/dispatch") ? "default" : "ghost"}
+                    variant={location.startsWith("/employers") || location.startsWith("/employer-contacts") || location.startsWith("/dispatch") || location.startsWith("/edls") ? "default" : "ghost"}
                     size="sm"
                     data-testid="nav-employers"
                   >
@@ -756,6 +769,16 @@ export default function Header() {
                         <div className="flex items-center cursor-pointer" data-testid="menu-dispatch-jobs">
                           <Briefcase className="h-4 w-4 mr-2" />
                           Dispatch Jobs
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasComponent("edls") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/edls/sheets" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-edls-sheets">
+                          <FileSpreadsheet className="h-4 w-4 mr-2" />
+                          Day Labor Sheets
                         </div>
                       </Link>
                     </DropdownMenuItem>
