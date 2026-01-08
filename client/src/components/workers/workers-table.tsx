@@ -1108,7 +1108,7 @@ export function WorkersTable({
                             >
                               {renderIcon(
                                 worker.bargainingUnitId ? bargainingUnitIconMap.get(worker.bargainingUnitId) || "Users" : "Users",
-                                "h-4 w-4 text-muted-foreground"
+                                "h-5 w-5 text-muted-foreground"
                               )}
                             </div>
                           </TooltipTrigger>
