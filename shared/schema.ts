@@ -646,8 +646,10 @@ export {
 
 export {
   edlsSheets,
+  edlsSheetStatusEnum,
   insertEdlsSheetsSchema,
   type EdlsSheet,
+  type EdlsSheetStatus,
   type InsertEdlsSheet,
 } from "./schema/edls/schema";
 
