@@ -259,6 +259,18 @@ export function WorkersTable({
     return map;
   }, [employerTypes]);
 
+  // Create map for bargaining unit icons (by ID)
+  const bargainingUnitIconMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const unit of bargainingUnits) {
+      const iconName = unit.data?.icon;
+      if (typeof iconName === "string") {
+        map.set(unit.id, iconName);
+      }
+    }
+    return map;
+  }, [bargainingUnits]);
+
   // Fetch trust benefits for filter dropdown (only when trust.benefits is enabled)
   const { data: trustBenefits = [] } = useQuery<any[]>({
     queryKey: ["/api/trust-benefits"],
@@ -1090,12 +1102,16 @@ export function WorkersTable({
                       {worker.bargainingUnitCode ? (
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <span 
-                              className="text-sm font-medium text-foreground cursor-help"
+                            <div 
+                              className="flex items-center gap-2 text-sm font-medium text-foreground cursor-help"
                               data-testid={`unit-code-${worker.id}`}
                             >
-                              {worker.bargainingUnitCode}
-                            </span>
+                              {renderIcon(
+                                worker.bargainingUnitId ? bargainingUnitIconMap.get(worker.bargainingUnitId) || "Users" : "Users",
+                                "h-4 w-4 text-muted-foreground"
+                              )}
+                              <span>{worker.bargainingUnitCode}</span>
+                            </div>
                           </TooltipTrigger>
                           <TooltipContent>
                             <p>{worker.bargainingUnitName}</p>
