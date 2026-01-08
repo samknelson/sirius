@@ -242,7 +242,7 @@ export function WorkersTable({
   });
 
   // Fetch bargaining units for filter dropdown
-  const { data: bargainingUnits = [] } = useQuery<{ id: string; siriusId: string; name: string }[]>({
+  const { data: bargainingUnits = [] } = useQuery<{ id: string; siriusId: string; name: string; data?: { icon?: string } | null }[]>({
     queryKey: ["/api/bargaining-units"],
   });
 
@@ -715,15 +715,21 @@ export function WorkersTable({
                   <SelectItem value="all">All Units</SelectItem>
                   {bargainingUnits
                     .sort((a, b) => a.siriusId.localeCompare(b.siriusId))
-                    .map((unit) => (
-                      <SelectItem 
-                        key={unit.id} 
-                        value={unit.id}
-                        data-testid={`select-bargaining-unit-${unit.id}`}
-                      >
-                        <span>{unit.siriusId} - {unit.name}</span>
-                      </SelectItem>
-                    ))}
+                    .map((unit) => {
+                      const iconName = unit.data?.icon;
+                      return (
+                        <SelectItem 
+                          key={unit.id} 
+                          value={unit.id}
+                          data-testid={`select-bargaining-unit-${unit.id}`}
+                        >
+                          <div className="flex items-center gap-2">
+                            {renderIcon(iconName || "Users", "h-4 w-4 text-muted-foreground")}
+                            <span>{unit.siriusId} - {unit.name}</span>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
                 </SelectContent>
               </Select>
             </div>

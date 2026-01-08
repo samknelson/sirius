@@ -87,6 +87,35 @@ export function registerBargainingUnitsRoutes(
     }
   });
 
+  app.patch("/api/bargaining-units/:id", requireAuth, requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const existingUnit = await storage.bargainingUnits.getBargainingUnitById(id);
+      if (!existingUnit) {
+        return res.status(404).json({ message: "Bargaining unit not found" });
+      }
+      
+      const validated = updateBargainingUnitSchema.parse(req.body);
+      
+      if (validated.siriusId && validated.siriusId !== existingUnit.siriusId) {
+        const duplicateUnit = await storage.bargainingUnits.getBargainingUnitBySiriusId(validated.siriusId);
+        if (duplicateUnit) {
+          return res.status(400).json({ message: "A bargaining unit with this Sirius ID already exists" });
+        }
+      }
+      
+      const updatedBargainingUnit = await storage.bargainingUnits.updateBargainingUnit(id, validated);
+      res.json(updatedBargainingUnit);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error updating bargaining unit:", error);
+      res.status(500).json({ message: error.message || "Failed to update bargaining unit" });
+    }
+  });
+
   app.delete("/api/bargaining-units/:id", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
