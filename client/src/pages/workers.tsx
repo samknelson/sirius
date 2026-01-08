@@ -53,6 +53,7 @@ export default function Workers() {
       bargainingUnitId: filters.bargainingUnitId,
       benefitId: filters.benefitId,
       contactStatus: filters.contactStatus,
+      hasMultipleEmployers: filters.hasMultipleEmployers,
     }],
   });
 

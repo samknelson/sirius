@@ -87,6 +87,7 @@ export interface WorkersPaginationParams {
   bargainingUnitId?: string;
   benefitId?: string;
   contactStatus?: 'all' | 'has_email' | 'missing_email' | 'has_phone' | 'missing_phone' | 'has_address' | 'missing_address' | 'complete' | 'incomplete';
+  hasMultipleEmployers?: boolean;
 }
 
 export interface WorkerStorage {
@@ -239,7 +240,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       const offset = (page - 1) * pageSize;
       const search = params.search?.trim() ?? '';
       const sortOrder = params.sortOrder ?? 'asc';
-      const { employerId, employerTypeId, bargainingUnitId, benefitId, contactStatus } = params;
+      const { employerId, employerTypeId, bargainingUnitId, benefitId, contactStatus, hasMultipleEmployers } = params;
       
       const now = new Date();
       const currentMonth = now.getMonth() + 1;
@@ -322,12 +323,17 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         }
       }
       
+      // Build multiple employers filter condition
+      const multipleEmployersCondition = hasMultipleEmployers
+        ? sql`AND array_length(w.denorm_employer_ids, 1) > 1`
+        : sql``;
+      
       // Get total count first (without benefits aggregation for speed)
       const countResult = await db.execute(sql`
         SELECT COUNT(*) as total
         FROM workers w
         INNER JOIN contacts c ON w.contact_id = c.id
-        WHERE 1=1 ${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition}
+        WHERE 1=1 ${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition} ${multipleEmployersCondition}
       `);
       const total = parseInt((countResult.rows[0] as any).total, 10);
       
@@ -424,7 +430,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           ORDER BY is_primary DESC NULLS LAST, created_at ASC
           LIMIT 1
         ) a ON true
-        WHERE 1=1 ${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition}
+        WHERE 1=1 ${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition} ${multipleEmployersCondition}
         ORDER BY c.family ${orderDirection}, c.given ${orderDirection}
         LIMIT ${pageSize}
         OFFSET ${offset}

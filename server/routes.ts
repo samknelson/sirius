@@ -414,6 +414,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const contactStatusParam = req.query.contactStatus as string;
       const validContactStatuses = ['all', 'has_email', 'missing_email', 'has_phone', 'missing_phone', 'has_address', 'missing_address', 'complete', 'incomplete'];
       const contactStatus = validContactStatuses.includes(contactStatusParam) ? contactStatusParam as any : 'all';
+      const hasMultipleEmployers = req.query.hasMultipleEmployers === 'true';
       
       const result = await storage.workers.getWorkersWithDetailsPaginated({
         page,
@@ -425,6 +426,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bargainingUnitId,
         benefitId,
         contactStatus,
+        hasMultipleEmployers,
       });
       res.json(result);
     } catch (error) {

@@ -1,11 +1,12 @@
 import { useState, useMemo, useEffect } from "react";
-import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle, Scale, Stethoscope, Smile, Eye as EyeIcon, Star, Download, GraduationCap, Heart, Laptop, ShoppingBag, Mail, Phone, FileText, Briefcase, type LucideIcon } from "lucide-react";
+import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle, Scale, Stethoscope, Smile, Eye as EyeIcon, Star, Download, GraduationCap, Heart, Laptop, ShoppingBag, Mail, Phone, FileText, Briefcase, Users, type LucideIcon } from "lucide-react";
 import { renderIcon } from "@/components/ui/icon-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Worker, Contact, PhoneNumber, Employer, ContactPostal } from "@shared/schema";
 import { ComponentConfig } from "@shared/components";
 import { formatSSN } from "@shared/schema";
@@ -38,6 +39,7 @@ export interface WorkerFilters {
   benefitId: string;
   contactStatus: string;
   cardcheckFilters?: Record<string, string>;
+  hasMultipleEmployers?: boolean;
 }
 
 interface WorkersTableProps {
@@ -828,6 +830,25 @@ export function WorkersTable({
                   </SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            
+            {/* Multiple Employers Filter */}
+            <div className="flex items-center gap-2 h-9 px-3 border rounded-md bg-background">
+              <Checkbox
+                id="multiple-employers-filter"
+                checked={filters.hasMultipleEmployers ?? false}
+                onCheckedChange={(checked) => 
+                  setFilters({ ...filters, hasMultipleEmployers: checked === true })
+                }
+                data-testid="checkbox-multiple-employers"
+              />
+              <label 
+                htmlFor="multiple-employers-filter" 
+                className="text-sm cursor-pointer flex items-center gap-2 whitespace-nowrap"
+              >
+                <Users size={14} className="text-muted-foreground" />
+                Multiple Employers
+              </label>
             </div>
             
             {/* Card Check Status Filters - one per definition with icon */}
