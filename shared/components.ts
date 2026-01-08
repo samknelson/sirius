@@ -382,7 +382,14 @@ export const componentRegistry: ComponentDefinition[] = [
       version: 1,
       schemaPath: "./shared/schema/edls/schema.ts",
       tables: ["edls_sheets"]
-    }
+    },
+    permissions: [
+      { key: "edls.manager", description: "Full EDLS management access" },
+      { key: "edls.coordinator", description: "EDLS coordination and scheduling access" },
+      { key: "edls.supervisor", description: "EDLS supervisory access" },
+      { key: "edls.reader", description: "Read-only access to EDLS data" },
+      { key: "edls.worker.advisor", description: "Worker advisor access for EDLS" }
+    ]
   },
   {
     id: "sitespecific.freeman",
