@@ -55,6 +55,7 @@ export type TabEntityType =
   | 'cron_job'
   | 'dispatch_job'
   | 'dispatch_job_type'
+  | 'edls_sheet'
   | 'ledger_account'
   | 'ledger_payment'
   | 'trust_benefit'
@@ -263,6 +264,14 @@ export const dispatchJobTypeTabTree: HierarchicalTab[] = [
 ];
 
 /**
+ * EDLS sheet entity tab tree
+ */
+export const edlsSheetTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/edls/sheet/{id}', permission: 'staff', component: 'edls' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/edls/sheet/{id}/edit', permission: 'staff', component: 'edls' },
+];
+
+/**
  * Ledger account entity tab tree (staff-only admin pages)
  */
 export const ledgerAccountTabTree: HierarchicalTab[] = [
@@ -399,6 +408,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   cron_job: cronJobTabTree,
   dispatch_job: dispatchJobTabTree,
   dispatch_job_type: dispatchJobTypeTabTree,
+  edls_sheet: edlsSheetTabTree,
   ledger_account: ledgerAccountTabTree,
   ledger_payment: ledgerPaymentTabTree,
   trust_benefit: trustBenefitTabTree,
@@ -602,6 +612,7 @@ export const tabRegistry: Record<TabEntityType, TabDefinition[]> = {
   cron_job: flattenTabTree(cronJobTabTree),
   dispatch_job: flattenTabTree(dispatchJobTabTree),
   dispatch_job_type: flattenTabTree(dispatchJobTypeTabTree),
+  edls_sheet: flattenTabTree(edlsSheetTabTree),
   ledger_account: flattenTabTree(ledgerAccountTabTree),
   ledger_payment: flattenTabTree(ledgerPaymentTabTree),
   trust_benefit: flattenTabTree(trustBenefitTabTree),
