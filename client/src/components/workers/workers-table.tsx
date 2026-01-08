@@ -987,7 +987,7 @@ export function WorkersTable({
                               data-testid={`email-indicator-${worker.id}`}
                               aria-label={`Email for ${worker.contactName}`}
                             >
-                              <Mail size={16} className="text-green-600" />
+                              <Mail size={20} className="text-green-600" />
                             </div>
                           </HoverCardTrigger>
                           <HoverCardContent className="w-80" data-testid={`email-hover-${worker.id}`}>
@@ -1009,7 +1009,7 @@ export function WorkersTable({
                             aria-label={`Add email for ${worker.contactName}`}
                             className="cursor-pointer hover:opacity-70 transition-opacity"
                           >
-                            <Mail size={16} className="text-red-500" />
+                            <Mail size={20} className="text-red-500" />
                           </div>
                         </Link>
                       )}
@@ -1022,7 +1022,7 @@ export function WorkersTable({
                               data-testid={`phone-indicator-${worker.id}`}
                               aria-label={`Phone for ${worker.contactName}`}
                             >
-                              <Phone size={16} className="text-green-600" />
+                              <Phone size={20} className="text-green-600" />
                             </div>
                           </HoverCardTrigger>
                           <HoverCardContent className="w-80" data-testid={`phone-hover-${worker.id}`}>
@@ -1044,7 +1044,7 @@ export function WorkersTable({
                             aria-label={`Add phone for ${worker.contactName}`}
                             className="cursor-pointer hover:opacity-70 transition-opacity"
                           >
-                            <Phone size={16} className="text-red-500" />
+                            <Phone size={20} className="text-red-500" />
                           </div>
                         </Link>
                       )}
@@ -1057,7 +1057,7 @@ export function WorkersTable({
                               data-testid={`address-indicator-${worker.id}`}
                               aria-label={`Address for ${worker.contactName}`}
                             >
-                              <Home size={16} className="text-green-600" />
+                              <Home size={20} className="text-green-600" />
                             </div>
                           </HoverCardTrigger>
                           <HoverCardContent className="w-80" data-testid={`address-hover-${worker.id}`}>
@@ -1091,7 +1091,7 @@ export function WorkersTable({
                             aria-label={`Add address for ${worker.contactName}`}
                             className="cursor-pointer hover:opacity-70 transition-opacity"
                           >
-                            <Home size={16} className="text-red-500" />
+                            <Home size={20} className="text-red-500" />
                           </div>
                         </Link>
                       )}
