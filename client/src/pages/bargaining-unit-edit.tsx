@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { BargainingUnitLayout, useBargainingUnitLayout } from "@/components/layouts/BargainingUnitLayout";
+import { IconPicker } from "@/components/ui/icon-picker";
 
 function BargainingUnitEditContent() {
   const { bargainingUnit } = useBargainingUnitLayout();
@@ -18,9 +19,12 @@ function BargainingUnitEditContent() {
 
   const [editName, setEditName] = useState(bargainingUnit.name);
   const [editSiriusId, setEditSiriusId] = useState(bargainingUnit.siriusId);
+  const [editIcon, setEditIcon] = useState<string | undefined>(
+    (bargainingUnit.data as { icon?: string } | null)?.icon
+  );
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { name: string; siriusId: string }) => {
+    mutationFn: async (data: { name: string; siriusId: string; data?: Record<string, unknown> | null }) => {
       return await apiRequest("PUT", `/api/bargaining-units/${bargainingUnit.id}`, data);
     },
     onSuccess: () => {
@@ -61,9 +65,18 @@ function BargainingUnitEditContent() {
       return;
     }
 
+    // Merge with existing data to preserve other fields, only update icon
+    const existingData = (bargainingUnit.data as Record<string, unknown>) || {};
+    const newData = editIcon 
+      ? { ...existingData, icon: editIcon } 
+      : Object.keys(existingData).filter(k => k !== 'icon').length > 0
+        ? Object.fromEntries(Object.entries(existingData).filter(([k]) => k !== 'icon'))
+        : null;
+
     updateMutation.mutate({
       name: editName.trim(),
       siriusId: editSiriusId.trim(),
+      data: newData,
     });
   };
 
@@ -99,6 +112,16 @@ function BargainingUnitEditContent() {
                 onChange={(e) => setEditSiriusId(e.target.value)}
                 className="w-full"
                 data-testid="input-edit-sirius-id"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-foreground">
+                Icon
+              </Label>
+              <IconPicker
+                value={editIcon}
+                onChange={setEditIcon}
+                data-testid="icon-picker-edit"
               />
             </div>
           </div>
