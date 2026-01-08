@@ -34,7 +34,7 @@ export function registerEdlsSheetsRoutes(
     }
   });
 
-  app.get("/api/edls/sheets/:id", requireAuth, edlsComponent, requireAccess('staff'), async (req, res) => {
+  app.get("/api/edls/sheets/:id", requireAuth, edlsComponent, requireAccess('edls.sheet.view', req => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       const sheet = await storage.edlsSheets.getWithRelations(id);
