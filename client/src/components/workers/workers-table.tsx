@@ -1103,18 +1103,17 @@ export function WorkersTable({
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <div 
-                              className="flex items-center gap-2 text-sm font-medium text-foreground cursor-help"
+                              className="cursor-help"
                               data-testid={`unit-code-${worker.id}`}
                             >
                               {renderIcon(
                                 worker.bargainingUnitId ? bargainingUnitIconMap.get(worker.bargainingUnitId) || "Users" : "Users",
                                 "h-4 w-4 text-muted-foreground"
                               )}
-                              <span>{worker.bargainingUnitCode}</span>
                             </div>
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>{worker.bargainingUnitName}</p>
+                            <p>{worker.bargainingUnitCode} - {worker.bargainingUnitName}</p>
                           </TooltipContent>
                         </Tooltip>
                       ) : (
