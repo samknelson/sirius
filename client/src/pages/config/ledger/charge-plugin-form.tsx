@@ -8,6 +8,7 @@ import GbhetLegalHourlyConfigFormPage from "@/plugins/charge-plugins/gbhet-legal
 import GbhetLegalBenefitConfigFormPage from "@/plugins/charge-plugins/gbhet-legal-benefit/ConfigFormPage";
 import PaymentSimpleAllocationConfigFormPage from "@/plugins/charge-plugins/payment-simple-allocation/ConfigFormPage";
 import BtuStewardAttendanceConfigFormPage from "@/plugins/charge-plugins/btu-steward-attendance/ConfigFormPage";
+import BtuDuesAllocationConfigFormPage from "@/plugins/charge-plugins/btu-dues-allocation/ConfigFormPage";
 
 interface ChargePluginMetadata {
   id: string;
@@ -69,6 +70,8 @@ export default function ChargePluginFormPage() {
       return <PaymentSimpleAllocationConfigFormPage />;
     case "btu-steward-attendance":
       return <BtuStewardAttendanceConfigFormPage />;
+    case "btu-dues-allocation":
+      return <BtuDuesAllocationConfigFormPage />;
     default:
       return (
         <div className="p-8 text-center">
