@@ -59,7 +59,6 @@ export class BtuDuesAllocationWizard extends FeedWizard {
     return [
       { id: 'upload', name: 'Upload', description: 'Upload the dues allocation file' },
       { id: 'map', name: 'Map Columns', description: 'Map file columns to dues fields' },
-      { id: 'configure', name: 'Configure', description: 'Select ledger account for dues' },
       { id: 'validate', name: 'Validate', description: 'Validate data before processing' },
       { id: 'process', name: 'Process', description: 'Create payment and ledger records' },
       { id: 'results', name: 'Results', description: 'Review import results' },
@@ -217,15 +216,23 @@ export class BtuDuesAllocationWizard extends FeedWizard {
     const fileId = wizardData?.uploadedFileId;
     const columnMapping: Record<string, string> = wizardData?.columnMapping || {};
     const hasHeaders = wizardData?.hasHeaders ?? true;
-    const accountId = wizardData?.accountId;
 
     if (!fileId) {
       throw new Error('No uploaded file found');
     }
 
-    if (!accountId) {
-      throw new Error('No ledger account selected');
+    const pluginConfigs = await storage.chargePluginConfigs.getEnabledForPlugin('btu-dues-allocation', null);
+    if (pluginConfigs.length === 0) {
+      throw new Error('BTU Dues Allocation plugin is not configured. Please configure it in Ledger > Charge Plugins.');
     }
+
+    const settings = pluginConfigs[0].settings as { accountIds?: string[] } | null;
+    const configuredAccountIds = settings?.accountIds || [];
+    if (configuredAccountIds.length === 0) {
+      throw new Error('No ledger accounts configured for BTU Dues Allocation plugin.');
+    }
+
+    const accountId = configuredAccountIds[0];
 
     const file = await storage.files.getById(fileId);
     if (!file) {
