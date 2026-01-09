@@ -235,6 +235,7 @@ const BtuCsgEditPage = lazy(() => import("@/pages/sitespecific/btu/csg-edit"));
 const BtuCsgNewPage = lazy(() => import("@/pages/sitespecific/btu/csg-new"));
 const BtuEmployerMapListPage = lazy(() => import("@/pages/sitespecific/btu/employer-map-list"));
 const BtuWorkerImportPage = lazy(() => import("@/pages/sitespecific/btu/worker-import"));
+const BtuDuesAllocationPage = lazy(() => import("@/pages/sitespecific/btu/dues-allocation"));
 
 // Loading fallback component
 function PageLoader() {
@@ -1110,6 +1111,14 @@ function Router() {
         <ProtectedRoute permission="admin" component="sitespecific.btu">
           <AuthenticatedLayout>
             <BtuWorkerImportPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/btu/dues-allocation">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuDuesAllocationPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

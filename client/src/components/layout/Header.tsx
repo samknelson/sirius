@@ -206,6 +206,18 @@ export default function Header() {
                     </Button>
                   </Link>
                 )}
+                {hasComponent("sitespecific.btu") && hasPermission("admin") && (
+                  <Link href="/sitespecific/btu/dues-allocation" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location.startsWith("/sitespecific/btu/dues-allocation") ? "default" : "ghost"}
+                      className="w-full justify-start pl-8"
+                      data-testid="mobile-nav-btu-dues-allocation"
+                    >
+                      <Droplets className="h-4 w-4 mr-2" />
+                      Dues Allocation
+                    </Button>
+                  </Link>
+                )}
 
                 {hasSingleEmployer && (
                   <Link href={`/employers/${myEmployers[0].id}`} onClick={() => setMobileMenuOpen(false)}>
@@ -717,6 +729,16 @@ export default function Header() {
                         <div className="flex items-center cursor-pointer" data-testid="menu-btu-worker-import">
                           <Upload className="h-4 w-4 mr-2" />
                           Worker Import
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasComponent("sitespecific.btu") && hasPermission("admin") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/sitespecific/btu/dues-allocation" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-btu-dues-allocation">
+                          <Droplets className="h-4 w-4 mr-2" />
+                          Dues Allocation
                         </div>
                       </Link>
                     </DropdownMenuItem>
