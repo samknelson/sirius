@@ -25,14 +25,14 @@ export function registerLedgerEaRoutes(app: Express) {
     }
   });
 
-  // GET /api/ledger/ea/entity/:entityType/:entityId - Get ledger EA entries for an entity
+  // GET /api/ledger/ea/entity/:entityType/:entityId - Get ledger EA entries for an entity (with balances)
   app.get("/api/ledger/ea/entity/:entityType/:entityId", requireComponent("ledger"), requireAccess('ledger.ea.view', {
     getEntityId: (req) => req.params.entityId,
     getEntityData: (req) => ({ entityType: req.params.entityType, entityId: req.params.entityId })
   }), async (req, res) => {
     try {
       const { entityType, entityId } = req.params;
-      const entries = await storage.ledger.ea.getByEntity(entityType, entityId);
+      const entries = await storage.ledger.ea.getByEntityWithBalance(entityType, entityId);
       res.json(entries);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch ledger EA entries" });

@@ -29,10 +29,13 @@ export interface StripePaymentMethodStorage {
   setAsDefault(paymentMethodId: string, entityType: string, entityId: string): Promise<LedgerStripePaymentMethod | undefined>;
 }
 
+export type LedgerEaWithBalance = SelectLedgerEa & { balance: string };
+
 export interface LedgerEaStorage {
   getAll(): Promise<SelectLedgerEa[]>;
   get(id: string): Promise<SelectLedgerEa | undefined>;
   getByEntity(entityType: string, entityId: string): Promise<SelectLedgerEa[]>;
+  getByEntityWithBalance(entityType: string, entityId: string): Promise<LedgerEaWithBalance[]>;
   getByEntityAndAccount(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa | undefined>;
   getOrCreate(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa>;
   getBalance(id: string): Promise<string>;
@@ -351,6 +354,30 @@ export function createLedgerEaStorage(): LedgerEaStorage {
           eq(ledgerEa.entityType, entityType),
           eq(ledgerEa.entityId, entityId)
         ));
+    },
+
+    async getByEntityWithBalance(entityType: string, entityId: string): Promise<LedgerEaWithBalance[]> {
+      const entries = await db
+        .select({
+          id: ledgerEa.id,
+          accountId: ledgerEa.accountId,
+          entityType: ledgerEa.entityType,
+          entityId: ledgerEa.entityId,
+          data: ledgerEa.data,
+          balance: sqlRaw<string>`COALESCE(SUM(${ledger.amount}), 0)::numeric(10,2)::text`,
+        })
+        .from(ledgerEa)
+        .leftJoin(ledger, eq(ledger.eaId, ledgerEa.id))
+        .where(and(
+          eq(ledgerEa.entityType, entityType),
+          eq(ledgerEa.entityId, entityId)
+        ))
+        .groupBy(ledgerEa.id, ledgerEa.accountId, ledgerEa.entityType, ledgerEa.entityId, ledgerEa.data);
+      
+      return entries.map(e => ({
+        ...e,
+        balance: e.balance || "0.00"
+      }));
     },
 
     async getByEntityAndAccount(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa | undefined> {

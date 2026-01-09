@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { insertLedgerEaSchema, type SelectLedgerEa, type LedgerAccount } from "@shared/schema";
+import { formatAmount } from "@shared/currency";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -28,13 +29,15 @@ const formSchema = insertLedgerEaSchema.omit({ data: true });
 
 type FormData = z.infer<typeof formSchema>;
 
+type LedgerEaWithBalance = SelectLedgerEa & { balance: string };
+
 function WorkerLedgerAccountsContent() {
   const { id: workerId } = useParams<{ id: string }>();
   const { toast } = useToast();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
 
-  const { data: entries = [], isLoading } = useQuery<SelectLedgerEa[]>({
+  const { data: entries = [], isLoading } = useQuery<LedgerEaWithBalance[]>({
     queryKey: [`/api/ledger/ea/entity/worker/${workerId}`],
   });
 
@@ -218,6 +221,8 @@ function WorkerLedgerAccountsContent() {
             <div className="space-y-4">
               {entries.map((entry) => {
                 const account = accounts.find(a => a.id === entry.accountId);
+                const balanceNum = parseFloat(entry.balance || "0");
+                const currencyCode = account?.currencyCode || "USD";
                 return (
                   <div
                     key={entry.id}
@@ -240,14 +245,22 @@ function WorkerLedgerAccountsContent() {
                           <p className="text-sm text-muted-foreground mt-1">{account.description}</p>
                         )}
                       </Link>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setDeleteId(entry.id)}
-                        data-testid={`button-delete-${entry.id}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <span 
+                          className={`font-mono text-sm ${balanceNum < 0 ? "text-destructive" : "text-foreground"}`}
+                          data-testid={`text-balance-${entry.id}`}
+                        >
+                          {formatAmount(balanceNum, currencyCode)}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeleteId(entry.id)}
+                          data-testid={`button-delete-${entry.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 );
