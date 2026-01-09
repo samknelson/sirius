@@ -9,6 +9,7 @@ import { ReportLedgerIntegrity } from './types/report_ledger_integrity.js';
 import { ReportGbhetLegalCompliance } from './types/report_gbhet_legal_compliance.js';
 import { ReportBTUWorkersInvalidCardcheck } from './types/report_btu_workers_invalid_cardcheck.js';
 import { btuWorkerImport } from './types/btu_worker_import.js';
+import { btuDuesAllocation } from './types/btu_dues_allocation.js';
 
 wizardRegistry.register(gbhetLegalWorkersMonthly);
 wizardRegistry.register(gbhetLegalWorkersCorrections);
@@ -20,6 +21,7 @@ wizardRegistry.register(new ReportLedgerIntegrity());
 wizardRegistry.register(new ReportGbhetLegalCompliance());
 wizardRegistry.register(new ReportBTUWorkersInvalidCardcheck());
 wizardRegistry.register(btuWorkerImport);
+wizardRegistry.register(btuDuesAllocation);
 
 export { wizardRegistry, getWizardType, getAllWizardTypes, registerWizardType } from './registry.js';
 export { BaseWizard, type WizardTypeDefinition, type WizardStep, type WizardStatus } from './base.js';
