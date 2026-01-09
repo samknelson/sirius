@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { logger } from "../logger";
 import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
 import type { 
   LedgerAccount, 
@@ -783,8 +784,10 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
               referenceName = `Worker: ${row.refWorkerContact.given} ${row.refWorkerContact.family}`;
             } else if (row.refWorkerSiriusId) {
               referenceName = `Worker #${row.refWorkerSiriusId}`;
-            } else {
+            } else if (row.entry.referenceId) {
               referenceName = `Worker (${row.entry.referenceId.substring(0, 8)}...)`;
+            } else {
+              referenceName = 'Worker';
             }
           } else if (row.entry.referenceType && row.entry.referenceId) {
             const capitalizedType = row.entry.referenceType.charAt(0).toUpperCase() + row.entry.referenceType.slice(1);
@@ -808,10 +811,28 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
     },
 
     async create(insertEntry: InsertLedger): Promise<Ledger> {
-      const [entry] = await db.insert(ledger)
-        .values(insertEntry as any)
-        .returning();
-      return entry;
+      logger.debug("Creating ledger entry", {
+        service: "ledger-storage",
+        insertEntry,
+      });
+      try {
+        const [entry] = await db.insert(ledger)
+          .values(insertEntry as any)
+          .returning();
+        logger.debug("Created ledger entry successfully", {
+          service: "ledger-storage",
+          entryId: entry.id,
+        });
+        return entry;
+      } catch (error) {
+        logger.error("Failed to insert ledger entry", {
+          service: "ledger-storage",
+          insertEntry,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+        throw error;
+      }
     },
 
     async update(id: string, entryUpdate: Partial<InsertLedger>): Promise<Ledger | undefined> {

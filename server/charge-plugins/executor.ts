@@ -123,6 +123,17 @@ export async function executeChargePlugins(
 
   // Create ledger entries for all transactions (soft-fail - don't throw on error)
   if (totalTransactions.length > 0) {
+    logger.info("About to create ledger entries for transactions", {
+      service: "charge-plugin-executor",
+      transactionCount: totalTransactions.length,
+      transactions: totalTransactions.map(t => ({
+        chargePlugin: t.chargePlugin,
+        entityType: t.entityType,
+        entityId: t.entityId,
+        accountId: t.accountId,
+        amount: t.amount,
+      })),
+    });
     try {
       await createLedgerEntries(totalTransactions);
       logger.info("Completed ledger entry creation for charge plugin transactions", {
@@ -134,6 +145,7 @@ export async function executeChargePlugins(
       logger.error("Error during ledger entry creation for charge plugin transactions", {
         service: "charge-plugin-executor",
         error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
       });
     }
   }
