@@ -208,11 +208,11 @@ export const policyTabTree: HierarchicalTab[] = [
  */
 export const eventTabTree: HierarchicalTab[] = [
   { id: 'view', label: 'View', hrefTemplate: '/events/{id}', permission: 'staff' },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/events/{id}/edit', permission: 'events.edit' },
-  { id: 'register', label: 'Register', hrefTemplate: '/events/{id}/register', permission: 'events.edit' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/events/{id}/edit', permission: 'staff' },
+  { id: 'register', label: 'Register', hrefTemplate: '/events/{id}/register', permission: 'staff' },
   { id: 'roster', label: 'Roster', hrefTemplate: '/events/{id}/roster', permission: 'staff' },
   { id: 'self-register', label: 'Self-Register', hrefTemplate: '/events/{id}/self-register', permission: 'staff' },
-  { id: 'delete', label: 'Delete', hrefTemplate: '/events/{id}/delete', permission: 'events.delete' },
+  { id: 'delete', label: 'Delete', hrefTemplate: '/events/{id}/delete', permission: 'admin' },
 ];
 
 /**

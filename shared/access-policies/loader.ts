@@ -47,7 +47,4 @@ import './employer/dispatch/manage';
 import './worker/dispatch/dnc/view';
 import './worker/dispatch/dnc/edit';
 
-import './events/edit';
-import './events/delete';
-
 export { getAllPolicies, getPolicy, hasPolicy } from './index';
