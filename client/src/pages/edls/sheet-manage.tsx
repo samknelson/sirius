@@ -1,11 +1,17 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Settings, Check, AlertCircle, Trash2 } from "lucide-react";
+import { Settings, ChevronDown, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,8 +47,8 @@ function EdlsSheetManageContent() {
   const { sheet } = useEdlsSheetLayout();
   const { toast } = useToast();
   const sheetId = sheet.id;
-  const [selectedStatus, setSelectedStatus] = useState<EdlsSheetStatus | "">("");
   const [showTrashConfirm, setShowTrashConfirm] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<EdlsSheetStatus | null>(null);
 
   const currentStatus = (sheet.status as EdlsSheetStatus) || "draft";
   const currentStatusOption = statusOptions.find(s => s.value === currentStatus);
@@ -52,13 +58,14 @@ function EdlsSheetManageContent() {
       const response = await apiRequest("PATCH", `/api/edls/sheets/${sheetId}/status`, { status: newStatus });
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, newStatus) => {
       queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheetId] });
+      const statusLabel = statusOptions.find(s => s.value === newStatus)?.label;
       toast({
         title: "Status Updated",
-        description: `Sheet status has been changed to ${statusOptions.find(s => s.value === selectedStatus)?.label}`,
+        description: `Sheet status has been changed to ${statusLabel}`,
       });
-      setSelectedStatus("");
+      setPendingStatus(null);
     },
     onError: (error: any) => {
       toast({
@@ -66,21 +73,24 @@ function EdlsSheetManageContent() {
         description: error?.message || "An error occurred while updating the status",
         variant: "destructive",
       });
+      setPendingStatus(null);
     },
   });
 
-  const handleApplyStatus = () => {
-    if (selectedStatus && selectedStatus !== currentStatus) {
-      if (selectedStatus === "trash") {
-        setShowTrashConfirm(true);
-      } else {
-        setStatusMutation.mutate(selectedStatus);
-      }
+  const handleStatusAction = (newStatus: EdlsSheetStatus) => {
+    if (newStatus === currentStatus) return;
+    
+    if (newStatus === "trash") {
+      setShowTrashConfirm(true);
+    } else {
+      setPendingStatus(newStatus);
+      setStatusMutation.mutate(newStatus);
     }
   };
 
   const handleConfirmTrash = () => {
     setShowTrashConfirm(false);
+    setPendingStatus("trash");
     setStatusMutation.mutate("trash");
   };
 
@@ -112,57 +122,46 @@ function EdlsSheetManageContent() {
           </div>
 
           <div className="border-t pt-6">
-            <h3 className="text-sm font-medium mb-3">Change Status</h3>
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="flex-1 min-w-[200px]">
-                <Select
-                  value={selectedStatus}
-                  onValueChange={(value) => setSelectedStatus(value as EdlsSheetStatus)}
+            <h3 className="text-sm font-medium mb-3">Actions</h3>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  disabled={setStatusMutation.isPending}
+                  data-testid="button-actions-menu"
                 >
-                  <SelectTrigger data-testid="select-new-status">
-                    <SelectValue placeholder="Select new status..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableStatuses.map((status) => (
-                      <SelectItem 
-                        key={status.value} 
-                        value={status.value}
-                        data-testid={`option-status-${status.value}`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Badge className={statusColors[status.value]} variant="outline">
-                            {status.label}
-                          </Badge>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button
-                onClick={handleApplyStatus}
-                disabled={!selectedStatus || setStatusMutation.isPending}
-                data-testid="button-apply-status"
-              >
-                <Check className="h-4 w-4 mr-2" />
-                {setStatusMutation.isPending ? "Applying..." : "Apply Status"}
-              </Button>
-            </div>
-            {selectedStatus && (
-              <p className="text-sm text-muted-foreground mt-2">
-                {statusOptions.find(s => s.value === selectedStatus)?.description}
-              </p>
-            )}
+                  {setStatusMutation.isPending ? "Processing..." : "Select Action"}
+                  <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuLabel>Change Status</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {availableStatuses.map((status) => (
+                  <DropdownMenuItem
+                    key={status.value}
+                    onClick={() => handleStatusAction(status.value)}
+                    className={status.value === "trash" ? "text-destructive focus:text-destructive" : ""}
+                    data-testid={`action-status-${status.value}`}
+                  >
+                    {status.value === "trash" ? (
+                      <>
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Change status to: {status.label}
+                      </>
+                    ) : (
+                      <>
+                        <Badge className={`${statusColors[status.value]} mr-2`} variant="outline">
+                          {status.label}
+                        </Badge>
+                        Change status to: {status.label}
+                      </>
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-
-          {setStatusMutation.isError && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Failed to update status. You may not have permission to perform this action.
-              </AlertDescription>
-            </Alert>
-          )}
         </CardContent>
       </Card>
 
