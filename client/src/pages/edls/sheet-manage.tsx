@@ -1,11 +1,21 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Settings, Check, AlertCircle } from "lucide-react";
+import { Settings, Check, AlertCircle, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -32,6 +42,7 @@ function EdlsSheetManageContent() {
   const { toast } = useToast();
   const sheetId = sheet.id;
   const [selectedStatus, setSelectedStatus] = useState<EdlsSheetStatus | "">("");
+  const [showTrashConfirm, setShowTrashConfirm] = useState(false);
 
   const currentStatus = (sheet.status as EdlsSheetStatus) || "draft";
   const currentStatusOption = statusOptions.find(s => s.value === currentStatus);
@@ -60,8 +71,17 @@ function EdlsSheetManageContent() {
 
   const handleApplyStatus = () => {
     if (selectedStatus && selectedStatus !== currentStatus) {
-      setStatusMutation.mutate(selectedStatus);
+      if (selectedStatus === "trash") {
+        setShowTrashConfirm(true);
+      } else {
+        setStatusMutation.mutate(selectedStatus);
+      }
     }
+  };
+
+  const handleConfirmTrash = () => {
+    setShowTrashConfirm(false);
+    setStatusMutation.mutate("trash");
   };
 
   const availableStatuses = statusOptions.filter(s => s.value !== currentStatus);
@@ -145,6 +165,30 @@ function EdlsSheetManageContent() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={showTrashConfirm} onOpenChange={setShowTrashConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-destructive" />
+              Move Sheet to Trash?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to move this sheet to trash? All worker assignments for this sheet will be permanently deleted. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-trash">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmTrash}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-trash"
+            >
+              Move to Trash
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
