@@ -230,6 +230,43 @@ export function registerEdlsSheetsRoutes(
     status: z.enum(["draft", "request", "lock", "trash", "reserved"]),
   });
 
+  const trashLockSchema = z.object({
+    trashLock: z.boolean(),
+  });
+
+  app.patch(
+    "/api/edls/sheets/:id/trash-lock",
+    requireAuth,
+    edlsComponent,
+    requireAccess('edls.sheet.edit', (req) => req.params.id),
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const parsed = trashLockSchema.safeParse(req.body);
+        
+        if (!parsed.success) {
+          res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+          return;
+        }
+        
+        const existingSheet = await storage.edlsSheets.get(id);
+        if (!existingSheet) {
+          res.status(404).json({ message: "Sheet not found" });
+          return;
+        }
+        
+        const currentData = (existingSheet.data as Record<string, any>) || {};
+        const updatedData = { ...currentData, trashLock: parsed.data.trashLock };
+        
+        const updatedSheet = await storage.edlsSheets.update(id, { data: updatedData });
+        res.json(updatedSheet);
+      } catch (error) {
+        console.error("Failed to update trash lock:", error);
+        res.status(500).json({ message: "Failed to update trash lock" });
+      }
+    }
+  );
+
   app.patch(
     "/api/edls/sheets/:id/status",
     requireAuth,
