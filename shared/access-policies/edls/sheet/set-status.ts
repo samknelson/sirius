@@ -18,11 +18,20 @@ const policy = definePolicy({
     
     if (targetStatus === 'trash') {
       const sheet = await ctx.loadEntity('edls_sheet', ctx.entityId!);
-      if (sheet && (sheet as any).status === 'lock') {
-        return { 
-          granted: false, 
-          reason: 'Scheduled sheets cannot be moved to trash' 
-        };
+      if (sheet) {
+        if ((sheet as any).status === 'lock') {
+          return { 
+            granted: false, 
+            reason: 'Scheduled sheets cannot be moved to trash' 
+          };
+        }
+        const sheetData = (sheet as any).data || {};
+        if (sheetData.trashLock) {
+          return { 
+            granted: false, 
+            reason: 'This sheet has a trash lock and cannot be moved to trash' 
+          };
+        }
       }
     }
     
