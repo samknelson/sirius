@@ -583,7 +583,8 @@ async function evaluateModularPolicy(
   }
   
   // Check cache (same logic as declarative policies)
-  const shouldUseCache = !options.skipCache && !options.entityData;
+  // Skip cache if: options.skipCache, entityData provided, or policy declares skipCache
+  const shouldUseCache = !options.skipCache && !options.entityData && !policy.skipCache;
   const cacheKey = shouldUseCache && user ? buildCacheKey(user.id, policyId, entityId) : null;
   if (cacheKey) {
     const cached = accessCache.get(cacheKey);
@@ -623,8 +624,9 @@ async function evaluateModularPolicy(
   }
   
   // Check if user is admin (bypass permission/entity checks after component check)
+  // Skip admin bypass if the policy explicitly requires all users to go through evaluation
   const isAdmin = await accessStorage.hasPermission(user.id, 'admin');
-  if (isAdmin) {
+  if (isAdmin && !policy.noAdminBypass) {
     const result: AccessResult = {
       granted: true,
       reason: 'Admin bypass',

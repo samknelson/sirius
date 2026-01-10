@@ -105,6 +105,20 @@ export interface PolicyDefinition {
    * Only needed for policies with evaluate() that want to show requirements.
    */
   describeRequirements?: () => AccessRule[];
+  
+  /**
+   * Skip the admin bypass for this policy.
+   * When true, the policy's evaluate function runs even for admins.
+   * Use for policies with universal checks that apply to all users.
+   */
+  noAdminBypass?: boolean;
+  
+  /**
+   * Skip caching for this policy.
+   * Use for policies where the result depends on dynamic request data
+   * (like entityData) that isn't part of the cache key.
+   */
+  skipCache?: boolean;
 }
 
 /**
