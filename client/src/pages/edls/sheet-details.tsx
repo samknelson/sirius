@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { Building2, Calendar, Users, FileText, Clock, MapPin } from "lucide-react";
+import { Building2, Calendar, Users, FileText, Clock, MapPin, Lock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -34,6 +34,8 @@ function formatTime(time: string): string {
 
 function EdlsSheetDetailsContent() {
   const { sheet } = useEdlsSheetLayout();
+  const sheetData = (sheet.data as Record<string, any>) || {};
+  const hasTrashLock = !!sheetData.trashLock;
 
   const { data: crews = [], isLoading: crewsLoading } = useQuery<EdlsCrew[]>({
     queryKey: ["/api/edls/sheets", sheet.id, "crews"],
@@ -90,6 +92,12 @@ function EdlsSheetDetailsContent() {
                 <Badge className={statusColors[(sheet.status as EdlsSheetStatus) || "draft"]}>
                   {statusLabels[(sheet.status as EdlsSheetStatus) || "draft"]}
                 </Badge>
+                {hasTrashLock && (
+                  <Badge variant="outline" className="gap-1" data-testid="badge-trash-lock">
+                    <Lock className="h-3 w-3" />
+                    Trash Lock
+                  </Badge>
+                )}
               </div>
             </div>
           </div>
