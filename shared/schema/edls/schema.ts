@@ -1,4 +1,4 @@
-import { pgTable, varchar, date, integer, time, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, varchar, date, integer, time, jsonb, unique } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -14,6 +14,7 @@ export const edlsSheets = pgTable("edls_sheets", {
   date: date("date").notNull(),
   workerCount: integer("worker_count").notNull().default(0),
   status: varchar("status", { length: 50 }).notNull().default("draft"),
+  data: jsonb("data"),
 });
 
 export const insertEdlsSheetsSchema = createInsertSchema(edlsSheets).omit({
@@ -31,6 +32,7 @@ export const edlsCrews = pgTable("edls_crews", {
   location: varchar("location", { length: 255 }),
   startTime: time("start_time").notNull(),
   endTime: time("end_time").notNull(),
+  data: jsonb("data"),
 });
 
 export const insertEdlsCrewsSchema = createInsertSchema(edlsCrews).omit({
@@ -46,7 +48,9 @@ export const edlsAssignments = pgTable("edls_assignments", {
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
   crewId: varchar("crew_id").notNull().references(() => edlsCrews.id, { onDelete: 'cascade' }),
   data: jsonb("data"),
-});
+}, (table) => [
+  unique("edls_assignments_date_worker_id_unique").on(table.date, table.workerId),
+]);
 
 export const insertEdlsAssignmentsSchema = createInsertSchema(edlsAssignments).omit({
   id: true,
