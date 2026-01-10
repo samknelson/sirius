@@ -56,8 +56,7 @@ function EdlsSheetManageContent() {
 
   const setStatusMutation = useMutation({
     mutationFn: async (newStatus: EdlsSheetStatus) => {
-      const response = await apiRequest("PATCH", `/api/edls/sheets/${sheetId}/status`, { status: newStatus });
-      return response.json();
+      return apiRequest("PATCH", `/api/edls/sheets/${sheetId}/status`, { status: newStatus });
     },
     onSuccess: (_data, newStatus) => {
       queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheetId] });
@@ -78,8 +77,7 @@ function EdlsSheetManageContent() {
 
   const trashLockMutation = useMutation({
     mutationFn: async (trashLock: boolean) => {
-      const response = await apiRequest("PATCH", `/api/edls/sheets/${sheetId}/trash-lock`, { trashLock });
-      return response.json();
+      return apiRequest("PATCH", `/api/edls/sheets/${sheetId}/trash-lock`, { trashLock });
     },
     onSuccess: (_data, trashLock) => {
       queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheetId] });
