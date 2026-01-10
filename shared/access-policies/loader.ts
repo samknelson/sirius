@@ -48,6 +48,7 @@ import './worker/dispatch/dnc/view';
 import './worker/dispatch/dnc/edit';
 
 import './edls/sheet/view';
+import './edls/sheet/edit';
 import './edls/sheet/set-status';
 
 export { getAllPolicies, getPolicy, hasPolicy } from './index';
