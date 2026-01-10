@@ -1,10 +1,12 @@
 import { format } from "date-fns";
-import { Building2, Calendar, Users, FileText } from "lucide-react";
+import { Building2, Calendar, Users, FileText, Clock, MapPin } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { Link } from "wouter";
-import type { EdlsSheetStatus } from "@shared/schema";
+import { useQuery } from "@tanstack/react-query";
+import type { EdlsSheetStatus, EdlsCrew } from "@shared/schema";
 
 const statusColors: Record<EdlsSheetStatus, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -22,59 +24,129 @@ const statusLabels: Record<EdlsSheetStatus, string> = {
   reserved: "Reserved",
 };
 
+function formatTime(time: string): string {
+  const [hours, minutes] = time.split(":");
+  const hour = parseInt(hours, 10);
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minutes} ${ampm}`;
+}
+
 function EdlsSheetDetailsContent() {
   const { sheet } = useEdlsSheetLayout();
 
+  const { data: crews = [], isLoading: crewsLoading } = useQuery<EdlsCrew[]>({
+    queryKey: ["/api/edls/sheets", sheet.id, "crews"],
+    queryFn: async () => {
+      const response = await fetch(`/api/edls/sheets/${sheet.id}/crews`);
+      if (!response.ok) throw new Error("Failed to fetch crews");
+      return response.json();
+    },
+  });
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Sheet Details</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-1">Title</h3>
-            <p className="text-foreground" data-testid="text-title">{sheet.title}</p>
-          </div>
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-1">Employer</h3>
-            <p className="text-foreground flex items-center gap-2" data-testid="text-employer">
-              <Building2 className="h-4 w-4 text-muted-foreground" />
-              {sheet.employer ? (
-                <Link href={`/employers/${sheet.employer.id}`} className="text-primary hover:underline">
-                  {sheet.employer.name}
-                </Link>
-              ) : (
-                "Unknown"
-              )}
-            </p>
-          </div>
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-1">Date</h3>
-            <p className="text-foreground flex items-center gap-2" data-testid="text-date">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              {format(new Date(sheet.date), "PPP")}
-            </p>
-          </div>
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-1">Worker Count</h3>
-            <p className="text-foreground flex items-center gap-2" data-testid="text-worker-count">
-              <Users className="h-4 w-4 text-muted-foreground" />
-              {sheet.workerCount}
-            </p>
-          </div>
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-1">Status</h3>
-            <div className="flex items-center gap-2" data-testid="text-status">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <Badge className={statusColors[(sheet.status as EdlsSheetStatus) || "draft"]}>
-                {statusLabels[(sheet.status as EdlsSheetStatus) || "draft"]}
-              </Badge>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Sheet Details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Title</h3>
+              <p className="text-foreground" data-testid="text-title">{sheet.title}</p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Employer</h3>
+              <p className="text-foreground flex items-center gap-2" data-testid="text-employer">
+                <Building2 className="h-4 w-4 text-muted-foreground" />
+                {sheet.employer ? (
+                  <Link href={`/employers/${sheet.employer.id}`} className="text-primary hover:underline">
+                    {sheet.employer.name}
+                  </Link>
+                ) : (
+                  "Unknown"
+                )}
+              </p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Date</h3>
+              <p className="text-foreground flex items-center gap-2" data-testid="text-date">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                {format(new Date(sheet.date), "PPP")}
+              </p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Worker Count</h3>
+              <p className="text-foreground flex items-center gap-2" data-testid="text-worker-count">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                {sheet.workerCount}
+              </p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Status</h3>
+              <div className="flex items-center gap-2" data-testid="text-status">
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                <Badge className={statusColors[(sheet.status as EdlsSheetStatus) || "draft"]}>
+                  {statusLabels[(sheet.status as EdlsSheetStatus) || "draft"]}
+                </Badge>
+              </div>
             </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Crews ({crews.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {crewsLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-20 w-full" />
+            </div>
+          ) : crews.length === 0 ? (
+            <p className="text-muted-foreground text-center py-4">No crews assigned to this sheet.</p>
+          ) : (
+            <div className="space-y-3">
+              {crews.map((crew) => (
+                <div
+                  key={crew.id}
+                  className="border rounded-md p-4"
+                  data-testid={`crew-card-${crew.id}`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                    <h4 className="font-medium" data-testid={`crew-title-${crew.id}`}>
+                      {crew.title}
+                    </h4>
+                    <Badge variant="secondary" data-testid={`crew-workers-${crew.id}`}>
+                      <Users className="h-3 w-3 mr-1" />
+                      {crew.workerCount} workers
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-1" data-testid={`crew-time-${crew.id}`}>
+                      <Clock className="h-4 w-4" />
+                      {formatTime(crew.startTime)} - {formatTime(crew.endTime)}
+                    </div>
+                    {crew.location && (
+                      <div className="flex items-center gap-1" data-testid={`crew-location-${crew.id}`}>
+                        <MapPin className="h-4 w-4" />
+                        {crew.location}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
