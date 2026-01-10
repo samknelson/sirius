@@ -99,6 +99,7 @@ export function createPolicyContext(options: PolicyContextOptions): PolicyContex
         'cardcheck': async (id) => storage.cardchecks?.getCardcheckById?.(id),
         'esig': async (id) => storage.esigs?.getEsigById?.(id),
         'worker.dispatch.dnc': async (id) => storage.workerDispatchDnc?.getById?.(id),
+        'edls_sheet': async (id) => storage.edlsSheets?.get?.(id),
       };
       
       const fallbackLoader = fallbackLoaderMap[entityType];

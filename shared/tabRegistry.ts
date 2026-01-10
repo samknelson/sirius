@@ -269,6 +269,7 @@ export const dispatchJobTypeTabTree: HierarchicalTab[] = [
 export const edlsSheetTabTree: HierarchicalTab[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/edls/sheet/{id}', permission: 'staff', component: 'edls' },
   { id: 'assignments', label: 'Assignments', hrefTemplate: '/edls/sheet/{id}/assignments', permission: 'staff', component: 'edls' },
+  { id: 'manage', label: 'Manage', hrefTemplate: '/edls/sheet/{id}/manage', policyId: 'edls.sheet.set_status', component: 'edls' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/edls/sheet/{id}/edit', permission: 'staff', component: 'edls' },
 ];
 

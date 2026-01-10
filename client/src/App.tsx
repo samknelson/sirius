@@ -239,6 +239,7 @@ const BtuEmployerMapListPage = lazy(() => import("@/pages/sitespecific/btu/emplo
 const EdlsSheetsPage = lazy(() => import("@/pages/edls/sheets"));
 const EdlsSheetDetailsPage = lazy(() => import("@/pages/edls/sheet-details"));
 const EdlsSheetAssignmentsPage = lazy(() => import("@/pages/edls/sheet-assignments"));
+const EdlsSheetManagePage = lazy(() => import("@/pages/edls/sheet-manage"));
 const EdlsSheetEditPage = lazy(() => import("@/pages/edls/sheet-edit"));
 
 // Loading fallback component
@@ -1742,6 +1743,14 @@ function Router() {
         <ProtectedRoute tabId="assignments" entityType="edls_sheet">
           <AuthenticatedLayout>
             <EdlsSheetAssignmentsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/edls/sheet/:id/manage">
+        <ProtectedRoute tabId="manage" entityType="edls_sheet">
+          <AuthenticatedLayout>
+            <EdlsSheetManagePage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

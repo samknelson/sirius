@@ -225,4 +225,41 @@ export function registerEdlsSheetsRoutes(
       res.status(500).json({ message: "Failed to fetch crews" });
     }
   });
+
+  const setStatusSchema = z.object({
+    status: z.enum(["draft", "request", "lock", "trash", "reserved"]),
+  });
+
+  app.patch(
+    "/api/edls/sheets/:id/status",
+    requireAuth,
+    edlsComponent,
+    requireAccess('edls.sheet.set_status', {
+      getEntityId: (req) => req.params.id,
+      getEntityData: (req) => ({ targetStatus: req.body.status }),
+    }),
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const parsed = setStatusSchema.safeParse(req.body);
+        
+        if (!parsed.success) {
+          res.status(400).json({ message: "Invalid status", errors: parsed.error.flatten() });
+          return;
+        }
+        
+        const existingSheet = await storage.edlsSheets.get(id);
+        if (!existingSheet) {
+          res.status(404).json({ message: "Sheet not found" });
+          return;
+        }
+        
+        const updatedSheet = await storage.edlsSheets.update(id, { status: parsed.data.status });
+        res.json(updatedSheet);
+      } catch (error) {
+        console.error("Failed to update sheet status:", error);
+        res.status(500).json({ message: "Failed to update sheet status" });
+      }
+    }
+  );
 }
