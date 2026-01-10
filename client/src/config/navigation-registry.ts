@@ -159,6 +159,15 @@ export const configSections: NavSection[] = [
       },
     ],
   },
+  {
+    id: "edls",
+    title: "EDLS",
+    description: "Employer Day Labor Scheduler configuration",
+    icon: Calendar,
+    items: [
+      { path: "/config/edls/settings", label: "Settings", icon: Settings, testId: "nav-config-edls-settings", permission: "admin", requiresComponent: "edls" },
+    ],
+  },
 ];
 
 export interface AccessContext {

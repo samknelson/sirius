@@ -180,6 +180,7 @@ const DispatchJobTypeEditPage = lazy(() => import("@/pages/config/dispatch-job-t
 const DispatchJobTypeDeletePage = lazy(() => import("@/pages/config/dispatch-job-type-delete"));
 const DispatchJobTypePluginsPage = lazy(() => import("@/pages/config/dispatch-job-type-plugins"));
 const DispatchDncConfigPage = lazy(() => import("@/pages/config/dispatch-dnc"));
+const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const WorkerBanConfigPage = lazy(() => import("@/pages/config/workers-ban"));
 const DispatchJobsPage = lazy(() => import("@/pages/dispatch/jobs"));
 const DispatchJobDetailsPage = lazy(() => import("@/pages/dispatch/job-details"));
@@ -1660,6 +1661,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <DispatchDncConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/edls/settings">
+        <ProtectedRoute permission="admin" component="edls">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <EdlsSettingsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
