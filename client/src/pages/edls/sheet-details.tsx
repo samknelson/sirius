@@ -8,6 +8,10 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { EdlsSheetStatus, EdlsCrew } from "@shared/schema";
 
+interface EdlsCrewWithRelations extends EdlsCrew {
+  supervisorUser?: UserInfo;
+}
+
 interface UserInfo {
   id: string;
   firstName: string | null;
@@ -52,7 +56,7 @@ function EdlsSheetDetailsContent() {
   const sheetData = (sheet.data as Record<string, any>) || {};
   const hasTrashLock = !!sheetData.trashLock;
 
-  const { data: crews = [], isLoading: crewsLoading } = useQuery<EdlsCrew[]>({
+  const { data: crews = [], isLoading: crewsLoading } = useQuery<EdlsCrewWithRelations[]>({
     queryKey: ["/api/edls/sheets", sheet.id, "crews"],
     queryFn: async () => {
       const response = await fetch(`/api/edls/sheets/${sheet.id}/crews`);
@@ -176,6 +180,10 @@ function EdlsSheetDetailsContent() {
                         {crew.location}
                       </div>
                     )}
+                    <div className="flex items-center gap-1" data-testid={`crew-supervisor-${crew.id}`}>
+                      <User className="h-4 w-4" />
+                      Supervisor: {formatUserName(crew.supervisorUser)}
+                    </div>
                   </div>
                 </div>
               ))}

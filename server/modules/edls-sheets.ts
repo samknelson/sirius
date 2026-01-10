@@ -218,7 +218,7 @@ export function registerEdlsSheetsRoutes(
         return;
       }
       
-      const crews = await storage.edlsCrews.getBySheetId(sheetId);
+      const crews = await storage.edlsCrews.getBySheetIdWithRelations(sheetId);
       res.json(crews);
     } catch (error) {
       console.error("Failed to fetch crews:", error);

@@ -1,13 +1,20 @@
 import { db } from "../db";
 import { 
-  edlsCrews, 
+  edlsCrews,
+  users,
   type EdlsCrew, 
   type InsertEdlsCrew
 } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+
+export interface EdlsCrewWithRelations extends EdlsCrew {
+  supervisorUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
+}
 
 export interface EdlsCrewsStorage {
   getBySheetId(sheetId: string): Promise<EdlsCrew[]>;
+  getBySheetIdWithRelations(sheetId: string): Promise<EdlsCrewWithRelations[]>;
   get(id: string): Promise<EdlsCrew | undefined>;
   create(crew: InsertEdlsCrew): Promise<EdlsCrew>;
   update(id: string, crew: Partial<InsertEdlsCrew>): Promise<EdlsCrew | undefined>;
@@ -21,6 +28,29 @@ export function createEdlsCrewsStorage(): EdlsCrewsStorage {
   return {
     async getBySheetId(sheetId: string): Promise<EdlsCrew[]> {
       return db.select().from(edlsCrews).where(eq(edlsCrews.sheetId, sheetId));
+    },
+
+    async getBySheetIdWithRelations(sheetId: string): Promise<EdlsCrewWithRelations[]> {
+      const supervisorUsers = alias(users, 'supervisor_user');
+      
+      const rows = await db
+        .select({
+          crew: edlsCrews,
+          supervisorUser: {
+            id: supervisorUsers.id,
+            firstName: supervisorUsers.firstName,
+            lastName: supervisorUsers.lastName,
+            email: supervisorUsers.email,
+          },
+        })
+        .from(edlsCrews)
+        .leftJoin(supervisorUsers, eq(edlsCrews.supervisor, supervisorUsers.id))
+        .where(eq(edlsCrews.sheetId, sheetId));
+      
+      return rows.map(row => ({
+        ...row.crew,
+        supervisorUser: row.supervisorUser?.id ? row.supervisorUser : undefined,
+      }));
     },
 
     async get(id: string): Promise<EdlsCrew | undefined> {
