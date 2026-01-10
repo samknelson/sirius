@@ -14,13 +14,23 @@ const policy = definePolicy({
   ],
   
   async evaluate(ctx: PolicyContext) {
+    const targetStatus = ctx.entityData?.targetStatus;
+    
+    if (targetStatus === 'trash') {
+      const sheet = await ctx.loadEntity('edls_sheet', ctx.entityId!);
+      if (sheet && (sheet as any).status === 'lock') {
+        return { 
+          granted: false, 
+          reason: 'Scheduled sheets cannot be moved to trash' 
+        };
+      }
+    }
+    
     if (await ctx.hasAnyPermission(['edls.manager', 'edls.coordinator'])) {
       return { granted: true, reason: 'Manager/coordinator full access' };
     }
     
     if (await ctx.hasPermission('edls.worker.advisor')) {
-      const targetStatus = ctx.entityData?.targetStatus;
-      
       const sheet = await ctx.loadEntity('edls_sheet', ctx.entityId!);
       if (!sheet) {
         return { granted: false, reason: 'Sheet not found' };
