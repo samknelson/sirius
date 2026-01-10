@@ -39,6 +39,7 @@ import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig }
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./worker-dispatch-dnc";
 import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./worker-skills";
 import { type EdlsSheetsStorage, createEdlsSheetsStorage } from "./edls-sheets";
+import { type EdlsCrewsStorage, createEdlsCrewsStorage } from "./edls-crews";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "../db";
 import { optionsEmploymentStatus, employers, workers, contacts } from "@shared/schema";
@@ -89,6 +90,7 @@ export interface IStorage {
   workerDispatchDnc: WorkerDispatchDncStorage;
   workerSkills: WorkerSkillStorage;
   edlsSheets: EdlsSheetsStorage;
+  edlsCrews: EdlsCrewsStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -136,6 +138,7 @@ export class DatabaseStorage implements IStorage {
   workerDispatchDnc: WorkerDispatchDncStorage;
   workerSkills: WorkerSkillStorage;
   edlsSheets: EdlsSheetsStorage;
+  edlsCrews: EdlsCrewsStorage;
 
   constructor() {
     this.variables = withStorageLogging(createVariableStorage(), variableLoggingConfig);
@@ -246,6 +249,7 @@ export class DatabaseStorage implements IStorage {
     this.workerDispatchDnc = withStorageLogging(createWorkerDispatchDncStorage(), workerDispatchDncLoggingConfig);
     this.workerSkills = withStorageLogging(createWorkerSkillStorage(), workerSkillLoggingConfig);
     this.edlsSheets = createEdlsSheetsStorage();
+    this.edlsCrews = createEdlsCrewsStorage();
   }
 }
 

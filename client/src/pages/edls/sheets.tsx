@@ -4,8 +4,6 @@ import { Link } from "wouter";
 import { format } from "date-fns";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -19,22 +17,15 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Plus, FileSpreadsheet, Building2, Calendar, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { EdlsSheet, InsertEdlsSheet } from "@shared/schema";
+import { EdlsSheetForm, type SheetFormData } from "@/components/edls/EdlsSheetForm";
+import type { EdlsSheet } from "@shared/schema";
 
 interface EdlsSheetWithRelations extends EdlsSheet {
   employer?: { id: string; name: string };
@@ -47,42 +38,21 @@ interface PaginatedEdlsSheets {
   limit: number;
 }
 
-interface Employer {
-  id: string;
-  name: string;
-}
-
 export default function EdlsSheetsPage() {
   const { toast } = useToast();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [newSheet, setNewSheet] = useState<Partial<InsertEdlsSheet>>({
-    title: "",
-    date: new Date().toISOString().split("T")[0],
-    workerCount: 0,
-    employerId: "",
-  });
 
   const { data: sheetsData, isLoading } = useQuery<PaginatedEdlsSheets>({
     queryKey: ["/api/edls/sheets"],
   });
 
-  const { data: employers = [] } = useQuery<Employer[]>({
-    queryKey: ["/api/employers"],
-  });
-
   const createMutation = useMutation({
-    mutationFn: async (data: InsertEdlsSheet) => {
+    mutationFn: async (data: SheetFormData) => {
       return apiRequest("POST", "/api/edls/sheets", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets"] });
       setIsCreateDialogOpen(false);
-      setNewSheet({
-        title: "",
-        date: new Date().toISOString().split("T")[0],
-        workerCount: 0,
-        employerId: "",
-      });
       toast({
         title: "Sheet Created",
         description: "The new sheet has been created successfully.",
@@ -97,16 +67,8 @@ export default function EdlsSheetsPage() {
     },
   });
 
-  const handleCreateSheet = () => {
-    if (!newSheet.title || !newSheet.employerId || !newSheet.date) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields",
-        variant: "destructive",
-      });
-      return;
-    }
-    createMutation.mutate(newSheet as InsertEdlsSheet);
+  const handleCreateSheet = (data: SheetFormData) => {
+    createMutation.mutate(data);
   };
 
   if (isLoading) {
@@ -147,91 +109,19 @@ export default function EdlsSheetsPage() {
                 New Sheet
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Create New Sheet</DialogTitle>
                 <DialogDescription>
                   Add a new day labor scheduling sheet for an employer.
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="employer">Employer</Label>
-                  <Select
-                    value={newSheet.employerId}
-                    onValueChange={(value) =>
-                      setNewSheet({ ...newSheet, employerId: value })
-                    }
-                  >
-                    <SelectTrigger data-testid="select-employer">
-                      <SelectValue placeholder="Select an employer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {employers.map((employer) => (
-                        <SelectItem key={employer.id} value={employer.id}>
-                          {employer.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="title">Title</Label>
-                  <Input
-                    id="title"
-                    data-testid="input-title"
-                    value={newSheet.title}
-                    onChange={(e) =>
-                      setNewSheet({ ...newSheet, title: e.target.value })
-                    }
-                    placeholder="e.g., Morning Shift - January 15"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="date">Date</Label>
-                  <Input
-                    id="date"
-                    type="date"
-                    data-testid="input-date"
-                    value={newSheet.date as string}
-                    onChange={(e) =>
-                      setNewSheet({ ...newSheet, date: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="workerCount">Worker Count</Label>
-                  <Input
-                    id="workerCount"
-                    type="number"
-                    data-testid="input-worker-count"
-                    value={newSheet.workerCount || 0}
-                    onChange={(e) =>
-                      setNewSheet({
-                        ...newSheet,
-                        workerCount: parseInt(e.target.value) || 0,
-                      })
-                    }
-                    min={0}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setIsCreateDialogOpen(false)}
-                  data-testid="button-cancel"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleCreateSheet}
-                  disabled={createMutation.isPending}
-                  data-testid="button-submit"
-                >
-                  {createMutation.isPending ? "Creating..." : "Create Sheet"}
-                </Button>
-              </DialogFooter>
+              <EdlsSheetForm
+                onSubmit={handleCreateSheet}
+                onCancel={() => setIsCreateDialogOpen(false)}
+                isSubmitting={createMutation.isPending}
+                submitLabel="Create Sheet"
+              />
             </DialogContent>
           </Dialog>
         </CardHeader>

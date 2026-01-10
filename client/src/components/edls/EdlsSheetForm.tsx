@@ -1,0 +1,351 @@
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Plus, Trash2, AlertCircle } from "lucide-react";
+import type { EdlsSheet, EdlsCrew, InsertEdlsSheet, InsertEdlsCrew } from "@shared/schema";
+
+interface Employer {
+  id: string;
+  name: string;
+}
+
+type CrewInput = Omit<InsertEdlsCrew, "sheetId"> & { id?: string };
+
+export interface SheetFormData {
+  employerId: string;
+  title: string;
+  date: string;
+  workerCount: number;
+  crews: CrewInput[];
+}
+
+interface EdlsSheetFormProps {
+  initialData?: {
+    sheet: EdlsSheet;
+    crews: EdlsCrew[];
+  };
+  onSubmit: (data: SheetFormData) => void;
+  onCancel?: () => void;
+  isSubmitting?: boolean;
+  submitLabel?: string;
+}
+
+export function EdlsSheetForm({
+  initialData,
+  onSubmit,
+  onCancel,
+  isSubmitting = false,
+  submitLabel = "Save",
+}: EdlsSheetFormProps) {
+  const [formData, setFormData] = useState<SheetFormData>(() => {
+    if (initialData) {
+      return {
+        employerId: initialData.sheet.employerId,
+        title: initialData.sheet.title,
+        date: initialData.sheet.date as string,
+        workerCount: initialData.sheet.workerCount,
+        crews: initialData.crews.map((c) => ({
+          id: c.id,
+          title: c.title,
+          workerCount: c.workerCount,
+          location: c.location,
+          startTime: c.startTime,
+          endTime: c.endTime,
+        })),
+      };
+    }
+    return {
+      employerId: "",
+      title: "",
+      date: new Date().toISOString().split("T")[0],
+      workerCount: 0,
+      crews: [],
+    };
+  });
+
+  const { data: employers = [] } = useQuery<Employer[]>({
+    queryKey: ["/api/employers"],
+  });
+
+  const crewsTotalWorkerCount = formData.crews.reduce(
+    (sum, crew) => sum + (crew.workerCount || 0),
+    0
+  );
+
+  const workerCountMismatch =
+    formData.crews.length > 0 && crewsTotalWorkerCount !== formData.workerCount;
+
+  const hasValidationErrors = () => {
+    if (!formData.title || !formData.employerId || !formData.date) return true;
+    if (formData.crews.length === 0) return true;
+    if (workerCountMismatch) return true;
+    for (const crew of formData.crews) {
+      if (!crew.title || !crew.startTime || !crew.endTime || crew.workerCount <= 0) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const handleAddCrew = () => {
+    setFormData({
+      ...formData,
+      crews: [
+        ...formData.crews,
+        {
+          title: "",
+          workerCount: 0,
+          location: "",
+          startTime: "08:00",
+          endTime: "17:00",
+        },
+      ],
+    });
+  };
+
+  const handleRemoveCrew = (index: number) => {
+    const newCrews = [...formData.crews];
+    newCrews.splice(index, 1);
+    setFormData({ ...formData, crews: newCrews });
+  };
+
+  const handleCrewChange = (
+    index: number,
+    field: keyof CrewInput,
+    value: string | number | null
+  ) => {
+    const newCrews = [...formData.crews];
+    newCrews[index] = { ...newCrews[index], [field]: value };
+    setFormData({ ...formData, crews: newCrews });
+  };
+
+  const handleAutoCalculateWorkerCount = () => {
+    setFormData({ ...formData, workerCount: crewsTotalWorkerCount });
+  };
+
+  const handleSubmit = () => {
+    if (hasValidationErrors()) return;
+    onSubmit(formData);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="employer">Employer *</Label>
+          <Select
+            value={formData.employerId}
+            onValueChange={(value) =>
+              setFormData({ ...formData, employerId: value })
+            }
+          >
+            <SelectTrigger data-testid="select-employer">
+              <SelectValue placeholder="Select an employer" />
+            </SelectTrigger>
+            <SelectContent>
+              {employers.map((employer) => (
+                <SelectItem key={employer.id} value={employer.id}>
+                  {employer.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="title">Title *</Label>
+          <Input
+            id="title"
+            data-testid="input-title"
+            value={formData.title}
+            onChange={(e) =>
+              setFormData({ ...formData, title: e.target.value })
+            }
+            placeholder="e.g., Morning Shift - January 15"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="date">Date *</Label>
+          <Input
+            id="date"
+            type="date"
+            data-testid="input-date"
+            value={formData.date}
+            onChange={(e) =>
+              setFormData({ ...formData, date: e.target.value })
+            }
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="workerCount">Total Worker Count *</Label>
+          <div className="flex gap-2">
+            <Input
+              id="workerCount"
+              type="number"
+              data-testid="input-worker-count"
+              value={formData.workerCount}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  workerCount: parseInt(e.target.value) || 0,
+                })
+              }
+              min={0}
+            />
+            {formData.crews.length > 0 && workerCountMismatch && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAutoCalculateWorkerCount}
+                data-testid="button-auto-calculate"
+              >
+                Set to {crewsTotalWorkerCount}
+              </Button>
+            )}
+          </div>
+          {workerCountMismatch && (
+            <p className="text-sm text-destructive flex items-center gap-1">
+              <AlertCircle className="h-4 w-4" />
+              Crew totals ({crewsTotalWorkerCount}) must match sheet total (
+              {formData.workerCount})
+            </p>
+          )}
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 pb-4">
+          <CardTitle className="text-lg">Crews</CardTitle>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleAddCrew}
+            data-testid="button-add-crew"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Crew
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {formData.crews.length === 0 ? (
+            <p className="text-muted-foreground text-center py-4">
+              No crews added yet. Add at least one crew to save this sheet.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {formData.crews.map((crew, index) => (
+                <Card key={index} className="p-4">
+                  <div className="flex items-start gap-4">
+                    <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Title *</Label>
+                        <Input
+                          data-testid={`input-crew-title-${index}`}
+                          value={crew.title || ""}
+                          onChange={(e) =>
+                            handleCrewChange(index, "title", e.target.value)
+                          }
+                          placeholder="Crew name"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Workers *</Label>
+                        <Input
+                          type="number"
+                          data-testid={`input-crew-workers-${index}`}
+                          value={crew.workerCount || 0}
+                          onChange={(e) =>
+                            handleCrewChange(
+                              index,
+                              "workerCount",
+                              parseInt(e.target.value) || 0
+                            )
+                          }
+                          min={1}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Start Time *</Label>
+                        <Input
+                          type="time"
+                          data-testid={`input-crew-start-${index}`}
+                          value={crew.startTime || ""}
+                          onChange={(e) =>
+                            handleCrewChange(index, "startTime", e.target.value)
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">End Time *</Label>
+                        <Input
+                          type="time"
+                          data-testid={`input-crew-end-${index}`}
+                          value={crew.endTime || ""}
+                          onChange={(e) =>
+                            handleCrewChange(index, "endTime", e.target.value)
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Location</Label>
+                        <Input
+                          data-testid={`input-crew-location-${index}`}
+                          value={crew.location || ""}
+                          onChange={(e) =>
+                            handleCrewChange(index, "location", e.target.value || null)
+                          }
+                          placeholder="Optional"
+                        />
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive mt-5"
+                      onClick={() => handleRemoveCrew(index)}
+                      data-testid={`button-remove-crew-${index}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="flex gap-2 justify-end">
+        {onCancel && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            data-testid="button-cancel"
+          >
+            Cancel
+          </Button>
+        )}
+        <Button
+          onClick={handleSubmit}
+          disabled={isSubmitting || hasValidationErrors()}
+          data-testid="button-submit"
+        >
+          {isSubmitting ? "Saving..." : submitLabel}
+        </Button>
+      </div>
+    </div>
+  );
+}

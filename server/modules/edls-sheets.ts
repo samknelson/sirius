@@ -1,8 +1,17 @@
 import type { Express } from "express";
 import { storage } from "../storage";
-import { insertEdlsSheetsSchema } from "@shared/schema";
+import { db } from "../db";
+import { edlsSheets, edlsCrews, insertEdlsSheetsSchema, insertEdlsCrewsSchema, type InsertEdlsCrew } from "@shared/schema";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
+import { z } from "zod";
+import { eq } from "drizzle-orm";
+
+const crewInputSchema = insertEdlsCrewsSchema.omit({ sheetId: true });
+
+const sheetWithCrewsSchema = insertEdlsSheetsSchema.extend({
+  crews: z.array(crewInputSchema).min(1, "At least one crew is required"),
+});
 
 export function registerEdlsSheetsRoutes(
   app: Express,
@@ -44,7 +53,9 @@ export function registerEdlsSheetsRoutes(
         return;
       }
       
-      res.json(sheet);
+      const crews = await storage.edlsCrews.getBySheetId(id);
+      
+      res.json({ ...sheet, crews });
     } catch (error) {
       console.error("Failed to fetch EDLS sheet:", error);
       res.status(500).json({ message: "Failed to fetch sheet" });
@@ -53,21 +64,42 @@ export function registerEdlsSheetsRoutes(
 
   app.post("/api/edls/sheets", requireAuth, edlsComponent, requireAccess('staff'), async (req, res) => {
     try {
-      const parsed = insertEdlsSheetsSchema.safeParse(req.body);
+      const parsed = sheetWithCrewsSchema.safeParse(req.body);
       
       if (!parsed.success) {
         res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
         return;
       }
       
-      const employer = await storage.employers.getEmployer(parsed.data.employerId);
+      const { crews, ...sheetData } = parsed.data;
+      
+      const employer = await storage.employers.getEmployer(sheetData.employerId);
       if (!employer) {
         res.status(400).json({ message: "Employer not found" });
         return;
       }
       
-      const sheet = await storage.edlsSheets.create(parsed.data);
-      res.status(201).json(sheet);
+      const crewsTotalWorkerCount = crews.reduce((sum, crew) => sum + crew.workerCount, 0);
+      if (crewsTotalWorkerCount !== sheetData.workerCount) {
+        res.status(400).json({ 
+          message: `Crew worker counts (${crewsTotalWorkerCount}) must equal sheet worker count (${sheetData.workerCount})` 
+        });
+        return;
+      }
+      
+      const result = await db.transaction(async (tx) => {
+        const [sheet] = await tx.insert(edlsSheets).values(sheetData).returning();
+        
+        const createdCrews = await Promise.all(
+          crews.map(crew => 
+            tx.insert(edlsCrews).values({ ...crew, sheetId: sheet.id }).returning()
+          )
+        );
+        
+        return { ...sheet, crews: createdCrews.map(c => c[0]) };
+      });
+      
+      res.status(201).json(result);
     } catch (error) {
       console.error("Failed to create EDLS sheet:", error);
       res.status(500).json({ message: "Failed to create sheet" });
@@ -84,7 +116,9 @@ export function registerEdlsSheetsRoutes(
         return;
       }
       
-      const updateSchema = insertEdlsSheetsSchema.partial();
+      const updateSchema = sheetWithCrewsSchema.partial().extend({
+        crews: z.array(crewInputSchema.extend({ id: z.string().optional() })).optional(),
+      });
       const parsed = updateSchema.safeParse(req.body);
       
       if (!parsed.success) {
@@ -92,16 +126,64 @@ export function registerEdlsSheetsRoutes(
         return;
       }
       
-      if (parsed.data.employerId) {
-        const employer = await storage.employers.getEmployer(parsed.data.employerId);
+      const { crews, ...sheetData } = parsed.data;
+      
+      if (sheetData.employerId) {
+        const employer = await storage.employers.getEmployer(sheetData.employerId);
         if (!employer) {
           res.status(400).json({ message: "Employer not found" });
           return;
         }
       }
       
-      const sheet = await storage.edlsSheets.update(id, parsed.data);
-      res.json(sheet);
+      const finalWorkerCount = sheetData.workerCount ?? existingSheet.workerCount;
+      
+      if (crews !== undefined) {
+        if (crews.length === 0) {
+          res.status(400).json({ message: "At least one crew is required" });
+          return;
+        }
+        
+        const crewsTotalWorkerCount = crews.reduce((sum, crew) => sum + crew.workerCount, 0);
+        if (crewsTotalWorkerCount !== finalWorkerCount) {
+          res.status(400).json({ 
+            message: `Crew worker counts (${crewsTotalWorkerCount}) must equal sheet worker count (${finalWorkerCount})` 
+          });
+          return;
+        }
+        
+        const result = await db.transaction(async (tx) => {
+          await tx.delete(edlsCrews).where(eq(edlsCrews.sheetId, id));
+          
+          const [updatedSheet] = Object.keys(sheetData).length > 0
+            ? await tx.update(edlsSheets).set(sheetData).where(eq(edlsSheets.id, id)).returning()
+            : [existingSheet];
+          
+          const createdCrews = await Promise.all(
+            crews.map(crew => {
+              const { id: crewId, ...crewData } = crew as InsertEdlsCrew & { id?: string };
+              return tx.insert(edlsCrews).values({ ...crewData, sheetId: id }).returning();
+            })
+          );
+          
+          return { ...updatedSheet, crews: createdCrews.map(c => c[0]) };
+        });
+        
+        res.json(result);
+      } else {
+        const currentCrewsTotal = await storage.edlsCrews.getCrewsTotalWorkerCount(id);
+        if (currentCrewsTotal !== finalWorkerCount) {
+          res.status(400).json({ 
+            message: `Cannot update worker count to ${finalWorkerCount}. Current crews total ${currentCrewsTotal}. Please update crews to match.` 
+          });
+          return;
+        }
+        
+        const updatedSheet = await storage.edlsSheets.update(id, sheetData);
+        const updatedCrews = await storage.edlsCrews.getBySheetId(id);
+        
+        res.json({ ...updatedSheet, crews: updatedCrews });
+      }
     } catch (error) {
       console.error("Failed to update EDLS sheet:", error);
       res.status(500).json({ message: "Failed to update sheet" });
@@ -123,6 +205,24 @@ export function registerEdlsSheetsRoutes(
     } catch (error) {
       console.error("Failed to delete EDLS sheet:", error);
       res.status(500).json({ message: "Failed to delete sheet" });
+    }
+  });
+
+  app.get("/api/edls/sheets/:sheetId/crews", requireAuth, edlsComponent, requireAccess('staff'), async (req, res) => {
+    try {
+      const { sheetId } = req.params;
+      
+      const sheet = await storage.edlsSheets.get(sheetId);
+      if (!sheet) {
+        res.status(404).json({ message: "Sheet not found" });
+        return;
+      }
+      
+      const crews = await storage.edlsCrews.getBySheetId(sheetId);
+      res.json(crews);
+    } catch (error) {
+      console.error("Failed to fetch crews:", error);
+      res.status(500).json({ message: "Failed to fetch crews" });
     }
   });
 }

@@ -26,11 +26,11 @@ export type InsertEdlsSheet = z.infer<typeof insertEdlsSheetsSchema>;
 export const edlsCrews = pgTable("edls_crews", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   sheetId: varchar("sheet_id").notNull().references(() => edlsSheets.id, { onDelete: 'cascade' }),
-  title: varchar("title", { length: 255 }),
+  title: varchar("title", { length: 255 }).notNull(),
   workerCount: integer("worker_count").notNull(),
   location: varchar("location", { length: 255 }),
-  startTime: time("start_time"),
-  endTime: time("end_time"),
+  startTime: time("start_time").notNull(),
+  endTime: time("end_time").notNull(),
 });
 
 export const insertEdlsCrewsSchema = createInsertSchema(edlsCrews).omit({

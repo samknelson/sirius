@@ -651,6 +651,10 @@ export {
   type EdlsSheet,
   type EdlsSheetStatus,
   type InsertEdlsSheet,
+  edlsCrews,
+  insertEdlsCrewsSchema,
+  type EdlsCrew,
+  type InsertEdlsCrew,
 } from "./schema/edls/schema";
 
 // Zod schemas for validation
