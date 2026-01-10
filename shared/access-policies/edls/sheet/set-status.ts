@@ -37,8 +37,8 @@ const policy = definePolicy({
       }
     }
     
-    if (await ctx.hasAnyPermission(['edls.manager', 'edls.coordinator'])) {
-      return { granted: true, reason: 'Manager/coordinator full access' };
+    if (await ctx.hasAnyPermission(['admin', 'edls.manager', 'edls.coordinator'])) {
+      return { granted: true, reason: 'Admin/manager/coordinator full access' };
     }
     
     if (await ctx.hasPermission('edls.worker.advisor')) {
