@@ -2,7 +2,7 @@ import { pgTable, varchar, date, integer, time, jsonb, unique } from "drizzle-or
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { employers, workers } from "../../schema";
+import { employers, workers, users } from "../../schema";
 
 export const edlsSheetStatusEnum = ["draft", "request", "lock", "trash", "reserved"] as const;
 export type EdlsSheetStatus = typeof edlsSheetStatusEnum[number];
@@ -14,6 +14,8 @@ export const edlsSheets = pgTable("edls_sheets", {
   date: date("date").notNull(),
   workerCount: integer("worker_count").notNull().default(0),
   status: varchar("status", { length: 50 }).notNull().default("draft"),
+  supervisor: varchar("supervisor").references(() => users.id, { onDelete: 'set null' }),
+  assignee: varchar("assignee").references(() => users.id, { onDelete: 'set null' }),
   data: jsonb("data"),
 });
 

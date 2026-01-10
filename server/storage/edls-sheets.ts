@@ -2,13 +2,17 @@ import { db } from "../db";
 import { 
   edlsSheets, 
   employers,
+  users,
   type EdlsSheet, 
   type InsertEdlsSheet
 } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 export interface EdlsSheetWithRelations extends EdlsSheet {
   employer?: { id: string; name: string };
+  supervisorUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
+  assigneeUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
 }
 
 export interface PaginatedEdlsSheets {
@@ -77,6 +81,9 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
     },
 
     async getWithRelations(id: string): Promise<EdlsSheetWithRelations | undefined> {
+      const supervisorUsers = alias(users, 'supervisor_user');
+      const assigneeUsers = alias(users, 'assignee_user');
+      
       const [row] = await db
         .select({
           sheet: edlsSheets,
@@ -84,9 +91,23 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
             id: employers.id,
             name: employers.name,
           },
+          supervisorUser: {
+            id: supervisorUsers.id,
+            firstName: supervisorUsers.firstName,
+            lastName: supervisorUsers.lastName,
+            email: supervisorUsers.email,
+          },
+          assigneeUser: {
+            id: assigneeUsers.id,
+            firstName: assigneeUsers.firstName,
+            lastName: assigneeUsers.lastName,
+            email: assigneeUsers.email,
+          },
         })
         .from(edlsSheets)
         .leftJoin(employers, eq(edlsSheets.employerId, employers.id))
+        .leftJoin(supervisorUsers, eq(edlsSheets.supervisor, supervisorUsers.id))
+        .leftJoin(assigneeUsers, eq(edlsSheets.assignee, assigneeUsers.id))
         .where(eq(edlsSheets.id, id));
       
       if (!row) return undefined;
@@ -94,6 +115,8 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       return {
         ...row.sheet,
         employer: row.employer || undefined,
+        supervisorUser: row.supervisorUser?.id ? row.supervisorUser : undefined,
+        assigneeUser: row.assigneeUser?.id ? row.assigneeUser : undefined,
       };
     },
 

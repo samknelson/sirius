@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { Building2, Calendar, Users, FileText, Clock, MapPin, Lock } from "lucide-react";
+import { Building2, Calendar, Users, FileText, Clock, MapPin, Lock, User } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -7,6 +7,21 @@ import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSh
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { EdlsSheetStatus, EdlsCrew } from "@shared/schema";
+
+interface UserInfo {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string;
+}
+
+function formatUserName(user: UserInfo | undefined): string {
+  if (!user) return "Not assigned";
+  if (user.firstName || user.lastName) {
+    return [user.firstName, user.lastName].filter(Boolean).join(" ");
+  }
+  return user.email;
+}
 
 const statusColors: Record<EdlsSheetStatus, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -99,6 +114,20 @@ function EdlsSheetDetailsContent() {
                   </Badge>
                 )}
               </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Supervisor</h3>
+              <p className="text-foreground flex items-center gap-2" data-testid="text-supervisor">
+                <User className="h-4 w-4 text-muted-foreground" />
+                {formatUserName((sheet as any).supervisorUser)}
+              </p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Assignee</h3>
+              <p className="text-foreground flex items-center gap-2" data-testid="text-assignee">
+                <User className="h-4 w-4 text-muted-foreground" />
+                {formatUserName((sheet as any).assigneeUser)}
+              </p>
             </div>
           </div>
         </CardContent>
