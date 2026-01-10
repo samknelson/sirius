@@ -6,6 +6,7 @@ const policy = definePolicy({
   scope: 'entity',
   entityType: 'edls_sheet',
   component: 'edls',
+  cacheKeyFields: ['status'],
   
   describeRequirements: () => [
     { permission: 'edls.manager' },

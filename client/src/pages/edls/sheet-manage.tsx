@@ -116,7 +116,11 @@ function EdlsSheetManageContent() {
     trashLockMutation.mutate(!hasTrashLock);
   };
 
-  const availableStatuses = statusOptions.filter(s => s.value !== currentStatus);
+  const availableStatuses = statusOptions.filter(s => {
+    if (s.value === currentStatus) return false;
+    if (s.value === "trash" && hasTrashLock) return false;
+    return true;
+  });
   const isPending = setStatusMutation.isPending || trashLockMutation.isPending;
   const canEdit = currentStatus !== "lock" && currentStatus !== "trash";
 

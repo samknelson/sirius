@@ -33,13 +33,19 @@ export interface PolicyContextOptions {
   accessStorage: AccessControlStorage;
   checkComponent: (componentId: string) => Promise<boolean>;
   evaluatePolicy: (policyId: string, entityId?: string, entityData?: Record<string, any>) => Promise<boolean>;
+  /** Pre-loaded entity to avoid duplicate loads (used when cacheKeyFields requires early loading) */
+  preloadedEntity?: Record<string, any> | null;
+  /** Entity type for the preloaded entity */
+  preloadedEntityType?: string;
+  /** Entity ID for the preloaded entity (for comparison in loadEntity) */
+  preloadedEntityId?: string;
 }
 
 /**
  * Create a PolicyContext for policy handler evaluation
  */
 export function createPolicyContext(options: PolicyContextOptions): PolicyContext {
-  const { user, entityId, entityData, storage, accessStorage, checkComponent, evaluatePolicy } = options;
+  const { user, entityId, entityData, storage, accessStorage, checkComponent, evaluatePolicy, preloadedEntity, preloadedEntityType, preloadedEntityId } = options;
   
   const policyUser: PolicyUser = {
     id: user.id,
@@ -77,13 +83,18 @@ export function createPolicyContext(options: PolicyContextOptions): PolicyContex
       return true;
     },
     
-    async loadEntity<T = Record<string, any>>(entityType: string, entityId: string): Promise<T | null> {
+    async loadEntity<T = Record<string, any>>(entityType: string, loadEntityId: string): Promise<T | null> {
+      // Return preloaded entity if it matches (avoids duplicate database loads)
+      if (preloadedEntity && preloadedEntityType === entityType && preloadedEntityId === loadEntityId) {
+        return preloadedEntity as T;
+      }
+      
       const registeredLoader = getEntityLoader(entityType);
       if (registeredLoader) {
         try {
-          return await registeredLoader(entityId, storage) as T | null;
+          return await registeredLoader(loadEntityId, storage) as T | null;
         } catch (error) {
-          logger.error(`Error loading entity ${entityType}:${entityId} via registered loader`, { 
+          logger.error(`Error loading entity ${entityType}:${loadEntityId} via registered loader`, { 
             service: SERVICE, 
             error: (error as Error).message 
           });
@@ -109,9 +120,9 @@ export function createPolicyContext(options: PolicyContextOptions): PolicyContex
       }
       
       try {
-        return await fallbackLoader(entityId);
+        return await fallbackLoader(loadEntityId);
       } catch (error) {
-        logger.error(`Error loading entity ${entityType}:${entityId}`, { 
+        logger.error(`Error loading entity ${entityType}:${loadEntityId}`, { 
           service: SERVICE, 
           error: (error as Error).message 
         });

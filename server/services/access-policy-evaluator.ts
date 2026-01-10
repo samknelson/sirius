@@ -585,18 +585,55 @@ async function evaluateModularPolicy(
   // Check cache (same logic as declarative policies)
   // Skip cache if: options.skipCache, entityData provided, or policy declares skipCache
   const shouldUseCache = !options.skipCache && !options.entityData && !policy.skipCache;
-  const cacheKey = shouldUseCache && user ? buildCacheKey(user.id, policyId, entityId) : null;
-  if (cacheKey) {
-    const cached = accessCache.get(cacheKey);
-    if (cached) {
-      logger.debug(`Modular policy cache hit`, { 
-        service: SERVICE, 
-        userId: user?.id, 
-        policyId, 
-        entityId,
-        granted: cached.granted 
-      });
-      return cached;
+  
+  // Pre-load entity if cacheKeyFields are specified (needed to build extended cache key)
+  let preloadedEntity: Record<string, any> | null = null;
+  let cacheKey: string | null = null;
+  
+  if (shouldUseCache && user) {
+    // Build cache key, optionally including entity field values
+    if (policy.cacheKeyFields && policy.cacheKeyFields.length > 0 && entityId) {
+      // Load entity first to get field values for cache key
+      const entityType = policy.entityType;
+      if (entityType) {
+        const loader = getEntityLoader(entityType);
+        if (loader) {
+          preloadedEntity = await loader(entityId, storage);
+          if (preloadedEntity) {
+            // Build extended cache key with field values
+            const fieldValues = policy.cacheKeyFields
+              .map(field => `${field}:${preloadedEntity![field] ?? 'null'}`)
+              .join(':');
+            cacheKey = `${buildCacheKey(user.id, policyId, entityId)}:${fieldValues}`;
+          } else {
+            // Entity not found - skip cache since we can't build proper key
+            cacheKey = null;
+          }
+        } else {
+          // No loader - fall back to basic cache key
+          cacheKey = buildCacheKey(user.id, policyId, entityId);
+        }
+      } else {
+        // No entity type - fall back to basic cache key
+        cacheKey = buildCacheKey(user.id, policyId, entityId);
+      }
+    } else {
+      // No cacheKeyFields - use basic cache key
+      cacheKey = buildCacheKey(user.id, policyId, entityId);
+    }
+    
+    if (cacheKey) {
+      const cached = accessCache.get(cacheKey);
+      if (cached) {
+        logger.debug(`Modular policy cache hit`, { 
+          service: SERVICE, 
+          userId: user?.id, 
+          policyId, 
+          entityId,
+          granted: cached.granted 
+        });
+        return cached;
+      }
     }
   }
   
@@ -664,6 +701,9 @@ async function evaluateModularPolicy(
     storage,
     accessStorage,
     checkComponent,
+    preloadedEntity: preloadedEntity ?? undefined,
+    preloadedEntityType: policy.entityType,
+    preloadedEntityId: entityId,
     evaluatePolicy: async (delegatePolicyId: string, delegateEntityId?: string, delegateEntityData?: Record<string, any>) => {
       const result = await evaluatePolicy(
         user,

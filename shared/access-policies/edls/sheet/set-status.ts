@@ -6,6 +6,8 @@ const policy = definePolicy({
   scope: 'entity',
   entityType: 'edls_sheet',
   component: 'edls',
+  skipCache: true,
+  noAdminBypass: true,
   
   describeRequirements: () => [
     { permission: 'edls.manager' },

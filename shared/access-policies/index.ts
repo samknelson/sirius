@@ -119,6 +119,13 @@ export interface PolicyDefinition {
    * (like entityData) that isn't part of the cache key.
    */
   skipCache?: boolean;
+  
+  /**
+   * Entity fields to include in the cache key.
+   * The entity will be loaded first and these field values will be appended to the cache key.
+   * Use for policies where the result depends on entity state (like status).
+   */
+  cacheKeyFields?: string[];
 }
 
 /**
