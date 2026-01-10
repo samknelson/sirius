@@ -1,4 +1,4 @@
-import { pgTable, varchar, date, integer } from "drizzle-orm/pg-core";
+import { pgTable, varchar, date, integer, time } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -22,3 +22,20 @@ export const insertEdlsSheetsSchema = createInsertSchema(edlsSheets).omit({
 
 export type EdlsSheet = typeof edlsSheets.$inferSelect;
 export type InsertEdlsSheet = z.infer<typeof insertEdlsSheetsSchema>;
+
+export const edlsCrews = pgTable("edls_crews", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sheetId: varchar("sheet_id").notNull().references(() => edlsSheets.id, { onDelete: 'cascade' }),
+  title: varchar("title", { length: 255 }),
+  workerCount: integer("worker_count").notNull(),
+  location: varchar("location", { length: 255 }),
+  startTime: time("start_time"),
+  endTime: time("end_time"),
+});
+
+export const insertEdlsCrewsSchema = createInsertSchema(edlsCrews).omit({
+  id: true,
+});
+
+export type EdlsCrew = typeof edlsCrews.$inferSelect;
+export type InsertEdlsCrew = z.infer<typeof insertEdlsCrewsSchema>;
