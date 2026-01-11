@@ -6,15 +6,27 @@ const policy = definePolicy({
   scope: 'entity',
   entityType: 'edls_sheet',
   component: 'edls',
-  cacheKeyFields: ['status'],
+  cacheKeyFields: ['status', 'supervisor', 'assignee'],
   
   describeRequirements: () => [
-    { permission: 'staff' }
+    { permission: 'staff' },
+    { all: [{ permission: 'edls.supervisor' }, { attribute: 'assigned as supervisor or assignee on the sheet' }] }
   ],
   
   async evaluate(ctx: PolicyContext) {
     if (await ctx.hasPermission('staff')) {
       return { granted: true, reason: 'Staff access' };
+    }
+    
+    if (await ctx.hasPermission('edls.supervisor')) {
+      const sheet = ctx.entityData || (ctx.entityId ? await ctx.loadEntity('edls_sheet', ctx.entityId) : null);
+      if (sheet) {
+        const supervisor = (sheet as any).supervisor;
+        const assignee = (sheet as any).assignee;
+        if (supervisor === ctx.user.id || assignee === ctx.user.id) {
+          return { granted: true, reason: 'Assigned as supervisor or assignee on this sheet' };
+        }
+      }
     }
     
     return { granted: false, reason: 'No access to this EDLS sheet' };
