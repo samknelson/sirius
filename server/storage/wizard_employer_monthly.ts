@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { wizardEmployerMonthly, wizards, employers, insertWizardEmployerMonthlySchema } from "@shared/schema";
 import { eq, and, or, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -43,7 +43,8 @@ export interface WizardEmployerMonthlyStorage {
 export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStorage {
   return {
     async create(data: InsertWizardEmployerMonthly): Promise<WizardEmployerMonthly> {
-      const [record] = await db
+      const client = getClient();
+      const [record] = await client
         .insert(wizardEmployerMonthly)
         .values(data)
         .returning();
@@ -51,7 +52,8 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
     },
 
     async getByWizardId(wizardId: string): Promise<WizardEmployerMonthly | undefined> {
-      const [record] = await db
+      const client = getClient();
+      const [record] = await client
         .select()
         .from(wizardEmployerMonthly)
         .where(eq(wizardEmployerMonthly.wizardId, wizardId));
@@ -59,7 +61,8 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
     },
 
     async listByPeriod(year: number, month: number): Promise<any[]> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           wizardId: wizardEmployerMonthly.wizardId,
           employerId: wizardEmployerMonthly.employerId,
@@ -90,6 +93,7 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
       year?: number,
       month?: number
     ): Promise<WizardEmployerMonthly[]> {
+      const client = getClient();
       const conditions = [eq(wizardEmployerMonthly.employerId, employerId)];
       
       if (year !== undefined) {
@@ -99,19 +103,19 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
         conditions.push(eq(wizardEmployerMonthly.month, month));
       }
 
-      // Use and() only if we have multiple conditions, otherwise use the single condition
       const whereClause = conditions.length > 1 ? and(...conditions) : conditions[0];
 
-      return db
+      return client
         .select()
         .from(wizardEmployerMonthly)
         .where(whereClause);
     },
 
     async listAllEmployersWithUploads(year: number, month: number, wizardType: string): Promise<EmployerWithUploads[]> {
-      const allEmployers = await db.select().from(employers);
+      const client = getClient();
+      const allEmployers = await client.select().from(employers);
       
-      const uploadsForPeriod = await db
+      const uploadsForPeriod = await client
         .select({
           wizardId: wizardEmployerMonthly.wizardId,
           employerId: wizardEmployerMonthly.employerId,
@@ -142,9 +146,9 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
     },
 
     async listAllEmployersWithUploadsForRange(year: number, month: number, wizardType: string): Promise<EmployerWithUploads[]> {
-      const allEmployers = await db.select().from(employers);
+      const client = getClient();
+      const allEmployers = await client.select().from(employers);
       
-      // Calculate 5-month range: 4 months before + selected month
       const monthPeriods: Array<{ year: number; month: number }> = [];
       for (let i = 4; i >= 0; i--) {
         const targetDate = new Date(year, month - 1 - i, 1);
@@ -154,7 +158,6 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
         });
       }
       
-      // Build OR conditions for each month period
       const periodConditions = monthPeriods.map(period => 
         and(
           eq(wizardEmployerMonthly.year, period.year),
@@ -162,7 +165,7 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
         )
       );
       
-      const uploadsForPeriod = await db
+      const uploadsForPeriod = await client
         .select({
           wizardId: wizardEmployerMonthly.wizardId,
           employerId: wizardEmployerMonthly.employerId,
@@ -192,14 +195,15 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
     },
 
     async getMonthlyStats(year: number, month: number, wizardType: string): Promise<EmployerMonthlyStats> {
-      const allActiveEmployers = await db
+      const client = getClient();
+      const allActiveEmployers = await client
         .select()
         .from(employers)
         .where(eq(employers.isActive, true));
       
       const totalActiveEmployers = allActiveEmployers.length;
       
-      const uploadsForPeriod = await db
+      const uploadsForPeriod = await client
         .select({
           employerId: wizardEmployerMonthly.employerId,
           status: wizards.status,
@@ -246,6 +250,7 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
       month: number,
       status?: string | string[]
     ): Promise<any[]> {
+      const client = getClient();
       const conditions = [
         eq(wizardEmployerMonthly.employerId, employerId),
         eq(wizardEmployerMonthly.year, year),
@@ -253,20 +258,17 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
         eq(wizards.type, wizardType)
       ];
       
-      // Add status condition if provided
       if (status) {
         if (Array.isArray(status)) {
-          // Multiple statuses - use OR (only if array is non-empty)
           if (status.length > 0) {
             conditions.push(or(...status.map(s => eq(wizards.status, s)))!);
           }
         } else {
-          // Single status
           conditions.push(eq(wizards.status, status));
         }
       }
       
-      const results = await db
+      const results = await client
         .select({
           wizardId: wizardEmployerMonthly.wizardId,
           employerId: wizardEmployerMonthly.employerId,
@@ -288,7 +290,8 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
     },
 
     async delete(wizardId: string): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(wizardEmployerMonthly)
         .where(eq(wizardEmployerMonthly.wizardId, wizardId))
         .returning();

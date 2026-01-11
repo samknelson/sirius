@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import {
   workers,
   contacts,
@@ -95,15 +95,17 @@ export interface WorkerStorage {
 export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerStorage {
   const storage = {
     async getAllWorkers(): Promise<Worker[]> {
-      return await db.select().from(workers);
+      const client = getClient();
+      return await client.select().from(workers);
     },
 
     async getWorkersWithDetails(): Promise<WorkerWithDetails[]> {
+      const client = getClient();
       const now = new Date();
       const currentMonth = now.getMonth() + 1;
       const currentYear = now.getFullYear();
       
-      const result = await db.execute(sql`
+      const result = await client.execute(sql`
         SELECT 
           w.id,
           w.sirius_id,
@@ -195,7 +197,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]> {
-      const result = await db.execute(sql`
+      const client = getClient();
+      const result = await client.execute(sql`
         WITH latest_hours AS (
           SELECT DISTINCT ON (worker_id, employer_id)
             worker_id,
@@ -240,11 +243,12 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async getWorkersCurrentBenefits(month?: number, year?: number): Promise<WorkerCurrentBenefits[]> {
+      const client = getClient();
       const now = new Date();
       const currentMonth = month ?? (now.getMonth() + 1);
       const currentYear = year ?? now.getFullYear();
 
-      const result = await db.execute(sql`
+      const result = await client.execute(sql`
         SELECT 
           w.id as worker_id,
           COALESCE(
@@ -281,11 +285,13 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async getWorker(id: string): Promise<Worker | undefined> {
-      const [worker] = await db.select().from(workers).where(eq(workers.id, id));
+      const client = getClient();
+      const [worker] = await client.select().from(workers).where(eq(workers.id, id));
       return worker || undefined;
     },
 
     async getWorkerBySSN(ssn: string): Promise<Worker | undefined> {
+      const client = getClient();
       // Parse SSN to normalize format before lookup
       const { parseSSN } = await import('@shared/utils/ssn');
       let normalizedSSN: string;
@@ -298,7 +304,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       
       // Use SQL to strip non-digits from database column for comparison
       // This allows matching both normalized SSNs (123456789) and legacy dashed SSNs (123-45-6789)
-      const [worker] = await db
+      const [worker] = await client
         .select()
         .from(workers)
         .where(sql`regexp_replace(${workers.ssn}, '[^0-9]', '', 'g') = ${normalizedSSN}`);
@@ -307,7 +313,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async getWorkerByContactEmail(email: string): Promise<Worker | undefined> {
-      const [result] = await db
+      const client = getClient();
+      const [result] = await client
         .select({
           id: workers.id,
           siriusId: workers.siriusId,
@@ -326,7 +333,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async getWorkerByContactId(contactId: string): Promise<Worker | undefined> {
-      const [worker] = await db
+      const client = getClient();
+      const [worker] = await client
         .select()
         .from(workers)
         .where(eq(workers.contactId, contactId));
@@ -334,6 +342,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async createWorker(name: string): Promise<Worker> {
+      const client = getClient();
       // For simple name input, parse into given/family names
       const nameParts = name.trim().split(' ');
       const given = nameParts[0] || '';
@@ -347,7 +356,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       });
       
       // Create worker with the contact reference
-      const [worker] = await db
+      const [worker] = await client
         .insert(workers)
         .values({ contactId: contact.id })
         .returning();
@@ -356,8 +365,9 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async updateWorkerContactName(workerId: string, name: string): Promise<Worker | undefined> {
+      const client = getClient();
       // Get the current worker to find its contact
-      const [currentWorker] = await db.select().from(workers).where(eq(workers.id, workerId));
+      const [currentWorker] = await client.select().from(workers).where(eq(workers.id, workerId));
       if (!currentWorker) {
         return undefined;
       }
@@ -379,8 +389,9 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         credentials?: string;
       }
     ): Promise<Worker | undefined> {
+      const client = getClient();
       // Get the current worker to find its contact
-      const [currentWorker] = await db.select().from(workers).where(eq(workers.id, workerId));
+      const [currentWorker] = await client.select().from(workers).where(eq(workers.id, workerId));
       if (!currentWorker) {
         return undefined;
       }
@@ -392,8 +403,9 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async updateWorkerContactEmail(workerId: string, email: string): Promise<Worker | undefined> {
+      const client = getClient();
       // Get the current worker to find its contact
-      const [currentWorker] = await db.select().from(workers).where(eq(workers.id, workerId));
+      const [currentWorker] = await client.select().from(workers).where(eq(workers.id, workerId));
       if (!currentWorker) {
         return undefined;
       }
@@ -405,8 +417,9 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async updateWorkerContactBirthDate(workerId: string, birthDate: string | null): Promise<Worker | undefined> {
+      const client = getClient();
       // Get the current worker to find its contact
-      const [currentWorker] = await db.select().from(workers).where(eq(workers.id, workerId));
+      const [currentWorker] = await client.select().from(workers).where(eq(workers.id, workerId));
       if (!currentWorker) {
         return undefined;
       }
@@ -418,8 +431,9 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async updateWorkerContactGender(workerId: string, gender: string | null, genderNota: string | null): Promise<Worker | undefined> {
+      const client = getClient();
       // Get the current worker to find its contact
-      const [currentWorker] = await db.select().from(workers).where(eq(workers.id, workerId));
+      const [currentWorker] = await client.select().from(workers).where(eq(workers.id, workerId));
       if (!currentWorker) {
         return undefined;
       }
@@ -431,11 +445,12 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined> {
+      const client = getClient();
       const cleanSSN = ssn.trim();
       
       // Allow clearing the SSN
       if (!cleanSSN) {
-        const [updatedWorker] = await db
+        const [updatedWorker] = await client
           .update(workers)
           .set({ ssn: null })
           .where(eq(workers.id, workerId))
@@ -463,7 +478,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       
       try {
         // Update the worker's SSN with parsed (normalized) value
-        const [updatedWorker] = await db
+        const [updatedWorker] = await client
           .update(workers)
           .set({ ssn: parsedSSN })
           .where(eq(workers.id, workerId))
@@ -480,7 +495,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async updateWorkerStatus(workerId: string, denormWsId: string | null): Promise<Worker | undefined> {
-      const [updatedWorker] = await db
+      const client = getClient();
+      const [updatedWorker] = await client
         .update(workers)
         .set({ denormWsId })
         .where(eq(workers.id, workerId))
@@ -490,7 +506,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async syncWorkerEmployerDenorm(workerId: string): Promise<void> {
-      const result = await db.execute(sql`
+      const client = getClient();
+      const result = await client.execute(sql`
         WITH latest_hours AS (
           SELECT DISTINCT ON (employer_id)
             employer_id,
@@ -517,7 +534,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       const employerIds = row?.employer_ids?.length ? row.employer_ids : null;
       const denormWsId = homeEmployerId ? (row?.latest_ws_id || null) : null;
       
-      await db
+      await client
         .update(workers)
         .set({
           denormHomeEmployerId: homeEmployerId,
@@ -528,10 +545,11 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined> {
+      const client = getClient();
       // Normalize empty string to null
       const normalizedId = bargainingUnitId && bargainingUnitId.trim() ? bargainingUnitId.trim() : null;
       
-      const [updatedWorker] = await db
+      const [updatedWorker] = await client
         .update(workers)
         .set({ bargainingUnitId: normalizedId })
         .where(eq(workers.id, workerId))
@@ -541,14 +559,15 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async deleteWorker(id: string): Promise<boolean> {
+      const client = getClient();
       // Get the worker to find its contact
-      const [worker] = await db.select().from(workers).where(eq(workers.id, id));
+      const [worker] = await client.select().from(workers).where(eq(workers.id, id));
       if (!worker) {
         return false;
       }
       
       // Delete the worker first
-      const result = await db.delete(workers).where(eq(workers.id, id)).returning();
+      const result = await client.delete(workers).where(eq(workers.id, id)).returning();
       
       // If worker was deleted, also delete the corresponding contact using contact storage
       if (result.length > 0) {
@@ -560,7 +579,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
     // Worker benefits methods
     async getWorkerBenefits(workerId: string): Promise<any[]> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           id: trustWmb.id,
           month: trustWmb.month,
@@ -581,7 +601,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb> {
-      const [wmb] = await db
+      const client = getClient();
+      const [wmb] = await client
         .insert(trustWmb)
         .values(data)
         .returning();
@@ -625,7 +646,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async deleteWorkerBenefit(id: string): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(trustWmb)
         .where(eq(trustWmb.id, id))
         .returning();
@@ -672,7 +694,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .select({ id: trustWmb.id })
         .from(trustWmb)
         .where(
@@ -709,7 +732,8 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
       getEntityId: (args, result) => result?.id || 'new worker',
       getHostEntityId: (args, result) => result?.id,
       after: async (args, result, storage) => {
-        const [contact] = await db.select().from(contacts).where(eq(contacts.id, result.contactId));
+        const client = getClient();
+        const [contact] = await client.select().from(contacts).where(eq(contacts.id, result.contactId));
         return {
           worker: result,
           contact: contact,
@@ -733,7 +757,8 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
           return null;
         }
         
-        const [contact] = await db.select().from(contacts).where(eq(contacts.id, worker.contactId));
+        const client = getClient();
+        const [contact] = await client.select().from(contacts).where(eq(contacts.id, worker.contactId));
         return {
           worker: worker,
           contact: contact,
@@ -770,7 +795,8 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
           return null;
         }
         
-        const [workStatus] = await db.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, worker.denormWsId));
+        const client = getClient();
+        const [workStatus] = await client.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, worker.denormWsId));
         return {
           worker: worker,
           workStatus: workStatus,
@@ -797,7 +823,8 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
           };
         }
         
-        const [workStatus] = await db.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, result.denormWsId));
+        const client = getClient();
+        const [workStatus] = await client.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, result.denormWsId));
         return {
           worker: result,
           workStatus: workStatus,

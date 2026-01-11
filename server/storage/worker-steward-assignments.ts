@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { workerStewardAssignments, employers, bargainingUnits, workers, contacts, type WorkerStewardAssignment, type InsertWorkerStewardAssignment } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
@@ -59,7 +59,8 @@ export interface WorkerStewardAssignmentStorage {
 export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentStorage {
   const storage: WorkerStewardAssignmentStorage = {
     async getAssignmentsByWorkerId(workerId: string): Promise<WorkerStewardAssignmentWithDetails[]> {
-      const assignments = await db
+      const client = getClient();
+      const assignments = await client
         .select({
           assignment: workerStewardAssignments,
           employer: {
@@ -84,14 +85,16 @@ export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentS
     },
 
     async getAssignmentsByEmployerId(employerId: string): Promise<WorkerStewardAssignment[]> {
-      return await db
+      const client = getClient();
+      return await client
         .select()
         .from(workerStewardAssignments)
         .where(eq(workerStewardAssignments.employerId, employerId));
     },
 
     async getAssignmentById(id: string): Promise<WorkerStewardAssignment | undefined> {
-      const [assignment] = await db
+      const client = getClient();
+      const [assignment] = await client
         .select()
         .from(workerStewardAssignments)
         .where(eq(workerStewardAssignments.id, id));
@@ -99,7 +102,8 @@ export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentS
     },
 
     async getAllAssignments(): Promise<StewardAssignmentListItem[]> {
-      const assignments = await db
+      const client = getClient();
+      const assignments = await client
         .select({
           assignment: workerStewardAssignments,
           employer: {
@@ -135,7 +139,8 @@ export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentS
     },
 
     async getStewardsByEmployerAndBargainingUnit(employerId: string, bargainingUnitId: string): Promise<MyStewardDetails[]> {
-      const assignments = await db
+      const client = getClient();
+      const assignments = await client
         .select({
           id: workerStewardAssignments.id,
           workerId: workerStewardAssignments.workerId,
@@ -160,7 +165,8 @@ export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentS
     },
 
     async createAssignment(data: InsertWorkerStewardAssignment): Promise<WorkerStewardAssignment> {
-      const [assignment] = await db
+      const client = getClient();
+      const [assignment] = await client
         .insert(workerStewardAssignments)
         .values(data)
         .returning();
@@ -168,7 +174,8 @@ export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentS
     },
 
     async updateAssignment(id: string, data: Partial<InsertWorkerStewardAssignment>): Promise<WorkerStewardAssignment | undefined> {
-      const [updated] = await db
+      const client = getClient();
+      const [updated] = await client
         .update(workerStewardAssignments)
         .set(data)
         .where(eq(workerStewardAssignments.id, id))
@@ -177,7 +184,8 @@ export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentS
     },
 
     async deleteAssignment(id: string): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(workerStewardAssignments)
         .where(eq(workerStewardAssignments.id, id))
         .returning();
@@ -185,7 +193,8 @@ export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentS
     },
 
     async findExistingAssignment(workerId: string, employerId: string, bargainingUnitId: string): Promise<WorkerStewardAssignment | undefined> {
-      const [assignment] = await db
+      const client = getClient();
+      const [assignment] = await client
         .select()
         .from(workerStewardAssignments)
         .where(and(
@@ -197,7 +206,8 @@ export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentS
     },
 
     async isWorkerSteward(workerId: string): Promise<boolean> {
-      const [assignment] = await db
+      const client = getClient();
+      const [assignment] = await client
         .select({ id: workerStewardAssignments.id })
         .from(workerStewardAssignments)
         .where(eq(workerStewardAssignments.workerId, workerId))
@@ -435,7 +445,8 @@ export async function assembleEmployerStewardDetails(
 }
 
 async function getAssignmentDetails(assignmentId: string) {
-  const [assignment] = await db
+  const client = getClient();
+  const [assignment] = await client
     .select({
       assignment: workerStewardAssignments,
       employer: { id: employers.id, name: employers.name },

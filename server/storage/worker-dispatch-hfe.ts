@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { 
   workerDispatchHfe,
   workers,
@@ -40,13 +40,14 @@ export interface WorkerDispatchHfeStorage {
 }
 
 async function getWorkerName(workerId: string): Promise<string> {
-  const [worker] = await db
+  const client = getClient();
+  const [worker] = await client
     .select({ contactId: workers.contactId, siriusId: workers.siriusId })
     .from(workers)
     .where(eq(workers.id, workerId));
   if (!worker) return 'Unknown Worker';
   
-  const [contact] = await db
+  const [contact] = await client
     .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
     .from(contacts)
     .where(eq(contacts.id, worker.contactId));
@@ -56,7 +57,8 @@ async function getWorkerName(workerId: string): Promise<string> {
 }
 
 async function getEmployerName(employerId: string): Promise<string> {
-  const [employer] = await db
+  const client = getClient();
+  const [employer] = await client
     .select({ name: employers.name })
     .from(employers)
     .where(eq(employers.id, employerId));
@@ -125,11 +127,13 @@ export const workerDispatchHfeLoggingConfig: StorageLoggingConfig<WorkerDispatch
 export function createWorkerDispatchHfeStorage(): WorkerDispatchHfeStorage {
   return {
     async getAll() {
-      return await db.select().from(workerDispatchHfe);
+      const client = getClient();
+      return await client.select().from(workerDispatchHfe);
     },
 
     async get(id: string) {
-      const [result] = await db
+      const client = getClient();
+      const [result] = await client
         .select()
         .from(workerDispatchHfe)
         .where(eq(workerDispatchHfe.id, id));
@@ -137,21 +141,24 @@ export function createWorkerDispatchHfeStorage(): WorkerDispatchHfeStorage {
     },
 
     async getByWorker(workerId: string) {
-      return await db
+      const client = getClient();
+      return await client
         .select()
         .from(workerDispatchHfe)
         .where(eq(workerDispatchHfe.workerId, workerId));
     },
 
     async getByEmployer(employerId: string) {
-      return await db
+      const client = getClient();
+      return await client
         .select()
         .from(workerDispatchHfe)
         .where(eq(workerDispatchHfe.employerId, employerId));
     },
 
     async create(hfe: InsertWorkerDispatchHfe) {
-      const [result] = await db
+      const client = getClient();
+      const [result] = await client
         .insert(workerDispatchHfe)
         .values(hfe)
         .returning();
@@ -168,7 +175,8 @@ export function createWorkerDispatchHfeStorage(): WorkerDispatchHfeStorage {
     },
 
     async update(id: string, hfe: Partial<InsertWorkerDispatchHfe>) {
-      const [result] = await db
+      const client = getClient();
+      const [result] = await client
         .update(workerDispatchHfe)
         .set(hfe)
         .where(eq(workerDispatchHfe.id, id))
@@ -188,7 +196,8 @@ export function createWorkerDispatchHfeStorage(): WorkerDispatchHfeStorage {
     },
 
     async delete(id: string) {
-      const [deleted] = await db
+      const client = getClient();
+      const [deleted] = await client
         .delete(workerDispatchHfe)
         .where(eq(workerDispatchHfe.id, id))
         .returning();
@@ -208,8 +217,9 @@ export function createWorkerDispatchHfeStorage(): WorkerDispatchHfeStorage {
     },
 
     async findExpired() {
+      const client = getClient();
       const today = new Date().toISOString().split('T')[0];
-      return await db
+      return await client
         .select()
         .from(workerDispatchHfe)
         .where(lt(workerDispatchHfe.holdUntil, today));

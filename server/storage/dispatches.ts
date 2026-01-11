@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { 
   dispatches, 
   dispatchJobs,
@@ -40,13 +40,14 @@ export interface DispatchStorage {
 }
 
 async function getWorkerName(workerId: string): Promise<string> {
-  const [worker] = await db
+  const client = getClient();
+  const [worker] = await client
     .select({ contactId: workers.contactId, siriusId: workers.siriusId })
     .from(workers)
     .where(eq(workers.id, workerId));
   if (!worker) return 'Unknown Worker';
   
-  const [contact] = await db
+  const [contact] = await client
     .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
     .from(contacts)
     .where(eq(contacts.id, worker.contactId));
@@ -56,7 +57,8 @@ async function getWorkerName(workerId: string): Promise<string> {
 }
 
 async function getJobTitle(jobId: string): Promise<string> {
-  const [job] = await db
+  const client = getClient();
+  const [job] = await client
     .select({ title: dispatchJobs.title })
     .from(dispatchJobs)
     .where(eq(dispatchJobs.id, jobId));
@@ -64,7 +66,8 @@ async function getJobTitle(jobId: string): Promise<string> {
 }
 
 async function getJobEmployerId(jobId: string): Promise<string | undefined> {
-  const [job] = await db
+  const client = getClient();
+  const [job] = await client
     .select({ employerId: dispatchJobs.employerId })
     .from(dispatchJobs)
     .where(eq(dispatchJobs.id, jobId));
@@ -157,16 +160,19 @@ export const dispatchLoggingConfig: StorageLoggingConfig<DispatchStorage> = {
 export function createDispatchStorage(): DispatchStorage {
   return {
     async getAll(): Promise<Dispatch[]> {
-      return db.select().from(dispatches).orderBy(desc(dispatches.startDate));
+      const client = getClient();
+      return client.select().from(dispatches).orderBy(desc(dispatches.startDate));
     },
 
     async get(id: string): Promise<Dispatch | undefined> {
-      const [dispatch] = await db.select().from(dispatches).where(eq(dispatches.id, id));
+      const client = getClient();
+      const [dispatch] = await client.select().from(dispatches).where(eq(dispatches.id, id));
       return dispatch || undefined;
     },
 
     async getWithRelations(id: string): Promise<DispatchWithRelations | undefined> {
-      const [row] = await db
+      const client = getClient();
+      const [row] = await client
         .select({
           dispatch: dispatches,
           worker: {
@@ -204,7 +210,8 @@ export function createDispatchStorage(): DispatchStorage {
     },
 
     async getByJob(jobId: string): Promise<DispatchWithRelations[]> {
-      const rows = await db
+      const client = getClient();
+      const rows = await client
         .select({
           dispatch: dispatches,
           worker: {
@@ -241,7 +248,8 @@ export function createDispatchStorage(): DispatchStorage {
     },
 
     async getByWorker(workerId: string): Promise<DispatchWithRelations[]> {
-      const rows = await db
+      const client = getClient();
+      const rows = await client
         .select({
           dispatch: dispatches,
           worker: {
@@ -278,12 +286,14 @@ export function createDispatchStorage(): DispatchStorage {
     },
 
     async create(insertDispatch: InsertDispatch): Promise<Dispatch> {
-      const [dispatch] = await db.insert(dispatches).values(insertDispatch).returning();
+      const client = getClient();
+      const [dispatch] = await client.insert(dispatches).values(insertDispatch).returning();
       return dispatch;
     },
 
     async update(id: string, dispatchUpdate: Partial<InsertDispatch>): Promise<Dispatch | undefined> {
-      const [dispatch] = await db
+      const client = getClient();
+      const [dispatch] = await client
         .update(dispatches)
         .set(dispatchUpdate)
         .where(eq(dispatches.id, id))
@@ -292,7 +302,8 @@ export function createDispatchStorage(): DispatchStorage {
     },
 
     async delete(id: string): Promise<boolean> {
-      const result = await db.delete(dispatches).where(eq(dispatches.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(dispatches).where(eq(dispatches.id, id)).returning();
       return result.length > 0;
     }
   };

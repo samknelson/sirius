@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { cronJobs, cronJobRuns, users, type CronJob, type InsertCronJob, type CronJobRun, type InsertCronJobRun } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
@@ -29,19 +29,22 @@ export interface CronJobRunStorage {
 export function createCronJobStorage(): CronJobStorage {
   return {
     async list(): Promise<CronJob[]> {
-      return db
+      const client = getClient();
+      return client
         .select()
         .from(cronJobs)
         .orderBy(cronJobs.name);
     },
 
     async getByName(name: string): Promise<CronJob | undefined> {
-      const [job] = await db.select().from(cronJobs).where(eq(cronJobs.name, name));
+      const client = getClient();
+      const [job] = await client.select().from(cronJobs).where(eq(cronJobs.name, name));
       return job || undefined;
     },
 
     async create(insertJob: InsertCronJob): Promise<CronJob> {
-      const [job] = await db
+      const client = getClient();
+      const [job] = await client
         .insert(cronJobs)
         .values(insertJob)
         .returning();
@@ -49,7 +52,8 @@ export function createCronJobStorage(): CronJobStorage {
     },
 
     async update(name: string, updates: Partial<InsertCronJob>): Promise<CronJob | undefined> {
-      const [job] = await db
+      const client = getClient();
+      const [job] = await client
         .update(cronJobs)
         .set({ ...updates, updatedAt: new Date() })
         .where(eq(cronJobs.name, name))
@@ -62,6 +66,7 @@ export function createCronJobStorage(): CronJobStorage {
 export function createCronJobRunStorage(): CronJobRunStorage {
   return {
     async list(filters?: { jobName?: string; status?: string }): Promise<CronJobRunWithUser[]> {
+      const client = getClient();
       const conditions = [];
       
       if (filters?.jobName) {
@@ -71,7 +76,7 @@ export function createCronJobRunStorage(): CronJobRunStorage {
         conditions.push(eq(cronJobRuns.status, filters.status));
       }
 
-      const query = db
+      const query = client
         .select({
           id: cronJobRuns.id,
           jobName: cronJobRuns.jobName,
@@ -98,7 +103,8 @@ export function createCronJobRunStorage(): CronJobRunStorage {
     },
 
     async getById(id: string): Promise<CronJobRunWithUser | undefined> {
-      const [run] = await db
+      const client = getClient();
+      const [run] = await client
         .select({
           id: cronJobRuns.id,
           jobName: cronJobRuns.jobName,
@@ -120,7 +126,8 @@ export function createCronJobRunStorage(): CronJobRunStorage {
     },
 
     async getLatestByJobName(jobName: string): Promise<CronJobRunWithUser | undefined> {
-      const [run] = await db
+      const client = getClient();
+      const [run] = await client
         .select({
           id: cronJobRuns.id,
           jobName: cronJobRuns.jobName,
@@ -144,7 +151,8 @@ export function createCronJobRunStorage(): CronJobRunStorage {
     },
 
     async create(insertRun: InsertCronJobRun): Promise<CronJobRun> {
-      const [run] = await db
+      const client = getClient();
+      const [run] = await client
         .insert(cronJobRuns)
         .values(insertRun)
         .returning();
@@ -152,7 +160,8 @@ export function createCronJobRunStorage(): CronJobRunStorage {
     },
 
     async update(id: string, updates: Partial<Omit<InsertCronJobRun, 'id'>>): Promise<CronJobRun | undefined> {
-      const [run] = await db
+      const client = getClient();
+      const [run] = await client
         .update(cronJobRuns)
         .set(updates)
         .where(eq(cronJobRuns.id, id))
@@ -161,12 +170,14 @@ export function createCronJobRunStorage(): CronJobRunStorage {
     },
 
     async delete(id: string): Promise<boolean> {
-      const result = await db.delete(cronJobRuns).where(eq(cronJobRuns.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(cronJobRuns).where(eq(cronJobRuns.id, id)).returning();
       return result.length > 0;
     },
 
     async deleteByJobName(jobName: string): Promise<number> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(cronJobRuns)
         .where(eq(cronJobRuns.jobName, jobName))
         .returning();

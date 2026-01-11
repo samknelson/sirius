@@ -1,8 +1,9 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { wizards, wizardReportData, wizardEmployerMonthly, type Wizard, type InsertWizard, type WizardReportData, type InsertWizardReportData } from "@shared/schema";
 import { eq, and, desc, or } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { wizardRegistry } from "../wizards";
+import { db } from './db';
 
 export interface MonthlyWizardCreateParams {
   wizard: InsertWizard;
@@ -30,10 +31,11 @@ export interface WizardStorage {
   getLatestReportData(wizardId: string): Promise<WizardReportData | undefined>;
   deleteReportData(wizardId: string): Promise<number>;
 }
-d
+
 export function createWizardStorage(): WizardStorage {
   return {
     async list(filters?: { type?: string; status?: string; entityId?: string }): Promise<Wizard[]> {
+      const client = getClient();
       const conditions = [];
       
       if (filters?.type) {
@@ -47,13 +49,13 @@ export function createWizardStorage(): WizardStorage {
       }
 
       if (conditions.length > 0) {
-        return db
+        return client
           .select()
           .from(wizards)
           .where(and(...conditions))
           .orderBy(desc(wizards.date));
       } else {
-        return db
+        return client
           .select()
           .from(wizards)
           .orderBy(desc(wizards.date));
@@ -61,12 +63,14 @@ export function createWizardStorage(): WizardStorage {
     },
 
     async getById(id: string): Promise<Wizard | undefined> {
-      const [wizard] = await db.select().from(wizards).where(eq(wizards.id, id));
+      const client = getClient();
+      const [wizard] = await client.select().from(wizards).where(eq(wizards.id, id));
       return wizard || undefined;
     },
 
     async create(insertWizard: InsertWizard): Promise<Wizard> {
-      const [wizard] = await db
+      const client = getClient();
+      const [wizard] = await client
         .insert(wizards)
         .values(insertWizard)
         .returning();
@@ -78,7 +82,6 @@ export function createWizardStorage(): WizardStorage {
       
       try {
         const createdWizard = await db.transaction(async (tx) => {
-          // Check for duplicate monthly wizard inside transaction to prevent race conditions
           const existingWizards = await tx
             .select()
             .from(wizardEmployerMonthly)
@@ -96,13 +99,11 @@ export function createWizardStorage(): WizardStorage {
             throw new Error(`DUPLICATE: A legal workers monthly wizard already exists for this employer in ${month}/${year}`);
           }
           
-          // Create the wizard
           const [wizard] = await tx
             .insert(wizards)
             .values(wizardData)
             .returning();
           
-          // Create the wizard_employer_monthly record
           await tx.insert(wizardEmployerMonthly).values({
             wizardId: wizard.id,
             employerId,
@@ -127,7 +128,6 @@ export function createWizardStorage(): WizardStorage {
       
       try {
         const createdWizard = await db.transaction(async (tx) => {
-          // Check for completed monthly wizard prerequisite inside transaction
           const [completedMonthly] = await tx
             .select()
             .from(wizardEmployerMonthly)
@@ -146,13 +146,11 @@ export function createWizardStorage(): WizardStorage {
             throw new Error(`PREREQUISITE: Cannot create legal workers corrections wizard: no completed legal workers monthly wizard found for ${month}/${year}`);
           }
           
-          // Create the wizard
           const [wizard] = await tx
             .insert(wizards)
             .values(wizardData)
             .returning();
           
-          // Create the wizard_employer_monthly record
           await tx.insert(wizardEmployerMonthly).values({
             wizardId: wizard.id,
             employerId,
@@ -173,7 +171,8 @@ export function createWizardStorage(): WizardStorage {
     },
 
     async update(id: string, updates: Partial<Omit<InsertWizard, 'id'>>): Promise<Wizard | undefined> {
-      const [wizard] = await db
+      const client = getClient();
+      const [wizard] = await client
         .update(wizards)
         .set(updates)
         .where(eq(wizards.id, id))
@@ -182,12 +181,14 @@ export function createWizardStorage(): WizardStorage {
     },
 
     async delete(id: string): Promise<boolean> {
-      const result = await db.delete(wizards).where(eq(wizards.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(wizards).where(eq(wizards.id, id)).returning();
       return result.length > 0;
     },
 
     async saveReportData(wizardId: string, pk: string, data: any): Promise<WizardReportData> {
-      const [reportData] = await db
+      const client = getClient();
+      const [reportData] = await client
         .insert(wizardReportData)
         .values({
           wizardId,
@@ -203,7 +204,8 @@ export function createWizardStorage(): WizardStorage {
     },
 
     async getReportData(wizardId: string): Promise<WizardReportData[]> {
-      return db
+      const client = getClient();
+      return client
         .select()
         .from(wizardReportData)
         .where(eq(wizardReportData.wizardId, wizardId))
@@ -211,7 +213,8 @@ export function createWizardStorage(): WizardStorage {
     },
 
     async getLatestReportData(wizardId: string): Promise<WizardReportData | undefined> {
-      const [reportData] = await db
+      const client = getClient();
+      const [reportData] = await client
         .select()
         .from(wizardReportData)
         .where(eq(wizardReportData.wizardId, wizardId))
@@ -221,7 +224,8 @@ export function createWizardStorage(): WizardStorage {
     },
 
     async deleteReportData(wizardId: string): Promise<number> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(wizardReportData)
         .where(eq(wizardReportData.wizardId, wizardId))
         .returning();

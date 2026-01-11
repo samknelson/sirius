@@ -1,8 +1,9 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { sql } from "drizzle-orm";
 
 export async function tableExists(tableName: string): Promise<boolean> {
-  const result = await db.execute(sql`
+  const client = getClient();
+  const result = await client.execute(sql`
     SELECT EXISTS (
       SELECT FROM information_schema.tables 
       WHERE table_schema = 'public' 

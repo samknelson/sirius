@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import {
   workerHours,
   employers,
@@ -48,7 +48,8 @@ export function createWorkerHoursStorage(
 
   const storage: WorkerHoursStorage = {
     async getWorkerHoursById(id: string): Promise<any | undefined> {
-      const [result] = await db
+      const client = getClient();
+      const [result] = await client
         .select({
           id: workerHours.id,
           month: workerHours.month,
@@ -71,7 +72,8 @@ export function createWorkerHoursStorage(
     },
 
     async getWorkerHours(workerId: string): Promise<any[]> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           id: workerHours.id,
           month: workerHours.month,
@@ -95,7 +97,8 @@ export function createWorkerHoursStorage(
     },
 
     async getWorkerHoursCurrent(workerId: string): Promise<any[]> {
-      const results = await db.execute(sql`
+      const client = getClient();
+      const results = await client.execute(sql`
         SELECT DISTINCT ON (wh.employer_id)
           wh.id,
           wh.month,
@@ -149,7 +152,8 @@ export function createWorkerHoursStorage(
     },
 
     async getWorkerHoursHistory(workerId: string): Promise<any[]> {
-      const results = await db.execute(sql`
+      const client = getClient();
+      const results = await client.execute(sql`
         WITH status_changes AS (
           SELECT
             wh.id,
@@ -220,7 +224,8 @@ export function createWorkerHoursStorage(
     },
 
     async getWorkerHoursMonthly(workerId: string): Promise<any[]> {
-      const results = await db.execute(sql`
+      const client = getClient();
+      const results = await client.execute(sql`
         SELECT
           wh.employer_id,
           wh.year,
@@ -285,7 +290,8 @@ export function createWorkerHoursStorage(
     },
 
     async getMonthlyHoursTotal(workerId: string, employerId: string, year: number, month: number, employmentStatusIds?: string[]): Promise<number> {
-      let query = db
+      const client = getClient();
+      let query = client
         .select({ totalHours: sql<number>`COALESCE(SUM(${workerHours.hours}), 0)` })
         .from(workerHours)
         .where(and(
@@ -297,7 +303,7 @@ export function createWorkerHoursStorage(
 
       if (employmentStatusIds && employmentStatusIds.length > 0) {
         const { inArray } = await import("drizzle-orm");
-        query = db
+        query = client
           .select({ totalHours: sql<number>`COALESCE(SUM(${workerHours.hours}), 0)` })
           .from(workerHours)
           .where(and(
@@ -314,7 +320,8 @@ export function createWorkerHoursStorage(
     },
 
     async getWorkerMonthlyHoursAllEmployers(workerId: string, year: number, month: number): Promise<number> {
-      const [result] = await db
+      const client = getClient();
+      const [result] = await client
         .select({ totalHours: sql<number>`COALESCE(SUM(${workerHours.hours}), 0)` })
         .from(workerHours)
         .where(and(
@@ -327,7 +334,8 @@ export function createWorkerHoursStorage(
     },
 
     async createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult> {
-      const [savedHours] = await db
+      const client = getClient();
+      const [savedHours] = await client
         .insert(workerHours)
         .values(data)
         .returning();
@@ -378,7 +386,8 @@ export function createWorkerHoursStorage(
     },
 
     async updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean }): Promise<WorkerHoursResult | undefined> {
-      const [updated] = await db
+      const client = getClient();
+      const [updated] = await client
         .update(workerHours)
         .set(data)
         .where(eq(workerHours.id, id))
@@ -432,7 +441,8 @@ export function createWorkerHoursStorage(
     },
 
     async deleteWorkerHours(id: string): Promise<WorkerHoursDeleteResult> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(workerHours)
         .where(eq(workerHours.id, id))
         .returning();
@@ -484,7 +494,8 @@ export function createWorkerHoursStorage(
     },
 
     async upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult> {
-      const [savedHours] = await db
+      const client = getClient();
+      const [savedHours] = await client
         .insert(workerHours)
         .values({
           ...data,
@@ -556,11 +567,12 @@ export const workerHoursLoggingConfig: StorageLoggingConfig<WorkerHoursStorage> 
       getEntityId: (args, result) => result?.data?.id || 'new hours entry',
       getHostEntityId: (args) => args[0]?.workerId,
       after: async (args, result, storage) => {
+        const client = getClient();
         const hoursData = result?.data;
         if (!hoursData) return null;
         
-        const [employer] = await db.select().from(employers).where(eq(employers.id, hoursData.employerId));
-        const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursData.employmentStatusId));
+        const [employer] = await client.select().from(employers).where(eq(employers.id, hoursData.employerId));
+        const [employmentStatus] = await client.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursData.employmentStatusId));
         return {
           hours: hoursData,
           employer: employer,
@@ -582,17 +594,19 @@ export const workerHoursLoggingConfig: StorageLoggingConfig<WorkerHoursStorage> 
         if (beforeState?.hours?.workerId) {
           return beforeState.hours.workerId;
         }
-        const [hoursEntry] = await db.select().from(workerHours).where(eq(workerHours.id, args[0]));
+        const client = getClient();
+        const [hoursEntry] = await client.select().from(workerHours).where(eq(workerHours.id, args[0]));
         return hoursEntry?.workerId;
       },
       before: async (args, storage) => {
-        const [hoursEntry] = await db.select().from(workerHours).where(eq(workerHours.id, args[0]));
+        const client = getClient();
+        const [hoursEntry] = await client.select().from(workerHours).where(eq(workerHours.id, args[0]));
         if (!hoursEntry) {
           return null;
         }
         
-        const [employer] = await db.select().from(employers).where(eq(employers.id, hoursEntry.employerId));
-        const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursEntry.employmentStatusId));
+        const [employer] = await client.select().from(employers).where(eq(employers.id, hoursEntry.employerId));
+        const [employmentStatus] = await client.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursEntry.employmentStatusId));
         return {
           hours: hoursEntry,
           employer: employer,
@@ -605,11 +619,12 @@ export const workerHoursLoggingConfig: StorageLoggingConfig<WorkerHoursStorage> 
         };
       },
       after: async (args, result, storage) => {
+        const client = getClient();
         const hoursData = result?.data;
         if (!hoursData) return null;
         
-        const [employer] = await db.select().from(employers).where(eq(employers.id, hoursData.employerId));
-        const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursData.employmentStatusId));
+        const [employer] = await client.select().from(employers).where(eq(employers.id, hoursData.employerId));
+        const [employmentStatus] = await client.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursData.employmentStatusId));
         return {
           hours: hoursData,
           employer: employer,
@@ -630,17 +645,19 @@ export const workerHoursLoggingConfig: StorageLoggingConfig<WorkerHoursStorage> 
         if (beforeState?.hours?.workerId) {
           return beforeState.hours.workerId;
         }
-        const [hoursEntry] = await db.select().from(workerHours).where(eq(workerHours.id, args[0]));
+        const client = getClient();
+        const [hoursEntry] = await client.select().from(workerHours).where(eq(workerHours.id, args[0]));
         return hoursEntry?.workerId;
       },
       before: async (args, storage) => {
-        const [hoursEntry] = await db.select().from(workerHours).where(eq(workerHours.id, args[0]));
+        const client = getClient();
+        const [hoursEntry] = await client.select().from(workerHours).where(eq(workerHours.id, args[0]));
         if (!hoursEntry) {
           return null;
         }
         
-        const [employer] = await db.select().from(employers).where(eq(employers.id, hoursEntry.employerId));
-        const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursEntry.employmentStatusId));
+        const [employer] = await client.select().from(employers).where(eq(employers.id, hoursEntry.employerId));
+        const [employmentStatus] = await client.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursEntry.employmentStatusId));
         return {
           hours: hoursEntry,
           employer: employer,
@@ -667,7 +684,8 @@ export const workerHoursLoggingConfig: StorageLoggingConfig<WorkerHoursStorage> 
         return `Worker hours ${operation}d for worker ${workerId} (${year}/${month})`;
       },
       before: async (args, storage) => {
-        const [existingEntry] = await db
+        const client = getClient();
+        const [existingEntry] = await client
           .select()
           .from(workerHours)
           .where(
@@ -684,8 +702,8 @@ export const workerHoursLoggingConfig: StorageLoggingConfig<WorkerHoursStorage> 
           return null;
         }
         
-        const [employer] = await db.select().from(employers).where(eq(employers.id, existingEntry.employerId));
-        const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, existingEntry.employmentStatusId));
+        const [employer] = await client.select().from(employers).where(eq(employers.id, existingEntry.employerId));
+        const [employmentStatus] = await client.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, existingEntry.employmentStatusId));
         return {
           hours: existingEntry,
           employer: employer,
@@ -700,11 +718,12 @@ export const workerHoursLoggingConfig: StorageLoggingConfig<WorkerHoursStorage> 
         };
       },
       after: async (args, result, storage, beforeState) => {
+        const client = getClient();
         const hoursData = result?.data;
         if (!hoursData) return null;
         
-        const [employer] = await db.select().from(employers).where(eq(employers.id, hoursData.employerId));
-        const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursData.employmentStatusId));
+        const [employer] = await client.select().from(employers).where(eq(employers.id, hoursData.employerId));
+        const [employmentStatus] = await client.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursData.employmentStatusId));
         
         const operation = beforeState && beforeState.hours ? 'update' : 'create';
         

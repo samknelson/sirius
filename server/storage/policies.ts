@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { policies, type Policy, type InsertPolicy } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
@@ -15,11 +15,13 @@ export interface PolicyStorage {
 export function createPolicyStorage(): PolicyStorage {
   const storage: PolicyStorage = {
     async getAllPolicies(): Promise<Policy[]> {
-      return await db.select().from(policies);
+      const client = getClient();
+      return await client.select().from(policies);
     },
 
     async getPolicyById(id: string): Promise<Policy | undefined> {
-      const [policy] = await db
+      const client = getClient();
+      const [policy] = await client
         .select()
         .from(policies)
         .where(eq(policies.id, id));
@@ -27,7 +29,8 @@ export function createPolicyStorage(): PolicyStorage {
     },
 
     async getPolicyBySiriusId(siriusId: string): Promise<Policy | undefined> {
-      const [policy] = await db
+      const client = getClient();
+      const [policy] = await client
         .select()
         .from(policies)
         .where(eq(policies.siriusId, siriusId));
@@ -35,7 +38,8 @@ export function createPolicyStorage(): PolicyStorage {
     },
 
     async createPolicy(data: InsertPolicy): Promise<Policy> {
-      const [policy] = await db
+      const client = getClient();
+      const [policy] = await client
         .insert(policies)
         .values(data)
         .returning();
@@ -43,7 +47,8 @@ export function createPolicyStorage(): PolicyStorage {
     },
 
     async updatePolicy(id: string, data: Partial<InsertPolicy>): Promise<Policy | undefined> {
-      const [updated] = await db
+      const client = getClient();
+      const [updated] = await client
         .update(policies)
         .set(data)
         .where(eq(policies.id, id))
@@ -52,7 +57,8 @@ export function createPolicyStorage(): PolicyStorage {
     },
 
     async deletePolicy(id: string): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(policies)
         .where(eq(policies.id, id))
         .returning();

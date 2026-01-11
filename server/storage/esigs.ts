@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { esigs, cardcheckDefinitions, files, users, workers, contacts, type Esig, type InsertEsig, type Cardcheck, type InsertCardcheck, type File } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
@@ -29,7 +29,6 @@ export interface SignCardcheckResult {
   cardcheck: Cardcheck;
 }
 
-// Dependency interfaces for cross-module operations
 export interface EsigStorageDependencies {
   getFileById: (id: string) => Promise<File | undefined>;
   updateFile: (id: string, updates: Partial<{ entityType: string; entityId: string }>) => Promise<File | undefined>;
@@ -37,7 +36,6 @@ export interface EsigStorageDependencies {
   getCardcheckById: (id: string) => Promise<Cardcheck | undefined>;
 }
 
-// Module-level storage for dependency used by logging config helpers
 let storedGetCardcheckById: ((id: string) => Promise<Cardcheck | undefined>) | null = null;
 
 export interface EsigStorage {
@@ -48,12 +46,12 @@ export interface EsigStorage {
 }
 
 export function createEsigStorage(deps: EsigStorageDependencies): EsigStorage {
-  // Store dependency for logging config helpers
   storedGetCardcheckById = deps.getCardcheckById;
   
   const storage: EsigStorage = {
     async getEsigById(id: string): Promise<EsigWithSigner | undefined> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .select({
           esig: esigs,
           user: {
@@ -82,7 +80,8 @@ export function createEsigStorage(deps: EsigStorageDependencies): EsigStorage {
     },
 
     async createEsig(data: InsertEsig): Promise<Esig> {
-      const [esig] = await db
+      const client = getClient();
+      const [esig] = await client
         .insert(esigs)
         .values(data)
         .returning();
@@ -90,7 +89,8 @@ export function createEsigStorage(deps: EsigStorageDependencies): EsigStorage {
     },
 
     async updateEsig(id: string, data: Partial<InsertEsig>): Promise<Esig | undefined> {
-      const [updated] = await db
+      const client = getClient();
+      const [updated] = await client
         .update(esigs)
         .set(data)
         .where(eq(esigs.id, id))
@@ -99,10 +99,10 @@ export function createEsigStorage(deps: EsigStorageDependencies): EsigStorage {
     },
 
     async signCardcheck(params: SignCardcheckParams): Promise<SignCardcheckResult> {
+      const client = getClient();
       const { cardcheckId, userId, docRender, docType, esigData, signatureType, fileId, rate } = params;
       const docHash = crypto.createHash("sha256").update(docRender).digest("hex");
 
-      // Validate file ownership if signing with uploaded file
       if (fileId && signatureType === "upload") {
         const file = await deps.getFileById(fileId);
         
@@ -115,8 +115,7 @@ export function createEsigStorage(deps: EsigStorageDependencies): EsigStorage {
         }
       }
 
-      // Create the esig record
-      const [newEsig] = await db
+      const [newEsig] = await client
         .insert(esigs)
         .values({
           userId,
@@ -130,7 +129,6 @@ export function createEsigStorage(deps: EsigStorageDependencies): EsigStorage {
         })
         .returning();
 
-      // Link the file to the esig if present - use files storage
       if (fileId && signatureType === "upload") {
         await deps.updateFile(fileId, {
           entityType: "esig",
@@ -138,7 +136,6 @@ export function createEsigStorage(deps: EsigStorageDependencies): EsigStorage {
         });
       }
 
-      // Update the cardcheck - use cardcheck storage
       const updatedCardcheck = await deps.updateCardcheck(cardcheckId, {
         status: "signed",
         signedDate: new Date(),
@@ -158,13 +155,14 @@ export function createEsigStorage(deps: EsigStorageDependencies): EsigStorage {
 }
 
 async function getWorkerName(workerId: string): Promise<string> {
-  const [worker] = await db
+  const client = getClient();
+  const [worker] = await client
     .select({ contactId: workers.contactId, siriusId: workers.siriusId })
     .from(workers)
     .where(eq(workers.id, workerId));
   if (!worker) return 'Unknown Worker';
   
-  const [contact] = await db
+  const [contact] = await client
     .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
     .from(contacts)
     .where(eq(contacts.id, worker.contactId));
@@ -174,7 +172,8 @@ async function getWorkerName(workerId: string): Promise<string> {
 }
 
 async function getDefinitionName(definitionId: string): Promise<string> {
-  const [definition] = await db
+  const client = getClient();
+  const [definition] = await client
     .select({ name: cardcheckDefinitions.name, siriusId: cardcheckDefinitions.siriusId })
     .from(cardcheckDefinitions)
     .where(eq(cardcheckDefinitions.id, definitionId));

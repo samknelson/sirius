@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { workerDispatchEligDenorm, type InsertWorkerDispatchEligDenorm, type WorkerDispatchEligDenorm } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 
@@ -13,14 +13,16 @@ export interface WorkerDispatchEligDenormStorage {
 export function createWorkerDispatchEligDenormStorage(): WorkerDispatchEligDenormStorage {
   return {
     async getByWorker(workerId: string) {
-      return await db
+      const client = getClient();
+      return await client
         .select()
         .from(workerDispatchEligDenorm)
         .where(eq(workerDispatchEligDenorm.workerId, workerId));
     },
 
     async getByWorkerAndCategory(workerId: string, category: string) {
-      return await db
+      const client = getClient();
+      return await client
         .select()
         .from(workerDispatchEligDenorm)
         .where(and(
@@ -30,7 +32,8 @@ export function createWorkerDispatchEligDenormStorage(): WorkerDispatchEligDenor
     },
 
     async create(entry: InsertWorkerDispatchEligDenorm) {
-      const [result] = await db
+      const client = getClient();
+      const [result] = await client
         .insert(workerDispatchEligDenorm)
         .values(entry)
         .returning();
@@ -38,17 +41,19 @@ export function createWorkerDispatchEligDenormStorage(): WorkerDispatchEligDenor
     },
 
     async createMany(entries: InsertWorkerDispatchEligDenorm[]) {
+      const client = getClient();
       if (entries.length === 0) {
         return [];
       }
-      return await db
+      return await client
         .insert(workerDispatchEligDenorm)
         .values(entries)
         .returning();
     },
 
     async deleteByWorkerAndCategory(workerId: string, category: string) {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(workerDispatchEligDenorm)
         .where(and(
           eq(workerDispatchEligDenorm.workerId, workerId),

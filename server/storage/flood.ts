@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { flood, type Flood } from "@shared/schema";
 import { eq, and, gt, sql, desc, inArray } from "drizzle-orm";
 
@@ -16,7 +16,8 @@ export interface FloodStorage {
 export function createFloodStorage(): FloodStorage {
   return {
     async recordFloodEvent(event: string, identifier: string, expiresAt: Date): Promise<void> {
-      await db.insert(flood).values({
+      const client = getClient();
+      await client.insert(flood).values({
         event,
         identifier,
         expiresAt,
@@ -24,7 +25,8 @@ export function createFloodStorage(): FloodStorage {
     },
 
     async countEventsInWindow(event: string, identifier: string, windowStart: Date): Promise<number> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .select({ count: sql<number>`count(*)::int` })
         .from(flood)
         .where(
@@ -39,8 +41,9 @@ export function createFloodStorage(): FloodStorage {
     },
 
     async cleanupExpired(): Promise<number> {
+      const client = getClient();
       const now = new Date();
-      const result = await db
+      const result = await client
         .delete(flood)
         .where(sql`${flood.expiresAt} < ${now}`)
         .returning();
@@ -49,7 +52,8 @@ export function createFloodStorage(): FloodStorage {
     },
 
     async listFloodEvents(eventType?: string): Promise<Flood[]> {
-      const query = db.select().from(flood).orderBy(desc(flood.createdAt));
+      const client = getClient();
+      const query = client.select().from(flood).orderBy(desc(flood.createdAt));
       
       if (eventType) {
         return query.where(eq(flood.event, eventType));
@@ -59,7 +63,8 @@ export function createFloodStorage(): FloodStorage {
     },
 
     async getDistinctEventTypes(): Promise<string[]> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .selectDistinct({ event: flood.event })
         .from(flood)
         .orderBy(flood.event);
@@ -68,11 +73,13 @@ export function createFloodStorage(): FloodStorage {
     },
 
     async deleteFloodEvent(id: string): Promise<void> {
-      await db.delete(flood).where(eq(flood.id, id));
+      const client = getClient();
+      await client.delete(flood).where(eq(flood.id, id));
     },
 
     async deleteFloodEventsByType(eventType: string): Promise<number> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(flood)
         .where(eq(flood.event, eventType))
         .returning();
@@ -81,7 +88,8 @@ export function createFloodStorage(): FloodStorage {
     },
 
     async deleteAllFloodEvents(): Promise<number> {
-      const result = await db.delete(flood).returning();
+      const client = getClient();
+      const result = await client.delete(flood).returning();
       return result.length;
     },
   };

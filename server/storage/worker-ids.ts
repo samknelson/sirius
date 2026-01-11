@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { workerIds, optionsWorkerIdType, type WorkerId, type InsertWorkerId } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
@@ -14,16 +14,19 @@ export interface WorkerIdStorage {
 export function createWorkerIdStorage(): WorkerIdStorage {
   return {
     async getWorkerIdsByWorkerId(workerId: string): Promise<WorkerId[]> {
-      return db.select().from(workerIds).where(eq(workerIds.workerId, workerId));
+      const client = getClient();
+      return client.select().from(workerIds).where(eq(workerIds.workerId, workerId));
     },
 
     async getWorkerId(id: string): Promise<WorkerId | undefined> {
-      const [workerId] = await db.select().from(workerIds).where(eq(workerIds.id, id));
+      const client = getClient();
+      const [workerId] = await client.select().from(workerIds).where(eq(workerIds.id, id));
       return workerId || undefined;
     },
 
     async createWorkerId(insertWorkerId: InsertWorkerId): Promise<WorkerId> {
-      const [workerId] = await db
+      const client = getClient();
+      const [workerId] = await client
         .insert(workerIds)
         .values(insertWorkerId)
         .returning();
@@ -31,7 +34,8 @@ export function createWorkerIdStorage(): WorkerIdStorage {
     },
 
     async updateWorkerId(id: string, workerIdUpdate: Partial<InsertWorkerId>): Promise<WorkerId | undefined> {
-      const [workerId] = await db
+      const client = getClient();
+      const [workerId] = await client
         .update(workerIds)
         .set(workerIdUpdate)
         .where(eq(workerIds.id, id))
@@ -40,7 +44,8 @@ export function createWorkerIdStorage(): WorkerIdStorage {
     },
 
     async deleteWorkerId(id: string): Promise<boolean> {
-      const result = await db.delete(workerIds).where(eq(workerIds.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(workerIds).where(eq(workerIds.id, id)).returning();
       return result.length > 0;
     }
   };
@@ -62,13 +67,14 @@ export const workerIdLoggingConfig: StorageLoggingConfig<WorkerIdStorage> = {
         return result; // Capture created worker ID
       },
       getDescription: async (args, result, beforeState, afterState, storage) => {
+        const client = getClient();
         const workerId = result;
         
         // Get the type name directly from the database
         const typeId = workerId?.typeId;
         let typeName = 'Unknown type';
         if (typeId) {
-          const [type] = await db.select().from(optionsWorkerIdType).where(eq(optionsWorkerIdType.id, typeId));
+          const [type] = await client.select().from(optionsWorkerIdType).where(eq(optionsWorkerIdType.id, typeId));
           typeName = type?.name || 'Unknown type';
         }
         
@@ -89,6 +95,7 @@ export const workerIdLoggingConfig: StorageLoggingConfig<WorkerIdStorage> = {
         return result; // New state (diff auto-calculated)
       },
       getDescription: async (args, result, beforeState, afterState, storage) => {
+        const client = getClient();
         const updates = args[1];
         const workerId = result;
         
@@ -96,7 +103,7 @@ export const workerIdLoggingConfig: StorageLoggingConfig<WorkerIdStorage> = {
         const typeId = workerId?.typeId;
         let typeName = 'Unknown type';
         if (typeId) {
-          const [type] = await db.select().from(optionsWorkerIdType).where(eq(optionsWorkerIdType.id, typeId));
+          const [type] = await client.select().from(optionsWorkerIdType).where(eq(optionsWorkerIdType.id, typeId));
           typeName = type?.name || 'Unknown type';
         }
         
@@ -114,13 +121,14 @@ export const workerIdLoggingConfig: StorageLoggingConfig<WorkerIdStorage> = {
         return await storage.getWorkerId(args[0]); // Capture what's being deleted
       },
       getDescription: async (args, result, beforeState, afterState, storage) => {
+        const client = getClient();
         const workerId = beforeState;
         
         // Get the type name directly from the database
         const typeId = workerId?.typeId;
         let typeName = 'Unknown type';
         if (typeId) {
-          const [type] = await db.select().from(optionsWorkerIdType).where(eq(optionsWorkerIdType.id, typeId));
+          const [type] = await client.select().from(optionsWorkerIdType).where(eq(optionsWorkerIdType.id, typeId));
           typeName = type?.name || 'Unknown type';
         }
         

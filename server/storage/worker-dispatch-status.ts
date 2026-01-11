@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { 
   workerDispatchStatus,
   workers,
@@ -34,13 +34,14 @@ export interface WorkerDispatchStatusStorage {
 }
 
 async function getWorkerName(workerId: string): Promise<string> {
-  const [worker] = await db
+  const client = getClient();
+  const [worker] = await client
     .select({ contactId: workers.contactId, siriusId: workers.siriusId })
     .from(workers)
     .where(eq(workers.id, workerId));
   if (!worker) return 'Unknown Worker';
   
-  const [contact] = await db
+  const [contact] = await client
     .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
     .from(contacts)
     .where(eq(contacts.id, worker.contactId));
@@ -114,11 +115,13 @@ export const workerDispatchStatusLoggingConfig: StorageLoggingConfig<WorkerDispa
 export function createWorkerDispatchStatusStorage(): WorkerDispatchStatusStorage {
   return {
     async getAll(): Promise<WorkerDispatchStatus[]> {
-      return db.select().from(workerDispatchStatus);
+      const client = getClient();
+      return client.select().from(workerDispatchStatus);
     },
 
     async get(id: string): Promise<WorkerDispatchStatus | undefined> {
-      const [status] = await db
+      const client = getClient();
+      const [status] = await client
         .select()
         .from(workerDispatchStatus)
         .where(eq(workerDispatchStatus.id, id));
@@ -126,7 +129,8 @@ export function createWorkerDispatchStatusStorage(): WorkerDispatchStatusStorage
     },
 
     async getByWorker(workerId: string): Promise<WorkerDispatchStatus | undefined> {
-      const [status] = await db
+      const client = getClient();
+      const [status] = await client
         .select()
         .from(workerDispatchStatus)
         .where(eq(workerDispatchStatus.workerId, workerId));
@@ -134,7 +138,8 @@ export function createWorkerDispatchStatusStorage(): WorkerDispatchStatusStorage
     },
 
     async create(status: InsertWorkerDispatchStatus): Promise<WorkerDispatchStatus> {
-      const [created] = await db
+      const client = getClient();
+      const [created] = await client
         .insert(workerDispatchStatus)
         .values(status)
         .returning();
@@ -149,7 +154,8 @@ export function createWorkerDispatchStatusStorage(): WorkerDispatchStatusStorage
     },
 
     async update(id: string, status: Partial<InsertWorkerDispatchStatus>): Promise<WorkerDispatchStatus | undefined> {
-      const [updated] = await db
+      const client = getClient();
+      const [updated] = await client
         .update(workerDispatchStatus)
         .set(status)
         .where(eq(workerDispatchStatus.id, id))
@@ -167,18 +173,19 @@ export function createWorkerDispatchStatusStorage(): WorkerDispatchStatusStorage
     },
 
     async upsertByWorker(workerId: string, status: Partial<InsertWorkerDispatchStatus>): Promise<WorkerDispatchStatus> {
+      const client = getClient();
       const existing = await this.getByWorker(workerId);
       let result: WorkerDispatchStatus;
       
       if (existing) {
-        const [updated] = await db
+        const [updated] = await client
           .update(workerDispatchStatus)
           .set(status)
           .where(eq(workerDispatchStatus.id, existing.id))
           .returning();
         result = updated;
       } else {
-        const [created] = await db
+        const [created] = await client
           .insert(workerDispatchStatus)
           .values({ workerId, ...status })
           .returning();
@@ -195,8 +202,9 @@ export function createWorkerDispatchStatusStorage(): WorkerDispatchStatusStorage
     },
 
     async delete(id: string): Promise<boolean> {
+      const client = getClient();
       const existing = await this.get(id);
-      const result = await db
+      const result = await client
         .delete(workerDispatchStatus)
         .where(eq(workerDispatchStatus.id, id))
         .returning();

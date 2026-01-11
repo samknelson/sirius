@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { sessions, users } from "@shared/schema";
 import { eq, gt, desc, sql } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
@@ -31,8 +31,9 @@ export interface SessionStorage {
 export function createSessionStorage(): SessionStorage {
   const storage: SessionStorage = {
     async getSessions(): Promise<SessionWithUser[]> {
+      const client = getClient();
       const now = new Date();
-      const result = await db.execute(sql`
+      const result = await client.execute(sql`
         SELECT 
           s.sid,
           s.expire,
@@ -57,7 +58,8 @@ export function createSessionStorage(): SessionStorage {
     },
 
     async deleteSession(sid: string): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(sessions)
         .where(eq(sessions.sid, sid))
         .returning();
@@ -65,9 +67,10 @@ export function createSessionStorage(): SessionStorage {
     },
 
     async getActiveUsersStats(limit: number = 4): Promise<ActiveUsersStats> {
+      const client = getClient();
       const now = new Date();
       
-      const countResult = await db.execute(sql`
+      const countResult = await client.execute(sql`
         SELECT COUNT(DISTINCT u.id) as count
         FROM sessions s
         INNER JOIN users u ON u.id::text = (s.sess->'passport'->'user'->'dbUser'->>'id')
@@ -76,7 +79,7 @@ export function createSessionStorage(): SessionStorage {
       
       const activeCount = parseInt((countResult.rows[0] as any)?.count || '0', 10);
       
-      const recentResult = await db.execute(sql`
+      const recentResult = await client.execute(sql`
         SELECT DISTINCT ON (u.id)
           u.id as user_id,
           u.email as user_email,

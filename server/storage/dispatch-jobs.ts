@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { 
   dispatchJobs, 
   employers,
@@ -42,7 +42,8 @@ export interface DispatchJobStorage {
 
 async function getJobTypeName(jobTypeId: string | null | undefined): Promise<string> {
   if (!jobTypeId) return '';
-  const [jobType] = await db.select({ name: optionsDispatchJobType.name })
+  const client = getClient();
+  const [jobType] = await client.select({ name: optionsDispatchJobType.name })
     .from(optionsDispatchJobType)
     .where(eq(optionsDispatchJobType.id, jobTypeId));
   return jobType?.name || '';
@@ -137,10 +138,12 @@ export const dispatchJobLoggingConfig: StorageLoggingConfig<DispatchJobStorage> 
 export function createDispatchJobStorage(): DispatchJobStorage {
   return {
     async getAll(): Promise<DispatchJob[]> {
-      return db.select().from(dispatchJobs).orderBy(desc(dispatchJobs.createdAt));
+      const client = getClient();
+      return client.select().from(dispatchJobs).orderBy(desc(dispatchJobs.createdAt));
     },
 
     async getPaginated(page: number, limit: number, filters?: DispatchJobFilters): Promise<PaginatedDispatchJobs> {
+      const client = getClient();
       const conditions: SQL[] = [];
       
       if (filters?.employerId) {
@@ -162,7 +165,7 @@ export function createDispatchJobStorage(): DispatchJobStorage {
       const hasFilters = conditions.length > 0;
       const whereClause = hasFilters ? and(...conditions) : undefined;
       
-      const countQuery = db
+      const countQuery = client
         .select({ count: sql<number>`count(*)::int` })
         .from(dispatchJobs);
       
@@ -172,7 +175,7 @@ export function createDispatchJobStorage(): DispatchJobStorage {
       
       const total = countResult?.count || 0;
       
-      const baseQuery = db
+      const baseQuery = client
         .select({
           job: dispatchJobs,
           employer: {
@@ -203,12 +206,14 @@ export function createDispatchJobStorage(): DispatchJobStorage {
     },
 
     async get(id: string): Promise<DispatchJob | undefined> {
-      const [job] = await db.select().from(dispatchJobs).where(eq(dispatchJobs.id, id));
+      const client = getClient();
+      const [job] = await client.select().from(dispatchJobs).where(eq(dispatchJobs.id, id));
       return job || undefined;
     },
 
     async getWithRelations(id: string): Promise<DispatchJobWithRelations | undefined> {
-      const [row] = await db
+      const client = getClient();
+      const [row] = await client
         .select({
           job: dispatchJobs,
           employer: {
@@ -236,18 +241,21 @@ export function createDispatchJobStorage(): DispatchJobStorage {
     },
 
     async getByEmployer(employerId: string): Promise<DispatchJob[]> {
-      return db.select().from(dispatchJobs)
+      const client = getClient();
+      return client.select().from(dispatchJobs)
         .where(eq(dispatchJobs.employerId, employerId))
         .orderBy(desc(dispatchJobs.startDate));
     },
 
     async create(insertJob: InsertDispatchJob): Promise<DispatchJob> {
-      const [job] = await db.insert(dispatchJobs).values(insertJob).returning();
+      const client = getClient();
+      const [job] = await client.insert(dispatchJobs).values(insertJob).returning();
       return job;
     },
 
     async update(id: string, jobUpdate: Partial<InsertDispatchJob>): Promise<DispatchJob | undefined> {
-      const [job] = await db
+      const client = getClient();
+      const [job] = await client
         .update(dispatchJobs)
         .set(jobUpdate)
         .where(eq(dispatchJobs.id, id))
@@ -256,7 +264,8 @@ export function createDispatchJobStorage(): DispatchJobStorage {
     },
 
     async delete(id: string): Promise<boolean> {
-      const result = await db.delete(dispatchJobs).where(eq(dispatchJobs.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(dispatchJobs).where(eq(dispatchJobs.id, id)).returning();
       return result.length > 0;
     }
   };

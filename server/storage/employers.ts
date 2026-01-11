@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { employers, type Employer, type InsertEmployer } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
@@ -28,16 +28,19 @@ export interface EmployerStorage {
 export function createEmployerStorage(): EmployerStorage {
   return {
     async getAllEmployers(): Promise<Employer[]> {
-      return await db.select().from(employers);
+      const client = getClient();
+      return await client.select().from(employers);
     },
 
     async getEmployer(id: string): Promise<Employer | undefined> {
-      const [employer] = await db.select().from(employers).where(eq(employers.id, id));
+      const client = getClient();
+      const [employer] = await client.select().from(employers).where(eq(employers.id, id));
       return employer || undefined;
     },
 
     async getEmployerWorkers(employerId: string): Promise<EmployerWorker[]> {
-      const result = await db.execute(sql`
+      const client = getClient();
+      const result = await client.execute(sql`
         SELECT DISTINCT ON (w.id)
           w.id as "workerId",
           w.sirius_id as "workerSiriusId",
@@ -60,14 +63,14 @@ export function createEmployerStorage(): EmployerStorage {
     },
 
     async createEmployer(employer: InsertEmployer): Promise<Employer> {
+      const client = getClient();
       try {
-        const [newEmployer] = await db
+        const [newEmployer] = await client
           .insert(employers)
           .values(employer)
           .returning();
         return newEmployer;
       } catch (error: any) {
-        // Check for unique constraint violation
         if (error.code === '23505') {
           throw new Error("An employer with this ID already exists");
         }
@@ -76,15 +79,15 @@ export function createEmployerStorage(): EmployerStorage {
     },
 
     async updateEmployer(id: string, employer: Partial<InsertEmployer>): Promise<Employer | undefined> {
+      const client = getClient();
       try {
-        const [updatedEmployer] = await db
+        const [updatedEmployer] = await client
           .update(employers)
           .set(employer)
           .where(eq(employers.id, id))
           .returning();
         return updatedEmployer || undefined;
       } catch (error: any) {
-        // Check for unique constraint violation
         if (error.code === '23505') {
           throw new Error("An employer with this ID already exists");
         }
@@ -93,7 +96,8 @@ export function createEmployerStorage(): EmployerStorage {
     },
 
     async updateEmployerPolicy(employerId: string, denormPolicyId: string | null): Promise<Employer | undefined> {
-      const [updatedEmployer] = await db
+      const client = getClient();
+      const [updatedEmployer] = await client
         .update(employers)
         .set({ denormPolicyId })
         .where(eq(employers.id, employerId))
@@ -103,7 +107,8 @@ export function createEmployerStorage(): EmployerStorage {
     },
 
     async deleteEmployer(id: string): Promise<boolean> {
-      const result = await db.delete(employers).where(eq(employers.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(employers).where(eq(employers.id, id)).returning();
       return result.length > 0;
     }
   };

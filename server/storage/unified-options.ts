@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { eq, asc, SQL } from "drizzle-orm";
 import { PgTable, TableConfig } from "drizzle-orm/pg-core";
 import { 
@@ -172,32 +172,36 @@ function getTable(type: OptionsTypeName) {
 function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
   return {
     async list(type: OptionsTypeName): Promise<any[]> {
+      const client = getClient();
       const { table, orderByColumn } = getTable(type);
       const tableAny = table as any;
       
       if (orderByColumn && tableAny[orderByColumn]) {
-        return db.select().from(table).orderBy(asc(tableAny[orderByColumn]));
+        return client.select().from(table).orderBy(asc(tableAny[orderByColumn]));
       }
-      return db.select().from(table);
+      return client.select().from(table);
     },
 
     async get(type: OptionsTypeName, id: string): Promise<any | undefined> {
+      const client = getClient();
       const { table } = getTable(type);
       const tableAny = table as any;
-      const [result] = await db.select().from(table).where(eq(tableAny.id, id));
+      const [result] = await client.select().from(table).where(eq(tableAny.id, id));
       return result || undefined;
     },
 
     async create(type: OptionsTypeName, data: Record<string, any>): Promise<any> {
+      const client = getClient();
       const { table } = getTable(type);
-      const [result] = await db.insert(table).values(data as any).returning();
+      const [result] = await client.insert(table).values(data as any).returning();
       return result;
     },
 
     async update(type: OptionsTypeName, id: string, data: Record<string, any>): Promise<any | undefined> {
+      const client = getClient();
       const { table } = getTable(type);
       const tableAny = table as any;
-      const [result] = await db
+      const [result] = await client
         .update(table)
         .set(data as any)
         .where(eq(tableAny.id, id))
@@ -206,9 +210,10 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
     },
 
     async delete(type: OptionsTypeName, id: string): Promise<boolean> {
+      const client = getClient();
       const { table } = getTable(type);
       const tableAny = table as any;
-      const result = await db.delete(table).where(eq(tableAny.id, id)).returning();
+      const result = await client.delete(table).where(eq(tableAny.id, id)).returning();
       return result.length > 0;
     },
 

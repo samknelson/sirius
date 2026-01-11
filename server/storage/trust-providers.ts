@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { trustProviders, InsertTrustProvider, TrustProvider } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
@@ -39,7 +39,8 @@ const loggingConfig: StorageLoggingConfig<TrustProviderStorage> = {
 function createTrustProviderStorageInternal(): TrustProviderStorage {
   return {
     async getAllTrustProviders(): Promise<TrustProvider[]> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select()
         .from(trustProviders)
         .orderBy(trustProviders.name);
@@ -48,7 +49,8 @@ function createTrustProviderStorageInternal(): TrustProviderStorage {
     },
 
     async getTrustProvider(id: string): Promise<TrustProvider | undefined> {
-      const [provider] = await db
+      const client = getClient();
+      const [provider] = await client
         .select()
         .from(trustProviders)
         .where(eq(trustProviders.id, id));
@@ -57,8 +59,9 @@ function createTrustProviderStorageInternal(): TrustProviderStorage {
     },
 
     async createTrustProvider(provider: InsertTrustProvider): Promise<TrustProvider> {
+      const client = getClient();
       try {
-        const [newProvider] = await db
+        const [newProvider] = await client
           .insert(trustProviders)
           .values(provider)
           .returning();
@@ -72,8 +75,9 @@ function createTrustProviderStorageInternal(): TrustProviderStorage {
     },
 
     async updateTrustProvider(id: string, provider: Partial<InsertTrustProvider>): Promise<TrustProvider | undefined> {
+      const client = getClient();
       try {
-        const [updatedProvider] = await db
+        const [updatedProvider] = await client
           .update(trustProviders)
           .set(provider)
           .where(eq(trustProviders.id, id))
@@ -88,7 +92,8 @@ function createTrustProviderStorageInternal(): TrustProviderStorage {
     },
 
     async deleteTrustProvider(id: string): Promise<boolean> {
-      const result = await db.delete(trustProviders).where(eq(trustProviders.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(trustProviders).where(eq(trustProviders.id, id)).returning();
       return result.length > 0;
     }
   };

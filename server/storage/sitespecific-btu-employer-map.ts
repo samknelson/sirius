@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { eq, desc, ilike, or, and, SQL } from "drizzle-orm";
 import { tableExists as tableExistsUtil } from "./utils";
 import { 
@@ -43,6 +43,7 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
 
+      const client = getClient();
       const conditions: SQL[] = [];
 
       if (filters?.search) {
@@ -71,7 +72,7 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
       }
 
       if (conditions.length > 0) {
-        return db
+        return client
           .select()
           .from(sitespecificBtuEmployerMap)
           .where(and(...conditions))
@@ -82,7 +83,7 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
           );
       }
 
-      return db
+      return client
         .select()
         .from(sitespecificBtuEmployerMap)
         .orderBy(
@@ -96,7 +97,8 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select()
         .from(sitespecificBtuEmployerMap)
         .where(eq(sitespecificBtuEmployerMap.id, id));
@@ -107,7 +109,8 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .insert(sitespecificBtuEmployerMap)
         .values(record)
         .returning();
@@ -118,7 +121,8 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .update(sitespecificBtuEmployerMap)
         .set(record)
         .where(eq(sitespecificBtuEmployerMap.id, id))
@@ -130,7 +134,8 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .delete(sitespecificBtuEmployerMap)
         .where(eq(sitespecificBtuEmployerMap.id, id))
         .returning({ id: sitespecificBtuEmployerMap.id });
@@ -141,7 +146,8 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .selectDistinct({ departmentId: sitespecificBtuEmployerMap.departmentId, departmentTitle: sitespecificBtuEmployerMap.departmentTitle })
         .from(sitespecificBtuEmployerMap)
         .orderBy(sitespecificBtuEmployerMap.departmentTitle);
@@ -154,7 +160,8 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .selectDistinct({ locationId: sitespecificBtuEmployerMap.locationId, locationTitle: sitespecificBtuEmployerMap.locationTitle })
         .from(sitespecificBtuEmployerMap)
         .orderBy(sitespecificBtuEmployerMap.locationTitle);
@@ -167,7 +174,8 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .selectDistinct({ employerName: sitespecificBtuEmployerMap.employerName })
         .from(sitespecificBtuEmployerMap)
         .orderBy(sitespecificBtuEmployerMap.employerName);

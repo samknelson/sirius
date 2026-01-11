@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { 
   workerSkills,
   optionsSkills,
@@ -24,13 +24,14 @@ export interface WorkerSkillStorage {
 }
 
 async function getWorkerName(workerId: string): Promise<string> {
-  const [worker] = await db
+  const client = getClient();
+  const [worker] = await client
     .select({ contactId: workers.contactId, siriusId: workers.siriusId })
     .from(workers)
     .where(eq(workers.id, workerId));
   if (!worker) return 'Unknown Worker';
   
-  const [contact] = await db
+  const [contact] = await client
     .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
     .from(contacts)
     .where(eq(contacts.id, worker.contactId));
@@ -40,7 +41,8 @@ async function getWorkerName(workerId: string): Promise<string> {
 }
 
 async function getSkillName(skillId: string): Promise<string> {
-  const [skill] = await db
+  const client = getClient();
+  const [skill] = await client
     .select({ name: optionsSkills.name })
     .from(optionsSkills)
     .where(eq(optionsSkills.id, skillId));
@@ -89,7 +91,8 @@ export const workerSkillLoggingConfig: StorageLoggingConfig<WorkerSkillStorage> 
 export function createWorkerSkillStorage(): WorkerSkillStorage {
   return {
     async getByWorker(workerId: string): Promise<WorkerSkillWithDetails[]> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           workerSkill: workerSkills,
           skill: optionsSkills,
@@ -105,7 +108,8 @@ export function createWorkerSkillStorage(): WorkerSkillStorage {
     },
 
     async get(id: string): Promise<WorkerSkill | undefined> {
-      const [result] = await db
+      const client = getClient();
+      const [result] = await client
         .select()
         .from(workerSkills)
         .where(eq(workerSkills.id, id));
@@ -113,8 +117,9 @@ export function createWorkerSkillStorage(): WorkerSkillStorage {
     },
 
     async create(data: InsertWorkerSkill & { message?: string }): Promise<WorkerSkill> {
+      const client = getClient();
       const { message, ...insertData } = data;
-      const [result] = await db
+      const [result] = await client
         .insert(workerSkills)
         .values(insertData)
         .returning();
@@ -131,7 +136,8 @@ export function createWorkerSkillStorage(): WorkerSkillStorage {
     },
 
     async delete(id: string, message?: string): Promise<boolean> {
-      const [deleted] = await db
+      const client = getClient();
+      const [deleted] = await client
         .delete(workerSkills)
         .where(eq(workerSkills.id, id))
         .returning();

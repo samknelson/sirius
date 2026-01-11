@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { 
   workerBans,
   workers,
@@ -54,13 +54,14 @@ function validateStartDateNotFuture(startDate: Date): void {
 }
 
 async function getWorkerName(workerId: string): Promise<string> {
-  const [worker] = await db
+  const client = getClient();
+  const [worker] = await client
     .select({ contactId: workers.contactId, siriusId: workers.siriusId })
     .from(workers)
     .where(eq(workers.id, workerId));
   if (!worker) return 'Unknown Worker';
   
-  const [contact] = await db
+  const [contact] = await client
     .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
     .from(contacts)
     .where(eq(contacts.id, worker.contactId));
@@ -123,16 +124,19 @@ export const workerBanLoggingConfig: StorageLoggingConfig<WorkerBanStorage> = {
 export function createWorkerBanStorage(): WorkerBanStorage {
   return {
     async getAll(): Promise<WorkerBan[]> {
-      return db.select().from(workerBans).orderBy(desc(workerBans.startDate));
+      const client = getClient();
+      return client.select().from(workerBans).orderBy(desc(workerBans.startDate));
     },
 
     async get(id: string): Promise<WorkerBan | undefined> {
-      const [ban] = await db.select().from(workerBans).where(eq(workerBans.id, id));
+      const client = getClient();
+      const [ban] = await client.select().from(workerBans).where(eq(workerBans.id, id));
       return ban;
     },
 
     async getByWorker(workerId: string): Promise<WorkerBan[]> {
-      return db
+      const client = getClient();
+      return client
         .select()
         .from(workerBans)
         .where(eq(workerBans.workerId, workerId))
@@ -140,10 +144,11 @@ export function createWorkerBanStorage(): WorkerBanStorage {
     },
 
     async create(ban: InsertWorkerBan): Promise<WorkerBan> {
+      const client = getClient();
       validateStartDateNotFuture(ban.startDate);
       validateDateRange(ban.startDate, ban.endDate);
       const active = calculateActive(ban.endDate);
-      const [created] = await db
+      const [created] = await client
         .insert(workerBans)
         .values({
           ...ban,
@@ -164,6 +169,7 @@ export function createWorkerBanStorage(): WorkerBanStorage {
     },
 
     async update(id: string, ban: Partial<InsertWorkerBan>): Promise<WorkerBan | undefined> {
+      const client = getClient();
       const existing = await this.get(id);
       if (!existing) return undefined;
 
@@ -176,7 +182,7 @@ export function createWorkerBanStorage(): WorkerBanStorage {
       validateDateRange(startDate, endDate);
       const active = calculateActive(endDate);
 
-      const [updated] = await db
+      const [updated] = await client
         .update(workerBans)
         .set({
           ...ban,
@@ -200,8 +206,9 @@ export function createWorkerBanStorage(): WorkerBanStorage {
     },
 
     async delete(id: string): Promise<boolean> {
+      const client = getClient();
       const existing = await this.get(id);
-      const result = await db.delete(workerBans).where(eq(workerBans.id, id));
+      const result = await client.delete(workerBans).where(eq(workerBans.id, id));
       const deleted = (result.rowCount ?? 0) > 0;
       
       if (deleted && existing) {

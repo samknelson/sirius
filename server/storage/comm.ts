@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, commPostal, commPostalOptin, commInapp, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin, type CommEmail, type InsertCommEmail, type CommEmailOptin, type InsertCommEmailOptin, type CommPostal, type InsertCommPostal, type CommPostalOptin, type InsertCommPostalOptin, type CommInapp, type InsertCommInapp } from "@shared/schema";
 import { eq, desc, and, SQL } from "drizzle-orm";
 import { phoneValidationService } from "../services/phone-validation";
@@ -67,21 +67,24 @@ export interface CommEmailStorage {
 export function createCommStorage(): CommStorage {
   return {
     async getComm(id: string): Promise<Comm | undefined> {
-      const [result] = await db.select().from(comm).where(eq(comm.id, id));
+      const client = getClient();
+      const [result] = await client.select().from(comm).where(eq(comm.id, id));
       return result || undefined;
     },
 
     async getCommsByContact(contactId: string): Promise<Comm[]> {
-      return await db.select().from(comm).where(eq(comm.contactId, contactId)).orderBy(desc(comm.sent));
+      const client = getClient();
+      return await client.select().from(comm).where(eq(comm.contactId, contactId)).orderBy(desc(comm.sent));
     },
 
     async getCommsByContactWithSms(contactId: string): Promise<CommWithSms[]> {
-      const comms = await db.select().from(comm).where(eq(comm.contactId, contactId)).orderBy(desc(comm.sent));
+      const client = getClient();
+      const comms = await client.select().from(comm).where(eq(comm.contactId, contactId)).orderBy(desc(comm.sent));
       
       const result: CommWithSms[] = await Promise.all(
         comms.map(async (c) => {
           if (c.medium === 'sms') {
-            const [smsDetails] = await db.select().from(commSms).where(eq(commSms.commId, c.id));
+            const [smsDetails] = await client.select().from(commSms).where(eq(commSms.commId, c.id));
             return { ...c, smsDetails: smsDetails || null };
           }
           return { ...c, smsDetails: null };
@@ -92,11 +95,12 @@ export function createCommStorage(): CommStorage {
     },
 
     async getCommWithSms(id: string): Promise<CommWithSms | undefined> {
-      const [c] = await db.select().from(comm).where(eq(comm.id, id));
+      const client = getClient();
+      const [c] = await client.select().from(comm).where(eq(comm.id, id));
       if (!c) return undefined;
       
       if (c.medium === 'sms') {
-        const [smsDetails] = await db.select().from(commSms).where(eq(commSms.commId, c.id));
+        const [smsDetails] = await client.select().from(commSms).where(eq(commSms.commId, c.id));
         return { ...c, smsDetails: smsDetails || null };
       }
       
@@ -104,21 +108,22 @@ export function createCommStorage(): CommStorage {
     },
 
     async getCommsByContactWithDetails(contactId: string): Promise<CommWithDetails[]> {
-      const comms = await db.select().from(comm).where(eq(comm.contactId, contactId)).orderBy(desc(comm.sent));
+      const client = getClient();
+      const comms = await client.select().from(comm).where(eq(comm.contactId, contactId)).orderBy(desc(comm.sent));
       
       const result: CommWithDetails[] = await Promise.all(
         comms.map(async (c) => {
           if (c.medium === 'sms') {
-            const [smsDetails] = await db.select().from(commSms).where(eq(commSms.commId, c.id));
+            const [smsDetails] = await client.select().from(commSms).where(eq(commSms.commId, c.id));
             return { ...c, smsDetails: smsDetails || null, emailDetails: null, postalDetails: null, inappDetails: null };
           } else if (c.medium === 'email') {
-            const [emailDetails] = await db.select().from(commEmail).where(eq(commEmail.commId, c.id));
+            const [emailDetails] = await client.select().from(commEmail).where(eq(commEmail.commId, c.id));
             return { ...c, smsDetails: null, emailDetails: emailDetails || null, postalDetails: null, inappDetails: null };
           } else if (c.medium === 'postal') {
-            const [postalDetails] = await db.select().from(commPostal).where(eq(commPostal.commId, c.id));
+            const [postalDetails] = await client.select().from(commPostal).where(eq(commPostal.commId, c.id));
             return { ...c, smsDetails: null, emailDetails: null, postalDetails: postalDetails || null, inappDetails: null };
           } else if (c.medium === 'inapp') {
-            const [inappDetails] = await db.select().from(commInapp).where(eq(commInapp.commId, c.id));
+            const [inappDetails] = await client.select().from(commInapp).where(eq(commInapp.commId, c.id));
             return { ...c, smsDetails: null, emailDetails: null, postalDetails: null, inappDetails: inappDetails || null };
           }
           return { ...c, smsDetails: null, emailDetails: null, postalDetails: null, inappDetails: null };
@@ -129,20 +134,21 @@ export function createCommStorage(): CommStorage {
     },
 
     async getCommWithDetails(id: string): Promise<CommWithDetails | undefined> {
-      const [c] = await db.select().from(comm).where(eq(comm.id, id));
+      const client = getClient();
+      const [c] = await client.select().from(comm).where(eq(comm.id, id));
       if (!c) return undefined;
       
       if (c.medium === 'sms') {
-        const [smsDetails] = await db.select().from(commSms).where(eq(commSms.commId, c.id));
+        const [smsDetails] = await client.select().from(commSms).where(eq(commSms.commId, c.id));
         return { ...c, smsDetails: smsDetails || null, emailDetails: null, postalDetails: null, inappDetails: null };
       } else if (c.medium === 'email') {
-        const [emailDetails] = await db.select().from(commEmail).where(eq(commEmail.commId, c.id));
+        const [emailDetails] = await client.select().from(commEmail).where(eq(commEmail.commId, c.id));
         return { ...c, smsDetails: null, emailDetails: emailDetails || null, postalDetails: null, inappDetails: null };
       } else if (c.medium === 'postal') {
-        const [postalDetails] = await db.select().from(commPostal).where(eq(commPostal.commId, c.id));
+        const [postalDetails] = await client.select().from(commPostal).where(eq(commPostal.commId, c.id));
         return { ...c, smsDetails: null, emailDetails: null, postalDetails: postalDetails || null, inappDetails: null };
       } else if (c.medium === 'inapp') {
-        const [inappDetails] = await db.select().from(commInapp).where(eq(commInapp.commId, c.id));
+        const [inappDetails] = await client.select().from(commInapp).where(eq(commInapp.commId, c.id));
         return { ...c, smsDetails: null, emailDetails: null, postalDetails: null, inappDetails: inappDetails || null };
       }
       
@@ -150,17 +156,20 @@ export function createCommStorage(): CommStorage {
     },
 
     async createComm(data: InsertComm): Promise<Comm> {
-      const [result] = await db.insert(comm).values(data).returning();
+      const client = getClient();
+      const [result] = await client.insert(comm).values(data).returning();
       return result;
     },
 
     async updateComm(id: string, data: Partial<InsertComm>): Promise<Comm | undefined> {
-      const [result] = await db.update(comm).set(data).where(eq(comm.id, id)).returning();
+      const client = getClient();
+      const [result] = await client.update(comm).set(data).where(eq(comm.id, id)).returning();
       return result || undefined;
     },
 
     async deleteComm(id: string): Promise<boolean> {
-      const result = await db.delete(comm).where(eq(comm.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(comm).where(eq(comm.id, id)).returning();
       return result.length > 0;
     },
   };
@@ -169,22 +178,25 @@ export function createCommStorage(): CommStorage {
 export function createCommSmsStorage(): CommSmsStorage {
   return {
     async getCommSms(id: string): Promise<CommSms | undefined> {
-      const [result] = await db.select().from(commSms).where(eq(commSms.id, id));
+      const client = getClient();
+      const [result] = await client.select().from(commSms).where(eq(commSms.id, id));
       return result || undefined;
     },
 
     async getCommSmsByComm(commId: string): Promise<CommSms | undefined> {
-      const [result] = await db.select().from(commSms).where(eq(commSms.commId, commId));
+      const client = getClient();
+      const [result] = await client.select().from(commSms).where(eq(commSms.commId, commId));
       return result || undefined;
     },
 
     async getCommSmsByTwilioSid(twilioSid: string): Promise<CommSmsWithComm | undefined> {
-      const allSmsRecords = await db.select().from(commSms);
+      const client = getClient();
+      const allSmsRecords = await client.select().from(commSms);
       
       for (const sms of allSmsRecords) {
         const data = sms.data as { twilioMessageSid?: string } | null;
         if (data?.twilioMessageSid === twilioSid) {
-          const [commRecord] = await db.select().from(comm).where(eq(comm.id, sms.commId));
+          const [commRecord] = await client.select().from(comm).where(eq(comm.id, sms.commId));
           if (commRecord) {
             return { commSms: sms, comm: commRecord };
           }
@@ -195,6 +207,7 @@ export function createCommSmsStorage(): CommSmsStorage {
     },
 
     async updateCommSmsByTwilioSid(twilioSid: string, data: Partial<InsertCommSms>): Promise<CommSms | undefined> {
+      const client = getClient();
       const found = await this.getCommSmsByTwilioSid(twilioSid);
       if (!found) return undefined;
       
@@ -212,11 +225,12 @@ export function createCommSmsStorage(): CommSmsStorage {
         }
       }
 
-      const [result] = await db.update(commSms).set(updateData).where(eq(commSms.id, found.commSms.id)).returning();
+      const [result] = await client.update(commSms).set(updateData).where(eq(commSms.id, found.commSms.id)).returning();
       return result || undefined;
     },
 
     async createCommSms(data: InsertCommSms): Promise<CommSms> {
+      const client = getClient();
       let formattedTo = data.to;
       
       if (data.to) {
@@ -227,7 +241,7 @@ export function createCommSmsStorage(): CommSmsStorage {
         formattedTo = validationResult.e164Format || data.to;
       }
 
-      const [result] = await db.insert(commSms).values({
+      const [result] = await client.insert(commSms).values({
         ...data,
         to: formattedTo,
       }).returning();
@@ -235,6 +249,7 @@ export function createCommSmsStorage(): CommSmsStorage {
     },
 
     async updateCommSms(id: string, data: Partial<InsertCommSms>): Promise<CommSms | undefined> {
+      const client = getClient();
       let updateData = { ...data };
       
       if (data.to !== undefined) {
@@ -249,12 +264,13 @@ export function createCommSmsStorage(): CommSmsStorage {
         }
       }
 
-      const [result] = await db.update(commSms).set(updateData).where(eq(commSms.id, id)).returning();
+      const [result] = await client.update(commSms).set(updateData).where(eq(commSms.id, id)).returning();
       return result || undefined;
     },
 
     async deleteCommSms(id: string): Promise<boolean> {
-      const result = await db.delete(commSms).where(eq(commSms.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(commSms).where(eq(commSms.id, id)).returning();
       return result.length > 0;
     },
   };
@@ -275,31 +291,35 @@ export interface CommSmsOptinStorage {
 export function createCommSmsOptinStorage(): CommSmsOptinStorage {
   return {
     async getSmsOptinByPhoneNumber(phoneNumber: string): Promise<CommSmsOptin | undefined> {
+      const client = getClient();
       const validationResult = await phoneValidationService.validateAndFormat(phoneNumber);
       const normalizedPhone = validationResult.e164Format || phoneNumber;
       
-      const [result] = await db.select().from(commSmsOptin).where(eq(commSmsOptin.phoneNumber, normalizedPhone));
+      const [result] = await client.select().from(commSmsOptin).where(eq(commSmsOptin.phoneNumber, normalizedPhone));
       return result || undefined;
     },
 
     async getSmsOptinByPublicToken(token: string): Promise<CommSmsOptin | undefined> {
-      const [result] = await db.select().from(commSmsOptin).where(eq(commSmsOptin.publicToken, token));
+      const client = getClient();
+      const [result] = await client.select().from(commSmsOptin).where(eq(commSmsOptin.publicToken, token));
       return result || undefined;
     },
 
     async getSmsOptin(id: string): Promise<CommSmsOptin | undefined> {
-      const [result] = await db.select().from(commSmsOptin).where(eq(commSmsOptin.id, id));
+      const client = getClient();
+      const [result] = await client.select().from(commSmsOptin).where(eq(commSmsOptin.id, id));
       return result || undefined;
     },
 
     async createSmsOptin(data: InsertCommSmsOptin): Promise<CommSmsOptin> {
+      const client = getClient();
       const validationResult = await phoneValidationService.validateAndFormat(data.phoneNumber);
       if (!validationResult.isValid) {
         throw new Error(`Invalid phone number: ${validationResult.error}`);
       }
       const normalizedPhone = validationResult.e164Format || data.phoneNumber;
 
-      const [result] = await db.insert(commSmsOptin).values({
+      const [result] = await client.insert(commSmsOptin).values({
         ...data,
         phoneNumber: normalizedPhone,
       }).returning();
@@ -307,6 +327,7 @@ export function createCommSmsOptinStorage(): CommSmsOptinStorage {
     },
 
     async updateSmsOptin(id: string, data: Partial<InsertCommSmsOptin>): Promise<CommSmsOptin | undefined> {
+      const client = getClient();
       let updateData = { ...data };
       
       if (data.phoneNumber !== undefined) {
@@ -317,11 +338,12 @@ export function createCommSmsOptinStorage(): CommSmsOptinStorage {
         updateData.phoneNumber = validationResult.e164Format || data.phoneNumber;
       }
 
-      const [result] = await db.update(commSmsOptin).set(updateData).where(eq(commSmsOptin.id, id)).returning();
+      const [result] = await client.update(commSmsOptin).set(updateData).where(eq(commSmsOptin.id, id)).returning();
       return result || undefined;
     },
 
     async updateSmsOptinByPhoneNumber(phoneNumber: string, data: Partial<InsertCommSmsOptin>): Promise<CommSmsOptin | undefined> {
+      const client = getClient();
       const validationResult = await phoneValidationService.validateAndFormat(phoneNumber);
       const normalizedPhone = validationResult.e164Format || phoneNumber;
 
@@ -334,11 +356,12 @@ export function createCommSmsOptinStorage(): CommSmsOptinStorage {
         updateData.phoneNumber = validationResult2.e164Format || data.phoneNumber;
       }
 
-      const [result] = await db.update(commSmsOptin).set(updateData).where(eq(commSmsOptin.phoneNumber, normalizedPhone)).returning();
+      const [result] = await client.update(commSmsOptin).set(updateData).where(eq(commSmsOptin.phoneNumber, normalizedPhone)).returning();
       return result || undefined;
     },
 
     async updateSmsOptinByPublicToken(token: string, data: Partial<InsertCommSmsOptin>): Promise<CommSmsOptin | undefined> {
+      const client = getClient();
       let updateData = { ...data };
       
       if (data.phoneNumber !== undefined) {
@@ -349,27 +372,28 @@ export function createCommSmsOptinStorage(): CommSmsOptinStorage {
         updateData.phoneNumber = validationResult.e164Format || data.phoneNumber;
       }
 
-      const [result] = await db.update(commSmsOptin).set(updateData).where(eq(commSmsOptin.publicToken, token)).returning();
+      const [result] = await client.update(commSmsOptin).set(updateData).where(eq(commSmsOptin.publicToken, token)).returning();
       return result || undefined;
     },
 
     async getOrCreatePublicToken(phoneNumber: string): Promise<string> {
+      const client = getClient();
       const validationResult = await phoneValidationService.validateAndFormat(phoneNumber);
       const normalizedPhone = validationResult.e164Format || phoneNumber;
       
-      const [existing] = await db.select().from(commSmsOptin).where(eq(commSmsOptin.phoneNumber, normalizedPhone));
+      const [existing] = await client.select().from(commSmsOptin).where(eq(commSmsOptin.phoneNumber, normalizedPhone));
       
       if (existing) {
         if (existing.publicToken) {
           return existing.publicToken;
         }
         const newToken = crypto.randomUUID();
-        await db.update(commSmsOptin).set({ publicToken: newToken }).where(eq(commSmsOptin.id, existing.id));
+        await client.update(commSmsOptin).set({ publicToken: newToken }).where(eq(commSmsOptin.id, existing.id));
         return newToken;
       }
       
       const newToken = crypto.randomUUID();
-      await db.insert(commSmsOptin).values({
+      await client.insert(commSmsOptin).values({
         phoneNumber: normalizedPhone,
         optin: false,
         allowlist: false,
@@ -379,7 +403,8 @@ export function createCommSmsOptinStorage(): CommSmsOptinStorage {
     },
 
     async deleteSmsOptin(id: string): Promise<boolean> {
-      const result = await db.delete(commSmsOptin).where(eq(commSmsOptin.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(commSmsOptin).where(eq(commSmsOptin.id, id)).returning();
       return result.length > 0;
     },
   };
@@ -388,22 +413,25 @@ export function createCommSmsOptinStorage(): CommSmsOptinStorage {
 export function createCommEmailStorage(): CommEmailStorage {
   return {
     async getCommEmail(id: string): Promise<CommEmail | undefined> {
-      const [result] = await db.select().from(commEmail).where(eq(commEmail.id, id));
+      const client = getClient();
+      const [result] = await client.select().from(commEmail).where(eq(commEmail.id, id));
       return result || undefined;
     },
 
     async getCommEmailByComm(commId: string): Promise<CommEmail | undefined> {
-      const [result] = await db.select().from(commEmail).where(eq(commEmail.commId, commId));
+      const client = getClient();
+      const [result] = await client.select().from(commEmail).where(eq(commEmail.commId, commId));
       return result || undefined;
     },
 
     async getCommEmailBySendGridId(sendgridMessageId: string): Promise<CommEmailWithComm | undefined> {
-      const allEmailRecords = await db.select().from(commEmail);
+      const client = getClient();
+      const allEmailRecords = await client.select().from(commEmail);
       
       for (const email of allEmailRecords) {
         const data = email.data as { sendgridMessageId?: string } | null;
         if (data?.sendgridMessageId === sendgridMessageId) {
-          const [commRecord] = await db.select().from(comm).where(eq(comm.id, email.commId));
+          const [commRecord] = await client.select().from(comm).where(eq(comm.id, email.commId));
           if (commRecord) {
             return { commEmail: email, comm: commRecord };
           }
@@ -414,17 +442,20 @@ export function createCommEmailStorage(): CommEmailStorage {
     },
 
     async createCommEmail(data: InsertCommEmail): Promise<CommEmail> {
-      const [result] = await db.insert(commEmail).values(data).returning();
+      const client = getClient();
+      const [result] = await client.insert(commEmail).values(data).returning();
       return result;
     },
 
     async updateCommEmail(id: string, data: Partial<InsertCommEmail>): Promise<CommEmail | undefined> {
-      const [result] = await db.update(commEmail).set(data).where(eq(commEmail.id, id)).returning();
+      const client = getClient();
+      const [result] = await client.update(commEmail).set(data).where(eq(commEmail.id, id)).returning();
       return result || undefined;
     },
 
     async deleteCommEmail(id: string): Promise<boolean> {
-      const result = await db.delete(commEmail).where(eq(commEmail.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(commEmail).where(eq(commEmail.id, id)).returning();
       return result.length > 0;
     },
   };
@@ -450,28 +481,33 @@ function normalizeEmail(email: string): string {
 export function createCommEmailOptinStorage(): CommEmailOptinStorage {
   return {
     async getEmailOptinByEmail(email: string): Promise<CommEmailOptin | undefined> {
+      const client = getClient();
       const normalized = normalizeEmail(email);
-      const [result] = await db.select().from(commEmailOptin).where(eq(commEmailOptin.email, normalized));
+      const [result] = await client.select().from(commEmailOptin).where(eq(commEmailOptin.email, normalized));
       return result || undefined;
     },
 
     async getEmailOptinByPublicToken(token: string): Promise<CommEmailOptin | undefined> {
-      const [result] = await db.select().from(commEmailOptin).where(eq(commEmailOptin.publicToken, token));
+      const client = getClient();
+      const [result] = await client.select().from(commEmailOptin).where(eq(commEmailOptin.publicToken, token));
       return result || undefined;
     },
 
     async getEmailOptin(id: string): Promise<CommEmailOptin | undefined> {
-      const [result] = await db.select().from(commEmailOptin).where(eq(commEmailOptin.id, id));
+      const client = getClient();
+      const [result] = await client.select().from(commEmailOptin).where(eq(commEmailOptin.id, id));
       return result || undefined;
     },
 
     async getAllEmailOptins(): Promise<CommEmailOptin[]> {
-      return await db.select().from(commEmailOptin);
+      const client = getClient();
+      return await client.select().from(commEmailOptin);
     },
 
     async createEmailOptin(data: InsertCommEmailOptin): Promise<CommEmailOptin> {
+      const client = getClient();
       const normalized = normalizeEmail(data.email);
-      const [result] = await db.insert(commEmailOptin).values({
+      const [result] = await client.insert(commEmailOptin).values({
         ...data,
         email: normalized,
       }).returning();
@@ -479,48 +515,52 @@ export function createCommEmailOptinStorage(): CommEmailOptinStorage {
     },
 
     async updateEmailOptin(id: string, data: Partial<InsertCommEmailOptin>): Promise<CommEmailOptin | undefined> {
+      const client = getClient();
       let updateData = { ...data };
       if (data.email !== undefined) {
         updateData.email = normalizeEmail(data.email);
       }
-      const [result] = await db.update(commEmailOptin).set(updateData).where(eq(commEmailOptin.id, id)).returning();
+      const [result] = await client.update(commEmailOptin).set(updateData).where(eq(commEmailOptin.id, id)).returning();
       return result || undefined;
     },
 
     async updateEmailOptinByEmail(email: string, data: Partial<InsertCommEmailOptin>): Promise<CommEmailOptin | undefined> {
+      const client = getClient();
       const normalized = normalizeEmail(email);
       let updateData = { ...data };
       if (data.email !== undefined) {
         updateData.email = normalizeEmail(data.email);
       }
-      const [result] = await db.update(commEmailOptin).set(updateData).where(eq(commEmailOptin.email, normalized)).returning();
+      const [result] = await client.update(commEmailOptin).set(updateData).where(eq(commEmailOptin.email, normalized)).returning();
       return result || undefined;
     },
 
     async updateEmailOptinByPublicToken(token: string, data: Partial<InsertCommEmailOptin>): Promise<CommEmailOptin | undefined> {
+      const client = getClient();
       let updateData = { ...data };
       if (data.email !== undefined) {
         updateData.email = normalizeEmail(data.email);
       }
-      const [result] = await db.update(commEmailOptin).set(updateData).where(eq(commEmailOptin.publicToken, token)).returning();
+      const [result] = await client.update(commEmailOptin).set(updateData).where(eq(commEmailOptin.publicToken, token)).returning();
       return result || undefined;
     },
 
     async getOrCreatePublicToken(email: string): Promise<string> {
+      const client = getClient();
       const normalized = normalizeEmail(email);
-      const [existing] = await db.select().from(commEmailOptin).where(eq(commEmailOptin.email, normalized));
+      const [existing] = await client.select().from(commEmailOptin).where(eq(commEmailOptin.email, normalized));
       
       if (existing) {
         if (existing.publicToken) {
           return existing.publicToken;
         }
         const newToken = crypto.randomUUID();
-        await db.update(commEmailOptin).set({ publicToken: newToken }).where(eq(commEmailOptin.id, existing.id));
+        await client.update(commEmailOptin).set({ publicToken: newToken }).where(eq(commEmailOptin.id, existing.id));
         return newToken;
       }
       
       const newToken = crypto.randomUUID();
-      await db.insert(commEmailOptin).values({
+      await client.insert(commEmailOptin).values({
         email: normalized,
         optin: false,
         allowlist: false,
@@ -530,7 +570,8 @@ export function createCommEmailOptinStorage(): CommEmailOptinStorage {
     },
 
     async deleteEmailOptin(id: string): Promise<boolean> {
-      const result = await db.delete(commEmailOptin).where(eq(commEmailOptin.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(commEmailOptin).where(eq(commEmailOptin.id, id)).returning();
       return result.length > 0;
     },
   };
@@ -553,21 +594,24 @@ export interface CommPostalStorage {
 export function createCommPostalStorage(): CommPostalStorage {
   return {
     async getCommPostal(id: string): Promise<CommPostal | undefined> {
-      const [result] = await db.select().from(commPostal).where(eq(commPostal.id, id));
+      const client = getClient();
+      const [result] = await client.select().from(commPostal).where(eq(commPostal.id, id));
       return result || undefined;
     },
 
     async getCommPostalByComm(commId: string): Promise<CommPostal | undefined> {
-      const [result] = await db.select().from(commPostal).where(eq(commPostal.commId, commId));
+      const client = getClient();
+      const [result] = await client.select().from(commPostal).where(eq(commPostal.commId, commId));
       return result || undefined;
     },
 
     async getCommPostalByLobLetterId(lobLetterId: string): Promise<CommPostalWithComm | undefined> {
-      const allPostalRecords = await db.select().from(commPostal).where(eq(commPostal.lobLetterId, lobLetterId));
+      const client = getClient();
+      const allPostalRecords = await client.select().from(commPostal).where(eq(commPostal.lobLetterId, lobLetterId));
       
       if (allPostalRecords.length > 0) {
         const postal = allPostalRecords[0];
-        const [commRecord] = await db.select().from(comm).where(eq(comm.id, postal.commId));
+        const [commRecord] = await client.select().from(comm).where(eq(comm.id, postal.commId));
         if (commRecord) {
           return { commPostal: postal, comm: commRecord };
         }
@@ -577,17 +621,20 @@ export function createCommPostalStorage(): CommPostalStorage {
     },
 
     async createCommPostal(data: InsertCommPostal): Promise<CommPostal> {
-      const [result] = await db.insert(commPostal).values(data).returning();
+      const client = getClient();
+      const [result] = await client.insert(commPostal).values(data).returning();
       return result;
     },
 
     async updateCommPostal(id: string, data: Partial<InsertCommPostal>): Promise<CommPostal | undefined> {
-      const [result] = await db.update(commPostal).set(data).where(eq(commPostal.id, id)).returning();
+      const client = getClient();
+      const [result] = await client.update(commPostal).set(data).where(eq(commPostal.id, id)).returning();
       return result || undefined;
     },
 
     async deleteCommPostal(id: string): Promise<boolean> {
-      const result = await db.delete(commPostal).where(eq(commPostal.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(commPostal).where(eq(commPostal.id, id)).returning();
       return result.length > 0;
     },
   };
@@ -609,53 +656,62 @@ export interface CommPostalOptinStorage {
 export function createCommPostalOptinStorage(): CommPostalOptinStorage {
   return {
     async getPostalOptinByCanonicalAddress(canonicalAddress: string): Promise<CommPostalOptin | undefined> {
-      const [result] = await db.select().from(commPostalOptin).where(eq(commPostalOptin.canonicalAddress, canonicalAddress));
+      const client = getClient();
+      const [result] = await client.select().from(commPostalOptin).where(eq(commPostalOptin.canonicalAddress, canonicalAddress));
       return result || undefined;
     },
 
     async getPostalOptinByPublicToken(token: string): Promise<CommPostalOptin | undefined> {
-      const [result] = await db.select().from(commPostalOptin).where(eq(commPostalOptin.publicToken, token));
+      const client = getClient();
+      const [result] = await client.select().from(commPostalOptin).where(eq(commPostalOptin.publicToken, token));
       return result || undefined;
     },
 
     async getPostalOptin(id: string): Promise<CommPostalOptin | undefined> {
-      const [result] = await db.select().from(commPostalOptin).where(eq(commPostalOptin.id, id));
+      const client = getClient();
+      const [result] = await client.select().from(commPostalOptin).where(eq(commPostalOptin.id, id));
       return result || undefined;
     },
 
     async getAllPostalOptins(): Promise<CommPostalOptin[]> {
-      return await db.select().from(commPostalOptin);
+      const client = getClient();
+      return await client.select().from(commPostalOptin);
     },
 
     async createPostalOptin(data: InsertCommPostalOptin): Promise<CommPostalOptin> {
-      const [result] = await db.insert(commPostalOptin).values(data).returning();
+      const client = getClient();
+      const [result] = await client.insert(commPostalOptin).values(data).returning();
       return result;
     },
 
     async updatePostalOptin(id: string, data: Partial<InsertCommPostalOptin>): Promise<CommPostalOptin | undefined> {
-      const [result] = await db.update(commPostalOptin).set(data).where(eq(commPostalOptin.id, id)).returning();
+      const client = getClient();
+      const [result] = await client.update(commPostalOptin).set(data).where(eq(commPostalOptin.id, id)).returning();
       return result || undefined;
     },
 
     async updatePostalOptinByCanonicalAddress(canonicalAddress: string, data: Partial<InsertCommPostalOptin>): Promise<CommPostalOptin | undefined> {
-      const [result] = await db.update(commPostalOptin).set(data).where(eq(commPostalOptin.canonicalAddress, canonicalAddress)).returning();
+      const client = getClient();
+      const [result] = await client.update(commPostalOptin).set(data).where(eq(commPostalOptin.canonicalAddress, canonicalAddress)).returning();
       return result || undefined;
     },
 
     async updatePostalOptinByPublicToken(token: string, data: Partial<InsertCommPostalOptin>): Promise<CommPostalOptin | undefined> {
-      const [result] = await db.update(commPostalOptin).set(data).where(eq(commPostalOptin.publicToken, token)).returning();
+      const client = getClient();
+      const [result] = await client.update(commPostalOptin).set(data).where(eq(commPostalOptin.publicToken, token)).returning();
       return result || undefined;
     },
 
     async getOrCreatePublicToken(canonicalAddress: string): Promise<string> {
-      const [existing] = await db.select().from(commPostalOptin).where(eq(commPostalOptin.canonicalAddress, canonicalAddress));
+      const client = getClient();
+      const [existing] = await client.select().from(commPostalOptin).where(eq(commPostalOptin.canonicalAddress, canonicalAddress));
       
       if (existing) {
         if (existing.publicToken) {
           return existing.publicToken;
         }
         const newToken = crypto.randomUUID();
-        await db.update(commPostalOptin).set({ publicToken: newToken }).where(eq(commPostalOptin.id, existing.id));
+        await client.update(commPostalOptin).set({ publicToken: newToken }).where(eq(commPostalOptin.id, existing.id));
         return newToken;
       }
       
@@ -663,13 +719,12 @@ export function createCommPostalOptinStorage(): CommPostalOptinStorage {
     },
 
     async deletePostalOptin(id: string): Promise<boolean> {
-      const result = await db.delete(commPostalOptin).where(eq(commPostalOptin.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(commPostalOptin).where(eq(commPostalOptin.id, id)).returning();
       return result.length > 0;
     },
   };
 }
-
-// Communications - In-App
 
 export interface CommInappWithComm extends CommInapp {
   comm: Comm;
@@ -688,22 +743,25 @@ export interface CommInappStorage {
 export function createCommInappStorage(): CommInappStorage {
   return {
     async getCommInapp(id: string): Promise<CommInapp | undefined> {
-      const [result] = await db.select().from(commInapp).where(eq(commInapp.id, id));
+      const client = getClient();
+      const [result] = await client.select().from(commInapp).where(eq(commInapp.id, id));
       return result || undefined;
     },
 
     async getCommInappByComm(commId: string): Promise<CommInapp | undefined> {
-      const [result] = await db.select().from(commInapp).where(eq(commInapp.commId, commId));
+      const client = getClient();
+      const [result] = await client.select().from(commInapp).where(eq(commInapp.commId, commId));
       return result || undefined;
     },
 
     async getCommInappsByUser(userId: string, status?: string): Promise<CommInappWithComm[]> {
+      const client = getClient();
       const conditions: SQL[] = [eq(commInapp.userId, userId)];
       if (status) {
         conditions.push(eq(commInapp.status, status));
       }
 
-      const rows = await db
+      const rows = await client
         .select({
           inapp: commInapp,
           comm: comm,
@@ -720,7 +778,8 @@ export function createCommInappStorage(): CommInappStorage {
     },
 
     async getUnreadCountByUser(userId: string): Promise<number> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .select()
         .from(commInapp)
         .where(and(eq(commInapp.userId, userId), eq(commInapp.status, "pending")));
@@ -728,17 +787,20 @@ export function createCommInappStorage(): CommInappStorage {
     },
 
     async createCommInapp(data: InsertCommInapp): Promise<CommInapp> {
-      const [result] = await db.insert(commInapp).values(data).returning();
+      const client = getClient();
+      const [result] = await client.insert(commInapp).values(data).returning();
       return result;
     },
 
     async updateCommInapp(id: string, data: Partial<InsertCommInapp>): Promise<CommInapp | undefined> {
-      const [result] = await db.update(commInapp).set(data).where(eq(commInapp.id, id)).returning();
+      const client = getClient();
+      const [result] = await client.update(commInapp).set(data).where(eq(commInapp.id, id)).returning();
       return result || undefined;
     },
 
     async deleteCommInapp(id: string): Promise<boolean> {
-      const result = await db.delete(commInapp).where(eq(commInapp.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(commInapp).where(eq(commInapp.id, id)).returning();
       return result.length > 0;
     },
   };

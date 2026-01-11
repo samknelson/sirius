@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import {
   trustWmbScanStatus,
   trustWmbScanQueue,
@@ -68,7 +68,8 @@ export interface WmbScanQueueStorage {
 export function createWmbScanQueueStorage(): WmbScanQueueStorage {
   const storage: WmbScanQueueStorage = {
     async getMonthStatus(month: number, year: number): Promise<TrustWmbScanStatus | undefined> {
-      const [status] = await db
+      const client = getClient();
+      const [status] = await client
         .select()
         .from(trustWmbScanStatus)
         .where(and(eq(trustWmbScanStatus.month, month), eq(trustWmbScanStatus.year, year)));
@@ -76,7 +77,8 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async getStatusById(id: string): Promise<TrustWmbScanStatus | undefined> {
-      const [status] = await db
+      const client = getClient();
+      const [status] = await client
         .select()
         .from(trustWmbScanStatus)
         .where(eq(trustWmbScanStatus.id, id));
@@ -84,14 +86,16 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async getAllMonthStatuses(): Promise<TrustWmbScanStatus[]> {
-      return db
+      const client = getClient();
+      return client
         .select()
         .from(trustWmbScanStatus)
         .orderBy(desc(trustWmbScanStatus.year), desc(trustWmbScanStatus.month));
     },
 
     async createMonthStatus(month: number, year: number): Promise<TrustWmbScanStatus> {
-      const [status] = await db
+      const client = getClient();
+      const [status] = await client
         .insert(trustWmbScanStatus)
         .values({ month, year, status: "queued" })
         .returning();
@@ -99,7 +103,8 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async updateMonthStatus(id: string, data: Partial<TrustWmbScanStatus>): Promise<TrustWmbScanStatus | undefined> {
-      const [updated] = await db
+      const client = getClient();
+      const [updated] = await client
         .update(trustWmbScanStatus)
         .set(data)
         .where(eq(trustWmbScanStatus.id, id))
@@ -108,7 +113,8 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async getQueuedWorkers(statusId: string): Promise<TrustWmbScanQueue[]> {
-      return db
+      const client = getClient();
+      return client
         .select()
         .from(trustWmbScanQueue)
         .where(eq(trustWmbScanQueue.statusId, statusId))
@@ -116,7 +122,8 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async getQueueEntriesWithWorkerInfo(statusId: string): Promise<QueueEntryWithWorker[]> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           id: trustWmbScanQueue.id,
           statusId: trustWmbScanQueue.statusId,
@@ -143,6 +150,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async getQueueEntriesPaged(statusId: string, page: number, pageSize: number, filter?: QueueEntriesFilter): Promise<PagedQueueEntriesResult> {
+      const client = getClient();
       const offset = (page - 1) * pageSize;
       
       // Build WHERE conditions
@@ -194,7 +202,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
       const whereClause = and(...conditions);
       
       // Get total count
-      const [countResult] = await db
+      const [countResult] = await client
         .select({ count: sql<number>`count(*)` })
         .from(trustWmbScanQueue)
         .leftJoin(workers, eq(trustWmbScanQueue.workerId, workers.id))
@@ -204,7 +212,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
       const total = Number(countResult?.count) || 0;
       
       // Get paged data
-      const results = await db
+      const results = await client
         .select({
           id: trustWmbScanQueue.id,
           statusId: trustWmbScanQueue.statusId,
@@ -234,7 +242,8 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async getWorkerQueueEntry(workerId: string, month: number, year: number): Promise<TrustWmbScanQueue | undefined> {
-      const [entry] = await db
+      const client = getClient();
+      const [entry] = await client
         .select()
         .from(trustWmbScanQueue)
         .where(
@@ -248,7 +257,8 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async enqueueMonth(month: number, year: number): Promise<{ statusId: string; queuedCount: number }> {
-      return db.transaction(async (tx) => {
+      const client = getClient();
+      return client.transaction(async (tx) => {
         // Get or create status record
         let [status] = await tx
           .select()
@@ -336,7 +346,8 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async enqueueWorker(workerId: string, month: number, year: number, triggerSource: string): Promise<TrustWmbScanQueue> {
-      return db.transaction(async (tx) => {
+      const client = getClient();
+      return client.transaction(async (tx) => {
         // Get or create status record
         let [status] = await tx
           .select()
@@ -401,7 +412,8 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async claimNextJob(): Promise<TrustWmbScanQueue | undefined> {
-      return db.transaction(async (tx) => {
+      const client = getClient();
+      return client.transaction(async (tx) => {
         // Find and claim a pending job atomically with FOR UPDATE SKIP LOCKED
         const [job] = await tx
           .update(trustWmbScanQueue)
@@ -444,7 +456,8 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async recordJobResult(queueId: string, success: boolean, resultSummary: any, error?: string): Promise<JobResultInfo> {
-      return await db.transaction(async (tx) => {
+      const client = getClient();
+      return await client.transaction(async (tx) => {
         const [job] = await tx
           .update(trustWmbScanQueue)
           .set({
@@ -523,12 +536,13 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async invalidateWorkerScans(workerId: string): Promise<number> {
+      const client = getClient();
       const now = new Date();
       const currentMonth = now.getMonth() + 1;
       const currentYear = now.getFullYear();
 
       // Reset all pending/success entries for current and future months to pending
-      const result = await db
+      const result = await client
         .update(trustWmbScanQueue)
         .set({
           status: "pending",
@@ -560,7 +574,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
       // Mark affected months as stale
       if (result.length > 0) {
         const statusIds = Array.from(new Set(result.map(r => r.statusId)));
-        await db
+        await client
           .update(trustWmbScanStatus)
           .set({ status: "stale" })
           .where(
@@ -575,7 +589,8 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async getPendingSummary(): Promise<{ month: number; year: number; pending: number; processing: number; success: number; failed: number; canceled: number }[]> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           month: trustWmbScanQueue.month,
           year: trustWmbScanQueue.year,
@@ -601,7 +616,8 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async cancelPendingForStatus(statusId: string): Promise<number> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .update(trustWmbScanQueue)
         .set({ status: "canceled" })
         .where(
@@ -614,7 +630,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
       
       // Update status to reflect cancellation
       if (result.length > 0) {
-        await db
+        await client
           .update(trustWmbScanStatus)
           .set({ status: "canceled" })
           .where(eq(trustWmbScanStatus.id, statusId));
@@ -624,7 +640,8 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async resumeCanceledForStatus(statusId: string): Promise<number> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .update(trustWmbScanQueue)
         .set({ status: "pending" })
         .where(
@@ -637,7 +654,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
       
       // Update status to queued to resume processing
       if (result.length > 0) {
-        await db
+        await client
           .update(trustWmbScanStatus)
           .set({ status: "queued" })
           .where(eq(trustWmbScanStatus.id, statusId));

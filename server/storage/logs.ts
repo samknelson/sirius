@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { winstonLogs, type WinstonLog } from "@shared/schema";
 import { desc, eq, and, sql, or, like, inArray, gte, lte, type SQL } from "drizzle-orm";
 import { eventBus, EventType } from "../services/event-bus";
@@ -62,6 +62,7 @@ export interface LogsStorage {
 export function createLogsStorage(): LogsStorage {
   return {
     async getLogs(params: LogsQueryParams): Promise<LogsResult> {
+      const client = getClient();
       const page = Math.max(1, params.page ?? 1);
       const limit = Math.min(100, Math.max(1, params.limit ?? 50));
       const offset = (page - 1) * limit;
@@ -85,12 +86,12 @@ export function createLogsStorage(): LogsStorage {
 
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-      const [{ count }] = await db
+      const [{ count }] = await client
         .select({ count: sql<number>`count(*)::int` })
         .from(winstonLogs)
         .where(whereClause);
 
-      const logs = await db
+      const logs = await client
         .select()
         .from(winstonLogs)
         .where(whereClause)
@@ -110,12 +111,13 @@ export function createLogsStorage(): LogsStorage {
     },
 
     async getLogFilters(): Promise<LogFilters> {
+      const client = getClient();
       const [modules, operations] = await Promise.all([
-        db.selectDistinct({ module: winstonLogs.module })
+        client.selectDistinct({ module: winstonLogs.module })
           .from(winstonLogs)
           .where(sql`${winstonLogs.module} IS NOT NULL`)
           .orderBy(winstonLogs.module),
-        db.selectDistinct({ operation: winstonLogs.operation })
+        client.selectDistinct({ operation: winstonLogs.operation })
           .from(winstonLogs)
           .where(sql`${winstonLogs.operation} IS NOT NULL`)
           .orderBy(winstonLogs.operation),
@@ -128,7 +130,8 @@ export function createLogsStorage(): LogsStorage {
     },
 
     async getLogById(id: number): Promise<WinstonLog | undefined> {
-      const [log] = await db
+      const client = getClient();
+      const [log] = await client
         .select()
         .from(winstonLogs)
         .where(eq(winstonLogs.id, id))
@@ -138,6 +141,7 @@ export function createLogsStorage(): LogsStorage {
     },
 
     async getLogsByHostEntityIds(params: HostEntityLogsParams): Promise<WinstonLog[]> {
+      const client = getClient();
       const idConditions = [];
       
       if (params.hostEntityIds.length > 0) {
@@ -168,7 +172,7 @@ export function createLogsStorage(): LogsStorage {
         conditions.push(lte(winstonLogs.timestamp, new Date(params.endDate)));
       }
 
-      let query = db
+      let query = client
         .select()
         .from(winstonLogs)
         .where(and(...conditions))
@@ -182,7 +186,8 @@ export function createLogsStorage(): LogsStorage {
     },
 
     async create(data: LogInsertData): Promise<WinstonLog> {
-      const [log] = await db
+      const client = getClient();
+      const [log] = await client
         .insert(winstonLogs)
         .values({
           level: data.level,

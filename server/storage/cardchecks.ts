@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { cardchecks, cardcheckDefinitions, workers, contacts, type Cardcheck, type InsertCardcheck } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
@@ -26,11 +26,13 @@ export interface CardcheckStorage {
 export function createCardcheckStorage(): CardcheckStorage {
   const storage: CardcheckStorage = {
     async getAllCardchecks(): Promise<Cardcheck[]> {
-      return await db.select().from(cardchecks);
+      const client = getClient();
+      return await client.select().from(cardchecks);
     },
 
     async getCardcheckById(id: string): Promise<Cardcheck | undefined> {
-      const [cardcheck] = await db
+      const client = getClient();
+      const [cardcheck] = await client
         .select()
         .from(cardchecks)
         .where(eq(cardchecks.id, id));
@@ -38,7 +40,8 @@ export function createCardcheckStorage(): CardcheckStorage {
     },
 
     async getCardcheckByEsigId(esigId: string): Promise<Cardcheck | undefined> {
-      const [cardcheck] = await db
+      const client = getClient();
+      const [cardcheck] = await client
         .select()
         .from(cardchecks)
         .where(eq(cardchecks.esigId, esigId));
@@ -46,21 +49,24 @@ export function createCardcheckStorage(): CardcheckStorage {
     },
 
     async getCardchecksByWorkerId(workerId: string): Promise<Cardcheck[]> {
-      return await db
+      const client = getClient();
+      return await client
         .select()
         .from(cardchecks)
         .where(eq(cardchecks.workerId, workerId));
     },
 
     async getCardchecksByDefinitionId(definitionId: string): Promise<Cardcheck[]> {
-      return await db
+      const client = getClient();
+      return await client
         .select()
         .from(cardchecks)
         .where(eq(cardchecks.cardcheckDefinitionId, definitionId));
     },
 
     async getCardcheckStatusSummary(): Promise<CardcheckStatusSummary[]> {
-      const definitions = await db.select().from(cardcheckDefinitions);
+      const client = getClient();
+      const definitions = await client.select().from(cardcheckDefinitions);
       const definitionsWithIcons = definitions.filter(d => {
         const data = d.data as any;
         return data?.icon;
@@ -70,8 +76,8 @@ export function createCardcheckStorage(): CardcheckStorage {
         return [];
       }
       
-      const allWorkers = await db.select({ id: workers.id }).from(workers);
-      const allCardchecks = await db.select().from(cardchecks);
+      const allWorkers = await client.select({ id: workers.id }).from(workers);
+      const allCardchecks = await client.select().from(cardchecks);
       
       const cardcheckMap = new Map<string, Map<string, string>>();
       for (const cc of allCardchecks) {
@@ -104,8 +110,9 @@ export function createCardcheckStorage(): CardcheckStorage {
     },
 
     async createCardcheck(data: InsertCardcheck): Promise<Cardcheck> {
+      const client = getClient();
       if (data.status === "signed") {
-        const existing = await db
+        const existing = await client
           .select()
           .from(cardchecks)
           .where(and(
@@ -118,7 +125,7 @@ export function createCardcheckStorage(): CardcheckStorage {
         }
       }
       
-      const [cardcheck] = await db
+      const [cardcheck] = await client
         .insert(cardchecks)
         .values(data)
         .returning();
@@ -126,10 +133,11 @@ export function createCardcheckStorage(): CardcheckStorage {
     },
 
     async updateCardcheck(id: string, data: Partial<InsertCardcheck>): Promise<Cardcheck | undefined> {
+      const client = getClient();
       if (data.status === "signed") {
         const current = await storage.getCardcheckById(id);
         if (current && current.status !== "signed") {
-          const existing = await db
+          const existing = await client
             .select()
             .from(cardchecks)
             .where(and(
@@ -143,7 +151,7 @@ export function createCardcheckStorage(): CardcheckStorage {
         }
       }
       
-      const [updated] = await db
+      const [updated] = await client
         .update(cardchecks)
         .set(data)
         .where(eq(cardchecks.id, id))
@@ -152,7 +160,8 @@ export function createCardcheckStorage(): CardcheckStorage {
     },
 
     async deleteCardcheck(id: string): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(cardchecks)
         .where(eq(cardchecks.id, id))
         .returning();
@@ -164,13 +173,14 @@ export function createCardcheckStorage(): CardcheckStorage {
 }
 
 async function getWorkerName(workerId: string): Promise<string> {
-  const [worker] = await db
+  const client = getClient();
+  const [worker] = await client
     .select({ contactId: workers.contactId, siriusId: workers.siriusId })
     .from(workers)
     .where(eq(workers.id, workerId));
   if (!worker) return 'Unknown Worker';
   
-  const [contact] = await db
+  const [contact] = await client
     .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
     .from(contacts)
     .where(eq(contacts.id, worker.contactId));
@@ -180,7 +190,8 @@ async function getWorkerName(workerId: string): Promise<string> {
 }
 
 async function getDefinitionName(definitionId: string): Promise<string> {
-  const [definition] = await db
+  const client = getClient();
+  const [definition] = await client
     .select({ name: cardcheckDefinitions.name, siriusId: cardcheckDefinitions.siriusId })
     .from(cardcheckDefinitions)
     .where(eq(cardcheckDefinitions.id, definitionId));
@@ -218,7 +229,8 @@ export const cardcheckLoggingConfig: StorageLoggingConfig<CardcheckStorage> = {
         if (beforeState?.cardcheck?.workerId) {
           return beforeState.cardcheck.workerId;
         }
-        const [cardcheck] = await db.select().from(cardchecks).where(eq(cardchecks.id, args[0]));
+        const client = getClient();
+        const [cardcheck] = await client.select().from(cardchecks).where(eq(cardchecks.id, args[0]));
         return cardcheck?.workerId;
       },
       getDescription: async (args, result, beforeState) => {

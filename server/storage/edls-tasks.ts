@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { optionsEdlsTasks, type EdlsTask, type InsertEdlsTask, optionsDepartment } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
@@ -20,7 +20,8 @@ export interface EdlsTaskStorage {
 export function createEdlsTaskStorage(): EdlsTaskStorage {
   return {
     async getAll(): Promise<EdlsTaskWithDepartment[]> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           id: optionsEdlsTasks.id,
           name: optionsEdlsTasks.name,
@@ -47,12 +48,14 @@ export function createEdlsTaskStorage(): EdlsTaskStorage {
     },
 
     async get(id: string): Promise<EdlsTask | undefined> {
-      const [task] = await db.select().from(optionsEdlsTasks).where(eq(optionsEdlsTasks.id, id));
+      const client = getClient();
+      const [task] = await client.select().from(optionsEdlsTasks).where(eq(optionsEdlsTasks.id, id));
       return task || undefined;
     },
 
     async create(insertTask: InsertEdlsTask): Promise<EdlsTask> {
-      const [task] = await db
+      const client = getClient();
+      const [task] = await client
         .insert(optionsEdlsTasks)
         .values(insertTask)
         .returning();
@@ -60,7 +63,8 @@ export function createEdlsTaskStorage(): EdlsTaskStorage {
     },
 
     async update(id: string, taskUpdate: Partial<InsertEdlsTask>): Promise<EdlsTask | undefined> {
-      const [task] = await db
+      const client = getClient();
+      const [task] = await client
         .update(optionsEdlsTasks)
         .set(taskUpdate)
         .where(eq(optionsEdlsTasks.id, id))
@@ -69,7 +73,8 @@ export function createEdlsTaskStorage(): EdlsTaskStorage {
     },
 
     async delete(id: string): Promise<boolean> {
-      const result = await db.delete(optionsEdlsTasks).where(eq(optionsEdlsTasks.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(optionsEdlsTasks).where(eq(optionsEdlsTasks.id, id)).returning();
       return result.length > 0;
     }
   };

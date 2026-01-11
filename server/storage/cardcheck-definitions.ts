@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { cardcheckDefinitions, type CardcheckDefinition, type InsertCardcheckDefinition } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
@@ -15,11 +15,13 @@ export interface CardcheckDefinitionStorage {
 export function createCardcheckDefinitionStorage(): CardcheckDefinitionStorage {
   const storage: CardcheckDefinitionStorage = {
     async getAllCardcheckDefinitions(): Promise<CardcheckDefinition[]> {
-      return await db.select().from(cardcheckDefinitions);
+      const client = getClient();
+      return await client.select().from(cardcheckDefinitions);
     },
 
     async getCardcheckDefinitionById(id: string): Promise<CardcheckDefinition | undefined> {
-      const [definition] = await db
+      const client = getClient();
+      const [definition] = await client
         .select()
         .from(cardcheckDefinitions)
         .where(eq(cardcheckDefinitions.id, id));
@@ -27,7 +29,8 @@ export function createCardcheckDefinitionStorage(): CardcheckDefinitionStorage {
     },
 
     async getCardcheckDefinitionBySiriusId(siriusId: string): Promise<CardcheckDefinition | undefined> {
-      const [definition] = await db
+      const client = getClient();
+      const [definition] = await client
         .select()
         .from(cardcheckDefinitions)
         .where(eq(cardcheckDefinitions.siriusId, siriusId));
@@ -35,7 +38,8 @@ export function createCardcheckDefinitionStorage(): CardcheckDefinitionStorage {
     },
 
     async createCardcheckDefinition(data: InsertCardcheckDefinition): Promise<CardcheckDefinition> {
-      const [definition] = await db
+      const client = getClient();
+      const [definition] = await client
         .insert(cardcheckDefinitions)
         .values(data)
         .returning();
@@ -43,7 +47,8 @@ export function createCardcheckDefinitionStorage(): CardcheckDefinitionStorage {
     },
 
     async updateCardcheckDefinition(id: string, data: Partial<InsertCardcheckDefinition>): Promise<CardcheckDefinition | undefined> {
-      const [updated] = await db
+      const client = getClient();
+      const [updated] = await client
         .update(cardcheckDefinitions)
         .set(data)
         .where(eq(cardcheckDefinitions.id, id))
@@ -52,7 +57,8 @@ export function createCardcheckDefinitionStorage(): CardcheckDefinitionStorage {
     },
 
     async deleteCardcheckDefinition(id: string): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(cardcheckDefinitions)
         .where(eq(cardcheckDefinitions.id, id))
         .returning();

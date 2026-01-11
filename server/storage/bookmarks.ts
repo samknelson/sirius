@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { bookmarks, workers, employers, contacts, type Bookmark, type InsertBookmark } from "@shared/schema";
 import { eq, and, desc, inArray } from "drizzle-orm";
 
@@ -18,11 +18,13 @@ export interface BookmarkStorage {
 export function createBookmarkStorage(): BookmarkStorage {
   return {
     async getUserBookmarks(userId: string): Promise<Bookmark[]> {
-      return db.select().from(bookmarks).where(eq(bookmarks.userId, userId)).orderBy(desc(bookmarks.createdAt));
+      const client = getClient();
+      return client.select().from(bookmarks).where(eq(bookmarks.userId, userId)).orderBy(desc(bookmarks.createdAt));
     },
 
     async getEnrichedUserBookmarks(userId: string): Promise<EnrichedBookmark[]> {
-      const userBookmarks = await db.select().from(bookmarks).where(eq(bookmarks.userId, userId)).orderBy(desc(bookmarks.createdAt));
+      const client = getClient();
+      const userBookmarks = await client.select().from(bookmarks).where(eq(bookmarks.userId, userId)).orderBy(desc(bookmarks.createdAt));
       
       if (userBookmarks.length === 0) {
         return [];
@@ -38,7 +40,7 @@ export function createBookmarkStorage(): BookmarkStorage {
       const employerDisplayNames: Record<string, string> = {};
 
       if (workerIds.length > 0) {
-        const workerData = await db
+        const workerData = await client
           .select({
             workerId: workers.id,
             siriusId: workers.siriusId,
@@ -54,7 +56,7 @@ export function createBookmarkStorage(): BookmarkStorage {
       }
 
       if (employerIds.length > 0) {
-        const employerData = await db
+        const employerData = await client
           .select({
             employerId: employers.id,
             name: employers.name,
@@ -87,12 +89,14 @@ export function createBookmarkStorage(): BookmarkStorage {
     },
 
     async getBookmark(id: string): Promise<Bookmark | undefined> {
-      const [bookmark] = await db.select().from(bookmarks).where(eq(bookmarks.id, id));
+      const client = getClient();
+      const [bookmark] = await client.select().from(bookmarks).where(eq(bookmarks.id, id));
       return bookmark || undefined;
     },
 
     async findBookmark(userId: string, entityType: string, entityId: string): Promise<Bookmark | undefined> {
-      const [bookmark] = await db
+      const client = getClient();
+      const [bookmark] = await client
         .select()
         .from(bookmarks)
         .where(
@@ -106,7 +110,8 @@ export function createBookmarkStorage(): BookmarkStorage {
     },
 
     async createBookmark(insertBookmark: InsertBookmark): Promise<Bookmark> {
-      const [bookmark] = await db
+      const client = getClient();
+      const [bookmark] = await client
         .insert(bookmarks)
         .values(insertBookmark)
         .returning();
@@ -114,7 +119,8 @@ export function createBookmarkStorage(): BookmarkStorage {
     },
 
     async deleteBookmark(id: string): Promise<boolean> {
-      const result = await db.delete(bookmarks).where(eq(bookmarks.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(bookmarks).where(eq(bookmarks.id, id)).returning();
       return result.length > 0;
     }
   };

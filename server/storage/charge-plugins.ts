@@ -1,4 +1,4 @@
-import { db } from './db';
+import { getClient } from './transaction-context';
 import { chargePluginConfigs, type ChargePluginConfig, type InsertChargePluginConfig } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 
@@ -16,21 +16,25 @@ export interface ChargePluginConfigStorage {
 export function createChargePluginConfigStorage(): ChargePluginConfigStorage {
   return {
     async getAll(): Promise<ChargePluginConfig[]> {
-      const allConfigs = await db.select().from(chargePluginConfigs);
+      const client = getClient();
+      const allConfigs = await client.select().from(chargePluginConfigs);
       return allConfigs.sort((a, b) => a.pluginId.localeCompare(b.pluginId));
     },
 
     async get(id: string): Promise<ChargePluginConfig | undefined> {
-      const [config] = await db.select().from(chargePluginConfigs).where(eq(chargePluginConfigs.id, id));
+      const client = getClient();
+      const [config] = await client.select().from(chargePluginConfigs).where(eq(chargePluginConfigs.id, id));
       return config || undefined;
     },
 
     async getByPluginId(pluginId: string): Promise<ChargePluginConfig[]> {
-      const configs = await db.select().from(chargePluginConfigs).where(eq(chargePluginConfigs.pluginId, pluginId));
+      const client = getClient();
+      const configs = await client.select().from(chargePluginConfigs).where(eq(chargePluginConfigs.pluginId, pluginId));
       return configs;
     },
 
     async getByPluginIdAndScope(pluginId: string, scope: string, employerId?: string): Promise<ChargePluginConfig | undefined> {
+      const client = getClient();
       const conditions = [
         eq(chargePluginConfigs.pluginId, pluginId),
         eq(chargePluginConfigs.scope, scope),
@@ -40,7 +44,7 @@ export function createChargePluginConfigStorage(): ChargePluginConfigStorage {
         conditions.push(eq(chargePluginConfigs.employerId, employerId));
       }
 
-      const [config] = await db
+      const [config] = await client
         .select()
         .from(chargePluginConfigs)
         .where(and(...conditions));
@@ -49,13 +53,14 @@ export function createChargePluginConfigStorage(): ChargePluginConfigStorage {
     },
 
     async getEnabledForPlugin(pluginId: string, employerId: string | null): Promise<ChargePluginConfig[]> {
+      const client = getClient();
       const baseConditions = [
         eq(chargePluginConfigs.pluginId, pluginId),
         eq(chargePluginConfigs.enabled, true),
       ];
 
       // Get global config
-      const globalConfig = await db
+      const globalConfig = await client
         .select()
         .from(chargePluginConfigs)
         .where(
@@ -68,7 +73,7 @@ export function createChargePluginConfigStorage(): ChargePluginConfigStorage {
 
       // If employer-specific, also get employer config (which overrides global)
       if (employerId) {
-        const employerConfig = await db
+        const employerConfig = await client
           .select()
           .from(chargePluginConfigs)
           .where(
@@ -90,7 +95,8 @@ export function createChargePluginConfigStorage(): ChargePluginConfigStorage {
     },
 
     async create(insertConfig: InsertChargePluginConfig): Promise<ChargePluginConfig> {
-      const [config] = await db
+      const client = getClient();
+      const [config] = await client
         .insert(chargePluginConfigs)
         .values(insertConfig)
         .returning();
@@ -98,7 +104,8 @@ export function createChargePluginConfigStorage(): ChargePluginConfigStorage {
     },
 
     async update(id: string, configUpdate: Partial<InsertChargePluginConfig>): Promise<ChargePluginConfig | undefined> {
-      const [config] = await db
+      const client = getClient();
+      const [config] = await client
         .update(chargePluginConfigs)
         .set(configUpdate)
         .where(eq(chargePluginConfigs.id, id))
@@ -108,7 +115,8 @@ export function createChargePluginConfigStorage(): ChargePluginConfigStorage {
     },
 
     async delete(id: string): Promise<boolean> {
-      const result = await db.delete(chargePluginConfigs).where(eq(chargePluginConfigs.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(chargePluginConfigs).where(eq(chargePluginConfigs.id, id)).returning();
       return result.length > 0;
     }
   };
