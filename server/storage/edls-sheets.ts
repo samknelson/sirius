@@ -13,6 +13,8 @@ import {
 import { eq, desc, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { StorageLoggingConfig } from "./middleware/logging";
+import { storageLogger } from "../logger";
+import { getRequestContext } from "../middleware/request-context";
 
 export interface EdlsSheetWithCrews extends EdlsSheet {
   crews: EdlsCrew[];
@@ -22,6 +24,56 @@ async function getEmployerName(employerId: string | null | undefined): Promise<s
   if (!employerId) return 'Unknown';
   const [employer] = await db.select({ name: employers.name }).from(employers).where(eq(employers.id, employerId));
   return employer?.name || 'Unknown';
+}
+
+function emitCrewLogEntry(
+  operation: 'create' | 'delete',
+  crew: EdlsCrew,
+  sheetId: string
+): void {
+  setImmediate(() => {
+    const context = getRequestContext();
+    const description = operation === 'create'
+      ? `Created EDLS Crew #${crew.crewNumber} with ${crew.workerCount} workers`
+      : `Deleted EDLS Crew #${crew.crewNumber}`;
+    
+    storageLogger.info(`Storage operation: edls-crews.${operation}`, {
+      module: 'edls-crews',
+      operation,
+      entity_id: crew.id,
+      host_entity_id: sheetId,
+      description,
+      user_id: context?.userId,
+      user_email: context?.userEmail,
+      ip_address: context?.ipAddress,
+      meta: { 
+        crew,
+        metadata: {
+          crewId: crew.id,
+          sheetId,
+          crewNumber: crew.crewNumber,
+          workerCount: crew.workerCount,
+        }
+      },
+    });
+  });
+}
+
+function emitBulkCrewDeleteLogEntry(sheetId: string, deletedCount: number): void {
+  setImmediate(() => {
+    const context = getRequestContext();
+    storageLogger.info(`Storage operation: edls-crews.deleteBySheetId`, {
+      module: 'edls-crews',
+      operation: 'deleteBySheetId',
+      entity_id: 'bulk delete',
+      host_entity_id: sheetId,
+      description: `Deleted all crews for sheet (${deletedCount} crews removed)`,
+      user_id: context?.userId,
+      user_email: context?.userEmail,
+      ip_address: context?.ipAddress,
+      meta: { deletedCount },
+    });
+  });
 }
 
 export interface EdlsSheetWithRelations extends EdlsSheet {
@@ -156,7 +208,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
     },
 
     async createWithCrews(insertSheet: InsertEdlsSheet, crews: Omit<InsertEdlsCrew, 'sheetId'>[]): Promise<EdlsSheetWithCrews> {
-      return await db.transaction(async (tx) => {
+      const result = await db.transaction(async (tx) => {
         const [sheet] = await tx.insert(edlsSheets).values(insertSheet).returning();
         
         const createdCrews = await Promise.all(
@@ -167,6 +219,12 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         
         return { ...sheet, crews: createdCrews.map(c => c[0]) };
       });
+      
+      for (const crew of result.crews) {
+        emitCrewLogEntry('create', crew, result.id);
+      }
+      
+      return result;
     },
 
     async update(id: string, sheetUpdate: Partial<InsertEdlsSheet>): Promise<EdlsSheet | undefined> {
@@ -179,8 +237,8 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
     },
 
     async updateWithCrews(id: string, sheetUpdate: Partial<InsertEdlsSheet>, crews: Omit<InsertEdlsCrew, 'sheetId'>[]): Promise<EdlsSheetWithCrews | undefined> {
-      return await db.transaction(async (tx) => {
-        await tx.delete(edlsCrews).where(eq(edlsCrews.sheetId, id));
+      const result = await db.transaction(async (tx) => {
+        const deletedCrews = await tx.delete(edlsCrews).where(eq(edlsCrews.sheetId, id)).returning();
         
         const [existingSheet] = await tx.select().from(edlsSheets).where(eq(edlsSheets.id, id));
         if (!existingSheet) return undefined;
@@ -195,8 +253,22 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
           )
         );
         
-        return { ...updatedSheet, crews: createdCrews.map(c => c[0]) };
+        return { 
+          sheet: updatedSheet, 
+          crews: createdCrews.map(c => c[0]),
+          deletedCount: deletedCrews.length
+        };
       });
+      
+      if (!result) return undefined;
+      
+      emitBulkCrewDeleteLogEntry(id, result.deletedCount);
+      
+      for (const crew of result.crews) {
+        emitCrewLogEntry('create', crew, id);
+      }
+      
+      return { ...result.sheet, crews: result.crews };
     },
 
     async delete(id: string): Promise<boolean> {
