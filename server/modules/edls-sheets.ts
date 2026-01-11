@@ -6,7 +6,7 @@ import { requireAccess } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { getSupervisorContext, validateSupervisorForSave } from "./edls-supervisor-context";
+import { getSupervisorContext, validateSupervisorForSave, getEdlsSettings } from "./edls-supervisor-context";
 import { getEffectiveUser } from "./masquerade";
 
 const crewInputSchema = insertEdlsCrewsSchema.omit({ sheetId: true });
@@ -98,6 +98,18 @@ export function registerEdlsSheetsRoutes(
         return;
       }
       
+      const edlsSettings = await getEdlsSettings();
+      if (!edlsSettings.employer) {
+        res.status(400).json({ message: "No employer configured in EDLS settings. Please configure an employer in EDLS Settings before creating sheets." });
+        return;
+      }
+      
+      const employer = await storage.employers.getEmployer(edlsSettings.employer);
+      if (!employer) {
+        res.status(400).json({ message: "Configured employer not found. Please update EDLS Settings with a valid employer." });
+        return;
+      }
+      
       const parsed = sheetWithCrewsSchema.safeParse(req.body);
       
       if (!parsed.success) {
@@ -121,15 +133,10 @@ export function registerEdlsSheetsRoutes(
       
       const finalSheetData = {
         ...sheetData,
+        employerId: edlsSettings.employer,
         supervisor: supervisorValidation.supervisorId,
         assignee: sheetData.assignee || supervisorValidation.supervisorId,
       };
-      
-      const employer = await storage.employers.getEmployer(finalSheetData.employerId);
-      if (!employer) {
-        res.status(400).json({ message: "Employer not found" });
-        return;
-      }
       
       const crewsTotalWorkerCount = crews.reduce((sum, crew) => sum + crew.workerCount, 0);
       if (crewsTotalWorkerCount !== finalSheetData.workerCount) {
@@ -182,6 +189,18 @@ export function registerEdlsSheetsRoutes(
         return;
       }
       
+      const edlsSettings = await getEdlsSettings();
+      if (!edlsSettings.employer) {
+        res.status(400).json({ message: "No employer configured in EDLS settings. Please configure an employer in EDLS Settings before saving sheets." });
+        return;
+      }
+      
+      const configuredEmployer = await storage.employers.getEmployer(edlsSettings.employer);
+      if (!configuredEmployer) {
+        res.status(400).json({ message: "Configured employer not found. Please update EDLS Settings with a valid employer." });
+        return;
+      }
+      
       const existingSheet = await storage.edlsSheets.get(id);
       if (!existingSheet) {
         res.status(404).json({ message: "Sheet not found" });
@@ -199,6 +218,8 @@ export function registerEdlsSheetsRoutes(
       }
       
       const { crews, ...sheetData } = parsed.data;
+      
+      sheetData.employerId = edlsSettings.employer;
       
       if (sheetData.supervisor !== undefined) {
         const supervisorContext = await getSupervisorContext(dbUser.id, id);
@@ -220,14 +241,6 @@ export function registerEdlsSheetsRoutes(
         const finalSupervisor = sheetData.supervisor ?? existingSheet.supervisor;
         if (finalSupervisor) {
           sheetData.assignee = finalSupervisor;
-        }
-      }
-      
-      if (sheetData.employerId) {
-        const employer = await storage.employers.getEmployer(sheetData.employerId);
-        if (!employer) {
-          res.status(400).json({ message: "Employer not found" });
-          return;
         }
       }
       
