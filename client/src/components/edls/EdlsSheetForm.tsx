@@ -37,6 +37,12 @@ interface DepartmentOption {
   name: string;
 }
 
+interface TaskOption {
+  id: string;
+  name: string;
+  departmentId: string;
+}
+
 export interface SheetFormData {
   title: string;
   date: string;
@@ -83,6 +89,10 @@ export function EdlsSheetForm({
     queryKey: ["/api/options/department"],
   });
   
+  const { data: allTasks = [] } = useQuery<TaskOption[]>({
+    queryKey: ["/api/edls/tasks/options"],
+  });
+  
   const [formData, setFormData] = useState<SheetFormData>(() => {
     if (initialData) {
       return {
@@ -100,6 +110,7 @@ export function EdlsSheetForm({
           startTime: c.startTime,
           endTime: c.endTime,
           supervisor: c.supervisor || null,
+          taskId: c.taskId || null,
         })),
       };
     }
@@ -116,6 +127,8 @@ export function EdlsSheetForm({
 
   const effectiveSupervisor = supervisorContext?.enforcedSupervisorId || formData.supervisor;
   const canChangeSupervisor = supervisorContext?.canManage ?? true;
+  
+  const filteredTasks = allTasks.filter(task => task.departmentId === formData.departmentId);
 
   const crewsTotalWorkerCount = formData.crews.reduce(
     (sum, crew) => sum + (crew.workerCount || 0),
@@ -151,6 +164,7 @@ export function EdlsSheetForm({
           startTime: "08:00",
           endTime: "17:00",
           supervisor: effectiveSupervisor || null,
+          taskId: null,
         },
       ],
     });
@@ -402,7 +416,7 @@ export function EdlsSheetForm({
                           />
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                         <div className="space-y-1">
                           <Label className="text-xs">Start Time *</Label>
                           <Input
@@ -435,6 +449,27 @@ export function EdlsSheetForm({
                             }
                             placeholder="Optional"
                           />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Task</Label>
+                          <Select
+                            value={crew.taskId || ""}
+                            onValueChange={(value) =>
+                              handleCrewChange(index, "taskId", value || null)
+                            }
+                          >
+                            <SelectTrigger data-testid={`select-crew-task-${index}`}>
+                              <SelectValue placeholder="None" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="">None</SelectItem>
+                              {filteredTasks.map((task) => (
+                                <SelectItem key={task.id} value={task.id}>
+                                  {task.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs flex items-center gap-1">

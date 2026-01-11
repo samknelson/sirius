@@ -2,6 +2,7 @@ import { db } from "../db";
 import { 
   edlsCrews,
   users,
+  optionsEdlsTasks,
   type EdlsCrew, 
   type InsertEdlsCrew
 } from "@shared/schema";
@@ -10,6 +11,7 @@ import { alias } from "drizzle-orm/pg-core";
 
 export interface EdlsCrewWithRelations extends EdlsCrew {
   supervisorUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
+  task?: { id: string; name: string };
 }
 
 export interface EdlsCrewsStorage {
@@ -42,14 +44,20 @@ export function createEdlsCrewsStorage(): EdlsCrewsStorage {
             lastName: supervisorUsers.lastName,
             email: supervisorUsers.email,
           },
+          task: {
+            id: optionsEdlsTasks.id,
+            name: optionsEdlsTasks.name,
+          },
         })
         .from(edlsCrews)
         .leftJoin(supervisorUsers, eq(edlsCrews.supervisor, supervisorUsers.id))
+        .leftJoin(optionsEdlsTasks, eq(edlsCrews.taskId, optionsEdlsTasks.id))
         .where(eq(edlsCrews.sheetId, sheetId));
       
       return rows.map(row => ({
         ...row.crew,
         supervisorUser: row.supervisorUser?.id ? row.supervisorUser : undefined,
+        task: row.task?.id ? row.task : undefined,
       }));
     },
 

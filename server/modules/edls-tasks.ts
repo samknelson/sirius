@@ -11,6 +11,16 @@ export function registerEdlsTasksRoutes(
 ) {
   const edlsComponent = requireComponent("edls");
 
+  app.get("/api/edls/tasks/options", requireAuth, edlsComponent, requireAccess('staff'), async (req, res) => {
+    try {
+      const tasks = await storage.edlsTasks.getAll();
+      res.json(tasks.map(t => ({ id: t.id, name: t.name, departmentId: t.departmentId })));
+    } catch (error) {
+      console.error("Failed to fetch EDLS task options:", error);
+      res.status(500).json({ message: "Failed to fetch task options" });
+    }
+  });
+
   app.get("/api/edls/tasks", requireAuth, edlsComponent, requireAccess('admin'), async (req, res) => {
     try {
       const tasks = await storage.edlsTasks.getAll();

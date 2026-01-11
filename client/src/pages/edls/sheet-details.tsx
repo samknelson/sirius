@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { Calendar, Users, FileText, Clock, MapPin, Lock, User, Building } from "lucide-react";
+import { Calendar, Users, FileText, Clock, MapPin, Lock, User, Building, ClipboardList } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,6 +9,7 @@ import type { EdlsSheetStatus, EdlsCrew } from "@shared/schema";
 
 interface EdlsCrewWithRelations extends EdlsCrew {
   supervisorUser?: UserInfo;
+  task?: { id: string; name: string };
 }
 
 interface UserInfo {
@@ -177,6 +178,12 @@ function EdlsSheetDetailsContent() {
                       <User className="h-4 w-4" />
                       Supervisor: {formatUserName(crew.supervisorUser)}
                     </div>
+                    {crew.task && (
+                      <div className="flex items-center gap-1" data-testid={`crew-task-${crew.id}`}>
+                        <ClipboardList className="h-4 w-4" />
+                        Task: {crew.task.name}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
