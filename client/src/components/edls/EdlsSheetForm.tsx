@@ -32,9 +32,15 @@ interface SupervisorContext {
 
 type CrewInput = Omit<InsertEdlsCrew, "sheetId"> & { id?: string };
 
+interface DepartmentOption {
+  id: string;
+  name: string;
+}
+
 export interface SheetFormData {
   title: string;
   date: string;
+  departmentId: string;
   workerCount: number;
   supervisor: string;
   assignee: string;
@@ -73,11 +79,16 @@ export function EdlsSheetForm({
     },
   });
   
+  const { data: departments, isLoading: departmentsLoading } = useQuery<DepartmentOption[]>({
+    queryKey: ["/api/options/department"],
+  });
+  
   const [formData, setFormData] = useState<SheetFormData>(() => {
     if (initialData) {
       return {
         title: initialData.sheet.title,
         date: initialData.sheet.date as string,
+        departmentId: initialData.sheet.departmentId,
         workerCount: initialData.sheet.workerCount,
         supervisor: initialData.sheet.supervisor || "",
         assignee: initialData.sheet.assignee || "",
@@ -95,6 +106,7 @@ export function EdlsSheetForm({
     return {
       title: "",
       date: new Date().toISOString().split("T")[0],
+      departmentId: "",
       workerCount: 0,
       supervisor: "",
       assignee: "",
@@ -114,8 +126,8 @@ export function EdlsSheetForm({
     formData.crews.length > 0 && crewsTotalWorkerCount !== formData.workerCount;
 
   const hasValidationErrors = () => {
-    if (supervisorContextLoading) return true;
-    if (!formData.title || !formData.date) return true;
+    if (supervisorContextLoading || departmentsLoading) return true;
+    if (!formData.title || !formData.date || !formData.departmentId) return true;
     if (!effectiveSupervisor) return true;
     if (formData.crews.length === 0) return true;
     if (workerCountMismatch) return true;
@@ -198,6 +210,35 @@ export function EdlsSheetForm({
               setFormData({ ...formData, date: e.target.value })
             }
           />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="department">Department *</Label>
+          {departmentsLoading ? (
+            <Skeleton className="h-10 w-full" />
+          ) : (
+            <Select
+              value={formData.departmentId}
+              onValueChange={(value) =>
+                setFormData({ ...formData, departmentId: value })
+              }
+            >
+              <SelectTrigger data-testid="select-department">
+                <SelectValue placeholder="Select a department" />
+              </SelectTrigger>
+              <SelectContent>
+                {departments?.map((dept) => (
+                  <SelectItem key={dept.id} value={dept.id}>
+                    {dept.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {departments?.length === 0 && (
+            <p className="text-sm text-destructive mt-1">
+              No departments available. Configure departments first.
+            </p>
+          )}
         </div>
         <div className="space-y-2">
           <Label htmlFor="workerCount">Total Worker Count *</Label>

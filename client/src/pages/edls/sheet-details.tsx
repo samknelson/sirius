@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { Calendar, Users, FileText, Clock, MapPin, Lock, User } from "lucide-react";
+import { Calendar, Users, FileText, Clock, MapPin, Lock, User, Building } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -81,6 +81,13 @@ function EdlsSheetDetailsContent() {
               <p className="text-foreground flex items-center gap-2" data-testid="text-date">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 {format(new Date(sheet.date), "PPP")}
+              </p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Department</h3>
+              <p className="text-foreground flex items-center gap-2" data-testid="text-department">
+                <Building className="h-4 w-4 text-muted-foreground" />
+                {(sheet as any).department?.name || "Not assigned"}
               </p>
             </div>
             <div>

@@ -221,6 +221,10 @@ export function registerEdlsSheetsRoutes(
       
       sheetData.employerId = edlsSettings.employer;
       
+      if (!sheetData.departmentId) {
+        sheetData.departmentId = existingSheet.departmentId;
+      }
+      
       if (sheetData.supervisor !== undefined) {
         const supervisorContext = await getSupervisorContext(dbUser.id, id);
         const supervisorValidation = validateSupervisorForSave(
