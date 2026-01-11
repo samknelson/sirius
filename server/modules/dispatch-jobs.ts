@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { storage } from "../storage";
+import { createUnifiedOptionsStorage } from "../storage/unified-options";
 import { insertDispatchJobSchema, dispatchJobStatusEnum } from "@shared/schema";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
@@ -7,6 +8,8 @@ import type { DispatchJobFilters } from "../storage/dispatch-jobs";
 import { dispatchEligPluginRegistry } from "../services/dispatch-elig-plugin-registry";
 import { createDispatchEligibleWorkersStorage } from "../storage/dispatch-eligible-workers";
 import { isComponentEnabledSync } from "../services/component-cache";
+
+const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
 export function registerDispatchJobsRoutes(
   app: Express,
@@ -87,7 +90,7 @@ export function registerDispatchJobsRoutes(
       }
       
       if (parsed.data.jobTypeId) {
-        const jobType = await storage.options.dispatchJobTypes.get(parsed.data.jobTypeId);
+        const jobType = await unifiedOptionsStorage.get("dispatch-job-type", parsed.data.jobTypeId);
         if (!jobType) {
           res.status(400).json({ message: "Job type not found" });
           return;
@@ -127,7 +130,7 @@ export function registerDispatchJobsRoutes(
         if (jobTypeId === null) {
           updates.jobTypeId = null;
         } else {
-          const jobType = await storage.options.dispatchJobTypes.get(jobTypeId);
+          const jobType = await unifiedOptionsStorage.get("dispatch-job-type", jobTypeId);
           if (!jobType) {
             res.status(400).json({ message: "Job type not found" });
             return;

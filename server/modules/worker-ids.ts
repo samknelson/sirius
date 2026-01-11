@@ -1,6 +1,9 @@
 import type { Express } from "express";
 import { storage } from "../storage";
+import { createUnifiedOptionsStorage } from "../storage/unified-options";
 import { requireAccess } from "../services/access-policy-evaluator";
+
+const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
 export function registerWorkerIdsRoutes(
   app: Express,
@@ -57,7 +60,7 @@ export function registerWorkerIdsRoutes(
       }
       
       // Verify the type exists
-      const type = await storage.options.workerIdTypes.getWorkerIdType(typeId);
+      const type = await unifiedOptionsStorage.get("worker-id-type", typeId);
       if (!type) {
         return res.status(404).json({ message: "Worker ID type not found" });
       }
@@ -112,7 +115,7 @@ export function registerWorkerIdsRoutes(
         }
         
         // Verify the type exists
-        const type = await storage.options.workerIdTypes.getWorkerIdType(typeId);
+        const type = await unifiedOptionsStorage.get("worker-id-type", typeId);
         if (!type) {
           return res.status(404).json({ message: "Worker ID type not found" });
         }
@@ -133,7 +136,7 @@ export function registerWorkerIdsRoutes(
         
         // Determine which type to validate against
         const typeToValidate = typeId ? typeId.trim() : existingWorkerId.typeId;
-        const type = await storage.options.workerIdTypes.getWorkerIdType(typeToValidate);
+        const type = await unifiedOptionsStorage.get("worker-id-type", typeToValidate);
         
         // Validate against regex if type has a validator
         if (type && type.validator) {

@@ -1,7 +1,10 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
+import { createUnifiedOptionsStorage } from "../storage/unified-options";
 import { z } from "zod";
 import { requireComponent } from "./components";
+
+const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
 type RequireAccess = (policy: string, getEntityId?: (req: Request) => string | Promise<string | undefined> | undefined) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
@@ -92,7 +95,7 @@ export function registerWorkerSkillsRoutes(
 
   app.get("/api/options/skills", requireAuth, skillsComponent, async (req: Request, res: Response) => {
     try {
-      const skills = await storage.options.skills.getAll();
+      const skills = await unifiedOptionsStorage.list("skill");
       res.json(skills);
     } catch (error) {
       console.error("Error fetching skill options:", error);

@@ -12,8 +12,11 @@ import { registerChargePlugin } from "../registry";
 import { z } from "zod";
 import { logger } from "../../logger";
 import { storage } from "../../storage";
+import { createUnifiedOptionsStorage } from "../../storage/unified-options";
 import type { Ledger, ChargePluginConfig } from "@shared/schema";
 import { getCurrency } from "@shared/currency";
+
+const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
 const paymentSimpleAllocationSettingsSchema = z.object({
   accountIds: z.array(z.string().uuid("Account ID must be a valid UUID")).min(1, "At least one account is required"),
@@ -122,7 +125,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
       }
 
       // Look up payment type and currency for description
-      const paymentType = await storage.options.ledgerPaymentTypes.getLedgerPaymentType(paymentContext.paymentTypeId);
+      const paymentType = await unifiedOptionsStorage.get("ledger-payment-type", paymentContext.paymentTypeId);
       const paymentTypeName = paymentType?.name || "Unknown";
       const currencyCode = paymentType?.currencyCode || "USD";
       const currency = getCurrency(currencyCode);
@@ -318,7 +321,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
       };
 
       // Look up payment type and currency for description
-      const verifyPaymentType = await storage.options.ledgerPaymentTypes.getLedgerPaymentType(payment.paymentType);
+      const verifyPaymentType = await unifiedOptionsStorage.get("ledger-payment-type", payment.paymentType);
       const verifyPaymentTypeName = verifyPaymentType?.name || "Unknown";
       const verifyCurrencyCode = verifyPaymentType?.currencyCode || "USD";
       const verifyCurrency = getCurrency(verifyCurrencyCode);
