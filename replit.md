@@ -88,9 +88,36 @@ const result = await db.transaction(async (tx) => { ... });
 ### When You Need New Database Operations
 
 1. Add a method to the appropriate storage module (e.g., `server/storage/workers.ts`)
-2. If you need atomic transactions across multiple tables, create a transactional storage method (see `createWithCrews()` in `edls-sheets.ts` for an example)
+2. If you need atomic transactions across multiple tables, use the transaction context pattern (see below)
 3. Configure logging in the storage module's logging config
 4. Use the storage method from your route handler
+
+### Transaction Context Pattern
+
+For operations that span multiple storage modules while maintaining atomicity:
+
+```typescript
+import { getClient, runInTransaction } from "./transaction-context";
+import { storage } from "./index";
+
+async createWithRelated(data, relatedItems) {
+  return runInTransaction(async () => {
+    const client = getClient();
+    const [parent] = await client.insert(parentTable).values(data).returning();
+    
+    const itemsWithParentId = relatedItems.map(i => ({ ...i, parentId: parent.id }));
+    const created = await storage.relatedModule.createMany(itemsWithParentId);
+    
+    return { ...parent, items: created };
+  });
+}
+```
+
+Key points:
+- `runInTransaction()` wraps operations in a database transaction using AsyncLocalStorage
+- `getClient()` returns the transaction client if inside a transaction, otherwise the regular db client
+- Nested calls to other storage modules (e.g., `storage.relatedModule.createMany()`) automatically participate in the same transaction
+- All logging middleware runs within the transaction context, ensuring proper audit trails
 
 ### Enforcement
 
