@@ -1,15 +1,22 @@
 import { db } from "../db";
 import { 
-  edlsSheets, 
+  edlsSheets,
+  edlsCrews,
   employers,
   users,
   optionsDepartment,
   type EdlsSheet, 
-  type InsertEdlsSheet
+  type InsertEdlsSheet,
+  type EdlsCrew,
+  type InsertEdlsCrew
 } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { StorageLoggingConfig } from "./middleware/logging";
+
+export interface EdlsSheetWithCrews extends EdlsSheet {
+  crews: EdlsCrew[];
+}
 
 async function getEmployerName(employerId: string | null | undefined): Promise<string> {
   if (!employerId) return 'Unknown';
@@ -38,7 +45,9 @@ export interface EdlsSheetsStorage {
   getWithRelations(id: string): Promise<EdlsSheetWithRelations | undefined>;
   getByEmployer(employerId: string): Promise<EdlsSheet[]>;
   create(sheet: InsertEdlsSheet): Promise<EdlsSheet>;
+  createWithCrews(sheet: InsertEdlsSheet, crews: Omit<InsertEdlsCrew, 'sheetId'>[]): Promise<EdlsSheetWithCrews>;
   update(id: string, sheet: Partial<InsertEdlsSheet>): Promise<EdlsSheet | undefined>;
+  updateWithCrews(id: string, sheet: Partial<InsertEdlsSheet>, crews: Omit<InsertEdlsCrew, 'sheetId'>[]): Promise<EdlsSheetWithCrews | undefined>;
   delete(id: string): Promise<boolean>;
 }
 
@@ -146,6 +155,20 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       return sheet;
     },
 
+    async createWithCrews(insertSheet: InsertEdlsSheet, crews: Omit<InsertEdlsCrew, 'sheetId'>[]): Promise<EdlsSheetWithCrews> {
+      return await db.transaction(async (tx) => {
+        const [sheet] = await tx.insert(edlsSheets).values(insertSheet).returning();
+        
+        const createdCrews = await Promise.all(
+          crews.map(crewData => 
+            tx.insert(edlsCrews).values({ ...crewData, sheetId: sheet.id }).returning()
+          )
+        );
+        
+        return { ...sheet, crews: createdCrews.map(c => c[0]) };
+      });
+    },
+
     async update(id: string, sheetUpdate: Partial<InsertEdlsSheet>): Promise<EdlsSheet | undefined> {
       const [sheet] = await db
         .update(edlsSheets)
@@ -153,6 +176,27 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         .where(eq(edlsSheets.id, id))
         .returning();
       return sheet || undefined;
+    },
+
+    async updateWithCrews(id: string, sheetUpdate: Partial<InsertEdlsSheet>, crews: Omit<InsertEdlsCrew, 'sheetId'>[]): Promise<EdlsSheetWithCrews | undefined> {
+      return await db.transaction(async (tx) => {
+        await tx.delete(edlsCrews).where(eq(edlsCrews.sheetId, id));
+        
+        const [existingSheet] = await tx.select().from(edlsSheets).where(eq(edlsSheets.id, id));
+        if (!existingSheet) return undefined;
+        
+        const [updatedSheet] = Object.keys(sheetUpdate).length > 0
+          ? await tx.update(edlsSheets).set(sheetUpdate).where(eq(edlsSheets.id, id)).returning()
+          : [existingSheet];
+        
+        const createdCrews = await Promise.all(
+          crews.map(crewData => 
+            tx.insert(edlsCrews).values({ ...crewData, sheetId: id }).returning()
+          )
+        );
+        
+        return { ...updatedSheet, crews: createdCrews.map(c => c[0]) };
+      });
     },
 
     async delete(id: string): Promise<boolean> {
@@ -185,6 +229,29 @@ export const edlsSheetsLoggingConfig: StorageLoggingConfig<EdlsSheetsStorage> = 
         };
       }
     },
+    createWithCrews: {
+      enabled: true,
+      getEntityId: (args, result) => result?.id || 'new sheet',
+      getHostEntityId: (args, result) => result?.id,
+      getDescription: async (args, result) => {
+        const date = result?.date || args[0]?.date || 'Unknown';
+        const employerName = await getEmployerName(result?.employerId || args[0]?.employerId);
+        const crewCount = result?.crews?.length || args[1]?.length || 0;
+        return `Created EDLS Sheet [${date}] for ${employerName} with ${crewCount} crew(s)`;
+      },
+      after: async (args, result) => {
+        return {
+          sheet: result,
+          crews: result?.crews,
+          metadata: {
+            sheetId: result?.id,
+            date: result?.date,
+            employerId: result?.employerId,
+            crewCount: result?.crews?.length,
+          }
+        };
+      }
+    },
     update: {
       enabled: true,
       getEntityId: (args) => args[0],
@@ -199,6 +266,30 @@ export const edlsSheetsLoggingConfig: StorageLoggingConfig<EdlsSheetsStorage> = 
       },
       after: async (args, result) => {
         return result;
+      }
+    },
+    updateWithCrews: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        return await storage.get(args[0]);
+      },
+      getDescription: async (args, result, beforeState) => {
+        const date = result?.date || beforeState?.date || 'Unknown';
+        const employerName = await getEmployerName(result?.employerId || beforeState?.employerId);
+        const crewCount = result?.crews?.length || args[2]?.length || 0;
+        return `Updated EDLS Sheet [${date}] for ${employerName} with ${crewCount} crew(s)`;
+      },
+      after: async (args, result) => {
+        return {
+          sheet: result,
+          crews: result?.crews,
+          metadata: {
+            sheetId: result?.id,
+            crewCount: result?.crews?.length,
+          }
+        };
       }
     },
     delete: {
