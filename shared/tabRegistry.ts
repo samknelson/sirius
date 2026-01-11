@@ -359,23 +359,23 @@ export const providerContactTabTree: HierarchicalTab[] = [
       { id: 'send-inapp', label: 'Send In-App', hrefTemplate: '/trust-provider-contacts/{id}/comm/send-inapp', permission: 'communication.send' },
     ],
   },
-  { id: 'user', label: 'User', hrefTemplate: '/trust-provider-contacts/{id}/user', permission: 'users.view' },
+  { id: 'user', label: 'User', hrefTemplate: '/trust-provider-contacts/{id}/user', permission: 'admin' },
 ];
 
 /**
  * User entity tab tree
  */
 export const userTabTree: HierarchicalTab[] = [
-  { id: 'details', label: 'Details', hrefTemplate: '/users/{id}', permission: 'users.view' },
+  { id: 'details', label: 'Details', hrefTemplate: '/users/{id}', permission: 'admin' },
   { 
     id: 'contact', 
     label: 'Contact', 
     hrefTemplate: '/users/{id}/contact/email', 
-    permission: 'users.view',
+    permission: 'admin',
     children: [
-      { id: 'email', label: 'Email', hrefTemplate: '/users/{id}/contact/email', permission: 'users.view' },
-      { id: 'phone-numbers', label: 'Phone Numbers', hrefTemplate: '/users/{id}/contact/phone-numbers', permission: 'users.view' },
-      { id: 'addresses', label: 'Addresses', hrefTemplate: '/users/{id}/contact/addresses', permission: 'users.view' },
+      { id: 'email', label: 'Email', hrefTemplate: '/users/{id}/contact/email', permission: 'admin' },
+      { id: 'phone-numbers', label: 'Phone Numbers', hrefTemplate: '/users/{id}/contact/phone-numbers', permission: 'admin' },
+      { id: 'addresses', label: 'Addresses', hrefTemplate: '/users/{id}/contact/addresses', permission: 'admin' },
     ],
   },
   { 
@@ -391,7 +391,7 @@ export const userTabTree: HierarchicalTab[] = [
       { id: 'send-inapp', label: 'Send In-App', hrefTemplate: '/users/{id}/comm/send-inapp', permission: 'communication.send' },
     ],
   },
-  { id: 'logs', label: 'Logs', hrefTemplate: '/users/{id}/logs', permission: 'users.view' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/users/{id}/logs', permission: 'admin' },
 ];
 
 /**
