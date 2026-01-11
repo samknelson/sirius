@@ -30,7 +30,7 @@ export interface WizardStorage {
   getLatestReportData(wizardId: string): Promise<WizardReportData | undefined>;
   deleteReportData(wizardId: string): Promise<number>;
 }
-
+d
 export function createWizardStorage(): WizardStorage {
   return {
     async list(filters?: { type?: string; status?: string; entityId?: string }): Promise<Wizard[]> {
