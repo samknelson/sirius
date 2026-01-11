@@ -261,9 +261,9 @@ export function registerEdlsSheetsRoutes(
             const crewSupervisor = crewData.supervisor && supervisorContext.options.some(opt => opt.id === crewData.supervisor)
               ? crewData.supervisor
               : finalSheetSupervisor;
-            return { ...crewData, supervisor: crewSupervisor };
+            return { id: crewId, ...crewData, supervisor: crewSupervisor };
           }
-          return { ...crewData, supervisor: finalSheetSupervisor };
+          return { id: crewId, ...crewData, supervisor: finalSheetSupervisor };
         });
         
         const result = await storage.edlsSheets.updateWithCrews(id, sheetData, finalCrews);
