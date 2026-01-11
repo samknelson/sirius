@@ -112,6 +112,7 @@ export function withStorageLogging<T extends Record<string, any>>(
     }
 
     wrappedStorage[key] = async function(...args: any[]) {
+      console.log(`[StorageLogging] Method called: ${config.module}.${String(key)}`);
       let beforeState: any;
       let afterState: any;
       let result: any;
