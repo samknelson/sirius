@@ -168,6 +168,7 @@ export const edlsSheetsLoggingConfig: StorageLoggingConfig<EdlsSheetsStorage> = 
     create: {
       enabled: true,
       getEntityId: (args, result) => result?.id || 'new sheet',
+      getHostEntityId: (args, result) => result?.id,
       getDescription: async (args, result) => {
         const date = result?.date || args[0]?.date || 'Unknown';
         const employerName = await getEmployerName(result?.employerId || args[0]?.employerId);
@@ -187,6 +188,7 @@ export const edlsSheetsLoggingConfig: StorageLoggingConfig<EdlsSheetsStorage> = 
     update: {
       enabled: true,
       getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
       before: async (args, storage) => {
         return await storage.get(args[0]);
       },
@@ -202,6 +204,7 @@ export const edlsSheetsLoggingConfig: StorageLoggingConfig<EdlsSheetsStorage> = 
     delete: {
       enabled: true,
       getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
       before: async (args, storage) => {
         return await storage.get(args[0]);
       },
