@@ -444,6 +444,16 @@ export function registerOptionsRoutes(
     }
   });
 
+  // GET /api/options/department - Get department options for dropdowns (requires staff permission)
+  app.get("/api/options/department", requireAccess('staff'), async (req, res) => {
+    try {
+      const departments = await storage.options.departments.getAll();
+      res.json(departments.map(d => ({ id: d.id, name: d.name })));
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch department options" });
+    }
+  });
+
   // Provider Contact Type routes
 
   // GET /api/provider-contact-types - Get all provider contact types (requires admin permission)
