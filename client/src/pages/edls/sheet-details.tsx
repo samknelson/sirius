@@ -1,10 +1,9 @@
 import { format } from "date-fns";
-import { Building2, Calendar, Users, FileText, Clock, MapPin, Lock, User } from "lucide-react";
+import { Calendar, Users, FileText, Clock, MapPin, Lock, User } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
-import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { EdlsSheetStatus, EdlsCrew } from "@shared/schema";
 
@@ -76,19 +75,6 @@ function EdlsSheetDetailsContent() {
             <div>
               <h3 className="text-sm font-medium text-muted-foreground mb-1">Title</h3>
               <p className="text-foreground" data-testid="text-title">{sheet.title}</p>
-            </div>
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">Employer</h3>
-              <p className="text-foreground flex items-center gap-2" data-testid="text-employer">
-                <Building2 className="h-4 w-4 text-muted-foreground" />
-                {sheet.employer ? (
-                  <Link href={`/employers/${sheet.employer.id}`} className="text-primary hover:underline">
-                    {sheet.employer.name}
-                  </Link>
-                ) : (
-                  "Unknown"
-                )}
-              </p>
             </div>
             <div>
               <h3 className="text-sm font-medium text-muted-foreground mb-1">Date</h3>

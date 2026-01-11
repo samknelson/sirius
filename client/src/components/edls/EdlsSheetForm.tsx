@@ -15,11 +15,6 @@ import { Plus, Trash2, AlertCircle, Lock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { EdlsSheet, EdlsCrew, InsertEdlsCrew } from "@shared/schema";
 
-interface Employer {
-  id: string;
-  name: string;
-}
-
 interface SupervisorOption {
   id: string;
   firstName: string | null;
@@ -38,7 +33,6 @@ interface SupervisorContext {
 type CrewInput = Omit<InsertEdlsCrew, "sheetId"> & { id?: string };
 
 export interface SheetFormData {
-  employerId: string;
   title: string;
   date: string;
   workerCount: number;
@@ -82,7 +76,6 @@ export function EdlsSheetForm({
   const [formData, setFormData] = useState<SheetFormData>(() => {
     if (initialData) {
       return {
-        employerId: initialData.sheet.employerId,
         title: initialData.sheet.title,
         date: initialData.sheet.date as string,
         workerCount: initialData.sheet.workerCount,
@@ -100,7 +93,6 @@ export function EdlsSheetForm({
       };
     }
     return {
-      employerId: "",
       title: "",
       date: new Date().toISOString().split("T")[0],
       workerCount: 0,
@@ -113,10 +105,6 @@ export function EdlsSheetForm({
   const effectiveSupervisor = supervisorContext?.enforcedSupervisorId || formData.supervisor;
   const canChangeSupervisor = supervisorContext?.canManage ?? true;
 
-  const { data: employers = [] } = useQuery<Employer[]>({
-    queryKey: ["/api/employers"],
-  });
-
   const crewsTotalWorkerCount = formData.crews.reduce(
     (sum, crew) => sum + (crew.workerCount || 0),
     0
@@ -127,7 +115,7 @@ export function EdlsSheetForm({
 
   const hasValidationErrors = () => {
     if (supervisorContextLoading) return true;
-    if (!formData.title || !formData.employerId || !formData.date) return true;
+    if (!formData.title || !formData.date) return true;
     if (!effectiveSupervisor) return true;
     if (formData.crews.length === 0) return true;
     if (workerCountMismatch) return true;
@@ -187,26 +175,6 @@ export function EdlsSheetForm({
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="employer">Employer *</Label>
-          <Select
-            value={formData.employerId}
-            onValueChange={(value) =>
-              setFormData({ ...formData, employerId: value })
-            }
-          >
-            <SelectTrigger data-testid="select-employer">
-              <SelectValue placeholder="Select an employer" />
-            </SelectTrigger>
-            <SelectContent>
-              {employers.map((employer) => (
-                <SelectItem key={employer.id} value={employer.id}>
-                  {employer.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
         <div className="space-y-2">
           <Label htmlFor="title">Title *</Label>
           <Input
