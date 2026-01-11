@@ -38,15 +38,15 @@ interface EdlsTask {
   siriusId: string | null;
   departmentId: string;
   data: Record<string, unknown> | null;
-  department?: {
-    id: string;
-    name: string;
-  };
 }
 
 interface Department {
   id: string;
   name: string;
+}
+
+interface EnrichedEdlsTask extends EdlsTask {
+  departmentName: string;
 }
 
 export default function EdlsTasksPage() {
@@ -60,13 +60,21 @@ export default function EdlsTasksPage() {
   const [formSiriusId, setFormSiriusId] = useState("");
   const [formDepartmentId, setFormDepartmentId] = useState("");
 
-  const { data: tasks = [], isLoading } = useQuery<EdlsTask[]>({
+  const { data: rawTasks = [], isLoading: tasksLoading } = useQuery<EdlsTask[]>({
     queryKey: ["/api/edls/tasks"],
   });
 
-  const { data: departments = [] } = useQuery<Department[]>({
+  const { data: departments = [], isLoading: departmentsLoading } = useQuery<Department[]>({
     queryKey: ["/api/options/department"],
   });
+
+  const isLoading = tasksLoading || departmentsLoading;
+
+  const departmentMap = new Map(departments.map(d => [d.id, d.name]));
+  const tasks: EnrichedEdlsTask[] = rawTasks.map(task => ({
+    ...task,
+    departmentName: departmentMap.get(task.departmentId) || "Unknown",
+  }));
 
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; siriusId: string | null; departmentId: string }) => {
@@ -321,7 +329,7 @@ export default function EdlsTasksPage() {
                       <>
                         <TableCell data-testid={`text-name-${task.id}`}>{task.name}</TableCell>
                         <TableCell data-testid={`text-department-${task.id}`}>
-                          {task.department?.name || "-"}
+                          {task.departmentName || "-"}
                         </TableCell>
                         <TableCell data-testid={`text-sirius-id-${task.id}`}>
                           {task.siriusId || "-"}

@@ -1,8 +1,8 @@
 import type { Express } from "express";
-import { storage } from "../storage";
 import { insertEdlsTaskSchema } from "@shared/schema";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
+import { getOptionsType } from "./options-registry";
 
 export function registerEdlsTasksRoutes(
   app: Express,
@@ -10,11 +10,17 @@ export function registerEdlsTasksRoutes(
   requirePermission: any
 ) {
   const edlsComponent = requireComponent("edls");
+  
+  const getEdlsTaskOptions = () => {
+    const config = getOptionsType("edls-task");
+    if (!config) throw new Error("edls-task options type not configured");
+    return config;
+  };
 
   app.get("/api/edls/tasks/options", requireAuth, edlsComponent, requireAccess('staff'), async (req, res) => {
     try {
-      const tasks = await storage.edlsTasks.getAll();
-      res.json(tasks.map(t => ({ id: t.id, name: t.name, departmentId: t.departmentId })));
+      const tasks = await getEdlsTaskOptions().getAll();
+      res.json(tasks.map((t: any) => ({ id: t.id, name: t.name, departmentId: t.departmentId })));
     } catch (error) {
       console.error("Failed to fetch EDLS task options:", error);
       res.status(500).json({ message: "Failed to fetch task options" });
@@ -23,7 +29,7 @@ export function registerEdlsTasksRoutes(
 
   app.get("/api/edls/tasks", requireAuth, edlsComponent, requireAccess('admin'), async (req, res) => {
     try {
-      const tasks = await storage.edlsTasks.getAll();
+      const tasks = await getEdlsTaskOptions().getAll();
       res.json(tasks);
     } catch (error) {
       console.error("Failed to fetch EDLS tasks:", error);
@@ -34,7 +40,7 @@ export function registerEdlsTasksRoutes(
   app.get("/api/edls/tasks/:id", requireAuth, edlsComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
-      const task = await storage.edlsTasks.get(id);
+      const task = await getEdlsTaskOptions().get(id);
       
       if (!task) {
         res.status(404).json({ message: "Task not found" });
@@ -60,7 +66,7 @@ export function registerEdlsTasksRoutes(
         return;
       }
       
-      const task = await storage.edlsTasks.create(parseResult.data);
+      const task = await getEdlsTaskOptions().create(parseResult.data);
       res.status(201).json(task);
     } catch (error) {
       console.error("Failed to create EDLS task:", error);
@@ -81,7 +87,7 @@ export function registerEdlsTasksRoutes(
         return;
       }
       
-      const task = await storage.edlsTasks.update(id, parseResult.data);
+      const task = await getEdlsTaskOptions().update(id, parseResult.data);
       
       if (!task) {
         res.status(404).json({ message: "Task not found" });
@@ -98,7 +104,7 @@ export function registerEdlsTasksRoutes(
   app.delete("/api/edls/tasks/:id", requireAuth, edlsComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.edlsTasks.delete(id);
+      const deleted = await getEdlsTaskOptions().delete(id);
       
       if (!deleted) {
         res.status(404).json({ message: "Task not found" });

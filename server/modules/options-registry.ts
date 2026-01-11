@@ -57,6 +57,7 @@ export const optionsTypeRegistry: Record<string, OptionsTypeConfig> = {
   "dispatch-job-type": createTypeConfig("dispatch-job-type"),
   "ledger-payment-type": createTypeConfig("ledger-payment-type"),
   "skill": createTypeConfig("skill"),
+  "edls-task": createTypeConfig("edls-task"),
 };
 
 export function getOptionsType(type: string): OptionsTypeConfig | undefined {

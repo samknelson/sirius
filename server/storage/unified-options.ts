@@ -15,6 +15,7 @@ import {
   optionsEventType,
   optionsDispatchJobType,
   optionsSkills,
+  optionsEdlsTasks,
 } from "@shared/schema";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
@@ -31,7 +32,8 @@ export type OptionsTypeName =
   | "event-type"
   | "dispatch-job-type"
   | "ledger-payment-type"
-  | "skill";
+  | "skill"
+  | "edls-task";
 
 interface OptionsTableMetadata<T extends PgTable<TableConfig>> {
   table: T;
@@ -146,6 +148,14 @@ const optionsMetadata = {
     loggingModule: "options.skills",
     requiredFields: ["name"],
     optionalFields: ["description", "data"],
+  },
+  "edls-task": {
+    table: optionsEdlsTasks,
+    displayName: "EDLS Task",
+    orderByColumn: "name" as const,
+    loggingModule: "options.edlsTasks",
+    requiredFields: ["name", "departmentId"],
+    optionalFields: ["siriusId", "data"],
   },
 } as const;
 
