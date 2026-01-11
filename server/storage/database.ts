@@ -38,8 +38,8 @@ import { type BtuEmployerMapStorage, createBtuEmployerMapStorage, btuEmployerMap
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./worker-dispatch-dnc";
 import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./worker-skills";
-import { type EdlsSheetsStorage, createEdlsSheetsStorage } from "./edls-sheets";
-import { type EdlsCrewsStorage, createEdlsCrewsStorage } from "./edls-crews";
+import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfig } from "./edls-sheets";
+import { type EdlsCrewsStorage, createEdlsCrewsStorage, edlsCrewsLoggingConfig } from "./edls-crews";
 import { type EdlsTaskStorage, createEdlsTaskStorage } from "./edls-tasks";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "../db";
@@ -251,8 +251,8 @@ export class DatabaseStorage implements IStorage {
     this.workerBans = withStorageLogging(createWorkerBanStorage(), workerBanLoggingConfig);
     this.workerDispatchDnc = withStorageLogging(createWorkerDispatchDncStorage(), workerDispatchDncLoggingConfig);
     this.workerSkills = withStorageLogging(createWorkerSkillStorage(), workerSkillLoggingConfig);
-    this.edlsSheets = createEdlsSheetsStorage();
-    this.edlsCrews = createEdlsCrewsStorage();
+    this.edlsSheets = withStorageLogging(createEdlsSheetsStorage(), edlsSheetsLoggingConfig);
+    this.edlsCrews = withStorageLogging(createEdlsCrewsStorage(), edlsCrewsLoggingConfig);
     this.edlsTasks = createEdlsTaskStorage();
   }
 }

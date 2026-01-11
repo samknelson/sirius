@@ -9,6 +9,13 @@ import {
 } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import { StorageLoggingConfig } from "./middleware/logging";
+
+async function getEmployerName(employerId: string | null | undefined): Promise<string> {
+  if (!employerId) return 'Unknown';
+  const [employer] = await db.select({ name: employers.name }).from(employers).where(eq(employers.id, employerId));
+  return employer?.name || 'Unknown';
+}
 
 export interface EdlsSheetWithRelations extends EdlsSheet {
   employer?: { id: string; name: string };
@@ -154,3 +161,55 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
     }
   };
 }
+
+export const edlsSheetsLoggingConfig: StorageLoggingConfig<EdlsSheetsStorage> = {
+  module: 'edls-sheets',
+  methods: {
+    create: {
+      enabled: true,
+      getEntityId: (args, result) => result?.id || 'new sheet',
+      getDescription: async (args, result) => {
+        const date = result?.date || args[0]?.date || 'Unknown';
+        const employerName = await getEmployerName(result?.employerId || args[0]?.employerId);
+        return `Created EDLS Sheet [${date}] for ${employerName}`;
+      },
+      after: async (args, result) => {
+        return {
+          sheet: result,
+          metadata: {
+            sheetId: result?.id,
+            date: result?.date,
+            employerId: result?.employerId,
+          }
+        };
+      }
+    },
+    update: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        return await storage.get(args[0]);
+      },
+      getDescription: async (args, result, beforeState) => {
+        const date = result?.date || beforeState?.date || 'Unknown';
+        const employerName = await getEmployerName(result?.employerId || beforeState?.employerId);
+        return `Updated EDLS Sheet [${date}] for ${employerName}`;
+      },
+      after: async (args, result) => {
+        return result;
+      }
+    },
+    delete: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        return await storage.get(args[0]);
+      },
+      getDescription: async (args, result, beforeState) => {
+        const date = beforeState?.date || 'Unknown';
+        const employerName = await getEmployerName(beforeState?.employerId);
+        return `Deleted EDLS Sheet [${date}] for ${employerName}`;
+      }
+    }
+  }
+};

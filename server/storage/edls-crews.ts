@@ -8,6 +8,7 @@ import {
 } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import { StorageLoggingConfig } from "./middleware/logging";
 
 export interface EdlsCrewWithRelations extends EdlsCrew {
   supervisorUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
@@ -104,3 +105,72 @@ export function createEdlsCrewsStorage(): EdlsCrewsStorage {
     }
   };
 }
+
+export const edlsCrewsLoggingConfig: StorageLoggingConfig<EdlsCrewsStorage> = {
+  module: 'edls-crews',
+  methods: {
+    create: {
+      enabled: true,
+      getEntityId: (args, result) => result?.id || 'new crew',
+      getHostEntityId: (args, result) => result?.sheetId || args[0]?.sheetId,
+      getDescription: async (args, result) => {
+        const crewNumber = result?.crewNumber || args[0]?.crewNumber || 'Unknown';
+        const workerCount = result?.workerCount || args[0]?.workerCount || 0;
+        return `Created EDLS Crew #${crewNumber} with ${workerCount} workers`;
+      },
+      after: async (args, result) => {
+        return {
+          crew: result,
+          metadata: {
+            crewId: result?.id,
+            sheetId: result?.sheetId,
+            crewNumber: result?.crewNumber,
+            workerCount: result?.workerCount,
+          }
+        };
+      }
+    },
+    update: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: async (args, result, beforeState) => {
+        return result?.sheetId || beforeState?.sheetId;
+      },
+      before: async (args, storage) => {
+        return await storage.get(args[0]);
+      },
+      getDescription: async (args, result, beforeState) => {
+        const crewNumber = result?.crewNumber || beforeState?.crewNumber || 'Unknown';
+        return `Updated EDLS Crew #${crewNumber}`;
+      },
+      after: async (args, result) => {
+        return result;
+      }
+    },
+    delete: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: async (args, result, beforeState) => {
+        return beforeState?.sheetId;
+      },
+      before: async (args, storage) => {
+        return await storage.get(args[0]);
+      },
+      getDescription: async (args, result, beforeState) => {
+        const crewNumber = beforeState?.crewNumber || 'Unknown';
+        return `Deleted EDLS Crew #${crewNumber}`;
+      }
+    },
+    deleteBySheetId: {
+      enabled: true,
+      getEntityId: (args) => 'bulk delete',
+      getHostEntityId: (args) => args[0],
+      getDescription: async (args, result) => {
+        return `Deleted all crews for sheet (${result} crews removed)`;
+      },
+      after: async (args, result) => {
+        return { deletedCount: result };
+      }
+    }
+  }
+};
