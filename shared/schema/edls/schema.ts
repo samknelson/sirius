@@ -38,6 +38,7 @@ export const edlsCrews = pgTable("edls_crews", {
   startTime: time("start_time").notNull(),
   endTime: time("end_time").notNull(),
   supervisor: varchar("supervisor").references(() => users.id, { onDelete: 'set null' }),
+  taskId: varchar("task_id").references(() => optionsEdlsTasks.id, { onDelete: 'set null' }),
   data: jsonb("data"),
 });
 
