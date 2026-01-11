@@ -150,7 +150,8 @@ export const edlsCrewsLoggingConfig: StorageLoggingConfig<EdlsCrewsStorage> = {
       getHostEntityId: (args, result) => result?.[0]?.sheetId || args[0]?.[0]?.sheetId,
       getDescription: async (args, result) => {
         const count = result?.length || args[0]?.length || 0;
-        return `Created ${count} crew(s)`;
+        const titles = (result || args[0] || []).map((c: any) => c.title || 'Untitled').join(', ');
+        return `Created ${count} crew(s) [${titles}]`;
       },
       after: async (args, result) => {
         return {
