@@ -5,7 +5,7 @@ import { initializePermissions } from "@shared/permissions";
 import { addressValidationService } from "./services/address-validation";
 import { logger } from "./logger";
 import { setupAuth } from "./replitAuth";
-import { initAccessControl } from "./services/access-policy-evaluator";
+import { initAccessControl, registerEntityLoader } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
 import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler, deleteExpiredHfeHandler, sweepExpiredBanEligHandler, syncBanActiveStatusHandler } from "./cron";
@@ -151,6 +151,12 @@ app.use((req, res, next) => {
     isComponentEnabled
   );
   logger.info("Access control system initialized", { source: "startup" });
+  
+  // Register entity loaders for policies that use cacheKeyFields
+  registerEntityLoader('edls_sheet', async (id: string, injectedStorage: any) => {
+    const sheet = await injectedStorage.edlsSheets?.get?.(id);
+    return sheet || null;
+  });
   
   // Initialize address validation service (loads or creates config)
   await addressValidationService.getConfig();
