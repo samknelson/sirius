@@ -52,15 +52,15 @@ function DispatchJobTypePluginsContent() {
         ...jobTypeData,
         eligibility: formEligibility,
       };
-      return apiRequest("PUT", `/api/dispatch-job-types/${jobType.id}`, {
+      return apiRequest("PUT", `/api/options/dispatch-job-type/${jobType.id}`, {
         name: jobType.name,
         description: jobType.description,
         data: updatedData,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dispatch-job-types"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dispatch-job-types", jobType.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/dispatch-job-type"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/dispatch-job-type", jobType.id] });
       setHasChanges(false);
       toast({
         title: "Success",

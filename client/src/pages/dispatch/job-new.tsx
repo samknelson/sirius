@@ -59,7 +59,7 @@ export default function DispatchJobNewPage() {
   });
 
   const { data: jobTypes = [] } = useQuery<DispatchJobType[]>({
-    queryKey: ["/api/dispatch-job-types"],
+    queryKey: ["/api/options/dispatch-job-type"],
   });
 
   const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({

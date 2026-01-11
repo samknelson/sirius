@@ -65,7 +65,7 @@ export default function EdlsTasksPage() {
   });
 
   const { data: departments = [] } = useQuery<Department[]>({
-    queryKey: ["/api/departments"],
+    queryKey: ["/api/options/department"],
   });
 
   const createMutation = useMutation({

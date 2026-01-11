@@ -44,7 +44,7 @@ export default function ProviderContactTypesPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   
   const { data: contactTypes = [], isLoading } = useQuery<TrustProviderType[]>({
-    queryKey: ["/api/provider-contact-types"],
+    queryKey: ["/api/options/trust-provider-type"],
   });
 
   const addForm = useForm<InsertTrustProviderType>({
@@ -65,10 +65,10 @@ export default function ProviderContactTypesPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertTrustProviderType) => {
-      return apiRequest("POST", "/api/provider-contact-types", data);
+      return apiRequest("POST", "/api/options/trust-provider-type", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/provider-contact-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/trust-provider-type"] });
       setIsAddDialogOpen(false);
       addForm.reset();
       toast({
@@ -87,10 +87,10 @@ export default function ProviderContactTypesPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; updates: InsertTrustProviderType }) => {
-      return apiRequest("PUT", `/api/provider-contact-types/${data.id}`, data.updates);
+      return apiRequest("PUT", `/api/options/trust-provider-type/${data.id}`, data.updates);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/provider-contact-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/trust-provider-type"] });
       setEditingId(null);
       editForm.reset();
       toast({
@@ -109,10 +109,10 @@ export default function ProviderContactTypesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/provider-contact-types/${id}`);
+      return apiRequest("DELETE", `/api/options/trust-provider-type/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/provider-contact-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/trust-provider-type"] });
       setDeleteId(null);
       toast({
         title: "Success",

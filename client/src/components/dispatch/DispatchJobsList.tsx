@@ -89,7 +89,7 @@ export function DispatchJobsList({
   });
 
   const { data: jobTypes = [] } = useQuery<DispatchJobType[]>({
-    queryKey: ["/api/dispatch-job-types"],
+    queryKey: ["/api/options/dispatch-job-type"],
   });
 
   const { data: result, isLoading } = useQuery<PaginatedDispatchJobs>({

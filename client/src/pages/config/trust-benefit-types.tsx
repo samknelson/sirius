@@ -65,21 +65,21 @@ export default function TrustBenefitTypesPage() {
   const [formIcon, setFormIcon] = useState<string>("Star");
   
   const { data: trustBenefitTypes = [], isLoading } = useQuery<TrustBenefitType[]>({
-    queryKey: ["/api/trust-benefit-types"],
+    queryKey: ["/api/options/trust-benefit-type"],
   });
 
   const createMutation = useMutation({
     mutationFn: async (formData: { name: string; icon: string }) => {
       // Find the highest sequence number
       const maxSequence = trustBenefitTypes.reduce((max, option) => Math.max(max, option.sequence), -1);
-      return apiRequest("POST", "/api/trust-benefit-types", { 
+      return apiRequest("POST", "/api/options/trust-benefit-type", { 
         name: formData.name,
         sequence: maxSequence + 1,
         data: { icon: formData.icon }
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trust-benefit-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/trust-benefit-type"] });
       setIsAddDialogOpen(false);
       resetForm();
       toast({
@@ -98,13 +98,13 @@ export default function TrustBenefitTypesPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (formData: { id: string; name: string; icon: string }) => {
-      return apiRequest("PUT", `/api/trust-benefit-types/${formData.id}`, {
+      return apiRequest("PUT", `/api/options/trust-benefit-type/${formData.id}`, {
         name: formData.name,
         data: { icon: formData.icon },
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trust-benefit-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/trust-benefit-type"] });
       setEditingId(null);
       resetForm();
       toast({
@@ -123,10 +123,10 @@ export default function TrustBenefitTypesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/trust-benefit-types/${id}`);
+      return apiRequest("DELETE", `/api/options/trust-benefit-type/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trust-benefit-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/trust-benefit-type"] });
       setDeleteId(null);
       toast({
         title: "Success",
@@ -144,12 +144,12 @@ export default function TrustBenefitTypesPage() {
 
   const updateSequenceMutation = useMutation({
     mutationFn: async (data: { id: string; sequence: number }) => {
-      return apiRequest("PUT", `/api/trust-benefit-types/${data.id}`, {
+      return apiRequest("PUT", `/api/options/trust-benefit-type/${data.id}`, {
         sequence: data.sequence,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trust-benefit-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/trust-benefit-type"] });
     },
   });
 

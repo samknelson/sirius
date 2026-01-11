@@ -72,7 +72,7 @@ function WorkerBenefitsEligibilityContent() {
   });
 
   const { data: workStatuses = [] } = useQuery<WorkerWs[]>({
-    queryKey: ["/api/worker-work-statuses"],
+    queryKey: ["/api/options/worker-ws"],
   });
 
   const { data: homeEmployer } = useQuery<Employer>({

@@ -68,7 +68,7 @@ export default function EmployerTypesPage() {
   const [formIcon, setFormIcon] = useState<string>("Building");
   
   const { data: employerTypes = [], isLoading } = useQuery<EmployerType[]>({
-    queryKey: ["/api/employer-types"],
+    queryKey: ["/api/options/employer-type"],
   });
 
   const addForm = useForm<InsertEmployerType>({
@@ -91,13 +91,13 @@ export default function EmployerTypesPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertEmployerType) => {
-      return apiRequest("POST", "/api/employer-types", {
+      return apiRequest("POST", "/api/options/employer-type", {
         ...data,
         data: { icon: formIcon }
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/employer-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/employer-type"] });
       setIsAddDialogOpen(false);
       addForm.reset();
       setFormIcon("Building");
@@ -117,13 +117,13 @@ export default function EmployerTypesPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; updates: InsertEmployerType }) => {
-      return apiRequest("PUT", `/api/employer-types/${data.id}`, {
+      return apiRequest("PUT", `/api/options/employer-type/${data.id}`, {
         ...data.updates,
         data: { icon: formIcon }
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/employer-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/employer-type"] });
       setEditingId(null);
       editForm.reset();
       setFormIcon("Building");
@@ -143,10 +143,10 @@ export default function EmployerTypesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/employer-types/${id}`);
+      return apiRequest("DELETE", `/api/options/employer-type/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/employer-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/employer-type"] });
       setDeleteId(null);
       toast({
         title: "Success",

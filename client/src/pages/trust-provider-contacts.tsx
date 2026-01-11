@@ -74,7 +74,7 @@ function TrustProviderContactsContent() {
   });
 
   const { data: contactTypes } = useQuery<TrustProviderType[]>({
-    queryKey: ["/api/provider-contact-types"],
+    queryKey: ["/api/options/trust-provider-type"],
   });
 
   // Fetch phone numbers and addresses for all contacts

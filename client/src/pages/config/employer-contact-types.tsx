@@ -71,7 +71,7 @@ export default function EmployerContactTypesPage() {
   const [formIcon, setFormIcon] = useState<string>("User");
   
   const { data: contactTypes = [], isLoading } = useQuery<EmployerContactType[]>({
-    queryKey: ["/api/employer-contact-types"],
+    queryKey: ["/api/options/employer-contact-type"],
   });
 
   const addForm = useForm<InsertEmployerContactType>({
@@ -92,13 +92,13 @@ export default function EmployerContactTypesPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertEmployerContactType) => {
-      return apiRequest("POST", "/api/employer-contact-types", {
+      return apiRequest("POST", "/api/options/employer-contact-type", {
         ...data,
         data: { icon: formIcon }
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/employer-contact-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/employer-contact-type"] });
       setIsAddDialogOpen(false);
       addForm.reset();
       setFormIcon("User");
@@ -118,13 +118,13 @@ export default function EmployerContactTypesPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; updates: InsertEmployerContactType }) => {
-      return apiRequest("PUT", `/api/employer-contact-types/${data.id}`, {
+      return apiRequest("PUT", `/api/options/employer-contact-type/${data.id}`, {
         ...data.updates,
         data: { icon: formIcon }
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/employer-contact-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/employer-contact-type"] });
       setEditingId(null);
       editForm.reset();
       setFormIcon("User");
@@ -144,10 +144,10 @@ export default function EmployerContactTypesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/employer-contact-types/${id}`);
+      return apiRequest("DELETE", `/api/options/employer-contact-type/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/employer-contact-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/employer-contact-type"] });
       setDeleteId(null);
       toast({
         title: "Success",

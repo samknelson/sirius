@@ -22,7 +22,7 @@ function EmployerDetailsContent() {
   const { employer } = useEmployerLayout();
 
   const { data: employerTypes = [], isLoading: isLoadingTypes } = useQuery<EmployerType[]>({
-    queryKey: ["/api/employer-types"],
+    queryKey: ["/api/options/employer-type"],
   });
 
   const employerType = employer.typeId 

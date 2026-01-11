@@ -43,7 +43,7 @@ export default function DepartmentsPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   
   const { data: departments = [], isLoading } = useQuery<Department[]>({
-    queryKey: ["/api/departments"],
+    queryKey: ["/api/options/department"],
   });
 
   const addForm = useForm<InsertDepartment>({
@@ -62,10 +62,10 @@ export default function DepartmentsPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertDepartment) => {
-      return apiRequest("POST", "/api/departments", data);
+      return apiRequest("POST", "/api/options/department", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/departments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/department"] });
       setIsAddDialogOpen(false);
       addForm.reset();
       toast({
@@ -84,10 +84,10 @@ export default function DepartmentsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; updates: InsertDepartment }) => {
-      return apiRequest("PUT", `/api/departments/${data.id}`, data.updates);
+      return apiRequest("PUT", `/api/options/department/${data.id}`, data.updates);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/departments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/department"] });
       setEditingId(null);
       editForm.reset();
       toast({
@@ -106,10 +106,10 @@ export default function DepartmentsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/departments/${id}`);
+      return apiRequest("DELETE", `/api/options/department/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/departments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/department"] });
       setDeleteId(null);
       toast({
         title: "Success",

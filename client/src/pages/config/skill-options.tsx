@@ -46,15 +46,15 @@ export default function SkillOptionsPage() {
   const [formIcon, setFormIcon] = useState<string | undefined>(undefined);
   
   const { data: skillOptions = [], isLoading } = useQuery<SkillOption[]>({
-    queryKey: ["/api/skill-options"],
+    queryKey: ["/api/options/skill"],
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; description: string | null; data: { icon?: string } | null }) => {
-      return apiRequest("POST", "/api/skill-options", data);
+      return apiRequest("POST", "/api/options/skill", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/skill-options"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/skill"] });
       setIsAddDialogOpen(false);
       resetForm();
       toast({
@@ -73,14 +73,14 @@ export default function SkillOptionsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; name: string; description: string | null; data: { icon?: string } | null }) => {
-      return apiRequest("PUT", `/api/skill-options/${data.id}`, {
+      return apiRequest("PUT", `/api/options/skill/${data.id}`, {
         name: data.name,
         description: data.description,
         data: data.data,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/skill-options"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/skill"] });
       setEditingId(null);
       resetForm();
       toast({
@@ -99,10 +99,10 @@ export default function SkillOptionsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/skill-options/${id}`);
+      return apiRequest("DELETE", `/api/options/skill/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/skill-options"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/skill"] });
       setDeleteId(null);
       toast({
         title: "Success",

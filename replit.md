@@ -38,7 +38,7 @@ The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI),
 ## System Design Choices
 -   **Database Access Architecture**: All database queries are strictly confined to the storage layer, ensuring separation of concerns.
 -   **Worker Management**: Comprehensive CRUD for workers, contacts, and benefits.
--   **Configurable Settings**: Manages organizational settings (worker ID types, work statuses, employer contact types).
+-   **Configurable Settings**: Manages organizational settings via consolidated options system (`/api/options/:type`). Authenticated users can read all options; admin-only write access. Supported types: `department`, `employer-type`, `worker-id-type`, `skill`, `dispatch-job-type`, `ledger-payment-type`, `trust-benefit-type`, `event-type`, `gender`, `worker-ws`, `employment-status`, `employer-contact-type`, `trust-provider-type`. Registry at `server/modules/options-registry.ts`.
 -   **User Provisioning**: Email-based user provisioning integrated with Replit accounts, with automatic contact record synchronization.
 -   **Data Validation**: Extensive Zod schema validation and `libphonenumber-js`.
 -   **Employer & Policy Management**: Manages employer records, contacts, and policy assignments with historical tracking.

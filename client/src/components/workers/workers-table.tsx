@@ -171,7 +171,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
 
   // Fetch employer types for filter dropdown icons
   const { data: employerTypes = [] } = useQuery<{ id: string; name: string; data?: Record<string, unknown> | null }[]>({
-    queryKey: ["/api/employer-types"],
+    queryKey: ["/api/options/employer-type"],
   });
 
   // Create map for employer type icons

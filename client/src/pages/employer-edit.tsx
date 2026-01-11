@@ -34,7 +34,7 @@ function EmployerEditContent() {
   const [editTypeId, setEditTypeId] = useState<string | null>(employer.typeId || null);
 
   const { data: employerTypes = [] } = useQuery<EmployerType[]>({
-    queryKey: ["/api/employer-types"],
+    queryKey: ["/api/options/employer-type"],
   });
 
   const updateEmployerMutation = useMutation({

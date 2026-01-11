@@ -25,7 +25,7 @@ function TrustBenefitEditContent() {
   const [editDescription, setEditDescription] = useState(benefit.description || "");
 
   const { data: benefitTypes = [] } = useQuery<TrustBenefitType[]>({
-    queryKey: ["/api/trust-benefit-types"],
+    queryKey: ["/api/options/trust-benefit-type"],
   });
 
   const updateBenefitMutation = useMutation({

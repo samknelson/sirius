@@ -23,7 +23,7 @@ export function AddTrustBenefitForm() {
   const [, setLocation] = useLocation();
 
   const { data: benefitTypes = [] } = useQuery<TrustBenefitType[]>({
-    queryKey: ["/api/trust-benefit-types"],
+    queryKey: ["/api/options/trust-benefit-type"],
   });
 
   const addBenefitMutation = useMutation({

@@ -47,20 +47,20 @@ export default function GenderOptionsPage() {
   const [formNota, setFormNota] = useState(false);
   
   const { data: genderOptions = [], isLoading } = useQuery<GenderOption[]>({
-    queryKey: ["/api/gender-options"],
+    queryKey: ["/api/options/gender"],
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; code: string; nota: boolean }) => {
       // Find the highest sequence number
       const maxSequence = genderOptions.reduce((max, option) => Math.max(max, option.sequence), -1);
-      return apiRequest("POST", "/api/gender-options", { 
+      return apiRequest("POST", "/api/options/gender", { 
         ...data, 
         sequence: maxSequence + 1 
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/gender-options"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/gender"] });
       setIsAddDialogOpen(false);
       resetForm();
       toast({
@@ -79,14 +79,14 @@ export default function GenderOptionsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; name: string; code: string; nota: boolean }) => {
-      return apiRequest("PUT", `/api/gender-options/${data.id}`, {
+      return apiRequest("PUT", `/api/options/gender/${data.id}`, {
         name: data.name,
         code: data.code,
         nota: data.nota,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/gender-options"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/gender"] });
       setEditingId(null);
       resetForm();
       toast({
@@ -105,10 +105,10 @@ export default function GenderOptionsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/gender-options/${id}`);
+      return apiRequest("DELETE", `/api/options/gender/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/gender-options"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/gender"] });
       setDeleteId(null);
       toast({
         title: "Success",
@@ -126,12 +126,12 @@ export default function GenderOptionsPage() {
 
   const updateSequenceMutation = useMutation({
     mutationFn: async (data: { id: string; sequence: number }) => {
-      return apiRequest("PUT", `/api/gender-options/${data.id}`, {
+      return apiRequest("PUT", `/api/options/gender/${data.id}`, {
         sequence: data.sequence,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/gender-options"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/gender"] });
     },
   });
 

@@ -44,20 +44,20 @@ export default function WorkerIDTypesPage() {
   const [formValidator, setFormValidator] = useState("");
   
   const { data: workerIdTypes = [], isLoading } = useQuery<WorkerIdType[]>({
-    queryKey: ["/api/worker-id-types"],
+    queryKey: ["/api/options/worker-id-type"],
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; validator: string | null }) => {
       // Find the highest sequence number
       const maxSequence = workerIdTypes.reduce((max, type) => Math.max(max, type.sequence), -1);
-      return apiRequest("POST", "/api/worker-id-types", { 
+      return apiRequest("POST", "/api/options/worker-id-type", { 
         ...data, 
         sequence: maxSequence + 1 
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/worker-id-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/worker-id-type"] });
       setIsAddDialogOpen(false);
       resetForm();
       toast({
@@ -76,13 +76,13 @@ export default function WorkerIDTypesPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; name: string; validator: string | null }) => {
-      return apiRequest("PUT", `/api/worker-id-types/${data.id}`, {
+      return apiRequest("PUT", `/api/options/worker-id-type/${data.id}`, {
         name: data.name,
         validator: data.validator,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/worker-id-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/worker-id-type"] });
       setEditingId(null);
       resetForm();
       toast({
@@ -101,10 +101,10 @@ export default function WorkerIDTypesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/worker-id-types/${id}`);
+      return apiRequest("DELETE", `/api/options/worker-id-type/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/worker-id-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/worker-id-type"] });
       setDeleteId(null);
       toast({
         title: "Success",
@@ -122,12 +122,12 @@ export default function WorkerIDTypesPage() {
 
   const updateSequenceMutation = useMutation({
     mutationFn: async (data: { id: string; sequence: number }) => {
-      return apiRequest("PUT", `/api/worker-id-types/${data.id}`, {
+      return apiRequest("PUT", `/api/options/worker-id-type/${data.id}`, {
         sequence: data.sequence,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/worker-id-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/worker-id-type"] });
     },
   });
 

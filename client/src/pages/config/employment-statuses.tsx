@@ -43,14 +43,14 @@ export default function EmploymentStatusesPage() {
   const [formColor, setFormColor] = useState("#6b7280");
   
   const { data: statuses = [], isLoading } = useQuery<EmploymentStatus[]>({
-    queryKey: ["/api/employment-statuses"],
+    queryKey: ["/api/options/employment-status"],
   });
 
   const createMutation = useMutation({
     mutationFn: async (formData: { name: string; code: string; employed: boolean; description: string | null; color: string }) => {
       // Find the highest sequence number
       const maxSequence = statuses.reduce((max, status) => Math.max(max, status.sequence ?? 0), -1);
-      return apiRequest("POST", "/api/employment-statuses", { 
+      return apiRequest("POST", "/api/options/employment-status", { 
         name: formData.name,
         code: formData.code,
         employed: formData.employed,
@@ -60,7 +60,7 @@ export default function EmploymentStatusesPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/employment-statuses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/employment-status"] });
       setIsAddDialogOpen(false);
       resetForm();
       toast({
@@ -79,7 +79,7 @@ export default function EmploymentStatusesPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (formData: { id: string; name: string; code: string; employed: boolean; description: string | null; color: string }) => {
-      return apiRequest("PUT", `/api/employment-statuses/${formData.id}`, {
+      return apiRequest("PUT", `/api/options/employment-status/${formData.id}`, {
         name: formData.name,
         code: formData.code,
         employed: formData.employed,
@@ -88,7 +88,7 @@ export default function EmploymentStatusesPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/employment-statuses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/employment-status"] });
       setEditingId(null);
       resetForm();
       toast({
@@ -107,10 +107,10 @@ export default function EmploymentStatusesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/employment-statuses/${id}`);
+      return apiRequest("DELETE", `/api/options/employment-status/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/employment-statuses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/employment-status"] });
       setDeleteId(null);
       toast({
         title: "Success",
@@ -128,12 +128,12 @@ export default function EmploymentStatusesPage() {
 
   const updateSequenceMutation = useMutation({
     mutationFn: async (data: { id: string; sequence: number }) => {
-      return apiRequest("PUT", `/api/employment-statuses/${data.id}`, {
+      return apiRequest("PUT", `/api/options/employment-status/${data.id}`, {
         sequence: data.sequence,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/employment-statuses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/employment-status"] });
     },
   });
 

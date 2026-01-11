@@ -78,14 +78,14 @@ function DispatchJobTypeEditContent() {
         minWorkers: minWorkers ? parseInt(minWorkers, 10) : undefined,
         maxWorkers: maxWorkers ? parseInt(maxWorkers, 10) : undefined,
       };
-      return apiRequest("PUT", `/api/dispatch-job-types/${jobType.id}`, {
+      return apiRequest("PUT", `/api/options/dispatch-job-type/${jobType.id}`, {
         ...data,
         data: updatedData,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dispatch-job-types"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dispatch-job-types", jobType.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/dispatch-job-type"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/dispatch-job-type", jobType.id] });
       toast({
         title: "Success",
         description: "Job type updated successfully.",

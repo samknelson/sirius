@@ -236,6 +236,14 @@ export interface DispatchJobTypeStorage {
   delete(id: string): Promise<boolean>;
 }
 
+export interface SkillsStorage {
+  getAll(): Promise<OptionsSkill[]>;
+  get(id: string): Promise<OptionsSkill | undefined>;
+  create(skill: InsertOptionsSkill): Promise<OptionsSkill>;
+  update(id: string, skill: Partial<InsertOptionsSkill>): Promise<OptionsSkill | undefined>;
+  delete(id: string): Promise<boolean>;
+}
+
 export const dispatchJobTypeLoggingConfig: StorageLoggingConfig<DispatchJobTypeStorage> = {
   module: 'options.dispatchJobTypes',
   methods: {

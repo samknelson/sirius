@@ -13,6 +13,7 @@ import { registerTrustBenefitsRoutes } from "./modules/trust-benefits";
 import { registerTrustProvidersRoutes } from "./modules/trust-providers";
 import { registerTrustProviderContactRoutes } from "./modules/trust-provider-contacts";
 import { registerOptionsRoutes } from "./modules/options";
+import { registerConsolidatedOptionsRoutes } from "./modules/options-routes";
 import { registerWorkerIdsRoutes } from "./modules/worker-ids";
 import { registerAddressValidationRoutes } from "./modules/address-validation";
 import { registerMasqueradeRoutes, getEffectiveUser } from "./modules/masquerade";
@@ -251,6 +252,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register options routes (worker-id-types, employer-contact-types, worker-work-statuses, employment-statuses)
   registerOptionsRoutes(app, requireAuth, requirePermission);
+  
+  // Register consolidated options routes (/api/options/:type)
+  registerConsolidatedOptionsRoutes(app);
   
   // Register worker IDs routes
   registerWorkerIdsRoutes(app, requireAuth, requirePermission);

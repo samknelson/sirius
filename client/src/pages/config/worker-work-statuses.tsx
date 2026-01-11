@@ -45,20 +45,20 @@ export default function WorkerWorkStatusesPage() {
   const [formDescription, setFormDescription] = useState("");
   
   const { data: statuses = [], isLoading } = useQuery<WorkerWs[]>({
-    queryKey: ["/api/worker-work-statuses"],
+    queryKey: ["/api/options/worker-ws"],
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; description: string | null }) => {
       // Find the highest sequence number
       const maxSequence = statuses.reduce((max, status) => Math.max(max, status.sequence), -1);
-      return apiRequest("POST", "/api/worker-work-statuses", { 
+      return apiRequest("POST", "/api/options/worker-ws", { 
         ...data, 
         sequence: maxSequence + 1 
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/worker-work-statuses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/worker-ws"] });
       setIsAddDialogOpen(false);
       resetForm();
       toast({
@@ -77,13 +77,13 @@ export default function WorkerWorkStatusesPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; name: string; description: string | null }) => {
-      return apiRequest("PUT", `/api/worker-work-statuses/${data.id}`, {
+      return apiRequest("PUT", `/api/options/worker-ws/${data.id}`, {
         name: data.name,
         description: data.description,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/worker-work-statuses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/worker-ws"] });
       setEditingId(null);
       resetForm();
       toast({
@@ -102,10 +102,10 @@ export default function WorkerWorkStatusesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/worker-work-statuses/${id}`);
+      return apiRequest("DELETE", `/api/options/worker-ws/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/worker-work-statuses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/worker-ws"] });
       setDeleteId(null);
       toast({
         title: "Success",
@@ -123,12 +123,12 @@ export default function WorkerWorkStatusesPage() {
 
   const updateSequenceMutation = useMutation({
     mutationFn: async (data: { id: string; sequence: number }) => {
-      return apiRequest("PUT", `/api/worker-work-statuses/${data.id}`, {
+      return apiRequest("PUT", `/api/options/worker-ws/${data.id}`, {
         sequence: data.sequence,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/worker-work-statuses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/worker-ws"] });
     },
   });
 

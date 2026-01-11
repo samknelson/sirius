@@ -76,14 +76,7 @@ function WorkerDetailsContent() {
 
   // Fetch worker ID types
   const { data: workerIdTypes = [] } = useQuery<WorkerIdType[]>({
-    queryKey: ["/api/worker-id-types"],
-    queryFn: async () => {
-      const response = await fetch("/api/worker-id-types");
-      if (!response.ok) {
-        throw new Error("Failed to fetch worker ID types");
-      }
-      return response.json();
-    },
+    queryKey: ["/api/options/worker-id-type"],
   });
 
   // Fetch worker benefits
@@ -100,7 +93,7 @@ function WorkerDetailsContent() {
 
   // Fetch work statuses
   const { data: workStatuses = [] } = useQuery<WorkerWs[]>({
-    queryKey: ["/api/worker-work-statuses"],
+    queryKey: ["/api/options/worker-ws"],
   });
 
   // Fetch current employment

@@ -70,7 +70,7 @@ export default function IDsManagement({ workerId }: IDsManagementProps) {
 
   // Fetch worker ID types
   const { data: workerIdTypes = [], isLoading: isLoadingTypes } = useQuery<WorkerIdType[]>({
-    queryKey: ["/api/worker-id-types"],
+    queryKey: ["/api/options/worker-id-type"],
   });
 
   // Fetch worker IDs

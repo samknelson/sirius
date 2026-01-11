@@ -28,7 +28,7 @@ export default function TrustBenefits() {
   });
 
   const { data: benefitTypes = [] } = useQuery<TrustBenefitType[]>({
-    queryKey: ["/api/trust-benefit-types"],
+    queryKey: ["/api/options/trust-benefit-type"],
   });
 
   const tabs = [

@@ -60,7 +60,7 @@ function WorkerHoursEditContent() {
   });
 
   const { data: employmentStatuses = [] } = useQuery<EmploymentStatus[]>({
-    queryKey: ["/api/employment-statuses"],
+    queryKey: ["/api/options/employment-status"],
   });
 
   useEffect(() => {
