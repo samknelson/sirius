@@ -5,7 +5,7 @@ import {
   type EdlsCrew, 
   type InsertEdlsCrew
 } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, asc } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { StorageLoggingConfig } from "./middleware/logging";
 import { getClient } from "./transaction-context";
@@ -32,7 +32,7 @@ export function createEdlsCrewsStorage(): EdlsCrewsStorage {
   return {
     async getBySheetId(sheetId: string): Promise<EdlsCrew[]> {
       const client = getClient();
-      return client.select().from(edlsCrews).where(eq(edlsCrews.sheetId, sheetId));
+      return client.select().from(edlsCrews).where(eq(edlsCrews.sheetId, sheetId)).orderBy(asc(edlsCrews.sequence));
     },
 
     async getBySheetIdWithRelations(sheetId: string): Promise<EdlsCrewWithRelations[]> {
@@ -56,7 +56,8 @@ export function createEdlsCrewsStorage(): EdlsCrewsStorage {
         .from(edlsCrews)
         .leftJoin(supervisorUsers, eq(edlsCrews.supervisor, supervisorUsers.id))
         .leftJoin(optionsEdlsTasks, eq(edlsCrews.taskId, optionsEdlsTasks.id))
-        .where(eq(edlsCrews.sheetId, sheetId));
+        .where(eq(edlsCrews.sheetId, sheetId))
+        .orderBy(asc(edlsCrews.sequence));
       
       return rows.map(row => ({
         ...row.crew,

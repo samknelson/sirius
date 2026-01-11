@@ -162,7 +162,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         const client = getClient();
         const [sheet] = await client.insert(edlsSheets).values(insertSheet).returning();
         
-        const crewsWithSheetId = crews.map(c => ({ ...c, sheetId: sheet.id }));
+        const crewsWithSheetId = crews.map((c, index) => ({ ...c, sheetId: sheet.id, sequence: index }));
         const createdCrews = await storage.edlsCrews.createMany(crewsWithSheetId);
         
         return { ...sheet, crews: createdCrews };
@@ -195,22 +195,27 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         
         const incomingCrewIds = new Set(crews.filter(c => c.id).map(c => c.id!));
         
-        const crewsToUpdate = crews.filter(c => c.id && existingCrewMap.has(c.id));
-        const crewsToCreate = crews.filter(c => !c.id);
         const crewIdsToDelete = existingCrews.filter(c => !incomingCrewIds.has(c.id)).map(c => c.id);
         
         for (const crewId of crewIdsToDelete) {
           await storage.edlsCrews.delete(crewId);
         }
         
-        for (const crew of crewsToUpdate) {
-          const { id: crewId, ...crewData } = crew;
-          await storage.edlsCrews.update(crewId!, { ...crewData, sheetId: id });
+        for (let i = 0; i < crews.length; i++) {
+          const crew = crews[i];
+          if (crew.id && existingCrewMap.has(crew.id)) {
+            const { id: crewId, ...crewData } = crew;
+            await storage.edlsCrews.update(crewId!, { ...crewData, sheetId: id, sequence: i });
+          }
         }
         
-        const newCrewsWithSheetId = crewsToCreate.map(c => {
-          const { id: _, ...crewData } = c;
-          return { ...crewData, sheetId: id };
+        const crewsToCreate = crews
+          .map((c, index) => ({ crew: c, sequence: index }))
+          .filter(({ crew }) => !crew.id);
+        
+        const newCrewsWithSheetId = crewsToCreate.map(({ crew, sequence }) => {
+          const { id: _, ...crewData } = crew;
+          return { ...crewData, sheetId: id, sequence };
         });
         await storage.edlsCrews.createMany(newCrewsWithSheetId);
         

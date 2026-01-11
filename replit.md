@@ -155,7 +155,7 @@ Some infrastructure code (cron jobs, services) currently imports db directly. Th
 -   **Terminology Framework**: Site-specific terminology customization for concepts like "Shop Steward", with admin configuration and client-side consumption.
 -   **Dispatch System**: Conditional feature for managing dispatch jobs, including job types, listings, and detail pages with various statuses and eligibility plugins (worker bans, do not call, hold for employer, work status).
 -   **Worker Bans**: Tracks worker restrictions with start/end dates and ban types, dynamically calculating active status.
--   **EDLS (Employer Day Labor Scheduler)**: Manages day labor scheduling with sheets (per employer/date) containing crews with worker counts. Features department-based task assignment for crews, supervisor/assignee tracking with configurable defaults, and comprehensive audit logging with the sheet as the log handler for all crew actions.
+-   **EDLS (Employer Day Labor Scheduler)**: Manages day labor scheduling with sheets (per employer/date) containing crews with worker counts. Features department-based task assignment for crews, supervisor/assignee tracking with configurable defaults, crew sequence ordering (auto-assigned based on array position during create/update), and comprehensive audit logging with the sheet as the log handler for all crew actions.
 
 # External Dependencies
 
