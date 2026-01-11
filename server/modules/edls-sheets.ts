@@ -6,6 +6,8 @@ import { requireAccess } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
+import { getSupervisorContext, validateSupervisorForSave } from "./edls-supervisor-context";
+import { getEffectiveUser } from "./masquerade";
 
 const crewInputSchema = insertEdlsCrewsSchema.omit({ sheetId: true });
 
@@ -62,8 +64,40 @@ export function registerEdlsSheetsRoutes(
     }
   });
 
+  app.get("/api/edls/supervisor-context", requireAuth, edlsComponent, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const replitUserId = user?.claims?.sub;
+      const session = req.session as any;
+      const { dbUser } = await getEffectiveUser(session, replitUserId);
+      
+      if (!dbUser) {
+        res.status(401).json({ message: "User not found" });
+        return;
+      }
+      
+      const sheetId = req.query.sheetId as string | undefined;
+      const context = await getSupervisorContext(dbUser.id, sheetId);
+      
+      res.json(context);
+    } catch (error) {
+      console.error("Failed to fetch supervisor context:", error);
+      res.status(500).json({ message: "Failed to fetch supervisor context" });
+    }
+  });
+
   app.post("/api/edls/sheets", requireAuth, edlsComponent, requireAccess('staff'), async (req, res) => {
     try {
+      const user = (req as any).user;
+      const replitUserId = user?.claims?.sub;
+      const session = req.session as any;
+      const { dbUser } = await getEffectiveUser(session, replitUserId);
+      
+      if (!dbUser) {
+        res.status(401).json({ message: "User not found" });
+        return;
+      }
+      
       const parsed = sheetWithCrewsSchema.safeParse(req.body);
       
       if (!parsed.success) {
@@ -73,22 +107,39 @@ export function registerEdlsSheetsRoutes(
       
       const { crews, ...sheetData } = parsed.data;
       
-      const employer = await storage.employers.getEmployer(sheetData.employerId);
+      const supervisorContext = await getSupervisorContext(dbUser.id);
+      const supervisorValidation = validateSupervisorForSave(
+        supervisorContext,
+        sheetData.supervisor || null,
+        dbUser.id
+      );
+      
+      if (!supervisorValidation.valid) {
+        res.status(403).json({ message: supervisorValidation.error });
+        return;
+      }
+      
+      const finalSheetData = {
+        ...sheetData,
+        supervisor: supervisorValidation.supervisorId,
+      };
+      
+      const employer = await storage.employers.getEmployer(finalSheetData.employerId);
       if (!employer) {
         res.status(400).json({ message: "Employer not found" });
         return;
       }
       
       const crewsTotalWorkerCount = crews.reduce((sum, crew) => sum + crew.workerCount, 0);
-      if (crewsTotalWorkerCount !== sheetData.workerCount) {
+      if (crewsTotalWorkerCount !== finalSheetData.workerCount) {
         res.status(400).json({ 
-          message: `Crew worker counts (${crewsTotalWorkerCount}) must equal sheet worker count (${sheetData.workerCount})` 
+          message: `Crew worker counts (${crewsTotalWorkerCount}) must equal sheet worker count (${finalSheetData.workerCount})` 
         });
         return;
       }
       
       const result = await db.transaction(async (tx) => {
-        const [sheet] = await tx.insert(edlsSheets).values(sheetData).returning();
+        const [sheet] = await tx.insert(edlsSheets).values(finalSheetData).returning();
         
         const createdCrews = await Promise.all(
           crews.map(crew => 
@@ -110,6 +161,16 @@ export function registerEdlsSheetsRoutes(
     try {
       const { id } = req.params;
       
+      const user = (req as any).user;
+      const replitUserId = user?.claims?.sub;
+      const session = req.session as any;
+      const { dbUser } = await getEffectiveUser(session, replitUserId);
+      
+      if (!dbUser) {
+        res.status(401).json({ message: "User not found" });
+        return;
+      }
+      
       const existingSheet = await storage.edlsSheets.get(id);
       if (!existingSheet) {
         res.status(404).json({ message: "Sheet not found" });
@@ -127,6 +188,22 @@ export function registerEdlsSheetsRoutes(
       }
       
       const { crews, ...sheetData } = parsed.data;
+      
+      if (sheetData.supervisor !== undefined) {
+        const supervisorContext = await getSupervisorContext(dbUser.id, id);
+        const supervisorValidation = validateSupervisorForSave(
+          supervisorContext,
+          sheetData.supervisor || null,
+          dbUser.id
+        );
+        
+        if (!supervisorValidation.valid) {
+          res.status(403).json({ message: supervisorValidation.error });
+          return;
+        }
+        
+        sheetData.supervisor = supervisorValidation.supervisorId;
+      }
       
       if (sheetData.employerId) {
         const employer = await storage.employers.getEmployer(sheetData.employerId);

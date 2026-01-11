@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,12 +11,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, AlertCircle } from "lucide-react";
-import type { EdlsSheet, EdlsCrew, InsertEdlsSheet, InsertEdlsCrew } from "@shared/schema";
+import { Plus, Trash2, AlertCircle, Lock } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { EdlsSheet, EdlsCrew, InsertEdlsCrew } from "@shared/schema";
 
 interface Employer {
   id: string;
   name: string;
+}
+
+interface SupervisorOption {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string;
+}
+
+interface SupervisorContext {
+  options: SupervisorOption[];
+  canManage: boolean;
+  enforcedSupervisorId: string | null;
+  currentUserInList: boolean;
 }
 
 type CrewInput = Omit<InsertEdlsCrew, "sheetId"> & { id?: string };
@@ -26,6 +41,7 @@ export interface SheetFormData {
   title: string;
   date: string;
   workerCount: number;
+  supervisor: string;
   crews: CrewInput[];
 }
 
@@ -47,6 +63,20 @@ export function EdlsSheetForm({
   isSubmitting = false,
   submitLabel = "Save",
 }: EdlsSheetFormProps) {
+  const sheetId = initialData?.sheet?.id;
+  
+  const { data: supervisorContext, isLoading: supervisorContextLoading } = useQuery<SupervisorContext>({
+    queryKey: ["/api/edls/supervisor-context", sheetId],
+    queryFn: async () => {
+      const url = sheetId 
+        ? `/api/edls/supervisor-context?sheetId=${sheetId}` 
+        : "/api/edls/supervisor-context";
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Failed to fetch supervisor context");
+      return response.json();
+    },
+  });
+  
   const [formData, setFormData] = useState<SheetFormData>(() => {
     if (initialData) {
       return {
@@ -54,6 +84,7 @@ export function EdlsSheetForm({
         title: initialData.sheet.title,
         date: initialData.sheet.date as string,
         workerCount: initialData.sheet.workerCount,
+        supervisor: initialData.sheet.supervisor || "",
         crews: initialData.crews.map((c) => ({
           id: c.id,
           title: c.title,
@@ -69,9 +100,13 @@ export function EdlsSheetForm({
       title: "",
       date: new Date().toISOString().split("T")[0],
       workerCount: 0,
+      supervisor: "",
       crews: [],
     };
   });
+
+  const effectiveSupervisor = supervisorContext?.enforcedSupervisorId || formData.supervisor;
+  const canChangeSupervisor = supervisorContext?.canManage ?? true;
 
   const { data: employers = [] } = useQuery<Employer[]>({
     queryKey: ["/api/employers"],
@@ -86,7 +121,9 @@ export function EdlsSheetForm({
     formData.crews.length > 0 && crewsTotalWorkerCount !== formData.workerCount;
 
   const hasValidationErrors = () => {
+    if (supervisorContextLoading) return true;
     if (!formData.title || !formData.employerId || !formData.date) return true;
+    if (!effectiveSupervisor) return true;
     if (formData.crews.length === 0) return true;
     if (workerCountMismatch) return true;
     for (const crew of formData.crews) {
@@ -135,7 +172,10 @@ export function EdlsSheetForm({
 
   const handleSubmit = () => {
     if (hasValidationErrors()) return;
-    onSubmit(formData);
+    onSubmit({
+      ...formData,
+      supervisor: effectiveSupervisor,
+    });
   };
 
   return (
@@ -219,6 +259,46 @@ export function EdlsSheetForm({
               Crew totals ({crewsTotalWorkerCount}) must match sheet total (
               {formData.workerCount})
             </p>
+          )}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="supervisor">Supervisor *</Label>
+          {supervisorContextLoading ? (
+            <Skeleton className="h-10 w-full" />
+          ) : (
+            <div className="relative">
+              <Select
+                value={effectiveSupervisor}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, supervisor: value })
+                }
+                disabled={!canChangeSupervisor}
+              >
+                <SelectTrigger data-testid="select-supervisor">
+                  <SelectValue placeholder="Select a supervisor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {supervisorContext?.options.map((supervisor) => (
+                    <SelectItem key={supervisor.id} value={supervisor.id}>
+                      {supervisor.firstName || supervisor.lastName
+                        ? `${supervisor.firstName || ""} ${supervisor.lastName || ""}`.trim()
+                        : supervisor.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!canChangeSupervisor && (
+                <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                  <Lock className="h-3 w-3" />
+                  You are automatically set as the supervisor
+                </div>
+              )}
+              {supervisorContext?.options.length === 0 && (
+                <p className="text-sm text-destructive mt-1">
+                  No supervisors available. Configure the supervisor role in EDLS settings.
+                </p>
+              )}
+            </div>
           )}
         </div>
       </div>
