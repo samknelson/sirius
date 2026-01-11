@@ -17,7 +17,8 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Role } from "@/lib/entity-types";
 
-const VARIABLE_NAME = "edls.settings";
+const VARIABLE_NAME = "edls_settings";
+const LEGACY_VARIABLE_NAME = "edls.settings";
 
 interface EdlsSettings {
   supervisor_role: string | null;
@@ -42,13 +43,17 @@ export default function EdlsSettingsPage() {
     queryFn: async () => {
       try {
         const response = await fetch(`/api/variables/by-name/${VARIABLE_NAME}`);
+        if (response.ok) {
+          return response.json();
+        }
         if (response.status === 404) {
+          const legacyResponse = await fetch(`/api/variables/by-name/${LEGACY_VARIABLE_NAME}`);
+          if (legacyResponse.ok) {
+            return legacyResponse.json();
+          }
           return null;
         }
-        if (!response.ok) {
-          throw new Error("Failed to fetch EDLS settings variable");
-        }
-        return response.json();
+        throw new Error("Failed to fetch EDLS settings variable");
       } catch {
         return null;
       }
@@ -73,7 +78,8 @@ export default function EdlsSettingsPage() {
   const saveMutation = useMutation({
     mutationFn: async (newSettings: EdlsSettings) => {
       const jsonValue = JSON.stringify(newSettings);
-      if (settingsVariable) {
+      const hasCorrectName = settingsVariable?.name === VARIABLE_NAME;
+      if (settingsVariable && hasCorrectName) {
         return apiRequest("PUT", `/api/variables/${settingsVariable.id}`, {
           value: jsonValue,
         });
@@ -86,6 +92,7 @@ export default function EdlsSettingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/variables/by-name", VARIABLE_NAME] });
+      queryClient.invalidateQueries({ queryKey: ["/api/variables/by-name", LEGACY_VARIABLE_NAME] });
       toast({
         title: "Success",
         description: "EDLS settings have been saved.",
