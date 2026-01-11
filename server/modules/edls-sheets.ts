@@ -8,6 +8,8 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { getSupervisorContext, validateSupervisorForSave, getEdlsSettings } from "./edls-supervisor-context";
 import { getEffectiveUser } from "./masquerade";
+import { storageLogger } from "../logger";
+import { getRequestContext } from "../middleware/request-context";
 
 const crewInputSchema = insertEdlsCrewsSchema.omit({ sheetId: true });
 
@@ -292,6 +294,33 @@ export function registerEdlsSheetsRoutes(
           );
           
           return { ...updatedSheet, crews: createdCrews.map(c => c[0]) };
+        });
+        
+        // Log the sheet update (transaction bypasses storage middleware)
+        setImmediate(() => {
+          const context = getRequestContext();
+          const changes: Record<string, { from: any; to: any }> = {};
+          for (const key of Object.keys(sheetData)) {
+            if (JSON.stringify((existingSheet as any)[key]) !== JSON.stringify((sheetData as any)[key])) {
+              changes[key] = { from: (existingSheet as any)[key], to: (sheetData as any)[key] };
+            }
+          }
+          const changedFields = Object.keys(changes);
+          const description = changedFields.length > 0
+            ? `Updated edls-sheets "${id}" (changed: ${changedFields.join(', ')})`
+            : `Updated edls-sheets "${id}" with crews`;
+          
+          storageLogger.info(`Storage operation: edls-sheets.update`, {
+            module: 'edls-sheets',
+            operation: 'update',
+            entity_id: id,
+            host_entity_id: id,
+            description,
+            user_id: context?.userId,
+            user_email: context?.userEmail,
+            ip_address: context?.ipAddress,
+            meta: { args: [id, sheetData], before: existingSheet, after: result, changes },
+          });
         });
         
         res.json(result);
