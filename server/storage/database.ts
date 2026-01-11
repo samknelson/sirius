@@ -3,7 +3,6 @@ import { type UserStorage, createUserStorage, userLoggingConfig } from "./users"
 import { type WorkerStorage, createWorkerStorage, workerLoggingConfig } from "./workers";
 import { type EmployerStorage, createEmployerStorage, employerLoggingConfig } from "./employers";
 import { type ContactsStorage, createContactsStorage, type AddressStorage, type PhoneNumberStorage, contactLoggingConfig, addressLoggingConfig, phoneNumberLoggingConfig } from "./contacts";
-import { type OptionsStorage, createOptionsStorage, createEmployerContactTypeStorage, type EmployerContactTypeStorage, employerContactTypeLoggingConfig } from "./options";
 import { type TrustBenefitStorage, createTrustBenefitStorage, trustBenefitLoggingConfig } from "./trust-benefits";
 import { type TrustProviderStorage, createTrustProviderStorage } from "./trust-providers";
 import { type TrustProviderContactStorage, createTrustProviderContactStorage, trustProviderContactLoggingConfig } from "./trust-provider-contacts";
@@ -43,7 +42,7 @@ import { type EdlsCrewsStorage, createEdlsCrewsStorage, edlsCrewsLoggingConfig }
 import { type EdlsTaskStorage, createEdlsTaskStorage } from "./edls-tasks";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "../db";
-import { optionsEmploymentStatus, employers, workers, contacts } from "@shared/schema";
+import { employers, workers, contacts } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 export interface IStorage {
@@ -52,7 +51,6 @@ export interface IStorage {
   workers: WorkerStorage;
   employers: EmployerStorage;
   contacts: ContactsStorage;
-  options: OptionsStorage;
   trustBenefits: TrustBenefitStorage;
   trustProviders: TrustProviderStorage;
   trustProviderContacts: TrustProviderContactStorage;
@@ -101,7 +99,6 @@ export class DatabaseStorage implements IStorage {
   workers: WorkerStorage;
   employers: EmployerStorage;
   contacts: ContactsStorage;
-  options: OptionsStorage;
   trustBenefits: TrustBenefitStorage;
   trustProviders: TrustProviderStorage;
   trustProviderContacts: TrustProviderContactStorage;
@@ -155,14 +152,6 @@ export class DatabaseStorage implements IStorage {
       workerLoggingConfig
     );
     this.employers = withStorageLogging(createEmployerStorage(), employerLoggingConfig);
-    
-    // Create options storage with logged employer contact types
-    const optionsStorage = createOptionsStorage();
-    optionsStorage.employerContactTypes = withStorageLogging(
-      createEmployerContactTypeStorage(),
-      employerContactTypeLoggingConfig
-    );
-    this.options = optionsStorage;
     
     this.trustBenefits = withStorageLogging(
       createTrustBenefitStorage(),

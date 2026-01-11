@@ -8,7 +8,7 @@ import {
   type EligibilityQueryContext 
 } from "../services/dispatch-elig-plugin-registry";
 import { createDispatchJobStorage } from "./dispatch-jobs";
-import { createOptionsStorage } from "./options";
+import { createUnifiedOptionsStorage } from "./unified-options";
 
 export interface EligibleWorker {
   id: string;
@@ -53,7 +53,7 @@ interface QueryBuildResult {
 
 async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorkersFilters): Promise<QueryBuildResult | null> {
   const jobStorage = createDispatchJobStorage();
-  const optionsStorage = createOptionsStorage();
+  const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
   const job = await jobStorage.getWithRelations(jobId);
   if (!job) {
@@ -73,7 +73,7 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
   let enabledPluginConfigs: EligibilityPluginConfig[] = [];
   
   if (job.jobTypeId) {
-    const jobType = await optionsStorage.dispatchJobTypes.get(job.jobTypeId);
+    const jobType = await unifiedOptionsStorage.get("dispatch-job-type", job.jobTypeId);
     if (jobType?.data) {
       const jobTypeData = jobType.data as JobTypeData;
       enabledPluginConfigs = (jobTypeData.eligibility || []).filter((p: EligibilityPluginConfig) => p.enabled);
