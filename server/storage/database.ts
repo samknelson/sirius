@@ -41,7 +41,7 @@ import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfi
 import { type EdlsCrewsStorage, createEdlsCrewsStorage, edlsCrewsLoggingConfig } from "./edls-crews";
 import { type EdlsTaskStorage, createEdlsTaskStorage } from "./edls-tasks";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
-import { db } from "../db";
+import { db } from "./db";
 import { employers, workers, contacts } from "@shared/schema";
 import { eq } from "drizzle-orm";
 

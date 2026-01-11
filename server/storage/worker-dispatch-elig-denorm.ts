@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from './db';
 import { workerDispatchEligDenorm, type InsertWorkerDispatchEligDenorm, type WorkerDispatchEligDenorm } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 

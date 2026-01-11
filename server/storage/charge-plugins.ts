@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from './db';
 import { chargePluginConfigs, type ChargePluginConfig, type InsertChargePluginConfig } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 

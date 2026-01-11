@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from './db';
 import { cardcheckDefinitions, type CardcheckDefinition, type InsertCardcheckDefinition } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";

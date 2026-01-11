@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from './db';
 import { policies, type Policy, type InsertPolicy } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";

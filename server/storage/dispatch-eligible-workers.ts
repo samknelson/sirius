@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from './db';
 import { workers, contacts, workerDispatchEligDenorm, type EligibilityPluginConfig, type JobTypeData } from "@shared/schema";
 import { sql, eq, and, exists, notExists, or, ilike } from "drizzle-orm";
 import { logger } from "../logger";

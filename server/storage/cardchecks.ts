@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from './db';
 import { cardchecks, cardcheckDefinitions, workers, contacts, type Cardcheck, type InsertCardcheck } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";

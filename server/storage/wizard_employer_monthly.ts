@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from './db';
 import { wizardEmployerMonthly, wizards, employers, insertWizardEmployerMonthlySchema } from "@shared/schema";
 import { eq, and, or, inArray } from "drizzle-orm";
 import { z } from "zod";

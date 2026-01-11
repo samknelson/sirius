@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from './db';
 import { variables, type Variable, type InsertVariable } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";

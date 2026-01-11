@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from './db';
 import { eq, asc, SQL } from "drizzle-orm";
 import { PgTable, TableConfig } from "drizzle-orm/pg-core";
 import { 

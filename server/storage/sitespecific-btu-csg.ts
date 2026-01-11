@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from './db';
 import { eq, desc } from "drizzle-orm";
 import { tableExists as tableExistsUtil } from "./utils";
 import { 

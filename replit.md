@@ -35,8 +35,74 @@ The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI),
 -   **Cron Job System**: Scheduled task execution framework with database-backed configuration.
 -   **Migration Framework**: Versioned database migration system.
 
+## Database Access Architecture
+
+**CRITICAL RULE: All database access MUST go through the storage layer.**
+
+This is a fundamental architectural constraint that enables:
+- **Audit Logging**: Storage middleware automatically logs all data operations
+- **Access Control**: Policies can be applied uniformly at the storage layer
+- **Alternative Backends**: Storage can be swapped (e.g., for testing) without changing consumers
+- **Consistency**: Single point of enforcement for validation and business rules
+
+### File Structure
+```
+server/
+├── storage/
+│   ├── db.ts              # Database connection (INTERNAL - only import from within storage/)
+│   ├── database.ts        # Storage factory and IStorage interface
+│   ├── middleware/
+│   │   └── logging.ts     # Automatic audit logging middleware
+│   └── *.ts               # Individual storage modules
+├── db.ts                  # DEPRECATED re-export (do not use in new code)
+└── modules/               # Route handlers (must use storage, NOT db)
+```
+
+### Correct Patterns
+
+**Route handlers and modules** - Use the storage object:
+```typescript
+import { storage } from "../storage";
+
+app.get("/api/workers/:id", async (req, res) => {
+  const worker = await storage.workers.getWorker(req.params.id);
+  res.json(worker);
+});
+```
+
+**Storage modules** - Import db from the local path:
+```typescript
+// Inside server/storage/workers.ts
+import { db } from './db';
+```
+
+### Forbidden Patterns
+
+**NEVER do this in route handlers or modules:**
+```typescript
+// BAD - bypasses storage layer, no logging, breaks architecture
+import { db } from "../db";
+const result = await db.transaction(async (tx) => { ... });
+```
+
+### When You Need New Database Operations
+
+1. Add a method to the appropriate storage module (e.g., `server/storage/workers.ts`)
+2. If you need atomic transactions across multiple tables, create a transactional storage method (see `createWithCrews()` in `edls-sheets.ts` for an example)
+3. Configure logging in the storage module's logging config
+4. Use the storage method from your route handler
+
+### Enforcement
+
+- **Check script**: Run `npx tsx scripts/dev/check-storage-encapsulation.ts` to detect violations
+- **ESLint** (if configured): Add `no-restricted-imports` rule for `server/db`
+- **Code review**: Reject PRs that import db outside the storage layer
+
+### Existing Violations (Legacy)
+
+Some infrastructure code (cron jobs, services) currently imports db directly. These should be migrated to use storage methods over time. New code must not follow this pattern.
+
 ## System Design Choices
--   **Database Access Architecture**: All database queries are strictly confined to the storage layer, ensuring separation of concerns.
 -   **Worker Management**: Comprehensive CRUD for workers, contacts, and benefits.
 -   **Configurable Settings**: Manages organizational settings via consolidated options system (`/api/options/:type`). Authenticated users can read all options; admin-only write access. Supported types: `department`, `employer-type`, `worker-id-type`, `skill`, `dispatch-job-type`, `ledger-payment-type`, `trust-benefit-type`, `event-type`, `gender`, `worker-ws`, `employment-status`, `employer-contact-type`, `trust-provider-type`. Architecture: unified metadata-driven storage (`server/storage/unified-options.ts`) with registry at `server/modules/options-registry.ts`. Metadata defines table references, display names, order columns, logging modules, and required/optional field lists for each type.
 -   **User Provisioning**: Email-based user provisioning integrated with Replit accounts, with automatic contact record synchronization.

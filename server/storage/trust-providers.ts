@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from './db';
 import { trustProviders, InsertTrustProvider, TrustProvider } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";

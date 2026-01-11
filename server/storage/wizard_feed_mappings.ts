@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from './db';
 import { wizardFeedMappings, type WizardFeedMapping, type InsertWizardFeedMapping } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 

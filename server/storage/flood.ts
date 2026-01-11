@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from './db';
 import { flood, type Flood } from "@shared/schema";
 import { eq, and, gt, sql, desc, inArray } from "drizzle-orm";
 

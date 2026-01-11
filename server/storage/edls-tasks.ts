@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from './db';
 import { optionsEdlsTasks, type EdlsTask, type InsertEdlsTask, optionsDepartment } from "@shared/schema";
 import { eq } from "drizzle-orm";
 

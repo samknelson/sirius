@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from './db';
 import { wizards, wizardReportData, wizardEmployerMonthly, type Wizard, type InsertWizard, type WizardReportData, type InsertWizardReportData } from "@shared/schema";
 import { eq, and, desc, or } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";

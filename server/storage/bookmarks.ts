@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from './db';
 import { bookmarks, workers, employers, contacts, type Bookmark, type InsertBookmark } from "@shared/schema";
 import { eq, and, desc, inArray } from "drizzle-orm";
 
