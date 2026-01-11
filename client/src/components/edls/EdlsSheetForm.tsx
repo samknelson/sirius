@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, AlertCircle, Lock } from "lucide-react";
+import { Plus, Trash2, AlertCircle, Lock, ArrowUp, ArrowDown } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { EdlsSheet, EdlsCrew, InsertEdlsCrew } from "@shared/schema";
 
@@ -183,6 +183,14 @@ export function EdlsSheetForm({
   ) => {
     const newCrews = [...formData.crews];
     newCrews[index] = { ...newCrews[index], [field]: value };
+    setFormData({ ...formData, crews: newCrews });
+  };
+
+  const handleMoveCrew = (index: number, direction: "up" | "down") => {
+    const newCrews = [...formData.crews];
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= newCrews.length) return;
+    [newCrews[index], newCrews[targetIndex]] = [newCrews[targetIndex], newCrews[index]];
     setFormData({ ...formData, crews: newCrews });
   };
 
@@ -499,16 +507,38 @@ export function EdlsSheetForm({
                         </div>
                       </div>
                     </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive mt-5"
-                      onClick={() => handleRemoveCrew(index)}
-                      data-testid={`button-remove-crew-${index}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex flex-col gap-1 mt-5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleMoveCrew(index, "up")}
+                        disabled={index === 0}
+                        data-testid={`button-move-crew-up-${index}`}
+                      >
+                        <ArrowUp className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleMoveCrew(index, "down")}
+                        disabled={index === formData.crews.length - 1}
+                        data-testid={`button-move-crew-down-${index}`}
+                      >
+                        <ArrowDown className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive"
+                        onClick={() => handleRemoveCrew(index)}
+                        data-testid={`button-remove-crew-${index}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </Card>
               ))}
