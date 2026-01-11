@@ -346,6 +346,104 @@ export function registerOptionsRoutes(
     }
   });
 
+  // Department routes
+
+  // GET /api/departments - Get all departments (requires admin permission)
+  app.get("/api/departments", requireAccess('admin'), async (req, res) => {
+    try {
+      const departments = await storage.options.departments.getAll();
+      res.json(departments);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch departments" });
+    }
+  });
+
+  // GET /api/departments/:id - Get a specific department (requires admin permission)
+  app.get("/api/departments/:id", requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const department = await storage.options.departments.get(id);
+      
+      if (!department) {
+        res.status(404).json({ message: "Department not found" });
+        return;
+      }
+      
+      res.json(department);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch department" });
+    }
+  });
+
+  // POST /api/departments - Create a new department (requires admin permission)
+  app.post("/api/departments", requireAccess('admin'), async (req, res) => {
+    try {
+      const { name, data } = req.body;
+      
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ message: "Name is required" });
+      }
+      
+      const department = await storage.options.departments.create({
+        name: name.trim(),
+        data: data && typeof data === 'object' ? data : null,
+      });
+      
+      res.status(201).json(department);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to create department" });
+    }
+  });
+
+  // PUT /api/departments/:id - Update a department (requires admin permission)
+  app.put("/api/departments/:id", requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, data } = req.body;
+      
+      const updates: any = {};
+      
+      if (name !== undefined) {
+        if (typeof name !== 'string' || !name.trim()) {
+          return res.status(400).json({ message: "Name must be a non-empty string" });
+        }
+        updates.name = name.trim();
+      }
+      
+      if (data !== undefined) {
+        updates.data = data && typeof data === 'object' ? data : null;
+      }
+      
+      const department = await storage.options.departments.update(id, updates);
+      
+      if (!department) {
+        res.status(404).json({ message: "Department not found" });
+        return;
+      }
+      
+      res.json(department);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to update department" });
+    }
+  });
+
+  // DELETE /api/departments/:id - Delete a department (requires admin permission)
+  app.delete("/api/departments/:id", requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.options.departments.delete(id);
+      
+      if (!deleted) {
+        res.status(404).json({ message: "Department not found" });
+        return;
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete department" });
+    }
+  });
+
   // Provider Contact Type routes
 
   // GET /api/provider-contact-types - Get all provider contact types (requires admin permission)
