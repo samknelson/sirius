@@ -267,11 +267,11 @@ export const dispatchJobTypeTabTree: HierarchicalTab[] = [
  * EDLS sheet entity tab tree
  */
 export const edlsSheetTabTree: HierarchicalTab[] = [
-  { id: 'details', label: 'Details', hrefTemplate: '/edls/sheet/{id}', permission: 'staff', component: 'edls' },
-  { id: 'assignments', label: 'Assignments', hrefTemplate: '/edls/sheet/{id}/assignments', permission: 'staff', component: 'edls' },
+  { id: 'details', label: 'Details', hrefTemplate: '/edls/sheet/{id}', policyId: 'edls.sheet.view', component: 'edls' },
+  { id: 'assignments', label: 'Assignments', hrefTemplate: '/edls/sheet/{id}/assignments', policyId: 'edls.sheet.view', component: 'edls' },
   { id: 'manage', label: 'Manage', hrefTemplate: '/edls/sheet/{id}/manage', policyId: 'edls.sheet.edit', component: 'edls' },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/edls/sheet/{id}/edit', permission: 'staff', component: 'edls' },
-  { id: 'logs', label: 'Logs', hrefTemplate: '/edls/sheet/{id}/logs', permission: 'staff', component: 'edls' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/edls/sheet/{id}/edit', policyId: 'edls.sheet.edit', component: 'edls' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.sheet.view', component: 'edls' },
 ];
 
 /**
