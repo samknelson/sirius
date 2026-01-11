@@ -22,7 +22,7 @@ export function registerEdlsSheetsRoutes(
 ) {
   const edlsComponent = requireComponent("edls");
 
-  app.get("/api/edls/sheets", requireAuth, edlsComponent, requireAccess('staff'), async (req, res) => {
+  app.get("/api/edls/sheets", requireAuth, edlsComponent, requireAccess('edls.any'), async (req, res) => {
     try {
       const { 
         employerId, 

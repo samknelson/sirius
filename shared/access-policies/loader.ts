@@ -47,6 +47,9 @@ import './employer/dispatch/manage';
 import './worker/dispatch/dnc/view';
 import './worker/dispatch/dnc/edit';
 
+import './edls/any';
+import './edls/reader';
+import './edls/coordinator';
 import './edls/sheet/view';
 import './edls/sheet/edit';
 import './edls/sheet/manage';
