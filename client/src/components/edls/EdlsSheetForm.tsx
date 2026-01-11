@@ -363,92 +363,96 @@ export function EdlsSheetForm({
               {formData.crews.map((crew, index) => (
                 <Card key={index} className="p-4">
                   <div className="flex items-start gap-4">
-                    <div className="flex-1 grid grid-cols-1 md:grid-cols-6 gap-3">
-                      <div className="space-y-1">
-                        <Label className="text-xs">Title *</Label>
-                        <Input
-                          data-testid={`input-crew-title-${index}`}
-                          value={crew.title || ""}
-                          onChange={(e) =>
-                            handleCrewChange(index, "title", e.target.value)
-                          }
-                          placeholder="Crew name"
-                        />
+                    <div className="flex-1 space-y-3">
+                      <div className="flex gap-3">
+                        <div className="flex-1 space-y-1">
+                          <Label className="text-xs">Title *</Label>
+                          <Input
+                            data-testid={`input-crew-title-${index}`}
+                            value={crew.title || ""}
+                            onChange={(e) =>
+                              handleCrewChange(index, "title", e.target.value)
+                            }
+                            placeholder="Crew name"
+                          />
+                        </div>
+                        <div className="w-20 space-y-1">
+                          <Label className="text-xs">Workers *</Label>
+                          <Input
+                            type="number"
+                            data-testid={`input-crew-workers-${index}`}
+                            value={crew.workerCount || 0}
+                            onChange={(e) =>
+                              handleCrewChange(
+                                index,
+                                "workerCount",
+                                parseInt(e.target.value) || 0
+                              )
+                            }
+                            min={1}
+                          />
+                        </div>
                       </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Workers *</Label>
-                        <Input
-                          type="number"
-                          data-testid={`input-crew-workers-${index}`}
-                          value={crew.workerCount || 0}
-                          onChange={(e) =>
-                            handleCrewChange(
-                              index,
-                              "workerCount",
-                              parseInt(e.target.value) || 0
-                            )
-                          }
-                          min={1}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Start Time *</Label>
-                        <Input
-                          type="time"
-                          data-testid={`input-crew-start-${index}`}
-                          value={crew.startTime || ""}
-                          onChange={(e) =>
-                            handleCrewChange(index, "startTime", e.target.value)
-                          }
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">End Time *</Label>
-                        <Input
-                          type="time"
-                          data-testid={`input-crew-end-${index}`}
-                          value={crew.endTime || ""}
-                          onChange={(e) =>
-                            handleCrewChange(index, "endTime", e.target.value)
-                          }
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Location</Label>
-                        <Input
-                          data-testid={`input-crew-location-${index}`}
-                          value={crew.location || ""}
-                          onChange={(e) =>
-                            handleCrewChange(index, "location", e.target.value || null)
-                          }
-                          placeholder="Optional"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs flex items-center gap-1">
-                          Supervisor
-                          {!canChangeSupervisor && <Lock className="h-3 w-3 text-muted-foreground" />}
-                        </Label>
-                        <Select
-                          value={crew.supervisor || effectiveSupervisor || ""}
-                          onValueChange={(value) =>
-                            handleCrewChange(index, "supervisor", value || null)
-                          }
-                          disabled={!canChangeSupervisor}
-                        >
-                          <SelectTrigger data-testid={`select-crew-supervisor-${index}`}>
-                            <SelectValue placeholder="Inherit from sheet" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {supervisorContext?.options.map((supervisor) => (
-                              <SelectItem key={supervisor.id} value={supervisor.id}>
-                                {supervisor.firstName || supervisor.lastName
-                                  ? `${supervisor.firstName || ""} ${supervisor.lastName || ""}`.trim()
-                                  : supervisor.email}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Start Time *</Label>
+                          <Input
+                            type="time"
+                            data-testid={`input-crew-start-${index}`}
+                            value={crew.startTime || ""}
+                            onChange={(e) =>
+                              handleCrewChange(index, "startTime", e.target.value)
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">End Time *</Label>
+                          <Input
+                            type="time"
+                            data-testid={`input-crew-end-${index}`}
+                            value={crew.endTime || ""}
+                            onChange={(e) =>
+                              handleCrewChange(index, "endTime", e.target.value)
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Location</Label>
+                          <Input
+                            data-testid={`input-crew-location-${index}`}
+                            value={crew.location || ""}
+                            onChange={(e) =>
+                              handleCrewChange(index, "location", e.target.value || null)
+                            }
+                            placeholder="Optional"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs flex items-center gap-1">
+                            Supervisor
+                            {!canChangeSupervisor && <Lock className="h-3 w-3 text-muted-foreground" />}
+                          </Label>
+                          <Select
+                            value={crew.supervisor || effectiveSupervisor || ""}
+                            onValueChange={(value) =>
+                              handleCrewChange(index, "supervisor", value || null)
+                            }
+                            disabled={!canChangeSupervisor}
+                          >
+                            <SelectTrigger data-testid={`select-crew-supervisor-${index}`}>
+                              <SelectValue placeholder="Inherit from sheet" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {supervisorContext?.options.map((supervisor) => (
+                                <SelectItem key={supervisor.id} value={supervisor.id}>
+                                  {supervisor.firstName || supervisor.lastName
+                                    ? `${supervisor.firstName || ""} ${supervisor.lastName || ""}`.trim()
+                                    : supervisor.email}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                     </div>
                     <Button
