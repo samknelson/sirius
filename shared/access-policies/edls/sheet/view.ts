@@ -5,6 +5,7 @@ const policy = definePolicy({
   description: 'View EDLS sheet details',
   scope: 'entity',
   entityType: 'edls_sheet',
+  component: 'edls',
   cacheKeyFields: ['status'],
   
   describeRequirements: () => [
