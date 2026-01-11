@@ -129,9 +129,8 @@ export const edlsCrewsLoggingConfig: StorageLoggingConfig<EdlsCrewsStorage> = {
       getEntityId: (args, result) => result?.id || 'new crew',
       getHostEntityId: (args, result) => result?.sheetId || args[0]?.sheetId,
       getDescription: async (args, result) => {
-        const crewNumber = result?.crewNumber || args[0]?.crewNumber || 'Unknown';
-        const workerCount = result?.workerCount || args[0]?.workerCount || 0;
-        return `Created EDLS Crew #${crewNumber} with ${workerCount} workers`;
+        const title = result?.title || args[0]?.title || 'Untitled';
+        return `Created crew [${title}]`;
       },
       after: async (args, result) => {
         return {
@@ -139,7 +138,7 @@ export const edlsCrewsLoggingConfig: StorageLoggingConfig<EdlsCrewsStorage> = {
           metadata: {
             crewId: result?.id,
             sheetId: result?.sheetId,
-            crewNumber: result?.crewNumber,
+            title: result?.title,
             workerCount: result?.workerCount,
           }
         };
@@ -151,8 +150,7 @@ export const edlsCrewsLoggingConfig: StorageLoggingConfig<EdlsCrewsStorage> = {
       getHostEntityId: (args, result) => result?.[0]?.sheetId || args[0]?.[0]?.sheetId,
       getDescription: async (args, result) => {
         const count = result?.length || args[0]?.length || 0;
-        const sheetId = result?.[0]?.sheetId || args[0]?.[0]?.sheetId || 'Unknown';
-        return `Created ${count} EDLS Crew(s) for sheet ${sheetId}`;
+        return `Created ${count} crew(s)`;
       },
       after: async (args, result) => {
         return {
@@ -174,8 +172,8 @@ export const edlsCrewsLoggingConfig: StorageLoggingConfig<EdlsCrewsStorage> = {
         return await storage.get(args[0]);
       },
       getDescription: async (args, result, beforeState) => {
-        const crewNumber = result?.crewNumber || beforeState?.crewNumber || 'Unknown';
-        return `Updated EDLS Crew #${crewNumber}`;
+        const title = result?.title || beforeState?.title || 'Untitled';
+        return `Updated crew [${title}]`;
       },
       after: async (args, result) => {
         return result;
@@ -191,8 +189,8 @@ export const edlsCrewsLoggingConfig: StorageLoggingConfig<EdlsCrewsStorage> = {
         return await storage.get(args[0]);
       },
       getDescription: async (args, result, beforeState) => {
-        const crewNumber = beforeState?.crewNumber || 'Unknown';
-        return `Deleted EDLS Crew #${crewNumber}`;
+        const title = beforeState?.title || 'Untitled';
+        return `Deleted crew [${title}]`;
       }
     },
     deleteBySheetId: {
