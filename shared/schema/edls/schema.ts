@@ -1,8 +1,8 @@
-import { pgTable, varchar, date, integer, time, jsonb, unique } from "drizzle-orm/pg-core";
+import { pgTable, varchar, date, integer, time, jsonb, unique, text } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { employers, workers, users } from "../../schema";
+import { employers, workers, users, optionsDepartment } from "../../schema";
 
 export const edlsSheetStatusEnum = ["draft", "request", "lock", "trash", "reserved"] as const;
 export type EdlsSheetStatus = typeof edlsSheetStatusEnum[number];
@@ -63,3 +63,18 @@ export const insertEdlsAssignmentsSchema = createInsertSchema(edlsAssignments).o
 
 export type EdlsAssignment = typeof edlsAssignments.$inferSelect;
 export type InsertEdlsAssignment = z.infer<typeof insertEdlsAssignmentsSchema>;
+
+export const optionsEdlsTasks = pgTable("options_edls_tasks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  siriusId: varchar("sirius_id", { length: 255 }),
+  departmentId: varchar("department_id").notNull().references(() => optionsDepartment.id, { onDelete: 'cascade' }),
+  data: jsonb("data"),
+});
+
+export const insertEdlsTaskSchema = createInsertSchema(optionsEdlsTasks).omit({
+  id: true,
+});
+
+export type EdlsTask = typeof optionsEdlsTasks.$inferSelect;
+export type InsertEdlsTask = z.infer<typeof insertEdlsTaskSchema>;

@@ -661,6 +661,10 @@ export {
   insertEdlsCrewsSchema,
   type EdlsCrew,
   type InsertEdlsCrew,
+  optionsEdlsTasks,
+  insertEdlsTaskSchema,
+  type EdlsTask,
+  type InsertEdlsTask,
 } from "./schema/edls/schema";
 
 // Zod schemas for validation
