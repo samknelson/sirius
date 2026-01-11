@@ -21,6 +21,8 @@ export const edlsSheets = pgTable("edls_sheets", {
 
 export const insertEdlsSheetsSchema = createInsertSchema(edlsSheets).omit({
   id: true,
+}).extend({
+  assignee: z.string().nullish(),
 });
 
 export type EdlsSheet = typeof edlsSheets.$inferSelect;

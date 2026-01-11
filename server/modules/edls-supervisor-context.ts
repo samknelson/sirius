@@ -10,6 +10,7 @@ export interface SupervisorOption {
 
 export interface SupervisorContext {
   options: SupervisorOption[];
+  assigneeOptions: SupervisorOption[];
   canManage: boolean;
   enforcedSupervisorId: string | null;
   currentUserInList: boolean;
@@ -44,12 +45,27 @@ export async function getSupervisorOptions(supervisorRoleId: string | null): Pro
   }));
 }
 
+export async function getAssigneeOptions(): Promise<SupervisorOption[]> {
+  const permissions = ['edls.coordinator', 'edls.manager', 'edls.supervisor', 'edls.worker.advisor'];
+  const users = await storage.users.getUsersWithAnyPermission(permissions);
+  
+  return users.map(user => ({
+    id: user.id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
+  }));
+}
+
 export async function getSupervisorContext(
   userId: string,
   sheetId?: string
 ): Promise<SupervisorContext> {
   const settings = await getEdlsSettings();
-  const options = await getSupervisorOptions(settings.supervisor_role);
+  const [options, assigneeOptions] = await Promise.all([
+    getSupervisorOptions(settings.supervisor_role),
+    getAssigneeOptions(),
+  ]);
   
   const currentUserInList = options.some(opt => opt.id === userId);
   
@@ -73,6 +89,7 @@ export async function getSupervisorContext(
   
   return {
     options,
+    assigneeOptions,
     canManage,
     enforcedSupervisorId,
     currentUserInList,

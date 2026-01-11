@@ -122,6 +122,7 @@ export function registerEdlsSheetsRoutes(
       const finalSheetData = {
         ...sheetData,
         supervisor: supervisorValidation.supervisorId,
+        assignee: sheetData.assignee || supervisorValidation.supervisorId,
       };
       
       const employer = await storage.employers.getEmployer(finalSheetData.employerId);
@@ -213,6 +214,13 @@ export function registerEdlsSheetsRoutes(
         }
         
         sheetData.supervisor = supervisorValidation.supervisorId;
+      }
+      
+      if (sheetData.assignee === undefined || sheetData.assignee === null || sheetData.assignee === '') {
+        const finalSupervisor = sheetData.supervisor ?? existingSheet.supervisor;
+        if (finalSupervisor) {
+          sheetData.assignee = finalSupervisor;
+        }
       }
       
       if (sheetData.employerId) {

@@ -29,6 +29,7 @@ interface SupervisorOption {
 
 interface SupervisorContext {
   options: SupervisorOption[];
+  assigneeOptions: SupervisorOption[];
   canManage: boolean;
   enforcedSupervisorId: string | null;
   currentUserInList: boolean;
@@ -42,6 +43,7 @@ export interface SheetFormData {
   date: string;
   workerCount: number;
   supervisor: string;
+  assignee: string;
   crews: CrewInput[];
 }
 
@@ -85,6 +87,7 @@ export function EdlsSheetForm({
         date: initialData.sheet.date as string,
         workerCount: initialData.sheet.workerCount,
         supervisor: initialData.sheet.supervisor || "",
+        assignee: initialData.sheet.assignee || "",
         crews: initialData.crews.map((c) => ({
           id: c.id,
           title: c.title,
@@ -102,6 +105,7 @@ export function EdlsSheetForm({
       date: new Date().toISOString().split("T")[0],
       workerCount: 0,
       supervisor: "",
+      assignee: "",
       crews: [],
     };
   });
@@ -301,6 +305,36 @@ export function EdlsSheetForm({
                 </p>
               )}
             </div>
+          )}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="assignee" className="flex items-center gap-1">
+            Assignee
+            {!canChangeSupervisor && <Lock className="h-3 w-3 text-muted-foreground" />}
+          </Label>
+          {supervisorContextLoading ? (
+            <Skeleton className="h-10 w-full" />
+          ) : (
+            <Select
+              value={formData.assignee || ""}
+              onValueChange={(value) =>
+                setFormData({ ...formData, assignee: value })
+              }
+              disabled={!canChangeSupervisor}
+            >
+              <SelectTrigger data-testid="select-assignee">
+                <SelectValue placeholder="Default to supervisor" />
+              </SelectTrigger>
+              <SelectContent>
+                {supervisorContext?.assigneeOptions.map((assignee) => (
+                  <SelectItem key={assignee.id} value={assignee.id}>
+                    {assignee.firstName || assignee.lastName
+                      ? `${assignee.firstName || ""} ${assignee.lastName || ""}`.trim()
+                      : assignee.email}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
         </div>
       </div>
