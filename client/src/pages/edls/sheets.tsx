@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { format } from "date-fns";
+import { format, addDays, startOfDay } from "date-fns";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,11 +21,21 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, FileSpreadsheet, Building2, Calendar, Users } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Plus, FileSpreadsheet, Building2, Calendar, Users, CalendarDays } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { EdlsSheetForm, type SheetFormData } from "@/components/edls/EdlsSheetForm";
 import type { EdlsSheet } from "@shared/schema";
+import { cn } from "@/lib/utils";
 
 interface EdlsSheetWithRelations extends EdlsSheet {
   employer?: { id: string; name: string };
@@ -38,12 +48,78 @@ interface PaginatedEdlsSheets {
   limit: number;
 }
 
+type DateFilterType = "all" | "today" | "tomorrow" | "day2" | "day3" | "day4" | "day5" | "day6" | "other" | "range";
+
+function getDateFilterOptions(): Array<{ value: DateFilterType; label: string; date?: Date }> {
+  const today = startOfDay(new Date());
+  const options: Array<{ value: DateFilterType; label: string; date?: Date }> = [
+    { value: "all", label: "All Dates" },
+    { value: "today", label: "Today", date: today },
+    { value: "tomorrow", label: "Tomorrow", date: addDays(today, 1) },
+  ];
+  
+  for (let i = 2; i <= 6; i++) {
+    const date = addDays(today, i);
+    options.push({
+      value: `day${i}` as DateFilterType,
+      label: `${format(date, "EEEE")} (${format(date, "d MMMM")})`,
+      date,
+    });
+  }
+  
+  options.push(
+    { value: "other", label: "Other Date" },
+    { value: "range", label: "Date Range" }
+  );
+  
+  return options;
+}
+
 export default function EdlsSheetsPage() {
   const { toast } = useToast();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-
+  const [dateFilterType, setDateFilterType] = useState<DateFilterType>("all");
+  const [otherDate, setOtherDate] = useState<Date | undefined>(undefined);
+  const [rangeFromDate, setRangeFromDate] = useState<Date | undefined>(undefined);
+  const [rangeToDate, setRangeToDate] = useState<Date | undefined>(undefined);
+  
+  const dateFilterOptions = useMemo(() => getDateFilterOptions(), []);
+  
+  const { dateFrom, dateTo } = useMemo(() => {
+    if (dateFilterType === "all") {
+      return { dateFrom: undefined, dateTo: undefined };
+    }
+    if (dateFilterType === "other" && otherDate) {
+      const dateStr = format(otherDate, "yyyy-MM-dd");
+      return { dateFrom: dateStr, dateTo: dateStr };
+    }
+    if (dateFilterType === "range") {
+      return {
+        dateFrom: rangeFromDate ? format(rangeFromDate, "yyyy-MM-dd") : undefined,
+        dateTo: rangeToDate ? format(rangeToDate, "yyyy-MM-dd") : undefined,
+      };
+    }
+    const option = dateFilterOptions.find(o => o.value === dateFilterType);
+    if (option?.date) {
+      const dateStr = format(option.date, "yyyy-MM-dd");
+      return { dateFrom: dateStr, dateTo: dateStr };
+    }
+    return { dateFrom: undefined, dateTo: undefined };
+  }, [dateFilterType, otherDate, rangeFromDate, rangeToDate, dateFilterOptions]);
+  
+  const queryParams = new URLSearchParams();
+  if (dateFrom) queryParams.set("dateFrom", dateFrom);
+  if (dateTo) queryParams.set("dateTo", dateTo);
+  const queryString = queryParams.toString();
+  
   const { data: sheetsData, isLoading } = useQuery<PaginatedEdlsSheets>({
-    queryKey: ["/api/edls/sheets"],
+    queryKey: ["/api/edls/sheets", { dateFrom, dateTo }],
+    queryFn: async () => {
+      const url = queryString ? `/api/edls/sheets?${queryString}` : "/api/edls/sheets";
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch sheets");
+      return res.json();
+    },
   });
 
   const createMutation = useMutation({
@@ -126,11 +202,121 @@ export default function EdlsSheetsPage() {
           </Dialog>
         </CardHeader>
         <CardContent>
+          <div className="flex flex-wrap items-end gap-4 mb-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                <CalendarDays className="h-4 w-4" />
+                Date Filter
+              </label>
+              <Select 
+                value={dateFilterType} 
+                onValueChange={(value) => setDateFilterType(value as DateFilterType)}
+              >
+                <SelectTrigger className="w-[220px]" data-testid="select-date-filter">
+                  <SelectValue placeholder="Select date filter" />
+                </SelectTrigger>
+                <SelectContent>
+                  {dateFilterOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value} data-testid={`option-date-${option.value}`}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {dateFilterType === "other" && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-muted-foreground">Select Date</label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-[200px] justify-start text-left font-normal",
+                        !otherDate && "text-muted-foreground"
+                      )}
+                      data-testid="button-other-date"
+                    >
+                      <Calendar className="mr-2 h-4 w-4" />
+                      {otherDate ? format(otherDate, "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarComponent
+                      mode="single"
+                      selected={otherDate}
+                      onSelect={setOtherDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            )}
+            
+            {dateFilterType === "range" && (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-muted-foreground">From</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-[200px] justify-start text-left font-normal",
+                          !rangeFromDate && "text-muted-foreground"
+                        )}
+                        data-testid="button-date-from"
+                      >
+                        <Calendar className="mr-2 h-4 w-4" />
+                        {rangeFromDate ? format(rangeFromDate, "PPP") : "Start date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <CalendarComponent
+                        mode="single"
+                        selected={rangeFromDate}
+                        onSelect={setRangeFromDate}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-muted-foreground">To</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-[200px] justify-start text-left font-normal",
+                          !rangeToDate && "text-muted-foreground"
+                        )}
+                        data-testid="button-date-to"
+                      >
+                        <Calendar className="mr-2 h-4 w-4" />
+                        {rangeToDate ? format(rangeToDate, "PPP") : "End date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <CalendarComponent
+                        mode="single"
+                        selected={rangeToDate}
+                        onSelect={setRangeToDate}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </>
+            )}
+          </div>
+          
           {sheets.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <FileSpreadsheet className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>No sheets found.</p>
-              <p className="text-sm">Create a new sheet to get started.</p>
+              <p className="text-sm">{dateFilterType !== "all" ? "Try adjusting your date filter or create a new sheet." : "Create a new sheet to get started."}</p>
             </div>
           ) : (
             <Table>

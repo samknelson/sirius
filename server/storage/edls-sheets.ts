@@ -8,7 +8,7 @@ import {
   type EdlsCrew,
   type InsertEdlsCrew
 } from "@shared/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, and, gte, lte, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { StorageLoggingConfig } from "./middleware/logging";
 import { getClient, runInTransaction } from "./transaction-context";
@@ -34,9 +34,15 @@ export interface PaginatedEdlsSheets {
 
 export type CrewInput = Omit<InsertEdlsCrew, 'sheetId'> & { id?: string };
 
+export interface EdlsSheetsFilterOptions {
+  employerId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 export interface EdlsSheetsStorage {
   getAll(): Promise<EdlsSheet[]>;
-  getPaginated(page: number, limit: number, employerId?: string): Promise<PaginatedEdlsSheets>;
+  getPaginated(page: number, limit: number, filters?: EdlsSheetsFilterOptions): Promise<PaginatedEdlsSheets>;
   get(id: string): Promise<EdlsSheet | undefined>;
   getWithRelations(id: string): Promise<EdlsSheetWithRelations | undefined>;
   getByEmployer(employerId: string): Promise<EdlsSheet[]>;
@@ -54,16 +60,28 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       return client.select().from(edlsSheets).orderBy(desc(edlsSheets.date));
     },
 
-    async getPaginated(page: number, limit: number, employerId?: string): Promise<PaginatedEdlsSheets> {
+    async getPaginated(page: number, limit: number, filters?: EdlsSheetsFilterOptions): Promise<PaginatedEdlsSheets> {
       const client = getClient();
-      const baseCondition = employerId ? eq(edlsSheets.employerId, employerId) : undefined;
+      
+      const conditions: SQL[] = [];
+      if (filters?.employerId) {
+        conditions.push(eq(edlsSheets.employerId, filters.employerId));
+      }
+      if (filters?.dateFrom) {
+        conditions.push(gte(edlsSheets.date, filters.dateFrom));
+      }
+      if (filters?.dateTo) {
+        conditions.push(lte(edlsSheets.date, filters.dateTo));
+      }
+      
+      const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
       
       const countQuery = client
         .select({ count: sql<number>`count(*)::int` })
         .from(edlsSheets);
       
-      const [countResult] = baseCondition 
-        ? await countQuery.where(baseCondition)
+      const [countResult] = whereCondition 
+        ? await countQuery.where(whereCondition)
         : await countQuery;
       
       const total = countResult?.count || 0;
@@ -79,8 +97,8 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         .from(edlsSheets)
         .leftJoin(employers, eq(edlsSheets.employerId, employers.id));
       
-      const rows = baseCondition
-        ? await baseQuery.where(baseCondition).orderBy(desc(edlsSheets.date)).limit(limit).offset(page * limit)
+      const rows = whereCondition
+        ? await baseQuery.where(whereCondition).orderBy(desc(edlsSheets.date)).limit(limit).offset(page * limit)
         : await baseQuery.orderBy(desc(edlsSheets.date)).limit(limit).offset(page * limit);
       
       const data: EdlsSheetWithRelations[] = rows.map(row => ({

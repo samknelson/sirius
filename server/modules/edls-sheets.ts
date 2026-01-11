@@ -25,7 +25,9 @@ export function registerEdlsSheetsRoutes(
       const { 
         employerId, 
         page: pageParam,
-        limit: limitParam 
+        limit: limitParam,
+        dateFrom,
+        dateTo
       } = req.query;
       
       const page = parseInt(pageParam as string) || 0;
@@ -34,7 +36,11 @@ export function registerEdlsSheetsRoutes(
       const result = await storage.edlsSheets.getPaginated(
         page, 
         limit, 
-        employerId as string | undefined
+        {
+          employerId: employerId as string | undefined,
+          dateFrom: dateFrom as string | undefined,
+          dateTo: dateTo as string | undefined,
+        }
       );
       res.json(result);
     } catch (error) {
