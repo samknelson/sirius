@@ -244,6 +244,7 @@ const EdlsSheetDetailsPage = lazy(() => import("@/pages/edls/sheet-details"));
 const EdlsSheetAssignmentsPage = lazy(() => import("@/pages/edls/sheet-assignments"));
 const EdlsSheetManagePage = lazy(() => import("@/pages/edls/sheet-manage"));
 const EdlsSheetEditPage = lazy(() => import("@/pages/edls/sheet-edit"));
+const EdlsSheetLogsPage = lazy(() => import("@/pages/edls/sheet-logs"));
 
 // Loading fallback component
 function PageLoader() {
@@ -1792,6 +1793,14 @@ function Router() {
         <ProtectedRoute tabId="edit" entityType="edls_sheet">
           <AuthenticatedLayout>
             <EdlsSheetEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/edls/sheet/:id/logs">
+        <ProtectedRoute tabId="logs" entityType="edls_sheet">
+          <AuthenticatedLayout>
+            <EdlsSheetLogsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
