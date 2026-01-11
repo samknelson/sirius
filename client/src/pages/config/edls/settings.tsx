@@ -19,12 +19,19 @@ import { Role } from "@/lib/entity-types";
 
 const VARIABLE_NAME = "edls_settings";
 
+interface Employer {
+  id: string;
+  name: string;
+}
+
 interface EdlsSettings {
   supervisor_role: string | null;
+  employer: string | null;
 }
 
 const DEFAULT_SETTINGS: EdlsSettings = {
   supervisor_role: null,
+  employer: null,
 };
 
 export default function EdlsSettingsPage() {
@@ -35,6 +42,10 @@ export default function EdlsSettingsPage() {
 
   const { data: roles = [], isLoading: rolesLoading } = useQuery<Role[]>({
     queryKey: ["/api/admin/roles"],
+  });
+
+  const { data: employers = [], isLoading: employersLoading } = useQuery<Employer[]>({
+    queryKey: ["/api/employers"],
   });
 
   const { data: settingsVariable, isLoading: variableLoading } = useQuery<Variable | null>({
@@ -63,6 +74,7 @@ export default function EdlsSettingsPage() {
           : settingsVariable.value;
         setSettings({
           supervisor_role: parsed.supervisor_role || null,
+          employer: parsed.employer || null,
         });
       } catch {
         setSettings(DEFAULT_SETTINGS);
@@ -112,6 +124,7 @@ export default function EdlsSettingsPage() {
           : settingsVariable.value;
         return {
           supervisor_role: parsed.supervisor_role || null,
+          employer: parsed.employer || null,
         };
       } catch {
         return DEFAULT_SETTINGS;
@@ -122,7 +135,7 @@ export default function EdlsSettingsPage() {
 
   const hasChanges = JSON.stringify(settings) !== JSON.stringify(getCurrentSettings());
 
-  const isLoading = rolesLoading || variableLoading;
+  const isLoading = rolesLoading || employersLoading || variableLoading;
 
   if (isLoading) {
     return (
@@ -178,6 +191,25 @@ export default function EdlsSettingsPage() {
                 {selectedRole.description}
               </p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="employer">Employer</Label>
+            <Select
+              value={settings.employer || ""}
+              onValueChange={(value) => setSettings({ ...settings, employer: value || null })}
+            >
+              <SelectTrigger id="employer" data-testid="select-employer">
+                <SelectValue placeholder="Select an employer..." />
+              </SelectTrigger>
+              <SelectContent>
+                {employers.map((employer) => (
+                  <SelectItem key={employer.id} value={employer.id} data-testid={`option-employer-${employer.id}`}>
+                    {employer.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex justify-end">
