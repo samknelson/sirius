@@ -86,6 +86,7 @@ export default function ProtectedRoute({ children, permission, policy, component
       'ledger': 'ledger',
       'employer-contacts': 'employer_contact',
       'ea': 'ea',
+      'sheet': 'edls_sheet',
     };
     
     for (let i = 0; i < segments.length - 1; i++) {
