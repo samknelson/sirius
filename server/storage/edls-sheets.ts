@@ -18,13 +18,6 @@ export interface EdlsSheetWithCrews extends EdlsSheet {
   crews: EdlsCrew[];
 }
 
-async function getEmployerName(employerId: string | null | undefined): Promise<string> {
-  if (!employerId) return 'Unknown';
-  const client = getClient();
-  const [employer] = await client.select({ name: employers.name }).from(employers).where(eq(employers.id, employerId));
-  return employer?.name || 'Unknown';
-}
-
 export interface EdlsSheetWithRelations extends EdlsSheet {
   employer?: { id: string; name: string };
   department?: { id: string; name: string };
@@ -243,17 +236,17 @@ export const edlsSheetsLoggingConfig: StorageLoggingConfig<EdlsSheetsStorage> = 
       getEntityId: (args, result) => result?.id || 'new sheet',
       getHostEntityId: (args, result) => result?.id,
       getDescription: async (args, result) => {
+        const title = result?.title || args[0]?.title || 'Untitled';
         const date = result?.date || args[0]?.date || 'Unknown';
-        const employerName = await getEmployerName(result?.employerId || args[0]?.employerId);
-        return `Created EDLS Sheet [${date}] for ${employerName}`;
+        return `Created sheet [${title}] [${date}]`;
       },
       after: async (args, result) => {
         return {
           sheet: result,
           metadata: {
             sheetId: result?.id,
+            title: result?.title,
             date: result?.date,
-            employerId: result?.employerId,
           }
         };
       }
@@ -263,10 +256,9 @@ export const edlsSheetsLoggingConfig: StorageLoggingConfig<EdlsSheetsStorage> = 
       getEntityId: (args, result) => result?.id || 'new sheet',
       getHostEntityId: (args, result) => result?.id,
       getDescription: async (args, result) => {
+        const title = result?.title || args[0]?.title || 'Untitled';
         const date = result?.date || args[0]?.date || 'Unknown';
-        const employerName = await getEmployerName(result?.employerId || args[0]?.employerId);
-        const crewCount = result?.crews?.length || args[1]?.length || 0;
-        return `Created EDLS Sheet [${date}] for ${employerName} with ${crewCount} crew(s)`;
+        return `Created sheet [${title}] [${date}]`;
       },
       after: async (args, result) => {
         return {
@@ -274,8 +266,8 @@ export const edlsSheetsLoggingConfig: StorageLoggingConfig<EdlsSheetsStorage> = 
           crews: result?.crews,
           metadata: {
             sheetId: result?.id,
+            title: result?.title,
             date: result?.date,
-            employerId: result?.employerId,
             crewCount: result?.crews?.length,
           }
         };
@@ -289,9 +281,9 @@ export const edlsSheetsLoggingConfig: StorageLoggingConfig<EdlsSheetsStorage> = 
         return await storage.get(args[0]);
       },
       getDescription: async (args, result, beforeState) => {
+        const title = result?.title || beforeState?.title || 'Untitled';
         const date = result?.date || beforeState?.date || 'Unknown';
-        const employerName = await getEmployerName(result?.employerId || beforeState?.employerId);
-        return `Updated EDLS Sheet [${date}] for ${employerName}`;
+        return `Updated sheet [${title}] [${date}]`;
       },
       after: async (args, result) => {
         return result;
@@ -305,10 +297,9 @@ export const edlsSheetsLoggingConfig: StorageLoggingConfig<EdlsSheetsStorage> = 
         return await storage.get(args[0]);
       },
       getDescription: async (args, result, beforeState) => {
+        const title = result?.title || beforeState?.title || 'Untitled';
         const date = result?.date || beforeState?.date || 'Unknown';
-        const employerName = await getEmployerName(result?.employerId || beforeState?.employerId);
-        const crewCount = result?.crews?.length || args[2]?.length || 0;
-        return `Updated EDLS Sheet [${date}] for ${employerName} with ${crewCount} crew(s)`;
+        return `Updated sheet [${title}] [${date}]`;
       },
       after: async (args, result) => {
         return {
@@ -316,6 +307,7 @@ export const edlsSheetsLoggingConfig: StorageLoggingConfig<EdlsSheetsStorage> = 
           crews: result?.crews,
           metadata: {
             sheetId: result?.id,
+            title: result?.title,
             crewCount: result?.crews?.length,
           }
         };
@@ -329,9 +321,9 @@ export const edlsSheetsLoggingConfig: StorageLoggingConfig<EdlsSheetsStorage> = 
         return await storage.get(args[0]);
       },
       getDescription: async (args, result, beforeState) => {
+        const title = beforeState?.title || 'Untitled';
         const date = beforeState?.date || 'Unknown';
-        const employerName = await getEmployerName(beforeState?.employerId);
-        return `Deleted EDLS Sheet [${date}] for ${employerName}`;
+        return `Deleted sheet [${title}] [${date}]`;
       }
     }
   }
