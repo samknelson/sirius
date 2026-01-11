@@ -1758,7 +1758,7 @@ function Router() {
       </Route>
 
       <Route path="/edls/sheets">
-        <ProtectedRoute permission="staff" component="edls">
+        <ProtectedRoute policy="edls.any" component="edls">
           <AuthenticatedLayout>
             <EdlsSheetsPage />
           </AuthenticatedLayout>
