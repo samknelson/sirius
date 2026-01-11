@@ -92,6 +92,7 @@ export function EdlsSheetForm({
           location: c.location,
           startTime: c.startTime,
           endTime: c.endTime,
+          supervisor: c.supervisor || null,
         })),
       };
     }
@@ -145,6 +146,7 @@ export function EdlsSheetForm({
           location: "",
           startTime: "08:00",
           endTime: "17:00",
+          supervisor: effectiveSupervisor || null,
         },
       ],
     });
@@ -327,7 +329,7 @@ export function EdlsSheetForm({
               {formData.crews.map((crew, index) => (
                 <Card key={index} className="p-4">
                   <div className="flex items-start gap-4">
-                    <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-3">
+                    <div className="flex-1 grid grid-cols-1 md:grid-cols-6 gap-3">
                       <div className="space-y-1">
                         <Label className="text-xs">Title *</Label>
                         <Input
@@ -387,6 +389,32 @@ export function EdlsSheetForm({
                           }
                           placeholder="Optional"
                         />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs flex items-center gap-1">
+                          Supervisor
+                          {!canChangeSupervisor && <Lock className="h-3 w-3 text-muted-foreground" />}
+                        </Label>
+                        <Select
+                          value={crew.supervisor || effectiveSupervisor || ""}
+                          onValueChange={(value) =>
+                            handleCrewChange(index, "supervisor", value || null)
+                          }
+                          disabled={!canChangeSupervisor}
+                        >
+                          <SelectTrigger data-testid={`select-crew-supervisor-${index}`}>
+                            <SelectValue placeholder="Inherit from sheet" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {supervisorContext?.options.map((supervisor) => (
+                              <SelectItem key={supervisor.id} value={supervisor.id}>
+                                {supervisor.firstName || supervisor.lastName
+                                  ? `${supervisor.firstName || ""} ${supervisor.lastName || ""}`.trim()
+                                  : supervisor.email}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                     <Button

@@ -138,11 +138,21 @@ export function registerEdlsSheetsRoutes(
         return;
       }
       
+      const finalCrews = crews.map(crew => {
+        if (supervisorContext.canManage) {
+          const crewSupervisor = crew.supervisor && supervisorContext.options.some(opt => opt.id === crew.supervisor)
+            ? crew.supervisor
+            : supervisorValidation.supervisorId;
+          return { ...crew, supervisor: crewSupervisor };
+        }
+        return { ...crew, supervisor: supervisorValidation.supervisorId };
+      });
+      
       const result = await db.transaction(async (tx) => {
         const [sheet] = await tx.insert(edlsSheets).values(finalSheetData).returning();
         
         const createdCrews = await Promise.all(
-          crews.map(crew => 
+          finalCrews.map(crew => 
             tx.insert(edlsCrews).values({ ...crew, sheetId: sheet.id }).returning()
           )
         );
@@ -229,6 +239,20 @@ export function registerEdlsSheetsRoutes(
           return;
         }
         
+        const supervisorContext = await getSupervisorContext(dbUser.id, id);
+        const finalSheetSupervisor = sheetData.supervisor ?? existingSheet.supervisor;
+        
+        const finalCrews = crews.map(crew => {
+          const { id: crewId, ...crewData } = crew as InsertEdlsCrew & { id?: string };
+          if (supervisorContext.canManage) {
+            const crewSupervisor = crewData.supervisor && supervisorContext.options.some(opt => opt.id === crewData.supervisor)
+              ? crewData.supervisor
+              : finalSheetSupervisor;
+            return { ...crewData, supervisor: crewSupervisor };
+          }
+          return { ...crewData, supervisor: finalSheetSupervisor };
+        });
+        
         const result = await db.transaction(async (tx) => {
           await tx.delete(edlsCrews).where(eq(edlsCrews.sheetId, id));
           
@@ -237,10 +261,9 @@ export function registerEdlsSheetsRoutes(
             : [existingSheet];
           
           const createdCrews = await Promise.all(
-            crews.map(crew => {
-              const { id: crewId, ...crewData } = crew as InsertEdlsCrew & { id?: string };
-              return tx.insert(edlsCrews).values({ ...crewData, sheetId: id }).returning();
-            })
+            finalCrews.map(crewData => 
+              tx.insert(edlsCrews).values({ ...crewData, sheetId: id }).returning()
+            )
           );
           
           return { ...updatedSheet, crews: createdCrews.map(c => c[0]) };
