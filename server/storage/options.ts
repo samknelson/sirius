@@ -6,6 +6,7 @@ import {
   optionsLedgerPaymentType,
   optionsEmployerContactType,
   optionsEmployerType,
+  optionsDepartment,
   optionsTrustProviderType,
   optionsWorkerWs,
   optionsEmploymentStatus,
@@ -24,6 +25,8 @@ import {
   type InsertEmployerContactType,
   type EmployerType,
   type InsertEmployerType,
+  type Department,
+  type InsertDepartment,
   type TrustProviderType,
   type InsertTrustProviderType,
   type WorkerWs,
@@ -153,6 +156,44 @@ export const employerTypeLoggingConfig: StorageLoggingConfig<EmployerTypeStorage
   }
 };
 
+export interface DepartmentStorage {
+  getAll(): Promise<Department[]>;
+  get(id: string): Promise<Department | undefined>;
+  create(department: InsertDepartment): Promise<Department>;
+  update(id: string, department: Partial<InsertDepartment>): Promise<Department | undefined>;
+  delete(id: string): Promise<boolean>;
+}
+
+export const departmentLoggingConfig: StorageLoggingConfig<DepartmentStorage> = {
+  module: 'options.departments',
+  methods: {
+    create: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.name || 'new department',
+      after: async (args, result, storage) => {
+        return result;
+      }
+    },
+    update: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        return await storage.get(args[0]);
+      },
+      after: async (args, result, storage) => {
+        return result;
+      }
+    },
+    delete: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        return await storage.get(args[0]);
+      }
+    }
+  }
+};
+
 export interface TrustProviderTypeStorage {
   getAll(): Promise<TrustProviderType[]>;
   get(id: string): Promise<TrustProviderType | undefined>;
@@ -254,6 +295,7 @@ export interface OptionsStorage {
   ledgerPaymentTypes: LedgerPaymentTypeStorage;
   employerContactTypes: EmployerContactTypeStorage;
   employerTypes: EmployerTypeStorage;
+  departments: DepartmentStorage;
   trustProviderTypes: TrustProviderTypeStorage;
   workerWs: WorkerWsStorage;
   employmentStatus: EmploymentStatusStorage;
@@ -479,6 +521,39 @@ export function createOptionsStorage(): OptionsStorage {
 
       async updateSequence(id: string, sequence: number): Promise<EmployerType | undefined> {
         return this.update(id, { sequence });
+      }
+    },
+
+    departments: {
+      async getAll(): Promise<Department[]> {
+        return db.select().from(optionsDepartment);
+      },
+
+      async get(id: string): Promise<Department | undefined> {
+        const [department] = await db.select().from(optionsDepartment).where(eq(optionsDepartment.id, id));
+        return department || undefined;
+      },
+
+      async create(insertDepartment: InsertDepartment): Promise<Department> {
+        const [department] = await db
+          .insert(optionsDepartment)
+          .values(insertDepartment)
+          .returning();
+        return department;
+      },
+
+      async update(id: string, departmentUpdate: Partial<InsertDepartment>): Promise<Department | undefined> {
+        const [department] = await db
+          .update(optionsDepartment)
+          .set(departmentUpdate)
+          .where(eq(optionsDepartment.id, id))
+          .returning();
+        return department || undefined;
+      },
+
+      async delete(id: string): Promise<boolean> {
+        const result = await db.delete(optionsDepartment).where(eq(optionsDepartment.id, id)).returning();
+        return result.length > 0;
       }
     },
 
