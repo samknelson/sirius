@@ -3,6 +3,7 @@ import {
   edlsSheets, 
   employers,
   users,
+  optionsDepartment,
   type EdlsSheet, 
   type InsertEdlsSheet
 } from "@shared/schema";
@@ -11,6 +12,7 @@ import { alias } from "drizzle-orm/pg-core";
 
 export interface EdlsSheetWithRelations extends EdlsSheet {
   employer?: { id: string; name: string };
+  department?: { id: string; name: string };
   supervisorUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
   assigneeUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
 }
@@ -91,6 +93,10 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
             id: employers.id,
             name: employers.name,
           },
+          department: {
+            id: optionsDepartment.id,
+            name: optionsDepartment.name,
+          },
           supervisorUser: {
             id: supervisorUsers.id,
             firstName: supervisorUsers.firstName,
@@ -106,6 +112,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         })
         .from(edlsSheets)
         .leftJoin(employers, eq(edlsSheets.employerId, employers.id))
+        .leftJoin(optionsDepartment, eq(edlsSheets.departmentId, optionsDepartment.id))
         .leftJoin(supervisorUsers, eq(edlsSheets.supervisor, supervisorUsers.id))
         .leftJoin(assigneeUsers, eq(edlsSheets.assignee, assigneeUsers.id))
         .where(eq(edlsSheets.id, id));
@@ -115,6 +122,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       return {
         ...row.sheet,
         employer: row.employer || undefined,
+        department: row.department || undefined,
         supervisorUser: row.supervisorUser?.id ? row.supervisorUser : undefined,
         assigneeUser: row.assigneeUser?.id ? row.assigneeUser : undefined,
       };
