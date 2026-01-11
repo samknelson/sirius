@@ -25,6 +25,9 @@ export class LogsTransport extends Transport {
   }
 
   async log(info: LogsTransportInfo, callback: () => void): Promise<void> {
+    // Debug: log that this transport is being invoked
+    console.log(`[LogsTransport] log() called with module=${info.module}, operation=${info.operation}`);
+    
     setImmediate(() => {
       this.emit("logged", info);
     });
@@ -51,7 +54,9 @@ export class LogsTransport extends Transport {
         ipAddress: ip_address || null,
       };
 
+      console.log(`[LogsTransport] About to write to storage: ${message}`);
       await this.logsStorage.create(data);
+      console.log(`[LogsTransport] Successfully wrote log to storage`);
     } catch (error) {
       console.error("[LogsTransport] Failed to write log:", error);
     }
