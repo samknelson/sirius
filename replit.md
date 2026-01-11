@@ -70,10 +70,15 @@ app.get("/api/workers/:id", async (req, res) => {
 });
 ```
 
-**Storage modules** - Import db from the local path:
+**Storage modules** - Use getClient() for transaction context support:
 ```typescript
 // Inside server/storage/workers.ts
-import { db } from './db';
+import { getClient } from './transaction-context';
+
+async function getWorker(id: string) {
+  const client = getClient();
+  return client.query.workers.findFirst({ where: eq(workers.id, id) });
+}
 ```
 
 ### Forbidden Patterns
