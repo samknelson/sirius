@@ -39,6 +39,8 @@ export interface PaginatedEdlsSheets {
   limit: number;
 }
 
+export type CrewInput = Omit<InsertEdlsCrew, 'sheetId'> & { id?: string };
+
 export interface EdlsSheetsStorage {
   getAll(): Promise<EdlsSheet[]>;
   getPaginated(page: number, limit: number, employerId?: string): Promise<PaginatedEdlsSheets>;
@@ -48,7 +50,7 @@ export interface EdlsSheetsStorage {
   create(sheet: InsertEdlsSheet): Promise<EdlsSheet>;
   createWithCrews(sheet: InsertEdlsSheet, crews: Omit<InsertEdlsCrew, 'sheetId'>[]): Promise<EdlsSheetWithCrews>;
   update(id: string, sheet: Partial<InsertEdlsSheet>): Promise<EdlsSheet | undefined>;
-  updateWithCrews(id: string, sheet: Partial<InsertEdlsSheet>, crews: Omit<InsertEdlsCrew, 'sheetId'>[]): Promise<EdlsSheetWithCrews | undefined>;
+  updateWithCrews(id: string, sheet: Partial<InsertEdlsSheet>, crews: CrewInput[]): Promise<EdlsSheetWithCrews | undefined>;
   delete(id: string): Promise<boolean>;
 }
 
@@ -184,23 +186,44 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       return sheet || undefined;
     },
 
-    async updateWithCrews(id: string, sheetUpdate: Partial<InsertEdlsSheet>, crews: Omit<InsertEdlsCrew, 'sheetId'>[]): Promise<EdlsSheetWithCrews | undefined> {
+    async updateWithCrews(id: string, sheetUpdate: Partial<InsertEdlsSheet>, crews: CrewInput[]): Promise<EdlsSheetWithCrews | undefined> {
       return runInTransaction(async () => {
         const client = getClient();
         
         const [existingSheet] = await client.select().from(edlsSheets).where(eq(edlsSheets.id, id));
         if (!existingSheet) return undefined;
         
-        await storage.edlsCrews.deleteBySheetId(id);
-        
         const [updatedSheet] = Object.keys(sheetUpdate).length > 0
           ? await client.update(edlsSheets).set(sheetUpdate).where(eq(edlsSheets.id, id)).returning()
           : [existingSheet];
         
-        const crewsWithSheetId = crews.map(c => ({ ...c, sheetId: id }));
-        const createdCrews = await storage.edlsCrews.createMany(crewsWithSheetId);
+        const existingCrews = await storage.edlsCrews.getBySheetId(id);
+        const existingCrewMap = new Map(existingCrews.map(c => [c.id, c]));
         
-        return { ...updatedSheet, crews: createdCrews };
+        const incomingCrewIds = new Set(crews.filter(c => c.id).map(c => c.id!));
+        
+        const crewsToUpdate = crews.filter(c => c.id && existingCrewMap.has(c.id));
+        const crewsToCreate = crews.filter(c => !c.id);
+        const crewIdsToDelete = existingCrews.filter(c => !incomingCrewIds.has(c.id)).map(c => c.id);
+        
+        for (const crewId of crewIdsToDelete) {
+          await storage.edlsCrews.delete(crewId);
+        }
+        
+        for (const crew of crewsToUpdate) {
+          const { id: crewId, ...crewData } = crew;
+          await storage.edlsCrews.update(crewId!, { ...crewData, sheetId: id });
+        }
+        
+        const newCrewsWithSheetId = crewsToCreate.map(c => {
+          const { id: _, ...crewData } = c;
+          return { ...crewData, sheetId: id };
+        });
+        await storage.edlsCrews.createMany(newCrewsWithSheetId);
+        
+        const allCrews = await storage.edlsCrews.getBySheetId(id);
+        
+        return { ...updatedSheet, crews: allCrews };
       });
     },
 
