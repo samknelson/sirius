@@ -167,6 +167,7 @@ export const configSections: NavSection[] = [
     icon: Calendar,
     items: [
       { path: "/config/edls/settings", label: "Settings", icon: Settings, testId: "nav-config-edls-settings", permission: "admin", requiresComponent: "edls" },
+      { path: "/config/edls/tasks", label: "Tasks", icon: List, testId: "nav-config-edls-tasks", permission: "admin", requiresComponent: "edls" },
     ],
   },
 ];

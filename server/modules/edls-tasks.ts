@@ -11,7 +11,7 @@ export function registerEdlsTasksRoutes(
 ) {
   const edlsComponent = requireComponent("edls");
 
-  app.get("/api/edls/tasks", requireAuth, edlsComponent, requireAccess('staff'), async (req, res) => {
+  app.get("/api/edls/tasks", requireAuth, edlsComponent, requireAccess('admin'), async (req, res) => {
     try {
       const tasks = await storage.edlsTasks.getAll();
       res.json(tasks);
@@ -21,7 +21,7 @@ export function registerEdlsTasksRoutes(
     }
   });
 
-  app.get("/api/edls/tasks/:id", requireAuth, edlsComponent, requireAccess('staff'), async (req, res) => {
+  app.get("/api/edls/tasks/:id", requireAuth, edlsComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const task = await storage.edlsTasks.get(id);
@@ -38,7 +38,7 @@ export function registerEdlsTasksRoutes(
     }
   });
 
-  app.post("/api/edls/tasks", requireAuth, edlsComponent, requireAccess('staff'), async (req, res) => {
+  app.post("/api/edls/tasks", requireAuth, edlsComponent, requireAccess('admin'), async (req, res) => {
     try {
       const parseResult = insertEdlsTaskSchema.safeParse(req.body);
       
@@ -58,7 +58,7 @@ export function registerEdlsTasksRoutes(
     }
   });
 
-  app.put("/api/edls/tasks/:id", requireAuth, edlsComponent, requireAccess('staff'), async (req, res) => {
+  app.put("/api/edls/tasks/:id", requireAuth, edlsComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const parseResult = insertEdlsTaskSchema.partial().safeParse(req.body);
@@ -85,7 +85,7 @@ export function registerEdlsTasksRoutes(
     }
   });
 
-  app.delete("/api/edls/tasks/:id", requireAuth, edlsComponent, requireAccess('staff'), async (req, res) => {
+  app.delete("/api/edls/tasks/:id", requireAuth, edlsComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.edlsTasks.delete(id);
