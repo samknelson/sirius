@@ -453,16 +453,16 @@ export function EdlsSheetForm({
                         <div className="space-y-1">
                           <Label className="text-xs">Task</Label>
                           <Select
-                            value={crew.taskId || ""}
+                            value={crew.taskId || "__none__"}
                             onValueChange={(value) =>
-                              handleCrewChange(index, "taskId", value || null)
+                              handleCrewChange(index, "taskId", value === "__none__" ? null : value)
                             }
                           >
                             <SelectTrigger data-testid={`select-crew-task-${index}`}>
                               <SelectValue placeholder="None" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">None</SelectItem>
+                              <SelectItem value="__none__">None</SelectItem>
                               {filteredTasks.map((task) => (
                                 <SelectItem key={task.id} value={task.id}>
                                   {task.name}
