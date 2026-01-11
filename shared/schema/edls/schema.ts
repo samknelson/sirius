@@ -10,6 +10,7 @@ export type EdlsSheetStatus = typeof edlsSheetStatusEnum[number];
 export const edlsSheets = pgTable("edls_sheets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
+  departmentId: varchar("department_id").notNull().references(() => optionsDepartment.id, { onDelete: 'cascade' }),
   title: varchar("title", { length: 255 }).notNull(),
   date: date("date").notNull(),
   workerCount: integer("worker_count").notNull().default(0),
