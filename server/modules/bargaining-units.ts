@@ -132,4 +132,83 @@ export function registerBargainingUnitsRoutes(
       res.status(500).json({ message: error.message || "Failed to delete bargaining unit" });
     }
   });
+
+  app.get("/api/bargaining-units/:id/rates", requireAuth, requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const rates = await storage.bargainingUnits.getAccountRates(id);
+      if (rates === undefined) {
+        return res.status(404).json({ message: "Bargaining unit not found" });
+      }
+      res.json(rates);
+    } catch (error: any) {
+      console.error("Error fetching account rates:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch account rates" });
+    }
+  });
+
+  app.get("/api/bargaining-units/:id/rates/:accountId", requireAuth, requireAccess('admin'), async (req, res) => {
+    try {
+      const { id, accountId } = req.params;
+      
+      const existingUnit = await storage.bargainingUnits.getBargainingUnitById(id);
+      if (!existingUnit) {
+        return res.status(404).json({ message: "Bargaining unit not found" });
+      }
+      
+      const rate = await storage.bargainingUnits.getAccountRate(id, accountId);
+      res.json({ accountId, rate: rate ?? null });
+    } catch (error: any) {
+      console.error("Error fetching account rate:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch account rate" });
+    }
+  });
+
+  app.put("/api/bargaining-units/:id/rates/:accountId", requireAuth, requireAccess('admin'), async (req, res) => {
+    try {
+      const { id, accountId } = req.params;
+      const { rate } = req.body;
+      
+      if (typeof rate !== 'number' || isNaN(rate)) {
+        return res.status(400).json({ message: "Rate must be a valid number" });
+      }
+      
+      if (rate < 0) {
+        return res.status(400).json({ message: "Rate cannot be negative" });
+      }
+      
+      const existingUnit = await storage.bargainingUnits.getBargainingUnitById(id);
+      if (!existingUnit) {
+        return res.status(404).json({ message: "Bargaining unit not found" });
+      }
+      
+      const account = await storage.ledger.accounts.get(accountId);
+      if (!account) {
+        return res.status(404).json({ message: "Ledger account not found" });
+      }
+      
+      const updated = await storage.bargainingUnits.setAccountRate(id, accountId, rate);
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error setting account rate:", error);
+      res.status(500).json({ message: error.message || "Failed to set account rate" });
+    }
+  });
+
+  app.delete("/api/bargaining-units/:id/rates/:accountId", requireAuth, requireAccess('admin'), async (req, res) => {
+    try {
+      const { id, accountId } = req.params;
+      
+      const existingUnit = await storage.bargainingUnits.getBargainingUnitById(id);
+      if (!existingUnit) {
+        return res.status(404).json({ message: "Bargaining unit not found" });
+      }
+      
+      const updated = await storage.bargainingUnits.removeAccountRate(id, accountId);
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error removing account rate:", error);
+      res.status(500).json({ message: error.message || "Failed to remove account rate" });
+    }
+  });
 }

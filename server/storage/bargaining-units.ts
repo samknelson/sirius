@@ -3,6 +3,15 @@ import { bargainingUnits, type BargainingUnit, type InsertBargainingUnit } from 
 import { eq } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 
+export interface AccountRates {
+  [accountId: string]: number;
+}
+
+export interface BargainingUnitData {
+  accountRates?: AccountRates;
+  [key: string]: unknown;
+}
+
 export interface BargainingUnitStorage {
   getAllBargainingUnits(): Promise<BargainingUnit[]>;
   getBargainingUnitById(id: string): Promise<BargainingUnit | undefined>;
@@ -10,6 +19,10 @@ export interface BargainingUnitStorage {
   createBargainingUnit(data: InsertBargainingUnit): Promise<BargainingUnit>;
   updateBargainingUnit(id: string, data: Partial<InsertBargainingUnit>): Promise<BargainingUnit | undefined>;
   deleteBargainingUnit(id: string): Promise<boolean>;
+  setAccountRate(id: string, accountId: string, rate: number): Promise<BargainingUnit | undefined>;
+  getAccountRate(id: string, accountId: string): Promise<number | undefined>;
+  getAccountRates(id: string): Promise<AccountRates | undefined>;
+  removeAccountRate(id: string, accountId: string): Promise<BargainingUnit | undefined>;
 }
 
 export function createBargainingUnitStorage(): BargainingUnitStorage {
@@ -58,6 +71,56 @@ export function createBargainingUnitStorage(): BargainingUnitStorage {
         .returning();
       return result.length > 0;
     },
+
+    async setAccountRate(id: string, accountId: string, rate: number): Promise<BargainingUnit | undefined> {
+      const unit = await storage.getBargainingUnitById(id);
+      if (!unit) return undefined;
+
+      const existingData = (unit.data as BargainingUnitData) || {};
+      const accountRates = existingData.accountRates || {};
+      
+      const newData: BargainingUnitData = {
+        ...existingData,
+        accountRates: {
+          ...accountRates,
+          [accountId]: rate,
+        },
+      };
+
+      return storage.updateBargainingUnit(id, { data: newData });
+    },
+
+    async getAccountRate(id: string, accountId: string): Promise<number | undefined> {
+      const unit = await storage.getBargainingUnitById(id);
+      if (!unit) return undefined;
+
+      const data = unit.data as BargainingUnitData | null;
+      return data?.accountRates?.[accountId];
+    },
+
+    async getAccountRates(id: string): Promise<AccountRates | undefined> {
+      const unit = await storage.getBargainingUnitById(id);
+      if (!unit) return undefined;
+
+      const data = unit.data as BargainingUnitData | null;
+      return data?.accountRates || {};
+    },
+
+    async removeAccountRate(id: string, accountId: string): Promise<BargainingUnit | undefined> {
+      const unit = await storage.getBargainingUnitById(id);
+      if (!unit) return undefined;
+
+      const existingData = (unit.data as BargainingUnitData) || {};
+      const accountRates = { ...(existingData.accountRates || {}) };
+      delete accountRates[accountId];
+      
+      const newData: BargainingUnitData = {
+        ...existingData,
+        accountRates,
+      };
+
+      return storage.updateBargainingUnit(id, { data: newData });
+    },
   };
 
   return storage;
@@ -92,6 +155,31 @@ export const bargainingUnitLoggingConfig: StorageLoggingConfig<BargainingUnitSto
         const oldName = beforeState?.bargainingUnit?.name || 'Unknown';
         const newName = result?.name || oldName;
         const siriusId = result?.siriusId || beforeState?.bargainingUnit?.siriusId || '';
+        
+        const oldData = beforeState?.bargainingUnit?.data as BargainingUnitData | null;
+        const newData = result?.data as BargainingUnitData | null;
+        const oldRates = oldData?.accountRates || {};
+        const newRates = newData?.accountRates || {};
+        
+        const rateChanges: string[] = [];
+        const allAccountIds = [...new Set([...Object.keys(oldRates), ...Object.keys(newRates)])];
+        for (const accountId of allAccountIds) {
+          const oldRate = oldRates[accountId];
+          const newRate = newRates[accountId];
+          if (oldRate !== newRate) {
+            if (oldRate === undefined) {
+              rateChanges.push(`added rate $${newRate} for account ${accountId}`);
+            } else if (newRate === undefined) {
+              rateChanges.push(`removed rate for account ${accountId}`);
+            } else {
+              rateChanges.push(`changed rate from $${oldRate} to $${newRate} for account ${accountId}`);
+            }
+          }
+        }
+        
+        if (rateChanges.length > 0) {
+          return `Updated Bargaining Unit [${siriusId}] ${newName}: ${rateChanges.join(', ')}`;
+        }
         if (oldName !== newName) {
           return `Updated Bargaining Unit [${siriusId}] ${oldName} → ${newName}`;
         }
@@ -102,9 +190,13 @@ export const bargainingUnitLoggingConfig: StorageLoggingConfig<BargainingUnitSto
         return { bargainingUnit };
       },
       after: async (args, result, _storage, beforeState) => {
+        const oldData = beforeState?.bargainingUnit?.data as BargainingUnitData | null;
+        const newData = result?.data as BargainingUnitData | null;
         return {
           bargainingUnit: result,
           previousBargainingUnit: beforeState?.bargainingUnit,
+          accountRatesBefore: oldData?.accountRates || {},
+          accountRatesAfter: newData?.accountRates || {},
           metadata: {
             bargainingUnitId: result?.id,
             siriusId: result?.siriusId,
