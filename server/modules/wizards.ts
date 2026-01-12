@@ -1310,6 +1310,114 @@ export function registerWizardRoutes(
     }
   );
 
+  // Export BTU Dues Allocation comparison report as Excel
+  app.get("/api/wizards/:id/export-comparison-report",
+    checkWizardAccess,
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const wizard = (req as any).wizard;
+
+        if (wizard.type !== 'btu_dues_allocation') {
+          return res.status(400).json({ message: "Export only available for BTU Dues Allocation wizards" });
+        }
+
+        const wizardData = wizard.data as any;
+        const comparisonReport = wizardData?.cardCheckComparisonReport;
+        const processResults = wizardData?.processResults;
+
+        if (!comparisonReport) {
+          return res.status(400).json({ message: "No comparison report available for export" });
+        }
+
+        const XLSX = await import('xlsx');
+        const workbook = XLSX.utils.book_new();
+
+        // Summary sheet
+        const summaryData = [
+          ['BTU Dues Allocation - Comparison Report'],
+          [''],
+          ['Generated:', new Date().toISOString()],
+          ['Wizard ID:', id],
+          [''],
+          ['Import Summary'],
+          ['Total Rows Processed:', processResults?.totalRows || 0],
+          ['Entries Created:', processResults?.createdCount || 0],
+          ['Successful:', processResults?.successCount || 0],
+          ['Errors:', processResults?.failureCount || 0],
+          [''],
+          ['Comparison Summary'],
+          ['Matching Rate:', comparisonReport.matchingRate?.length || 0],
+          ['Mismatched Rate:', comparisonReport.mismatchingRate?.length || 0],
+          ['No Card Check:', comparisonReport.noCardCheck?.length || 0],
+          ['Card Check No Allocation:', comparisonReport.cardCheckNoAllocation?.length || 0],
+        ];
+        const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+        summarySheet['!cols'] = [{ wch: 30 }, { wch: 40 }];
+        XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+
+        // Helper to create data sheets
+        const createComparisonSheet = (entries: any[], includeAmount: boolean, includeCardRate: boolean) => {
+          const headers = ['Worker Name', 'Worker ID', 'Bargaining Unit', 'Employers'];
+          if (includeAmount) headers.push('Allocated Amount');
+          if (includeCardRate) headers.push('Card Check Rate');
+
+          const rows = entries.map((entry: any) => {
+            const row: any[] = [
+              entry.workerName || '',
+              entry.workerSiriusId || '',
+              entry.bargainingUnitName || '',
+              (entry.employerNames || []).join(', '),
+            ];
+            if (includeAmount) row.push(entry.allocatedAmount != null ? entry.allocatedAmount : '');
+            if (includeCardRate) row.push(entry.cardCheckRate != null ? entry.cardCheckRate : '');
+            return row;
+          });
+
+          const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+          sheet['!cols'] = [{ wch: 35 }, { wch: 12 }, { wch: 25 }, { wch: 40 }, { wch: 15 }, { wch: 15 }];
+          return sheet;
+        };
+
+        // Add sheets for each category
+        if (comparisonReport.matchingRate?.length > 0) {
+          XLSX.utils.book_append_sheet(workbook, 
+            createComparisonSheet(comparisonReport.matchingRate, true, true), 
+            'Matching Rate');
+        }
+
+        if (comparisonReport.mismatchingRate?.length > 0) {
+          XLSX.utils.book_append_sheet(workbook, 
+            createComparisonSheet(comparisonReport.mismatchingRate, true, true), 
+            'Mismatched Rate');
+        }
+
+        if (comparisonReport.noCardCheck?.length > 0) {
+          XLSX.utils.book_append_sheet(workbook, 
+            createComparisonSheet(comparisonReport.noCardCheck, true, false), 
+            'No Card Check');
+        }
+
+        if (comparisonReport.cardCheckNoAllocation?.length > 0) {
+          XLSX.utils.book_append_sheet(workbook, 
+            createComparisonSheet(comparisonReport.cardCheckNoAllocation, false, true), 
+            'Card Check No Allocation');
+        }
+
+        // Generate buffer and send
+        const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        const filename = `btu-dues-comparison-report-${new Date().toISOString().split('T')[0]}.xlsx`;
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(buffer);
+      } catch (error) {
+        console.error("Error exporting comparison report:", error);
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to export comparison report" });
+      }
+    }
+  );
+
   // Generate a report for a report wizard
   app.post("/api/wizards/:id/generate-report",
     requireAccess('admin'),

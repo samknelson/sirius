@@ -223,10 +223,23 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
       {comparisonReport && (
         <Card data-testid="card-check-comparison-report">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileCheck className="h-5 w-5" />
-              Card Check Comparison Report
-            </CardTitle>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <CardTitle className="flex items-center gap-2">
+                <FileCheck className="h-5 w-5" />
+                Card Check Comparison Report
+              </CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  window.open(`/api/wizards/${wizardId}/export-comparison-report`, '_blank');
+                }}
+                data-testid="button-export-comparison-report"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Export Report
+              </Button>
+            </div>
             <CardDescription>
               Compare dues allocations with signed card checks on file
             </CardDescription>
