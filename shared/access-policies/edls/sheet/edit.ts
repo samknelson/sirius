@@ -6,12 +6,13 @@ const policy = definePolicy({
   scope: 'entity',
   entityType: 'edls_sheet',
   component: 'edls',
-  cacheKeyFields: ['status'],
+  cacheKeyFields: ['status', 'supervisor'],
   
   describeRequirements: () => [
     { permission: 'edls.manager' },
     { permission: 'edls.coordinator' },
-    { permission: 'edls.worker.advisor' }
+    { permission: 'edls.worker.advisor' },
+    { permission: 'edls.supervisor', condition: 'draft sheets where user is assigned supervisor' }
   ],
   
   async evaluate(ctx: PolicyContext) {
@@ -32,6 +33,14 @@ const policy = definePolicy({
     
     if (await ctx.hasAnyPermission(['edls.manager', 'edls.coordinator', 'edls.worker.advisor'])) {
       return { granted: true, reason: 'User has edit permission' };
+    }
+    
+    if (
+      status === 'draft' &&
+      await ctx.hasPermission('edls.supervisor') &&
+      (sheet as any).supervisor === ctx.user?.id
+    ) {
+      return { granted: true, reason: 'Supervisor can edit their assigned draft sheets' };
     }
     
     return { granted: false, reason: 'No permission to edit sheet' };
