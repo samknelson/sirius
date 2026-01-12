@@ -159,8 +159,8 @@ export function registerLogRoutes(
     }
   });
 
-  // GET /api/edls/sheets/:sheetId/logs - Get all logs related to an EDLS sheet (requires staff permission)
-  app.get("/api/edls/sheets/:sheetId/logs", requireAuth, requireAccess('staff'), async (req, res) => {
+  // GET /api/edls/sheets/:sheetId/logs - Get all logs related to an EDLS sheet (requires edls.coordinator permission)
+  app.get("/api/edls/sheets/:sheetId/logs", requireAuth, requireAccess('edls.coordinator'), async (req, res) => {
     try {
       const { sheetId } = req.params;
       const { module, operation, startDate, endDate } = req.query;
