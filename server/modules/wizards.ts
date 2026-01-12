@@ -1351,6 +1351,7 @@ export function registerWizardRoutes(
           ['Mismatched Rate:', comparisonReport.mismatchingRate?.length || 0],
           ['No Card Check:', comparisonReport.noCardCheck?.length || 0],
           ['Card Check No Allocation:', comparisonReport.cardCheckNoAllocation?.length || 0],
+          ['Worker Not Found:', comparisonReport.workerNotFound?.length || 0],
         ];
         const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
         summarySheet['!cols'] = [{ wch: 30 }, { wch: 40 }];
@@ -1402,6 +1403,22 @@ export function registerWizardRoutes(
           XLSX.utils.book_append_sheet(workbook, 
             createComparisonSheet(comparisonReport.cardCheckNoAllocation, false, true), 
             'Card Check No Allocation');
+        }
+
+        // Worker Not Found sheet has different columns
+        if (comparisonReport.workerNotFound?.length > 0) {
+          const notFoundHeaders = ['Row', 'Employee ID', 'Name (from file)', 'Amount', 'Date', 'Deduction Code'];
+          const notFoundRows = comparisonReport.workerNotFound.map((entry: any) => [
+            entry.rowIndex + 1,
+            entry.bpsEmployeeId || '',
+            entry.workerNameFromFile || '',
+            entry.amount != null ? `$${entry.amount.toFixed(2)}` : '',
+            entry.date || '',
+            entry.deductionCode || '',
+          ]);
+          const notFoundSheet = XLSX.utils.aoa_to_sheet([notFoundHeaders, ...notFoundRows]);
+          notFoundSheet['!cols'] = [{ wch: 8 }, { wch: 15 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 15 }];
+          XLSX.utils.book_append_sheet(workbook, notFoundSheet, 'Worker Not Found');
         }
 
         // Generate buffer and send

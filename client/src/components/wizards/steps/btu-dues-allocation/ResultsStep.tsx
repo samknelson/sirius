@@ -42,11 +42,21 @@ interface CardCheckComparisonEntry {
   cardCheckRate?: number | null;
 }
 
+interface WorkerNotFoundEntry {
+  rowIndex: number;
+  bpsEmployeeId: string;
+  workerNameFromFile: string | null;
+  amount: number;
+  date: string;
+  deductionCode: string | null;
+}
+
 interface CardCheckComparisonReport {
   matchingRate: CardCheckComparisonEntry[];
   mismatchingRate: CardCheckComparisonEntry[];
   noCardCheck: CardCheckComparisonEntry[];
   cardCheckNoAllocation: CardCheckComparisonEntry[];
+  workerNotFound: WorkerNotFoundEntry[];
 }
 
 function ComparisonTable({ entries, showAmount = true, showCardRate = true }: { 
@@ -90,6 +100,43 @@ function ComparisonTable({ entries, showAmount = true, showCardRate = true }: {
                   {entry.cardCheckRate != null ? `$${entry.cardCheckRate.toFixed(2)}` : '—'}
                 </TableCell>
               )}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </ScrollArea>
+  );
+}
+
+function WorkerNotFoundTable({ entries }: { entries: WorkerNotFoundEntry[] }) {
+  if (entries.length === 0) {
+    return <p className="text-sm text-muted-foreground py-4 text-center">No workers in this category</p>;
+  }
+  
+  return (
+    <ScrollArea className="h-80">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Row</TableHead>
+            <TableHead>Employee ID</TableHead>
+            <TableHead>Name (from file)</TableHead>
+            <TableHead className="text-right">Amount</TableHead>
+            <TableHead>Date</TableHead>
+            <TableHead>Deduction Code</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {entries.map((entry) => (
+            <TableRow key={`notfound-${entry.rowIndex}`} data-testid={`row-not-found-${entry.rowIndex}`}>
+              <TableCell data-testid={`text-row-${entry.rowIndex}`}>{entry.rowIndex + 1}</TableCell>
+              <TableCell data-testid={`text-empid-${entry.rowIndex}`}>{entry.bpsEmployeeId}</TableCell>
+              <TableCell data-testid={`text-name-${entry.rowIndex}`}>{entry.workerNameFromFile || '—'}</TableCell>
+              <TableCell className="text-right" data-testid={`text-amount-${entry.rowIndex}`}>
+                ${entry.amount.toFixed(2)}
+              </TableCell>
+              <TableCell data-testid={`text-date-${entry.rowIndex}`}>{entry.date || '—'}</TableCell>
+              <TableCell data-testid={`text-code-${entry.rowIndex}`}>{entry.deductionCode || '—'}</TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -245,7 +292,7 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
               <Card>
                 <CardContent className="pt-4 text-center">
                   <div className="text-2xl font-bold text-green-600">{comparisonReport.matchingRate.length}</div>
@@ -270,10 +317,16 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                   <div className="text-xs text-muted-foreground">Card, No Allocation</div>
                 </CardContent>
               </Card>
+              <Card>
+                <CardContent className="pt-4 text-center">
+                  <div className="text-2xl font-bold text-purple-600">{comparisonReport.workerNotFound?.length || 0}</div>
+                  <div className="text-xs text-muted-foreground">Worker Not Found</div>
+                </CardContent>
+              </Card>
             </div>
 
             <Tabs defaultValue="matching" className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="matching" className="flex items-center gap-1" data-testid="tab-matching">
                   <FileCheck className="h-3 w-3" />
                   <span className="hidden sm:inline">Matching</span>
@@ -293,6 +346,11 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                   <FileMinus className="h-3 w-3" />
                   <span className="hidden sm:inline">Card Only</span>
                   <Badge variant="secondary" className="ml-1">{comparisonReport.cardCheckNoAllocation.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="not-found" className="flex items-center gap-1" data-testid="tab-not-found">
+                  <AlertCircle className="h-3 w-3" />
+                  <span className="hidden sm:inline">Not Found</span>
+                  <Badge variant="secondary" className="ml-1">{comparisonReport.workerNotFound?.length || 0}</Badge>
                 </TabsTrigger>
               </TabsList>
               
@@ -340,6 +398,18 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                   </CardHeader>
                   <CardContent>
                     <ComparisonTable entries={comparisonReport.cardCheckNoAllocation} showAmount={false} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+              
+              <TabsContent value="not-found" data-testid="panel-not-found">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Worker Not Found in System</CardTitle>
+                    <CardDescription>File rows with Employee IDs that don't match any worker in the system</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <WorkerNotFoundTable entries={comparisonReport.workerNotFound || []} />
                   </CardContent>
                 </Card>
               </TabsContent>

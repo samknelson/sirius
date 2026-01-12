@@ -19,11 +19,21 @@ export interface CardCheckComparisonEntry {
   cardCheckRate?: number | null;
 }
 
+export interface WorkerNotFoundEntry {
+  rowIndex: number;
+  bpsEmployeeId: string;
+  workerNameFromFile: string | null;
+  amount: number;
+  date: string;
+  deductionCode: string | null;
+}
+
 export interface CardCheckComparisonReport {
   matchingRate: CardCheckComparisonEntry[];
   mismatchingRate: CardCheckComparisonEntry[];
   noCardCheck: CardCheckComparisonEntry[];
   cardCheckNoAllocation: CardCheckComparisonEntry[];
+  workerNotFound: WorkerNotFoundEntry[];
 }
 
 function filterEmptyColumns(rows: any[][]): any[][] {
@@ -148,17 +158,8 @@ export class BtuDuesAllocationWizard extends FeedWizard {
         message: 'Employee ID is required',
         value: bpsEmployeeId
       });
-    } else {
-      const worker = await btuStorage.findWorkerByBpsEmployeeId(String(bpsEmployeeId).trim());
-      if (!worker) {
-        errors.push({
-          rowIndex,
-          field: 'bpsEmployeeId',
-          message: `No worker found with Employee ID: ${bpsEmployeeId}`,
-          value: bpsEmployeeId
-        });
-      }
     }
+    // Note: Worker not found is no longer a validation error - these rows are tracked separately in results
 
     const amount = row.amount;
     if (amount === undefined || amount === null || amount === '') {
@@ -292,6 +293,7 @@ export class BtuDuesAllocationWizard extends FeedWizard {
     let createdCount = 0;
     let updatedCount = 0;
     let failureCount = 0;
+    let workerNotFoundCount = 0;
     const allErrors: ProcessError[] = [];
     const rowResults: RowResult[] = [];
     
@@ -304,6 +306,8 @@ export class BtuDuesAllocationWizard extends FeedWizard {
       employerNames: string[];
       amount: number;
     }> = new Map();
+    
+    const workersNotFound: WorkerNotFoundEntry[] = [];
 
     for (let i = 0; i < totalRows; i += batchSize) {
       const batch = mappedRows.slice(i, Math.min(i + batchSize, totalRows));
@@ -320,7 +324,36 @@ export class BtuDuesAllocationWizard extends FeedWizard {
 
           const worker = await btuStorage.findWorkerByBpsEmployeeId(bpsEmployeeId);
           if (!worker) {
-            throw new Error(`Worker not found with Employee ID: ${bpsEmployeeId}`);
+            // Track worker not found - don't treat as error, just track separately
+            const amountStr = String(row.amount || '0').replace(/[,$]/g, '');
+            const amount = parseFloat(amountStr);
+            const transactionDate = parseDate(row.date);
+            
+            workersNotFound.push({
+              rowIndex,
+              bpsEmployeeId,
+              workerNameFromFile: row.workerName?.toString().trim() || null,
+              amount: isNaN(amount) ? 0 : amount,
+              date: transactionDate ? transactionDate.toISOString().split('T')[0] : row.date?.toString() || '',
+              deductionCode: row.deductionCode?.toString().trim() || null,
+            });
+            
+            workerNotFoundCount++;
+            // Use 'skipped' status to distinguish from actual errors
+            rowResults.push({
+              rowIndex,
+              status: 'success',
+              message: `Worker not found with Employee ID: ${bpsEmployeeId} - tracked for review`
+            });
+            
+            logger.warn("Worker not found during dues allocation", {
+              service: "btu-dues-allocation-wizard",
+              wizardId,
+              rowIndex,
+              bpsEmployeeId,
+            });
+            
+            continue; // Skip to next row
           }
 
           const contact = await storage.contacts.getContact(worker.contactId);
@@ -460,6 +493,7 @@ export class BtuDuesAllocationWizard extends FeedWizard {
       mismatchingRate: [],
       noCardCheck: [],
       cardCheckNoAllocation: [],
+      workerNotFound: workersNotFound,
     };
     
     const allocatedEntries = Array.from(allocatedWorkers.entries());
@@ -507,6 +541,7 @@ export class BtuDuesAllocationWizard extends FeedWizard {
       mismatchingRate: comparisonReport.mismatchingRate.length,
       noCardCheck: comparisonReport.noCardCheck.length,
       cardCheckNoAllocation: comparisonReport.cardCheckNoAllocation.length,
+      workerNotFound: comparisonReport.workerNotFound.length,
     });
 
     const results: ProcessResults = {
