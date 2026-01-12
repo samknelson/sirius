@@ -90,7 +90,7 @@ export function registerEdlsSheetsRoutes(
     }
   });
 
-  app.post("/api/edls/sheets", requireAuth, edlsComponent, requireAccess('staff'), async (req, res) => {
+  app.post("/api/edls/sheets", requireAuth, edlsComponent, requireAccess('edls.sheet.create'), async (req, res) => {
     try {
       const user = (req as any).user;
       const replitUserId = user?.claims?.sub;
@@ -169,7 +169,7 @@ export function registerEdlsSheetsRoutes(
     }
   });
 
-  app.put("/api/edls/sheets/:id", requireAuth, edlsComponent, requireAccess('staff'), async (req, res) => {
+  app.put("/api/edls/sheets/:id", requireAuth, edlsComponent, requireAccess('edls.sheet.edit', req => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -295,7 +295,7 @@ export function registerEdlsSheetsRoutes(
     }
   });
 
-  app.delete("/api/edls/sheets/:id", requireAuth, edlsComponent, requireAccess('staff'), async (req, res) => {
+  app.delete("/api/edls/sheets/:id", requireAuth, edlsComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -313,7 +313,7 @@ export function registerEdlsSheetsRoutes(
     }
   });
 
-  app.get("/api/edls/sheets/:sheetId/crews", requireAuth, edlsComponent, requireAccess('staff'), async (req, res) => {
+  app.get("/api/edls/sheets/:sheetId/crews", requireAuth, edlsComponent, requireAccess('edls.sheet.view', req => req.params.sheetId), async (req, res) => {
     try {
       const { sheetId } = req.params;
       
