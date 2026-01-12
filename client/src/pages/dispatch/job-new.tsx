@@ -45,6 +45,7 @@ const formSchema = z.object({
   jobTypeId: z.string().min(1, "Job type is required"),
   status: z.enum(dispatchJobStatusEnum),
   startDate: z.string().min(1, "Start date is required"),
+  workerCount: z.string().optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -84,11 +85,15 @@ export default function DispatchJobNewPage() {
       jobTypeId: "",
       status: "draft",
       startDate: format(new Date(), "yyyy-MM-dd"),
+      workerCount: "",
     },
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: FormData) => {
+      const workerCountNum = data.workerCount && data.workerCount.trim() !== "" 
+        ? parseInt(data.workerCount, 10) 
+        : null;
       return apiRequest("POST", "/api/dispatch-jobs", {
         title: data.title,
         description: data.description,
@@ -96,6 +101,7 @@ export default function DispatchJobNewPage() {
         jobTypeId: data.jobTypeId || null,
         status: data.status,
         startDate: new Date(data.startDate).toISOString(),
+        workerCount: workerCountNum,
         data: selectedSkills.length > 0 ? { requiredSkills: selectedSkills } : undefined,
       });
     },
@@ -223,7 +229,7 @@ export default function DispatchJobNewPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <FormField
                   control={form.control}
                   name="status"
@@ -260,6 +266,26 @@ export default function DispatchJobNewPage() {
                           {...field}
                           type="date"
                           data-testid="input-startdate"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="workerCount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Worker Count</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          min={1}
+                          placeholder="Number of workers needed"
+                          data-testid="input-workercount"
                         />
                       </FormControl>
                       <FormMessage />
