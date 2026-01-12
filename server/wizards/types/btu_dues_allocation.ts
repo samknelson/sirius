@@ -58,6 +58,23 @@ function filterEmptyColumns(rows: any[][]): any[][] {
 function parseDate(value: any): Date | null {
   if (!value) return null;
   
+  // Handle Excel serial dates (number of days since 1900-01-01)
+  // Excel serial dates are typically between 1 (1900-01-01) and ~60000 (2064)
+  if (typeof value === 'number' || (typeof value === 'string' && /^\d+$/.test(value.trim()))) {
+    const serialNumber = typeof value === 'number' ? value : parseInt(value.trim(), 10);
+    // Excel serial dates are reasonable between 1 and 100000 (covers 1900-2173)
+    if (serialNumber > 0 && serialNumber < 100000) {
+      // Excel epoch is January 1, 1900, but Excel has a bug treating 1900 as leap year
+      // Days 1-59 are 1900-01-01 to 1900-02-28, day 60 is the fake Feb 29
+      // Days 61+ need to subtract 1 to account for the fake leap day
+      const excelEpoch = new Date(1899, 11, 30); // Dec 30, 1899 (accounts for Excel's 1-based and leap year bug)
+      const date = new Date(excelEpoch.getTime() + serialNumber * 24 * 60 * 60 * 1000);
+      if (!isNaN(date.getTime())) {
+        return date;
+      }
+    }
+  }
+  
   const str = String(value).trim();
   
   if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(str)) {
