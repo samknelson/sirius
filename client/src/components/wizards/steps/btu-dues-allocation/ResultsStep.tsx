@@ -2,7 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CheckCircle2, XCircle, AlertCircle, Download, DollarSign } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { CheckCircle2, XCircle, AlertCircle, Download, DollarSign, FileCheck, FileWarning, FileX, FileMinus } from "lucide-react";
 import { format } from "date-fns";
 
 interface ResultsStepProps {
@@ -29,8 +32,75 @@ interface ProcessResults {
   completedAt?: string;
 }
 
+interface CardCheckComparisonEntry {
+  workerId: string;
+  workerSiriusId: number;
+  workerName: string;
+  bargainingUnitName: string | null;
+  employerNames: string[];
+  allocatedAmount?: number;
+  cardCheckRate?: number | null;
+}
+
+interface CardCheckComparisonReport {
+  matchingRate: CardCheckComparisonEntry[];
+  mismatchingRate: CardCheckComparisonEntry[];
+  noCardCheck: CardCheckComparisonEntry[];
+  cardCheckNoAllocation: CardCheckComparisonEntry[];
+}
+
+function ComparisonTable({ entries, showAmount = true, showCardRate = true }: { 
+  entries: CardCheckComparisonEntry[]; 
+  showAmount?: boolean;
+  showCardRate?: boolean;
+}) {
+  if (entries.length === 0) {
+    return <p className="text-sm text-muted-foreground py-4 text-center">No workers in this category</p>;
+  }
+  
+  return (
+    <ScrollArea className="h-80">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Worker Name</TableHead>
+            <TableHead>Worker ID</TableHead>
+            <TableHead>Bargaining Unit</TableHead>
+            <TableHead>Employers</TableHead>
+            {showAmount && <TableHead className="text-right">Allocated</TableHead>}
+            {showCardRate && <TableHead className="text-right">Card Rate</TableHead>}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {entries.map((entry, idx) => (
+            <TableRow key={entry.workerId + '-' + idx} data-testid={`row-comparison-${entry.workerId}`}>
+              <TableCell data-testid={`text-worker-name-${entry.workerId}`}>{entry.workerName}</TableCell>
+              <TableCell data-testid={`text-worker-id-${entry.workerId}`}>{entry.workerSiriusId}</TableCell>
+              <TableCell data-testid={`text-bu-${entry.workerId}`}>{entry.bargainingUnitName || '—'}</TableCell>
+              <TableCell data-testid={`text-employers-${entry.workerId}`}>
+                {entry.employerNames.length > 0 ? entry.employerNames.join(', ') : '—'}
+              </TableCell>
+              {showAmount && (
+                <TableCell className="text-right" data-testid={`text-amount-${entry.workerId}`}>
+                  {entry.allocatedAmount != null ? `$${entry.allocatedAmount.toFixed(2)}` : '—'}
+                </TableCell>
+              )}
+              {showCardRate && (
+                <TableCell className="text-right" data-testid={`text-card-rate-${entry.workerId}`}>
+                  {entry.cardCheckRate != null ? `$${entry.cardCheckRate.toFixed(2)}` : '—'}
+                </TableCell>
+              )}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </ScrollArea>
+  );
+}
+
 export function ResultsStep({ wizardId, wizardType, data, onDataChange }: ResultsStepProps) {
   const results: ProcessResults | null = data?.processResults || null;
+  const comparisonReport: CardCheckComparisonReport | null = data?.cardCheckComparisonReport || null;
 
   const { data: accounts = [] } = useQuery<any[]>({
     queryKey: ["/api/ledger/accounts"],
@@ -149,6 +219,121 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
           )}
         </CardContent>
       </Card>
+
+      {comparisonReport && (
+        <Card data-testid="card-check-comparison-report">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileCheck className="h-5 w-5" />
+              Card Check Comparison Report
+            </CardTitle>
+            <CardDescription>
+              Compare dues allocations with signed card checks on file
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <Card>
+                <CardContent className="pt-4 text-center">
+                  <div className="text-2xl font-bold text-green-600">{comparisonReport.matchingRate.length}</div>
+                  <div className="text-xs text-muted-foreground">Matching Rate</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 text-center">
+                  <div className="text-2xl font-bold text-amber-600">{comparisonReport.mismatchingRate.length}</div>
+                  <div className="text-xs text-muted-foreground">Mismatched Rate</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 text-center">
+                  <div className="text-2xl font-bold text-red-600">{comparisonReport.noCardCheck.length}</div>
+                  <div className="text-xs text-muted-foreground">No Card Check</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 text-center">
+                  <div className="text-2xl font-bold text-blue-600">{comparisonReport.cardCheckNoAllocation.length}</div>
+                  <div className="text-xs text-muted-foreground">Card, No Allocation</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Tabs defaultValue="matching" className="w-full">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="matching" className="flex items-center gap-1" data-testid="tab-matching">
+                  <FileCheck className="h-3 w-3" />
+                  <span className="hidden sm:inline">Matching</span>
+                  <Badge variant="secondary" className="ml-1">{comparisonReport.matchingRate.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="mismatched" className="flex items-center gap-1" data-testid="tab-mismatched">
+                  <FileWarning className="h-3 w-3" />
+                  <span className="hidden sm:inline">Mismatched</span>
+                  <Badge variant="secondary" className="ml-1">{comparisonReport.mismatchingRate.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="no-card" className="flex items-center gap-1" data-testid="tab-no-card">
+                  <FileX className="h-3 w-3" />
+                  <span className="hidden sm:inline">No Card</span>
+                  <Badge variant="secondary" className="ml-1">{comparisonReport.noCardCheck.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="card-no-alloc" className="flex items-center gap-1" data-testid="tab-card-no-alloc">
+                  <FileMinus className="h-3 w-3" />
+                  <span className="hidden sm:inline">Card Only</span>
+                  <Badge variant="secondary" className="ml-1">{comparisonReport.cardCheckNoAllocation.length}</Badge>
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="matching" data-testid="panel-matching">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Allocated with Matching Card Check Rate</CardTitle>
+                    <CardDescription>Workers who had dues allocated and have a signed card check with matching rate</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ComparisonTable entries={comparisonReport.matchingRate} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+              
+              <TabsContent value="mismatched" data-testid="panel-mismatched">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Allocated with Mismatched Card Check Rate</CardTitle>
+                    <CardDescription>Workers who had dues allocated but their card check rate doesn't match</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ComparisonTable entries={comparisonReport.mismatchingRate} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+              
+              <TabsContent value="no-card" data-testid="panel-no-card">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Allocated with No Card Check on File</CardTitle>
+                    <CardDescription>Workers who had dues allocated but have no signed card check on file</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ComparisonTable entries={comparisonReport.noCardCheck} showCardRate={false} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+              
+              <TabsContent value="card-no-alloc" data-testid="panel-card-no-alloc">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Signed Card Check but No Allocation in Feed</CardTitle>
+                    <CardDescription>Workers with signed card checks who were not in this import file</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ComparisonTable entries={comparisonReport.cardCheckNoAllocation} showAmount={false} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

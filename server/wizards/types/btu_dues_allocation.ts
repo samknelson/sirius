@@ -2,11 +2,29 @@ import { FeedWizard, FeedField, FeedConfig, FeedData, ValidationError, ProcessRe
 import { WizardStatus, WizardStep, createStandardStatuses, LaunchArgument } from '../base.js';
 import { storage } from '../../storage/index.js';
 import { createBtuWorkerImportStorage } from '../../storage/btu-worker-import.js';
+import { createCardcheckStorage, SignedCardcheckWithDetails } from '../../storage/cardchecks.js';
 import { executeChargePlugins, TriggerType, DuesImportSavedContext } from '../../charge-plugins/index.js';
 import { parse as parseCSV } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
 import { objectStorageService } from '../../services/objectStorage.js';
 import { logger } from '../../logger.js';
+
+export interface CardCheckComparisonEntry {
+  workerId: string;
+  workerSiriusId: number;
+  workerName: string;
+  bargainingUnitName: string | null;
+  employerNames: string[];
+  allocatedAmount?: number;
+  cardCheckRate?: number | null;
+}
+
+export interface CardCheckComparisonReport {
+  matchingRate: CardCheckComparisonEntry[];
+  mismatchingRate: CardCheckComparisonEntry[];
+  noCardCheck: CardCheckComparisonEntry[];
+  cardCheckNoAllocation: CardCheckComparisonEntry[];
+}
 
 function filterEmptyColumns(rows: any[][]): any[][] {
   if (rows.length === 0) return rows;
@@ -276,6 +294,16 @@ export class BtuDuesAllocationWizard extends FeedWizard {
     let failureCount = 0;
     const allErrors: ProcessError[] = [];
     const rowResults: RowResult[] = [];
+    
+    const allocatedWorkers: Map<string, {
+      workerId: string;
+      workerSiriusId: number;
+      workerName: string;
+      bargainingUnitId: string | null;
+      bargainingUnitName: string | null;
+      employerNames: string[];
+      amount: number;
+    }> = new Map();
 
     for (let i = 0; i < totalRows; i += batchSize) {
       const batch = mappedRows.slice(i, Math.min(i + batchSize, totalRows));
@@ -338,6 +366,35 @@ export class BtuDuesAllocationWizard extends FeedWizard {
               status: 'success',
               message: `Created dues entry for ${workerName}: $${amount.toFixed(2)}`
             });
+            
+            if (!allocatedWorkers.has(worker.id)) {
+              let bargainingUnitName: string | null = null;
+              if (worker.bargainingUnitId) {
+                const bu = await storage.bargainingUnits.getBargainingUnitById(worker.bargainingUnitId);
+                bargainingUnitName = bu?.name || null;
+              }
+              
+              const employerNames: string[] = [];
+              if (worker.denormEmployerIds && worker.denormEmployerIds.length > 0) {
+                for (const empId of worker.denormEmployerIds) {
+                  const emp = await storage.employers.getEmployer(empId);
+                  if (emp) employerNames.push(emp.name);
+                }
+              }
+              
+              allocatedWorkers.set(worker.id, {
+                workerId: worker.id,
+                workerSiriusId: worker.siriusId,
+                workerName,
+                bargainingUnitId: worker.bargainingUnitId,
+                bargainingUnitName,
+                employerNames,
+                amount,
+              });
+            } else {
+              const existing = allocatedWorkers.get(worker.id)!;
+              existing.amount += amount;
+            }
           } else {
             const pluginError = result.executed.find(e => !e.success)?.error;
             if (pluginError) {
@@ -390,6 +447,68 @@ export class BtuDuesAllocationWizard extends FeedWizard {
       }
     }
 
+    const cardcheckStorage = createCardcheckStorage();
+    const signedCardchecks = await cardcheckStorage.getAllSignedCardchecksWithDetails();
+    
+    const cardCheckByWorkerId = new Map<string, SignedCardcheckWithDetails>();
+    for (const cc of signedCardchecks) {
+      cardCheckByWorkerId.set(cc.workerId, cc);
+    }
+    
+    const comparisonReport: CardCheckComparisonReport = {
+      matchingRate: [],
+      mismatchingRate: [],
+      noCardCheck: [],
+      cardCheckNoAllocation: [],
+    };
+    
+    const allocatedEntries = Array.from(allocatedWorkers.entries());
+    for (const [workerId, allocated] of allocatedEntries) {
+      const cardCheck = cardCheckByWorkerId.get(workerId);
+      
+      const entry: CardCheckComparisonEntry = {
+        workerId: allocated.workerId,
+        workerSiriusId: allocated.workerSiriusId,
+        workerName: allocated.workerName,
+        bargainingUnitName: allocated.bargainingUnitName,
+        employerNames: allocated.employerNames,
+        allocatedAmount: allocated.amount,
+        cardCheckRate: cardCheck?.rate ?? null,
+      };
+      
+      if (!cardCheck) {
+        comparisonReport.noCardCheck.push(entry);
+      } else if (cardCheck.rate === null) {
+        comparisonReport.noCardCheck.push(entry);
+      } else if (Math.abs(cardCheck.rate - allocated.amount) < 0.01) {
+        comparisonReport.matchingRate.push(entry);
+      } else {
+        comparisonReport.mismatchingRate.push(entry);
+      }
+    }
+    
+    for (const cardCheck of signedCardchecks) {
+      if (!allocatedWorkers.has(cardCheck.workerId)) {
+        comparisonReport.cardCheckNoAllocation.push({
+          workerId: cardCheck.workerId,
+          workerSiriusId: cardCheck.workerSiriusId,
+          workerName: cardCheck.workerName,
+          bargainingUnitName: cardCheck.bargainingUnitName,
+          employerNames: cardCheck.employerNames,
+          cardCheckRate: cardCheck.rate,
+        });
+      }
+    }
+    
+    logger.info("Card check comparison report generated", {
+      service: "btu-dues-allocation-wizard",
+      wizardId,
+      matchingRate: comparisonReport.matchingRate.length,
+      mismatchingRate: comparisonReport.mismatchingRate.length,
+      noCardCheck: comparisonReport.noCardCheck.length,
+      cardCheckNoAllocation: comparisonReport.cardCheckNoAllocation.length,
+    });
+
     const results: ProcessResults = {
       totalRows,
       createdCount,
@@ -404,7 +523,8 @@ export class BtuDuesAllocationWizard extends FeedWizard {
     await storage.wizards.update(wizardId, {
       data: {
         ...wizardData,
-        processResults: results
+        processResults: results,
+        cardCheckComparisonReport: comparisonReport,
       },
       status: failureCount === 0 ? 'completed' : 'completed_with_errors'
     });

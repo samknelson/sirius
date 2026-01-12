@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { cardchecks, cardcheckDefinitions, workers, contacts, type Cardcheck, type InsertCardcheck } from "@shared/schema";
+import { cardchecks, cardcheckDefinitions, workers, contacts, bargainingUnits, employers, type Cardcheck, type InsertCardcheck } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 
@@ -11,6 +11,18 @@ export interface CardcheckStatusSummary {
   status: 'signed' | 'pending' | 'revoked' | 'none';
 }
 
+export interface SignedCardcheckWithDetails {
+  cardcheckId: string;
+  workerId: string;
+  workerSiriusId: number;
+  workerName: string;
+  bargainingUnitId: string | null;
+  bargainingUnitName: string | null;
+  employerNames: string[];
+  rate: number | null;
+  signedDate: Date | null;
+}
+
 export interface CardcheckStorage {
   getAllCardchecks(): Promise<Cardcheck[]>;
   getCardcheckById(id: string): Promise<Cardcheck | undefined>;
@@ -18,6 +30,7 @@ export interface CardcheckStorage {
   getCardchecksByWorkerId(workerId: string): Promise<Cardcheck[]>;
   getCardchecksByDefinitionId(definitionId: string): Promise<Cardcheck[]>;
   getCardcheckStatusSummary(): Promise<CardcheckStatusSummary[]>;
+  getAllSignedCardchecksWithDetails(): Promise<SignedCardcheckWithDetails[]>;
   createCardcheck(data: InsertCardcheck): Promise<Cardcheck>;
   updateCardcheck(id: string, data: Partial<InsertCardcheck>): Promise<Cardcheck | undefined>;
   deleteCardcheck(id: string): Promise<boolean>;
@@ -101,6 +114,90 @@ export function createCardcheckStorage(): CardcheckStorage {
       }
       
       return summaries;
+    },
+
+    async getAllSignedCardchecksWithDetails(): Promise<SignedCardcheckWithDetails[]> {
+      const signedCards = await db
+        .select()
+        .from(cardchecks)
+        .where(eq(cardchecks.status, "signed"));
+      
+      if (signedCards.length === 0) return [];
+      
+      const workersData = await db
+        .select({
+          id: workers.id,
+          siriusId: workers.siriusId,
+          contactId: workers.contactId,
+          bargainingUnitId: workers.bargainingUnitId,
+          denormEmployerIds: workers.denormEmployerIds,
+        })
+        .from(workers);
+      
+      const workerMap = new Map(workersData.map(w => [w.id, w]));
+      
+      const contactsData = await db
+        .select({
+          id: contacts.id,
+          given: contacts.given,
+          family: contacts.family,
+          displayName: contacts.displayName,
+        })
+        .from(contacts);
+      
+      const contactMap = new Map(contactsData.map(c => [c.id, c]));
+      
+      const buData = await db
+        .select({
+          id: bargainingUnits.id,
+          name: bargainingUnits.name,
+        })
+        .from(bargainingUnits);
+      
+      const buMap = new Map(buData.map(b => [b.id, b.name]));
+      
+      const employerData = await db
+        .select({
+          id: employers.id,
+          name: employers.name,
+        })
+        .from(employers);
+      
+      const employerMap = new Map(employerData.map(e => [e.id, e.name]));
+      
+      const results: SignedCardcheckWithDetails[] = [];
+      
+      for (const card of signedCards) {
+        const worker = workerMap.get(card.workerId);
+        if (!worker) continue;
+        
+        const contact = contactMap.get(worker.contactId);
+        const workerName = contact 
+          ? `${contact.family || ''}, ${contact.given || ''}`.trim().replace(/^,\s*|,\s*$/g, '') || contact.displayName || `Worker #${worker.siriusId}`
+          : `Worker #${worker.siriusId}`;
+        
+        const employerNames: string[] = [];
+        if (worker.denormEmployerIds) {
+          for (const empId of worker.denormEmployerIds) {
+            const name = employerMap.get(empId);
+            if (name) employerNames.push(name);
+          }
+        }
+        
+        results.push({
+          cardcheckId: card.id,
+          workerId: card.workerId,
+          workerSiriusId: worker.siriusId,
+          workerName,
+          bargainingUnitId: worker.bargainingUnitId,
+          bargainingUnitName: worker.bargainingUnitId ? buMap.get(worker.bargainingUnitId) || null : null,
+          employerNames,
+          rate: card.rate,
+          signedDate: card.signedDate,
+        });
+      }
+      
+      return results;
     },
 
     async createCardcheck(data: InsertCardcheck): Promise<Cardcheck> {
