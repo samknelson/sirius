@@ -62,6 +62,8 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
 
     async getPaginated(page: number, limit: number, filters?: EdlsSheetsFilterOptions): Promise<PaginatedEdlsSheets> {
       const client = getClient();
+      const supervisorUsers = alias(users, 'supervisor_user');
+      const assigneeUsers = alias(users, 'assignee_user');
       
       const conditions: SQL[] = [];
       if (filters?.employerId) {
@@ -93,9 +95,28 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
             id: employers.id,
             name: employers.name,
           },
+          department: {
+            id: optionsDepartment.id,
+            name: optionsDepartment.name,
+          },
+          supervisorUser: {
+            id: supervisorUsers.id,
+            firstName: supervisorUsers.firstName,
+            lastName: supervisorUsers.lastName,
+            email: supervisorUsers.email,
+          },
+          assigneeUser: {
+            id: assigneeUsers.id,
+            firstName: assigneeUsers.firstName,
+            lastName: assigneeUsers.lastName,
+            email: assigneeUsers.email,
+          },
         })
         .from(edlsSheets)
-        .leftJoin(employers, eq(edlsSheets.employerId, employers.id));
+        .leftJoin(employers, eq(edlsSheets.employerId, employers.id))
+        .leftJoin(optionsDepartment, eq(edlsSheets.departmentId, optionsDepartment.id))
+        .leftJoin(supervisorUsers, eq(edlsSheets.supervisor, supervisorUsers.id))
+        .leftJoin(assigneeUsers, eq(edlsSheets.assignee, assigneeUsers.id));
       
       const rows = whereCondition
         ? await baseQuery.where(whereCondition).orderBy(desc(edlsSheets.date)).limit(limit).offset(page * limit)
@@ -103,7 +124,10 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       
       const data: EdlsSheetWithRelations[] = rows.map(row => ({
         ...row.sheet,
-        employer: row.employer || undefined,
+        employer: row.employer?.id ? row.employer : undefined,
+        department: row.department?.id ? row.department : undefined,
+        supervisorUser: row.supervisorUser?.id ? row.supervisorUser : undefined,
+        assigneeUser: row.assigneeUser?.id ? row.assigneeUser : undefined,
       }));
       
       return { data, total, page, limit };

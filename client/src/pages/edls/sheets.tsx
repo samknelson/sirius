@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { Plus, FileSpreadsheet, Building2, Calendar, Users, CalendarDays } from "lucide-react";
+import { Plus, FileSpreadsheet, Calendar, Users, CalendarDays, Eye, Pencil, Settings, UserCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { EdlsSheetForm, type SheetFormData } from "@/components/edls/EdlsSheetForm";
@@ -39,6 +39,33 @@ import { cn } from "@/lib/utils";
 
 interface EdlsSheetWithRelations extends EdlsSheet {
   employer?: { id: string; name: string };
+  department?: { id: string; name: string };
+  supervisorUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
+  assigneeUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  draft: "bg-muted/50",
+  request: "bg-yellow-50 dark:bg-yellow-900/20",
+  lock: "bg-green-50 dark:bg-green-900/20",
+  reserved: "bg-blue-50 dark:bg-blue-900/20",
+  trash: "bg-red-50 dark:bg-red-900/20",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  draft: "Draft",
+  request: "Requested",
+  lock: "Scheduled",
+  reserved: "Reserved",
+  trash: "Trash",
+};
+
+function formatUserName(user: { firstName: string | null; lastName: string | null; email: string } | undefined): string {
+  if (!user) return "—";
+  if (user.firstName || user.lastName) {
+    return [user.firstName, user.lastName].filter(Boolean).join(" ");
+  }
+  return user.email;
 }
 
 interface PaginatedEdlsSheets {
@@ -322,31 +349,31 @@ export default function EdlsSheetsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Status</TableHead>
                   <TableHead>Title</TableHead>
-                  <TableHead>Employer</TableHead>
                   <TableHead>Date</TableHead>
+                  <TableHead>Department</TableHead>
+                  <TableHead>Supervisor / Assignee</TableHead>
                   <TableHead>Workers</TableHead>
+                  <TableHead>Tools</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sheets.map((sheet) => (
-                  <TableRow key={sheet.id} data-testid={`row-sheet-${sheet.id}`}>
+                  <TableRow 
+                    key={sheet.id} 
+                    data-testid={`row-sheet-${sheet.id}`}
+                    className={cn(STATUS_COLORS[sheet.status] || "")}
+                  >
                     <TableCell>
-                      <Link href={`/edls/sheet/${sheet.id}`}>
-                        <Button
-                          variant="link"
-                          className="p-0 h-auto font-medium"
-                          data-testid={`link-sheet-${sheet.id}`}
-                        >
-                          <FileSpreadsheet className="h-4 w-4 mr-2 text-muted-foreground" />
-                          {sheet.title}
-                        </Button>
-                      </Link>
+                      <span className="text-sm font-medium">
+                        {STATUS_LABELS[sheet.status] || sheet.status}
+                      </span>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Building2 className="h-4 w-4 text-muted-foreground" />
-                        {sheet.employer?.name || "Unknown"}
+                        <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">{sheet.title}</span>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -356,9 +383,44 @@ export default function EdlsSheetsPage() {
                       </div>
                     </TableCell>
                     <TableCell>
+                      {sheet.department?.name || "—"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        <div>{formatUserName(sheet.supervisorUser)}</div>
+                        {sheet.assigneeUser && sheet.assigneeUser.id !== sheet.supervisorUser?.id && (
+                          <div className="text-muted-foreground">{formatUserName(sheet.assigneeUser)}</div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
                       <div className="flex items-center gap-2">
                         <Users className="h-4 w-4 text-muted-foreground" />
                         {sheet.workerCount}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Link href={`/edls/sheet/${sheet.id}`}>
+                          <Button size="icon" variant="ghost" data-testid={`button-view-${sheet.id}`} title="View">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                        <Link href={`/edls/sheet/${sheet.id}/edit`}>
+                          <Button size="icon" variant="ghost" data-testid={`button-edit-${sheet.id}`} title="Edit">
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                        <Link href={`/edls/sheet/${sheet.id}/manage`}>
+                          <Button size="icon" variant="ghost" data-testid={`button-manage-${sheet.id}`} title="Manage">
+                            <Settings className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                        <Link href={`/edls/sheet/${sheet.id}/assignments`}>
+                          <Button size="icon" variant="ghost" data-testid={`button-assignments-${sheet.id}`} title="Assignments">
+                            <UserCheck className="h-4 w-4" />
+                          </Button>
+                        </Link>
                       </div>
                     </TableCell>
                   </TableRow>
