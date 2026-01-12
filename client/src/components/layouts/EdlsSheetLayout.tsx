@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode } from "react";
-import { FileSpreadsheet, ArrowLeft, Building2, Calendar, Users } from "lucide-react";
+import { FileSpreadsheet, ArrowLeft, Calendar, Users } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -108,10 +108,6 @@ export function EdlsSheetLayout({ activeTab, children }: EdlsSheetLayoutProps) {
                 {sheet.title}
               </h1>
               <div className="flex items-center gap-4 mt-1 text-muted-foreground flex-wrap">
-                <span className="flex items-center gap-1">
-                  <Building2 className="h-4 w-4" />
-                  {sheet.employer?.name || "Unknown Employer"}
-                </span>
                 <span className="flex items-center gap-1">
                   <Calendar className="h-4 w-4" />
                   {format(new Date(sheet.date), "PPP")}
