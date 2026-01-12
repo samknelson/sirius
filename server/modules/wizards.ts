@@ -1217,14 +1217,18 @@ export function registerWizardRoutes(
           // Update wizard status based on results
           const finalStatus = results.failureCount > 0 ? 'needs_review' : 'completed';
           
-          // Update wizard with final status (preserve processResults that was just saved)
+          // Re-fetch wizard to get the latest data (including cardCheckComparisonReport saved by processFeedData)
+          const updatedWizard = await storage.wizards.getById(id);
+          const latestData = updatedWizard?.data || wizard.data;
+          
+          // Update wizard with final status (preserve all data including comparison report)
           await storage.wizards.update(id, {
             status: finalStatus,
             data: {
-              ...wizard.data,
+              ...latestData,
               processResults: results, // Preserve the complete results including resultsFileId
               progress: {
-                ...wizard.data?.progress,
+                ...(latestData as any)?.progress,
                 process: {
                   status: 'completed',
                   completedAt: new Date().toISOString()
