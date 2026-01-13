@@ -152,7 +152,8 @@ export function registerLedgerPaymentRoutes(app: Express) {
   app.get("/api/ledger/payments/:id/transactions", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
     try {
       const { id } = req.params;
-      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+      const maxLimit = req.query.export === 'true' ? 100000 : 200;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, maxLimit);
       const offset = parseInt(req.query.offset as string) || 0;
       
       // First get the payment to find its EA

@@ -322,8 +322,8 @@ export function LedgerTransactionsView({
   const exportToCSV = async () => {
     setIsExporting(true);
     try {
-      // Fetch all transactions (use large limit to get everything)
-      const allDataUrl = `${baseUrl}?limit=100000&offset=0`;
+      // Fetch all transactions (use export=true to bypass pagination limit)
+      const allDataUrl = `${baseUrl}?limit=100000&offset=0&export=true`;
       const res = await fetch(allDataUrl, { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to fetch transactions for export');
       const allResponse: PaginatedResponse = await res.json();
