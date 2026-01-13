@@ -119,6 +119,7 @@ export function LedgerTransactionsView({
   // Pagination state
   const [page, setPage] = useState(0);
   const [limit] = useState(pageSize);
+  const [isExporting, setIsExporting] = useState(false);
   
   // Filter state
   const [showFilters, setShowFilters] = useState(false);
@@ -283,59 +284,112 @@ export function LedgerTransactionsView({
     setFilterDateTo("");
   };
 
-  // Export to CSV
-  const exportToCSV = () => {
-    const dataToExport = filteredAndSortedTransactions;
-    if (!dataToExport.length) {
-      toast({
-        title: "No data to export",
-        description: "There are no transactions to export.",
-        variant: "destructive",
-      });
-      return;
+  // Apply filters to transactions
+  const applyFilters = (data: LedgerEntryWithDetails[]) => {
+    let result = [...data];
+
+    if (filterEntityType !== "all") {
+      result = result.filter(t => t.entityType === filterEntityType);
+    }
+    if (filterEntityName) {
+      result = result.filter(t => t.entityName?.toLowerCase().includes(filterEntityName.toLowerCase()));
+    }
+    if (filterDescription) {
+      result = result.filter(t => t.memo?.toLowerCase().includes(filterDescription.toLowerCase()));
+    }
+    if (filterAmountMin) {
+      const min = parseFloat(filterAmountMin);
+      result = result.filter(t => parseFloat(t.amount) >= min);
+    }
+    if (filterAmountMax) {
+      const max = parseFloat(filterAmountMax);
+      result = result.filter(t => parseFloat(t.amount) <= max);
+    }
+    if (filterDateFrom) {
+      const from = new Date(filterDateFrom);
+      result = result.filter(t => t.date && new Date(t.date) >= from);
+    }
+    if (filterDateTo) {
+      const to = new Date(filterDateTo);
+      to.setHours(23, 59, 59, 999);
+      result = result.filter(t => t.date && new Date(t.date) <= to);
     }
 
-    const csvData = dataToExport.map(transaction => ({
-      Date: transaction.date ? new Date(transaction.date).toLocaleDateString() : "",
-      Amount: parseFloat(transaction.amount).toFixed(2),
-      "Entity Type": transaction.entityType,
-      "Entity Name": transaction.entityName || "",
-      Memo: transaction.memo || "",
-      "Reference Type": transaction.referenceType || "",
-      "Reference": transaction.referenceName || "",
-      "EA Account": transaction.eaAccountName || "",
-      "Transaction ID": transaction.id,
-    }));
+    return result;
+  };
 
-    const csv = stringify(csvData, {
-      header: true,
-      columns: [
-        "Date",
-        "Amount",
-        "Entity Type",
-        "Entity Name",
-        "Memo",
-        "Reference Type",
-        "Reference",
-        "EA Account",
-        "Transaction ID",
-      ],
-    });
+  // Export to CSV - fetches all data then applies filters
+  const exportToCSV = async () => {
+    setIsExporting(true);
+    try {
+      // Fetch all transactions (use large limit to get everything)
+      const allDataUrl = `${baseUrl}?limit=100000&offset=0`;
+      const res = await fetch(allDataUrl, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch transactions for export');
+      const allResponse: PaginatedResponse = await res.json();
+      
+      // Apply current filters to full dataset
+      const dataToExport = applyFilters(allResponse.data);
 
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${csvFilename}-${new Date().toISOString().split("T")[0]}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
+      if (!dataToExport.length) {
+        toast({
+          title: "No data to export",
+          description: "There are no transactions matching your filters.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-    toast({
-      title: "Export successful",
-      description: `Exported ${dataToExport.length} filtered transaction(s) to CSV.`,
-    });
+      const csvData = dataToExport.map(transaction => ({
+        Date: transaction.date ? new Date(transaction.date).toLocaleDateString() : "",
+        Amount: parseFloat(transaction.amount).toFixed(2),
+        "Entity Type": transaction.entityType,
+        "Entity Name": transaction.entityName || "",
+        Memo: transaction.memo || "",
+        "Reference Type": transaction.referenceType || "",
+        "Reference": transaction.referenceName || "",
+        "EA Account": transaction.eaAccountName || "",
+        "Transaction ID": transaction.id,
+      }));
+
+      const csv = stringify(csvData, {
+        header: true,
+        columns: [
+          "Date",
+          "Amount",
+          "Entity Type",
+          "Entity Name",
+          "Memo",
+          "Reference Type",
+          "Reference",
+          "EA Account",
+          "Transaction ID",
+        ],
+      });
+
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${csvFilename}-${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Export successful",
+        description: `Exported ${dataToExport.length} transaction(s) to CSV.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Export failed",
+        description: "Failed to export transactions. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleSort = (field: SortField) => {
@@ -395,11 +449,11 @@ export function LedgerTransactionsView({
               variant="outline"
               size="sm"
               onClick={exportToCSV}
-              disabled={transactions.length === 0}
+              disabled={total === 0 || isExporting}
               data-testid="button-export-csv"
             >
               <Download size={16} className="mr-2" />
-              Export Page
+              {isExporting ? "Exporting..." : "Export CSV"}
             </Button>
           </div>
         </div>
