@@ -179,6 +179,7 @@ export function registerLedgerAccountRoutes(app: Express) {
       const transactions = await storage.ledger.entries.getByAccountId(id);
       res.json(transactions);
     } catch (error) {
+      console.error("Error fetching ledger transactions:", error);
       res.status(500).json({ message: "Failed to fetch ledger transactions" });
     }
   });

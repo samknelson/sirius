@@ -662,6 +662,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
     },
 
     async getTransactions(filter: TransactionFilter): Promise<LedgerEntryWithDetails[]> {
+      try {
       const refEmployers = pgAlias(employers, 'ref_employers');
       const refTrustProviders = pgAlias(trustProviders, 'ref_trust_providers');
       const refWorkers = pgAlias(workers, 'ref_workers');
@@ -831,6 +832,15 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
             referenceName,
           };
         });
+      } catch (error) {
+        logger.error("Error in getTransactions", {
+          service: "ledger-storage",
+          filter,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+        throw error;
+      }
     },
 
     async getByAccountId(accountId: string): Promise<LedgerEntryWithDetails[]> {
