@@ -1,5 +1,9 @@
 {
   "$schema": "https://app.flightcontrol.dev/schema.json",
+  "ci": {
+    "type": "ec2",
+    "instanceSize": "t3.large"
+  },
   "environments": [
     {
       "id": "production",
