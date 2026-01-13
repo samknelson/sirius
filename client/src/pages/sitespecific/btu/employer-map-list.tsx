@@ -135,12 +135,10 @@ export default function BtuEmployerMapListPage() {
   };
 
   // Helper to get secondary employer suggestion for a record
-  // Only returns a suggestion if it differs from the primary employer (or primary suggestion)
+  // Returns a suggestion for secondary employer based on location mapping
+  // Only returns null if the suggestion matches the current primary employer (to avoid duplicates)
   const getSecondarySuggestionForRecord = (record: BtuEmployerMap): string | null => {
     if (!suggestionsData) return null;
-    
-    // Get the primary employer (either the record's current employer or the primary suggestion)
-    const primaryEmployer = record.employerName || getSuggestionForRecord(record);
     
     let secondarySuggestion: string | null = null;
     
@@ -157,12 +155,13 @@ export default function BtuEmployerMapListPage() {
       }
     }
     
-    // Only return the suggestion if it differs from the primary employer
-    if (secondarySuggestion && secondarySuggestion !== primaryEmployer) {
-      return secondarySuggestion;
+    // Only suppress the suggestion if it exactly matches the current primary employer
+    // (to avoid suggesting the same employer for both primary and secondary)
+    if (secondarySuggestion && secondarySuggestion === record.employerName) {
+      return null;
     }
     
-    return null;
+    return secondarySuggestion;
   };
 
   const form = useForm<FormValues>({
@@ -903,33 +902,9 @@ export default function BtuEmployerMapListPage() {
                           return null;
                         })()}
                       </div>
-                    ) : (() => {
-                      const suggestion = getSecondarySuggestionForRecord(record);
-                      if (suggestion) {
-                        return (
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-muted-foreground">-</span>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Badge 
-                                  variant="secondary" 
-                                  className="cursor-pointer text-xs gap-1"
-                                  onClick={() => handleApplySecondarySuggestion(record.id, suggestion)}
-                                  data-testid={`badge-secondary-suggestion-${record.id}`}
-                                >
-                                  <Lightbulb className="h-3 w-3" />
-                                  {suggestion}
-                                </Badge>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                Click to apply suggested secondary employer based on location
-                              </TooltipContent>
-                            </Tooltip>
-                          </div>
-                        );
-                      }
-                      return "-";
-                    })()}
+                    ) : (
+                      "-"
+                    )}
                   </TableCell>
                   <TableCell data-testid={`text-bargaining-unit-${record.id}`}>
                     {bargainingUnits.find(bu => bu.id === record.bargainingUnitId)?.siriusId || "-"}
@@ -1095,9 +1070,24 @@ export default function BtuEmployerMapListPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Employer Name</FormLabel>
-                      <FormControl>
-                        <Input {...field} placeholder="e.g., Boston Public Schools" data-testid="input-employer-name" />
-                      </FormControl>
+                      <Select 
+                        onValueChange={(val) => field.onChange(val === "__none__" ? "" : val)} 
+                        value={field.value || "__none__"}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-employer-name">
+                            <SelectValue placeholder="Select an employer" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="__none__">None</SelectItem>
+                          {systemEmployersData?.employerNames?.map((name) => (
+                            <SelectItem key={name} value={name}>
+                              {name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -1108,9 +1098,24 @@ export default function BtuEmployerMapListPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Secondary Employer Name</FormLabel>
-                      <FormControl>
-                        <Input {...field} placeholder="Optional secondary employer" data-testid="input-secondary-employer-name" />
-                      </FormControl>
+                      <Select 
+                        onValueChange={(val) => field.onChange(val === "__none__" ? "" : val)} 
+                        value={field.value || "__none__"}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-secondary-employer-name">
+                            <SelectValue placeholder="Select a secondary employer (optional)" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="__none__">None</SelectItem>
+                          {systemEmployersData?.employerNames?.map((name) => (
+                            <SelectItem key={name} value={name}>
+                              {name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
