@@ -581,19 +581,21 @@ export default function BtuEmployerMapListPage() {
     const record = records.find(r => r.id === recordId);
     if (!record) return;
     
+    const cleanedData = {
+      departmentId: record.departmentId || null,
+      departmentTitle: record.departmentTitle || null,
+      locationId: record.locationId || null,
+      locationTitle: record.locationTitle || null,
+      jobCode: record.jobCode || null,
+      jobTitle: record.jobTitle || null,
+      employerName: suggestedEmployer,
+      secondaryEmployerName: record.secondaryEmployerName || null,
+      bargainingUnitId: record.bargainingUnitId || null,
+    };
+    
     updateMutation.mutate({ 
       id: recordId, 
-      data: {
-        departmentId: record.departmentId || "",
-        departmentTitle: record.departmentTitle || "",
-        locationId: record.locationId || "",
-        locationTitle: record.locationTitle || "",
-        jobCode: record.jobCode || "",
-        jobTitle: record.jobTitle || "",
-        employerName: suggestedEmployer,
-        secondaryEmployerName: record.secondaryEmployerName || "",
-        bargainingUnitId: record.bargainingUnitId || "",
-      }
+      data: cleanedData as FormValues
     }, {
       onSuccess: () => {
         toast({
@@ -608,19 +610,21 @@ export default function BtuEmployerMapListPage() {
     const record = records.find(r => r.id === recordId);
     if (!record) return;
     
+    const cleanedData = {
+      departmentId: record.departmentId || null,
+      departmentTitle: record.departmentTitle || null,
+      locationId: record.locationId || null,
+      locationTitle: record.locationTitle || null,
+      jobCode: record.jobCode || null,
+      jobTitle: record.jobTitle || null,
+      employerName: record.employerName || null,
+      secondaryEmployerName: suggestedEmployer,
+      bargainingUnitId: record.bargainingUnitId || null,
+    };
+    
     updateMutation.mutate({ 
       id: recordId, 
-      data: {
-        departmentId: record.departmentId || "",
-        departmentTitle: record.departmentTitle || "",
-        locationId: record.locationId || "",
-        locationTitle: record.locationTitle || "",
-        jobCode: record.jobCode || "",
-        jobTitle: record.jobTitle || "",
-        employerName: record.employerName || "",
-        secondaryEmployerName: suggestedEmployer,
-        bargainingUnitId: record.bargainingUnitId || "",
-      }
+      data: cleanedData as FormValues
     }, {
       onSuccess: () => {
         toast({
