@@ -145,10 +145,12 @@ export function registerLedgerEaRoutes(app: Express) {
     }
   });
 
-  // GET /api/ledger/ea/:id/transactions - Get ledger entries for an EA
+  // GET /api/ledger/ea/:id/transactions - Get ledger entries for an EA (paginated)
   app.get("/api/ledger/ea/:id/transactions", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
     try {
       const { id } = req.params;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+      const offset = parseInt(req.query.offset as string) || 0;
       
       // Check if EA exists
       const ea = await storage.ledger.ea.get(id);
@@ -159,9 +161,9 @@ export function registerLedgerEaRoutes(app: Express) {
 
       if (!await checkEaAccessInline(req, res, ea, 'ledger.ea.view')) return;
 
-      // Get all transactions for this EA
-      const transactions = await storage.ledger.entries.getTransactions({ eaId: id });
-      res.json(transactions);
+      // Get paginated transactions for this EA
+      const result = await storage.ledger.entries.getTransactionsPaginated({ eaId: id }, limit, offset);
+      res.json(result);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch ledger transactions" });
     }

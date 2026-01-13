@@ -9,7 +9,7 @@ function AccountTransactionsContent() {
 
   return (
     <LedgerTransactionsView
-      queryKey={[`/api/ledger/accounts/${id}/transactions`]}
+      baseUrl={`/api/ledger/accounts/${id}/transactions`}
       title="Transactions"
       csvFilename="account-transactions"
     />

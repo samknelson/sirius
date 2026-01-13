@@ -11,8 +11,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useQuery } from "@tanstack/react-query";
-import { Download, ArrowUpDown, Filter, X, Eye } from "lucide-react";
-import { useState, useMemo } from "react";
+import { Download, ArrowUpDown, Filter, X, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { useState, useMemo, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { stringify } from "csv-stringify/browser/esm/sync";
 import { Link } from "wouter";
@@ -47,8 +47,13 @@ interface LedgerEntryWithDetails {
 type SortField = "amount" | "date" | "entityName" | "memo";
 type SortDirection = "asc" | "desc";
 
+interface PaginatedResponse {
+  data: LedgerEntryWithDetails[];
+  total: number;
+}
+
 interface LedgerTransactionsViewProps {
-  queryKey: string[];
+  baseUrl: string;
   title: string;
   csvFilename: string;
   showEntityType?: boolean;
@@ -56,6 +61,7 @@ interface LedgerTransactionsViewProps {
   showEaAccount?: boolean;
   showEaLink?: boolean;
   currencyCode?: string;
+  pageSize?: number;
 }
 
 // Helper function to generate reference link based on type and ID
@@ -95,7 +101,7 @@ function getReferenceLink(
 }
 
 export function LedgerTransactionsView({ 
-  queryKey, 
+  baseUrl, 
   title, 
   csvFilename,
   showEntityType = true,
@@ -103,11 +109,16 @@ export function LedgerTransactionsView({
   showEaAccount = true,
   showEaLink = true,
   currencyCode = "USD",
+  pageSize = 50,
 }: LedgerTransactionsViewProps) {
   const { toast } = useToast();
   
   // Modal state for viewing transaction details
   const [selectedTransaction, setSelectedTransaction] = useState<LedgerEntryWithDetails | null>(null);
+  
+  // Pagination state
+  const [page, setPage] = useState(0);
+  const [limit] = useState(pageSize);
   
   // Filter state
   const [showFilters, setShowFilters] = useState(false);
@@ -123,9 +134,25 @@ export function LedgerTransactionsView({
   const [sortField, setSortField] = useState<SortField>("date");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
-  const { data: transactions, isLoading } = useQuery<LedgerEntryWithDetails[]>({
-    queryKey,
+  const offset = page * limit;
+  const queryUrl = `${baseUrl}?limit=${limit}&offset=${offset}`;
+
+  const { data: response, isLoading } = useQuery<PaginatedResponse>({
+    queryKey: [baseUrl, page, limit],
+    queryFn: async () => {
+      const res = await fetch(queryUrl, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch transactions');
+      return res.json();
+    },
   });
+
+  const transactions = response?.data || [];
+  const total = response?.total || 0;
+  const totalPages = Math.ceil(total / limit);
+
+  const goToPage = useCallback((newPage: number) => {
+    setPage(Math.max(0, Math.min(newPage, totalPages - 1)));
+  }, [totalPages]);
 
   // Calculate total columns for colSpan
   const totalColumns = 6 + // Base columns: Date, Amount, Memo, Reference Type, Reference, Links
@@ -133,9 +160,9 @@ export function LedgerTransactionsView({
     (showEntityName ? 1 : 0) +
     (showEaAccount ? 1 : 0);
 
-  // Filter and sort transactions
+  // Filter and sort transactions (client-side filtering of current page)
   const filteredAndSortedTransactions = useMemo(() => {
-    if (!transactions) return [];
+    if (!transactions || transactions.length === 0) return [];
 
     let result = [...transactions];
 
@@ -238,9 +265,9 @@ export function LedgerTransactionsView({
     sortDirection,
   ]);
 
-  // Get unique entity types
+  // Get unique entity types (from current page)
   const entityTypes = useMemo(() => {
-    if (!transactions) return [];
+    if (!transactions || transactions.length === 0) return [];
     const types = new Set(transactions.map(t => t.entityType));
     return Array.from(types).sort();
   }, [transactions]);
@@ -342,12 +369,11 @@ export function LedgerTransactionsView({
           <div>
             <CardTitle>{title}</CardTitle>
             <CardDescription>
-              {transactions && transactions.length > 0 ? (
+              {total > 0 ? (
                 <>
-                  {filteredAndSortedTransactions.length !== transactions.length ? (
-                    <>Showing {filteredAndSortedTransactions.length} of {transactions.length} transactions (filtered)</>
-                  ) : (
-                    <>Showing {transactions.length} transactions</>
+                  Showing {offset + 1}-{Math.min(offset + transactions.length, total)} of {total.toLocaleString()} transactions
+                  {filteredAndSortedTransactions.length !== transactions.length && (
+                    <> ({filteredAndSortedTransactions.length} after page filters)</>
                   )}
                 </>
               ) : (
@@ -369,11 +395,11 @@ export function LedgerTransactionsView({
               variant="outline"
               size="sm"
               onClick={exportToCSV}
-              disabled={!transactions || transactions.length === 0}
+              disabled={transactions.length === 0}
               data-testid="button-export-csv"
             >
               <Download size={16} className="mr-2" />
-              Export CSV
+              Export Page
             </Button>
           </div>
         </div>
@@ -643,6 +669,67 @@ export function LedgerTransactionsView({
             </TableBody>
           </Table>
         </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pt-4 border-t mt-4">
+            <div className="text-sm text-muted-foreground">
+              Page {page + 1} of {totalPages.toLocaleString()}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => goToPage(0)}
+                disabled={page === 0 || isLoading}
+                data-testid="button-first-page"
+              >
+                <ChevronsLeft size={16} />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => goToPage(page - 1)}
+                disabled={page === 0 || isLoading}
+                data-testid="button-prev-page"
+              >
+                <ChevronLeft size={16} />
+              </Button>
+              <div className="flex items-center gap-1">
+                <Input
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  value={page + 1}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    if (!isNaN(val)) goToPage(val - 1);
+                  }}
+                  className="w-16 h-9 text-center"
+                  data-testid="input-page-number"
+                />
+                <span className="text-sm text-muted-foreground">of {totalPages.toLocaleString()}</span>
+              </div>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => goToPage(page + 1)}
+                disabled={page >= totalPages - 1 || isLoading}
+                data-testid="button-next-page"
+              >
+                <ChevronRight size={16} />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => goToPage(totalPages - 1)}
+                disabled={page >= totalPages - 1 || isLoading}
+                data-testid="button-last-page"
+              >
+                <ChevronsRight size={16} />
+              </Button>
+            </div>
+          </div>
+        )}
       </CardContent>
 
       <Dialog open={!!selectedTransaction} onOpenChange={(open) => !open && setSelectedTransaction(null)}>

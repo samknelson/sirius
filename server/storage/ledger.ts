@@ -79,7 +79,9 @@ export interface LedgerEntryStorage {
   getByReferenceAndConfig(referenceId: string, chargePluginConfigId: string): Promise<Ledger[]>;
   getByFilter(filter: LedgerEntryFilter): Promise<Ledger[]>;
   getTransactions(filter: TransactionFilter): Promise<LedgerEntryWithDetails[]>;
+  getTransactionsPaginated(filter: TransactionFilter, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }>;
   getByAccountId(accountId: string): Promise<LedgerEntryWithDetails[]>;
+  getByAccountIdPaginated(accountId: string, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }>;
   create(entry: InsertLedger): Promise<Ledger>;
   update(id: string, entry: Partial<InsertLedger>): Promise<Ledger | undefined>;
   delete(id: string): Promise<boolean>;
@@ -845,6 +847,147 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
 
     async getByAccountId(accountId: string): Promise<LedgerEntryWithDetails[]> {
       return this.getTransactions({ accountId });
+    },
+
+    async getTransactionsPaginated(filter: TransactionFilter, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }> {
+      try {
+        const refEmployers = pgAlias(employers, 'ref_employers');
+        const refTrustProviders = pgAlias(trustProviders, 'ref_trust_providers');
+        const refWorkers = pgAlias(workers, 'ref_workers');
+        const refContacts = pgAlias(contacts, 'ref_contacts');
+
+        let whereClause;
+        if ('accountId' in filter) {
+          whereClause = eq(ledgerEa.accountId, filter.accountId);
+        } else if ('eaId' in filter) {
+          whereClause = eq(ledger.eaId, filter.eaId);
+        } else {
+          whereClause = and(
+            eq(ledger.referenceType, filter.referenceType),
+            eq(ledger.referenceId, filter.referenceId)
+          );
+        }
+
+        const [countResult] = await db
+          .select({ count: count() })
+          .from(ledger)
+          .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+          .where(whereClause);
+        
+        const total = countResult?.count || 0;
+
+        const results = await db
+          .select({
+            entry: ledger,
+            ea: ledgerEa,
+            account: ledgerAccounts,
+            employer: employers,
+            trustProvider: trustProviders,
+            workerSiriusId: workers.siriusId,
+            workerContact: contacts,
+            payment: ledgerPayments,
+            paymentType: optionsLedgerPaymentType,
+            refEmployer: refEmployers,
+            refTrustProvider: refTrustProviders,
+            refWorkerSiriusId: refWorkers.siriusId,
+            refWorkerContact: refContacts,
+          })
+          .from(ledger)
+          .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+          .innerJoin(ledgerAccounts, eq(ledgerEa.accountId, ledgerAccounts.id))
+          .leftJoin(employers, and(eq(ledgerEa.entityType, 'employer'), eq(ledgerEa.entityId, employers.id)))
+          .leftJoin(trustProviders, and(eq(ledgerEa.entityType, 'trustProvider'), eq(ledgerEa.entityId, trustProviders.id)))
+          .leftJoin(workers, and(eq(ledgerEa.entityType, 'worker'), eq(ledgerEa.entityId, workers.id)))
+          .leftJoin(contacts, and(eq(ledgerEa.entityType, 'worker'), eq(workers.contactId, contacts.id)))
+          .leftJoin(ledgerPayments, and(eq(ledger.referenceType, 'payment'), eq(ledger.referenceId, ledgerPayments.id)))
+          .leftJoin(optionsLedgerPaymentType, eq(ledgerPayments.paymentType, optionsLedgerPaymentType.id))
+          .leftJoin(refEmployers, and(eq(ledger.referenceType, 'employer'), eq(ledger.referenceId, refEmployers.id)))
+          .leftJoin(refTrustProviders, and(eq(ledger.referenceType, 'trustProvider'), eq(ledger.referenceId, refTrustProviders.id)))
+          .leftJoin(refWorkers, and(eq(ledger.referenceType, 'worker'), eq(ledger.referenceId, refWorkers.id)))
+          .leftJoin(refContacts, and(eq(ledger.referenceType, 'worker'), eq(refWorkers.contactId, refContacts.id)))
+          .where(whereClause)
+          .orderBy(desc(ledger.date), desc(ledger.id))
+          .limit(limit)
+          .offset(offset);
+
+        const data = results.map(row => {
+          let entityName: string | null = null;
+          const entityType = row.ea.entityType;
+          const entityId = row.ea.entityId;
+
+          if (entityType === 'employer' && row.employer) {
+            entityName = row.employer.name;
+          } else if (entityType === 'trustProvider' && row.trustProvider) {
+            entityName = row.trustProvider.name;
+          } else if (entityType === 'worker') {
+            if (row.workerContact) {
+              entityName = `${row.workerContact.given} ${row.workerContact.family}`;
+            } else if (row.workerSiriusId) {
+              entityName = `Worker #${row.workerSiriusId}`;
+            }
+          } else {
+            entityName = `${entityType} ${entityId.substring(0, 8)}`;
+          }
+
+          let referenceName: string | null = null;
+          if (row.entry.referenceType === 'payment' && row.payment) {
+            const paymentTypeName = row.paymentType?.name || 'Payment';
+            const currencyCode = row.paymentType?.currencyCode || 'USD';
+            const currency = getCurrency(currencyCode);
+            const currencyLabel = currency?.label || currencyCode;
+            const formattedAmount = formatAmount(parseFloat(row.payment.amount), currencyCode);
+            
+            if (row.payment.memo) {
+              referenceName = `${currencyLabel} Adjustment: ${formattedAmount} - ${row.payment.memo}`;
+            } else {
+              referenceName = `${currencyLabel} Adjustment: ${formattedAmount}`;
+            }
+          } else if (row.entry.referenceType === 'employer' && row.refEmployer) {
+            referenceName = `Employer: ${row.refEmployer.name}`;
+          } else if (row.entry.referenceType === 'trustProvider' && row.refTrustProvider) {
+            referenceName = `Trust Provider: ${row.refTrustProvider.name}`;
+          } else if (row.entry.referenceType === 'worker') {
+            if (row.refWorkerContact) {
+              referenceName = `Worker: ${row.refWorkerContact.given} ${row.refWorkerContact.family}`;
+            } else if (row.refWorkerSiriusId) {
+              referenceName = `Worker #${row.refWorkerSiriusId}`;
+            } else if (row.entry.referenceId) {
+              referenceName = `Worker (${row.entry.referenceId.substring(0, 8)}...)`;
+            } else {
+              referenceName = 'Worker';
+            }
+          } else if (row.entry.referenceType && row.entry.referenceId) {
+            const capitalizedType = row.entry.referenceType.charAt(0).toUpperCase() + row.entry.referenceType.slice(1);
+            referenceName = `${capitalizedType} (${row.entry.referenceId.substring(0, 8)}...)`;
+          }
+
+          return {
+            ...row.entry,
+            entityType,
+            entityId,
+            entityName,
+            eaAccountId: row.ea.accountId,
+            eaAccountName: row.account?.name || null,
+            referenceName,
+          };
+        });
+
+        return { data, total };
+      } catch (error) {
+        logger.error("Error in getTransactionsPaginated", {
+          service: "ledger-storage",
+          filter,
+          limit,
+          offset,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+        throw error;
+      }
+    },
+
+    async getByAccountIdPaginated(accountId: string, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }> {
+      return this.getTransactionsPaginated({ accountId }, limit, offset);
     },
 
     async create(insertEntry: InsertLedger): Promise<Ledger> {

@@ -8,7 +8,7 @@ function EATransactionsContent() {
 
   return (
     <LedgerTransactionsView
-      queryKey={[`/api/ledger/ea/${id}/transactions`]}
+      baseUrl={`/api/ledger/ea/${id}/transactions`}
       title="Transactions"
       csvFilename="ea-transactions"
       currencyCode={currencyCode}

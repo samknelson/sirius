@@ -148,10 +148,12 @@ export function registerLedgerPaymentRoutes(app: Express) {
     }
   });
 
-  // GET /api/ledger/payments/:id/transactions - Get ledger entries for a payment
+  // GET /api/ledger/payments/:id/transactions - Get ledger entries for a payment (paginated)
   app.get("/api/ledger/payments/:id/transactions", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
     try {
       const { id } = req.params;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+      const offset = parseInt(req.query.offset as string) || 0;
       
       // First get the payment to find its EA
       const payment = await storage.ledger.payments.get(id);
@@ -170,11 +172,11 @@ export function registerLedgerPaymentRoutes(app: Express) {
       // Check EA-level access
       if (!await checkPaymentEaAccessInline(req, res, ea, 'ledger.ea.view')) return;
       
-      const transactions = await storage.ledger.entries.getTransactions({
+      const result = await storage.ledger.entries.getTransactionsPaginated({
         referenceType: "payment",
         referenceId: id,
-      });
-      res.json(transactions);
+      }, limit, offset);
+      res.json(result);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch payment transactions" });
     }

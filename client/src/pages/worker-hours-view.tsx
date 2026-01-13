@@ -68,7 +68,7 @@ function WorkerHoursViewContent() {
       </Card>
 
       <LedgerTransactionsView
-        queryKey={[`/api/worker-hours/${hoursEntry.id}/transactions`]}
+        baseUrl={`/api/worker-hours/${hoursEntry.id}/transactions`}
         title="Related Ledger Transactions"
         csvFilename={`hours-entry-${hoursEntry.id}-transactions.csv`}
         showEntityType={true}
