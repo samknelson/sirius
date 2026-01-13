@@ -114,11 +114,49 @@ export default function BtuEmployerMapListPage() {
     return new Set(systemEmployersData?.employerNames || []);
   }, [systemEmployersData]);
 
+  // Normalized employer name index: maps lowercase/trimmed names to original names
+  const normalizedEmployerIndex = useMemo(() => {
+    const index: Record<string, string> = {};
+    for (const name of systemEmployersData?.employerNames || []) {
+      const normalized = name.toLowerCase().trim();
+      index[normalized] = name;
+    }
+    return index;
+  }, [systemEmployersData]);
+
+  // Helper to find an employer name match from a given text
+  const findEmployerNameMatch = (text: string | null | undefined): string | null => {
+    if (!text) return null;
+    const normalized = text.toLowerCase().trim();
+    return normalizedEmployerIndex[normalized] || null;
+  };
+
   // Helper to get employer suggestion for a record
+  // Priority: 1) Location title matches employer name, 2) Dept title matches, 
+  // 3) Job title matches, 4) Frequency-based location suggestions
   const getSuggestionForRecord = (record: BtuEmployerMap): string | null => {
+    // PRIORITY 1: Check if locationTitle directly matches an employer name
+    const locationNameMatch = findEmployerNameMatch(record.locationTitle);
+    if (locationNameMatch) {
+      return locationNameMatch;
+    }
+    
+    // PRIORITY 2: Check if departmentTitle matches an employer name
+    const deptNameMatch = findEmployerNameMatch(record.departmentTitle);
+    if (deptNameMatch) {
+      return deptNameMatch;
+    }
+    
+    // PRIORITY 3: Check if jobTitle matches an employer name
+    const jobNameMatch = findEmployerNameMatch(record.jobTitle);
+    if (jobNameMatch) {
+      return jobNameMatch;
+    }
+    
+    // PRIORITY 4: Fall back to frequency-based suggestions
     if (!suggestionsData) return null;
     
-    // First try by locationId
+    // Try by locationId
     if (record.locationId && suggestionsData.byLocationId[record.locationId]) {
       return suggestionsData.byLocationId[record.locationId].primary;
     }
