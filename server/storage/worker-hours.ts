@@ -1,6 +1,7 @@
 import { getClient } from './transaction-context';
 import {
   workerHours,
+  workerWsh,
   employers,
   optionsEmploymentStatus,
   type WorkerHours,
@@ -21,7 +22,14 @@ export interface WorkerHoursDeleteResult {
   notifications: LedgerNotification[];
 }
 
+export interface WorkerDenormData {
+  homeEmployerId: string | null;
+  employerIds: string[] | null;
+  latestWsId: string | null;
+}
+
 export interface WorkerHoursStorage {
+  getDenormData(workerId: string): Promise<WorkerDenormData>;
   getWorkerHoursById(id: string): Promise<any | undefined>;
   getWorkerHours(workerId: string): Promise<any[]>;
   getWorkerHoursCurrent(workerId: string): Promise<any[]>;
@@ -47,6 +55,41 @@ export function createWorkerHoursStorage(
   }
 
   const storage: WorkerHoursStorage = {
+    async getDenormData(workerId: string): Promise<WorkerDenormData> {
+      const client = getClient();
+      
+      // Query 1: Get latest hours per employer (for employer_ids and home_employer_id)
+      const hoursResult = await client.execute(sql`
+        SELECT DISTINCT ON (employer_id)
+          employer_id,
+          home
+        FROM worker_hours
+        WHERE worker_id = ${workerId}
+        ORDER BY employer_id, year DESC, month DESC, day DESC
+      `);
+      
+      const hoursRows = hoursResult.rows as Array<{ employer_id: string; home: boolean | null }>;
+      const employerIds = hoursRows.length > 0 ? hoursRows.map(r => r.employer_id) : null;
+      const homeEmployerId = hoursRows.find(r => r.home === true)?.employer_id || null;
+      
+      // Query 2: Get latest work status
+      const [wsResult] = await client
+        .select({ wsId: workerWsh.wsId })
+        .from(workerWsh)
+        .where(eq(workerWsh.workerId, workerId))
+        .orderBy(desc(workerWsh.date), sql`${workerWsh.createdAt} DESC NULLS LAST`, desc(workerWsh.id))
+        .limit(1);
+      
+      // Only set latestWsId if the worker has a home employer
+      const latestWsId = homeEmployerId ? (wsResult?.wsId || null) : null;
+      
+      return {
+        homeEmployerId,
+        employerIds,
+        latestWsId,
+      };
+    },
+
     async getWorkerHoursById(id: string): Promise<any | undefined> {
       const client = getClient();
       const [result] = await client

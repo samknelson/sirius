@@ -14,6 +14,7 @@ import {
 } from "@shared/schema";
 import { eq, sql, desc, and } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
+import type { WorkerDenormData } from "./worker-hours";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { logger } from "../logger";
 import { eventBus, EventType } from "../services/event-bus";
@@ -82,6 +83,7 @@ export interface WorkerStorage {
   updateWorkerContactGender(workerId: string, gender: string | null, genderNota: string | null): Promise<Worker | undefined>;
   updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined>;
   updateWorkerStatus(workerId: string, denormWsId: string | null): Promise<Worker | undefined>;
+  setDenormDataProvider(provider: (workerId: string) => Promise<WorkerDenormData>): void;
   syncWorkerEmployerDenorm(workerId: string): Promise<void>;
   deleteWorker(id: string): Promise<boolean>;
   updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined>;
@@ -93,7 +95,13 @@ export interface WorkerStorage {
 }
 
 export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerStorage {
+  let denormDataProvider: ((workerId: string) => Promise<WorkerDenormData>) | null = null;
+
   const storage = {
+    setDenormDataProvider(provider: (workerId: string) => Promise<WorkerDenormData>): void {
+      denormDataProvider = provider;
+    },
+
     async getAllWorkers(): Promise<Worker[]> {
       const client = getClient();
       return await client.select().from(workers);
@@ -506,40 +514,19 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async syncWorkerEmployerDenorm(workerId: string): Promise<void> {
+      if (!denormDataProvider) {
+        throw new Error("Denorm data provider not set. Call setDenormDataProvider first.");
+      }
+      
+      const denormData = await denormDataProvider(workerId);
+      
       const client = getClient();
-      const result = await client.execute(sql`
-        WITH latest_hours AS (
-          SELECT DISTINCT ON (employer_id)
-            employer_id,
-            home
-          FROM worker_hours
-          WHERE worker_id = ${workerId}
-          ORDER BY employer_id, year DESC, month DESC, day DESC
-        ),
-        latest_ws AS (
-          SELECT ws_id
-          FROM worker_wsh
-          WHERE worker_id = ${workerId}
-          ORDER BY date DESC, created_at DESC NULLS LAST, id DESC
-          LIMIT 1
-        )
-        SELECT 
-          (SELECT employer_id FROM latest_hours WHERE home = true LIMIT 1) as home_employer_id,
-          ARRAY(SELECT employer_id FROM latest_hours) as employer_ids,
-          (SELECT ws_id FROM latest_ws) as latest_ws_id
-      `);
-      
-      const row = result.rows[0] as { home_employer_id: string | null; employer_ids: string[] | null; latest_ws_id: string | null } | undefined;
-      const homeEmployerId = row?.home_employer_id || null;
-      const employerIds = row?.employer_ids?.length ? row.employer_ids : null;
-      const denormWsId = homeEmployerId ? (row?.latest_ws_id || null) : null;
-      
       await client
         .update(workers)
         .set({
-          denormHomeEmployerId: homeEmployerId,
-          denormEmployerIds: employerIds,
-          denormWsId: denormWsId,
+          denormHomeEmployerId: denormData.homeEmployerId,
+          denormEmployerIds: denormData.employerIds,
+          denormWsId: denormData.latestWsId,
         })
         .where(eq(workers.id, workerId));
     },

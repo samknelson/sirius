@@ -192,6 +192,10 @@ export class DatabaseStorage implements IStorage {
       ),
       workerHoursLoggingConfig
     );
+    
+    // Inject denorm data provider into workers storage now that workerHours is available
+    this.workers.setDenormDataProvider(this.workerHours.getDenormData.bind(this.workerHours));
+    
     this.policies = withStorageLogging(
       createPolicyStorage(),
       policyLoggingConfig
