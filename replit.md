@@ -14,7 +14,9 @@ The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI),
 ## Technical Implementations
 -   **Frontend**: Wouter for routing, TanStack Query for server state, React Hook Form with Zod for forms. Pages are lazy-loaded.
 -   **Backend**: Express.js with TypeScript, RESTful API, and a feature-based module structure.
--   **Authentication**: Replit Auth (OAuth via OpenID Connect) with PostgreSQL-based session management.
+-   **Authentication**: Multi-provider authentication framework supporting Replit Auth (OIDC), Okta, SAML/OAuth, and local username/password. Configuration is environment-driven via `AUTH_PROVIDER` (comma-separated list). The `auth_identities` table links multiple external identities to a single user, enabling provider migration and multi-link accounts. Session management uses PostgreSQL via `connect-pg-simple`.
+    -   **Provider Configuration**: Set `AUTH_PROVIDER=replit` (default), `AUTH_PROVIDER=okta`, `AUTH_PROVIDER=local`, or combine multiple. Provider-specific env vars: `OKTA_ISSUER_URL`, `OKTA_CLIENT_ID`, `OKTA_CLIENT_SECRET`, `SAML_ENTRY_POINT`, `AUTH_LOCAL_ENABLED`.
+    -   **Architecture**: `server/auth/index.ts` (provider registry, session handling), `server/auth/config.ts` (Zod-validated configuration loader), `server/auth/providers/*.ts` (individual provider adapters), `server/storage/auth-identities.ts` (identity storage module).
 -   **Masquerade Support**: Admins can masquerade as other users. Backend endpoints that access user-specific data MUST use `getEffectiveUser()` from `server/modules/masquerade.ts` to get the correct user context (masqueraded or original). Pattern:
     ```typescript
     const user = (req as any).user;

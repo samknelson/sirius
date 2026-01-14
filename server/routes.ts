@@ -74,7 +74,7 @@ import { requireAccess } from "./services/access-policy-evaluator";
 import { addressValidationService } from "./services/address-validation";
 import { phoneValidationService } from "./services/phone-validation";
 import { serviceRegistry } from "./services/service-registry";
-import { isAuthenticated } from "./replitAuth";
+import { isAuthenticated } from "./auth";
 
 // Authentication middleware
 const requireAuth = isAuthenticated;

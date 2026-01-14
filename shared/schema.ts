@@ -1,5 +1,5 @@
-import { sql } from "drizzle-orm";
-import { pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial, index, numeric } from "drizzle-orm/pg-core";
+import { sql, relations } from "drizzle-orm";
+import { pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial, index, uniqueIndex, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -82,6 +82,53 @@ export const users = pgTable("users", {
   lastLogin: timestamp("last_login"),
   data: jsonb("data"),
 });
+
+export const authProviderTypeEnum = pgEnum("auth_provider_type", [
+  "replit",
+  "okta",
+  "saml",
+  "oauth",
+  "local",
+]);
+
+export const authIdentities = pgTable(
+  "auth_identities",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    providerType: authProviderTypeEnum("provider_type").notNull(),
+    externalId: varchar("external_id").notNull(),
+    email: varchar("email"),
+    displayName: varchar("display_name"),
+    profileImageUrl: varchar("profile_image_url"),
+    passwordHash: varchar("password_hash"),
+    refreshToken: text("refresh_token"),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+    updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+    lastUsedAt: timestamp("last_used_at"),
+  },
+  (table) => [
+    index("idx_auth_identities_user").on(table.userId),
+    uniqueIndex("idx_auth_identities_provider_external_unique").on(
+      table.providerType,
+      table.externalId
+    ),
+  ]
+);
+
+export const authIdentitiesRelations = relations(authIdentities, ({ one }) => ({
+  user: one(users, {
+    fields: [authIdentities.userId],
+    references: [users.id],
+  }),
+}));
+
+export type AuthIdentity = typeof authIdentities.$inferSelect;
+export type InsertAuthIdentity = typeof authIdentities.$inferInsert;
+export type AuthProviderType = (typeof authProviderTypeEnum.enumValues)[number];
 
 export const roles = pgTable("roles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
