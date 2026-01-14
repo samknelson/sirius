@@ -123,9 +123,12 @@ export function registerCronJobRoutes(
       }
 
       // Get the user ID for audit trail
-      const replitUserId = user.claims.sub;
-      const dbUser = await storage.users.getUserByReplitId(replitUserId);
-      
+      const externalId = user.claims.sub;
+      const identity = await storage.authIdentities.getByProviderAndExternalId("replit", externalId);
+      if (!identity) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      const dbUser = await storage.users.getUser(identity.userId);
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
       }

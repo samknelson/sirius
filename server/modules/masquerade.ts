@@ -11,8 +11,12 @@ type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Respo
 /**
  * Helper function to get the effective user (masqueraded or original)
  * and masquerade information from a session
+ * 
+ * @param session - Express session object
+ * @param externalId - External ID from auth provider (claims.sub)
+ * @param sessionUser - Optional user object from session that may already have dbUser
  */
-export async function getEffectiveUser(session: any, replitUserId: string) {
+export async function getEffectiveUser(session: any, externalId: string, sessionUser?: any) {
   let dbUser;
   let originalUser = null;
   
@@ -27,8 +31,14 @@ export async function getEffectiveUser(session: any, replitUserId: string) {
         session.save((err: any) => err ? reject(err) : resolve(undefined));
       });
       
-      // Fall back to the original user
-      dbUser = await storage.users.getUserByReplitId(replitUserId);
+      // Fall back to the original user - try session first, then auth_identities
+      dbUser = sessionUser?.dbUser;
+      if (!dbUser) {
+        const identity = await storage.authIdentities.getByProviderAndExternalId("replit", externalId);
+        if (identity) {
+          dbUser = await storage.users.getUser(identity.userId);
+        }
+      }
       if (!dbUser) {
         return { dbUser: null, originalUser: null };
       }
@@ -39,8 +49,14 @@ export async function getEffectiveUser(session: any, replitUserId: string) {
       }
     }
   } else {
-    // Not masquerading - get user by Replit ID
-    dbUser = await storage.users.getUserByReplitId(replitUserId);
+    // Not masquerading - get user from session or via auth_identities
+    dbUser = sessionUser?.dbUser;
+    if (!dbUser) {
+      const identity = await storage.authIdentities.getByProviderAndExternalId("replit", externalId);
+      if (identity) {
+        dbUser = await storage.users.getUser(identity.userId);
+      }
+    }
     if (!dbUser) {
       return { dbUser: null, originalUser: null };
     }
@@ -62,15 +78,21 @@ export function registerMasqueradeRoutes(
     try {
       const { userId } = req.body;
       const user = req.user as any;
-      const replitUserId = user.claims.sub;
+      const externalId = user.claims.sub;
       const session = req.session as any;
       
       if (!userId) {
         return res.status(400).json({ message: "User ID is required" });
       }
       
-      // Get the original user
-      const originalUser = await storage.users.getUserByReplitId(replitUserId);
+      // Get the original user - try session first, then auth_identities
+      let originalUser = user.dbUser;
+      if (!originalUser) {
+        const identity = await storage.authIdentities.getByProviderAndExternalId("replit", externalId);
+        if (identity) {
+          originalUser = await storage.users.getUser(identity.userId);
+        }
+      }
       if (!originalUser) {
         return res.status(404).json({ message: "Original user not found" });
       }
@@ -260,10 +282,16 @@ export function registerMasqueradeRoutes(
   app.get("/api/auth/masquerade/recent", requireAccess('masquerade'), async (req, res) => {
     try {
       const user = req.user as any;
-      const replitUserId = user.claims.sub;
+      const externalId = user.claims.sub;
       
-      // Get the user making the request (not masqueraded)
-      const currentUser = await storage.users.getUserByReplitId(replitUserId);
+      // Get the user making the request (not masqueraded) - try session first, then auth_identities
+      let currentUser = user.dbUser;
+      if (!currentUser) {
+        const identity = await storage.authIdentities.getByProviderAndExternalId("replit", externalId);
+        if (identity) {
+          currentUser = await storage.users.getUser(identity.userId);
+        }
+      }
       if (!currentUser) {
         return res.status(404).json({ message: "User not found" });
       }

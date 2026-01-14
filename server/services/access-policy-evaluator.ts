@@ -136,7 +136,6 @@ const accessCache = new AccessCache();
 export interface AccessControlStorage {
   getUserPermissions(userId: string): Promise<string[]>;
   hasPermission(userId: string, permissionKey: string): Promise<boolean>;
-  getUserByReplitId(replitUserId: string): Promise<User | undefined>;
   getUser(userId: string): Promise<User | undefined>;
 }
 
@@ -183,10 +182,10 @@ export interface AccessContext {
 export async function buildContext(req: Request): Promise<AccessContext> {
   let user: User | null = null;
 
-  // Check if user is authenticated via Replit
-  const replitUser = (req as any).user;
-  if (replitUser && replitUser.claims && storage) {
-    const replitUserId = replitUser.claims.sub;
+  // Check if user is authenticated
+  const sessionUser = (req as any).user;
+  if (sessionUser && sessionUser.claims && storage) {
+    const externalId = sessionUser.claims.sub;
     const session = (req as any).session;
 
     // Check if masquerading
@@ -196,10 +195,17 @@ export async function buildContext(req: Request): Promise<AccessContext> {
         user = masqueradeUser;
       }
     } else {
-      // Normal authentication - look up database user by Replit ID
-      const dbUser = await storage.getUserByReplitId(replitUserId);
-      if (dbUser) {
-        user = dbUser;
+      // Normal authentication - use dbUser from session or look up via auth_identities
+      if (sessionUser.dbUser) {
+        user = sessionUser.dbUser;
+      } else if (fullStorage) {
+        const identity = await fullStorage.authIdentities.getByProviderAndExternalId("replit", externalId);
+        if (identity) {
+          const dbUser = await storage.getUser(identity.userId);
+          if (dbUser) {
+            user = dbUser;
+          }
+        }
       }
     }
   }

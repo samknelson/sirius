@@ -137,13 +137,18 @@ export function registerCardchecksRoutes(
     try {
       const { id: cardcheckId } = req.params;
       const user = req.user as any;
-      const replitUserId = user?.claims?.sub;
+      const externalId = user?.claims?.sub;
       
-      if (!replitUserId) {
+      if (!externalId) {
         return res.status(401).json({ message: "User not authenticated" });
       }
 
-      const dbUser = await storage.users.getUserByReplitId(replitUserId);
+      // Look up user via auth_identities
+      const identity = await storage.authIdentities.getByProviderAndExternalId("replit", externalId);
+      if (!identity) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      const dbUser = await storage.users.getUser(identity.userId);
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
       }

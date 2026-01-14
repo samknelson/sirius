@@ -138,9 +138,6 @@ app.use((req, res, next) => {
       hasPermission: async (userId: string, permissionKey: string) => {
         return storage.users.userHasPermission(userId, permissionKey);
       },
-      getUserByReplitId: async (replitUserId: string) => {
-        return storage.users.getUserByReplitId(replitUserId);
-      },
       getUser: async (userId: string) => {
         return storage.users.getUser(userId);
       },

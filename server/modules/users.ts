@@ -66,7 +66,6 @@ export function registerUserRoutes(
 
       res.json({ 
         id: user.id,
-        replitUserId: user.replitUserId,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
@@ -91,7 +90,6 @@ export function registerUserRoutes(
       // Shape response to exclude sensitive fields
       const safeUsersWithRoles = usersWithRoles.map(user => ({
         id: user.id,
-        replitUserId: user.replitUserId,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
@@ -155,7 +153,6 @@ export function registerUserRoutes(
 
       res.json({ 
         id: user.id,
-        replitUserId: user.replitUserId,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,

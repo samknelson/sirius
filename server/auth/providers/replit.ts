@@ -29,17 +29,17 @@ function updateUserSession(
 async function checkUserAccess(
   claims: any
 ): Promise<{ allowed: boolean; user?: any }> {
-  const replitUserId = claims["sub"];
+  const externalId = claims["sub"];
   const email = claims["email"];
 
   logger.info("Replit Auth attempt", {
-    replitId: replitUserId,
+    externalId: externalId,
     email: email,
     firstName: claims["first_name"],
     lastName: claims["last_name"],
   });
 
-  let identity = await storage.authIdentities.getByProviderAndExternalId("replit", replitUserId);
+  let identity = await storage.authIdentities.getByProviderAndExternalId("replit", externalId);
 
   if (identity) {
     const user = await storage.users.getUser(identity.userId);
@@ -69,40 +69,13 @@ async function checkUserAccess(
 
     await storage.users.updateUserLastLogin(user.id);
 
-    logLoginEvent(updatedUser, replitUserId, false);
+    logLoginEvent(updatedUser, externalId, false);
 
     return { allowed: true, user: updatedUser };
   }
 
-  let user = await storage.users.getUserByReplitId(replitUserId);
-  if (user) {
-    if (!user.isActive) {
-      return { allowed: false };
-    }
-
-    await storage.authIdentities.create({
-      userId: user.id,
-      providerType: "replit",
-      externalId: replitUserId,
-      email: email,
-      displayName: `${claims["first_name"] || ""} ${claims["last_name"] || ""}`.trim() || undefined,
-      profileImageUrl: claims["profile_image_url"],
-    });
-
-    const updatedUser = await storage.users.updateUser(user.id, {
-      email: email,
-      firstName: claims["first_name"],
-      lastName: claims["last_name"],
-      profileImageUrl: claims["profile_image_url"],
-    });
-
-    await storage.users.updateUserLastLogin(user.id);
-    logLoginEvent(updatedUser, replitUserId, true);
-
-    return { allowed: true, user: updatedUser };
-  }
-
-  user = await storage.users.getUserByEmail(email);
+  // No auth identity found - try to find user by email and link account
+  const user = await storage.users.getUserByEmail(email);
 
   if (!user) {
     logger.info("No provisioned account found for email", { email });
@@ -119,26 +92,27 @@ async function checkUserAccess(
   await storage.authIdentities.create({
     userId: user.id,
     providerType: "replit",
-    externalId: replitUserId,
+    externalId: externalId,
     email: email,
     displayName: `${claims["first_name"] || ""} ${claims["last_name"] || ""}`.trim() || undefined,
     profileImageUrl: claims["profile_image_url"],
   });
 
-  const linkedUser = await storage.users.linkReplitAccount(user.id, replitUserId, {
+  const linkedUser = await storage.users.updateUser(user.id, {
     email: email,
     firstName: claims["first_name"],
     lastName: claims["last_name"],
     profileImageUrl: claims["profile_image_url"],
+    accountStatus: 'linked',
   });
 
   await storage.users.updateUserLastLogin(user.id);
-  logLoginEvent(linkedUser, replitUserId, true);
+  logLoginEvent(linkedUser, externalId, true);
 
   return { allowed: true, user: linkedUser };
 }
 
-function logLoginEvent(user: any, replitUserId: string, accountLinked: boolean) {
+function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
   const userName =
     user.firstName && user.lastName
       ? `${user.firstName} ${user.lastName}`
@@ -159,7 +133,7 @@ function logLoginEvent(user: any, replitUserId: string, accountLinked: boolean) 
       meta: {
         userId: user.id,
         email: user.email,
-        replitUserId: replitUserId,
+        externalId: externalId,
         accountLinked,
         provider: "replit",
       },
@@ -259,14 +233,18 @@ export function createProvider(config: ReplitProviderConfig): AuthProvider {
 
         if (user?.claims?.sub) {
           try {
-            const replitUserId = user.claims.sub;
+            const externalId = user.claims.sub;
             const wasMasquerading = !!session.masqueradeUserId;
 
-            let dbUser;
+            let dbUser = user.dbUser;
             if (session.masqueradeUserId) {
               dbUser = await storage.users.getUser(session.masqueradeUserId);
-            } else {
-              dbUser = await storage.users.getUserByReplitId(replitUserId);
+            } else if (!dbUser) {
+              // Fallback: look up via auth_identities
+              const identity = await storage.authIdentities.getByProviderAndExternalId("replit", externalId);
+              if (identity) {
+                dbUser = await storage.users.getUser(identity.userId);
+              }
             }
 
             if (dbUser) {

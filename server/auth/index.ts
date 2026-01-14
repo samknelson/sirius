@@ -118,11 +118,6 @@ export async function setupAuth(app: Express): Promise<void> {
           if (dbUser) {
             sessionUser.dbUser = dbUser;
           }
-        } else {
-          const dbUser = await storage.users.getUserByReplitId(externalId);
-          if (dbUser) {
-            sessionUser.dbUser = dbUser;
-          }
         }
       } catch (error) {
         logger.error("Failed to rehydrate dbUser during deserialization", { error });

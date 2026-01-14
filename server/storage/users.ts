@@ -23,13 +23,11 @@ import { createUserContactSyncService } from "../services/user-contact-sync";
 export interface UserStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
-  getUserByReplitId(replitUserId: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, user: Partial<InsertUser>): Promise<User | undefined>;
   updateUserLastLogin(id: string): Promise<User | undefined>;
-  linkReplitAccount(userId: string, replitUserId: string, userData: Partial<UpsertUser>): Promise<User | undefined>;
   deleteUser(id: string): Promise<boolean>;
   getAllUsers(): Promise<User[]>;
   getAllUsersWithRoles(): Promise<(User & { roles: Role[] })[]>;
@@ -80,12 +78,6 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
       return user || undefined;
     },
 
-    async getUserByReplitId(replitUserId: string): Promise<User | undefined> {
-      const client = getClient();
-      const [user] = await client.select().from(users).where(eq(users.replitUserId, replitUserId));
-      return user || undefined;
-    },
-
     async getUserByEmail(email: string): Promise<User | undefined> {
       const client = getClient();
       const [user] = await client.select().from(users).where(eq(users.email, email));
@@ -114,32 +106,6 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
       }
       
       return user;
-    },
-
-    async linkReplitAccount(userId: string, replitUserId: string, userData: Partial<UpsertUser>): Promise<User | undefined> {
-      const client = getClient();
-      const previousUser = await client.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
-      const previousEmail = previousUser?.email;
-      
-      const [user] = await client
-        .update(users)
-        .set({
-          replitUserId,
-          email: userData.email,
-          firstName: userData.firstName,
-          lastName: userData.lastName,
-          profileImageUrl: userData.profileImageUrl,
-          accountStatus: 'linked',
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, userId))
-        .returning();
-      
-      if (user && contactSync) {
-        await contactSync.ensureContactForUser(user, previousEmail);
-      }
-      
-      return user || undefined;
     },
 
     async createUser(insertUser: InsertUser): Promise<User> {
@@ -354,7 +320,6 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
       const result = await client
         .select({
           id: users.id,
-          replitUserId: users.replitUserId,
           email: users.email,
           firstName: users.firstName,
           lastName: users.lastName,
@@ -490,7 +455,6 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
       const result = await client
         .selectDistinct({
           id: users.id,
-          replitUserId: users.replitUserId,
           email: users.email,
           firstName: users.firstName,
           lastName: users.lastName,
@@ -580,25 +544,6 @@ export const userLoggingConfig: StorageLoggingConfig<UserStorage> = {
           ? `${user.firstName} ${user.lastName}`
           : user.email;
         return `Deleted user "${userName}"`;
-      }
-    },
-    linkReplitAccount: {
-      enabled: true,
-      getEntityId: (args) => args[0], // User ID
-      getHostEntityId: (args) => args[0], // User ID is the host
-      before: async (args, storage) => {
-        return await storage.getUser(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      },
-      getDescription: async (args, result, beforeState, afterState) => {
-        const user = afterState || beforeState;
-        if (!user) return `Linked Replit account for user ${args[0]}`;
-        const userName = user.firstName && user.lastName
-          ? `${user.firstName} ${user.lastName}`
-          : user.email;
-        return `Linked Replit account for "${userName}"`;
       }
     },
     createRole: {

@@ -20,10 +20,11 @@ The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI),
 -   **Masquerade Support**: Admins can masquerade as other users. Backend endpoints that access user-specific data MUST use `getEffectiveUser()` from `server/modules/masquerade.ts` to get the correct user context (masqueraded or original). Pattern:
     ```typescript
     const user = (req as any).user;
-    const replitUserId = user?.claims?.sub;
+    const externalId = user?.claims?.sub;
     const session = req.session as any;
-    const { dbUser } = await getEffectiveUser(session, replitUserId);
+    const { dbUser } = await getEffectiveUser(session, externalId, user);
     ```
+    The function signature is `getEffectiveUser(session, externalId, user?)` where `user` is the session user object that may already have `dbUser` attached from session deserialization. User lookups use `auth_identities` table via `storage.authIdentities.getByProviderAndExternalId("replit", externalId)` then `storage.users.getUser(identity.userId)`.
 -   **Access Control**: Modular policy architecture with entity-based access policies and server-side LRU caching. Components can define their own permissions and policies via `ComponentDefinition`, which are automatically registered when the component is enabled. Policy references allow composite rules (e.g., `staff OR (permission AND another-policy)`) with cycle detection.
     -   **Modular Policy Architecture**: All 21 core policies are defined as individual files under `shared/access-policies/` with custom `evaluate` functions receiving a `PolicyContext`. Modular policies are checked first; declarative policies serve as fallback for component-defined policies. File paths mirror policy IDs (e.g., `worker.dispatch.dnc.view` → `dispatch/dnc/view.ts`). Policies are loaded via `shared/access-policies/loader.ts` at server startup.
     -   **PolicyContext**: Injected utilities for policy handlers: `hasPermission()`, `loadEntity()`, `checkPolicy()`, `isComponentEnabled()`, `getUserContact()`, `getUserWorker()`.
