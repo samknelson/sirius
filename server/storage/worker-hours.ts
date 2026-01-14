@@ -26,6 +26,7 @@ export interface WorkerDenormData {
   homeEmployerId: string | null;
   employerIds: string[] | null;
   latestWsId: string | null;
+  jobTitle: string | null;
 }
 
 export interface WorkerHoursStorage {
@@ -72,7 +73,18 @@ export function createWorkerHoursStorage(
       const employerIds = hoursRows.length > 0 ? hoursRows.map(r => r.employer_id) : null;
       const homeEmployerId = hoursRows.find(r => r.home === true)?.employer_id || null;
       
-      // Query 2: Get latest work status
+      // Query 2: Get job title from the most recent home hours record
+      const homeHoursResult = await client.execute(sql`
+        SELECT job_title
+        FROM worker_hours
+        WHERE worker_id = ${workerId} AND home = true
+        ORDER BY year DESC, month DESC, day DESC
+        LIMIT 1
+      `);
+      const homeHoursRow = homeHoursResult.rows[0] as { job_title: string | null } | undefined;
+      const jobTitle = homeHoursRow?.job_title || null;
+      
+      // Query 3: Get latest work status
       const [wsResult] = await client
         .select({ wsId: workerWsh.wsId })
         .from(workerWsh)
@@ -87,6 +99,7 @@ export function createWorkerHoursStorage(
         homeEmployerId,
         employerIds,
         latestWsId,
+        jobTitle,
       };
     },
 

@@ -527,6 +527,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           denormHomeEmployerId: denormData.homeEmployerId,
           denormEmployerIds: denormData.employerIds,
           denormWsId: denormData.latestWsId,
+          denormJobTitle: denormData.jobTitle,
         })
         .where(eq(workers.id, workerId));
     },

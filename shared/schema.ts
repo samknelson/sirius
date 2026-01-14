@@ -129,6 +129,7 @@ export const workers = pgTable("workers", {
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
   ssn: text("ssn").unique(),
   denormWsId: varchar("denorm_ws_id").references(() => optionsWorkerWs.id, { onDelete: 'set null' }),
+  denormJobTitle: text("denorm_job_title"),
   denormHomeEmployerId: varchar("denorm_home_employer_id").references(() => employers.id, { onDelete: 'set null' }),
   denormEmployerIds: varchar("denorm_employer_ids").array(),
   bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),
