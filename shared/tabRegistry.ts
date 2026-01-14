@@ -306,9 +306,9 @@ export const trustBenefitTabTree: HierarchicalTab[] = [
  * Worker hours entry tab tree
  */
 export const workerHoursTabTree: HierarchicalTab[] = [
-  { id: 'view', label: 'View', hrefTemplate: '/worker-hours/{id}', permission: 'staff' },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/worker-hours/{id}/edit', permission: 'workers.edit' },
-  { id: 'delete', label: 'Delete', hrefTemplate: '/worker-hours/{id}/delete', permission: 'workers.delete' },
+  { id: 'view', label: 'View', hrefTemplate: '/hours/{id}', permission: 'staff' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/hours/{id}/edit', permission: 'workers.edit' },
+  { id: 'delete', label: 'Delete', hrefTemplate: '/hours/{id}/delete', permission: 'workers.delete' },
 ];
 
 /**
