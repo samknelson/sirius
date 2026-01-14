@@ -1,20 +1,21 @@
 import passport from "passport";
-import { Strategy as SamlStrategy, type Profile, type VerifiedCallback } from "@node-saml/passport-saml";
+import { Strategy as SamlStrategy, type Profile } from "@node-saml/passport-saml";
 import type { Express, RequestHandler, Request, Response, NextFunction } from "express";
-import type { AuthProvider, SamlProviderConfig, AuthenticatedUser, AuthIdentityInfo } from "../types";
+import type { AuthProvider, SamlProviderConfig, AuthenticatedUser } from "../types";
 import { storage } from "../../storage";
 import { storageLogger, logger } from "../../logger";
 import { getRequestContext } from "../../middleware/request-context";
 
 const STRATEGY_NAME = "saml";
 
-interface SamlProfile extends Profile {
+interface SamlProfile {
   nameID?: string;
   nameIDFormat?: string;
   email?: string;
   firstName?: string;
   lastName?: string;
   displayName?: string;
+  [key: string]: unknown;
 }
 
 function extractProfileData(profile: SamlProfile): {
@@ -160,9 +161,8 @@ function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
       },
       request: context
         ? {
-            requestId: context.requestId,
-            ip: context.ip,
-            userAgent: context.userAgent,
+            userId: context.userId,
+            ip: context.ipAddress,
           }
         : undefined,
     });
@@ -187,52 +187,52 @@ class SamlAuthProvider implements AuthProvider {
       {
         entryPoint: this.config.entryPoint,
         issuer: this.config.issuer || `${protocol}://${host}`,
-        cert: this.config.cert,
+        idpCert: this.config.cert,
         callbackUrl: this.callbackUrl,
         wantAuthnResponseSigned: false,
         wantAssertionsSigned: true,
         signatureAlgorithm: "sha256",
         identifierFormat: "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
       },
-      async (profile: Profile | null, done: VerifiedCallback) => {
-        try {
-          if (!profile) {
-            return done(null, false, { message: "No SAML profile received" });
+      (profile: Profile | null, done: (err: Error | null, user?: Record<string, unknown>) => void) => {
+        (async () => {
+          try {
+            if (!profile) {
+              return done(null, undefined);
+            }
+            
+            const samlProfile = profile as unknown as SamlProfile;
+            const { allowed, user } = await checkUserAccess(samlProfile);
+
+            if (!allowed) {
+              return done(null, undefined);
+            }
+
+            const { externalId, email, firstName, lastName } = extractProfileData(samlProfile);
+
+            const sessionUser: AuthenticatedUser = {
+              claims: {
+                sub: externalId,
+                email,
+                first_name: firstName,
+                last_name: lastName,
+              },
+              dbUser: user,
+              providerType: "saml",
+            };
+
+            return done(null, sessionUser as unknown as Record<string, unknown>);
+          } catch (error) {
+            logger.error("SAML authentication error", { error });
+            return done(error as Error);
           }
-
-          const samlProfile = profile as SamlProfile;
-          const { allowed, user } = await checkUserAccess(samlProfile);
-
-          if (!allowed) {
-            return done(null, false, { 
-              message: "Access denied. Please contact your administrator." 
-            });
-          }
-
-          const { externalId, email, firstName, lastName } = extractProfileData(samlProfile);
-
-          const sessionUser: AuthenticatedUser = {
-            claims: {
-              sub: externalId,
-              email,
-              first_name: firstName,
-              last_name: lastName,
-            },
-            dbUser: user,
-            providerType: "saml",
-          };
-
-          return done(null, sessionUser);
-        } catch (error) {
-          logger.error("SAML authentication error", { error });
-          return done(error as Error);
-        }
+        })();
       },
-      async (profile: Profile | null, done: VerifiedCallback) => {
+      (profile: Profile | null, done: (err: Error | null, user?: Record<string, unknown>) => void) => {
         if (!profile) {
-          return done(null, false, { message: "No SAML profile received" });
+          return done(null, undefined);
         }
-        const samlProfile = profile as SamlProfile;
+        const samlProfile = profile as unknown as SamlProfile;
         const { externalId, email, firstName, lastName } = extractProfileData(samlProfile);
         
         const sessionUser: AuthenticatedUser = {
@@ -244,7 +244,7 @@ class SamlAuthProvider implements AuthProvider {
           },
           providerType: "saml",
         };
-        return done(null, sessionUser);
+        return done(null, sessionUser as unknown as Record<string, unknown>);
       }
     );
 
@@ -254,13 +254,14 @@ class SamlAuthProvider implements AuthProvider {
     app.post(callbackPath, this.getCallbackHandler());
 
     app.get("/api/auth/saml/metadata", (req, res) => {
-      const strategy = passport._strategy(STRATEGY_NAME) as SamlStrategy;
-      if (strategy && typeof strategy.generateServiceProviderMetadata === "function") {
-        res.type("application/xml");
-        res.send(strategy.generateServiceProviderMetadata(null, null));
-      } else {
-        res.status(500).json({ message: "Unable to generate SAML metadata" });
-      }
+      res.type("application/xml");
+      const metadata = `<?xml version="1.0"?>
+<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata" entityID="${this.config.issuer || `${protocol}://${host}`}">
+  <SPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
+    <AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="${this.callbackUrl}" index="0"/>
+  </SPSSODescriptor>
+</EntityDescriptor>`;
+      res.send(metadata);
     });
 
     logger.info("SAML auth provider initialized", {
