@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { SiteSettings } from "@/lib/system-types";
 
 interface PageTitleContextValue {
   setPageTitle: (title: string) => void;
@@ -6,18 +8,24 @@ interface PageTitleContextValue {
 
 const PageTitleContext = createContext<PageTitleContextValue | null>(null);
 
-const APP_NAME = "Sirius";
+const DEFAULT_APP_NAME = "Sirius";
 
 export function PageTitleProvider({ children }: { children: ReactNode }) {
   const [title, setTitle] = useState<string>("");
+  
+  const { data: settings } = useQuery<SiteSettings>({
+    queryKey: ["/api/site-settings"],
+  });
+  
+  const appName = settings?.siteTitle || DEFAULT_APP_NAME;
 
   useEffect(() => {
     if (title) {
-      document.title = `${title} | ${APP_NAME}`;
+      document.title = `${title} | ${appName}`;
     } else {
-      document.title = APP_NAME;
+      document.title = appName;
     }
-  }, [title]);
+  }, [title, appName]);
 
   return (
     <PageTitleContext.Provider value={{ setPageTitle: setTitle }}>
