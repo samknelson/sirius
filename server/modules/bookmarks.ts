@@ -17,9 +17,8 @@ export function registerBookmarkRoutes(
   app.get("/api/bookmarks", requireAccess('staff'), async (req, res) => {
     try {
       const user = req.user as any;
-      const externalId = user?.claims?.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, externalId, user);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
@@ -36,9 +35,8 @@ export function registerBookmarkRoutes(
   app.get("/api/bookmarks/enriched", requireAccess('staff'), async (req, res) => {
     try {
       const user = req.user as any;
-      const externalId = user?.claims?.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, externalId, user);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
@@ -61,9 +59,8 @@ export function registerBookmarkRoutes(
       }
 
       const user = req.user as any;
-      const externalId = user?.claims?.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, externalId, user);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
@@ -80,9 +77,8 @@ export function registerBookmarkRoutes(
   app.post("/api/bookmarks", requireAccess('staff'), async (req, res) => {
     try {
       const user = req.user as any;
-      const externalId = user?.claims?.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, externalId, user);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
@@ -126,9 +122,8 @@ export function registerBookmarkRoutes(
     try {
       const { id } = req.params;
       const user = req.user as any;
-      const externalId = user?.claims?.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, externalId, user);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
@@ -165,9 +160,8 @@ export function registerBookmarkRoutes(
       }
 
       const user = req.user as any;
-      const externalId = user?.claims?.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, externalId, user);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });

@@ -71,9 +71,8 @@ export function registerEdlsSheetsRoutes(
   app.get("/api/edls/supervisor-context", requireAuth, edlsComponent, async (req, res) => {
     try {
       const user = (req as any).user;
-      const externalId = user?.claims?.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, externalId, user);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         res.status(401).json({ message: "User not found" });
@@ -93,9 +92,8 @@ export function registerEdlsSheetsRoutes(
   app.post("/api/edls/sheets", requireAuth, edlsComponent, requireAccess('edls.sheet.create'), async (req, res) => {
     try {
       const user = (req as any).user;
-      const externalId = user?.claims?.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, externalId, user);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         res.status(401).json({ message: "User not found" });
@@ -174,9 +172,8 @@ export function registerEdlsSheetsRoutes(
       const { id } = req.params;
       
       const user = (req as any).user;
-      const externalId = user?.claims?.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, externalId, user);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         res.status(401).json({ message: "User not found" });

@@ -177,7 +177,7 @@ export interface AccessContext {
 
 /**
  * Build access context from an Express request
- * Handles Replit Auth and masquerading
+ * Handles authentication and masquerading via resolveDbUser helper
  */
 export async function buildContext(req: Request): Promise<AccessContext> {
   let user: User | null = null;
@@ -185,7 +185,6 @@ export async function buildContext(req: Request): Promise<AccessContext> {
   // Check if user is authenticated
   const sessionUser = (req as any).user;
   if (sessionUser && sessionUser.claims && storage) {
-    const externalId = sessionUser.claims.sub;
     const session = (req as any).session;
 
     // Check if masquerading
@@ -195,18 +194,9 @@ export async function buildContext(req: Request): Promise<AccessContext> {
         user = masqueradeUser;
       }
     } else {
-      // Normal authentication - use dbUser from session or look up via auth_identities
-      if (sessionUser.dbUser) {
-        user = sessionUser.dbUser;
-      } else if (fullStorage) {
-        const identity = await fullStorage.authIdentities.getByProviderAndExternalId("replit", externalId);
-        if (identity) {
-          const dbUser = await storage.getUser(identity.userId);
-          if (dbUser) {
-            user = dbUser;
-          }
-        }
-      }
+      // Normal authentication - use resolveDbUser helper
+      const { resolveDbUser } = await import("../auth/helpers");
+      user = await resolveDbUser(sessionUser, sessionUser.claims.sub);
     }
   }
 

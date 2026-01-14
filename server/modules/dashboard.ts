@@ -231,9 +231,8 @@ export function registerDashboardRoutes(
       
       // Get effective user
       const user = req.user as any;
-      const externalId = user?.claims?.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, externalId, user);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         res.status(401).json({ message: "User not found" });
@@ -265,9 +264,8 @@ export function registerDashboardRoutes(
     try {
       const { year, month, wizardType } = req.query;
       const user = req.user as any;
-      const externalId = user?.claims?.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, externalId, user);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         res.status(401).json({ message: "User not found" });
@@ -326,9 +324,8 @@ export function registerDashboardRoutes(
   app.get("/api/dashboard-plugins/employer-monthly/my-wizard-types", requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
-      const externalId = user?.claims?.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, externalId, user);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         res.status(401).json({ message: "User not found" });
@@ -355,11 +352,10 @@ export function registerDashboardRoutes(
   app.get("/api/dashboard-plugins/my-steward", requireAuth, requireComponent("worker.steward"), async (req, res) => {
     try {
       const user = req.user as any;
-      const externalId = user?.claims?.sub;
       const session = req.session as any;
       
       // Use getEffectiveUser to respect masquerading
-      const { dbUser } = await getEffectiveUser(session, externalId, user);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser || !dbUser.email) {
         res.json({ stewards: [], worker: null });

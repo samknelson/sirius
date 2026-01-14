@@ -88,10 +88,9 @@ const requirePermission = (permissionKey: string) => {
     }
     
     // Get database user ID from external ID, respecting masquerade
-    const externalId = user.claims.sub;
     const session = req.session as any;
     const { getEffectiveUser } = await import("./modules/masquerade");
-    const { dbUser } = await getEffectiveUser(session, externalId, user);
+    const { dbUser } = await getEffectiveUser(session, user);
     if (!dbUser) {
       return res.status(401).json({ message: "User not found" });
     }
@@ -150,11 +149,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/auth/user", requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
-      const externalId = user.claims.sub;
       const session = req.session as any;
       
       // Get effective user (handles masquerading)
-      const { dbUser, originalUser } = await getEffectiveUser(session, externalId, user);
+      const { dbUser, originalUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         return res.status(404).json({ message: "User not found" });
@@ -604,9 +602,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Use getEffectiveUser to support masquerade
       const user = (req as any).user;
-      const externalId = user?.claims?.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, externalId, user);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser?.email) {
         res.json([]);
