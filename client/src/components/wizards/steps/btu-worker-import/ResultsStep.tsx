@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { CheckCircle2, Download, Users, AlertTriangle, XCircle, Building, UserMinus, UserPlus, UserCheck } from "lucide-react";
+import { CheckCircle2, Download, Users, AlertTriangle, XCircle, Building, UserMinus, UserPlus, UserCheck, FileDown } from "lucide-react";
 import { format } from "date-fns";
 import { Link } from "wouter";
+import { stringify } from "csv-stringify/browser/esm/sync";
 
 interface ResultsStepProps {
   wizardId: string;
@@ -63,6 +64,149 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
     }
   };
 
+  const exportWithEmployerMatch = () => {
+    if (!processResults?.withEmployerMatch) return;
+    const workers = [
+      ...processResults.withEmployerMatch.created.map(w => ({ ...w, status: 'New' })),
+      ...processResults.withEmployerMatch.updated.map(w => ({ ...w, status: 'Updated' }))
+    ];
+    const csvData = workers.map(w => ({
+      "BPS Employee ID": w.bpsEmployeeId,
+      "Worker Name": w.workerName,
+      "Status": w.status,
+      "Worker ID": w.workerId
+    }));
+    const csv = stringify(csvData, { header: true });
+    downloadCsv(csv, `workers-with-employer-${format(new Date(), 'yyyy-MM-dd')}.csv`);
+  };
+
+  const exportWithoutEmployerMatch = () => {
+    if (!processResults?.withoutEmployerMatch) return;
+    const workers = [
+      ...processResults.withoutEmployerMatch.created.map(w => ({ ...w, status: 'New' })),
+      ...processResults.withoutEmployerMatch.updated.map(w => ({ ...w, status: 'Updated' }))
+    ];
+    const csvData = workers.map(w => ({
+      "BPS Employee ID": w.bpsEmployeeId,
+      "Worker Name": w.workerName,
+      "Status": w.status,
+      "Worker ID": w.workerId
+    }));
+    const csv = stringify(csvData, { header: true });
+    downloadCsv(csv, `workers-without-employer-${format(new Date(), 'yyyy-MM-dd')}.csv`);
+  };
+
+  const exportTerminated = () => {
+    if (!processResults?.terminatedByAbsence) return;
+    const csvData = processResults.terminatedByAbsence.map(w => ({
+      "BPS Employee ID": w.bpsEmployeeId,
+      "Worker Name": w.workerName,
+      "Employer": w.employerName,
+      "Worker ID": w.workerId,
+      "Employer ID": w.employerId
+    }));
+    const csv = stringify(csvData, { header: true });
+    downloadCsv(csv, `workers-terminated-${format(new Date(), 'yyyy-MM-dd')}.csv`);
+  };
+
+  const exportErrors = () => {
+    if (!processResults?.errors) return;
+    const csvData = processResults.errors.map(e => ({
+      "Row": e.rowIndex + 1,
+      "Error Message": e.message,
+      "Data": e.data ? JSON.stringify(e.data) : ''
+    }));
+    const csv = stringify(csvData, { header: true });
+    downloadCsv(csv, `import-errors-${format(new Date(), 'yyyy-MM-dd')}.csv`);
+  };
+
+  const exportAllResults = () => {
+    if (!processResults) return;
+    const allData: Array<{
+      "Category": string;
+      "BPS Employee ID": string;
+      "Worker Name": string;
+      "Status": string;
+      "Employer": string;
+      "Worker ID": string;
+    }> = [];
+
+    if (processResults.withEmployerMatch) {
+      processResults.withEmployerMatch.created.forEach(w => {
+        allData.push({
+          "Category": "With Employer - New",
+          "BPS Employee ID": w.bpsEmployeeId,
+          "Worker Name": w.workerName,
+          "Status": "New",
+          "Employer": "Matched",
+          "Worker ID": w.workerId
+        });
+      });
+      processResults.withEmployerMatch.updated.forEach(w => {
+        allData.push({
+          "Category": "With Employer - Updated",
+          "BPS Employee ID": w.bpsEmployeeId,
+          "Worker Name": w.workerName,
+          "Status": "Updated",
+          "Employer": "Matched",
+          "Worker ID": w.workerId
+        });
+      });
+    }
+
+    if (processResults.withoutEmployerMatch) {
+      processResults.withoutEmployerMatch.created.forEach(w => {
+        allData.push({
+          "Category": "Without Employer - New",
+          "BPS Employee ID": w.bpsEmployeeId,
+          "Worker Name": w.workerName,
+          "Status": "New",
+          "Employer": "No Match",
+          "Worker ID": w.workerId
+        });
+      });
+      processResults.withoutEmployerMatch.updated.forEach(w => {
+        allData.push({
+          "Category": "Without Employer - Updated",
+          "BPS Employee ID": w.bpsEmployeeId,
+          "Worker Name": w.workerName,
+          "Status": "Updated",
+          "Employer": "No Match",
+          "Worker ID": w.workerId
+        });
+      });
+    }
+
+    if (processResults.terminatedByAbsence) {
+      processResults.terminatedByAbsence.forEach(w => {
+        allData.push({
+          "Category": "Terminated by Absence",
+          "BPS Employee ID": w.bpsEmployeeId,
+          "Worker Name": w.workerName,
+          "Status": "Terminated",
+          "Employer": w.employerName,
+          "Worker ID": w.workerId
+        });
+      });
+    }
+
+    const csv = stringify(allData, { header: true });
+    downloadCsv(csv, `import-results-all-${format(new Date(), 'yyyy-MM-dd')}.csv`);
+  };
+
+  const downloadCsv = (csv: string, filename: string) => {
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
   if (!processResults) {
     return (
       <Card>
@@ -108,11 +252,15 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                 </CardDescription>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              <Button variant="outline" onClick={exportAllResults} data-testid="button-export-all">
+                <FileDown className="h-4 w-4 mr-2" />
+                Export All
+              </Button>
               {processResults.resultsFileId && (
                 <Button variant="outline" onClick={downloadResultsFile} data-testid="button-download-results">
                   <Download className="h-4 w-4 mr-2" />
-                  Download Results CSV
+                  Download Raw CSV
                 </Button>
               )}
               <Link href="/workers">
@@ -173,6 +321,12 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="px-4 pb-4">
+                  <div className="flex justify-end mb-2">
+                    <Button variant="ghost" size="sm" onClick={exportWithEmployerMatch} data-testid="button-export-with-employer">
+                      <FileDown className="h-4 w-4 mr-1" />
+                      Export
+                    </Button>
+                  </div>
                   <ScrollArea className="h-64">
                     <Table>
                       <TableHeader>
@@ -184,10 +338,10 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                       </TableHeader>
                       <TableBody>
                         {[...withMatch.created, ...withMatch.updated].map((worker, idx) => (
-                          <TableRow key={idx}>
+                          <TableRow key={`with-${worker.workerId}-${idx}`} data-testid={`row-with-employer-${worker.workerId}`}>
                             <TableCell className="font-mono text-sm">{worker.bpsEmployeeId}</TableCell>
                             <TableCell>
-                              <Link href={`/workers/${worker.workerId}`} className="text-primary hover:underline">
+                              <Link href={`/workers/${worker.workerId}`} className="text-primary hover:underline" data-testid={`link-worker-${worker.workerId}`}>
                                 {worker.workerName}
                               </Link>
                             </TableCell>
@@ -227,11 +381,17 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="px-4 pb-4">
-                  <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-md border border-amber-200 dark:border-amber-900">
-                    <p className="text-sm text-amber-800 dark:text-amber-200">
-                      These workers were imported but no employer mapping was found for their department/location/job code combination. 
-                      They need employer assignments added manually or via the Employer Mapping tool.
-                    </p>
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div className="flex-1 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-md border border-amber-200 dark:border-amber-900">
+                      <p className="text-sm text-amber-800 dark:text-amber-200">
+                        These workers were imported but no employer mapping was found for their department/location/job code combination. 
+                        They need employer assignments added manually or via the Employer Mapping tool.
+                      </p>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={exportWithoutEmployerMatch} data-testid="button-export-without-employer">
+                      <FileDown className="h-4 w-4 mr-1" />
+                      Export
+                    </Button>
                   </div>
                   <ScrollArea className="h-64">
                     <Table>
@@ -244,10 +404,10 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                       </TableHeader>
                       <TableBody>
                         {[...withoutMatch.created, ...withoutMatch.updated].map((worker, idx) => (
-                          <TableRow key={idx}>
+                          <TableRow key={`without-${worker.workerId}-${idx}`} data-testid={`row-without-employer-${worker.workerId}`}>
                             <TableCell className="font-mono text-sm">{worker.bpsEmployeeId}</TableCell>
                             <TableCell>
-                              <Link href={`/workers/${worker.workerId}`} className="text-primary hover:underline">
+                              <Link href={`/workers/${worker.workerId}`} className="text-primary hover:underline" data-testid={`link-worker-without-${worker.workerId}`}>
                                 {worker.workerName}
                               </Link>
                             </TableCell>
@@ -279,11 +439,17 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="px-4 pb-4">
-                  <div className="mb-3 p-3 bg-orange-50 dark:bg-orange-950/30 rounded-md border border-orange-200 dark:border-orange-900">
-                    <p className="text-sm text-orange-800 dark:text-orange-200">
-                      These workers had active employment records at the processed employers but were not present in the import file.
-                      Their employment status has been set to terminated as of {asOfDate ? format(new Date(asOfDate), 'MMMM d, yyyy') : 'the as-of date'}.
-                    </p>
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div className="flex-1 p-3 bg-orange-50 dark:bg-orange-950/30 rounded-md border border-orange-200 dark:border-orange-900">
+                      <p className="text-sm text-orange-800 dark:text-orange-200">
+                        These workers had active employment records at the processed employers but were not present in the import file.
+                        Their employment status has been set to terminated as of {asOfDate ? format(new Date(asOfDate), 'MMMM d, yyyy') : 'the as-of date'}.
+                      </p>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={exportTerminated} data-testid="button-export-terminated">
+                      <FileDown className="h-4 w-4 mr-1" />
+                      Export
+                    </Button>
                   </div>
                   <ScrollArea className="h-64">
                     <Table>
@@ -296,10 +462,10 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                       </TableHeader>
                       <TableBody>
                         {terminatedWorkers.map((worker, idx) => (
-                          <TableRow key={idx}>
+                          <TableRow key={`term-${worker.workerId}-${idx}`} data-testid={`row-terminated-${worker.workerId}`}>
                             <TableCell className="font-mono text-sm">{worker.bpsEmployeeId}</TableCell>
                             <TableCell>
-                              <Link href={`/workers/${worker.workerId}`} className="text-primary hover:underline">
+                              <Link href={`/workers/${worker.workerId}`} className="text-primary hover:underline" data-testid={`link-worker-term-${worker.workerId}`}>
                                 {worker.workerName}
                               </Link>
                             </TableCell>
@@ -325,6 +491,12 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="px-4 pb-4">
+                  <div className="flex justify-end mb-2">
+                    <Button variant="ghost" size="sm" onClick={exportErrors} data-testid="button-export-errors">
+                      <FileDown className="h-4 w-4 mr-1" />
+                      Export
+                    </Button>
+                  </div>
                   <ScrollArea className="h-64">
                     <Table>
                       <TableHeader>
@@ -335,7 +507,7 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                       </TableHeader>
                       <TableBody>
                         {processResults.errors.map((error, idx) => (
-                          <TableRow key={idx}>
+                          <TableRow key={`error-${idx}`} data-testid={`row-error-${idx}`}>
                             <TableCell className="font-medium">{error.rowIndex + 1}</TableCell>
                             <TableCell className="text-muted-foreground">{error.message}</TableCell>
                           </TableRow>
