@@ -29,8 +29,8 @@ export interface WorkerHoursStorage {
   getWorkerHoursMonthly(workerId: string): Promise<any[]>;
   getMonthlyHoursTotal(workerId: string, employerId: string, year: number, month: number, employmentStatusIds?: string[]): Promise<number>;
   getWorkerMonthlyHoursAllEmployers(workerId: string, year: number, month: number): Promise<number>;
-  createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult>;
-  updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean }): Promise<WorkerHoursResult | undefined>;
+  createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult>;
+  updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult | undefined>;
   deleteWorkerHours(id: string): Promise<WorkerHoursDeleteResult>;
   upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult>;
 }
@@ -60,6 +60,7 @@ export function createWorkerHoursStorage(
           employmentStatusId: workerHours.employmentStatusId,
           hours: workerHours.hours,
           home: workerHours.home,
+          jobTitle: workerHours.jobTitle,
           employer: employers,
           employmentStatus: optionsEmploymentStatus,
         })
@@ -84,6 +85,7 @@ export function createWorkerHoursStorage(
           employmentStatusId: workerHours.employmentStatusId,
           hours: workerHours.hours,
           home: workerHours.home,
+          jobTitle: workerHours.jobTitle,
           employer: employers,
           employmentStatus: optionsEmploymentStatus,
         })
