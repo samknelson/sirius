@@ -6,6 +6,7 @@ export interface SystemModeResponse {
 
 export interface SiteSettings {
   siteName: string;
+  siteTitle: string;
   footer: string;
 }
 
