@@ -35,6 +35,7 @@ export interface WorkerWithDetails {
   contact_id: string;
   ssn: string | null;
   denorm_ws_id: string | null;
+  denorm_job_title: string | null;
   denorm_home_employer_id: string | null;
   denorm_employer_ids: string[] | null;
   contact_name: string | null;
@@ -120,6 +121,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           w.contact_id,
           w.ssn,
           w.denorm_ws_id,
+          w.denorm_job_title,
           w.denorm_home_employer_id,
           w.denorm_employer_ids,
           c.display_name as contact_name,
@@ -329,6 +331,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           contactId: workers.contactId,
           ssn: workers.ssn,
           denormWsId: workers.denormWsId,
+          denormJobTitle: workers.denormJobTitle,
           denormHomeEmployerId: workers.denormHomeEmployerId,
           denormEmployerIds: workers.denormEmployerIds,
           bargainingUnitId: workers.bargainingUnitId,

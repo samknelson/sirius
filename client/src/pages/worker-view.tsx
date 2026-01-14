@@ -200,6 +200,21 @@ function WorkerDetailsContent() {
                 </p>
               )}
             </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Briefcase size={14} />
+                Job Title
+              </label>
+              {worker.denormJobTitle ? (
+                <p className="text-foreground" data-testid="text-worker-job-title">
+                  {worker.denormJobTitle}
+                </p>
+              ) : (
+                <p className="text-muted-foreground text-sm" data-testid="text-no-job-title">
+                  No job title set
+                </p>
+              )}
+            </div>
             {hasComponent("bargainingunits") && (
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">

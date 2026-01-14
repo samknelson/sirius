@@ -331,6 +331,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
       contactId: worker.contact_id,
       siriusId: worker.sirius_id,
       denormWsId: worker.denorm_ws_id,
+      denormJobTitle: worker.denorm_job_title,
       denormHomeEmployerId: worker.denorm_home_employer_id,
       denormEmployerIds: worker.denorm_employer_ids,
       contactName: worker.contact_name || 'Unknown',
