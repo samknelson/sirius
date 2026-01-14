@@ -1,10 +1,29 @@
 import { FeedWizard, FeedField, FeedConfig, FeedData, ValidationError, ProcessResults, ProcessError, RowResult } from '../feed.js';
 import { WizardStatus, WizardStep, createStandardStatuses, LaunchArgument } from '../base.js';
 import { storage } from '../../storage/index.js';
-import { createBtuWorkerImportStorage } from '../../storage/btu-worker-import.js';
+import { createBtuWorkerImportStorage, TerminatedWorkerInfo } from '../../storage/btu-worker-import.js';
 import { parse as parseCSV } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
 import { objectStorageService } from '../../services/objectStorage.js';
+
+export interface ImportedWorkerInfo {
+  workerId: string;
+  bpsEmployeeId: string;
+  workerName: string;
+  isNew: boolean;
+}
+
+export interface BtuWorkerImportResults extends ProcessResults {
+  withEmployerMatch: {
+    created: ImportedWorkerInfo[];
+    updated: ImportedWorkerInfo[];
+  };
+  withoutEmployerMatch: {
+    created: ImportedWorkerInfo[];
+    updated: ImportedWorkerInfo[];
+  };
+  terminatedByAbsence: TerminatedWorkerInfo[];
+}
 
 function filterEmptyColumns(rows: any[][]): any[][] {
   if (rows.length === 0) return rows;
@@ -309,6 +328,16 @@ export class BtuWorkerImportWizard extends FeedWizard {
     const rowResults: RowResult[] = [];
     const processedBpsIds = new Set<string>();
     const processedEmployerIds = new Set<string>();
+    
+    // Track workers by employer match status
+    const withEmployerMatch: { created: ImportedWorkerInfo[]; updated: ImportedWorkerInfo[] } = {
+      created: [],
+      updated: []
+    };
+    const withoutEmployerMatch: { created: ImportedWorkerInfo[]; updated: ImportedWorkerInfo[] } = {
+      created: [],
+      updated: []
+    };
 
     for (let i = 0; i < totalRows; i += batchSize) {
       const batch = mappedRows.slice(i, Math.min(i + batchSize, totalRows));
@@ -329,58 +358,85 @@ export class BtuWorkerImportWizard extends FeedWizard {
           const locationId = row.locationId?.toString().trim() || '';
           const jobCode = row.jobCode?.toString().trim() || '';
 
+          // Find employer mapping (may be null if not found)
           const mappingResult = await btuStorage.findEmployerMapping(deptId, locationId, jobCode);
-          if (!mappingResult) {
-            throw new Error(`No employer mapping found for Dept: ${deptId}, Location: ${locationId}, Job: ${jobCode}`);
-          }
+          const hasEmployerMatch = mappingResult !== null;
 
-          // Track both primary and secondary employer IDs for termination scoping
-          processedEmployerIds.add(mappingResult.primaryEmployer.employerId);
-          if (mappingResult.secondaryEmployer) {
-            processedEmployerIds.add(mappingResult.secondaryEmployer.employerId);
+          // Track employer IDs for termination scoping (only if mapping exists)
+          if (mappingResult) {
+            processedEmployerIds.add(mappingResult.primaryEmployer.employerId);
+            if (mappingResult.secondaryEmployer) {
+              processedEmployerIds.add(mappingResult.secondaryEmployer.employerId);
+            }
           }
 
           const existingWorker = await btuStorage.findWorkerByBpsEmployeeId(bpsEmployeeId);
+          const firstName = row.firstName?.toString().trim() || '';
+          const lastName = row.lastName?.toString().trim() || '';
+          const middleName = row.middleName?.toString().trim();
+          const workerName = middleName 
+            ? `${lastName}, ${firstName} ${middleName}`
+            : `${lastName}, ${firstName}`;
 
           if (existingWorker) {
+            // Update existing worker contact info
             await btuStorage.updateWorkerContact(existingWorker.id, {
-              firstName: row.firstName?.toString().trim(),
-              lastName: row.lastName?.toString().trim(),
-              middleName: row.middleName?.toString().trim(),
+              firstName,
+              lastName,
+              middleName,
               email: row.email?.toString().trim(),
               phone: row.phone?.toString().trim(),
             });
 
-            // Create primary employment record
-            await btuStorage.upsertEmploymentRecord(existingWorker.id, {
-              employerId: mappingResult.primaryEmployer.employerId,
-              isPrimary: true,
-              asOfDate,
-              bargainingUnitId: mappingResult.bargainingUnitId || undefined,
-            });
-
-            // Create secondary employment record if secondary employer exists
-            if (mappingResult.secondaryEmployer) {
+            // Only create employment records if we have an employer mapping
+            if (mappingResult) {
+              // Create primary employment record
               await btuStorage.upsertEmploymentRecord(existingWorker.id, {
-                employerId: mappingResult.secondaryEmployer.employerId,
-                isPrimary: false,
+                employerId: mappingResult.primaryEmployer.employerId,
+                isPrimary: true,
                 asOfDate,
                 bargainingUnitId: mappingResult.bargainingUnitId || undefined,
               });
+
+              // Create secondary employment record if secondary employer exists
+              if (mappingResult.secondaryEmployer) {
+                await btuStorage.upsertEmploymentRecord(existingWorker.id, {
+                  employerId: mappingResult.secondaryEmployer.employerId,
+                  isPrimary: false,
+                  asOfDate,
+                  bargainingUnitId: mappingResult.bargainingUnitId || undefined,
+                });
+              }
             }
 
             updatedCount++;
+            const workerInfo: ImportedWorkerInfo = {
+              workerId: existingWorker.id,
+              bpsEmployeeId,
+              workerName,
+              isNew: false
+            };
+            
+            if (hasEmployerMatch) {
+              withEmployerMatch.updated.push(workerInfo);
+            } else {
+              withoutEmployerMatch.updated.push(workerInfo);
+            }
+            
             rowResults.push({
               rowIndex,
               status: 'success',
-              message: `Updated worker ${bpsEmployeeId}`
+              message: hasEmployerMatch 
+                ? `Updated worker ${bpsEmployeeId}`
+                : `Updated worker ${bpsEmployeeId} (no employer mapping)`
             });
           } else {
+            // Create new worker
             const newWorker = await btuStorage.createWorkerWithContact({
               bpsEmployeeId,
-              firstName: row.firstName?.toString().trim() || '',
-              lastName: row.lastName?.toString().trim() || '',
-              middleName: row.middleName?.toString().trim(),
+              firstName,
+              lastName,
+              middleName,
               email: row.email?.toString().trim(),
               phone: row.phone?.toString().trim(),
               address1: row.address1?.toString().trim(),
@@ -388,32 +444,50 @@ export class BtuWorkerImportWizard extends FeedWizard {
               city: row.city?.toString().trim(),
               state: row.state?.toString().trim(),
               zip: row.zip?.toString().trim(),
-              bargainingUnitId: mappingResult.bargainingUnitId || undefined,
+              bargainingUnitId: mappingResult?.bargainingUnitId || undefined,
             });
 
-            // Create primary employment record
-            await btuStorage.upsertEmploymentRecord(newWorker.id, {
-              employerId: mappingResult.primaryEmployer.employerId,
-              isPrimary: true,
-              asOfDate,
-              bargainingUnitId: mappingResult.bargainingUnitId || undefined,
-            });
-
-            // Create secondary employment record if secondary employer exists
-            if (mappingResult.secondaryEmployer) {
+            // Only create employment records if we have an employer mapping
+            if (mappingResult) {
+              // Create primary employment record
               await btuStorage.upsertEmploymentRecord(newWorker.id, {
-                employerId: mappingResult.secondaryEmployer.employerId,
-                isPrimary: false,
+                employerId: mappingResult.primaryEmployer.employerId,
+                isPrimary: true,
                 asOfDate,
                 bargainingUnitId: mappingResult.bargainingUnitId || undefined,
               });
+
+              // Create secondary employment record if secondary employer exists
+              if (mappingResult.secondaryEmployer) {
+                await btuStorage.upsertEmploymentRecord(newWorker.id, {
+                  employerId: mappingResult.secondaryEmployer.employerId,
+                  isPrimary: false,
+                  asOfDate,
+                  bargainingUnitId: mappingResult.bargainingUnitId || undefined,
+                });
+              }
             }
 
             createdCount++;
+            const workerInfo: ImportedWorkerInfo = {
+              workerId: newWorker.id,
+              bpsEmployeeId,
+              workerName,
+              isNew: true
+            };
+            
+            if (hasEmployerMatch) {
+              withEmployerMatch.created.push(workerInfo);
+            } else {
+              withoutEmployerMatch.created.push(workerInfo);
+            }
+            
             rowResults.push({
               rowIndex,
               status: 'success',
-              message: `Created worker ${bpsEmployeeId}`
+              message: hasEmployerMatch 
+                ? `Created worker ${bpsEmployeeId}`
+                : `Created worker ${bpsEmployeeId} (no employer mapping)`
             });
           }
         } catch (err) {
@@ -444,10 +518,11 @@ export class BtuWorkerImportWizard extends FeedWizard {
       }
     }
 
-    let terminatedCount = 0;
+    // Handle termination by absence (only for employers we have mappings for)
+    let terminationResult = { count: 0, terminatedWorkers: [] as TerminatedWorkerInfo[] };
     if (terminateByAbsence && processedEmployerIds.size > 0) {
       try {
-        terminatedCount = await btuStorage.terminateWorkersNotInList(
+        terminationResult = await btuStorage.terminateWorkersNotInList(
           Array.from(processedBpsIds),
           asOfDate,
           Array.from(processedEmployerIds)
@@ -457,7 +532,7 @@ export class BtuWorkerImportWizard extends FeedWizard {
       }
     }
 
-    const results: ProcessResults = {
+    const results: BtuWorkerImportResults = {
       totalRows,
       createdCount,
       updatedCount,
@@ -466,10 +541,13 @@ export class BtuWorkerImportWizard extends FeedWizard {
       errors: allErrors,
       rowResults,
       completedAt: new Date(),
+      withEmployerMatch,
+      withoutEmployerMatch,
+      terminatedByAbsence: terminationResult.terminatedWorkers,
     };
 
-    if (terminatedCount > 0) {
-      (results as any).terminatedCount = terminatedCount;
+    if (terminationResult.count > 0) {
+      (results as any).terminatedCount = terminationResult.count;
     }
 
     await storage.wizards.update(wizardId, {

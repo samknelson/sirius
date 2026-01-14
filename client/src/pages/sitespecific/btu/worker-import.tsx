@@ -127,10 +127,22 @@ export default function BtuWorkerImportPage() {
                       </div>
                       {processResults && (
                         <div className="text-sm text-muted-foreground">
-                          Created: {processResults.createdCount || 0} | 
-                          Updated: {processResults.updatedCount || 0} | 
-                          Errors: {processResults.failureCount || 0}
-                          {processResults.terminatedCount > 0 && ` | Terminated: ${processResults.terminatedCount}`}
+                          {processResults.withEmployerMatch && processResults.withoutEmployerMatch ? (
+                            <>
+                              With Employer: {(processResults.withEmployerMatch.created?.length || 0) + (processResults.withEmployerMatch.updated?.length || 0)} | 
+                              No Employer: {(processResults.withoutEmployerMatch.created?.length || 0) + (processResults.withoutEmployerMatch.updated?.length || 0)} | 
+                              Errors: {processResults.failureCount || 0}
+                              {(processResults.terminatedByAbsence?.length || processResults.terminatedCount) > 0 && 
+                                ` | Terminated: ${processResults.terminatedByAbsence?.length || processResults.terminatedCount}`}
+                            </>
+                          ) : (
+                            <>
+                              Created: {processResults.createdCount || 0} | 
+                              Updated: {processResults.updatedCount || 0} | 
+                              Errors: {processResults.failureCount || 0}
+                              {processResults.terminatedCount > 0 && ` | Terminated: ${processResults.terminatedCount}`}
+                            </>
+                          )}
                         </div>
                       )}
                     </div>

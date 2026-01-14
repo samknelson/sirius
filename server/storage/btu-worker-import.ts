@@ -31,6 +31,19 @@ export interface EmployerMappingResult {
   bargainingUnitId: string | null;
 }
 
+export interface TerminatedWorkerInfo {
+  workerId: string;
+  bpsEmployeeId: string;
+  workerName: string;
+  employerId: string;
+  employerName: string;
+}
+
+export interface TerminationResult {
+  count: number;
+  terminatedWorkers: TerminatedWorkerInfo[];
+}
+
 export interface BtuWorkerImportStorage {
   ensureBpsEmployeeIdType(): Promise<{ id: string; name: string }>;
   findWorkerByBpsEmployeeId(bpsEmployeeId: string): Promise<Worker | undefined>;
@@ -73,7 +86,7 @@ export interface BtuWorkerImportStorage {
     employerId: string;
     asOfDate: Date;
   }): Promise<WorkerHours>;
-  terminateWorkersNotInList(bpsEmployeeIds: string[], asOfDate: string, employerIds: string[]): Promise<number>;
+  terminateWorkersNotInList(bpsEmployeeIds: string[], asOfDate: string, employerIds: string[]): Promise<TerminationResult>;
   getEmploymentStatusByCode(code: string): Promise<{ id: string; name: string; code: string } | undefined>;
   getEmployerByName(name: string): Promise<{ id: string; name: string } | undefined>;
 }
@@ -411,8 +424,10 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
       return result.data;
     },
 
-    async terminateWorkersNotInList(bpsEmployeeIds: string[], asOfDate: string, employerIds: string[]): Promise<number> {
-      if (bpsEmployeeIds.length === 0 || employerIds.length === 0) return 0;
+    async terminateWorkersNotInList(bpsEmployeeIds: string[], asOfDate: string, employerIds: string[]): Promise<TerminationResult> {
+      if (bpsEmployeeIds.length === 0 || employerIds.length === 0) {
+        return { count: 0, terminatedWorkers: [] };
+      }
       
       const bpsIdType = await this.ensureBpsEmployeeIdType();
       const date = new Date(asOfDate);
@@ -422,7 +437,9 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
       const activeStatus = await this.getEmploymentStatusByCode('A');
       const activeSecondaryStatus = await this.getEmploymentStatusByCode('A2');
       
-      if (!activeStatus && !activeSecondaryStatus) return 0;
+      if (!activeStatus && !activeSecondaryStatus) {
+        return { count: 0, terminatedWorkers: [] };
+      }
       
       const statusIds = [activeStatus?.id, activeSecondaryStatus?.id].filter(Boolean) as string[];
       
@@ -431,12 +448,16 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
           workerId: workerHours.workerId,
           employerId: workerHours.employerId,
           bpsId: workerIds.value,
+          workerContactId: workers.contactId,
+          employerName: employers.name,
         })
         .from(workerHours)
         .innerJoin(workerIds, and(
           eq(workerHours.workerId, workerIds.workerId),
           eq(workerIds.typeId, bpsIdType.id)
         ))
+        .innerJoin(workers, eq(workerHours.workerId, workers.id))
+        .innerJoin(employers, eq(workerHours.employerId, employers.id))
         .where(
           and(
             eq(workerHours.year, year),
@@ -447,7 +468,8 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
           )
         );
       
-      let terminatedCount = 0;
+      const terminatedWorkers: TerminatedWorkerInfo[] = [];
+      
       for (const emp of activeEmployments) {
         try {
           await this.terminateEmployment({
@@ -455,13 +477,32 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
             employerId: emp.employerId,
             asOfDate: date,
           });
-          terminatedCount++;
+          
+          // Get worker name from contact
+          let workerName = 'Unknown';
+          if (emp.workerContactId) {
+            const [contact] = await db
+              .select({ displayName: contacts.displayName })
+              .from(contacts)
+              .where(eq(contacts.id, emp.workerContactId));
+            if (contact) {
+              workerName = contact.displayName || 'Unknown';
+            }
+          }
+          
+          terminatedWorkers.push({
+            workerId: emp.workerId,
+            bpsEmployeeId: emp.bpsId,
+            workerName,
+            employerId: emp.employerId,
+            employerName: emp.employerName,
+          });
         } catch (err) {
           console.error(`Failed to terminate employment for worker ${emp.workerId}:`, err);
         }
       }
       
-      return terminatedCount;
+      return { count: terminatedWorkers.length, terminatedWorkers };
     },
   };
 }
