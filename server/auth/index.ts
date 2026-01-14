@@ -99,26 +99,8 @@ export async function setupAuth(app: Express): Promise<void> {
     const sessionUser = user as AuthenticatedUser;
     if (sessionUser.claims?.sub && !sessionUser.dbUser) {
       try {
-        const storage = getStorage();
-        if (!storage || !storage.authIdentities || !storage.users) {
-          logger.warn("Storage not available during session deserialization");
-          return cb(null, user);
-        }
-        
-        const externalId = sessionUser.claims.sub;
-        const providerType = sessionUser.providerType || "replit";
-        
-        const identity = await storage.authIdentities.getByProviderAndExternalId(
-          providerType,
-          externalId
-        );
-        
-        if (identity) {
-          const dbUser = await storage.users.getUser(identity.userId);
-          if (dbUser) {
-            sessionUser.dbUser = dbUser;
-          }
-        }
+        const { resolveDbUser } = await import("./helpers");
+        await resolveDbUser(sessionUser, sessionUser.claims.sub);
       } catch (error) {
         logger.error("Failed to rehydrate dbUser during deserialization", { error });
       }

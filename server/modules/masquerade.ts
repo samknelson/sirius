@@ -3,6 +3,7 @@ import { storage } from "../storage";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { storageLogger } from "../logger";
 import { getRequestContext } from "../middleware/request-context";
+import { resolveDbUser } from "../auth/helpers";
 
 // Type for middleware functions
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -13,10 +14,9 @@ type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Respo
  * and masquerade information from a session
  * 
  * @param session - Express session object
- * @param externalId - External ID from auth provider (claims.sub)
- * @param sessionUser - Optional user object from session that may already have dbUser
+ * @param sessionUser - User object from session that may already have dbUser
  */
-export async function getEffectiveUser(session: any, externalId: string, sessionUser?: any) {
+export async function getEffectiveUser(session: any, sessionUser?: any) {
   let dbUser;
   let originalUser = null;
   
@@ -31,14 +31,8 @@ export async function getEffectiveUser(session: any, externalId: string, session
         session.save((err: any) => err ? reject(err) : resolve(undefined));
       });
       
-      // Fall back to the original user - try session first, then auth_identities
-      dbUser = sessionUser?.dbUser;
-      if (!dbUser) {
-        const identity = await storage.authIdentities.getByProviderAndExternalId("replit", externalId);
-        if (identity) {
-          dbUser = await storage.users.getUser(identity.userId);
-        }
-      }
+      // Fall back to the original user via resolveDbUser
+      dbUser = await resolveDbUser(sessionUser, sessionUser?.claims?.sub);
       if (!dbUser) {
         return { dbUser: null, originalUser: null };
       }
@@ -49,14 +43,8 @@ export async function getEffectiveUser(session: any, externalId: string, session
       }
     }
   } else {
-    // Not masquerading - get user from session or via auth_identities
-    dbUser = sessionUser?.dbUser;
-    if (!dbUser) {
-      const identity = await storage.authIdentities.getByProviderAndExternalId("replit", externalId);
-      if (identity) {
-        dbUser = await storage.users.getUser(identity.userId);
-      }
-    }
+    // Not masquerading - get user via resolveDbUser
+    dbUser = await resolveDbUser(sessionUser, sessionUser?.claims?.sub);
     if (!dbUser) {
       return { dbUser: null, originalUser: null };
     }
@@ -78,21 +66,14 @@ export function registerMasqueradeRoutes(
     try {
       const { userId } = req.body;
       const user = req.user as any;
-      const externalId = user.claims.sub;
       const session = req.session as any;
       
       if (!userId) {
         return res.status(400).json({ message: "User ID is required" });
       }
       
-      // Get the original user - try session first, then auth_identities
-      let originalUser = user.dbUser;
-      if (!originalUser) {
-        const identity = await storage.authIdentities.getByProviderAndExternalId("replit", externalId);
-        if (identity) {
-          originalUser = await storage.users.getUser(identity.userId);
-        }
-      }
+      // Get the original user via resolveDbUser
+      const originalUser = await resolveDbUser(user, user?.claims?.sub);
       if (!originalUser) {
         return res.status(404).json({ message: "Original user not found" });
       }
@@ -282,16 +263,9 @@ export function registerMasqueradeRoutes(
   app.get("/api/auth/masquerade/recent", requireAccess('masquerade'), async (req, res) => {
     try {
       const user = req.user as any;
-      const externalId = user.claims.sub;
       
-      // Get the user making the request (not masqueraded) - try session first, then auth_identities
-      let currentUser = user.dbUser;
-      if (!currentUser) {
-        const identity = await storage.authIdentities.getByProviderAndExternalId("replit", externalId);
-        if (identity) {
-          currentUser = await storage.users.getUser(identity.userId);
-        }
-      }
+      // Get the user making the request via resolveDbUser
+      const currentUser = await resolveDbUser(user, user?.claims?.sub);
       if (!currentUser) {
         return res.status(404).json({ message: "User not found" });
       }
