@@ -35,6 +35,7 @@ interface WorkerHoursEntry {
   employmentStatusId: string;
   hours: number | null;
   home: boolean;
+  jobTitle: string | null;
   employer: Employer;
   employmentStatus: EmploymentStatus;
 }
@@ -81,6 +82,7 @@ function WorkerHoursContent() {
   const [selectedEmploymentStatusId, setSelectedEmploymentStatusId] = useState<string>("");
   const [selectedHours, setSelectedHours] = useState<string>("");
   const [selectedHome, setSelectedHome] = useState<boolean>(false);
+  const [selectedJobTitle, setSelectedJobTitle] = useState<string>("");
 
   // Fetch worker hours
   const { data: hoursEntries = [], isLoading } = useQuery<WorkerHoursEntry[]>({
@@ -104,7 +106,7 @@ function WorkerHoursContent() {
 
   // Create mutation
   const createMutation = useMutation({
-    mutationFn: async (data: { month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home: boolean }) => {
+    mutationFn: async (data: { month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home: boolean; jobTitle: string | null }) => {
       const response = await fetch(`/api/workers/${worker.id}/hours`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -140,6 +142,7 @@ function WorkerHoursContent() {
     setSelectedEmploymentStatusId("");
     setSelectedHours("");
     setSelectedHome(false);
+    setSelectedJobTitle("");
   };
 
   const handleCreate = () => {
@@ -160,6 +163,7 @@ function WorkerHoursContent() {
       employmentStatusId: selectedEmploymentStatusId,
       hours: selectedHours ? parseFloat(selectedHours) : null,
       home: selectedHome,
+      jobTitle: selectedJobTitle || null,
     });
   };
 
@@ -304,6 +308,17 @@ function WorkerHoursContent() {
                     value={selectedHours}
                     onChange={(e) => setSelectedHours(e.target.value)}
                     data-testid="input-hours"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="jobTitle">Job Title</Label>
+                  <Input
+                    id="jobTitle"
+                    type="text"
+                    placeholder="Enter job title"
+                    value={selectedJobTitle}
+                    onChange={(e) => setSelectedJobTitle(e.target.value)}
+                    data-testid="input-job-title"
                   />
                 </div>
                 <div className="flex items-center justify-between">

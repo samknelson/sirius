@@ -20,6 +20,7 @@ interface WorkerHoursEntry {
   employmentStatusId: string;
   hours: number | null;
   home: boolean;
+  jobTitle: string | null;
   employer: Employer;
   employmentStatus: EmploymentStatus;
 }

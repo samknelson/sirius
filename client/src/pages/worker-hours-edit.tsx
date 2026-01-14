@@ -39,6 +39,7 @@ function WorkerHoursEditContent() {
   const [selectedEmploymentStatusId, setSelectedEmploymentStatusId] = useState<string>(hoursEntry.employmentStatusId);
   const [selectedHours, setSelectedHours] = useState<string>(hoursEntry.hours?.toString() || "");
   const [selectedHome, setSelectedHome] = useState<boolean>(hoursEntry.home);
+  const [selectedJobTitle, setSelectedJobTitle] = useState<string>(hoursEntry.jobTitle || "");
 
   const showLedgerNotifications = (notifications: LedgerNotification[] | undefined) => {
     if (!notifications || notifications.length === 0) return;
@@ -71,10 +72,11 @@ function WorkerHoursEditContent() {
     setSelectedEmploymentStatusId(hoursEntry.employmentStatusId);
     setSelectedHours(hoursEntry.hours?.toString() || "");
     setSelectedHome(hoursEntry.home);
+    setSelectedJobTitle(hoursEntry.jobTitle || "");
   }, [hoursEntry]);
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { year: number; month: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home: boolean }) => {
+    mutationFn: async (data: { year: number; month: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home: boolean; jobTitle: string | null }) => {
       const response = await fetch(`/api/worker-hours/${hoursEntry.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -120,6 +122,7 @@ function WorkerHoursEditContent() {
       employmentStatusId: selectedEmploymentStatusId,
       hours: selectedHours ? parseFloat(selectedHours) : null,
       home: selectedHome,
+      jobTitle: selectedJobTitle || null,
     });
   };
 
@@ -249,6 +252,18 @@ function WorkerHoursEditContent() {
               value={selectedHours}
               onChange={(e) => setSelectedHours(e.target.value)}
               data-testid="input-edit-hours"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="jobTitle">Job Title</Label>
+            <Input
+              id="jobTitle"
+              type="text"
+              placeholder="Enter job title"
+              value={selectedJobTitle}
+              onChange={(e) => setSelectedJobTitle(e.target.value)}
+              data-testid="input-edit-job-title"
             />
           </div>
         </div>
