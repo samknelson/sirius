@@ -97,17 +97,10 @@ export function registerEsigsRoutes(
   app.post("/api/esigs", requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
-      const externalId = user?.claims?.sub;
-      if (!externalId) {
-        return res.status(401).json({ message: "User not authenticated" });
-      }
-
-      // Look up user via auth_identities
-      const identity = await storage.authIdentities.getByProviderAndExternalId("replit", externalId);
-      if (!identity) {
-        return res.status(401).json({ message: "User not found" });
-      }
-      const dbUser = await storage.users.getUser(identity.userId);
+      
+      // Look up user via resolveDbUser helper
+      const { resolveDbUser } = await import("../auth/helpers");
+      const dbUser = await resolveDbUser(user, user?.claims?.sub);
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
       }
@@ -135,18 +128,10 @@ export function registerEsigsRoutes(
   app.post("/api/esigs/upload-document", requireAuth, upload.single("file"), async (req, res) => {
     try {
       const user = req.user as any;
-      const externalId = user?.claims?.sub;
       
-      if (!externalId) {
-        return res.status(401).json({ message: "User not authenticated" });
-      }
-
-      // Look up user via auth_identities
-      const identity = await storage.authIdentities.getByProviderAndExternalId("replit", externalId);
-      if (!identity) {
-        return res.status(401).json({ message: "User not found" });
-      }
-      const dbUser = await storage.users.getUser(identity.userId);
+      // Look up user via resolveDbUser helper
+      const { resolveDbUser } = await import("../auth/helpers");
+      const dbUser = await resolveDbUser(user, user?.claims?.sub);
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
       }
