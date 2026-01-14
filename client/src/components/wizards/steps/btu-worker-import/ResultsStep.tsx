@@ -21,6 +21,9 @@ interface ImportedWorkerInfo {
   bpsEmployeeId: string;
   workerName: string;
   isNew: boolean;
+  deptTitle?: string;
+  locationTitle?: string;
+  jobTitle?: string;
 }
 
 interface TerminatedWorkerInfo {
@@ -74,6 +77,9 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
       "BPS Employee ID": w.bpsEmployeeId,
       "Worker Name": w.workerName,
       "Status": w.status,
+      "Department": w.deptTitle || '',
+      "Location": w.locationTitle || '',
+      "Job Title": w.jobTitle || '',
       "Worker ID": w.workerId
     }));
     const csv = stringify(csvData, { header: true });
@@ -90,6 +96,9 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
       "BPS Employee ID": w.bpsEmployeeId,
       "Worker Name": w.workerName,
       "Status": w.status,
+      "Department": w.deptTitle || '',
+      "Location": w.locationTitle || '',
+      "Job Title": w.jobTitle || '',
       "Worker ID": w.workerId
     }));
     const csv = stringify(csvData, { header: true });
@@ -127,6 +136,9 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
       "BPS Employee ID": string;
       "Worker Name": string;
       "Status": string;
+      "Department": string;
+      "Location": string;
+      "Job Title": string;
       "Employer": string;
       "Worker ID": string;
     }> = [];
@@ -138,6 +150,9 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
           "BPS Employee ID": w.bpsEmployeeId,
           "Worker Name": w.workerName,
           "Status": "New",
+          "Department": w.deptTitle || '',
+          "Location": w.locationTitle || '',
+          "Job Title": w.jobTitle || '',
           "Employer": "Matched",
           "Worker ID": w.workerId
         });
@@ -148,6 +163,9 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
           "BPS Employee ID": w.bpsEmployeeId,
           "Worker Name": w.workerName,
           "Status": "Updated",
+          "Department": w.deptTitle || '',
+          "Location": w.locationTitle || '',
+          "Job Title": w.jobTitle || '',
           "Employer": "Matched",
           "Worker ID": w.workerId
         });
@@ -161,6 +179,9 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
           "BPS Employee ID": w.bpsEmployeeId,
           "Worker Name": w.workerName,
           "Status": "New",
+          "Department": w.deptTitle || '',
+          "Location": w.locationTitle || '',
+          "Job Title": w.jobTitle || '',
           "Employer": "No Match",
           "Worker ID": w.workerId
         });
@@ -171,6 +192,9 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
           "BPS Employee ID": w.bpsEmployeeId,
           "Worker Name": w.workerName,
           "Status": "Updated",
+          "Department": w.deptTitle || '',
+          "Location": w.locationTitle || '',
+          "Job Title": w.jobTitle || '',
           "Employer": "No Match",
           "Worker ID": w.workerId
         });
@@ -184,6 +208,9 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
           "BPS Employee ID": w.bpsEmployeeId,
           "Worker Name": w.workerName,
           "Status": "Terminated",
+          "Department": '',
+          "Location": '',
+          "Job Title": '',
           "Employer": w.employerName,
           "Worker ID": w.workerId
         });

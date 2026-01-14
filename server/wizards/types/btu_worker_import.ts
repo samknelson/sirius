@@ -11,6 +11,9 @@ export interface ImportedWorkerInfo {
   bpsEmployeeId: string;
   workerName: string;
   isNew: boolean;
+  deptTitle?: string;
+  locationTitle?: string;
+  jobTitle?: string;
 }
 
 export interface BtuWorkerImportResults extends ProcessResults {
@@ -414,7 +417,10 @@ export class BtuWorkerImportWizard extends FeedWizard {
               workerId: existingWorker.id,
               bpsEmployeeId,
               workerName,
-              isNew: false
+              isNew: false,
+              deptTitle: row.deptTitle?.toString().trim() || undefined,
+              locationTitle: row.locationTitle?.toString().trim() || undefined,
+              jobTitle: row.jobTitle?.toString().trim() || undefined,
             };
             
             if (hasEmployerMatch) {
@@ -473,7 +479,10 @@ export class BtuWorkerImportWizard extends FeedWizard {
               workerId: newWorker.id,
               bpsEmployeeId,
               workerName,
-              isNew: true
+              isNew: true,
+              deptTitle: row.deptTitle?.toString().trim() || undefined,
+              locationTitle: row.locationTitle?.toString().trim() || undefined,
+              jobTitle: row.jobTitle?.toString().trim() || undefined,
             };
             
             if (hasEmployerMatch) {
