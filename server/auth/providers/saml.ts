@@ -264,6 +264,8 @@ class SamlAuthProvider implements AuthProvider {
       res.send(metadata);
     });
 
+    app.get("/api/auth/saml/login", this.getLoginHandler());
+
     logger.info("SAML auth provider initialized", {
       service: "saml-auth",
       entryPoint: this.config.entryPoint,
