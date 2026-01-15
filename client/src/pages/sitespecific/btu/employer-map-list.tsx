@@ -450,6 +450,7 @@ export default function BtuEmployerMapListPage() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sitespecific/btu/employer-map"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sitespecific/btu/employer-map/filters"] });
       toast({
         title: "Bulk Update Complete",
         description: `Successfully updated ${data.updated} record(s).`,
