@@ -215,7 +215,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Worker Certifications",
     description: "Management of worker certifications and credentials",
     enabledByDefault: false,
-    category: "core"
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/worker/certifications/schema.ts",
+      tables: ["options_certifications"]
+    }
   },
   {
     id: "trust.providers.login",
