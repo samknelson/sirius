@@ -447,6 +447,78 @@ export function registerBtuCsgRoutes(
     }
   });
 
+  // Bulk update endpoint - MUST be registered before /:id route
+  const bulkUpdateSchema = z.object({
+    ids: z.array(z.string()).min(1),
+    updates: z.object({
+      employerName: z.string().optional(),
+      secondaryEmployerName: z.string().optional(),
+      bargainingUnitId: z.string().optional(),
+      employmentStatusId: z.string().optional(),
+    }),
+  });
+
+  app.patch("/api/sitespecific/btu/employer-map/bulk", requireAuth, requirePermission("admin"), componentMiddleware, async (req, res) => {
+    try {
+      const tableExists = await employerMapStorage.tableExists();
+      if (!tableExists) {
+        return res.status(503).json({ 
+          message: "Employer map table does not exist. Please enable the BTU component first." 
+        });
+      }
+      
+      const parseResult = bulkUpdateSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: parseResult.error.errors 
+        });
+      }
+
+      const { ids, updates } = parseResult.data;
+      
+      // Convert empty strings to null for FK fields
+      const cleanedUpdates: Partial<InsertBtuEmployerMap> = {};
+      if (updates.employerName !== undefined) {
+        cleanedUpdates.employerName = updates.employerName === "" ? null : updates.employerName;
+      }
+      if (updates.secondaryEmployerName !== undefined) {
+        cleanedUpdates.secondaryEmployerName = updates.secondaryEmployerName === "" ? null : updates.secondaryEmployerName;
+      }
+      if (updates.bargainingUnitId !== undefined) {
+        cleanedUpdates.bargainingUnitId = updates.bargainingUnitId === "" ? null : updates.bargainingUnitId;
+      }
+      if (updates.employmentStatusId !== undefined) {
+        cleanedUpdates.employmentStatusId = updates.employmentStatusId === "" ? null : updates.employmentStatusId;
+      }
+
+      // Validate that at least one field is being updated
+      if (Object.keys(cleanedUpdates).length === 0) {
+        return res.status(400).json({ 
+          message: "No fields to update. Please select at least one field to change." 
+        });
+      }
+
+      let updated = 0;
+      for (const id of ids) {
+        const result = await employerMapStorage.update(id, cleanedUpdates);
+        if (result) {
+          updated++;
+        }
+      }
+
+      res.json({ updated, total: ids.length });
+    } catch (error: any) {
+      if (error?.message === "COMPONENT_TABLE_NOT_FOUND") {
+        return res.status(503).json({ 
+          message: "Employer map table does not exist. Please enable the BTU component first." 
+        });
+      }
+      console.error("Failed to bulk update employer map records:", error);
+      res.status(500).json({ message: "Failed to bulk update records" });
+    }
+  });
+
   app.patch("/api/sitespecific/btu/employer-map/:id", requireAuth, requirePermission("admin"), componentMiddleware, async (req, res) => {
     try {
       const tableExists = await employerMapStorage.tableExists();
@@ -502,82 +574,6 @@ export function registerBtuCsgRoutes(
       }
       console.error("Failed to delete employer map record:", error);
       res.status(500).json({ message: "Failed to delete record" });
-    }
-  });
-
-  // Bulk update endpoint
-  const bulkUpdateSchema = z.object({
-    ids: z.array(z.string()).min(1),
-    updates: z.object({
-      employerName: z.string().optional(),
-      secondaryEmployerName: z.string().optional(),
-      bargainingUnitId: z.string().optional(),
-      employmentStatusId: z.string().optional(),
-    }),
-  });
-
-  app.patch("/api/sitespecific/btu/employer-map/bulk", requireAuth, requirePermission("admin"), componentMiddleware, async (req, res) => {
-    try {
-      const tableExists = await employerMapStorage.tableExists();
-      if (!tableExists) {
-        return res.status(503).json({ 
-          message: "Employer map table does not exist. Please enable the BTU component first." 
-        });
-      }
-      
-      const parseResult = bulkUpdateSchema.safeParse(req.body);
-      if (!parseResult.success) {
-        return res.status(400).json({ 
-          message: "Validation failed", 
-          errors: parseResult.error.errors 
-        });
-      }
-
-      const { ids, updates } = parseResult.data;
-      
-      console.log("Bulk update received - ids count:", ids.length, "updates:", JSON.stringify(updates));
-      
-      // Convert empty strings to null for FK fields
-      const cleanedUpdates: Partial<InsertBtuEmployerMap> = {};
-      if (updates.employerName !== undefined) {
-        cleanedUpdates.employerName = updates.employerName === "" ? null : updates.employerName;
-      }
-      if (updates.secondaryEmployerName !== undefined) {
-        cleanedUpdates.secondaryEmployerName = updates.secondaryEmployerName === "" ? null : updates.secondaryEmployerName;
-      }
-      if (updates.bargainingUnitId !== undefined) {
-        cleanedUpdates.bargainingUnitId = updates.bargainingUnitId === "" ? null : updates.bargainingUnitId;
-      }
-      if (updates.employmentStatusId !== undefined) {
-        cleanedUpdates.employmentStatusId = updates.employmentStatusId === "" ? null : updates.employmentStatusId;
-      }
-
-      console.log("Cleaned updates:", JSON.stringify(cleanedUpdates));
-
-      // Validate that at least one field is being updated
-      if (Object.keys(cleanedUpdates).length === 0) {
-        return res.status(400).json({ 
-          message: "No fields to update. Please select at least one field to change." 
-        });
-      }
-
-      let updated = 0;
-      for (const id of ids) {
-        const result = await employerMapStorage.update(id, cleanedUpdates);
-        if (result) {
-          updated++;
-        }
-      }
-
-      res.json({ updated, total: ids.length });
-    } catch (error: any) {
-      if (error?.message === "COMPONENT_TABLE_NOT_FOUND") {
-        return res.status(503).json({ 
-          message: "Employer map table does not exist. Please enable the BTU component first." 
-        });
-      }
-      console.error("Failed to bulk update employer map records:", error);
-      res.status(500).json({ message: "Failed to bulk update records" });
     }
   });
 
