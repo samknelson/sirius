@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus, Trash2, Loader2, AlertTriangle, Download, Search, X, Map, Pencil, Upload, CheckCircle2, Lightbulb } from "lucide-react";
+import { Plus, Trash2, Loader2, AlertTriangle, Download, Search, X, Map, Pencil, Upload, CheckCircle2, Lightbulb, Edit2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -83,6 +83,13 @@ interface SuggestionsData {
   secondaryByLocationTitle: Record<string, EmployerSuggestion>;
 }
 
+interface BulkEditValues {
+  employerName: string;
+  secondaryEmployerName: string;
+  bargainingUnitId: string;
+  employmentStatusId: string;
+}
+
 export default function BtuEmployerMapListPage() {
   const { toast } = useToast();
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -98,6 +105,8 @@ export default function BtuEmployerMapListPage() {
   const [locationFilter, setLocationFilter] = useState("all");
   const [employerFilter, setEmployerFilter] = useState("all");
   const [employerExistsFilter, setEmployerExistsFilter] = useState("all");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkEditDialogOpen, setIsBulkEditDialogOpen] = useState(false);
 
   const { data: records = [], isLoading, error } = useQuery<BtuEmployerMap[]>({
     queryKey: ["/api/sitespecific/btu/employer-map"],
@@ -425,6 +434,76 @@ export default function BtuEmployerMapListPage() {
     }
   };
 
+  const bulkEditForm = useForm<BulkEditValues>({
+    defaultValues: {
+      employerName: "",
+      secondaryEmployerName: "",
+      bargainingUnitId: "",
+      employmentStatusId: "",
+    },
+  });
+
+  const bulkUpdateMutation = useMutation({
+    mutationFn: async (data: { ids: string[]; updates: Partial<BulkEditValues> }) => {
+      const response = await apiRequest("PATCH", "/api/sitespecific/btu/employer-map/bulk", data);
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sitespecific/btu/employer-map"] });
+      toast({
+        title: "Bulk Update Complete",
+        description: `Successfully updated ${data.updated} record(s).`,
+      });
+      setIsBulkEditDialogOpen(false);
+      clearSelection();
+      bulkEditForm.reset();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Bulk Update Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const onBulkEditSubmit = (data: BulkEditValues) => {
+    const updates: Partial<BulkEditValues> = {};
+    if (data.employerName && data.employerName !== "__unchanged__") {
+      updates.employerName = data.employerName === "__clear__" ? "" : data.employerName;
+    }
+    if (data.secondaryEmployerName && data.secondaryEmployerName !== "__unchanged__") {
+      updates.secondaryEmployerName = data.secondaryEmployerName === "__clear__" ? "" : data.secondaryEmployerName;
+    }
+    if (data.bargainingUnitId && data.bargainingUnitId !== "__unchanged__") {
+      updates.bargainingUnitId = data.bargainingUnitId === "__clear__" ? "" : data.bargainingUnitId;
+    }
+    if (data.employmentStatusId && data.employmentStatusId !== "__unchanged__") {
+      updates.employmentStatusId = data.employmentStatusId === "__clear__" ? "" : data.employmentStatusId;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      toast({
+        title: "No Changes",
+        description: "Please select at least one field to update.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    bulkUpdateMutation.mutate({ ids: Array.from(selectedIds), updates });
+  };
+
+  const openBulkEditDialog = () => {
+    bulkEditForm.reset({
+      employerName: "__unchanged__",
+      secondaryEmployerName: "__unchanged__",
+      bargainingUnitId: "__unchanged__",
+      employmentStatusId: "__unchanged__",
+    });
+    setIsBulkEditDialogOpen(true);
+  };
+
   const parsedDepartments = useMemo(() => {
     if (!filterOptions?.departments) return [];
     return filterOptions.departments.map(d => {
@@ -477,6 +556,30 @@ export default function BtuEmployerMapListPage() {
       return matchesSearch && matchesDepartment && matchesLocation && matchesEmployer && matchesEmployerExists;
     });
   }, [records, searchQuery, departmentFilter, locationFilter, employerFilter, employerExistsFilter, systemEmployersLoaded, systemEmployerNames]);
+
+  const toggleSelectRecord = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (selectedIds.size === filteredRecords.length && filteredRecords.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredRecords.map(r => r.id)));
+    }
+  }, [filteredRecords, selectedIds.size]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
 
   const escapeCSV = (value: string | null | undefined): string => {
     if (value === null || value === undefined) return "";
@@ -825,9 +928,30 @@ export default function BtuEmployerMapListPage() {
         </Card>
       ) : (
         <div className="border rounded-lg">
+          {selectedIds.size > 0 && (
+            <div className="flex items-center gap-4 p-3 bg-muted border-b">
+              <span className="text-sm font-medium">
+                {selectedIds.size} record{selectedIds.size !== 1 ? "s" : ""} selected
+              </span>
+              <Button size="sm" onClick={openBulkEditDialog} data-testid="button-bulk-edit">
+                <Edit2 className="h-4 w-4 mr-2" />
+                Bulk Edit
+              </Button>
+              <Button size="sm" variant="ghost" onClick={clearSelection} data-testid="button-clear-selection">
+                Clear Selection
+              </Button>
+            </div>
+          )}
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={selectedIds.size === filteredRecords.length && filteredRecords.length > 0}
+                    onCheckedChange={toggleSelectAll}
+                    data-testid="checkbox-select-all"
+                  />
+                </TableHead>
                 <TableHead>Department</TableHead>
                 <TableHead>Location</TableHead>
                 <TableHead>Job Title</TableHead>
@@ -841,6 +965,13 @@ export default function BtuEmployerMapListPage() {
             <TableBody>
               {filteredRecords.map((record) => (
                 <TableRow key={record.id} data-testid={`row-employer-map-${record.id}`}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedIds.has(record.id)}
+                      onCheckedChange={() => toggleSelectRecord(record.id)}
+                      data-testid={`checkbox-select-${record.id}`}
+                    />
+                  </TableCell>
                   <TableCell data-testid={`text-department-${record.id}`}>{record.departmentTitle || record.departmentId || "-"}</TableCell>
                   <TableCell data-testid={`text-location-${record.id}`}>{record.locationTitle || record.locationId || "-"}</TableCell>
                   <TableCell data-testid={`text-job-title-${record.id}`}>{record.jobTitle || "-"}</TableCell>
@@ -1340,6 +1471,143 @@ export default function BtuEmployerMapListPage() {
               </Button>
             )}
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isBulkEditDialogOpen} onOpenChange={setIsBulkEditDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Bulk Edit {selectedIds.size} Record{selectedIds.size !== 1 ? "s" : ""}</DialogTitle>
+            <DialogDescription>
+              Update multiple employer mappings at once. Only fields you change will be updated.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...bulkEditForm}>
+            <form onSubmit={bulkEditForm.handleSubmit(onBulkEditSubmit)} className="space-y-4">
+              <FormField
+                control={bulkEditForm.control}
+                name="employerName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Employer</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="bulk-select-employer">
+                          <SelectValue placeholder="Select an option" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="__unchanged__">— Keep unchanged —</SelectItem>
+                        <SelectItem value="__clear__">— Clear value —</SelectItem>
+                        {systemEmployersData?.employerNames.map((name) => (
+                          <SelectItem key={name} value={name}>
+                            {name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={bulkEditForm.control}
+                name="secondaryEmployerName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Secondary Employer</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="bulk-select-secondary-employer">
+                          <SelectValue placeholder="Select an option" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="__unchanged__">— Keep unchanged —</SelectItem>
+                        <SelectItem value="__clear__">— Clear value —</SelectItem>
+                        {systemEmployersData?.employerNames.map((name) => (
+                          <SelectItem key={name} value={name}>
+                            {name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={bulkEditForm.control}
+                name="bargainingUnitId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Bargaining Unit</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="bulk-select-bargaining-unit">
+                          <SelectValue placeholder="Select an option" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="__unchanged__">— Keep unchanged —</SelectItem>
+                        <SelectItem value="__clear__">— Clear value —</SelectItem>
+                        {bargainingUnits.map((unit) => (
+                          <SelectItem key={unit.id} value={unit.id}>
+                            {unit.siriusId} - {unit.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={bulkEditForm.control}
+                name="employmentStatusId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Employment Status</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="bulk-select-employment-status">
+                          <SelectValue placeholder="Select an option" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="__unchanged__">— Keep unchanged —</SelectItem>
+                        <SelectItem value="__clear__">— Clear value —</SelectItem>
+                        {employmentStatuses.map((status) => (
+                          <SelectItem key={status.id} value={status.id}>
+                            {status.code} - {status.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsBulkEditDialogOpen(false)}
+                  data-testid="button-cancel-bulk-edit"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={bulkUpdateMutation.isPending}
+                  data-testid="button-submit-bulk-edit"
+                >
+                  {bulkUpdateMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Update {selectedIds.size} Record{selectedIds.size !== 1 ? "s" : ""}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
     </div>
