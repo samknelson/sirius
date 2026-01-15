@@ -830,11 +830,11 @@ export default function BtuEmployerMapListPage() {
               <TableRow>
                 <TableHead>Department</TableHead>
                 <TableHead>Location</TableHead>
-                <TableHead>Job Code</TableHead>
                 <TableHead>Job Title</TableHead>
                 <TableHead>Employer</TableHead>
                 <TableHead>Secondary Employer</TableHead>
                 <TableHead>Bargaining Unit</TableHead>
+                <TableHead>Employment Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -843,7 +843,6 @@ export default function BtuEmployerMapListPage() {
                 <TableRow key={record.id} data-testid={`row-employer-map-${record.id}`}>
                   <TableCell data-testid={`text-department-${record.id}`}>{record.departmentTitle || record.departmentId || "-"}</TableCell>
                   <TableCell data-testid={`text-location-${record.id}`}>{record.locationTitle || record.locationId || "-"}</TableCell>
-                  <TableCell data-testid={`text-job-code-${record.id}`}>{record.jobCode || "-"}</TableCell>
                   <TableCell data-testid={`text-job-title-${record.id}`}>{record.jobTitle || "-"}</TableCell>
                   <TableCell className="font-medium" data-testid={`text-employer-${record.id}`}>
                     {record.employerName ? (
@@ -969,6 +968,9 @@ export default function BtuEmployerMapListPage() {
                   </TableCell>
                   <TableCell data-testid={`text-bargaining-unit-${record.id}`}>
                     {bargainingUnits.find(bu => bu.id === record.bargainingUnitId)?.siriusId || "-"}
+                  </TableCell>
+                  <TableCell data-testid={`text-employment-status-${record.id}`}>
+                    {employmentStatuses.find(es => es.id === record.employmentStatusId)?.code || "-"}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
