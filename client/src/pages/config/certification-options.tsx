@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Plus, Edit, Trash2 } from "lucide-react";
+import { IconPicker, renderIcon } from "@/components/ui/icon-picker";
 import {
   Table,
   TableBody,
@@ -39,6 +40,7 @@ import { insertOptionsCertificationsSchema, type OptionsCertification, type Inse
 const formSchema = insertOptionsCertificationsSchema.extend({
   name: z.string().min(1, "Name is required").max(255, "Name must be 255 characters or less"),
   siriusId: z.string().max(100, "Sirius ID must be 100 characters or less").optional().nullable(),
+  icon: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -55,6 +57,7 @@ export default function CertificationOptionsPage() {
     defaultValues: {
       name: "",
       siriusId: "",
+      icon: "",
     },
   });
 
@@ -63,6 +66,7 @@ export default function CertificationOptionsPage() {
     defaultValues: {
       name: "",
       siriusId: "",
+      icon: "",
     },
   });
 
@@ -136,9 +140,11 @@ export default function CertificationOptionsPage() {
   });
 
   const handleOpenEdit = (certification: OptionsCertification) => {
+    const iconValue = (certification.data as { icon?: string } | null)?.icon || "";
     editForm.reset({
       name: certification.name,
       siriusId: certification.siriusId || "",
+      icon: iconValue,
     });
     setEditingCertification(certification);
   };
@@ -156,6 +162,7 @@ export default function CertificationOptionsPage() {
       id: editingCertification.id,
       name: values.name,
       siriusId: values.siriusId || null,
+      data: values.icon ? { icon: values.icon } : null,
     });
   };
 
@@ -163,6 +170,7 @@ export default function CertificationOptionsPage() {
     createMutation.mutate({
       name: values.name,
       siriusId: values.siriusId || null,
+      data: values.icon ? { icon: values.icon } : null,
     });
   };
 
@@ -209,42 +217,53 @@ export default function CertificationOptionsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Icon</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Sirius ID</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {certificationOptions.map((certification) => (
-                  <TableRow key={certification.id} data-testid={`row-certification-option-${certification.id}`}>
-                    <TableCell data-testid={`text-name-${certification.id}`}>
-                      {certification.name}
-                    </TableCell>
-                    <TableCell data-testid={`text-sirius-id-${certification.id}`}>
-                      {certification.siriusId || <span className="text-muted-foreground italic">None</span>}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex gap-2 justify-end">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleOpenEdit(certification)}
-                          data-testid={`button-edit-${certification.id}`}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => setDeleteId(certification.id)}
-                          data-testid={`button-delete-${certification.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {certificationOptions.map((certification) => {
+                  const iconName = (certification.data as { icon?: string } | null)?.icon;
+                  return (
+                    <TableRow key={certification.id} data-testid={`row-certification-option-${certification.id}`}>
+                      <TableCell data-testid={`icon-${certification.id}`}>
+                        {iconName ? (
+                          renderIcon(iconName, "h-5 w-5 text-muted-foreground")
+                        ) : (
+                          <span className="text-muted-foreground italic">None</span>
+                        )}
+                      </TableCell>
+                      <TableCell data-testid={`text-name-${certification.id}`}>
+                        {certification.name}
+                      </TableCell>
+                      <TableCell data-testid={`text-sirius-id-${certification.id}`}>
+                        {certification.siriusId || <span className="text-muted-foreground italic">None</span>}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex gap-2 justify-end">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOpenEdit(certification)}
+                            data-testid={`button-edit-${certification.id}`}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => setDeleteId(certification.id)}
+                            data-testid={`button-delete-${certification.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -293,6 +312,24 @@ export default function CertificationOptionsPage() {
                       />
                     </FormControl>
                     <FormMessage data-testid="error-add-sirius-id" />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={addForm.control}
+                name="icon"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Icon</FormLabel>
+                    <FormControl>
+                      <IconPicker
+                        value={field.value || undefined}
+                        onChange={(value) => field.onChange(value || "")}
+                        placeholder="Select an icon (optional)"
+                        data-testid="picker-add-icon"
+                      />
+                    </FormControl>
+                    <FormMessage data-testid="error-add-icon" />
                   </FormItem>
                 )}
               />
@@ -361,6 +398,24 @@ export default function CertificationOptionsPage() {
                       />
                     </FormControl>
                     <FormMessage data-testid="error-edit-sirius-id" />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="icon"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Icon</FormLabel>
+                    <FormControl>
+                      <IconPicker
+                        value={field.value || undefined}
+                        onChange={(value) => field.onChange(value || "")}
+                        placeholder="Select an icon (optional)"
+                        data-testid="picker-edit-icon"
+                      />
+                    </FormControl>
+                    <FormMessage data-testid="error-edit-icon" />
                   </FormItem>
                 )}
               />
