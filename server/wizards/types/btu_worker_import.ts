@@ -399,6 +399,7 @@ export class BtuWorkerImportWizard extends FeedWizard {
                 isPrimary: true,
                 asOfDate,
                 bargainingUnitId: mappingResult.bargainingUnitId || undefined,
+                employmentStatusId: mappingResult.employmentStatusId || undefined,
               });
 
               // Create secondary employment record if secondary employer exists
@@ -408,6 +409,7 @@ export class BtuWorkerImportWizard extends FeedWizard {
                   isPrimary: false,
                   asOfDate,
                   bargainingUnitId: mappingResult.bargainingUnitId || undefined,
+                  employmentStatusId: mappingResult.employmentStatusId || undefined,
                 });
               }
             }
@@ -461,6 +463,7 @@ export class BtuWorkerImportWizard extends FeedWizard {
                 isPrimary: true,
                 asOfDate,
                 bargainingUnitId: mappingResult.bargainingUnitId || undefined,
+                employmentStatusId: mappingResult.employmentStatusId || undefined,
               });
 
               // Create secondary employment record if secondary employer exists
@@ -470,6 +473,7 @@ export class BtuWorkerImportWizard extends FeedWizard {
                   isPrimary: false,
                   asOfDate,
                   bargainingUnitId: mappingResult.bargainingUnitId || undefined,
+                  employmentStatusId: mappingResult.employmentStatusId || undefined,
                 });
               }
             }

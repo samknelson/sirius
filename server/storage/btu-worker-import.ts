@@ -29,6 +29,7 @@ export interface EmployerMappingResult {
   primaryEmployer: EmployerInfo;
   secondaryEmployer: EmployerInfo | null;
   bargainingUnitId: string | null;
+  employmentStatusId: string | null;
 }
 
 export interface TerminatedWorkerInfo {
@@ -74,6 +75,7 @@ export interface BtuWorkerImportStorage {
     isPrimary: boolean;
     asOfDate: string;
     bargainingUnitId?: string;
+    employmentStatusId?: string;
   }): Promise<WorkerHours>;
   getActiveEmploymentsForBargainingUnit(bargainingUnitId: string, asOfDate: Date): Promise<Array<{
     workerId: string;
@@ -155,6 +157,7 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
         employerName: rawRow.employer_name,
         bargainingUnitId: rawRow.bargaining_unit_id,
         secondaryEmployerName: rawRow.secondary_employer_name,
+        employmentStatusId: rawRow.employment_status_id,
       };
       
       if (!mapping) return null;
@@ -195,6 +198,7 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
         },
         secondaryEmployer,
         bargainingUnitId: mapping.bargainingUnitId || null,
+        employmentStatusId: mapping.employmentStatusId || null,
       };
     },
 
@@ -321,11 +325,18 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
       isPrimary: boolean;
       asOfDate: string;
       bargainingUnitId?: string;
+      employmentStatusId?: string;
     }): Promise<WorkerHours> {
-      const statusCode = data.isPrimary ? 'A' : 'A2';
-      const status = await this.getEmploymentStatusByCode(statusCode);
-      if (!status) {
-        throw new Error(`Employment status not found for code: ${statusCode}`);
+      let statusId = data.employmentStatusId;
+      
+      // If no employment status ID provided, fall back to default based on isPrimary
+      if (!statusId) {
+        const statusCode = data.isPrimary ? 'A' : 'A2';
+        const status = await this.getEmploymentStatusByCode(statusCode);
+        if (!status) {
+          throw new Error(`Employment status not found for code: ${statusCode}`);
+        }
+        statusId = status.id;
       }
       
       const asOfDate = new Date(data.asOfDate);
@@ -342,7 +353,7 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
       const result = await storage.workerHours.upsertWorkerHours({
         workerId,
         employerId: data.employerId,
-        employmentStatusId: status.id,
+        employmentStatusId: statusId,
         year,
         month,
         hours: null,

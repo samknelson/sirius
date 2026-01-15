@@ -28,6 +28,14 @@ interface BtuEmployerMap {
   employerName: string | null;
   secondaryEmployerName: string | null;
   bargainingUnitId: string | null;
+  employmentStatusId: string | null;
+}
+
+interface EmploymentStatus {
+  id: string;
+  name: string;
+  code: string;
+  employed: boolean;
 }
 
 interface BargainingUnit {
@@ -52,6 +60,7 @@ interface FormValues {
   employerName: string;
   secondaryEmployerName: string;
   bargainingUnitId: string;
+  employmentStatusId: string;
 }
 
 interface ImportResult {
@@ -100,6 +109,10 @@ export default function BtuEmployerMapListPage() {
 
   const { data: bargainingUnits = [] } = useQuery<BargainingUnit[]>({
     queryKey: ["/api/bargaining-units"],
+  });
+
+  const { data: employmentStatuses = [] } = useQuery<EmploymentStatus[]>({
+    queryKey: ["/api/settings/employment-statuses"],
   });
 
   const { data: systemEmployersData, isSuccess: systemEmployersLoaded } = useQuery<{ employerNames: string[] }>({
@@ -213,6 +226,7 @@ export default function BtuEmployerMapListPage() {
       employerName: "",
       secondaryEmployerName: "",
       bargainingUnitId: "",
+      employmentStatusId: "",
     },
   });
 
@@ -549,6 +563,7 @@ export default function BtuEmployerMapListPage() {
       employerName: "",
       secondaryEmployerName: "",
       bargainingUnitId: "",
+      employmentStatusId: "",
     });
     setIsAddDialogOpen(true);
   };
@@ -573,6 +588,7 @@ export default function BtuEmployerMapListPage() {
       employerName: employerNameValue,
       secondaryEmployerName: record.secondaryEmployerName || "",
       bargainingUnitId: record.bargainingUnitId || "",
+      employmentStatusId: record.employmentStatusId || "",
     });
     setEditRecord(record);
   };
@@ -591,6 +607,7 @@ export default function BtuEmployerMapListPage() {
       employerName: suggestedEmployer,
       secondaryEmployerName: record.secondaryEmployerName || null,
       bargainingUnitId: record.bargainingUnitId || null,
+      employmentStatusId: record.employmentStatusId || null,
     };
     
     updateMutation.mutate({ 
@@ -620,6 +637,7 @@ export default function BtuEmployerMapListPage() {
       employerName: record.employerName || null,
       secondaryEmployerName: suggestedEmployer,
       bargainingUnitId: record.bargainingUnitId || null,
+      employmentStatusId: record.employmentStatusId || null,
     };
     
     updateMutation.mutate({ 
@@ -646,6 +664,7 @@ export default function BtuEmployerMapListPage() {
       employerName: data.employerName?.trim() || null,
       secondaryEmployerName: data.secondaryEmployerName?.trim() || null,
       bargainingUnitId: data.bargainingUnitId || null,
+      employmentStatusId: data.employmentStatusId || null,
     };
     
     if (editRecord) {
@@ -1184,6 +1203,34 @@ export default function BtuEmployerMapListPage() {
                           {bargainingUnits.map((unit) => (
                             <SelectItem key={unit.id} value={unit.id}>
                               {unit.siriusId} - {unit.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="employmentStatusId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Employment Status</FormLabel>
+                      <Select 
+                        onValueChange={(val) => field.onChange(val === "__none__" ? "" : val)} 
+                        value={field.value || "__none__"}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-employment-status">
+                            <SelectValue placeholder="Select an employment status" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="__none__">None</SelectItem>
+                          {employmentStatuses.map((status) => (
+                            <SelectItem key={status.id} value={status.id}>
+                              {status.code} - {status.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
