@@ -7,6 +7,8 @@ import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Plus, Edit, Trash2 } from "lucide-react";
@@ -34,13 +36,28 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { insertOptionsCertificationsSchema, type OptionsCertification, type InsertOptionsCertification } from "@shared/schema";
+
+interface SkillOption {
+  id: string;
+  name: string;
+  description: string | null;
+  data: { icon?: string } | null;
+}
+
+interface CertificationData {
+  icon?: string;
+  skills?: string[];
+}
 
 const formSchema = insertOptionsCertificationsSchema.extend({
   name: z.string().min(1, "Name is required").max(255, "Name must be 255 characters or less"),
   siriusId: z.string().max(100, "Sirius ID must be 100 characters or less").optional().nullable(),
   icon: z.string().optional(),
+  skills: z.array(z.string()).optional().default([]),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -58,6 +75,7 @@ export default function CertificationOptionsPage() {
       name: "",
       siriusId: "",
       icon: "",
+      skills: [],
     },
   });
 
@@ -67,11 +85,16 @@ export default function CertificationOptionsPage() {
       name: "",
       siriusId: "",
       icon: "",
+      skills: [],
     },
   });
 
   const { data: certificationOptions = [], isLoading } = useQuery<OptionsCertification[]>({
     queryKey: ["/api/options/certification"],
+  });
+
+  const { data: skillOptions = [] } = useQuery<SkillOption[]>({
+    queryKey: ["/api/options/skill"],
   });
 
   const createMutation = useMutation({
@@ -140,11 +163,12 @@ export default function CertificationOptionsPage() {
   });
 
   const handleOpenEdit = (certification: OptionsCertification) => {
-    const iconValue = (certification.data as { icon?: string } | null)?.icon || "";
+    const certData = certification.data as CertificationData | null;
     editForm.reset({
       name: certification.name,
       siriusId: certification.siriusId || "",
-      icon: iconValue,
+      icon: certData?.icon || "",
+      skills: certData?.skills || [],
     });
     setEditingCertification(certification);
   };
@@ -156,13 +180,20 @@ export default function CertificationOptionsPage() {
     }
   };
 
+  const buildDataPayload = (values: FormValues): CertificationData | null => {
+    const data: CertificationData = {};
+    if (values.icon) data.icon = values.icon;
+    if (values.skills && values.skills.length > 0) data.skills = values.skills;
+    return Object.keys(data).length > 0 ? data : null;
+  };
+
   const handleSaveEdit = (values: FormValues) => {
     if (!editingCertification) return;
     updateMutation.mutate({
       id: editingCertification.id,
       name: values.name,
       siriusId: values.siriusId || null,
-      data: values.icon ? { icon: values.icon } : null,
+      data: buildDataPayload(values),
     });
   };
 
@@ -170,7 +201,7 @@ export default function CertificationOptionsPage() {
     createMutation.mutate({
       name: values.name,
       siriusId: values.siriusId || null,
-      data: values.icon ? { icon: values.icon } : null,
+      data: buildDataPayload(values),
     });
   };
 
@@ -180,6 +211,73 @@ export default function CertificationOptionsPage() {
     }
     setIsAddDialogOpen(open);
   };
+
+  const getSkillNamesForCertification = (certification: OptionsCertification): string[] => {
+    const certData = certification.data as CertificationData | null;
+    const skillIds = certData?.skills || [];
+    return skillIds
+      .map(skillId => skillOptions.find(s => s.id === skillId)?.name)
+      .filter((name): name is string => !!name);
+  };
+
+  const renderSkillsCheckboxGroup = (
+    form: typeof addForm | typeof editForm,
+    fieldName: "skills",
+    testIdPrefix: string
+  ) => (
+    <FormField
+      control={form.control}
+      name={fieldName}
+      render={({ field }) => (
+        <FormItem>
+          <FormLabel>Associated Skills</FormLabel>
+          <FormDescription>
+            Select which skills this certification will grant to workers.
+          </FormDescription>
+          {skillOptions.length === 0 ? (
+            <div className="text-sm text-muted-foreground italic py-2">
+              No skills available. Configure skills first in Skill Options.
+            </div>
+          ) : (
+            <ScrollArea className="h-40 rounded-md border p-3">
+              <div className="space-y-2">
+                {skillOptions.map((skill) => {
+                  const isChecked = field.value?.includes(skill.id) || false;
+                  return (
+                    <div key={skill.id} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`${testIdPrefix}-skill-${skill.id}`}
+                        checked={isChecked}
+                        onCheckedChange={(checked) => {
+                          const currentSkills = [...(field.value || [])];
+                          if (checked === true) {
+                            if (!currentSkills.includes(skill.id)) {
+                              currentSkills.push(skill.id);
+                            }
+                            field.onChange(currentSkills);
+                          } else {
+                            field.onChange(currentSkills.filter(id => id !== skill.id));
+                          }
+                        }}
+                        data-testid={`${testIdPrefix}-skill-${skill.id}`}
+                      />
+                      <label
+                        htmlFor={`${testIdPrefix}-skill-${skill.id}`}
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                      >
+                        {skill.name}
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          )}
+          <FormMessage data-testid={`error-${testIdPrefix}-skills`} />
+        </FormItem>
+      )}
+    />
+  );
 
   if (isLoading) {
     return (
@@ -219,13 +317,16 @@ export default function CertificationOptionsPage() {
                 <TableRow>
                   <TableHead>Icon</TableHead>
                   <TableHead>Name</TableHead>
+                  <TableHead>Skills Granted</TableHead>
                   <TableHead>Sirius ID</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {certificationOptions.map((certification) => {
-                  const iconName = (certification.data as { icon?: string } | null)?.icon;
+                  const certData = certification.data as CertificationData | null;
+                  const iconName = certData?.icon;
+                  const skillNames = getSkillNamesForCertification(certification);
                   return (
                     <TableRow key={certification.id} data-testid={`row-certification-option-${certification.id}`}>
                       <TableCell data-testid={`icon-${certification.id}`}>
@@ -237,6 +338,19 @@ export default function CertificationOptionsPage() {
                       </TableCell>
                       <TableCell data-testid={`text-name-${certification.id}`}>
                         {certification.name}
+                      </TableCell>
+                      <TableCell data-testid={`text-skills-${certification.id}`}>
+                        {skillNames.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {skillNames.map((name, idx) => (
+                              <Badge key={idx} variant="secondary" className="text-xs">
+                                {name}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground italic">None</span>
+                        )}
                       </TableCell>
                       <TableCell data-testid={`text-sirius-id-${certification.id}`}>
                         {certification.siriusId || <span className="text-muted-foreground italic">None</span>}
@@ -271,7 +385,7 @@ export default function CertificationOptionsPage() {
       </Card>
 
       <Dialog open={isAddDialogOpen} onOpenChange={handleAddDialogClose}>
-        <DialogContent data-testid="dialog-add-certification-option">
+        <DialogContent className="max-w-lg" data-testid="dialog-add-certification-option">
           <DialogHeader>
             <DialogTitle>Add Certification Option</DialogTitle>
             <DialogDescription>
@@ -333,6 +447,7 @@ export default function CertificationOptionsPage() {
                   </FormItem>
                 )}
               />
+              {renderSkillsCheckboxGroup(addForm, "skills", "add")}
               <DialogFooter>
                 <Button
                   type="button"
@@ -357,7 +472,7 @@ export default function CertificationOptionsPage() {
       </Dialog>
 
       <Dialog open={editingCertification !== null} onOpenChange={handleCloseEdit}>
-        <DialogContent data-testid="dialog-edit-certification-option">
+        <DialogContent className="max-w-lg" data-testid="dialog-edit-certification-option">
           <DialogHeader>
             <DialogTitle>Edit Certification Option</DialogTitle>
             <DialogDescription>
@@ -419,6 +534,7 @@ export default function CertificationOptionsPage() {
                   </FormItem>
                 )}
               />
+              {renderSkillsCheckboxGroup(editForm, "skills", "edit")}
               <DialogFooter>
                 <Button
                   type="button"
