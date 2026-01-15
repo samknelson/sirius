@@ -115,6 +115,7 @@ export const configSections: NavSection[] = [
     description: "Worker management and configuration",
     icon: Users,
     items: [
+      { path: "/config/certification-options", label: "Certifications", icon: FileText, testId: "nav-config-certification-options", permission: "admin", requiresComponent: "worker.certifications" },
       { path: "/config/workers/ban", label: "Ban Notifications", icon: Shield, testId: "nav-config-workers-ban", permission: "admin", requiresComponent: "worker.ban" },
     ],
   },

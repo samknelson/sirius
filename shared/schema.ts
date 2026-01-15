@@ -699,6 +699,13 @@ export {
 } from "./schema/worker/skills/schema";
 
 export {
+  optionsCertifications,
+  insertOptionsCertificationsSchema,
+  type OptionsCertification,
+  type InsertOptionsCertification,
+} from "./schema/worker/certifications/schema";
+
+export {
   edlsSheets,
   edlsSheetStatusEnum,
   insertEdlsSheetsSchema,
