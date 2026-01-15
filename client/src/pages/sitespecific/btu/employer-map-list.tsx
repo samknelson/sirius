@@ -445,8 +445,7 @@ export default function BtuEmployerMapListPage() {
 
   const bulkUpdateMutation = useMutation({
     mutationFn: async (data: { ids: string[]; updates: Partial<BulkEditValues> }) => {
-      const response = await apiRequest("PATCH", "/api/sitespecific/btu/employer-map/bulk", data);
-      return response.json();
+      return await apiRequest("PATCH", "/api/sitespecific/btu/employer-map/bulk", data);
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sitespecific/btu/employer-map"] });
