@@ -165,6 +165,11 @@ export function initializePermissions(): void {
       description: 'Administrator level access',
       module: 'core'
     },
+    {
+      key: 'users.view',
+      description: 'View user accounts and profiles',
+      module: 'core'
+    },
   ];
 
   permissionRegistry.registerMany(corePermissions);
