@@ -112,7 +112,7 @@ export default function BtuEmployerMapListPage() {
   });
 
   const { data: employmentStatuses = [] } = useQuery<EmploymentStatus[]>({
-    queryKey: ["/api/settings/employment-statuses"],
+    queryKey: ["/api/employment-statuses"],
   });
 
   const { data: systemEmployersData, isSuccess: systemEmployersLoaded } = useQuery<{ employerNames: string[] }>({
