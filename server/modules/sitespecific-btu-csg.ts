@@ -535,6 +535,8 @@ export function registerBtuCsgRoutes(
 
       const { ids, updates } = parseResult.data;
       
+      console.log("Bulk update received - ids count:", ids.length, "updates:", JSON.stringify(updates));
+      
       // Convert empty strings to null for FK fields
       const cleanedUpdates: Partial<InsertBtuEmployerMap> = {};
       if (updates.employerName !== undefined) {
@@ -548,6 +550,15 @@ export function registerBtuCsgRoutes(
       }
       if (updates.employmentStatusId !== undefined) {
         cleanedUpdates.employmentStatusId = updates.employmentStatusId === "" ? null : updates.employmentStatusId;
+      }
+
+      console.log("Cleaned updates:", JSON.stringify(cleanedUpdates));
+
+      // Validate that at least one field is being updated
+      if (Object.keys(cleanedUpdates).length === 0) {
+        return res.status(400).json({ 
+          message: "No fields to update. Please select at least one field to change." 
+        });
       }
 
       let updated = 0;
