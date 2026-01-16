@@ -51,6 +51,7 @@ interface SkillOption {
 interface CertificationData {
   icon?: string;
   skills?: string[];
+  defaultDuration?: number;
 }
 
 const formSchema = insertOptionsCertificationsSchema.extend({
@@ -58,6 +59,7 @@ const formSchema = insertOptionsCertificationsSchema.extend({
   siriusId: z.string().max(100, "Sirius ID must be 100 characters or less").optional().nullable(),
   icon: z.string().optional(),
   skills: z.array(z.string()).optional().default([]),
+  defaultDuration: z.coerce.number().int().min(1, "Duration must be at least 1 month").max(120, "Duration cannot exceed 120 months").optional().nullable(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -76,6 +78,7 @@ export default function CertificationOptionsPage() {
       siriusId: "",
       icon: "",
       skills: [],
+      defaultDuration: null,
     },
   });
 
@@ -86,6 +89,7 @@ export default function CertificationOptionsPage() {
       siriusId: "",
       icon: "",
       skills: [],
+      defaultDuration: null,
     },
   });
 
@@ -169,6 +173,7 @@ export default function CertificationOptionsPage() {
       siriusId: certification.siriusId || "",
       icon: certData?.icon || "",
       skills: certData?.skills || [],
+      defaultDuration: certData?.defaultDuration || null,
     });
     setEditingCertification(certification);
   };
@@ -184,6 +189,9 @@ export default function CertificationOptionsPage() {
     const data: CertificationData = {};
     if (values.icon) data.icon = values.icon;
     if (values.skills && values.skills.length > 0) data.skills = values.skills;
+    if (values.defaultDuration !== null && values.defaultDuration !== undefined) {
+      data.defaultDuration = values.defaultDuration;
+    }
     return Object.keys(data).length > 0 ? data : null;
   };
 
@@ -317,6 +325,7 @@ export default function CertificationOptionsPage() {
                 <TableRow>
                   <TableHead>Icon</TableHead>
                   <TableHead>Name</TableHead>
+                  <TableHead>Duration</TableHead>
                   <TableHead>Skills Granted</TableHead>
                   <TableHead>Sirius ID</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -338,6 +347,13 @@ export default function CertificationOptionsPage() {
                       </TableCell>
                       <TableCell data-testid={`text-name-${certification.id}`}>
                         {certification.name}
+                      </TableCell>
+                      <TableCell data-testid={`text-duration-${certification.id}`}>
+                        {certData?.defaultDuration ? (
+                          `${certData.defaultDuration} mo`
+                        ) : (
+                          <span className="text-muted-foreground italic">-</span>
+                        )}
                       </TableCell>
                       <TableCell data-testid={`text-skills-${certification.id}`}>
                         {skillNames.length > 0 ? (
@@ -447,6 +463,30 @@ export default function CertificationOptionsPage() {
                   </FormItem>
                 )}
               />
+              <FormField
+                control={addForm.control}
+                name="defaultDuration"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Default Duration (months)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={120}
+                        placeholder="e.g., 12, 24, 36"
+                        value={field.value ?? ""}
+                        onChange={(e) => field.onChange(e.target.value === "" ? null : parseInt(e.target.value, 10))}
+                        data-testid="input-add-default-duration"
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      How long this certification remains valid (in months).
+                    </FormDescription>
+                    <FormMessage data-testid="error-add-default-duration" />
+                  </FormItem>
+                )}
+              />
               {renderSkillsCheckboxGroup(addForm, "skills", "add")}
               <DialogFooter>
                 <Button
@@ -531,6 +571,30 @@ export default function CertificationOptionsPage() {
                       />
                     </FormControl>
                     <FormMessage data-testid="error-edit-icon" />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="defaultDuration"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Default Duration (months)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={120}
+                        placeholder="e.g., 12, 24, 36"
+                        value={field.value ?? ""}
+                        onChange={(e) => field.onChange(e.target.value === "" ? null : parseInt(e.target.value, 10))}
+                        data-testid="input-edit-default-duration"
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      How long this certification remains valid (in months).
+                    </FormDescription>
+                    <FormMessage data-testid="error-edit-default-duration" />
                   </FormItem>
                 )}
               />
