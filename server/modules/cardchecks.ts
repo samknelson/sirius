@@ -2,6 +2,8 @@ import type { Express } from "express";
 import { storage } from "../storage";
 import { insertCardcheckSchema } from "@shared/schema";
 import { requireComponent } from "./components";
+import { db } from "../db";
+import { sql } from "drizzle-orm";
 
 export function registerCardchecksRoutes(
   app: Express,
@@ -185,6 +187,145 @@ export function registerCardchecksRoutes(
     } catch (error: any) {
       console.error("Failed to sign cardcheck:", error);
       res.status(500).json({ message: "Failed to sign cardcheck" });
+    }
+  });
+
+  // GET /api/employers/organizing - Get organizing employer list with card check stats
+  app.get("/api/employers/organizing", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
+    try {
+      // Get all active employers with their type info
+      const employersResult = await db.execute(sql`
+        SELECT 
+          e.id,
+          e.name,
+          e.type_id as "typeId",
+          et.name as "typeName",
+          et.icon as "typeIcon"
+        FROM employers e
+        LEFT JOIN options_employer_type et ON e.type_id = et.id
+        WHERE e.is_active = true
+        ORDER BY e.name
+      `);
+
+      const employers = employersResult.rows as any[];
+
+      // Get worker counts and card check stats per employer/bargaining unit
+      // Workers are "active" if their most recent employment record has status "Active" or "Active - Secondary"
+      const statsResult = await db.execute(sql`
+        WITH latest_employment AS (
+          SELECT DISTINCT ON (wh.worker_id, wh.employer_id)
+            wh.worker_id,
+            wh.employer_id,
+            wh.employment_status_id,
+            es.name as status_name
+          FROM worker_hours wh
+          LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
+          ORDER BY wh.worker_id, wh.employer_id, wh.year DESC, wh.month DESC, wh.day DESC
+        ),
+        active_workers AS (
+          SELECT 
+            le.worker_id,
+            le.employer_id,
+            w.bargaining_unit_id
+          FROM latest_employment le
+          INNER JOIN workers w ON w.id = le.worker_id
+          WHERE le.status_name IN ('Active', 'Active - Secondary')
+        ),
+        worker_cardchecks AS (
+          SELECT 
+            aw.employer_id,
+            aw.bargaining_unit_id,
+            COUNT(DISTINCT aw.worker_id) as total_workers,
+            COUNT(DISTINCT CASE WHEN cc.status = 'signed' THEN aw.worker_id END) as signed_workers
+          FROM active_workers aw
+          LEFT JOIN cardchecks cc ON cc.worker_id = aw.worker_id AND cc.status = 'signed'
+          GROUP BY aw.employer_id, aw.bargaining_unit_id
+        )
+        SELECT 
+          wc.employer_id as "employerId",
+          wc.bargaining_unit_id as "bargainingUnitId",
+          bu.name as "bargainingUnitName",
+          wc.total_workers as "totalWorkers",
+          wc.signed_workers as "signedWorkers"
+        FROM worker_cardchecks wc
+        LEFT JOIN bargaining_units bu ON bu.id = wc.bargaining_unit_id
+      `);
+
+      const stats = statsResult.rows as any[];
+
+      // Get stewards for each employer
+      const stewardsResult = await db.execute(sql`
+        SELECT 
+          wsa.employer_id as "employerId",
+          wsa.worker_id as "workerId",
+          wsa.bargaining_unit_id as "bargainingUnitId",
+          c.display_name as "displayName",
+          bu.name as "bargainingUnitName"
+        FROM worker_steward_assignments wsa
+        INNER JOIN workers w ON w.id = wsa.worker_id
+        INNER JOIN contacts c ON c.id = w.contact_id
+        LEFT JOIN bargaining_units bu ON bu.id = wsa.bargaining_unit_id
+        ORDER BY c.display_name
+      `);
+
+      const stewards = stewardsResult.rows as any[];
+
+      // Build response with aggregated data
+      const employerMap = new Map<string, any>();
+
+      for (const emp of employers) {
+        employerMap.set(emp.id, {
+          id: emp.id,
+          name: emp.name,
+          typeId: emp.typeId,
+          typeName: emp.typeName,
+          typeIcon: emp.typeIcon,
+          totalWorkers: 0,
+          signedWorkers: 0,
+          bargainingUnits: [],
+          stewards: []
+        });
+      }
+
+      // Aggregate stats by employer
+      for (const stat of stats) {
+        const emp = employerMap.get(stat.employerId);
+        if (emp) {
+          emp.totalWorkers += Number(stat.totalWorkers) || 0;
+          emp.signedWorkers += Number(stat.signedWorkers) || 0;
+          if (stat.bargainingUnitId) {
+            emp.bargainingUnits.push({
+              id: stat.bargainingUnitId,
+              name: stat.bargainingUnitName || 'Unknown',
+              totalWorkers: Number(stat.totalWorkers) || 0,
+              signedWorkers: Number(stat.signedWorkers) || 0
+            });
+          }
+        }
+      }
+
+      // Add stewards to employers
+      for (const steward of stewards) {
+        const emp = employerMap.get(steward.employerId);
+        if (emp) {
+          emp.stewards.push({
+            workerId: steward.workerId,
+            displayName: steward.displayName,
+            bargainingUnitId: steward.bargainingUnitId,
+            bargainingUnitName: steward.bargainingUnitName
+          });
+        }
+      }
+
+      // Filter to only employers with workers and sort by name
+      const result = Array.from(employerMap.values())
+        .filter(emp => emp.totalWorkers > 0)
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("Failed to fetch organizing employer list:", error);
+      res.status(500).json({ message: "Failed to fetch organizing employer list" });
     }
   });
 }

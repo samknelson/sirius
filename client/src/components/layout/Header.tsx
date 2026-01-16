@@ -372,6 +372,18 @@ export default function Header() {
                         </Button>
                       </Link>
                     )}
+                    {hasComponent("cardcheck") && hasPermission("staff") && (
+                      <Link href="/employers/organizing" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location === "/employers/organizing" ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-employers-organizing"
+                        >
+                          <ClipboardCheck className="h-4 w-4 mr-2" />
+                          Organizing
+                        </Button>
+                      </Link>
+                    )}
                   </>
                 )}
 
@@ -801,6 +813,16 @@ export default function Header() {
                         <div className="flex items-center cursor-pointer" data-testid="menu-dispatch-jobs">
                           <Briefcase className="h-4 w-4 mr-2" />
                           Dispatch Jobs
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasComponent("cardcheck") && hasPermission("staff") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/employers/organizing" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-employers-organizing">
+                          <ClipboardCheck className="h-4 w-4 mr-2" />
+                          Organizing
                         </div>
                       </Link>
                     </DropdownMenuItem>
