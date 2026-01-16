@@ -332,4 +332,101 @@ export function registerCardchecksRoutes(
       res.status(500).json({ message: "Failed to fetch organizing employer list" });
     }
   });
+
+  // GET /api/employers/:employerId/missing-cardchecks - Get workers at employer without signed cardchecks
+  app.get("/api/employers/:employerId/missing-cardchecks", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
+    try {
+      const { employerId } = req.params;
+
+      // Get employer info
+      const employerResult = await db.execute(sql`
+        SELECT id, name FROM employers WHERE id = ${employerId}
+      `);
+
+      if (employerResult.rows.length === 0) {
+        return res.status(404).json({ message: "Employer not found" });
+      }
+
+      const employer = employerResult.rows[0] as any;
+
+      // Get active workers at this employer who don't have a signed cardcheck
+      const workersResult = await db.execute(sql`
+        WITH latest_employment AS (
+          SELECT DISTINCT ON (wh.worker_id, wh.employer_id)
+            wh.worker_id,
+            wh.employer_id,
+            es.name as status_name
+          FROM worker_hours wh
+          LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
+          WHERE wh.employer_id = ${employerId}
+          ORDER BY wh.worker_id, wh.employer_id, wh.year DESC, wh.month DESC, wh.day DESC
+        ),
+        active_workers AS (
+          SELECT le.worker_id
+          FROM latest_employment le
+          WHERE le.status_name IN ('Active', 'Active - Secondary')
+        ),
+        workers_with_signed_cardcheck AS (
+          SELECT DISTINCT cc.worker_id
+          FROM cardchecks cc
+          WHERE cc.status = 'signed'
+        )
+        SELECT 
+          w.id as "workerId",
+          c.display_name as "displayName",
+          c.email,
+          bu.id as "bargainingUnitId",
+          bu.name as "bargainingUnitName"
+        FROM active_workers aw
+        INNER JOIN workers w ON w.id = aw.worker_id
+        INNER JOIN contacts c ON c.id = w.contact_id
+        LEFT JOIN bargaining_units bu ON bu.id = w.bargaining_unit_id
+        WHERE aw.worker_id NOT IN (SELECT worker_id FROM workers_with_signed_cardcheck)
+        ORDER BY c.display_name
+      `);
+
+      // Get phone numbers for these workers
+      const workerIds = workersResult.rows.map((r: any) => r.workerId);
+      let phoneMap = new Map<string, string>();
+      
+      if (workerIds.length > 0) {
+        const phonesResult = await db.execute(sql`
+          SELECT 
+            w.id as worker_id,
+            cp.phone
+          FROM workers w
+          JOIN contacts c ON c.id = w.contact_id
+          LEFT JOIN contact_phones cp ON cp.contact_id = c.id AND cp.is_primary = true
+          WHERE w.id = ANY(${workerIds})
+        `);
+        
+        for (const row of phonesResult.rows as any[]) {
+          if (row.phone) {
+            phoneMap.set(row.worker_id, row.phone);
+          }
+        }
+      }
+
+      const workers = workersResult.rows.map((row: any) => ({
+        workerId: row.workerId,
+        displayName: row.displayName,
+        email: row.email || null,
+        phone: phoneMap.get(row.workerId) || null,
+        bargainingUnitId: row.bargainingUnitId,
+        bargainingUnitName: row.bargainingUnitName || 'Unknown'
+      }));
+
+      res.json({
+        employer: {
+          id: employer.id,
+          name: employer.name
+        },
+        workers,
+        totalCount: workers.length
+      });
+    } catch (error: any) {
+      console.error("Failed to fetch missing cardchecks:", error);
+      res.status(500).json({ message: "Failed to fetch workers missing cardchecks" });
+    }
+  });
 }

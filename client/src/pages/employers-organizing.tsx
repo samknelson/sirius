@@ -1,9 +1,10 @@
-import { Building2, Users, Award, Loader2 } from "lucide-react";
+import { Building2, Users, Award, Loader2, UserX } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -66,6 +67,7 @@ function EmployerCard({ employer }: { employer: OrganizingEmployer }) {
   const percentage = employer.totalWorkers > 0 
     ? Math.round((employer.signedWorkers / employer.totalWorkers) * 100) 
     : 0;
+  const missingCount = employer.totalWorkers - employer.signedWorkers;
 
   return (
     <Card className="hover-elevate" data-testid={`card-employer-${employer.id}`}>
@@ -132,6 +134,20 @@ function EmployerCard({ employer }: { employer: OrganizingEmployer }) {
               ))}
             </div>
           </div>
+        )}
+
+        {missingCount > 0 && (
+          <Link href={`/employers/${employer.id}/missing-cardchecks`}>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="w-full"
+              data-testid={`button-missing-${employer.id}`}
+            >
+              <UserX className="h-4 w-4 mr-2" />
+              View {missingCount} Missing Card Checks
+            </Button>
+          </Link>
         )}
       </CardContent>
     </Card>
