@@ -1,4 +1,4 @@
-import { Users, ArrowLeft, Mail, Phone, Loader2 } from "lucide-react";
+import { Users, ArrowLeft, Mail, Phone, Loader2, Download } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { useState, useMemo } from "react";
+import pdfMake from "pdfmake/build/pdfmake";
+import pdfFonts from "pdfmake/build/vfs_fonts";
 import {
   Table,
   TableBody,
@@ -16,6 +18,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+
+pdfMake.vfs = (pdfFonts as any).pdfMake?.vfs || pdfFonts.vfs;
 
 interface MissingCardcheckWorker {
   workerId: string;
@@ -33,6 +37,103 @@ interface MissingCardchecksResponse {
   };
   workers: MissingCardcheckWorker[];
   totalCount: number;
+}
+
+function generatePdf(employer: { name: string }, workers: MissingCardcheckWorker[], missingCount: number) {
+  const tableBody = [
+    [
+      { text: 'Name', style: 'tableHeader' },
+      { text: 'Email', style: 'tableHeader' },
+      { text: 'Phone', style: 'tableHeader' },
+      { text: 'Bargaining Unit', style: 'tableHeader' },
+    ],
+  ];
+  
+  if (workers.length > 0) {
+    workers.forEach((worker) => {
+      tableBody.push([
+        { text: worker.displayName, style: undefined as any },
+        { text: worker.email || '-', style: undefined as any },
+        { text: worker.phone || '-', style: undefined as any },
+        { text: worker.bargainingUnitName, style: undefined as any },
+      ]);
+    });
+  } else {
+    tableBody.push([
+      { text: 'All active workers have signed card checks', colSpan: 4, style: 'emptyMessage' } as any,
+      {}, {}, {}
+    ]);
+  }
+
+  const docDefinition = {
+    pageSize: 'LETTER' as const,
+    pageMargins: [40, 40, 40, 40] as [number, number, number, number],
+    content: [
+      {
+        text: employer.name,
+        style: 'header',
+        margin: [0, 0, 0, 5] as [number, number, number, number],
+      },
+      {
+        text: 'Missing Card Checks Report',
+        style: 'subheader',
+        margin: [0, 0, 0, 15] as [number, number, number, number],
+      },
+      {
+        columns: [
+          { text: `Workers Missing Card Checks: ${missingCount}`, style: 'stat' },
+          { text: `Generated: ${new Date().toLocaleDateString()}`, style: 'stat', alignment: 'right' as const },
+        ],
+        margin: [0, 0, 0, 20] as [number, number, number, number],
+      },
+      {
+        table: {
+          headerRows: 1,
+          widths: ['*', '*', 'auto', 'auto'],
+          body: tableBody,
+        },
+        layout: {
+          fillColor: (rowIndex: number) => (rowIndex === 0 ? '#f3f4f6' : null),
+          hLineWidth: () => 0.5,
+          vLineWidth: () => 0.5,
+          hLineColor: () => '#d1d5db',
+          vLineColor: () => '#d1d5db',
+        },
+      },
+    ],
+    styles: {
+      header: {
+        fontSize: 18,
+        bold: true,
+      },
+      subheader: {
+        fontSize: 14,
+        color: '#6b7280',
+      },
+      stat: {
+        fontSize: 11,
+        color: '#374151',
+        bold: true,
+      },
+      tableHeader: {
+        bold: true,
+        fontSize: 10,
+        color: '#374151',
+      },
+      emptyMessage: {
+        fontSize: 10,
+        color: '#6b7280',
+        italics: true,
+        alignment: 'center',
+      },
+    },
+    defaultStyle: {
+      fontSize: 9,
+    },
+  };
+
+  const fileName = `missing-cardchecks-${employer.name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}.pdf`;
+  pdfMake.createPdf(docDefinition as any).download(fileName);
 }
 
 function LoadingSkeleton() {
@@ -81,12 +182,25 @@ export default function EmployerMissingCardchecks() {
         title={data?.employer?.name ? `Missing Card Checks - ${data.employer.name}` : "Missing Card Checks"}
         icon={<Users className="text-primary-foreground" size={16} />}
         actions={
-          <Link href="/employers/organizing">
-            <Button variant="outline" size="sm" data-testid="button-back">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Organizing List
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            {data && (
+              <Button 
+                variant="default" 
+                size="sm" 
+                onClick={() => generatePdf(data.employer, data.workers, data.totalCount)}
+                data-testid="button-download-pdf"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download PDF
+              </Button>
+            )}
+            <Link href="/employers/organizing">
+              <Button variant="outline" size="sm" data-testid="button-back">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back to Organizing List
+              </Button>
+            </Link>
+          </div>
         }
       />
 
