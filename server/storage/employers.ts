@@ -1,6 +1,6 @@
 import { getClient } from './transaction-context';
 import { employers, type Employer, type InsertEmployer } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, inArray } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
 export interface EmployerWorker {
@@ -18,6 +18,7 @@ export interface EmployerWorker {
 export interface EmployerStorage {
   getAllEmployers(): Promise<Employer[]>;
   getEmployer(id: string): Promise<Employer | undefined>;
+  getByIds(ids: string[]): Promise<Employer[]>;
   getEmployerWorkers(employerId: string): Promise<EmployerWorker[]>;
   createEmployer(employer: InsertEmployer): Promise<Employer>;
   updateEmployer(id: string, employer: Partial<InsertEmployer>): Promise<Employer | undefined>;
@@ -36,6 +37,12 @@ export function createEmployerStorage(): EmployerStorage {
       const client = getClient();
       const [employer] = await client.select().from(employers).where(eq(employers.id, id));
       return employer || undefined;
+    },
+
+    async getByIds(ids: string[]): Promise<Employer[]> {
+      if (ids.length === 0) return [];
+      const client = getClient();
+      return await client.select().from(employers).where(inArray(employers.id, ids));
     },
 
     async getEmployerWorkers(employerId: string): Promise<EmployerWorker[]> {

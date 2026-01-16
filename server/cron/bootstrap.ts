@@ -1,6 +1,4 @@
-import { db } from "../db";
-import { cronJobs } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { storage } from "../storage";
 import { logger } from "../logger";
 import { cronJobRegistry } from "./registry";
 
@@ -75,30 +73,24 @@ export async function bootstrapCronJobs(): Promise<void> {
       }
 
       // Check if job already exists in database
-      const existing = await db
-        .select()
-        .from(cronJobs)
-        .where(eq(cronJobs.name, defaultJob.name));
+      const existing = await storage.cronJobs.getByName(defaultJob.name);
 
-      if (existing.length > 0) {
+      if (existing) {
         logger.debug(`Cron job "${defaultJob.name}" already exists`, {
           service: 'cron-bootstrap',
-          jobName: existing[0].name,
+          jobName: existing.name,
         });
         skipped++;
         continue;
       }
 
       // Create the job
-      const [job] = await db
-        .insert(cronJobs)
-        .values({
-          name: defaultJob.name,
-          description: defaultJob.description,
-          schedule: defaultJob.schedule,
-          isEnabled: defaultJob.isEnabled,
-        })
-        .returning();
+      const job = await storage.cronJobs.create({
+        name: defaultJob.name,
+        description: defaultJob.description,
+        schedule: defaultJob.schedule,
+        isEnabled: defaultJob.isEnabled,
+      });
 
       logger.info(`Created default cron job: ${defaultJob.name}`, {
         service: 'cron-bootstrap',

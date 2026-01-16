@@ -1,6 +1,4 @@
-import { db } from "../../db";
-import { wizards, wizardReportData } from "@shared/schema";
-import { and, lt, eq } from "drizzle-orm";
+import { storage } from "../../storage";
 import { logger } from "../../logger";
 import type { CronJobHandler, CronJobContext, CronJobSummary } from "../registry";
 import type { RetentionPeriod, ReportData } from "@shared/wizard-types";
@@ -51,13 +49,7 @@ export const deleteExpiredReportsHandler: CronJobHandler = {
 
     try {
       // Get all wizards that are reports
-      const allWizards = await db
-        .select({
-          id: wizards.id,
-          type: wizards.type,
-          data: wizards.data,
-        })
-        .from(wizards);
+      const allWizards = await storage.wizards.listAll();
 
       // Filter to only report wizards
       const reportWizards = allWizards.filter(wizard => 
@@ -103,21 +95,13 @@ export const deleteExpiredReportsHandler: CronJobHandler = {
 
         // In test mode, count but don't delete
         if (context.mode === 'test') {
-          const toDelete = await db
-            .select()
-            .from(wizardReportData)
-            .where(
-              and(
-                eq(wizardReportData.wizardId, wizard.id),
-                lt(wizardReportData.createdAt, cutoffDate)
-              )
-            );
+          const toDeleteCount = await storage.wizards.countExpiredReportData(wizard.id, cutoffDate);
 
-          if (toDelete.length > 0) {
-            totalRunsDeleted += toDelete.length;
-            statsByType[wizard.type].runsDeleted += toDelete.length;
+          if (toDeleteCount > 0) {
+            totalRunsDeleted += toDeleteCount;
+            statsByType[wizard.type].runsDeleted += toDeleteCount;
             
-            logger.info(`[TEST MODE] Would delete ${toDelete.length} expired records from wizard ${wizard.id}`, {
+            logger.info(`[TEST MODE] Would delete ${toDeleteCount} expired records from wizard ${wizard.id}`, {
               service: 'cron-delete-expired-reports',
               wizardId: wizard.id,
               wizardType: wizard.type,
@@ -128,21 +112,13 @@ export const deleteExpiredReportsHandler: CronJobHandler = {
           }
         } else {
           // Live mode: actually delete the records
-          const deleted = await db
-            .delete(wizardReportData)
-            .where(
-              and(
-                eq(wizardReportData.wizardId, wizard.id),
-                lt(wizardReportData.createdAt, cutoffDate)
-              )
-            )
-            .returning();
+          const deletedCount = await storage.wizards.deleteExpiredReportData(wizard.id, cutoffDate);
 
-          if (deleted.length > 0) {
-            totalRunsDeleted += deleted.length;
-            statsByType[wizard.type].runsDeleted += deleted.length;
+          if (deletedCount > 0) {
+            totalRunsDeleted += deletedCount;
+            statsByType[wizard.type].runsDeleted += deletedCount;
             
-            logger.info(`Deleted ${deleted.length} expired records from wizard ${wizard.id}`, {
+            logger.info(`Deleted ${deletedCount} expired records from wizard ${wizard.id}`, {
               service: 'cron-delete-expired-reports',
               wizardId: wizard.id,
               wizardType: wizard.type,

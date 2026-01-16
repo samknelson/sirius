@@ -6,7 +6,7 @@ import {
   type WorkerBan, 
   type InsertWorkerBan
 } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, lt, gte, or, isNull, isNotNull } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { eventBus, EventType } from "../services/event-bus";
 
@@ -30,6 +30,10 @@ export interface WorkerBanStorage {
   create(ban: InsertWorkerBan): Promise<WorkerBan>;
   update(id: string, ban: Partial<InsertWorkerBan>): Promise<WorkerBan | undefined>;
   delete(id: string): Promise<boolean>;
+  countExpiredButActive(today: Date): Promise<number>;
+  countActiveButMarkedInactive(today: Date): Promise<number>;
+  deactivateExpiredBans(today: Date): Promise<number>;
+  activateCurrentBans(today: Date): Promise<number>;
 }
 
 function calculateActive(endDate: Date | null | undefined): boolean {
@@ -224,6 +228,62 @@ export function createWorkerBanStorage(): WorkerBanStorage {
       }
       
       return deleted;
+    },
+
+    async countExpiredButActive(today: Date): Promise<number> {
+      const client = getClient();
+      const result = await client
+        .select({ id: workerBans.id })
+        .from(workerBans)
+        .where(and(
+          eq(workerBans.active, true),
+          isNotNull(workerBans.endDate),
+          lt(workerBans.endDate, today)
+        ));
+      return result.length;
+    },
+
+    async countActiveButMarkedInactive(today: Date): Promise<number> {
+      const client = getClient();
+      const result = await client
+        .select({ id: workerBans.id })
+        .from(workerBans)
+        .where(and(
+          eq(workerBans.active, false),
+          or(
+            isNull(workerBans.endDate),
+            gte(workerBans.endDate, today)
+          )
+        ));
+      return result.length;
+    },
+
+    async deactivateExpiredBans(today: Date): Promise<number> {
+      const client = getClient();
+      const result = await client
+        .update(workerBans)
+        .set({ active: false })
+        .where(and(
+          eq(workerBans.active, true),
+          isNotNull(workerBans.endDate),
+          lt(workerBans.endDate, today)
+        ));
+      return result.rowCount ?? 0;
+    },
+
+    async activateCurrentBans(today: Date): Promise<number> {
+      const client = getClient();
+      const result = await client
+        .update(workerBans)
+        .set({ active: true })
+        .where(and(
+          eq(workerBans.active, false),
+          or(
+            isNull(workerBans.endDate),
+            gte(workerBans.endDate, today)
+          )
+        ));
+      return result.rowCount ?? 0;
     }
   };
 }

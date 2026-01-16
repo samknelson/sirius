@@ -1,7 +1,6 @@
 import * as cron from 'node-cron';
-import { db } from "../db";
-import { cronJobs, cronJobRuns, type CronJob } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { storage } from "../storage";
+import { type CronJob } from "@shared/schema";
 import { logger } from "../logger";
 import { cronJobRegistry } from "./registry";
 import { getEnabledComponentIds } from "../modules/components";
@@ -64,10 +63,8 @@ class CronScheduler {
   }
 
   private async loadAndScheduleJobs(): Promise<void> {
-    const jobs = await db
-      .select()
-      .from(cronJobs)
-      .where(eq(cronJobs.isEnabled, true));
+    const allJobs = await storage.cronJobs.list();
+    const jobs = allJobs.filter(job => job.isEnabled);
 
     logger.info(`Found ${jobs.length} enabled cron jobs`, { service: 'cron-scheduler' });
 
@@ -125,8 +122,17 @@ class CronScheduler {
   }
 
   async executeJob(cronJob: CronJob, isManual: boolean, triggeredBy?: string, mode: "live" | "test" = "live"): Promise<void> {
-    const runId = crypto.randomUUID();
     const startedAt = new Date();
+
+    // Create run record - id and startedAt are auto-generated
+    const run = await storage.cronJobRuns.create({
+      jobName: cronJob.name,
+      status: 'running',
+      mode,
+      triggeredBy: triggeredBy || null,
+    });
+
+    const runId = run.id;
 
     logger.info(`Starting job execution: ${cronJob.name}`, {
       service: 'cron-scheduler',
@@ -136,19 +142,6 @@ class CronScheduler {
       triggeredBy,
       mode,
     });
-
-    // Create run record
-    const [run] = await db
-      .insert(cronJobRuns)
-      .values({
-        id: runId,
-        jobName: cronJob.name,
-        status: 'running',
-        mode,
-        startedAt,
-        triggeredBy: triggeredBy || null,
-      })
-      .returning();
 
     try {
       // Get the handler to access default settings if needed
@@ -167,14 +160,11 @@ class CronScheduler {
           });
           
           // Update run as skipped
-          await db
-            .update(cronJobRuns)
-            .set({
-              status: 'skipped',
-              completedAt: new Date(),
-              output: JSON.stringify({ message: skipMessage, requiredComponent: handler.requiresComponent }),
-            })
-            .where(eq(cronJobRuns.id, runId));
+          await storage.cronJobRuns.update(runId, {
+            status: 'skipped',
+            completedAt: new Date(),
+            output: JSON.stringify({ message: skipMessage, requiredComponent: handler.requiresComponent }),
+          });
           
           return;
         }
@@ -205,14 +195,11 @@ class CronScheduler {
       };
 
       // Update run as successful
-      await db
-        .update(cronJobRuns)
-        .set({
-          status: 'success',
-          completedAt: new Date(),
-          output: JSON.stringify(outputData),
-        })
-        .where(eq(cronJobRuns.id, runId));
+      await storage.cronJobRuns.update(runId, {
+        status: 'success',
+        completedAt: new Date(),
+        output: JSON.stringify(outputData),
+      });
 
       logger.info(`Job completed successfully: ${cronJob.name}`, {
         service: 'cron-scheduler',
@@ -226,14 +213,11 @@ class CronScheduler {
       const errorMessage = error instanceof Error ? error.message : String(error);
       
       // Update run as failed
-      await db
-        .update(cronJobRuns)
-        .set({
-          status: 'error',
-          completedAt: new Date(),
-          error: errorMessage,
-        })
-        .where(eq(cronJobRuns.id, runId));
+      await storage.cronJobRuns.update(runId, {
+        status: 'error',
+        completedAt: new Date(),
+        error: errorMessage,
+      });
 
       logger.error(`Job failed: ${cronJob.name}`, {
         service: 'cron-scheduler',
@@ -248,10 +232,7 @@ class CronScheduler {
   }
 
   async manualRun(jobName: string, triggeredBy?: string, mode: "live" | "test" = "live"): Promise<void> {
-    const [job] = await db
-      .select()
-      .from(cronJobs)
-      .where(eq(cronJobs.name, jobName));
+    const job = await storage.cronJobs.getByName(jobName);
 
     if (!job) {
       logger.error('Attempted to run non-existent cron job', {

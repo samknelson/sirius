@@ -1,6 +1,6 @@
 # Overview
 
-Sirius is a full-stack web application designed for comprehensive worker management. Its primary purpose is to streamline worker administration, enhance user experience, and deliver significant business value through efficient and reliable operations. Key capabilities include robust CRUD operations, configurable organizational settings, advanced features for legal compliance reporting, benefit charge billing, and detailed worker contact management.
+Sirius is a full-stack web application for comprehensive worker management. Its purpose is to streamline worker administration, enhance user experience, and deliver business value through efficient and reliable operations. Key capabilities include robust CRUD operations, configurable organizational settings, legal compliance reporting, benefit charge billing, and detailed worker contact management. The project aims to provide a reliable, efficient, and user-friendly platform for worker administration.
 
 # User Preferences
 
@@ -14,157 +14,43 @@ The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI),
 ## Technical Implementations
 -   **Frontend**: Wouter for routing, TanStack Query for server state, React Hook Form with Zod for forms. Pages are lazy-loaded.
 -   **Backend**: Express.js with TypeScript, RESTful API, and a feature-based module structure.
--   **Authentication**: Multi-provider authentication framework supporting Replit Auth (OIDC), Okta, SAML/OAuth, and local username/password. Configuration is environment-driven via `AUTH_PROVIDER` (comma-separated list). The `auth_identities` table links multiple external identities to a single user, enabling provider migration and multi-link accounts. Session management uses PostgreSQL via `connect-pg-simple`.
-    -   **Provider Configuration**: Set `AUTH_PROVIDER=replit` (default), `AUTH_PROVIDER=okta`, `AUTH_PROVIDER=local`, or combine multiple. Provider-specific env vars: `OKTA_ISSUER_URL`, `OKTA_CLIENT_ID`, `OKTA_CLIENT_SECRET`, `SAML_ENTRY_POINT`, `AUTH_LOCAL_ENABLED`.
-    -   **Architecture**: `server/auth/index.ts` (provider registry, session handling), `server/auth/config.ts` (Zod-validated configuration loader), `server/auth/providers/*.ts` (individual provider adapters), `server/storage/auth-identities.ts` (identity storage module).
--   **Masquerade Support**: Admins can masquerade as other users. Backend endpoints that access user-specific data MUST use `getEffectiveUser()` from `server/modules/masquerade.ts` to get the correct user context (masqueraded or original). Pattern:
-    ```typescript
-    const user = (req as any).user;
-    const session = req.session as any;
-    const { dbUser } = await getEffectiveUser(session, user);
-    ```
-    The function signature is `getEffectiveUser(session, sessionUser)` - no externalId parameter needed.
--   **resolveDbUser Helper**: Centralized user resolution function in `server/auth/helpers.ts`. Dynamically uses `sessionUser.providerType` to look up the user via `auth_identities` table (no hardcoded "replit" provider). Caches the result on `sessionUser.dbUser` for performance. Options: `requireActive` flag to enforce active-user checks.
-    ```typescript
-    import { resolveDbUser } from "../auth/helpers";
-    const dbUser = await resolveDbUser(sessionUser, sessionUser?.claims?.sub);
-    // Or with requireActive check:
-    const dbUser = await resolveDbUser(sessionUser, externalId, { requireActive: true });
-    ```
--   **Access Control**: Modular policy architecture with entity-based access policies and server-side LRU caching. Components can define their own permissions and policies via `ComponentDefinition`, which are automatically registered when the component is enabled. Policy references allow composite rules (e.g., `staff OR (permission AND another-policy)`) with cycle detection.
-    -   **Modular Policy Architecture**: All 21 core policies are defined as individual files under `shared/access-policies/` with custom `evaluate` functions receiving a `PolicyContext`. Modular policies are checked first; declarative policies serve as fallback for component-defined policies. File paths mirror policy IDs (e.g., `worker.dispatch.dnc.view` → `dispatch/dnc/view.ts`). Policies are loaded via `shared/access-policies/loader.ts` at server startup.
-    -   **PolicyContext**: Injected utilities for policy handlers: `hasPermission()`, `loadEntity()`, `checkPolicy()`, `isComponentEnabled()`, `getUserContact()`, `getUserWorker()`.
-    -   **Virtual Entity Support**: For create operations (no entityId yet), pass `entityData` to policies. For updates, merge existing entity with proposed changes before evaluation.
-    -   **Recursion Protection**: Policy delegation tracks evaluation stack to prevent infinite loops when policies reference each other.
+-   **Authentication**: Multi-provider authentication supporting Replit Auth (OIDC), Okta, SAML/OAuth, and local username/password. Environment-driven configuration and multi-link account capabilities are supported via an `auth_identities` table. Session management uses PostgreSQL.
+-   **Masquerade Support**: Administrators can assume the identity of other users. All backend endpoints accessing user-specific data must use `getEffectiveUser()` to ensure correct user context.
+-   **User Resolution**: `resolveDbUser` centralizes user lookup via `auth_identities`, caching results and supporting active-user checks.
+-   **Access Control**: Modular, entity-based policy architecture with server-side LRU caching. Policies can be component-defined, declarative, or modular, supporting composite rules and preventing recursion. Virtual entity support handles create operations.
 -   **Logging**: Winston logging with a PostgreSQL backend for audit trails.
 -   **Data Storage**: PostgreSQL (Neon Database) managed with Drizzle ORM.
 -   **Object Storage**: Replit Object Storage (Google Cloud Storage backend) for persistent file storage.
 -   **Real-time Notifications**: WebSocket-based push notification system.
--   **Event Bus System**: Typed publish/subscribe event bus for domain and audit events.
--   **Cron Job System**: Scheduled task execution framework with database-backed configuration.
+-   **Event Bus System**: Typed publish/subscribe event bus.
+-   **Cron Job System**: Scheduled task execution framework.
 -   **Migration Framework**: Versioned database migration system.
 
 ## Database Access Architecture
-
-**CRITICAL RULE: All database access MUST go through the storage layer.**
-
-This is a fundamental architectural constraint that enables:
-- **Audit Logging**: Storage middleware automatically logs all data operations
-- **Access Control**: Policies can be applied uniformly at the storage layer
-- **Alternative Backends**: Storage can be swapped (e.g., for testing) without changing consumers
-- **Consistency**: Single point of enforcement for validation and business rules
-
-### File Structure
-```
-server/
-├── storage/
-│   ├── db.ts              # Database connection (INTERNAL - only import from within storage/)
-│   ├── database.ts        # Storage factory and IStorage interface
-│   ├── middleware/
-│   │   └── logging.ts     # Automatic audit logging middleware
-│   └── *.ts               # Individual storage modules
-├── db.ts                  # DEPRECATED re-export (do not use in new code)
-└── modules/               # Route handlers (must use storage, NOT db)
-```
-
-### Correct Patterns
-
-**Route handlers and modules** - Use the storage object:
-```typescript
-import { storage } from "../storage";
-
-app.get("/api/workers/:id", async (req, res) => {
-  const worker = await storage.workers.getWorker(req.params.id);
-  res.json(worker);
-});
-```
-
-**Storage modules** - Use getClient() for transaction context support:
-```typescript
-// Inside server/storage/workers.ts
-import { getClient } from './transaction-context';
-
-async function getWorker(id: string) {
-  const client = getClient();
-  return client.query.workers.findFirst({ where: eq(workers.id, id) });
-}
-```
-
-### Forbidden Patterns
-
-**NEVER do this in route handlers or modules:**
-```typescript
-// BAD - bypasses storage layer, no logging, breaks architecture
-import { db } from "../db";
-const result = await db.transaction(async (tx) => { ... });
-```
-
-### When You Need New Database Operations
-
-1. Add a method to the appropriate storage module (e.g., `server/storage/workers.ts`)
-2. If you need atomic transactions across multiple tables, use the transaction context pattern (see below)
-3. Configure logging in the storage module's logging config
-4. Use the storage method from your route handler
-
-### Transaction Context Pattern
-
-For operations that span multiple storage modules while maintaining atomicity:
-
-```typescript
-import { getClient, runInTransaction } from "./transaction-context";
-import { storage } from "./index";
-
-async createWithRelated(data, relatedItems) {
-  return runInTransaction(async () => {
-    const client = getClient();
-    const [parent] = await client.insert(parentTable).values(data).returning();
-    
-    const itemsWithParentId = relatedItems.map(i => ({ ...i, parentId: parent.id }));
-    const created = await storage.relatedModule.createMany(itemsWithParentId);
-    
-    return { ...parent, items: created };
-  });
-}
-```
-
-Key points:
-- `runInTransaction()` wraps operations in a database transaction using AsyncLocalStorage
-- `getClient()` returns the transaction client if inside a transaction, otherwise the regular db client
-- Nested calls to other storage modules (e.g., `storage.relatedModule.createMany()`) automatically participate in the same transaction
-- All logging middleware runs within the transaction context, ensuring proper audit trails
-
-### Enforcement
-
-- **Check script**: Run `npx tsx scripts/dev/check-storage-encapsulation.ts` to detect violations
-- **ESLint** (if configured): Add `no-restricted-imports` rule for `server/db`
-- **Code review**: Reject PRs that import db outside the storage layer
-
-### Existing Violations (Legacy)
-
-Some infrastructure code (cron jobs, services) currently imports db directly. These should be migrated to use storage methods over time. New code must not follow this pattern.
+All database access **MUST** go through a centralized storage layer (`server/storage/`) to ensure audit logging, access control, consistent validation, and potential backend interchangeability. Direct `db` imports outside the storage layer are forbidden. The storage layer supports transaction contexts via `runInTransaction()` and `getClient()`, ensuring atomicity across multiple storage module operations. Raw SQL for DDL operations is exposed via `storage.rawSql`.
 
 ## System Design Choices
 -   **Worker Management**: Comprehensive CRUD for workers, contacts, and benefits.
--   **Configurable Settings**: Manages organizational settings via consolidated options system (`/api/options/:type`). Authenticated users can read all options; admin-only write access. Supported types: `department`, `employer-type`, `worker-id-type`, `skill`, `dispatch-job-type`, `ledger-payment-type`, `trust-benefit-type`, `event-type`, `gender`, `worker-ws`, `employment-status`, `employer-contact-type`, `trust-provider-type`, `edls-task`. Architecture: unified metadata-driven storage (`server/storage/unified-options.ts`) with registry at `server/modules/options-registry.ts`. Metadata defines table references, display names, order columns, logging modules, and required/optional field lists for each type. EDLS tasks use the same unified options pattern; client-side enrichment with department names is done via the `useEdlsTasks` hook.
--   **User Provisioning**: Email-based user provisioning integrated with Replit accounts, with automatic contact record synchronization.
+-   **Configurable Settings**: Consolidated options system (`/api/options/:type`) for organizational settings, using a unified metadata-driven storage and registry.
+-   **User Provisioning**: Email-based user provisioning integrated with Replit accounts and automatic contact record synchronization.
 -   **Data Validation**: Extensive Zod schema validation and `libphonenumber-js`.
 -   **Employer & Policy Management**: Manages employer records, contacts, and policy assignments with historical tracking.
 -   **Bookmarks**: User-specific, entity-agnostic bookmarking.
 -   **Dashboard Plugin System**: Extensible architecture for customizable widgets.
--   **Components Feature Flag System**: Centralized registry for managing application features with dependency management and access control, cached in memory.
--   **Ledger System**: Manages financial transactions including accounts, payments, and integrity reports. EA (Entity Account) access uses `ledger.ea.view` and `ledger.ea.edit` policies that delegate to entity-specific policies (`employer.ledger`, `worker.ledger`, `trust.provider.ledger`) based on the EA's entity type. Staff-only admin pages (payment routes, payment types config, accounts list) use `staff` policy with `ledger` component requirement.
+-   **Components Feature Flag System**: Centralized registry for managing application features with dependency management and access control.
+-   **Ledger System**: Manages financial transactions including accounts, payments, and integrity reports, with entity-specific access policies.
 -   **Wizards**: Flexible workflow state management for multi-step processes and report generation.
 -   **File Storage System**: Comprehensive file management with metadata and access control.
--   **Worker Hours & Employment Views**: Tracks worker hours and employment history, with auto-sync for work status.
--   **Trust Eligibility Plugin System**: Registry-based architecture for worker eligibility determination (e.g., Work Status, GBHET Legal), including benefits eligibility scans.
+-   **Worker Hours & Employment Views**: Tracks worker hours and employment history with work status auto-sync.
+-   **Trust Eligibility Plugin System**: Registry-based architecture for worker eligibility determination and benefits eligibility scans.
 -   **Events Management**: Full CRUD for events, occurrences, and scheduling.
 -   **Database Quickstarts**: Admin-only feature for database snapshot export/import.
 -   **System Mode**: Application-wide environment mode setting (dev/test/live).
--   **Staff Alert Configuration & Sending System**: Reusable system for configuring and dispatching multi-media alerts (SMS, Email, In-App) based on context, with user contact synchronization.
--   **Terminology Framework**: Site-specific terminology customization for concepts like "Shop Steward", with admin configuration and client-side consumption.
--   **Dispatch System**: Conditional feature for managing dispatch jobs, including job types, listings, and detail pages with various statuses and eligibility plugins (worker bans, do not call, hold for employer, work status).
--   **Worker Bans**: Tracks worker restrictions with start/end dates and ban types, dynamically calculating active status.
--   **EDLS (Employer Day Labor Scheduler)**: Manages day labor scheduling with sheets (per employer/date) containing crews with worker counts. Features department-based task assignment for crews, supervisor/assignee tracking with configurable defaults, crew sequence ordering (auto-assigned based on array position during create/update), and comprehensive audit logging with the sheet as the log handler for all crew actions.
+-   **Staff Alert Configuration & Sending System**: Reusable system for configuring and dispatching multi-media alerts.
+-   **Terminology Framework**: Site-specific terminology customization.
+-   **Dispatch System**: Manages dispatch jobs, job types, listings, and detail pages with various statuses and eligibility plugins.
+-   **Worker Bans**: Tracks worker restrictions and dynamically calculates active status.
+-   **EDLS (Employer Day Labor Scheduler)**: Manages day labor scheduling with sheets, crews, department-based task assignment, supervisor tracking, and comprehensive audit logging.
 
 # External Dependencies
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DatabaseStorage } from "../../storage/database";
+import { storage } from "../../storage";
 import { processBatchQueueJobs, type ProcessingResult } from "../../services/wmb-scan-queue";
 import { logger } from "../../logger";
 import type { CronJobHandler, CronJobContext, CronJobSummary, CronJobSettingsField } from "../registry";
@@ -47,8 +47,6 @@ export const processWmbBatchHandler: CronJobHandler = {
     });
 
     try {
-      const storage = new DatabaseStorage();
-
       let result: ProcessingResult;
 
       const getQueueStats = async () => {

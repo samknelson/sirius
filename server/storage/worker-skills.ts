@@ -17,6 +17,7 @@ export interface WorkerSkillWithDetails extends WorkerSkill {
 }
 
 export interface WorkerSkillStorage {
+  getAll(): Promise<WorkerSkill[]>;
   getByWorker(workerId: string): Promise<WorkerSkillWithDetails[]>;
   get(id: string): Promise<WorkerSkill | undefined>;
   create(skill: InsertWorkerSkill & { message?: string }): Promise<WorkerSkill>;
@@ -90,6 +91,11 @@ export const workerSkillLoggingConfig: StorageLoggingConfig<WorkerSkillStorage> 
 
 export function createWorkerSkillStorage(): WorkerSkillStorage {
   return {
+    async getAll(): Promise<WorkerSkill[]> {
+      const client = getClient();
+      return client.select().from(workerSkills);
+    },
+
     async getByWorker(workerId: string): Promise<WorkerSkillWithDetails[]> {
       const client = getClient();
       const results = await client

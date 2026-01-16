@@ -1,6 +1,4 @@
-import { db } from "../../db";
-import { cronJobRuns } from "@shared/schema";
-import { lt } from "drizzle-orm";
+import { storage } from "../../storage";
 import { logger } from "../../logger";
 import type { CronJobHandler, CronJobContext, CronJobSummary } from "../registry";
 
@@ -30,12 +28,7 @@ export const deleteOldCronLogsHandler: CronJobHandler = {
 
       // In test mode, count but don't delete
       if (context.mode === 'test') {
-        const toDelete = await db
-          .select()
-          .from(cronJobRuns)
-          .where(lt(cronJobRuns.startedAt, cutoffDate));
-
-        totalDeleted = toDelete.length;
+        totalDeleted = await storage.cronJobRuns.countOldRuns(cutoffDate);
 
         logger.info('[TEST MODE] Old cron logs cleanup - would delete', {
           service: 'cron-delete-old-logs',
@@ -46,12 +39,7 @@ export const deleteOldCronLogsHandler: CronJobHandler = {
         });
       } else {
         // Live mode: actually delete the records
-        const deleted = await db
-          .delete(cronJobRuns)
-          .where(lt(cronJobRuns.startedAt, cutoffDate))
-          .returning();
-
-        totalDeleted = deleted.length;
+        totalDeleted = await storage.cronJobRuns.deleteOldRuns(cutoffDate);
 
         logger.info('Old cron logs cleanup completed', {
           service: 'cron-delete-old-logs',

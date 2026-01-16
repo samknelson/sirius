@@ -1,9 +1,10 @@
 import { getClient } from './transaction-context';
 import { wizards, wizardReportData, wizardEmployerMonthly, type Wizard, type InsertWizard, type WizardReportData, type InsertWizardReportData } from "@shared/schema";
-import { eq, and, desc, or } from "drizzle-orm";
+import { eq, and, desc, or, lt } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { wizardRegistry } from "../wizards";
 import { db } from './db';
+import { runInTransaction } from './transaction-context';
 
 export interface MonthlyWizardCreateParams {
   wizard: InsertWizard;
@@ -20,6 +21,7 @@ export interface MonthlyWizardCreateResult {
 
 export interface WizardStorage {
   list(filters?: { type?: string; status?: string; entityId?: string }): Promise<Wizard[]>;
+  listAll(): Promise<Pick<Wizard, 'id' | 'type' | 'data'>[]>;
   getById(id: string): Promise<Wizard | undefined>;
   create(wizard: InsertWizard): Promise<Wizard>;
   createMonthlyWizard(params: MonthlyWizardCreateParams): Promise<MonthlyWizardCreateResult>;
@@ -30,6 +32,8 @@ export interface WizardStorage {
   getReportData(wizardId: string): Promise<WizardReportData[]>;
   getLatestReportData(wizardId: string): Promise<WizardReportData | undefined>;
   deleteReportData(wizardId: string): Promise<number>;
+  countExpiredReportData(wizardId: string, cutoffDate: Date): Promise<number>;
+  deleteExpiredReportData(wizardId: string, cutoffDate: Date): Promise<number>;
 }
 
 export function createWizardStorage(): WizardStorage {
@@ -60,6 +64,17 @@ export function createWizardStorage(): WizardStorage {
           .from(wizards)
           .orderBy(desc(wizards.date));
       }
+    },
+
+    async listAll(): Promise<Pick<Wizard, 'id' | 'type' | 'data'>[]> {
+      const client = getClient();
+      return client
+        .select({
+          id: wizards.id,
+          type: wizards.type,
+          data: wizards.data,
+        })
+        .from(wizards);
     },
 
     async getById(id: string): Promise<Wizard | undefined> {
@@ -228,6 +243,34 @@ export function createWizardStorage(): WizardStorage {
       const result = await client
         .delete(wizardReportData)
         .where(eq(wizardReportData.wizardId, wizardId))
+        .returning();
+      return result.length;
+    },
+
+    async countExpiredReportData(wizardId: string, cutoffDate: Date): Promise<number> {
+      const client = getClient();
+      const result = await client
+        .select()
+        .from(wizardReportData)
+        .where(
+          and(
+            eq(wizardReportData.wizardId, wizardId),
+            lt(wizardReportData.createdAt, cutoffDate)
+          )
+        );
+      return result.length;
+    },
+
+    async deleteExpiredReportData(wizardId: string, cutoffDate: Date): Promise<number> {
+      const client = getClient();
+      const result = await client
+        .delete(wizardReportData)
+        .where(
+          and(
+            eq(wizardReportData.wizardId, wizardId),
+            lt(wizardReportData.createdAt, cutoffDate)
+          )
+        )
         .returning();
       return result.length;
     }

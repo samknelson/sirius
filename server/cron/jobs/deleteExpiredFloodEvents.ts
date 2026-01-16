@@ -1,5 +1,5 @@
 import { CronJobHandler, CronJobContext, CronJobSummary } from "../registry";
-import { DatabaseStorage } from "../../storage/database";
+import { storage } from "../../storage";
 import { logger } from "../../logger";
 
 export const deleteExpiredFloodEventsHandler: CronJobHandler = {
@@ -13,8 +13,6 @@ export const deleteExpiredFloodEventsHandler: CronJobHandler = {
     });
 
     try {
-      const storage = new DatabaseStorage();
-
       if (context.mode === 'test') {
         const allEvents = await storage.flood.listFloodEvents();
         const now = new Date();

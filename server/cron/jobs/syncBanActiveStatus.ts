@@ -1,6 +1,4 @@
-import { db } from "../../db";
-import { workerBans } from "@shared/schema";
-import { eq, and, lt, gte, or, isNull, isNotNull } from "drizzle-orm";
+import { storage } from "../../storage";
 import { logger } from "../../logger";
 import type { CronJobHandler, CronJobContext, CronJobSummary } from "../registry";
 
@@ -24,62 +22,25 @@ export const syncBanActiveStatusHandler: CronJobHandler = {
       const today = startOfDay(new Date());
 
       if (context.mode === 'test') {
-        const expiredButActive = await db
-          .select({ id: workerBans.id })
-          .from(workerBans)
-          .where(and(
-            eq(workerBans.active, true),
-            isNotNull(workerBans.endDate),
-            lt(workerBans.endDate, today)
-          ));
-
-        const activeButMarkedInactive = await db
-          .select({ id: workerBans.id })
-          .from(workerBans)
-          .where(and(
-            eq(workerBans.active, false),
-            or(
-              isNull(workerBans.endDate),
-              gte(workerBans.endDate, today)
-            )
-          ));
+        const wouldDeactivate = await storage.workerBans.countExpiredButActive(today);
+        const wouldActivate = await storage.workerBans.countActiveButMarkedInactive(today);
 
         logger.info('[TEST MODE] Ban active status sync - would update', {
           service: 'cron-sync-ban-active-status',
           jobId: context.jobId,
-          wouldDeactivate: expiredButActive.length,
-          wouldActivate: activeButMarkedInactive.length,
+          wouldDeactivate,
+          wouldActivate,
         });
 
         return {
           mode: 'test',
-          wouldDeactivate: expiredButActive.length,
-          wouldActivate: activeButMarkedInactive.length,
+          wouldDeactivate,
+          wouldActivate,
         };
       }
 
-      const deactivateResult = await db
-        .update(workerBans)
-        .set({ active: false })
-        .where(and(
-          eq(workerBans.active, true),
-          isNotNull(workerBans.endDate),
-          lt(workerBans.endDate, today)
-        ));
-
-      const activateResult = await db
-        .update(workerBans)
-        .set({ active: true })
-        .where(and(
-          eq(workerBans.active, false),
-          or(
-            isNull(workerBans.endDate),
-            gte(workerBans.endDate, today)
-          )
-        ));
-
-      const deactivatedCount = deactivateResult.rowCount ?? 0;
-      const activatedCount = activateResult.rowCount ?? 0;
+      const deactivatedCount = await storage.workerBans.deactivateExpiredBans(today);
+      const activatedCount = await storage.workerBans.activateCurrentBans(today);
 
       logger.info('Ban active status sync completed', {
         service: 'cron-sync-ban-active-status',

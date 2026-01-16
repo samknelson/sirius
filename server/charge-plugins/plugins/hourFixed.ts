@@ -11,9 +11,6 @@ import { z } from "zod";
 import { logger } from "../../logger";
 import { getCurrentEffectiveRate } from "../../utils/rateHistory";
 import { storage } from "../../storage/database";
-import { db } from "../../db";
-import { ledger, ledgerEa } from "@shared/schema";
-import { eq, and, sql } from "drizzle-orm";
 
 // Settings schema for Hour - Fixed plugin
 const rateHistoryEntrySchema = z.object({
@@ -252,17 +249,7 @@ class HourFixedPlugin extends ChargePlugin {
   ): Promise<{ id: string } | null> {
     try {
       // First, find the EA for this account and entity
-      const [ea] = await db
-        .select()
-        .from(ledgerEa)
-        .where(
-          and(
-            eq(ledgerEa.accountId, accountId),
-            eq(ledgerEa.entityType, entityType),
-            eq(ledgerEa.entityId, entityId)
-          )
-        )
-        .limit(1);
+      const ea = await storage.ledger.ea.getByEntityAndAccount(entityType, entityId, accountId);
 
       if (!ea) {
         // No EA exists yet, so no existing entries
@@ -275,16 +262,10 @@ class HourFixedPlugin extends ChargePlugin {
         return null;
       }
 
-      // Get all ledger entries for this EA with referenceType 'hours'
-      const entries = await db
-        .select()
-        .from(ledger)
-        .where(
-          and(
-            eq(ledger.eaId, ea.id),
-            eq(ledger.referenceType, "hours")
-          )
-        );
+      // Get all ledger entries for this EA
+      const allEntries = await storage.ledger.entries.getByEaId(ea.id);
+      // Filter to entries with referenceType 'hours'
+      const entries = allEntries.filter(e => e.referenceType === "hours");
 
       logger.debug("Checking for existing monthly entry", {
         service: "charge-plugin-hour-fixed",

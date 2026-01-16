@@ -5,8 +5,6 @@ import { createDispatchJobStorage } from "../../storage/dispatch-jobs";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../dispatch-elig-plugin-registry";
 import { EventType } from "../event-bus";
 import { isComponentEnabledSync, isCacheInitialized } from "../component-cache";
-import { db } from "../../db";
-import { workerSkills } from "@shared/schema";
 
 const SKILL_CATEGORY = "skill";
 const COMPONENT_ID = "worker.skills";
@@ -121,7 +119,8 @@ export async function backfillDispatchSkillEligibility(): Promise<{ workersProce
     return { workersProcessed: 0, entriesCreated: 0 };
   }
 
-  const allSkills = await db.select().from(workerSkills);
+  const skillStorage = createWorkerSkillStorage();
+  const allSkills = await skillStorage.getAll();
   
   if (allSkills.length === 0) {
     logger.info("No worker skills found for backfill", {

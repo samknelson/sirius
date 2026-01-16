@@ -1,6 +1,4 @@
-import { db } from "../../db";
-import { workerDispatchEligDenorm, workerBans } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { storage } from "../../storage";
 import { logger } from "../../logger";
 import type { CronJobHandler, CronJobContext, CronJobSummary } from "../registry";
 
@@ -36,16 +34,10 @@ export const sweepExpiredBanEligHandler: CronJobHandler = {
     let entriesRemoved = 0;
 
     try {
-      const workersWithBanElig = await db
-        .selectDistinct({ workerId: workerDispatchEligDenorm.workerId })
-        .from(workerDispatchEligDenorm)
-        .where(eq(workerDispatchEligDenorm.category, BAN_CATEGORY));
+      const workerIds = await storage.workerDispatchEligDenorm.getDistinctWorkersByCategory(BAN_CATEGORY);
 
-      for (const { workerId } of workersWithBanElig) {
-        const bans = await db
-          .select()
-          .from(workerBans)
-          .where(eq(workerBans.workerId, workerId));
+      for (const workerId of workerIds) {
+        const bans = await storage.workerBans.getByWorker(workerId);
 
         const activeDispatchBans = bans.filter(
           ban => ban.type === "dispatch" && isBanCurrentlyActive(ban)
@@ -53,17 +45,11 @@ export const sweepExpiredBanEligHandler: CronJobHandler = {
 
         if (activeDispatchBans.length === 0) {
           if (context.mode === 'live') {
-            const deleted = await db
-              .delete(workerDispatchEligDenorm)
-              .where(sql`${workerDispatchEligDenorm.workerId} = ${workerId} AND ${workerDispatchEligDenorm.category} = ${BAN_CATEGORY}`)
-              .returning();
-            entriesRemoved += deleted.length;
+            const deleted = await storage.workerDispatchEligDenorm.deleteByWorkerAndCategory(workerId, BAN_CATEGORY);
+            entriesRemoved += deleted;
           } else {
-            const toDelete = await db
-              .select()
-              .from(workerDispatchEligDenorm)
-              .where(sql`${workerDispatchEligDenorm.workerId} = ${workerId} AND ${workerDispatchEligDenorm.category} = ${BAN_CATEGORY}`);
-            entriesRemoved += toDelete.length;
+            const toDeleteCount = await storage.workerDispatchEligDenorm.countByWorkerAndCategory(workerId, BAN_CATEGORY);
+            entriesRemoved += toDeleteCount;
           }
           
           logger.debug(`Cleared expired ban eligibility for worker`, {
