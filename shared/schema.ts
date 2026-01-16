@@ -703,6 +703,11 @@ export {
   insertOptionsCertificationsSchema,
   type OptionsCertification,
   type InsertOptionsCertification,
+  workerCertificationStatusEnum,
+  workerCertifications,
+  insertWorkerCertificationSchema,
+  type WorkerCertification,
+  type InsertWorkerCertification,
 } from "./schema/worker/certifications/schema";
 
 export {
