@@ -95,21 +95,28 @@ function generateAggregatePdf(
     : 0;
   const totalMissing = totalStats.totalWorkers - totalStats.signedWorkers;
 
+  // Summary page
   content.push(
-    { text: 'Missing Card Checks Report - All Schools', style: 'title', margin: [0, 0, 0, 10] as [number, number, number, number] },
+    { text: 'Missing Card Checks Report', style: 'title', margin: [0, 0, 0, 5] as [number, number, number, number] },
+    { text: 'All Schools Summary', style: 'subtitle', margin: [0, 0, 0, 30] as [number, number, number, number] },
     {
-      columns: [
-        { text: `Total Schools: ${totalStats.employerCount}`, style: 'summaryItem' },
-        { text: `Total Workers: ${totalStats.totalWorkers}`, style: 'summaryItem' },
-        { text: `Signed: ${totalStats.signedWorkers} (${overallPercentage}%)`, style: 'summaryItem' },
-        { text: `Missing: ${totalMissing}`, style: 'summaryItem' },
-      ],
-      margin: [0, 0, 0, 5] as [number, number, number, number],
+      table: {
+        widths: ['*', 'auto'],
+        body: [
+          [{ text: 'Total Schools', style: 'summaryLabel' }, { text: `${totalStats.employerCount}`, style: 'summaryValue', alignment: 'right' as const }],
+          [{ text: 'Total Workers', style: 'summaryLabel' }, { text: `${totalStats.totalWorkers}`, style: 'summaryValue', alignment: 'right' as const }],
+          [{ text: 'Signed Card Checks', style: 'summaryLabel' }, { text: `${totalStats.signedWorkers} (${overallPercentage}%)`, style: 'summaryValue', alignment: 'right' as const }],
+          [{ text: 'Missing Card Checks', style: 'summaryLabel' }, { text: `${totalMissing}`, style: 'summaryValue', alignment: 'right' as const }],
+        ],
+      },
+      layout: 'noBorders',
+      margin: [0, 0, 0, 40] as [number, number, number, number],
     },
-    { text: `Generated: ${new Date().toLocaleDateString()}`, style: 'date', margin: [0, 0, 0, 20] as [number, number, number, number] },
+    { text: `Generated: ${new Date().toLocaleDateString()}`, style: 'date' },
   );
 
-  employers.forEach((employer, index) => {
+  // Each employer on its own page
+  employers.forEach((employer) => {
     const fetchResult = missingData.get(employer.id);
     const hasError = !fetchResult || fetchResult.error;
     const workers = fetchResult?.data?.workers || [];
@@ -118,9 +125,7 @@ function generateAggregatePdf(
       ? Math.round((employer.signedWorkers / employer.totalWorkers) * 100) 
       : 0;
 
-    if (index > 0) {
-      content.push({ text: '', pageBreak: 'before' });
-    }
+    content.push({ text: '', pageBreak: 'before' });
 
     content.push(
       { text: employer.name, style: 'employerHeader', margin: [0, 0, 0, 5] as [number, number, number, number] },
@@ -185,9 +190,11 @@ function generateAggregatePdf(
     pageMargins: [40, 40, 40, 40] as [number, number, number, number],
     content,
     styles: {
-      title: { fontSize: 18, bold: true },
-      summaryItem: { fontSize: 10, color: '#374151' },
-      date: { fontSize: 9, color: '#6b7280' },
+      title: { fontSize: 22, bold: true },
+      subtitle: { fontSize: 14, color: '#6b7280' },
+      summaryLabel: { fontSize: 12, color: '#374151' },
+      summaryValue: { fontSize: 12, bold: true, color: '#111827' },
+      date: { fontSize: 10, color: '#6b7280' },
       employerHeader: { fontSize: 14, bold: true },
       stat: { fontSize: 10, color: '#374151' },
       tableHeader: { bold: true, fontSize: 9, color: '#374151' },
