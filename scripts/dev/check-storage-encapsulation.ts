@@ -12,6 +12,7 @@
  * Forbidden patterns:
  * - Any file outside server/storage/ importing from '../db', '../../db', etc.
  * - Direct imports from 'server/db' in route handlers or modules
+ * - Dynamic imports: await import('../../db') or similar
  * 
  * Usage: npx tsx scripts/dev/check-storage-encapsulation.ts
  */
@@ -24,13 +25,23 @@ interface Violation {
   line: number;
   importPath: string;
   suggestion: string;
+  isDynamic?: boolean;
 }
 
-const FORBIDDEN_IMPORT_PATTERNS = [
+// Static import patterns: from '../db', from '../../db', etc.
+const FORBIDDEN_STATIC_IMPORT_PATTERNS = [
   /from\s+['"]\.\.\/db['"]/,
   /from\s+['"]\.\.\/\.\.\/db['"]/,
   /from\s+['"]\.\.\/\.\.\/\.\.\/db['"]/,
   /from\s+['"]server\/db['"]/,
+];
+
+// Dynamic import patterns: await import('../db'), import('../../db.js'), etc.
+const FORBIDDEN_DYNAMIC_IMPORT_PATTERNS = [
+  /import\s*\(\s*['"]\.\.\/db(?:\.js)?['"]\s*\)/,
+  /import\s*\(\s*['"]\.\.\/\.\.\/db(?:\.js)?['"]\s*\)/,
+  /import\s*\(\s*['"]\.\.\/\.\.\/\.\.\/db(?:\.js)?['"]\s*\)/,
+  /import\s*\(\s*['"]server\/db(?:\.js)?['"]\s*\)/,
 ];
 
 const ALLOWED_DIRECTORIES = [
@@ -85,7 +96,8 @@ function checkFile(filePath: string): Violation[] {
   const lines = content.split('\n');
   
   lines.forEach((line, index) => {
-    for (const pattern of FORBIDDEN_IMPORT_PATTERNS) {
+    // Check static imports
+    for (const pattern of FORBIDDEN_STATIC_IMPORT_PATTERNS) {
       if (pattern.test(line)) {
         const match = line.match(/from\s+['"]([^'"]+)['"]/);
         const importPath = match ? match[1] : 'unknown';
@@ -95,6 +107,22 @@ function checkFile(filePath: string): Violation[] {
           line: index + 1,
           importPath,
           suggestion: 'Use storage methods from "server/storage" instead of direct db access.',
+        });
+      }
+    }
+    
+    // Check dynamic imports
+    for (const pattern of FORBIDDEN_DYNAMIC_IMPORT_PATTERNS) {
+      if (pattern.test(line)) {
+        const match = line.match(/import\s*\(\s*['"]([^'"]+)['"]\s*\)/);
+        const importPath = match ? match[1] : 'unknown';
+        
+        violations.push({
+          file: relativePath,
+          line: index + 1,
+          importPath,
+          suggestion: 'Use storage.readOnly.query() for read-only access, or storage methods for writes.',
+          isDynamic: true,
         });
       }
     }
@@ -125,7 +153,8 @@ function main() {
   console.log(`✗ Found ${allViolations.length} storage encapsulation violation(s):\n`);
   
   for (const violation of allViolations) {
-    console.log(`  ${violation.file}:${violation.line}`);
+    const importType = violation.isDynamic ? '[dynamic]' : '[static]';
+    console.log(`  ${violation.file}:${violation.line} ${importType}`);
     console.log(`    Import: ${violation.importPath}`);
     console.log(`    Fix: ${violation.suggestion}`);
     console.log('');

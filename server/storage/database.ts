@@ -42,6 +42,7 @@ import { type EdlsCrewsStorage, createEdlsCrewsStorage, edlsCrewsLoggingConfig }
 import { type AuthIdentitiesStorage, createAuthIdentitiesStorage } from "./auth-identities";
 import { type WorkerDispatchEligDenormStorage, createWorkerDispatchEligDenormStorage } from "./worker-dispatch-elig-denorm";
 import { type RawSqlStorage, createRawSqlStorage } from "./raw-sql";
+import { type ReadOnlyStorage, createReadOnlyStorage } from "./read-only";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "./db";
 import { employers, workers, contacts } from "@shared/schema";
@@ -95,6 +96,7 @@ export interface IStorage {
   authIdentities: AuthIdentitiesStorage;
   workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
   rawSql: RawSqlStorage;
+  readOnly: ReadOnlyStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -145,6 +147,7 @@ export class DatabaseStorage implements IStorage {
   authIdentities: AuthIdentitiesStorage;
   workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
   rawSql: RawSqlStorage;
+  readOnly: ReadOnlyStorage;
 
   constructor() {
     this.variables = withStorageLogging(createVariableStorage(), variableLoggingConfig);
@@ -255,6 +258,7 @@ export class DatabaseStorage implements IStorage {
     this.authIdentities = createAuthIdentitiesStorage();
     this.workerDispatchEligDenorm = createWorkerDispatchEligDenormStorage();
     this.rawSql = createRawSqlStorage();
+    this.readOnly = createReadOnlyStorage();
   }
 }
 

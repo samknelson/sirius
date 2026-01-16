@@ -29,6 +29,10 @@ The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI),
 ## Database Access Architecture
 All database access **MUST** go through a centralized storage layer (`server/storage/`) to ensure audit logging, access control, consistent validation, and potential backend interchangeability. Direct `db` imports outside the storage layer are forbidden. The storage layer supports transaction contexts via `runInTransaction()` and `getClient()`, ensuring atomicity across multiple storage module operations. Raw SQL for DDL operations is exposed via `storage.rawSql`.
 
+**Read-Only Access for Reports**: For report generation that needs direct query access without write capabilities, use `storage.readOnly.query(async (db) => { ... })`. This wraps queries in a PostgreSQL read-only transaction (`SET TRANSACTION READ ONLY`) that blocks any write attempts at the database level.
+
+**Encapsulation Enforcement**: Run `npx tsx scripts/dev/check-storage-encapsulation.ts` to detect violations. The script detects both static imports (`from '../db'`) and dynamic imports (`await import('../../db')`) outside the allowed storage layer.
+
 ## System Design Choices
 -   **Worker Management**: Comprehensive CRUD for workers, contacts, and benefits.
 -   **Configurable Settings**: Consolidated options system (`/api/options/:type`) for organizational settings, using a unified metadata-driven storage and registry.

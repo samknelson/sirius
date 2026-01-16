@@ -1,5 +1,7 @@
 import { WizardReport, ReportConfig, ReportColumn, ReportRecord } from '../report.js';
-import { storage } from '../../storage/index.js';
+import { storage } from '../../storage';
+import { workers, contacts } from '@shared/schema';
+import { eq, and, isNotNull, ne } from 'drizzle-orm';
 import { validateSSN } from '@shared/utils/ssn';
 
 export class ReportWorkersInvalidSSN extends WizardReport {
@@ -48,38 +50,32 @@ export class ReportWorkersInvalidSSN extends WizardReport {
     batchSize: number = 100,
     onProgress?: (progress: { processed: number; total: number }) => void
   ): Promise<ReportRecord[]> {
-    // Use database query with JOIN to fetch workers and contacts efficiently
-    const { db } = await import('../../db.js');
-    const { workers, contacts } = await import('@shared/schema');
-    const { eq, and, isNotNull, ne } = await import('drizzle-orm');
-
-    // Query workers with non-empty SSN, joining with contacts table
-    const workersWithSSN = await db
-      .select({
-        workerId: workers.id,
-        siriusId: workers.siriusId,
-        ssn: workers.ssn,
-        displayName: contacts.displayName,
-        email: contacts.email
-      })
-      .from(workers)
-      .innerJoin(contacts, eq(workers.contactId, contacts.id))
-      .where(
-        and(
-          isNotNull(workers.ssn),
-          ne(workers.ssn, '')
-        )
-      );
+    const workersWithSSN = await storage.readOnly.query(async (db) => {
+      return db
+        .select({
+          workerId: workers.id,
+          siriusId: workers.siriusId,
+          ssn: workers.ssn,
+          displayName: contacts.displayName,
+          email: contacts.email
+        })
+        .from(workers)
+        .innerJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(
+          and(
+            isNotNull(workers.ssn),
+            ne(workers.ssn, '')
+          )
+        );
+    });
 
     const records: ReportRecord[] = [];
     const total = workersWithSSN.length;
 
-    // Validate SSNs and filter invalid ones
     for (let i = 0; i < total; i++) {
       const worker = workersWithSSN[i];
       const validation = validateSSN(worker.ssn!);
       
-      // Only include workers with invalid SSNs
       if (!validation.valid) {
         records.push({
           workerId: worker.workerId,
@@ -91,7 +87,6 @@ export class ReportWorkersInvalidSSN extends WizardReport {
         });
       }
 
-      // Report progress periodically
       if (onProgress && (i + 1) % batchSize === 0) {
         onProgress({
           processed: i + 1,
@@ -100,7 +95,6 @@ export class ReportWorkersInvalidSSN extends WizardReport {
       }
     }
 
-    // Final progress update
     if (onProgress) {
       onProgress({
         processed: total,

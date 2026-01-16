@@ -1,4 +1,7 @@
 import { WizardReport, ReportConfig, ReportColumn, ReportRecord } from '../report.js';
+import { storage } from '../../storage';
+import { users, contacts, employerContacts, employers, userRoles, roles } from '@shared/schema';
+import { eq, sql } from 'drizzle-orm';
 
 export class ReportEmployerUsers extends WizardReport {
   name = 'report_employer_users';
@@ -62,45 +65,37 @@ export class ReportEmployerUsers extends WizardReport {
     batchSize: number = 100,
     onProgress?: (progress: { processed: number; total: number }) => void
   ): Promise<ReportRecord[]> {
-    const { db } = await import('../../db.js');
-    const { users, contacts, employerContacts, employers, userRoles, roles } = await import('@shared/schema');
-    const { eq, sql } = await import('drizzle-orm');
-
-    // Query to get all users associated with employer contacts
-    // Note: Users are linked to contacts via email matching (not a foreign key)
-    // because the users table doesn't have a contactId field. This is the
-    // established pattern in the codebase for linking users to contacts.
-    // Join chain: users -> contacts (via email) -> employerContacts -> employers
-    // Also get roles via userRoles join
-    const results = await db
-      .select({
-        employerContactId: employerContacts.id,
-        employerId: employers.id,
-        employerName: employers.name,
-        userId: users.id,
-        userName: sql<string>`CONCAT(${users.firstName}, ' ', ${users.lastName})`.as('userName'),
-        userEmail: users.email,
-        isActive: users.isActive,
-        lastLogin: users.lastLogin,
-        roleNames: sql<string>`STRING_AGG(${roles.name}, ', ' ORDER BY ${roles.name})`.as('roleNames'),
-      })
-      .from(users)
-      .innerJoin(contacts, eq(users.email, contacts.email))
-      .innerJoin(employerContacts, eq(contacts.id, employerContacts.contactId))
-      .innerJoin(employers, eq(employerContacts.employerId, employers.id))
-      .leftJoin(userRoles, eq(users.id, userRoles.userId))
-      .leftJoin(roles, eq(userRoles.roleId, roles.id))
-      .groupBy(
-        employerContacts.id,
-        employers.id,
-        employers.name,
-        users.id,
-        users.firstName,
-        users.lastName,
-        users.email,
-        users.isActive,
-        users.lastLogin
-      );
+    const results = await storage.readOnly.query(async (db) => {
+      return db
+        .select({
+          employerContactId: employerContacts.id,
+          employerId: employers.id,
+          employerName: employers.name,
+          userId: users.id,
+          userName: sql<string>`CONCAT(${users.firstName}, ' ', ${users.lastName})`.as('userName'),
+          userEmail: users.email,
+          isActive: users.isActive,
+          lastLogin: users.lastLogin,
+          roleNames: sql<string>`STRING_AGG(${roles.name}, ', ' ORDER BY ${roles.name})`.as('roleNames'),
+        })
+        .from(users)
+        .innerJoin(contacts, eq(users.email, contacts.email))
+        .innerJoin(employerContacts, eq(contacts.id, employerContacts.contactId))
+        .innerJoin(employers, eq(employerContacts.employerId, employers.id))
+        .leftJoin(userRoles, eq(users.id, userRoles.userId))
+        .leftJoin(roles, eq(userRoles.roleId, roles.id))
+        .groupBy(
+          employerContacts.id,
+          employers.id,
+          employers.name,
+          users.id,
+          users.firstName,
+          users.lastName,
+          users.email,
+          users.isActive,
+          users.lastLogin
+        );
+    });
 
     const records: ReportRecord[] = results.map(result => ({
       employerContactId: result.employerContactId,
@@ -115,7 +110,6 @@ export class ReportEmployerUsers extends WizardReport {
       lastLogin: result.lastLogin || null
     }));
 
-    // Report progress
     if (onProgress) {
       onProgress({
         processed: records.length,
