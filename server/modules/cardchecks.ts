@@ -393,16 +393,16 @@ export function registerCardchecksRoutes(
         const phonesResult = await db.execute(sql`
           SELECT 
             w.id as worker_id,
-            cp.phone
+            cp.phone_number
           FROM workers w
           JOIN contacts c ON c.id = w.contact_id
-          LEFT JOIN contact_phones cp ON cp.contact_id = c.id AND cp.is_primary = true
+          LEFT JOIN contact_phone cp ON cp.contact_id = c.id AND cp.is_primary = true
           WHERE w.id = ANY(${workerIds})
         `);
         
         for (const row of phonesResult.rows as any[]) {
-          if (row.phone) {
-            phoneMap.set(row.worker_id, row.phone);
+          if (row.phone_number) {
+            phoneMap.set(row.worker_id, row.phone_number);
           }
         }
       }
