@@ -252,22 +252,27 @@ export function registerCardchecksRoutes(
 
       const stats = statsResult.rows as any[];
 
-      // Get stewards for each employer
-      const stewardsResult = await db.execute(sql`
-        SELECT 
-          wsa.employer_id as "employerId",
-          wsa.worker_id as "workerId",
-          wsa.bargaining_unit_id as "bargainingUnitId",
-          c.display_name as "displayName",
-          bu.name as "bargainingUnitName"
-        FROM worker_steward_assignments wsa
-        INNER JOIN workers w ON w.id = wsa.worker_id
-        INNER JOIN contacts c ON c.id = w.contact_id
-        LEFT JOIN bargaining_units bu ON bu.id = wsa.bargaining_unit_id
-        ORDER BY c.display_name
-      `);
-
-      const stewards = stewardsResult.rows as any[];
+      // Get stewards for each employer (table may not exist in all installations)
+      let stewards: any[] = [];
+      try {
+        const stewardsResult = await db.execute(sql`
+          SELECT 
+            wsa.employer_id as "employerId",
+            wsa.worker_id as "workerId",
+            wsa.bargaining_unit_id as "bargainingUnitId",
+            c.display_name as "displayName",
+            bu.name as "bargainingUnitName"
+          FROM worker_steward_assignments wsa
+          INNER JOIN workers w ON w.id = wsa.worker_id
+          INNER JOIN contacts c ON c.id = w.contact_id
+          LEFT JOIN bargaining_units bu ON bu.id = wsa.bargaining_unit_id
+          ORDER BY c.display_name
+        `);
+        stewards = stewardsResult.rows as any[];
+      } catch (stewardError: any) {
+        // Table may not exist - continue without steward data
+        console.log("Steward assignments table not available, skipping steward data");
+      }
 
       // Build response with aggregated data
       const employerMap = new Map<string, any>();
