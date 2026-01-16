@@ -376,7 +376,13 @@ export function registerCardchecksRoutes(
           c.display_name as "displayName",
           c.email,
           bu.id as "bargainingUnitId",
-          bu.name as "bargainingUnitName"
+          bu.name as "bargainingUnitName",
+          (
+            SELECT cp.phone_number 
+            FROM contact_phone cp 
+            WHERE cp.contact_id = c.id AND cp.is_primary = true 
+            LIMIT 1
+          ) as phone
         FROM active_workers aw
         INNER JOIN workers w ON w.id = aw.worker_id
         INNER JOIN contacts c ON c.id = w.contact_id
@@ -385,33 +391,11 @@ export function registerCardchecksRoutes(
         ORDER BY c.display_name
       `);
 
-      // Get phone numbers for these workers
-      const workerIds = workersResult.rows.map((r: any) => r.workerId);
-      let phoneMap = new Map<string, string>();
-      
-      if (workerIds.length > 0) {
-        const phonesResult = await db.execute(sql`
-          SELECT 
-            w.id as worker_id,
-            cp.phone_number
-          FROM workers w
-          JOIN contacts c ON c.id = w.contact_id
-          LEFT JOIN contact_phone cp ON cp.contact_id = c.id AND cp.is_primary = true
-          WHERE w.id = ANY(${workerIds})
-        `);
-        
-        for (const row of phonesResult.rows as any[]) {
-          if (row.phone_number) {
-            phoneMap.set(row.worker_id, row.phone_number);
-          }
-        }
-      }
-
       const workers = workersResult.rows.map((row: any) => ({
         workerId: row.workerId,
         displayName: row.displayName,
         email: row.email || null,
-        phone: phoneMap.get(row.workerId) || null,
+        phone: row.phone || null,
         bargainingUnitId: row.bargainingUnitId,
         bargainingUnitName: row.bargainingUnitName || 'Unknown'
       }));
