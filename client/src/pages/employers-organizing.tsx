@@ -70,7 +70,7 @@ function EmployerCard({ employer }: { employer: OrganizingEmployer }) {
   const missingCount = employer.totalWorkers - employer.signedWorkers;
 
   return (
-    <Card className="hover-elevate" data-testid={`card-employer-${employer.id}`}>
+    <Card className="hover-elevate flex flex-col h-full" data-testid={`card-employer-${employer.id}`}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
@@ -90,7 +90,7 @@ function EmployerCard({ employer }: { employer: OrganizingEmployer }) {
           </Badge>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 flex-1">
         <CardCheckProgress signed={employer.signedWorkers} total={employer.totalWorkers} />
         
         {employer.bargainingUnits.length > 0 && (
@@ -135,8 +135,9 @@ function EmployerCard({ employer }: { employer: OrganizingEmployer }) {
             </div>
           </div>
         )}
-
-        {missingCount > 0 && (
+      </CardContent>
+      {missingCount > 0 && (
+        <div className="px-6 pb-6">
           <Link href={`/employers/${employer.id}/missing-cardchecks`}>
             <Button 
               variant="outline" 
@@ -148,8 +149,8 @@ function EmployerCard({ employer }: { employer: OrganizingEmployer }) {
               View {missingCount} Missing Card Checks
             </Button>
           </Link>
-        )}
-      </CardContent>
+        </div>
+      )}
     </Card>
   );
 }
