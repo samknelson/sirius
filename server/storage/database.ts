@@ -37,6 +37,7 @@ import { type BtuEmployerMapStorage, createBtuEmployerMapStorage, btuEmployerMap
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./worker-dispatch-dnc";
 import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./worker-skills";
+import { type WorkerCertificationStorage, createWorkerCertificationStorage, workerCertificationLoggingConfig } from "./worker-certifications";
 import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfig } from "./edls-sheets";
 import { type EdlsCrewsStorage, createEdlsCrewsStorage, edlsCrewsLoggingConfig } from "./edls-crews";
 import { type AuthIdentitiesStorage, createAuthIdentitiesStorage } from "./auth-identities";
@@ -91,6 +92,7 @@ export interface IStorage {
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
   workerSkills: WorkerSkillStorage;
+  workerCertifications: WorkerCertificationStorage;
   edlsSheets: EdlsSheetsStorage;
   edlsCrews: EdlsCrewsStorage;
   authIdentities: AuthIdentitiesStorage;
@@ -142,6 +144,7 @@ export class DatabaseStorage implements IStorage {
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
   workerSkills: WorkerSkillStorage;
+  workerCertifications: WorkerCertificationStorage;
   edlsSheets: EdlsSheetsStorage;
   edlsCrews: EdlsCrewsStorage;
   authIdentities: AuthIdentitiesStorage;
@@ -253,6 +256,7 @@ export class DatabaseStorage implements IStorage {
     this.workerBans = withStorageLogging(createWorkerBanStorage(), workerBanLoggingConfig);
     this.workerDispatchDnc = withStorageLogging(createWorkerDispatchDncStorage(), workerDispatchDncLoggingConfig);
     this.workerSkills = withStorageLogging(createWorkerSkillStorage(), workerSkillLoggingConfig);
+    this.workerCertifications = withStorageLogging(createWorkerCertificationStorage(), workerCertificationLoggingConfig);
     this.edlsSheets = withStorageLogging(createEdlsSheetsStorage(), edlsSheetsLoggingConfig);
     this.edlsCrews = withStorageLogging(createEdlsCrewsStorage(), edlsCrewsLoggingConfig);
     this.authIdentities = createAuthIdentitiesStorage();

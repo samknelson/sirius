@@ -47,6 +47,8 @@ const WorkerDispatchDoNotCall = lazy(() => import("@/pages/workers/dispatch-do-n
 const WorkerDispatchHoldForEmployer = lazy(() => import("@/pages/workers/dispatch-hold-for-employer"));
 const WorkerBans = lazy(() => import("@/pages/workers/bans"));
 const WorkerSkills = lazy(() => import("@/pages/worker-skills"));
+const WorkerCertifications = lazy(() => import("@/pages/worker-certifications"));
+const WorkerCertificationView = lazy(() => import("@/pages/worker-certification-view"));
 const WorkerLedgerAccounts = lazy(() => import("@/pages/worker-ledger-accounts"));
 const Stewards = lazy(() => import("@/pages/stewards"));
 const WorkerBenefitsHistory = lazy(() => import("@/pages/worker-benefits-history"));
@@ -462,6 +464,30 @@ function Router() {
         <ProtectedRoute tabId="skills" entityType="worker">
           <AuthenticatedLayout>
             <WorkerSkills />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/certifications">
+        <ProtectedRoute tabId="certifications" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerCertifications />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/worker-certification/:id">
+        <ProtectedRoute component="worker.certifications">
+          <AuthenticatedLayout>
+            <WorkerCertificationView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/worker-certification/:id/edit">
+        <ProtectedRoute component="worker.certifications" permission="staff">
+          <AuthenticatedLayout>
+            <WorkerCertificationView defaultTab="edit" />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
