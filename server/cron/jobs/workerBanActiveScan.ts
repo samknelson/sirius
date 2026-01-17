@@ -19,7 +19,7 @@ export const workerBanActiveScanHandler: CronJobHandler = {
       const wouldDeactivate = expiredButActive.length;
       const wouldActivate = notExpiredButInactive.length;
 
-      if (context.mode === 'test') {
+      if (context.mode !== 'live') {
         logger.info('[TEST MODE] Worker ban active scan - would update', {
           service: 'cron-worker-ban-active-scan',
           jobId: context.jobId,
