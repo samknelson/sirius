@@ -256,7 +256,10 @@ export class DatabaseStorage implements IStorage {
     this.workerBans = withStorageLogging(createWorkerBanStorage(), workerBanLoggingConfig);
     this.workerDispatchDnc = withStorageLogging(createWorkerDispatchDncStorage(), workerDispatchDncLoggingConfig);
     this.workerSkills = withStorageLogging(createWorkerSkillStorage(), workerSkillLoggingConfig);
-    this.workerCertifications = withStorageLogging(createWorkerCertificationStorage(), workerCertificationLoggingConfig);
+    this.workerCertifications = withStorageLogging(
+      createWorkerCertificationStorage({ workerSkills: this.workerSkills }), 
+      workerCertificationLoggingConfig
+    );
     this.edlsSheets = withStorageLogging(createEdlsSheetsStorage(), edlsSheetsLoggingConfig);
     this.edlsCrews = withStorageLogging(createEdlsCrewsStorage(), edlsCrewsLoggingConfig);
     this.authIdentities = createAuthIdentitiesStorage();

@@ -25,6 +25,7 @@ export interface WorkerSkillWithDetails extends WorkerSkill {
 export interface WorkerSkillStorage {
   getAll(): Promise<WorkerSkill[]>;
   getByWorker(workerId: string): Promise<WorkerSkillWithDetails[]>;
+  getByWorkerAndSkill(workerId: string, skillId: string): Promise<WorkerSkill | undefined>;
   get(id: string): Promise<WorkerSkill | undefined>;
   create(skill: InsertWorkerSkill & { message?: string }): Promise<WorkerSkill>;
   delete(id: string, message?: string): Promise<boolean>;
@@ -125,6 +126,15 @@ export function createWorkerSkillStorage(): WorkerSkillStorage {
         .select()
         .from(workerSkills)
         .where(eq(workerSkills.id, id));
+      return result;
+    },
+
+    async getByWorkerAndSkill(workerId: string, skillId: string): Promise<WorkerSkill | undefined> {
+      const client = getClient();
+      const [result] = await client
+        .select()
+        .from(workerSkills)
+        .where(and(eq(workerSkills.workerId, workerId), eq(workerSkills.skillId, skillId)));
       return result;
     },
 

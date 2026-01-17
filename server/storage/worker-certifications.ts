@@ -16,6 +16,100 @@ import {
 } from "./utils/validation";
 import { calculateDenormActive } from "./utils/denorm-active";
 import { normalizeToDateOnly } from "@shared/utils";
+import { type WorkerSkillStorage } from "./worker-skills";
+
+/**
+ * Interface for certification option data that may contain skill associations
+ */
+interface CertificationData {
+  skills?: string[];
+  icon?: string;
+  defaultDuration?: number;
+}
+
+/**
+ * Dependencies required by worker certification storage
+ */
+export interface WorkerCertificationDependencies {
+  workerSkills: WorkerSkillStorage;
+}
+
+/**
+ * Syncs worker skills based on their active certifications.
+ * - Grants skills from active certifications that the worker doesn't already have
+ * - Removes skills that were previously granted by certifications but are no longer covered
+ * - Preserves manually assigned skills (skills not associated with any certification option)
+ */
+async function syncWorkerSkillsFromCertifications(
+  workerId: string,
+  deps: WorkerCertificationDependencies
+): Promise<void> {
+  const client = getClient();
+  
+  // Get ALL certification options to determine which skills are "certification-managed"
+  // This ensures we can properly remove skills even when their granting certification is deleted
+  const allCertOptions = await client.select().from(optionsCertifications);
+  
+  // Build set of all skills that ANY certification option can grant
+  // These are the only skills we're allowed to manage (grant/revoke)
+  const certificationManagedSkills = new Set<string>();
+  for (const certOption of allCertOptions) {
+    const certData = certOption.data as CertificationData | null;
+    const skills = certData?.skills || [];
+    for (const skillId of skills) {
+      certificationManagedSkills.add(skillId);
+    }
+  }
+  
+  // Get all certifications for this worker with their certification option details
+  const workerCerts = await client
+    .select({
+      workerCertification: workerCertifications,
+      certification: optionsCertifications,
+    })
+    .from(workerCertifications)
+    .leftJoin(optionsCertifications, eq(workerCertifications.certificationId, optionsCertifications.id))
+    .where(eq(workerCertifications.workerId, workerId));
+  
+  // Collect all skill IDs that should be granted from active certifications
+  const skillsToGrant = new Set<string>();
+  
+  for (const { workerCertification, certification } of workerCerts) {
+    if (!workerCertification.denormActive || !certification) continue;
+    
+    const certData = certification.data as CertificationData | null;
+    const skills = certData?.skills || [];
+    
+    for (const skillId of skills) {
+      skillsToGrant.add(skillId);
+    }
+  }
+  
+  // Get worker's current skills
+  const currentSkills = await deps.workerSkills.getByWorker(workerId);
+  const currentSkillIds = new Set(currentSkills.map(s => s.skillId));
+  
+  // Grant skills that the worker doesn't have yet
+  for (const skillId of Array.from(skillsToGrant)) {
+    if (!currentSkillIds.has(skillId)) {
+      await deps.workerSkills.create({
+        workerId,
+        skillId,
+        message: 'Auto-granted from active certification'
+      });
+    }
+  }
+  
+  // Remove skills that are:
+  // 1. Managed by certifications (part of ANY certification option's skill set)
+  // 2. No longer granted by any active certification for this worker
+  // This preserves manually assigned skills (skills not in any certification option)
+  for (const currentSkill of currentSkills) {
+    if (certificationManagedSkills.has(currentSkill.skillId) && !skillsToGrant.has(currentSkill.skillId)) {
+      await deps.workerSkills.delete(currentSkill.id, 'Removed: no active certification grants this skill');
+    }
+  }
+}
 
 /**
  * Validator for worker certifications.
@@ -163,7 +257,7 @@ export const workerCertificationLoggingConfig: StorageLoggingConfig<WorkerCertif
   }
 };
 
-export function createWorkerCertificationStorage(): WorkerCertificationStorage {
+export function createWorkerCertificationStorage(deps: WorkerCertificationDependencies): WorkerCertificationStorage {
   return {
     async getAll(): Promise<WorkerCertification[]> {
       const client = getClient();
@@ -220,6 +314,9 @@ export function createWorkerCertificationStorage(): WorkerCertificationStorage {
         })
         .returning();
       
+      // Sync skills based on updated certification status
+      await syncWorkerSkillsFromCertifications(result.workerId, deps);
+      
       return result;
     },
 
@@ -245,6 +342,15 @@ export function createWorkerCertificationStorage(): WorkerCertificationStorage {
         .where(eq(workerCertifications.id, id))
         .returning();
       
+      // Sync skills for the current worker
+      await syncWorkerSkillsFromCertifications(result.workerId, deps);
+      
+      // If workerId changed, also sync skills for the previous worker
+      // to remove any skills that were granted by this certification
+      if (existing.workerId !== result.workerId) {
+        await syncWorkerSkillsFromCertifications(existing.workerId, deps);
+      }
+      
       return result;
     },
 
@@ -254,6 +360,11 @@ export function createWorkerCertificationStorage(): WorkerCertificationStorage {
         .delete(workerCertifications)
         .where(eq(workerCertifications.id, id))
         .returning();
+      
+      if (deleted) {
+        // Sync skills based on remaining certifications after delete
+        await syncWorkerSkillsFromCertifications(deleted.workerId, deps);
+      }
       
       return !!deleted;
     },
