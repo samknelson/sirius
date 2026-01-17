@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
-import { Award, Plus, Trash2, ExternalLink } from "lucide-react";
+import { Award, Plus, ExternalLink } from "lucide-react";
 import { Link } from "wouter";
 import type { WorkerCertification, OptionsCertification } from "@shared/schema";
 
@@ -35,14 +35,11 @@ function CertificationsContent() {
   const { hasPermission } = useAuth();
   const canEdit = hasPermission('staff');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isRemoveModalOpen, setIsRemoveModalOpen] = useState(false);
-  const [selectedCertToRemove, setSelectedCertToRemove] = useState<WorkerCertificationWithDetails | null>(null);
   const [formCertificationId, setFormCertificationId] = useState<string>("");
   const [formStartDate, setFormStartDate] = useState<string>("");
   const [formEndDate, setFormEndDate] = useState<string>("");
   const [formStatus, setFormStatus] = useState<string>("pending");
   const [formMessage, setFormMessage] = useState<string>("");
-  const [removeMessage, setRemoveMessage] = useState<string>("");
 
   const { data: workerCertifications = [], isLoading } = useQuery<WorkerCertificationWithDetails[]>({
     queryKey: ["/api/worker-certifications/worker", worker.id],
@@ -80,27 +77,6 @@ function CertificationsContent() {
     },
   });
 
-  const removeMutation = useMutation({
-    mutationFn: async ({ id, message }: { id: string; message?: string }) => {
-      return apiRequest("DELETE", `/api/worker-certifications/${id}`, { message });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/worker-certifications/worker", worker.id] });
-      toast({
-        title: "Certification removed",
-        description: "The certification has been removed from this worker.",
-      });
-      closeRemoveModal();
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to remove certification.",
-        variant: "destructive",
-      });
-    },
-  });
-
   const openAddModal = () => {
     setFormCertificationId("");
     setFormStartDate("");
@@ -119,18 +95,6 @@ function CertificationsContent() {
     setFormMessage("");
   };
 
-  const openRemoveModal = (cert: WorkerCertificationWithDetails) => {
-    setSelectedCertToRemove(cert);
-    setRemoveMessage("");
-    setIsRemoveModalOpen(true);
-  };
-
-  const closeRemoveModal = () => {
-    setIsRemoveModalOpen(false);
-    setSelectedCertToRemove(null);
-    setRemoveMessage("");
-  };
-
   const handleAddSubmit = () => {
     if (!formCertificationId) {
       toast({
@@ -147,14 +111,6 @@ function CertificationsContent() {
       endDate: formEndDate || null,
       status: formStatus,
       message: formMessage || undefined,
-    });
-  };
-
-  const handleRemoveSubmit = () => {
-    if (!selectedCertToRemove) return;
-    removeMutation.mutate({
-      id: selectedCertToRemove.id,
-      message: removeMessage || undefined,
     });
   };
 
@@ -230,10 +186,7 @@ function CertificationsContent() {
               {workerCertifications.map((cert) => (
                 <TableRow key={cert.id} data-testid={`row-worker-certification-${cert.id}`}>
                   <TableCell>
-                    <Link href={`/worker-certification/${cert.id}`} className="flex items-center gap-2 hover:underline text-primary">
-                      <span>{cert.certification?.name || "Unknown Certification"}</span>
-                      <ExternalLink className="h-3 w-3" />
-                    </Link>
+                    <span>{cert.certification?.name || "Unknown Certification"}</span>
                   </TableCell>
                   <TableCell>
                     <Badge className={statusColors[cert.status] || ""} data-testid={`badge-status-${cert.id}`}>
@@ -243,16 +196,15 @@ function CertificationsContent() {
                   <TableCell>{formatDate(cert.startDate)}</TableCell>
                   <TableCell>{formatDate(cert.endDate)}</TableCell>
                   <TableCell>
-                    {canEdit && (
+                    <Link href={`/worker-certification/${cert.id}`}>
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => openRemoveModal(cert)}
-                        data-testid={`button-remove-certification-${cert.id}`}
+                        data-testid={`button-view-certification-${cert.id}`}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <ExternalLink className="h-4 w-4" />
                       </Button>
-                    )}
+                    </Link>
                   </TableCell>
                 </TableRow>
               ))}
@@ -351,45 +303,6 @@ function CertificationsContent() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isRemoveModalOpen} onOpenChange={setIsRemoveModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Remove Certification</DialogTitle>
-            <DialogDescription>
-              Remove "{selectedCertToRemove?.certification?.name}" from this worker
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="remove-message">Message (optional)</Label>
-              <Textarea
-                id="remove-message"
-                value={removeMessage}
-                onChange={(e) => setRemoveMessage(e.target.value)}
-                placeholder="Explain why this certification is being removed..."
-                className="resize-none"
-                data-testid="input-remove-message"
-              />
-              <p className="text-xs text-muted-foreground">
-                This message will be included in the log entry
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={closeRemoveModal} data-testid="button-cancel-remove">
-              Cancel
-            </Button>
-            <Button 
-              variant="destructive"
-              onClick={handleRemoveSubmit} 
-              disabled={removeMutation.isPending}
-              data-testid="button-confirm-remove"
-            >
-              {removeMutation.isPending ? "Removing..." : "Remove Certification"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Card>
   );
 }
