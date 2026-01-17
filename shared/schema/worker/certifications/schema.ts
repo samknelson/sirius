@@ -1,4 +1,4 @@
-import { pgTable, varchar, jsonb, unique, date, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, varchar, jsonb, unique, date, pgEnum, boolean } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -34,11 +34,13 @@ export const workerCertifications = pgTable("worker_certifications", {
   startDate: date("start_date"),
   endDate: date("end_date"),
   status: workerCertificationStatusEnum("status").notNull().default("pending"),
+  active: boolean("active").notNull().default(false),
   data: jsonb("data"),
 });
 
 export const insertWorkerCertificationSchema = createInsertSchema(workerCertifications).omit({
   id: true,
+  active: true,
 });
 
 export type WorkerCertification = typeof workerCertifications.$inferSelect;

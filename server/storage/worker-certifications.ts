@@ -24,6 +24,47 @@ function validateDateRange(startDate: string | Date | null | undefined, endDate:
   }
 }
 
+function calculateActiveStatus(
+  startDate: string | Date | null | undefined,
+  endDate: string | Date | null | undefined,
+  status: string
+): boolean {
+  if (status !== 'granted') {
+    return false;
+  }
+  
+  if (startDate == null || endDate == null) {
+    return false;
+  }
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const start = typeof startDate === 'string' ? new Date(startDate) : new Date(startDate);
+  const end = typeof endDate === 'string' ? new Date(endDate) : new Date(endDate);
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  
+  return start <= today && today <= end;
+}
+
+function prepareForSave<T extends { startDate?: string | Date | null; endDate?: string | Date | null; status?: string }>(
+  data: T,
+  existingStartDate?: string | null,
+  existingEndDate?: string | null,
+  existingStatus?: string
+): T & { active: boolean } {
+  const finalStartDate = data.startDate !== undefined ? data.startDate : existingStartDate;
+  const finalEndDate = data.endDate !== undefined ? data.endDate : existingEndDate;
+  const finalStatus = data.status !== undefined ? data.status : (existingStatus || 'pending');
+  
+  validateDateRange(finalStartDate, finalEndDate);
+  
+  const active = calculateActiveStatus(finalStartDate, finalEndDate, finalStatus);
+  
+  return { ...data, active };
+}
+
 export interface WorkerCertificationWithDetails extends WorkerCertification {
   certification?: OptionsCertification | null;
 }
@@ -167,11 +208,11 @@ export function createWorkerCertificationStorage(): WorkerCertificationStorage {
       const client = getClient();
       const { message, ...insertData } = data;
       
-      validateDateRange(insertData.startDate, insertData.endDate);
+      const preparedData = prepareForSave(insertData);
       
       const [result] = await client
         .insert(workerCertifications)
-        .values(insertData)
+        .values(preparedData)
         .returning();
       
       return result;
@@ -188,13 +229,16 @@ export function createWorkerCertificationStorage(): WorkerCertificationStorage {
       
       if (!existing) return undefined;
       
-      const finalStartDate = updateData.startDate !== undefined ? updateData.startDate : existing.startDate;
-      const finalEndDate = updateData.endDate !== undefined ? updateData.endDate : existing.endDate;
-      validateDateRange(finalStartDate, finalEndDate);
+      const preparedData = prepareForSave(
+        updateData,
+        existing.startDate,
+        existing.endDate,
+        existing.status
+      );
       
       const [result] = await client
         .update(workerCertifications)
-        .set(updateData)
+        .set(preparedData)
         .where(eq(workerCertifications.id, id))
         .returning();
       
