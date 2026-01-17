@@ -11,10 +11,9 @@ import { type StorageLoggingConfig } from "./middleware/logging";
 import { eventBus, EventType } from "../services/event-bus";
 import { 
   type ValidationError,
-  normalizeToDateOnly,
-  getTodayDateOnly,
   createStorageValidator
 } from "./utils/validation";
+import { normalizeToDateOnly, getTodayDateOnly } from "@shared/utils";
 
 export interface WorkerBanWithRelations extends WorkerBan {
   worker?: {

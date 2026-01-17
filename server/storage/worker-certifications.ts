@@ -12,10 +12,9 @@ import { eq } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { 
   type ValidationError,
-  normalizeToDateOnly,
-  getTodayDateOnly,
   createStorageValidator
 } from "./utils/validation";
+import { normalizeToDateOnly, getTodayDateOnly } from "@shared/utils";
 
 function calculateActiveStatus(
   startDate: string | Date | null | undefined,
