@@ -13,6 +13,7 @@ import {
   type ValidationError,
   createStorageValidator
 } from "./utils/validation";
+import { calculateDenormActive } from "./utils/denorm-active";
 import { normalizeToDateOnly, getTodayDateOnly } from "@shared/utils";
 
 export interface WorkerBanWithRelations extends WorkerBan {
@@ -39,12 +40,6 @@ export interface WorkerBanStorage {
   findNotExpiredButInactive(): Promise<WorkerBan[]>;
 }
 
-function calculateActive(endDate: Date | null | undefined): boolean {
-  if (!endDate) return true;
-  const end = normalizeToDateOnly(endDate);
-  const today = getTodayDateOnly();
-  return end !== null && end >= today;
-}
 
 /**
  * Validator for worker bans.
@@ -84,7 +79,7 @@ export const validate = createStorageValidator<InsertWorkerBan, WorkerBan, { den
       return { ok: false, errors };
     }
     
-    const denormActive = calculateActive(endDate);
+    const denormActive = calculateDenormActive({ endDate });
     
     return { ok: true, value: { denormActive } };
   }
