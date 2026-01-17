@@ -35,6 +35,8 @@ All database access **MUST** go through a centralized storage layer (`server/sto
 
 **Storage Validation Framework**: Use `createStorageValidator` (sync) or `createAsyncStorageValidator` (async) from `server/storage/utils/validation.ts` to create reusable validators. Validators export `validate()` (returns result) and `validateOrThrow()` (throws `DomainValidationError`). Async validators support DB lookups and external service calls. Examples: `contacts.ts` (address/email validation), `comm.ts` (phone validation with E.164 formatting), `workers.ts` (SSN format and uniqueness), `cardchecks.ts` (duplicate prevention).
 
+**Denormalized Active Status Utility**: Use `calculateDenormActive` from `server/storage/utils/denorm-active.ts` to compute `denormActive` flags based on date ranges. Default behavior: returns `true` if today is within `startDate`-`endDate` range (null start = always started, null end = never expires). Supports `requireStartDate`/`requireEndDate` options to mandate non-null dates, and a `customize` callback for additional predicates (e.g., `status === 'granted'`). Used by `worker-bans.ts` (simple endDate check) and `worker-certifications.ts` (with status customization).
+
 ## System Design Choices
 -   **Worker Management**: Comprehensive CRUD for workers, contacts, and benefits.
 -   **Configurable Settings**: Consolidated options system (`/api/options/:type`) for organizational settings, using a unified metadata-driven storage and registry.

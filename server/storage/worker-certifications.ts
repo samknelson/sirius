@@ -262,7 +262,13 @@ export function createWorkerCertificationStorage(): WorkerCertificationStorage {
       const client = getClient();
       const all = await client.select().from(workerCertifications);
       return all.filter(cert => {
-        const shouldBeActive = calculateActiveStatus(cert.startDate, cert.endDate, cert.status);
+        const shouldBeActive = calculateDenormActive({
+          startDate: cert.startDate,
+          endDate: cert.endDate,
+          requireStartDate: true,
+          requireEndDate: true,
+          customize: (defaultActive) => defaultActive && cert.status === 'granted'
+        });
         return cert.denormActive && !shouldBeActive;
       });
     },
@@ -271,7 +277,13 @@ export function createWorkerCertificationStorage(): WorkerCertificationStorage {
       const client = getClient();
       const all = await client.select().from(workerCertifications);
       return all.filter(cert => {
-        const shouldBeActive = calculateActiveStatus(cert.startDate, cert.endDate, cert.status);
+        const shouldBeActive = calculateDenormActive({
+          startDate: cert.startDate,
+          endDate: cert.endDate,
+          requireStartDate: true,
+          requireEndDate: true,
+          customize: (defaultActive) => defaultActive && cert.status === 'granted'
+        });
         return !cert.denormActive && shouldBeActive;
       });
     },
