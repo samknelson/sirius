@@ -13,8 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Award, Plus, ExternalLink } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { addMonths, format } from "date-fns";
 import { Link } from "wouter";
 import type { WorkerCertification, OptionsCertification } from "@shared/schema";
@@ -36,6 +37,7 @@ function CertificationsContent() {
   const { hasPermission } = useAuth();
   const canEdit = hasPermission('staff');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
   const [formCertificationId, setFormCertificationId] = useState<string>("");
   const [formStartDate, setFormStartDate] = useState<string>("");
   const [formEndDate, setFormEndDate] = useState<string>("");
@@ -49,6 +51,17 @@ function CertificationsContent() {
   const { data: availableCertifications = [] } = useQuery<OptionsCertification[]>({
     queryKey: ["/api/options/certification"],
   });
+
+  const filteredCertifications = useMemo(() => {
+    if (showInactive) {
+      return workerCertifications;
+    }
+    return workerCertifications.filter(cert => cert.denormActive);
+  }, [workerCertifications, showInactive]);
+
+  const inactiveCount = useMemo(() => {
+    return workerCertifications.filter(cert => !cert.denormActive).length;
+  }, [workerCertifications]);
 
   const addMutation = useMutation({
     mutationFn: async (data: { 
@@ -180,26 +193,52 @@ function CertificationsContent() {
             Manage certifications assigned to this worker
           </CardDescription>
         </div>
-        {canEdit && availableCertifications.length > 0 && (
-          <Button onClick={openAddModal} size="sm" data-testid="button-add-certification">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Certification
-          </Button>
-        )}
+        <div className="flex items-center gap-4">
+          {inactiveCount > 0 && (
+            <div className="flex items-center gap-2">
+              <Switch
+                id="show-inactive"
+                checked={showInactive}
+                onCheckedChange={setShowInactive}
+                data-testid="switch-show-inactive"
+              />
+              <label htmlFor="show-inactive" className="text-sm text-muted-foreground cursor-pointer">
+                Show inactive ({inactiveCount})
+              </label>
+            </div>
+          )}
+          {canEdit && availableCertifications.length > 0 && (
+            <Button onClick={openAddModal} size="sm" data-testid="button-add-certification">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Certification
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
-        {workerCertifications.length === 0 ? (
+        {filteredCertifications.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <Award className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p>No certifications assigned to this worker</p>
-            {canEdit && availableCertifications.length > 0 && (
-              <Button onClick={openAddModal} variant="outline" className="mt-4" data-testid="button-add-first-certification">
-                <Plus className="h-4 w-4 mr-2" />
-                Add First Certification
-              </Button>
-            )}
-            {canEdit && availableCertifications.length === 0 && (
-              <p className="text-sm mt-2">No certifications have been configured yet.</p>
+            {workerCertifications.length === 0 ? (
+              <>
+                <p>No certifications assigned to this worker</p>
+                {canEdit && availableCertifications.length > 0 && (
+                  <Button onClick={openAddModal} variant="outline" className="mt-4" data-testid="button-add-first-certification">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add First Certification
+                  </Button>
+                )}
+                {canEdit && availableCertifications.length === 0 && (
+                  <p className="text-sm mt-2">No certifications have been configured yet.</p>
+                )}
+              </>
+            ) : (
+              <>
+                <p>No active certifications</p>
+                <p className="text-sm mt-2">
+                  Toggle "Show inactive" to view {inactiveCount} inactive certification{inactiveCount !== 1 ? 's' : ''}.
+                </p>
+              </>
             )}
           </div>
         ) : (
@@ -215,7 +254,7 @@ function CertificationsContent() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {workerCertifications.map((cert) => (
+              {filteredCertifications.map((cert) => (
                 <TableRow key={cert.id} data-testid={`row-worker-certification-${cert.id}`}>
                   <TableCell>
                     <span>{cert.certification?.name || "Unknown Certification"}</span>
