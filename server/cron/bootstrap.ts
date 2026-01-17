@@ -47,8 +47,8 @@ const DEFAULT_CRON_JOBS: DefaultCronJob[] = [
     isEnabled: true,
   },
   {
-    name: 'sync-ban-active-status',
-    description: 'Synchronizes the active status of worker bans based on their expiration dates',
+    name: 'worker-ban-active-scan',
+    description: 'Scans worker bans and updates their active status based on expiration dates',
     schedule: '0 6 * * *', // Daily at 6 AM
     isEnabled: true,
   },

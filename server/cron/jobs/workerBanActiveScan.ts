@@ -2,12 +2,12 @@ import { storage } from "../../storage";
 import { logger } from "../../logger";
 import type { CronJobHandler, CronJobContext, CronJobSummary } from "../registry";
 
-export const syncBanActiveStatusHandler: CronJobHandler = {
-  description: 'Synchronizes the active status of worker bans based on their expiration dates',
+export const workerBanActiveScanHandler: CronJobHandler = {
+  description: 'Scans worker bans and updates their active status based on expiration dates',
 
   async execute(context: CronJobContext): Promise<CronJobSummary> {
-    logger.info('Starting ban active status sync', {
-      service: 'cron-sync-ban-active-status',
+    logger.info('Starting worker ban active scan', {
+      service: 'cron-worker-ban-active-scan',
       jobId: context.jobId,
       mode: context.mode,
     });
@@ -20,8 +20,8 @@ export const syncBanActiveStatusHandler: CronJobHandler = {
       const wouldActivate = notExpiredButInactive.length;
 
       if (context.mode === 'test') {
-        logger.info('[TEST MODE] Ban active status sync - would update', {
-          service: 'cron-sync-ban-active-status',
+        logger.info('[TEST MODE] Worker ban active scan - would update', {
+          service: 'cron-worker-ban-active-scan',
           jobId: context.jobId,
           wouldDeactivate,
           wouldActivate,
@@ -47,8 +47,8 @@ export const syncBanActiveStatusHandler: CronJobHandler = {
         activatedCount++;
       }
 
-      logger.info('Ban active status sync completed', {
-        service: 'cron-sync-ban-active-status',
+      logger.info('Worker ban active scan completed', {
+        service: 'cron-worker-ban-active-scan',
         jobId: context.jobId,
         deactivatedCount,
         activatedCount,
@@ -61,8 +61,8 @@ export const syncBanActiveStatusHandler: CronJobHandler = {
       };
 
     } catch (error) {
-      logger.error('Failed to sync ban active status', {
-        service: 'cron-sync-ban-active-status',
+      logger.error('Worker ban active scan failed', {
+        service: 'cron-worker-ban-active-scan',
         jobId: context.jobId,
         error: error instanceof Error ? error.message : String(error),
       });
