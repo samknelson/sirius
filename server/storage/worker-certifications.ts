@@ -1,4 +1,4 @@
-validateWorkerCertificationimport { getClient } from './transaction-context';
+import { getClient } from './transaction-context';
 import { 
   workerCertifications,
   optionsCertifications,
@@ -11,11 +11,10 @@ import {
 import { eq } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { 
-  type ValidationResult, 
   type ValidationError,
   normalizeToDateOnly,
   getTodayDateOnly,
-  throwIfInvalid
+  createStorageValidator
 } from "./utils/validation";
 
 function calculateActiveStatus(
@@ -38,66 +37,47 @@ function calculateActiveStatus(
   return start !== null && end !== null && start <= today && today <= end;
 }
 
-export interface WorkerCertificationValidationInput {
-  workerId: string;
-  certificationId: string;
-  status?: string | null;
-  startDate?: string | Date | null;
-  endDate?: string | Date | null;
-}
-
-export interface ValidatedWorkerCertification extends WorkerCertificationValidationInput {
-  active: boolean;
-}
-
-export function validateWorkerCertification(
-  data: Partial<WorkerCertificationValidationInput>,
-  existing?: WorkerCertification | null
-): ValidationResult<ValidatedWorkerCertification> {
-  const errors: ValidationError[] = [];
-  
-  const workerId = data.workerId ?? existing?.workerId;
-  const certificationId = data.certificationId ?? existing?.certificationId;
-  const status = data.status !== undefined ? data.status : existing?.status;
-  const startDate = data.startDate !== undefined ? data.startDate : existing?.startDate;
-  const endDate = data.endDate !== undefined ? data.endDate : existing?.endDate;
-  
-  if (!workerId) {
-    errors.push({ field: 'workerId', code: 'REQUIRED', message: 'Worker ID is required' });
-  }
-  
-  if (!certificationId) {
-    errors.push({ field: 'certificationId', code: 'REQUIRED', message: 'Certification ID is required' });
-  }
-  
-  if (startDate && endDate) {
-    const normalizedStart = normalizeToDateOnly(startDate);
-    const normalizedEnd = normalizeToDateOnly(endDate);
+/**
+ * Validator for worker certifications.
+ * Use validate.validate() for ValidationResult or validate.validateOrThrow() for direct value.
+ */
+export const validate = createStorageValidator<InsertWorkerCertification, WorkerCertification, { active: boolean }>(
+  (data, existing) => {
+    const errors: ValidationError[] = [];
     
-    if (normalizedStart && normalizedEnd && normalizedStart > normalizedEnd) {
-      errors.push({ field: 'endDate', code: 'BEFORE_START', message: 'End date cannot be before start date' });
+    const workerId = data.workerId ?? existing?.workerId;
+    const certificationId = data.certificationId ?? existing?.certificationId;
+    const status = data.status !== undefined ? data.status : existing?.status;
+    const startDate = data.startDate !== undefined ? data.startDate : existing?.startDate;
+    const endDate = data.endDate !== undefined ? data.endDate : existing?.endDate;
+    
+    if (!workerId) {
+      errors.push({ field: 'workerId', code: 'REQUIRED', message: 'Worker ID is required' });
     }
-  }
-  
-  if (errors.length > 0) {
-    return { ok: false, errors };
-  }
-  
-  const finalStatus = status ?? 'pending';
-  const active = calculateActiveStatus(startDate, endDate, finalStatus);
-  
-  return {
-    ok: true,
-    value: {
-      workerId: workerId!,
-      certificationId: certificationId!,
-      status: finalStatus,
-      startDate: startDate ?? null,
-      endDate: endDate ?? null,
-      active
+    
+    if (!certificationId) {
+      errors.push({ field: 'certificationId', code: 'REQUIRED', message: 'Certification ID is required' });
     }
-  };
-}
+    
+    if (startDate && endDate) {
+      const normalizedStart = normalizeToDateOnly(startDate);
+      const normalizedEnd = normalizeToDateOnly(endDate);
+      
+      if (normalizedStart && normalizedEnd && normalizedStart > normalizedEnd) {
+        errors.push({ field: 'endDate', code: 'BEFORE_START', message: 'End date cannot be before start date' });
+      }
+    }
+    
+    if (errors.length > 0) {
+      return { ok: false, errors };
+    }
+    
+    const finalStatus = status ?? 'pending';
+    const active = calculateActiveStatus(startDate, endDate, finalStatus);
+    
+    return { ok: true, value: { active } };
+  }
+);
 
 export interface WorkerCertificationWithDetails extends WorkerCertification {
   certification?: OptionsCertification | null;
@@ -244,7 +224,7 @@ export function createWorkerCertificationStorage(): WorkerCertificationStorage {
       const client = getClient();
       const { message, ...insertData } = data;
       
-      const validated = throwIfInvalid(validateWorkerCertification(insertData));
+      const validated = validate.validateOrThrow(insertData);
       
       const [result] = await client
         .insert(workerCertifications)
@@ -268,7 +248,7 @@ export function createWorkerCertificationStorage(): WorkerCertificationStorage {
       
       if (!existing) return undefined;
       
-      const validated = throwIfInvalid(validateWorkerCertification(updateData, existing));
+      const validated = validate.validateOrThrow(updateData, existing);
       
       const [result] = await client
         .update(workerCertifications)

@@ -10,11 +10,10 @@ import { eq, desc, and, lt, gte, or, isNull, isNotNull } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { eventBus, EventType } from "../services/event-bus";
 import { 
-  type ValidationResult, 
   type ValidationError,
   normalizeToDateOnly,
   getTodayDateOnly,
-  throwIfInvalid
+  createStorageValidator
 } from "./utils/validation";
 
 export interface WorkerBanWithRelations extends WorkerBan {
@@ -48,74 +47,49 @@ function calculateActive(endDate: Date | null | undefined): boolean {
   return end !== null && end >= today;
 }
 
-export interface WorkerBanValidationInput {
-  workerId: string;
-  type?: string | null;
-  startDate: Date;
-  endDate?: Date | null;
-  message?: string | null;
-  data?: unknown;
-}
-
-export interface ValidatedWorkerBan extends WorkerBanValidationInput {
-  active: boolean;
-}
-
-export function validateWorkerBan(
-  data: Partial<WorkerBanValidationInput>,
-  existing?: WorkerBan | null
-): ValidationResult<ValidatedWorkerBan> {
-  const errors: ValidationError[] = [];
-  
-  const workerId = data.workerId ?? existing?.workerId;
-  const type = data.type ?? existing?.type;
-  const startDate = data.startDate ?? existing?.startDate;
-  const endDate = data.endDate !== undefined ? data.endDate : existing?.endDate;
-  const message = data.message !== undefined ? data.message : existing?.message;
-  const dataField = data.data !== undefined ? data.data : existing?.data;
-  
-  if (!workerId) {
-    errors.push({ field: 'workerId', code: 'REQUIRED', message: 'Worker ID is required' });
-  }
-  
-  
-  if (!startDate) {
-    errors.push({ field: 'startDate', code: 'REQUIRED', message: 'Start date is required' });
-  } else {
-    const normalizedStart = normalizeToDateOnly(startDate);
-    const today = getTodayDateOnly();
+/**
+ * Validator for worker bans.
+ * Use validate.validate() for ValidationResult or validate.validateOrThrow() for direct value.
+ */
+export const validate = createStorageValidator<InsertWorkerBan, WorkerBan, { active: boolean }>(
+  (data, existing) => {
+    const errors: ValidationError[] = [];
     
-    if (normalizedStart && normalizedStart > today) {
-      errors.push({ field: 'startDate', code: 'FUTURE_DATE', message: 'Start date cannot be in the future' });
+    const workerId = data.workerId ?? existing?.workerId;
+    const startDate = data.startDate ?? existing?.startDate;
+    const endDate = data.endDate !== undefined ? data.endDate : existing?.endDate;
+    
+    if (!workerId) {
+      errors.push({ field: 'workerId', code: 'REQUIRED', message: 'Worker ID is required' });
     }
     
-    if (endDate) {
-      const normalizedEnd = normalizeToDateOnly(endDate);
-      if (normalizedStart && normalizedEnd && normalizedStart > normalizedEnd) {
-        errors.push({ field: 'endDate', code: 'BEFORE_START', message: 'End date cannot be before start date' });
+    if (!startDate) {
+      errors.push({ field: 'startDate', code: 'REQUIRED', message: 'Start date is required' });
+    } else {
+      const normalizedStart = normalizeToDateOnly(startDate);
+      const today = getTodayDateOnly();
+      
+      if (normalizedStart && normalizedStart > today) {
+        errors.push({ field: 'startDate', code: 'FUTURE_DATE', message: 'Start date cannot be in the future' });
+      }
+      
+      if (endDate) {
+        const normalizedEnd = normalizeToDateOnly(endDate);
+        if (normalizedStart && normalizedEnd && normalizedStart > normalizedEnd) {
+          errors.push({ field: 'endDate', code: 'BEFORE_START', message: 'End date cannot be before start date' });
+        }
       }
     }
-  }
-  
-  if (errors.length > 0) {
-    return { ok: false, errors };
-  }
-  
-  const active = calculateActive(endDate);
-  
-  return {
-    ok: true,
-    value: {
-      workerId: workerId!,
-      type: type ?? null,
-      startDate: startDate!,
-      endDate: endDate ?? null,
-      message: message ?? null,
-      data: dataField,
-      active
+    
+    if (errors.length > 0) {
+      return { ok: false, errors };
     }
-  };
-}
+    
+    const active = calculateActive(endDate);
+    
+    return { ok: true, value: { active } };
+  }
+);
 
 async function getWorkerName(workerId: string): Promise<string> {
   const client = getClient();
@@ -209,7 +183,7 @@ export function createWorkerBanStorage(): WorkerBanStorage {
 
     async create(ban: InsertWorkerBan): Promise<WorkerBan> {
       const client = getClient();
-      const validated = throwIfInvalid(validateWorkerBan(ban));
+      const validated = validate.validateOrThrow(ban);
       
       const [created] = await client
         .insert(workerBans)
@@ -236,7 +210,7 @@ export function createWorkerBanStorage(): WorkerBanStorage {
       const existing = await this.get(id);
       if (!existing) return undefined;
 
-      const validated = throwIfInvalid(validateWorkerBan(ban, existing));
+      const validated = validate.validateOrThrow(ban, existing);
 
       const [updated] = await client
         .update(workerBans)
