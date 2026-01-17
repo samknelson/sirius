@@ -19,46 +19,45 @@ export const workerBanActiveScanHandler: CronJobHandler = {
       const wouldDeactivate = expiredButActive.length;
       const wouldActivate = notExpiredButInactive.length;
 
-      if (context.mode === 'live') {
-        let deactivatedCount = 0;
-        let activatedCount = 0;
-
-        for (const ban of expiredButActive) {
-          await storage.workerBans.update(ban.id, {});
-          deactivatedCount++;
-        }
-
-        for (const ban of notExpiredButInactive) {
-          await storage.workerBans.update(ban.id, {});
-          activatedCount++;
-        }
-
-        logger.info('Worker ban active scan completed', {
+      if (context.mode === 'test') {
+        logger.info('[TEST MODE] Worker ban active scan - would update', {
           service: 'cron-worker-ban-active-scan',
           jobId: context.jobId,
-          deactivatedCount,
-          activatedCount,
+          wouldDeactivate,
+          wouldActivate,
         });
 
         return {
-          mode: 'live',
-          deactivatedCount,
-          activatedCount,
+          mode: 'test',
+          wouldDeactivate,
+          wouldActivate,
         };
       }
 
-      logger.info('[DRY RUN] Worker ban active scan - would update', {
+      let deactivatedCount = 0;
+      let activatedCount = 0;
+
+      for (const ban of expiredButActive) {
+        await storage.workerBans.update(ban.id, {});
+        deactivatedCount++;
+      }
+
+      for (const ban of notExpiredButInactive) {
+        await storage.workerBans.update(ban.id, {});
+        activatedCount++;
+      }
+
+      logger.info('Worker ban active scan completed', {
         service: 'cron-worker-ban-active-scan',
         jobId: context.jobId,
-        mode: context.mode,
-        wouldDeactivate,
-        wouldActivate,
+        deactivatedCount,
+        activatedCount,
       });
 
       return {
-        mode: 'test',
-        wouldDeactivate,
-        wouldActivate,
+        mode: 'live',
+        deactivatedCount,
+        activatedCount,
       };
 
     } catch (error) {
