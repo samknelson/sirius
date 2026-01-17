@@ -32,13 +32,6 @@ export function isStartAfterEnd(startDate: Date | null, endDate: Date | null): b
   return start !== null && end !== null && start > end;
 }
 
-export function isDateExpired(endDate: Date | null): boolean {
-  if (!endDate) return false;
-  const end = normalizeToDateOnly(endDate);
-  const today = getTodayDateOnly();
-  return end !== null && end < today;
-}
-
 export function isDateWithinRange(
   startDate: Date | string | null | undefined,
   endDate: Date | string | null | undefined,
