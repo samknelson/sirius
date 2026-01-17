@@ -151,7 +151,7 @@ export const validate = createStorageValidator<InsertWorkerCertification, Worker
       startDate,
       endDate,
       requireStartDate: true,
-      requireEndDate: true,
+      requireEndDate: false,
       customize: (defaultActive) => defaultActive && finalStatus === 'granted'
     });
     
