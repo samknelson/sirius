@@ -1,10 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
-import { createUnifiedOptionsStorage } from "../storage/unified-options";
 import { z } from "zod";
 import { requireComponent } from "./components";
-
-const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
 type RequireAccess = (policy: string, getEntityId?: (req: Request) => string | Promise<string | undefined> | undefined) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
@@ -174,13 +171,4 @@ export function registerWorkerCertificationsRoutes(
     }
   });
 
-  app.get("/api/options/certifications", requireAuth, certificationsComponent, async (req: Request, res: Response) => {
-    try {
-      const certifications = await unifiedOptionsStorage.list("certification");
-      res.json(certifications);
-    } catch (error) {
-      console.error("Error fetching certifications options:", error);
-      res.status(500).json({ error: "Failed to fetch certifications options" });
-    }
-  });
 }

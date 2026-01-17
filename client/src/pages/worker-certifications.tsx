@@ -49,7 +49,7 @@ function CertificationsContent() {
   });
 
   const { data: availableCertifications = [] } = useQuery<OptionsCertification[]>({
-    queryKey: ["/api/options/certifications"],
+    queryKey: ["/api/options/certification"],
   });
 
   const addMutation = useMutation({
