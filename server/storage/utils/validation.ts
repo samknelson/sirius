@@ -1,3 +1,54 @@
+/**
+ * Storage Layer Validation Framework
+ * ===================================
+ * 
+ * This module provides a reusable validation pattern for storage layers.
+ * Each storage module should export a single `validate` object created with `createStorageValidator`.
+ * 
+ * ## Pattern Overview
+ * 
+ * 1. Define a validator using `createStorageValidator<TInput, TExisting, TDerived>()`
+ *    - TInput: The insert schema type (e.g., InsertWorkerBan)
+ *    - TExisting: The existing record type for updates (e.g., WorkerBan)
+ *    - TDerived: Computed fields returned by validation (e.g., { active: boolean })
+ * 
+ * 2. The validator logic function receives:
+ *    - data: Partial input data being validated
+ *    - existing: Optional existing record (for updates)
+ *    
+ * 3. Return either:
+ *    - { ok: true, value: { ...derivedFields } } on success
+ *    - { ok: false, errors: ValidationError[] } on failure
+ * 
+ * ## Usage in Storage Layers
+ * 
+ * ```typescript
+ * // Export a single validate object
+ * export const validate = createStorageValidator<InsertWorkerBan, WorkerBan, { active: boolean }>(
+ *   (data, existing) => {
+ *     const errors: ValidationError[] = [];
+ *     // ... validation logic ...
+ *     if (errors.length > 0) return { ok: false, errors };
+ *     return { ok: true, value: { active: computedActive } };
+ *   }
+ * );
+ * 
+ * // In create/update methods:
+ * async create(data: InsertWorkerBan) {
+ *   const validated = validate.validateOrThrow(data);
+ *   // validated includes original data + derived fields (e.g., active)
+ *   await db.insert(table).values({ ...data, active: validated.active });
+ * }
+ * ```
+ * 
+ * ## Benefits
+ * 
+ * - Consistent validation pattern across all storage layers
+ * - Type-safe derived fields (computed values like `active`)
+ * - Single point of validation logic per entity
+ * - Enforces validation before persistence
+ */
+
 export interface ValidationError {
   field: string;
   code: string;
