@@ -33,6 +33,8 @@ All database access **MUST** go through a centralized storage layer (`server/sto
 
 **Encapsulation Enforcement**: Run `npx tsx scripts/dev/check-storage-encapsulation.ts` to detect violations. The script detects both static imports (`from '../db'`) and dynamic imports (`await import('../../db')`) outside the allowed storage layer.
 
+**Storage Validation Framework**: Use `createStorageValidator` (sync) or `createAsyncStorageValidator` (async) from `server/storage/utils/validation.ts` to create reusable validators. Validators export `validate()` (returns result) and `validateOrThrow()` (throws `DomainValidationError`). Async validators support DB lookups and external service calls. Examples: `contacts.ts` (address/email validation), `comm.ts` (phone validation with E.164 formatting), `workers.ts` (SSN format and uniqueness), `cardchecks.ts` (duplicate prevention).
+
 ## System Design Choices
 -   **Worker Management**: Comprehensive CRUD for workers, contacts, and benefits.
 -   **Configurable Settings**: Consolidated options system (`/api/options/:type`) for organizational settings, using a unified metadata-driven storage and registry.
