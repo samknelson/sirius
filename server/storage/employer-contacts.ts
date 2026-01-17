@@ -3,6 +3,32 @@ import { employerContacts, contacts, optionsEmployerContactType, employers, user
 import { eq, and, or, like, ilike, sql, inArray } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import type { ContactsStorage } from "./contacts";
+import { 
+  type ValidationError,
+  createStorageValidator
+} from "./utils/validation";
+
+/**
+ * Validates required email for employer contacts
+ * Returns trimmed email value to match original behavior
+ */
+export const employerContactEmailValidate = createStorageValidator<{ email: string | null | undefined }, never, { email: string }>(
+  (data) => {
+    const errors: ValidationError[] = [];
+    const trimmedEmail = data.email?.trim() || '';
+    
+    if (!trimmedEmail) {
+      errors.push({
+        field: 'email',
+        code: 'REQUIRED',
+        message: "Email is required for employer contacts"
+      });
+      return { ok: false, errors };
+    }
+    
+    return { ok: true, value: { email: trimmedEmail } };
+  }
+);
 
 export interface EmployerContactStorage {
   create(data: { employerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }>;
@@ -28,13 +54,13 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
   return {
     async create(data: { employerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }> {
       const client = getClient();
-      // Validate email is provided
-      if (!data.contactData.email || !data.contactData.email.trim()) {
-        throw new Error("Email is required for employer contacts");
-      }
-
-      // Create the contact first using contacts storage
-      const contact = await contactsStorage.createContact(data.contactData);
+      
+      const validated = employerContactEmailValidate.validateOrThrow({ email: data.contactData.email });
+      
+      const contact = await contactsStorage.createContact({
+        ...data.contactData,
+        email: validated.email
+      });
 
       // Create the employer contact relationship
       const [employerContact] = await client
