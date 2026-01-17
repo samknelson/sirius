@@ -48,6 +48,20 @@ function ViewContent() {
               </div>
             </div>
             <div>
+              <Label className="text-sm text-muted-foreground">Active</Label>
+              <div className="mt-1">
+                <Badge 
+                  className={certification.denormActive 
+                    ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" 
+                    : "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"
+                  } 
+                  data-testid="text-certification-active"
+                >
+                  {certification.denormActive ? "Active" : "Inactive"}
+                </Badge>
+              </div>
+            </div>
+            <div>
               <Label className="text-sm text-muted-foreground">Start Date</Label>
               <p className="text-lg font-medium" data-testid="text-start-date">
                 {formatDate(certification.startDate)}

@@ -208,6 +208,7 @@ function CertificationsContent() {
               <TableRow>
                 <TableHead>Certification</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Active</TableHead>
                 <TableHead>Start Date</TableHead>
                 <TableHead>End Date</TableHead>
                 <TableHead className="w-[100px]">Actions</TableHead>
@@ -222,6 +223,17 @@ function CertificationsContent() {
                   <TableCell>
                     <Badge className={statusColors[cert.status] || ""} data-testid={`badge-status-${cert.id}`}>
                       {cert.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge 
+                      className={cert.denormActive 
+                        ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" 
+                        : "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"
+                      }
+                      data-testid={`badge-active-${cert.id}`}
+                    >
+                      {cert.denormActive ? "Active" : "Inactive"}
                     </Badge>
                   </TableCell>
                   <TableCell>{formatDate(cert.startDate)}</TableCell>
