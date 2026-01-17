@@ -78,7 +78,7 @@ function DispatchJobEditContent() {
   );
 
   const { data: skills = [] } = useQuery<OptionsSkill[]>({
-    queryKey: ["/api/options/skills"],
+    queryKey: ["/api/options/skill"],
     enabled: skillsComponentEnabled,
   });
 

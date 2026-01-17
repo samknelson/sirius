@@ -38,7 +38,7 @@ function SkillsContent() {
   });
 
   const { data: availableSkills = [] } = useQuery<OptionsSkill[]>({
-    queryKey: ["/api/options/skills"],
+    queryKey: ["/api/options/skill"],
   });
 
   const assignedSkillIds = new Set(workerSkills.map(ws => ws.skillId));
