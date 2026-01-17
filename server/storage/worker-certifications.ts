@@ -11,6 +11,19 @@ import {
 import { eq } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
+function validateDateRange(startDate: string | Date | null | undefined, endDate: string | Date | null | undefined): void {
+  if (startDate == null || endDate == null) {
+    return;
+  }
+  
+  const start = typeof startDate === 'string' ? new Date(startDate) : startDate;
+  const end = typeof endDate === 'string' ? new Date(endDate) : endDate;
+  
+  if (start > end) {
+    throw new Error("Start date must be on or before end date");
+  }
+}
+
 export interface WorkerCertificationWithDetails extends WorkerCertification {
   certification?: OptionsCertification | null;
 }
@@ -153,6 +166,9 @@ export function createWorkerCertificationStorage(): WorkerCertificationStorage {
     async create(data: InsertWorkerCertification & { message?: string }): Promise<WorkerCertification> {
       const client = getClient();
       const { message, ...insertData } = data;
+      
+      validateDateRange(insertData.startDate, insertData.endDate);
+      
       const [result] = await client
         .insert(workerCertifications)
         .values(insertData)
@@ -164,6 +180,18 @@ export function createWorkerCertificationStorage(): WorkerCertificationStorage {
     async update(id: string, data: Partial<InsertWorkerCertification> & { message?: string }): Promise<WorkerCertification | undefined> {
       const client = getClient();
       const { message, ...updateData } = data;
+      
+      const [existing] = await client
+        .select()
+        .from(workerCertifications)
+        .where(eq(workerCertifications.id, id));
+      
+      if (!existing) return undefined;
+      
+      const finalStartDate = updateData.startDate !== undefined ? updateData.startDate : existing.startDate;
+      const finalEndDate = updateData.endDate !== undefined ? updateData.endDate : existing.endDate;
+      validateDateRange(finalStartDate, finalEndDate);
+      
       const [result] = await client
         .update(workerCertifications)
         .set(updateData)

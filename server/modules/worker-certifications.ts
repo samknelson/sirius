@@ -137,6 +137,10 @@ export function registerWorkerCertificationsRoutes(
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid data", details: error.errors });
       }
+      if (error instanceof Error) {
+        console.error("Error updating worker certification:", error.message);
+        return res.status(400).json({ error: error.message });
+      }
       console.error("Error updating worker certification:", error);
       res.status(500).json({ error: "Failed to update worker certification" });
     }
