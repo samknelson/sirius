@@ -31,7 +31,6 @@ export interface EdlsCrewsStorage {
   delete(id: string): Promise<boolean>;
   deleteBySheetId(sheetId: string): Promise<number>;
   getCrewsTotalWorkerCount(sheetId: string): Promise<number>;
-  validateCrewsWorkerCount(sheetId: string, expectedTotal: number): Promise<boolean>;
 }
 
 export function createEdlsCrewsStorage(): EdlsCrewsStorage {
@@ -122,11 +121,6 @@ export function createEdlsCrewsStorage(): EdlsCrewsStorage {
         .where(eq(edlsCrews.sheetId, sheetId));
       return result?.total || 0;
     },
-
-    async validateCrewsWorkerCount(sheetId: string, expectedTotal: number): Promise<boolean> {
-      const total = await this.getCrewsTotalWorkerCount(sheetId);
-      return total === expectedTotal;
-    }
   };
 }
 
