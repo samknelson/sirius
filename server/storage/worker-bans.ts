@@ -9,6 +9,13 @@ import {
 import { eq, desc, and, lt, gte, or, isNull, isNotNull } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { eventBus, EventType } from "../services/event-bus";
+import { 
+  type ValidationResult, 
+  type ValidationError,
+  normalizeToDateOnly,
+  getTodayDateOnly,
+  throwIfInvalid
+} from "./utils/validation";
 
 export interface WorkerBanWithRelations extends WorkerBan {
   worker?: {
@@ -36,27 +43,78 @@ export interface WorkerBanStorage {
 
 function calculateActive(endDate: Date | null | undefined): boolean {
   if (!endDate) return true;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const end = new Date(endDate);
-  end.setHours(0, 0, 0, 0);
-  return end >= today;
+  const end = normalizeToDateOnly(endDate);
+  const today = getTodayDateOnly();
+  return end !== null && end >= today;
 }
 
-function validateDateRange(startDate: Date, endDate: Date | null | undefined): void {
-  if (endDate && new Date(endDate) < new Date(startDate)) {
-    throw new Error("End date cannot be before start date");
-  }
+export interface WorkerBanValidationInput {
+  workerId: string;
+  type?: string | null;
+  startDate: Date;
+  endDate?: Date | null;
+  message?: string | null;
+  data?: unknown;
 }
 
-function validateStartDateNotFuture(startDate: Date): void {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const start = new Date(startDate);
-  start.setHours(0, 0, 0, 0);
-  if (start > today) {
-    throw new Error("Start date cannot be in the future");
+export interface ValidatedWorkerBan extends WorkerBanValidationInput {
+  active: boolean;
+}
+
+export function validateWorkerBan(
+  data: Partial<WorkerBanValidationInput>,
+  existing?: WorkerBan | null
+): ValidationResult<ValidatedWorkerBan> {
+  const errors: ValidationError[] = [];
+  
+  const workerId = data.workerId ?? existing?.workerId;
+  const type = data.type ?? existing?.type;
+  const startDate = data.startDate ?? existing?.startDate;
+  const endDate = data.endDate !== undefined ? data.endDate : existing?.endDate;
+  const message = data.message !== undefined ? data.message : existing?.message;
+  const dataField = data.data !== undefined ? data.data : existing?.data;
+  
+  if (!workerId) {
+    errors.push({ field: 'workerId', code: 'REQUIRED', message: 'Worker ID is required' });
   }
+  
+  
+  if (!startDate) {
+    errors.push({ field: 'startDate', code: 'REQUIRED', message: 'Start date is required' });
+  } else {
+    const normalizedStart = normalizeToDateOnly(startDate);
+    const today = getTodayDateOnly();
+    
+    if (normalizedStart && normalizedStart > today) {
+      errors.push({ field: 'startDate', code: 'FUTURE_DATE', message: 'Start date cannot be in the future' });
+    }
+    
+    if (endDate) {
+      const normalizedEnd = normalizeToDateOnly(endDate);
+      if (normalizedStart && normalizedEnd && normalizedStart > normalizedEnd) {
+        errors.push({ field: 'endDate', code: 'BEFORE_START', message: 'End date cannot be before start date' });
+      }
+    }
+  }
+  
+  if (errors.length > 0) {
+    return { ok: false, errors };
+  }
+  
+  const active = calculateActive(endDate);
+  
+  return {
+    ok: true,
+    value: {
+      workerId: workerId!,
+      type: type ?? null,
+      startDate: startDate!,
+      endDate: endDate ?? null,
+      message: message ?? null,
+      data: dataField,
+      active
+    }
+  };
 }
 
 async function getWorkerName(workerId: string): Promise<string> {
@@ -151,14 +209,13 @@ export function createWorkerBanStorage(): WorkerBanStorage {
 
     async create(ban: InsertWorkerBan): Promise<WorkerBan> {
       const client = getClient();
-      validateStartDateNotFuture(ban.startDate);
-      validateDateRange(ban.startDate, ban.endDate);
-      const active = calculateActive(ban.endDate);
+      const validated = throwIfInvalid(validateWorkerBan(ban));
+      
       const [created] = await client
         .insert(workerBans)
         .values({
           ...ban,
-          active
+          active: validated.active
         })
         .returning();
       
@@ -179,20 +236,13 @@ export function createWorkerBanStorage(): WorkerBanStorage {
       const existing = await this.get(id);
       if (!existing) return undefined;
 
-      const startDate = ban.startDate !== undefined ? ban.startDate : existing.startDate;
-      const endDate = ban.endDate !== undefined ? ban.endDate : existing.endDate;
-      
-      if (ban.startDate !== undefined) {
-        validateStartDateNotFuture(startDate);
-      }
-      validateDateRange(startDate, endDate);
-      const active = calculateActive(endDate);
+      const validated = throwIfInvalid(validateWorkerBan(ban, existing));
 
       const [updated] = await client
         .update(workerBans)
         .set({
           ...ban,
-          active
+          active: validated.active
         })
         .where(eq(workerBans.id, id))
         .returning();
