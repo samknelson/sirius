@@ -39,10 +39,17 @@ export function isDateExpired(endDate: Date | null): boolean {
   return end !== null && end < today;
 }
 
-export function isDateWithinRange(startDate: Date | null, endDate: Date | null): boolean {
-  if (!startDate || !endDate) return false;
+export function isDateWithinRange(
+  startDate: Date | string | null | undefined,
+  endDate: Date | string | null | undefined,
+  testDate?: Date | string
+): boolean {
   const start = normalizeToDateOnly(startDate);
   const end = normalizeToDateOnly(endDate);
-  const today = getTodayDateOnly();
-  return start !== null && end !== null && start <= today && today <= end;
+  const test = testDate ? normalizeToDateOnly(testDate)! : getTodayDateOnly();
+  
+  if (!start && !end) return false;
+  if (start && !end) return start <= test;
+  if (!start && end) return test <= end;
+  return start! <= test && test <= end!;
 }
