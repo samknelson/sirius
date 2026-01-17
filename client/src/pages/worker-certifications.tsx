@@ -13,8 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Award, Plus, ExternalLink } from "lucide-react";
+import { addMonths, format } from "date-fns";
 import { Link } from "wouter";
 import type { WorkerCertification, OptionsCertification } from "@shared/schema";
 
@@ -77,9 +78,39 @@ function CertificationsContent() {
     },
   });
 
+  const getTodayDate = () => format(new Date(), 'yyyy-MM-dd');
+
+  const calculateEndDate = useCallback((certId: string, startDate: string) => {
+    if (!certId || !startDate) return "";
+    const cert = availableCertifications.find(c => c.id === certId);
+    const certData = cert?.data as { defaultDuration?: number } | undefined;
+    const defaultDuration = certData?.defaultDuration;
+    if (typeof defaultDuration === 'number' && defaultDuration > 0) {
+      const start = new Date(startDate);
+      const end = addMonths(start, defaultDuration);
+      return format(end, 'yyyy-MM-dd');
+    }
+    return "";
+  }, [availableCertifications]);
+
+  const handleCertificationChange = (certId: string) => {
+    setFormCertificationId(certId);
+    const newEndDate = calculateEndDate(certId, formStartDate);
+    setFormEndDate(newEndDate);
+  };
+
+  const handleStartDateChange = (newStartDate: string) => {
+    setFormStartDate(newStartDate);
+    if (formCertificationId) {
+      const newEndDate = calculateEndDate(formCertificationId, newStartDate);
+      setFormEndDate(newEndDate);
+    }
+  };
+
   const openAddModal = () => {
+    const today = getTodayDate();
     setFormCertificationId("");
-    setFormStartDate("");
+    setFormStartDate(today);
     setFormEndDate("");
     setFormStatus("pending");
     setFormMessage("");
@@ -224,7 +255,7 @@ function CertificationsContent() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="certification">Certification</Label>
-              <Select value={formCertificationId} onValueChange={setFormCertificationId}>
+              <Select value={formCertificationId} onValueChange={handleCertificationChange}>
                 <SelectTrigger data-testid="select-certification">
                   <SelectValue placeholder="Select a certification" />
                 </SelectTrigger>
@@ -244,7 +275,7 @@ function CertificationsContent() {
                   id="startDate"
                   type="date"
                   value={formStartDate}
-                  onChange={(e) => setFormStartDate(e.target.value)}
+                  onChange={(e) => handleStartDateChange(e.target.value)}
                   data-testid="input-start-date"
                 />
               </div>
