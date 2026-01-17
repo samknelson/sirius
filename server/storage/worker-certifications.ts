@@ -76,6 +76,8 @@ export interface WorkerCertificationStorage {
   create(data: InsertWorkerCertification & { message?: string }): Promise<WorkerCertification>;
   update(id: string, data: Partial<InsertWorkerCertification> & { message?: string }): Promise<WorkerCertification | undefined>;
   delete(id: string, message?: string): Promise<boolean>;
+  findExpiredButActive(): Promise<WorkerCertification[]>;
+  findNotExpiredButInactive(): Promise<WorkerCertification[]>;
 }
 
 async function getWorkerName(workerId: string): Promise<string> {
@@ -253,6 +255,24 @@ export function createWorkerCertificationStorage(): WorkerCertificationStorage {
         .returning();
       
       return !!deleted;
+    },
+
+    async findExpiredButActive(): Promise<WorkerCertification[]> {
+      const client = getClient();
+      const all = await client.select().from(workerCertifications);
+      return all.filter(cert => {
+        const shouldBeActive = calculateActiveStatus(cert.startDate, cert.endDate, cert.status);
+        return cert.active && !shouldBeActive;
+      });
+    },
+
+    async findNotExpiredButInactive(): Promise<WorkerCertification[]> {
+      const client = getClient();
+      const all = await client.select().from(workerCertifications);
+      return all.filter(cert => {
+        const shouldBeActive = calculateActiveStatus(cert.startDate, cert.endDate, cert.status);
+        return !cert.active && shouldBeActive;
+      });
     },
   };
 }

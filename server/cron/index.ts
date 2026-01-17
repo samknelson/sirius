@@ -9,3 +9,4 @@ export { deleteExpiredFloodEventsHandler } from './jobs/deleteExpiredFloodEvents
 export { deleteExpiredHfeHandler } from './jobs/deleteExpiredHfe';
 export { sweepExpiredBanEligHandler } from './jobs/sweepExpiredBanElig';
 export { workerBanActiveScanHandler } from './jobs/workerBanActiveScan';
+export { workerCertificationActiveScanHandler } from './jobs/workerCertificationActiveScan';
