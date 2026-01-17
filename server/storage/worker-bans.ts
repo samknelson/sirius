@@ -30,15 +30,17 @@ export interface WorkerBanStorage {
   create(ban: InsertWorkerBan): Promise<WorkerBan>;
   update(id: string, ban: Partial<InsertWorkerBan>): Promise<WorkerBan | undefined>;
   delete(id: string): Promise<boolean>;
-  countExpiredButActive(today: Date): Promise<number>;
-  countActiveButMarkedInactive(today: Date): Promise<number>;
-  deactivateExpiredBans(today: Date): Promise<number>;
-  activateCurrentBans(today: Date): Promise<number>;
+  findExpiredButActive(): Promise<WorkerBan[]>;
+  findNotExpiredButInactive(): Promise<WorkerBan[]>;
 }
 
 function calculateActive(endDate: Date | null | undefined): boolean {
   if (!endDate) return true;
-  return new Date(endDate) >= new Date();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const end = new Date(endDate);
+  end.setHours(0, 0, 0, 0);
+  return end >= today;
 }
 
 function validateDateRange(startDate: Date, endDate: Date | null | undefined): void {
@@ -230,60 +232,61 @@ export function createWorkerBanStorage(): WorkerBanStorage {
       return deleted;
     },
 
-    async countExpiredButActive(today: Date): Promise<number> {
-      const client = getClient();
-      const result = await client
-        .select({ id: workerBans.id })
-        .from(workerBans)
-        .where(and(
-          eq(workerBans.active, true),
-          isNotNull(workerBans.endDate),
-          lt(workerBans.endDate, today)
-        ));
-      return result.length;
+    async findExpiredButActive(): Promise<WorkerBan[]> {
+      return composeQuery({ expired: true, active: true });
     },
 
-    async countActiveButMarkedInactive(today: Date): Promise<number> {
-      const client = getClient();
-      const result = await client
-        .select({ id: workerBans.id })
-        .from(workerBans)
-        .where(and(
-          eq(workerBans.active, false),
-          or(
-            isNull(workerBans.endDate),
-            gte(workerBans.endDate, today)
-          )
-        ));
-      return result.length;
-    },
-
-    async deactivateExpiredBans(today: Date): Promise<number> {
-      const client = getClient();
-      const result = await client
-        .update(workerBans)
-        .set({ active: false })
-        .where(and(
-          eq(workerBans.active, true),
-          isNotNull(workerBans.endDate),
-          lt(workerBans.endDate, today)
-        ));
-      return result.rowCount ?? 0;
-    },
-
-    async activateCurrentBans(today: Date): Promise<number> {
-      const client = getClient();
-      const result = await client
-        .update(workerBans)
-        .set({ active: true })
-        .where(and(
-          eq(workerBans.active, false),
-          or(
-            isNull(workerBans.endDate),
-            gte(workerBans.endDate, today)
-          )
-        ));
-      return result.rowCount ?? 0;
+    async findNotExpiredButInactive(): Promise<WorkerBan[]> {
+      return composeQuery({ expired: false, active: false });
     }
   };
+}
+
+interface QueryFilters {
+  expired?: boolean;
+  active?: boolean;
+  workerId?: string;
+  id?: string;
+}
+
+async function composeQuery(filters: QueryFilters): Promise<WorkerBan[]> {
+  const client = getClient();
+  const conditions = [];
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (filters.active !== undefined) {
+    conditions.push(eq(workerBans.active, filters.active));
+  }
+
+  if (filters.expired !== undefined) {
+    if (filters.expired) {
+      conditions.push(isNotNull(workerBans.endDate));
+      conditions.push(lt(workerBans.endDate, today));
+    } else {
+      conditions.push(or(
+        isNull(workerBans.endDate),
+        gte(workerBans.endDate, today)
+      ));
+    }
+  }
+
+  if (filters.workerId) {
+    conditions.push(eq(workerBans.workerId, filters.workerId));
+  }
+
+  if (filters.id) {
+    conditions.push(eq(workerBans.id, filters.id));
+  }
+
+  if (conditions.length === 0) {
+    return client.select().from(workerBans).orderBy(desc(workerBans.startDate));
+  }
+
+  return client
+    .select()
+    .from(workerBans)
+    .where(and(...conditions))
+    .orderBy(desc(workerBans.startDate));
 }

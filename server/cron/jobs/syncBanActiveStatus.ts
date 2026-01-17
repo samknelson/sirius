@@ -2,12 +2,6 @@ import { storage } from "../../storage";
 import { logger } from "../../logger";
 import type { CronJobHandler, CronJobContext, CronJobSummary } from "../registry";
 
-function startOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 export const syncBanActiveStatusHandler: CronJobHandler = {
   description: 'Synchronizes the active status of worker bans based on their expiration dates',
 
@@ -19,12 +13,13 @@ export const syncBanActiveStatusHandler: CronJobHandler = {
     });
 
     try {
-      const today = startOfDay(new Date());
+      const expiredButActive = await storage.workerBans.findExpiredButActive();
+      const notExpiredButInactive = await storage.workerBans.findNotExpiredButInactive();
+
+      const wouldDeactivate = expiredButActive.length;
+      const wouldActivate = notExpiredButInactive.length;
 
       if (context.mode === 'test') {
-        const wouldDeactivate = await storage.workerBans.countExpiredButActive(today);
-        const wouldActivate = await storage.workerBans.countActiveButMarkedInactive(today);
-
         logger.info('[TEST MODE] Ban active status sync - would update', {
           service: 'cron-sync-ban-active-status',
           jobId: context.jobId,
@@ -39,8 +34,18 @@ export const syncBanActiveStatusHandler: CronJobHandler = {
         };
       }
 
-      const deactivatedCount = await storage.workerBans.deactivateExpiredBans(today);
-      const activatedCount = await storage.workerBans.activateCurrentBans(today);
+      let deactivatedCount = 0;
+      let activatedCount = 0;
+
+      for (const ban of expiredButActive) {
+        await storage.workerBans.update(ban.id, {});
+        deactivatedCount++;
+      }
+
+      for (const ban of notExpiredButInactive) {
+        await storage.workerBans.update(ban.id, {});
+        activatedCount++;
+      }
 
       logger.info('Ban active status sync completed', {
         service: 'cron-sync-ban-active-status',
