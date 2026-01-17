@@ -14,27 +14,8 @@ import {
   type ValidationError,
   createStorageValidator
 } from "./utils/validation";
-import { normalizeToDateOnly, getTodayDateOnly } from "@shared/utils";
-
-function calculateActiveStatus(
-  startDate: string | Date | null | undefined,
-  endDate: string | Date | null | undefined,
-  status: string
-): boolean {
-  if (status !== 'granted') {
-    return false;
-  }
-  
-  if (startDate == null || endDate == null) {
-    return false;
-  }
-  
-  const start = normalizeToDateOnly(startDate);
-  const end = normalizeToDateOnly(endDate);
-  const today = getTodayDateOnly();
-  
-  return start !== null && end !== null && start <= today && today <= end;
-}
+import { calculateDenormActive } from "./utils/denorm-active";
+import { normalizeToDateOnly } from "@shared/utils";
 
 /**
  * Validator for worker certifications.
@@ -72,7 +53,13 @@ export const validate = createStorageValidator<InsertWorkerCertification, Worker
     }
     
     const finalStatus = status ?? 'pending';
-    const denormActive = calculateActiveStatus(startDate, endDate, finalStatus);
+    const denormActive = calculateDenormActive({
+      startDate,
+      endDate,
+      requireStartDate: true,
+      requireEndDate: true,
+      customize: (defaultActive) => defaultActive && finalStatus === 'granted'
+    });
     
     return { ok: true, value: { denormActive } };
   }
