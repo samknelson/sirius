@@ -27,7 +27,7 @@ export function registerWorkerSkillsRoutes(
 ) {
   const skillsComponent = requireComponent("worker.skills");
 
-  app.get("/api/worker-skills/worker/:workerId", requireAuth, skillsComponent, requireAccess('staff'), async (req: Request, res: Response) => {
+  app.get("/api/worker-skills/worker/:workerId", requireAuth, skillsComponent, requireAccess('worker.view'), async (req: Request, res: Response) => {
     try {
       const skills = await storage.workerSkills.getByWorker(req.params.workerId);
       res.json(skills);
@@ -37,7 +37,7 @@ export function registerWorkerSkillsRoutes(
     }
   });
 
-  app.get("/api/worker-skills/:id", requireAuth, skillsComponent, requireAccess('staff'), async (req: Request, res: Response) => {
+  app.get("/api/worker-skills/:id", requireAuth, skillsComponent, requireAccess('worker.view'), async (req: Request, res: Response) => {
     try {
       const skill = await storage.workerSkills.get(req.params.id);
       if (!skill) {
