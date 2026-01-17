@@ -2,6 +2,151 @@ import { getClient } from './transaction-context';
 import { contacts, contactPostal, phoneNumbers, optionsGender, trustProviderContacts, employerContacts, type Contact, type InsertContact, type ContactPostal, type InsertContactPostal, type PhoneNumber, type InsertPhoneNumber } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
+import { 
+  type ValidationError,
+  createStorageValidator
+} from "./utils/validation";
+
+export const addressValidate = createStorageValidator<InsertContactPostal, ContactPostal, {}>(
+  (data, existing) => {
+    const errors: ValidationError[] = [];
+    
+    const isPrimary = data.isPrimary !== undefined ? data.isPrimary : existing?.isPrimary;
+    const isActive = data.isActive !== undefined ? data.isActive : existing?.isActive;
+    const wasActive = existing?.isActive;
+    const wasPrimary = existing?.isPrimary;
+    
+    if (!existing) {
+      if (isPrimary && isActive === false) {
+        errors.push({ 
+          field: 'isPrimary', 
+          code: 'INACTIVE_PRIMARY', 
+          message: "Cannot create an inactive address as primary. Either activate the address or don't set it as primary." 
+        });
+      }
+    } else {
+      if (wasPrimary && isActive === false) {
+        errors.push({ 
+          field: 'isActive', 
+          code: 'DEACTIVATE_PRIMARY', 
+          message: "Cannot deactivate a primary address. Set another address as primary first." 
+        });
+      }
+      
+      if (!wasActive && data.isPrimary === true) {
+        errors.push({ 
+          field: 'isPrimary', 
+          code: 'INACTIVE_PRIMARY', 
+          message: "Cannot set an inactive address as primary. Activate the address first." 
+        });
+      }
+    }
+    
+    if (errors.length > 0) return { ok: false, errors };
+    return { ok: true, value: {} };
+  }
+);
+
+export const phoneValidate = createStorageValidator<InsertPhoneNumber, PhoneNumber, {}>(
+  (data, existing) => {
+    const errors: ValidationError[] = [];
+    
+    const isPrimary = data.isPrimary !== undefined ? data.isPrimary : existing?.isPrimary;
+    const isActive = data.isActive !== undefined ? data.isActive : existing?.isActive;
+    const wasActive = existing?.isActive;
+    const wasPrimary = existing?.isPrimary;
+    
+    if (!existing) {
+      if (isPrimary && isActive === false) {
+        errors.push({ 
+          field: 'isPrimary', 
+          code: 'INACTIVE_PRIMARY', 
+          message: "Cannot create an inactive phone number as primary. Either activate the phone number or don't set it as primary." 
+        });
+      }
+    } else {
+      if (wasPrimary && isActive === false) {
+        errors.push({ 
+          field: 'isActive', 
+          code: 'DEACTIVATE_PRIMARY', 
+          message: "Cannot deactivate a primary phone number. Set another phone number as primary first." 
+        });
+      }
+      
+      if (!wasActive && data.isPrimary === true) {
+        errors.push({ 
+          field: 'isPrimary', 
+          code: 'INACTIVE_PRIMARY', 
+          message: "Cannot set an inactive phone number as primary. Activate the phone number first." 
+        });
+      }
+    }
+    
+    if (errors.length > 0) return { ok: false, errors };
+    return { ok: true, value: {} };
+  }
+);
+
+export const emailValidate = createStorageValidator<{ email: string | null }, never, { email: string | null }>(
+  (data) => {
+    const errors: ValidationError[] = [];
+    const cleanEmail = data.email?.trim() ?? "";
+    
+    if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      errors.push({ 
+        field: 'email', 
+        code: 'INVALID_FORMAT', 
+        message: "Invalid email format" 
+      });
+    }
+    
+    if (errors.length > 0) return { ok: false, errors };
+    return { ok: true, value: { email: cleanEmail || null } };
+  }
+);
+
+export const birthDateValidate = createStorageValidator<{ birthDate: string | null }, never, { birthDate: string | null }>(
+  (data) => {
+    const errors: ValidationError[] = [];
+    const birthDate = data.birthDate;
+    
+    if (birthDate) {
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(birthDate)) {
+        errors.push({ 
+          field: 'birthDate', 
+          code: 'INVALID_FORMAT', 
+          message: "Invalid date format. Expected YYYY-MM-DD" 
+        });
+      } else {
+        const [yearStr, monthStr, dayStr] = birthDate.split('-');
+        const year = parseInt(yearStr, 10);
+        const month = parseInt(monthStr, 10);
+        const day = parseInt(dayStr, 10);
+        
+        if (month < 1 || month > 12) {
+          errors.push({ 
+            field: 'birthDate', 
+            code: 'INVALID_MONTH', 
+            message: "Invalid month. Must be between 1 and 12" 
+          });
+        } else {
+          const daysInMonth = [31, (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+          if (day < 1 || day > daysInMonth[month - 1]) {
+            errors.push({ 
+              field: 'birthDate', 
+              code: 'INVALID_DAY', 
+              message: `Invalid day. Must be between 1 and ${daysInMonth[month - 1]} for the given month` 
+            });
+          }
+        }
+      }
+    }
+    
+    if (errors.length > 0) return { ok: false, errors };
+    return { ok: true, value: { birthDate: birthDate || null } };
+  }
+);
 
 // Address Storage Interface
 export interface AddressStorage {
@@ -88,12 +233,8 @@ export function createAddressStorage(): AddressStorage {
 
     async createContactPostal(insertContactPostal: InsertContactPostal): Promise<ContactPostal> {
       const client = getClient();
-      // Validation: Prevent creating an inactive primary address
-      if (insertContactPostal.isPrimary && insertContactPostal.isActive === false) {
-        throw new Error("Cannot create an inactive address as primary. Either activate the address or don't set it as primary.");
-      }
+      addressValidate.validateOrThrow(insertContactPostal);
 
-      // If creating a primary address, first unset any existing primary addresses for this contact
       if (insertContactPostal.isPrimary) {
         await client
           .update(contactPostal)
@@ -110,23 +251,13 @@ export function createAddressStorage(): AddressStorage {
 
     async updateContactPostal(id: string, addressUpdate: Partial<InsertContactPostal>): Promise<ContactPostal | undefined> {
       const client = getClient();
-      // Get the current address to perform validation checks
       const [currentAddress] = await client.select().from(contactPostal).where(eq(contactPostal.id, id));
       if (!currentAddress) {
         throw new Error("Address not found");
       }
 
-      // Validation: Prevent making a primary address inactive
-      if (currentAddress.isPrimary && addressUpdate.isActive === false) {
-        throw new Error("Cannot deactivate a primary address. Set another address as primary first.");
-      }
+      addressValidate.validateOrThrow(addressUpdate, currentAddress);
 
-      // Validation: Prevent making an inactive address primary
-      if (!currentAddress.isActive && addressUpdate.isPrimary === true) {
-        throw new Error("Cannot set an inactive address as primary. Activate the address first.");
-      }
-
-      // If setting as primary, unset any existing primary addresses for this contact
       if (addressUpdate.isPrimary) {
         await client
           .update(contactPostal)
@@ -151,24 +282,18 @@ export function createAddressStorage(): AddressStorage {
 
     async setAddressAsPrimary(addressId: string, contactId: string): Promise<ContactPostal | undefined> {
       const client = getClient();
-      // Get the current address to validate it can be set as primary
       const [currentAddress] = await client.select().from(contactPostal).where(eq(contactPostal.id, addressId));
       if (!currentAddress) {
         throw new Error("Address not found");
       }
 
-      // Validation: Prevent setting an inactive address as primary
-      if (!currentAddress.isActive) {
-        throw new Error("Cannot set an inactive address as primary. Activate the address first.");
-      }
+      addressValidate.validateOrThrow({ isPrimary: true }, currentAddress);
 
-      // First, unset all primary addresses for this contact
       await client
         .update(contactPostal)
         .set({ isPrimary: false })
         .where(eq(contactPostal.contactId, contactId));
       
-      // Then set the specified address as primary
       const [address] = await client
         .update(contactPostal)
         .set({ isPrimary: true })
@@ -201,12 +326,8 @@ export function createPhoneNumberStorage(): PhoneNumberStorage {
 
     async createPhoneNumber(insertPhoneNumber: InsertPhoneNumber): Promise<PhoneNumber> {
       const client = getClient();
-      // Validation: Prevent creating an inactive primary phone number
-      if (insertPhoneNumber.isPrimary && insertPhoneNumber.isActive === false) {
-        throw new Error("Cannot create an inactive phone number as primary. Either activate the phone number or don't set it as primary.");
-      }
+      phoneValidate.validateOrThrow(insertPhoneNumber);
 
-      // If creating a primary phone number, first unset any existing primary phone numbers for this contact
       if (insertPhoneNumber.isPrimary) {
         await client
           .update(phoneNumbers)
@@ -223,23 +344,13 @@ export function createPhoneNumberStorage(): PhoneNumberStorage {
 
     async updatePhoneNumber(id: string, phoneNumberUpdate: Partial<InsertPhoneNumber>): Promise<PhoneNumber | undefined> {
       const client = getClient();
-      // Get the current phone number to perform validation checks
       const [currentPhoneNumber] = await client.select().from(phoneNumbers).where(eq(phoneNumbers.id, id));
       if (!currentPhoneNumber) {
         throw new Error("Phone number not found");
       }
 
-      // Validation: Prevent making a primary phone number inactive
-      if (currentPhoneNumber.isPrimary && phoneNumberUpdate.isActive === false) {
-        throw new Error("Cannot deactivate a primary phone number. Set another phone number as primary first.");
-      }
+      phoneValidate.validateOrThrow(phoneNumberUpdate, currentPhoneNumber);
 
-      // Validation: Prevent making an inactive phone number primary
-      if (!currentPhoneNumber.isActive && phoneNumberUpdate.isPrimary === true) {
-        throw new Error("Cannot set an inactive phone number as primary. Activate the phone number first.");
-      }
-
-      // If setting as primary, unset any existing primary phone numbers for this contact
       if (phoneNumberUpdate.isPrimary) {
         await client
           .update(phoneNumbers)
@@ -264,24 +375,18 @@ export function createPhoneNumberStorage(): PhoneNumberStorage {
 
     async setPhoneNumberAsPrimary(phoneNumberId: string, contactId: string): Promise<PhoneNumber | undefined> {
       const client = getClient();
-      // Get the current phone number to validate it can be set as primary
       const [currentPhoneNumber] = await client.select().from(phoneNumbers).where(eq(phoneNumbers.id, phoneNumberId));
       if (!currentPhoneNumber) {
         throw new Error("Phone number not found");
       }
 
-      // Validation: Prevent setting an inactive phone number as primary
-      if (!currentPhoneNumber.isActive) {
-        throw new Error("Cannot set an inactive phone number as primary. Activate the phone number first.");
-      }
+      phoneValidate.validateOrThrow({ isPrimary: true }, currentPhoneNumber);
 
-      // First, unset all primary phone numbers for this contact
       await client
         .update(phoneNumbers)
         .set({ isPrimary: false })
         .where(eq(phoneNumbers.contactId, contactId));
       
-      // Then set the specified phone number as primary
       const [phoneNumber] = await client
         .update(phoneNumbers)
         .set({ isPrimary: true })
@@ -450,17 +555,11 @@ export function createContactStorage(): ContactStorage {
 
     async updateEmail(contactId: string, email: string | null): Promise<Contact | undefined> {
       const client = getClient();
-      const cleanEmail = email?.trim() ?? "";
+      const validated = emailValidate.validateOrThrow({ email });
       
-      // Basic email validation
-      if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-        throw new Error("Invalid email format");
-      }
-      
-      // Update the contact's email
       const [contact] = await client
         .update(contacts)
-        .set({ email: cleanEmail || null })
+        .set({ email: validated.email })
         .where(eq(contacts.id, contactId))
         .returning();
       
@@ -469,35 +568,11 @@ export function createContactStorage(): ContactStorage {
 
     async updateBirthDate(contactId: string, birthDate: string | null): Promise<Contact | undefined> {
       const client = getClient();
-      // Validate birth date format if provided
-      if (birthDate) {
-        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (!dateRegex.test(birthDate)) {
-          throw new Error("Invalid date format. Expected YYYY-MM-DD");
-        }
-        
-        // Parse and validate calendar date
-        const [yearStr, monthStr, dayStr] = birthDate.split('-');
-        const year = parseInt(yearStr, 10);
-        const month = parseInt(monthStr, 10);
-        const day = parseInt(dayStr, 10);
-        
-        // Validate month range
-        if (month < 1 || month > 12) {
-          throw new Error("Invalid month. Must be between 1 and 12");
-        }
-        
-        // Validate day range based on month
-        const daysInMonth = [31, (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-        if (day < 1 || day > daysInMonth[month - 1]) {
-          throw new Error(`Invalid day. Must be between 1 and ${daysInMonth[month - 1]} for the given month`);
-        }
-      }
+      const validated = birthDateValidate.validateOrThrow({ birthDate });
       
-      // Update the contact's birth date
       const [contact] = await client
         .update(contacts)
-        .set({ birthDate: birthDate || null })
+        .set({ birthDate: validated.birthDate })
         .where(eq(contacts.id, contactId))
         .returning();
       

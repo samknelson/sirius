@@ -12,12 +12,70 @@ import {
   type TrustBenefit,
   type Employer,
 } from "@shared/schema";
-import { eq, sql, desc, and } from "drizzle-orm";
+import { eq, sql, desc, and, ne } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
 import type { WorkerDenormData } from "./worker-hours";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { logger } from "../logger";
 import { eventBus, EventType } from "../services/event-bus";
+import { 
+  type ValidationError,
+  createAsyncStorageValidator
+} from "./utils/validation";
+import { parseSSN, validateSSN } from "@shared/utils/ssn";
+
+export const ssnValidate = createAsyncStorageValidator<{ ssn: string | null; workerId?: string }, never, { ssn: string | null }>(
+  async (data) => {
+    const errors: ValidationError[] = [];
+    
+    if (!data.ssn || !data.ssn.trim()) {
+      return { ok: true, value: { ssn: null } };
+    }
+    
+    const cleanSSN = data.ssn.trim();
+    
+    let parsedSSN: string;
+    try {
+      parsedSSN = parseSSN(cleanSSN);
+    } catch (error) {
+      errors.push({
+        field: 'ssn',
+        code: 'INVALID_FORMAT',
+        message: error instanceof Error ? error.message : "Invalid SSN format"
+      });
+      return { ok: false, errors };
+    }
+    
+    const validation = validateSSN(parsedSSN);
+    if (!validation.valid) {
+      errors.push({
+        field: 'ssn',
+        code: 'INVALID_SSN',
+        message: validation.error || "Invalid SSN"
+      });
+      return { ok: false, errors };
+    }
+    
+    if (data.workerId) {
+      const client = getClient();
+      const [existingWorker] = await client
+        .select({ id: workers.id })
+        .from(workers)
+        .where(and(eq(workers.ssn, parsedSSN), ne(workers.id, data.workerId)));
+      
+      if (existingWorker) {
+        errors.push({
+          field: 'ssn',
+          code: 'DUPLICATE_SSN',
+          message: "This SSN is already assigned to another worker"
+        });
+        return { ok: false, errors };
+      }
+    }
+    
+    return { ok: true, value: { ssn: parsedSSN } };
+  }
+);
 
 export interface WorkerEmployerSummary {
   workerId: string;
@@ -457,52 +515,15 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
     async updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined> {
       const client = getClient();
-      const cleanSSN = ssn.trim();
+      const validated = await ssnValidate.validateOrThrow({ ssn, workerId });
       
-      // Allow clearing the SSN
-      if (!cleanSSN) {
-        const [updatedWorker] = await client
-          .update(workers)
-          .set({ ssn: null })
-          .where(eq(workers.id, workerId))
-          .returning();
-        
-        return updatedWorker || undefined;
-      }
+      const [updatedWorker] = await client
+        .update(workers)
+        .set({ ssn: validated.ssn })
+        .where(eq(workers.id, workerId))
+        .returning();
       
-      // Import SSN utilities
-      const { parseSSN, validateSSN } = await import("@shared/utils/ssn");
-      
-      // Parse SSN to normalize format (strips non-digits, pads with zeros)
-      let parsedSSN: string;
-      try {
-        parsedSSN = parseSSN(cleanSSN);
-      } catch (error) {
-        throw new Error(error instanceof Error ? error.message : "Invalid SSN format");
-      }
-      
-      // Validate SSN format and rules
-      const validation = validateSSN(parsedSSN);
-      if (!validation.valid) {
-        throw new Error(validation.error || "Invalid SSN");
-      }
-      
-      try {
-        // Update the worker's SSN with parsed (normalized) value
-        const [updatedWorker] = await client
-          .update(workers)
-          .set({ ssn: parsedSSN })
-          .where(eq(workers.id, workerId))
-          .returning();
-        
-        return updatedWorker || undefined;
-      } catch (error: any) {
-        // Check for unique constraint violation
-        if (error.code === '23505' && error.constraint === 'workers_ssn_unique') {
-          throw new Error("This SSN is already assigned to another worker");
-        }
-        throw error;
-      }
+      return updatedWorker || undefined;
     },
 
     async updateWorkerStatus(workerId: string, denormWsId: string | null): Promise<Worker | undefined> {

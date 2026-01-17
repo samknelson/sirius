@@ -2,6 +2,47 @@ import { getClient } from './transaction-context';
 import { cardchecks, cardcheckDefinitions, workers, contacts, type Cardcheck, type InsertCardcheck } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
+import { 
+  type ValidationError,
+  createAsyncStorageValidator
+} from "./utils/validation";
+
+export const cardcheckValidate = createAsyncStorageValidator<InsertCardcheck, Cardcheck, {}>(
+  async (data, existing) => {
+    const errors: ValidationError[] = [];
+    const client = getClient();
+    
+    const status = data.status !== undefined ? data.status : existing?.status;
+    const workerId = data.workerId ?? existing?.workerId;
+    const cardcheckDefinitionId = data.cardcheckDefinitionId ?? existing?.cardcheckDefinitionId;
+    
+    if (status === "signed" && workerId && cardcheckDefinitionId) {
+      const wasAlreadySigned = existing?.status === "signed";
+      
+      if (!wasAlreadySigned) {
+        const existingSigned = await client
+          .select()
+          .from(cardchecks)
+          .where(and(
+            eq(cardchecks.workerId, workerId),
+            eq(cardchecks.cardcheckDefinitionId, cardcheckDefinitionId),
+            eq(cardchecks.status, "signed")
+          ));
+        
+        if (existingSigned.length > 0) {
+          errors.push({
+            field: 'status',
+            code: 'DUPLICATE_SIGNED',
+            message: "A signed cardcheck of this type already exists for this worker"
+          });
+        }
+      }
+    }
+    
+    if (errors.length > 0) return { ok: false, errors };
+    return { ok: true, value: {} };
+  }
+);
 
 export interface CardcheckStatusSummary {
   workerId: string;
@@ -111,19 +152,7 @@ export function createCardcheckStorage(): CardcheckStorage {
 
     async createCardcheck(data: InsertCardcheck): Promise<Cardcheck> {
       const client = getClient();
-      if (data.status === "signed") {
-        const existing = await client
-          .select()
-          .from(cardchecks)
-          .where(and(
-            eq(cardchecks.workerId, data.workerId),
-            eq(cardchecks.cardcheckDefinitionId, data.cardcheckDefinitionId),
-            eq(cardchecks.status, "signed")
-          ));
-        if (existing.length > 0) {
-          throw new Error("A signed cardcheck of this type already exists for this worker");
-        }
-      }
+      await cardcheckValidate.validateOrThrow(data);
       
       const [cardcheck] = await client
         .insert(cardchecks)
@@ -134,22 +163,12 @@ export function createCardcheckStorage(): CardcheckStorage {
 
     async updateCardcheck(id: string, data: Partial<InsertCardcheck>): Promise<Cardcheck | undefined> {
       const client = getClient();
-      if (data.status === "signed") {
-        const current = await storage.getCardcheckById(id);
-        if (current && current.status !== "signed") {
-          const existing = await client
-            .select()
-            .from(cardchecks)
-            .where(and(
-              eq(cardchecks.workerId, current.workerId),
-              eq(cardchecks.cardcheckDefinitionId, current.cardcheckDefinitionId),
-              eq(cardchecks.status, "signed")
-            ));
-          if (existing.length > 0) {
-            throw new Error("A signed cardcheck of this type already exists for this worker");
-          }
-        }
+      const current = await storage.getCardcheckById(id);
+      if (!current) {
+        return undefined;
       }
+      
+      await cardcheckValidate.validateOrThrow(data, current);
       
       const [updated] = await client
         .update(cardchecks)

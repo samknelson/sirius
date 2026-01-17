@@ -3,6 +3,65 @@ import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, commPostal, com
 import { eq, desc, and, SQL } from "drizzle-orm";
 import { phoneValidationService } from "../services/phone-validation";
 import { storageLogger } from "../logger";
+import { 
+  type ValidationError,
+  createAsyncStorageValidator
+} from "./utils/validation";
+
+/**
+ * Validates optional phone numbers - returns null for empty, validates and formats non-empty
+ */
+export const phoneValidateOptional = createAsyncStorageValidator<{ phoneNumber: string | null | undefined }, never, { phoneNumber: string | null }>(
+  async (data) => {
+    const errors: ValidationError[] = [];
+    
+    if (!data.phoneNumber) {
+      return { ok: true, value: { phoneNumber: null } };
+    }
+    
+    const validationResult = await phoneValidationService.validateAndFormat(data.phoneNumber);
+    if (!validationResult.isValid) {
+      errors.push({
+        field: 'phoneNumber',
+        code: 'INVALID_PHONE',
+        message: `Invalid phone number: ${validationResult.error}`
+      });
+      return { ok: false, errors };
+    }
+    
+    return { ok: true, value: { phoneNumber: validationResult.e164Format || data.phoneNumber } };
+  }
+);
+
+/**
+ * Validates required phone numbers - throws if empty or invalid
+ */
+export const phoneValidateRequired = createAsyncStorageValidator<{ phoneNumber: string }, never, { phoneNumber: string }>(
+  async (data) => {
+    const errors: ValidationError[] = [];
+    
+    if (!data.phoneNumber || !data.phoneNumber.trim()) {
+      errors.push({
+        field: 'phoneNumber',
+        code: 'REQUIRED',
+        message: "Phone number is required"
+      });
+      return { ok: false, errors };
+    }
+    
+    const validationResult = await phoneValidationService.validateAndFormat(data.phoneNumber);
+    if (!validationResult.isValid) {
+      errors.push({
+        field: 'phoneNumber',
+        code: 'INVALID_PHONE',
+        message: `Invalid phone number: ${validationResult.error}`
+      });
+      return { ok: false, errors };
+    }
+    
+    return { ok: true, value: { phoneNumber: validationResult.e164Format || data.phoneNumber } };
+  }
+);
 
 export interface CommWithSms extends Comm {
   smsDetails?: CommSms | null;
@@ -214,15 +273,8 @@ export function createCommSmsStorage(): CommSmsStorage {
       let updateData = { ...data };
       
       if (data.to !== undefined) {
-        if (data.to) {
-          const validationResult = await phoneValidationService.validateAndFormat(data.to);
-          if (!validationResult.isValid) {
-            throw new Error(`Invalid phone number: ${validationResult.error}`);
-          }
-          updateData.to = validationResult.e164Format || data.to;
-        } else {
-          updateData.to = null;
-        }
+        const validated = await phoneValidateOptional.validateOrThrow({ phoneNumber: data.to ?? null });
+        updateData.to = validated.phoneNumber;
       }
 
       const [result] = await client.update(commSms).set(updateData).where(eq(commSms.id, found.commSms.id)).returning();
@@ -231,19 +283,11 @@ export function createCommSmsStorage(): CommSmsStorage {
 
     async createCommSms(data: InsertCommSms): Promise<CommSms> {
       const client = getClient();
-      let formattedTo = data.to;
-      
-      if (data.to) {
-        const validationResult = await phoneValidationService.validateAndFormat(data.to);
-        if (!validationResult.isValid) {
-          throw new Error(`Invalid phone number: ${validationResult.error}`);
-        }
-        formattedTo = validationResult.e164Format || data.to;
-      }
+      const validated = await phoneValidateOptional.validateOrThrow({ phoneNumber: data.to ?? null });
 
       const [result] = await client.insert(commSms).values({
         ...data,
-        to: formattedTo,
+        to: validated.phoneNumber,
       }).returning();
       return result;
     },
@@ -253,15 +297,8 @@ export function createCommSmsStorage(): CommSmsStorage {
       let updateData = { ...data };
       
       if (data.to !== undefined) {
-        if (data.to) {
-          const validationResult = await phoneValidationService.validateAndFormat(data.to);
-          if (!validationResult.isValid) {
-            throw new Error(`Invalid phone number: ${validationResult.error}`);
-          }
-          updateData.to = validationResult.e164Format || data.to;
-        } else {
-          updateData.to = null;
-        }
+        const validated = await phoneValidateOptional.validateOrThrow({ phoneNumber: data.to ?? null });
+        updateData.to = validated.phoneNumber;
       }
 
       const [result] = await client.update(commSms).set(updateData).where(eq(commSms.id, id)).returning();
@@ -313,15 +350,11 @@ export function createCommSmsOptinStorage(): CommSmsOptinStorage {
 
     async createSmsOptin(data: InsertCommSmsOptin): Promise<CommSmsOptin> {
       const client = getClient();
-      const validationResult = await phoneValidationService.validateAndFormat(data.phoneNumber);
-      if (!validationResult.isValid) {
-        throw new Error(`Invalid phone number: ${validationResult.error}`);
-      }
-      const normalizedPhone = validationResult.e164Format || data.phoneNumber;
+      const validated = await phoneValidateRequired.validateOrThrow({ phoneNumber: data.phoneNumber });
 
       const [result] = await client.insert(commSmsOptin).values({
         ...data,
-        phoneNumber: normalizedPhone,
+        phoneNumber: validated.phoneNumber,
       }).returning();
       return result;
     },
@@ -331,11 +364,8 @@ export function createCommSmsOptinStorage(): CommSmsOptinStorage {
       let updateData = { ...data };
       
       if (data.phoneNumber !== undefined) {
-        const validationResult = await phoneValidationService.validateAndFormat(data.phoneNumber);
-        if (!validationResult.isValid) {
-          throw new Error(`Invalid phone number: ${validationResult.error}`);
-        }
-        updateData.phoneNumber = validationResult.e164Format || data.phoneNumber;
+        const validated = await phoneValidateRequired.validateOrThrow({ phoneNumber: data.phoneNumber });
+        updateData.phoneNumber = validated.phoneNumber;
       }
 
       const [result] = await client.update(commSmsOptin).set(updateData).where(eq(commSmsOptin.id, id)).returning();
@@ -349,11 +379,8 @@ export function createCommSmsOptinStorage(): CommSmsOptinStorage {
 
       let updateData = { ...data };
       if (data.phoneNumber !== undefined) {
-        const validationResult2 = await phoneValidationService.validateAndFormat(data.phoneNumber);
-        if (!validationResult2.isValid) {
-          throw new Error(`Invalid phone number: ${validationResult2.error}`);
-        }
-        updateData.phoneNumber = validationResult2.e164Format || data.phoneNumber;
+        const validated = await phoneValidateRequired.validateOrThrow({ phoneNumber: data.phoneNumber });
+        updateData.phoneNumber = validated.phoneNumber;
       }
 
       const [result] = await client.update(commSmsOptin).set(updateData).where(eq(commSmsOptin.phoneNumber, normalizedPhone)).returning();
@@ -365,11 +392,8 @@ export function createCommSmsOptinStorage(): CommSmsOptinStorage {
       let updateData = { ...data };
       
       if (data.phoneNumber !== undefined) {
-        const validationResult = await phoneValidationService.validateAndFormat(data.phoneNumber);
-        if (!validationResult.isValid) {
-          throw new Error(`Invalid phone number: ${validationResult.error}`);
-        }
-        updateData.phoneNumber = validationResult.e164Format || data.phoneNumber;
+        const validated = await phoneValidateRequired.validateOrThrow({ phoneNumber: data.phoneNumber });
+        updateData.phoneNumber = validated.phoneNumber;
       }
 
       const [result] = await client.update(commSmsOptin).set(updateData).where(eq(commSmsOptin.publicToken, token)).returning();

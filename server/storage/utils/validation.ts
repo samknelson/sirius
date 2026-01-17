@@ -3,7 +3,8 @@
  * ===================================
  * 
  * This module provides a reusable validation pattern for storage layers.
- * Each storage module should export a single `validate` object created with `createStorageValidator`.
+ * Each storage module should export a single `validate` object created with 
+ * `createStorageValidator` (sync) or `createAsyncStorageValidator` (async).
  * 
  * ## Pattern Overview
  * 
@@ -20,10 +21,17 @@
  *    - { ok: true, value: { ...derivedFields } } on success
  *    - { ok: false, errors: ValidationError[] } on failure
  * 
+ * ## Sync vs Async Validators
+ * 
+ * Use `createStorageValidator` for pure validation (format checks, required fields, date logic).
+ * Use `createAsyncStorageValidator` when validation requires:
+ *   - Database lookups (duplicate checks, foreign key validation)
+ *   - External service calls (phone validation, address verification)
+ * 
  * ## Usage in Storage Layers
  * 
  * ```typescript
- * // Export a single validate object
+ * // Sync validator (pure validation)
  * export const validate = createStorageValidator<InsertWorkerBan, WorkerBan, { active: boolean }>(
  *   (data, existing) => {
  *     const errors: ValidationError[] = [];
@@ -33,11 +41,20 @@
  *   }
  * );
  * 
+ * // Async validator (DB/service calls)
+ * export const validate = createAsyncStorageValidator<InsertCardcheck, Cardcheck, {}>(
+ *   async (data, existing) => {
+ *     const errors: ValidationError[] = [];
+ *     // ... async validation logic (DB lookups, etc.) ...
+ *     if (errors.length > 0) return { ok: false, errors };
+ *     return { ok: true, value: {} };
+ *   }
+ * );
+ * 
  * // In create/update methods:
  * async create(data: InsertWorkerBan) {
- *   const validated = validate.validateOrThrow(data);
- *   // validated includes original data + derived fields (e.g., active)
- *   await db.insert(table).values({ ...data, active: validated.active });
+ *   const validated = await validate.validateOrThrow(data);
+ *   await db.insert(table).values({ ...data, ...validated });
  * }
  * ```
  * 
@@ -139,6 +156,39 @@ export function createStorageValidator<TInput, TExisting, TDerived>(
     
     validateOrThrow(data: Partial<TInput>, existing?: TExisting): Validated<Partial<TInput> & TDerived> {
       const result = this.validate(data, existing);
+      if (!result.ok) {
+        throw new DomainValidationError(result.errors);
+      }
+      return result.value;
+    }
+  };
+}
+
+export type AsyncValidatorLogic<TInput, TExisting, TDerived> = (
+  data: Partial<TInput>,
+  existing?: TExisting
+) => Promise<ValidationResult<TDerived>>;
+
+export interface AsyncStorageValidator<TInput, TExisting, TDerived> {
+  validate(data: Partial<TInput>, existing?: TExisting): Promise<ValidationResult<Validated<Partial<TInput> & TDerived>>>;
+  validateOrThrow(data: Partial<TInput>, existing?: TExisting): Promise<Validated<Partial<TInput> & TDerived>>;
+}
+
+export function createAsyncStorageValidator<TInput, TExisting, TDerived>(
+  logic: AsyncValidatorLogic<TInput, TExisting, TDerived>
+): AsyncStorageValidator<TInput, TExisting, TDerived> {
+  return {
+    async validate(data: Partial<TInput>, existing?: TExisting): Promise<ValidationResult<Validated<Partial<TInput> & TDerived>>> {
+      const result = await logic(data, existing);
+      if (!result.ok) {
+        return result;
+      }
+      const merged = { ...data, ...result.value } as Validated<Partial<TInput> & TDerived>;
+      return { ok: true, value: merged };
+    },
+    
+    async validateOrThrow(data: Partial<TInput>, existing?: TExisting): Promise<Validated<Partial<TInput> & TDerived>> {
+      const result = await this.validate(data, existing);
       if (!result.ok) {
         throw new DomainValidationError(result.errors);
       }
