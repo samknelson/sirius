@@ -1,4 +1,4 @@
-import { getClient } from './transaction-context';
+import { getClient, runInTransaction } from './transaction-context';
 import { 
   workerCertifications,
   optionsCertifications,
@@ -301,72 +301,78 @@ export function createWorkerCertificationStorage(deps: WorkerCertificationDepend
     },
 
     async create(data: InsertWorkerCertification & { message?: string }): Promise<WorkerCertification> {
-      const client = getClient();
-      const { message, ...insertData } = data;
-      
-      const validated = validate.validateOrThrow(insertData);
-      
-      const [result] = await client
-        .insert(workerCertifications)
-        .values({
-          ...insertData,
-          denormActive: validated.denormActive
-        })
-        .returning();
-      
-      // Sync skills based on updated certification status
-      await syncWorkerSkillsFromCertifications(result.workerId, deps);
-      
-      return result;
+      return runInTransaction(async () => {
+        const client = getClient();
+        const { message, ...insertData } = data;
+        
+        const validated = validate.validateOrThrow(insertData);
+        
+        const [result] = await client
+          .insert(workerCertifications)
+          .values({
+            ...insertData,
+            denormActive: validated.denormActive
+          })
+          .returning();
+        
+        // Sync skills based on updated certification status
+        await syncWorkerSkillsFromCertifications(result.workerId, deps);
+        
+        return result;
+      });
     },
 
     async update(id: string, data: Partial<InsertWorkerCertification> & { message?: string }): Promise<WorkerCertification | undefined> {
-      const client = getClient();
-      const { message, ...updateData } = data;
-      
-      const [existing] = await client
-        .select()
-        .from(workerCertifications)
-        .where(eq(workerCertifications.id, id));
-      
-      if (!existing) return undefined;
-      
-      const validated = validate.validateOrThrow(updateData, existing);
-      
-      const [result] = await client
-        .update(workerCertifications)
-        .set({
-          ...updateData,
-          denormActive: validated.denormActive
-        })
-        .where(eq(workerCertifications.id, id))
-        .returning();
-      
-      // Sync skills for the current worker
-      await syncWorkerSkillsFromCertifications(result.workerId, deps);
-      
-      // If workerId changed, also sync skills for the previous worker
-      // to remove any skills that were granted by this certification
-      if (existing.workerId !== result.workerId) {
-        await syncWorkerSkillsFromCertifications(existing.workerId, deps);
-      }
-      
-      return result;
+      return runInTransaction(async () => {
+        const client = getClient();
+        const { message, ...updateData } = data;
+        
+        const [existing] = await client
+          .select()
+          .from(workerCertifications)
+          .where(eq(workerCertifications.id, id));
+        
+        if (!existing) return undefined;
+        
+        const validated = validate.validateOrThrow(updateData, existing);
+        
+        const [result] = await client
+          .update(workerCertifications)
+          .set({
+            ...updateData,
+            denormActive: validated.denormActive
+          })
+          .where(eq(workerCertifications.id, id))
+          .returning();
+        
+        // Sync skills for the current worker
+        await syncWorkerSkillsFromCertifications(result.workerId, deps);
+        
+        // If workerId changed, also sync skills for the previous worker
+        // to remove any skills that were granted by this certification
+        if (existing.workerId !== result.workerId) {
+          await syncWorkerSkillsFromCertifications(existing.workerId, deps);
+        }
+        
+        return result;
+      });
     },
 
     async delete(id: string, message?: string): Promise<boolean> {
-      const client = getClient();
-      const [deleted] = await client
-        .delete(workerCertifications)
-        .where(eq(workerCertifications.id, id))
-        .returning();
-      
-      if (deleted) {
-        // Sync skills based on remaining certifications after delete
-        await syncWorkerSkillsFromCertifications(deleted.workerId, deps);
-      }
-      
-      return !!deleted;
+      return runInTransaction(async () => {
+        const client = getClient();
+        const [deleted] = await client
+          .delete(workerCertifications)
+          .where(eq(workerCertifications.id, id))
+          .returning();
+        
+        if (deleted) {
+          // Sync skills based on remaining certifications after delete
+          await syncWorkerSkillsFromCertifications(deleted.workerId, deps);
+        }
+        
+        return !!deleted;
+      });
     },
 
     async findExpiredButActive(): Promise<WorkerCertification[]> {
