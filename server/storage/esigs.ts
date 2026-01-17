@@ -86,6 +86,7 @@ export function createEsigStorage(deps: EsigStorageDependencies): EsigStorage {
     },
 
     async createEsig(data: InsertEsig): Promise<Esig> {
+      validate.validateOrThrow(data);
       const client = getClient();
       const [esig] = await client
         .insert(esigs)
@@ -95,6 +96,7 @@ export function createEsigStorage(deps: EsigStorageDependencies): EsigStorage {
     },
 
     async updateEsig(id: string, data: Partial<InsertEsig>): Promise<Esig | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [updated] = await client
         .update(esigs)

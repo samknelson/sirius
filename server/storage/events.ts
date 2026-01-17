@@ -109,12 +109,14 @@ export function createEventStorage(): EventStorage {
     },
 
     async create(insertEvent: InsertEvent): Promise<Event> {
+      validate.validateOrThrow(insertEvent);
       const client = getClient();
       const [event] = await client.insert(events).values(insertEvent).returning();
       return event;
     },
 
     async update(id: string, eventUpdate: Partial<InsertEvent>): Promise<Event | undefined> {
+      validate.validateOrThrow(eventUpdate);
       const client = getClient();
       const [event] = await client
         .update(events)

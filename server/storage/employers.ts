@@ -76,6 +76,7 @@ export function createEmployerStorage(): EmployerStorage {
     },
 
     async createEmployer(employer: InsertEmployer): Promise<Employer> {
+      validate.validateOrThrow(employer);
       const client = getClient();
       try {
         const [newEmployer] = await client
@@ -92,6 +93,7 @@ export function createEmployerStorage(): EmployerStorage {
     },
 
     async updateEmployer(id: string, employer: Partial<InsertEmployer>): Promise<Employer | undefined> {
+      validate.validateOrThrow(employer);
       const client = getClient();
       try {
         const [updatedEmployer] = await client

@@ -172,6 +172,7 @@ export function createWorkerDispatchDncStorage(): WorkerDispatchDncStorage {
     },
 
     async create(dnc: InsertWorkerDispatchDnc) {
+      validate.validateOrThrow(dnc);
       const client = getClient();
       const [result] = await client
         .insert(workerDispatchDnc)
@@ -191,6 +192,7 @@ export function createWorkerDispatchDncStorage(): WorkerDispatchDncStorage {
     },
 
     async update(id: string, dnc: Partial<InsertWorkerDispatchDnc>) {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [result] = await client
         .update(workerDispatchDnc)

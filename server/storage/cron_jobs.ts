@@ -51,6 +51,7 @@ export function createCronJobStorage(): CronJobStorage {
     },
 
     async create(insertJob: InsertCronJob): Promise<CronJob> {
+      validate.validateOrThrow(insertJob);
       const client = getClient();
       const [job] = await client
         .insert(cronJobs)
@@ -60,6 +61,7 @@ export function createCronJobStorage(): CronJobStorage {
     },
 
     async update(name: string, updates: Partial<InsertCronJob>): Promise<CronJob | undefined> {
+      validate.validateOrThrow(name);
       const client = getClient();
       const [job] = await client
         .update(cronJobs)
@@ -159,6 +161,7 @@ export function createCronJobRunStorage(): CronJobRunStorage {
     },
 
     async create(insertRun: InsertCronJobRun): Promise<CronJobRun> {
+      validate.validateOrThrow(insertRun);
       const client = getClient();
       const [run] = await client
         .insert(cronJobRuns)
@@ -168,6 +171,7 @@ export function createCronJobRunStorage(): CronJobRunStorage {
     },
 
     async update(id: string, updates: Partial<Omit<InsertCronJobRun, 'id'>>): Promise<CronJobRun | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [run] = await client
         .update(cronJobRuns)

@@ -61,6 +61,7 @@ export function createWorkerDispatchEligDenormStorage(): WorkerDispatchEligDenor
     },
 
     async create(entry: InsertWorkerDispatchEligDenorm) {
+      validate.validateOrThrow(entry);
       const client = getClient();
       const [result] = await client
         .insert(workerDispatchEligDenorm)
@@ -70,6 +71,7 @@ export function createWorkerDispatchEligDenormStorage(): WorkerDispatchEligDenor
     },
 
     async createMany(entries: InsertWorkerDispatchEligDenorm[]) {
+      validate.validateOrThrow(entries);
       const client = getClient();
       if (entries.length === 0) {
         return [];

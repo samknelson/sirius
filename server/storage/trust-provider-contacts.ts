@@ -31,6 +31,7 @@ export interface TrustProviderContactStorage {
 export function createTrustProviderContactStorage(contactsStorage: ContactsStorage): TrustProviderContactStorage {
   return {
     async create(data: { providerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ providerContact: TrustProviderContact; contact: Contact }> {
+      validate.validateOrThrow(data);
       const client = getClient();
       // Validate email is provided
       if (!data.contactData.email || !data.contactData.email.trim()) {

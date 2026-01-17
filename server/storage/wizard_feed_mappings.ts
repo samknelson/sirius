@@ -41,6 +41,7 @@ export function createWizardFeedMappingStorage(): WizardFeedMappingStorage {
     },
 
     async create(insertMapping: InsertWizardFeedMapping): Promise<WizardFeedMapping> {
+      validate.validateOrThrow(insertMapping);
       const client = getClient();
       const [mapping] = await client
         .insert(wizardFeedMappings)
@@ -53,6 +54,7 @@ export function createWizardFeedMappingStorage(): WizardFeedMappingStorage {
       id: string, 
       updates: Partial<Omit<InsertWizardFeedMapping, 'id'>>
     ): Promise<WizardFeedMapping | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [mapping] = await client
         .update(wizardFeedMappings)

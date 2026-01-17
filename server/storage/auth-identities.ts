@@ -79,6 +79,7 @@ export function createAuthIdentitiesStorage(): AuthIdentitiesStorage {
     },
 
     async create(identity: InsertAuthIdentity): Promise<AuthIdentity> {
+      validate.validateOrThrow(identity);
       const client = getClient();
       const [created] = await client
         .insert(authIdentities)
@@ -91,6 +92,7 @@ export function createAuthIdentitiesStorage(): AuthIdentitiesStorage {
       id: string,
       data: Partial<Omit<InsertAuthIdentity, "id" | "userId" | "providerType" | "externalId">>
     ): Promise<AuthIdentity | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [updated] = await client
         .update(authIdentities)
@@ -104,6 +106,7 @@ export function createAuthIdentitiesStorage(): AuthIdentitiesStorage {
     },
 
     async updateLastUsed(id: string): Promise<void> {
+      validate.validateOrThrow(id);
       const client = getClient();
       await client
         .update(authIdentities)

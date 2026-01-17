@@ -79,6 +79,7 @@ export function createEdlsCrewsStorage(): EdlsCrewsStorage {
     },
 
     async create(insertCrew: InsertEdlsCrew): Promise<EdlsCrew> {
+      validate.validateOrThrow(insertCrew);
       const client = getClient();
       const [crew] = await client.insert(edlsCrews).values(insertCrew).returning();
       return crew;
@@ -91,6 +92,7 @@ export function createEdlsCrewsStorage(): EdlsCrewsStorage {
     },
 
     async update(id: string, crewUpdate: Partial<InsertEdlsCrew>): Promise<EdlsCrew | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [crew] = await client
         .update(edlsCrews)

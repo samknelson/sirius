@@ -254,12 +254,14 @@ export function createDispatchJobStorage(): DispatchJobStorage {
     },
 
     async create(insertJob: InsertDispatchJob): Promise<DispatchJob> {
+      validate.validateOrThrow(insertJob);
       const client = getClient();
       const [job] = await client.insert(dispatchJobs).values(insertJob).returning();
       return job;
     },
 
     async update(id: string, jobUpdate: Partial<InsertDispatchJob>): Promise<DispatchJob | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [job] = await client
         .update(dispatchJobs)

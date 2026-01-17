@@ -63,6 +63,7 @@ export function createWorkerWshStorage(
     },
 
     async createWorkerWsh(data: { workerId: string; date: string; wsId: string; data?: any }): Promise<WorkerWsh> {
+      validate.validateOrThrow(data);
       const client = getClient();
       const [wsh] = await client
         .insert(workerWsh)
@@ -75,6 +76,7 @@ export function createWorkerWshStorage(
     },
 
     async updateWorkerWsh(id: string, data: { date?: string; wsId?: string; data?: any }): Promise<WorkerWsh | undefined> {
+      validate.validateOrThrow(data);
       const client = getClient();
       const [updated] = await client
         .update(workerWsh)

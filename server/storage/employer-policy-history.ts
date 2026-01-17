@@ -11,7 +11,7 @@ import type { StorageLoggingConfig } from "./middleware/logging";
 /**
  * Stub validator - add validation logic here when needed
  */
-export const validate = createNoopValidator<InsertEmployerPolicyHistory, EmployerPolicyHistory>();
+export const validate = createNoopValidator<{ employerId: string; date: string; policyId: string; data?: any }, EmployerPolicyHistory>();
 
 export interface EmployerPolicyHistoryStorage {
   getEmployerPolicyHistory(employerId: string): Promise<any[]>;
@@ -57,6 +57,7 @@ export function createEmployerPolicyHistoryStorage(
     },
 
     async createEmployerPolicyHistory(data: { employerId: string; date: string; policyId: string; data?: any }): Promise<EmployerPolicyHistory> {
+      validate.validateOrThrow(data);
       const client = getClient();
       const [created] = await client
         .insert(employerPolicyHistory)
@@ -69,6 +70,7 @@ export function createEmployerPolicyHistoryStorage(
     },
 
     async updateEmployerPolicyHistory(id: string, data: { date?: string; policyId?: string; data?: any }): Promise<EmployerPolicyHistory | undefined> {
+      validate.validateOrThrow(data);
       const client = getClient();
       const [updated] = await client
         .update(employerPolicyHistory)

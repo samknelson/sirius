@@ -39,6 +39,7 @@ export function createVariableStorage(): VariableStorage {
     },
 
     async create(insertVariable: InsertVariable): Promise<Variable> {
+      validate.validateOrThrow(insertVariable);
       const client = getClient();
       const [variable] = await client
         .insert(variables)
@@ -48,6 +49,7 @@ export function createVariableStorage(): VariableStorage {
     },
 
     async update(id: string, variableUpdate: Partial<InsertVariable>): Promise<Variable | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [variable] = await client
         .update(variables)

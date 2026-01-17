@@ -292,12 +292,14 @@ export function createDispatchStorage(): DispatchStorage {
     },
 
     async create(insertDispatch: InsertDispatch): Promise<Dispatch> {
+      validate.validateOrThrow(insertDispatch);
       const client = getClient();
       const [dispatch] = await client.insert(dispatches).values(insertDispatch).returning();
       return dispatch;
     },
 
     async update(id: string, dispatchUpdate: Partial<InsertDispatch>): Promise<Dispatch | undefined> {
+      validate.validateOrThrow(dispatchUpdate);
       const client = getClient();
       const [dispatch] = await client
         .update(dispatches)

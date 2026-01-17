@@ -116,6 +116,7 @@ export function createBookmarkStorage(): BookmarkStorage {
     },
 
     async createBookmark(insertBookmark: InsertBookmark): Promise<Bookmark> {
+      validate.validateOrThrow(insertBookmark);
       const client = getClient();
       const [bookmark] = await client
         .insert(bookmarks)

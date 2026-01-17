@@ -49,6 +49,7 @@ export interface WizardEmployerMonthlyStorage {
 export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStorage {
   return {
     async create(data: InsertWizardEmployerMonthly): Promise<WizardEmployerMonthly> {
+      validate.validateOrThrow(data);
       const client = getClient();
       const [record] = await client
         .insert(wizardEmployerMonthly)

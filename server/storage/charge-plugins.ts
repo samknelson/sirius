@@ -101,6 +101,7 @@ export function createChargePluginConfigStorage(): ChargePluginConfigStorage {
     },
 
     async create(insertConfig: InsertChargePluginConfig): Promise<ChargePluginConfig> {
+      validate.validateOrThrow(insertConfig);
       const client = getClient();
       const [config] = await client
         .insert(chargePluginConfigs)
@@ -110,6 +111,7 @@ export function createChargePluginConfigStorage(): ChargePluginConfigStorage {
     },
 
     async update(id: string, configUpdate: Partial<InsertChargePluginConfig>): Promise<ChargePluginConfig | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [config] = await client
         .update(chargePluginConfigs)

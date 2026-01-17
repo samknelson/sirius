@@ -144,6 +144,7 @@ export function createWorkerDispatchStatusStorage(): WorkerDispatchStatusStorage
     },
 
     async create(status: InsertWorkerDispatchStatus): Promise<WorkerDispatchStatus> {
+      validate.validateOrThrow(status);
       const client = getClient();
       const [created] = await client
         .insert(workerDispatchStatus)
@@ -160,6 +161,7 @@ export function createWorkerDispatchStatusStorage(): WorkerDispatchStatusStorage
     },
 
     async update(id: string, status: Partial<InsertWorkerDispatchStatus>): Promise<WorkerDispatchStatus | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [updated] = await client
         .update(workerDispatchStatus)

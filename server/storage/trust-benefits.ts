@@ -67,6 +67,7 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
     },
 
     async createTrustBenefit(benefit: InsertTrustBenefit): Promise<TrustBenefit> {
+      validate.validateOrThrow(benefit);
       const client = getClient();
       try {
         const [newBenefit] = await client
@@ -83,6 +84,7 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
     },
 
     async updateTrustBenefit(id: string, benefit: Partial<InsertTrustBenefit>): Promise<TrustBenefit | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       try {
         const [updatedBenefit] = await client

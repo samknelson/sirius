@@ -31,6 +31,7 @@ export function createWorkerIdStorage(): WorkerIdStorage {
     },
 
     async createWorkerId(insertWorkerId: InsertWorkerId): Promise<WorkerId> {
+      validate.validateOrThrow(insertWorkerId);
       const client = getClient();
       const [workerId] = await client
         .insert(workerIds)
@@ -40,6 +41,7 @@ export function createWorkerIdStorage(): WorkerIdStorage {
     },
 
     async updateWorkerId(id: string, workerIdUpdate: Partial<InsertWorkerId>): Promise<WorkerId | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [workerId] = await client
         .update(workerIds)

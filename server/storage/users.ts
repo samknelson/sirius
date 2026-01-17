@@ -91,6 +91,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async upsertUser(userData: UpsertUser): Promise<User> {
+      validate.validateOrThrow(userData);
       const client = getClient();
       const [user] = await client
         .insert(users)
@@ -115,6 +116,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async createUser(insertUser: InsertUser): Promise<User> {
+      validate.validateOrThrow(insertUser);
       const client = getClient();
       const [user] = await client
         .insert(users)
@@ -129,6 +131,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async updateUser(id: string, userUpdate: Partial<InsertUser>): Promise<User | undefined> {
+      validate.validateOrThrow(userUpdate);
       const client = getClient();
       const previousUser = await client.select().from(users).where(eq(users.id, id)).then(r => r[0]);
       const previousEmail = previousUser?.email;

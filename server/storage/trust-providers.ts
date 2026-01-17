@@ -65,6 +65,7 @@ function createTrustProviderStorageInternal(): TrustProviderStorage {
     },
 
     async createTrustProvider(provider: InsertTrustProvider): Promise<TrustProvider> {
+      validate.validateOrThrow(provider);
       const client = getClient();
       try {
         const [newProvider] = await client
@@ -81,6 +82,7 @@ function createTrustProviderStorageInternal(): TrustProviderStorage {
     },
 
     async updateTrustProvider(id: string, provider: Partial<InsertTrustProvider>): Promise<TrustProvider | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       try {
         const [updatedProvider] = await client

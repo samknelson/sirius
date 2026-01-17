@@ -44,6 +44,7 @@ export function createBargainingUnitStorage(): BargainingUnitStorage {
     },
 
     async createBargainingUnit(data: InsertBargainingUnit): Promise<BargainingUnit> {
+      validate.validateOrThrow(data);
       const client = getClient();
       const [unit] = await client
         .insert(bargainingUnits)
@@ -53,6 +54,7 @@ export function createBargainingUnitStorage(): BargainingUnitStorage {
     },
 
     async updateBargainingUnit(id: string, data: Partial<InsertBargainingUnit>): Promise<BargainingUnit | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [updated] = await client
         .update(bargainingUnits)

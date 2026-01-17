@@ -44,6 +44,7 @@ export function createCardcheckDefinitionStorage(): CardcheckDefinitionStorage {
     },
 
     async createCardcheckDefinition(data: InsertCardcheckDefinition): Promise<CardcheckDefinition> {
+      validate.validateOrThrow(data);
       const client = getClient();
       const [definition] = await client
         .insert(cardcheckDefinitions)
@@ -53,6 +54,7 @@ export function createCardcheckDefinitionStorage(): CardcheckDefinitionStorage {
     },
 
     async updateCardcheckDefinition(id: string, data: Partial<InsertCardcheckDefinition>): Promise<CardcheckDefinition | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [updated] = await client
         .update(cardcheckDefinitions)

@@ -164,12 +164,14 @@ export function createLedgerAccountStorage(): LedgerAccountStorage {
     },
 
     async create(insertAccount: InsertLedgerAccount): Promise<LedgerAccount> {
+      validate.validateOrThrow(insertAccount);
       const client = getClient();
       const [account] = await client.insert(ledgerAccounts).values(insertAccount).returning();
       return account;
     },
 
     async update(id: string, accountUpdate: Partial<InsertLedgerAccount>): Promise<LedgerAccount | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [account] = await client.update(ledgerAccounts)
         .set(accountUpdate)
@@ -304,6 +306,7 @@ export function createStripePaymentMethodStorage(): StripePaymentMethodStorage {
     },
 
     async create(insertPaymentMethod: InsertLedgerStripePaymentMethod): Promise<LedgerStripePaymentMethod> {
+      validate.validateOrThrow(insertPaymentMethod);
       const client = getClient();
       const [paymentMethod] = await client.insert(ledgerStripePaymentMethods)
         .values(insertPaymentMethod)
@@ -312,6 +315,7 @@ export function createStripePaymentMethodStorage(): StripePaymentMethodStorage {
     },
 
     async update(id: string, paymentMethodUpdate: Partial<InsertLedgerStripePaymentMethod>): Promise<LedgerStripePaymentMethod | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [paymentMethod] = await client.update(ledgerStripePaymentMethods)
         .set(paymentMethodUpdate)
@@ -454,12 +458,14 @@ export function createLedgerEaStorage(): LedgerEaStorage {
     },
 
     async create(insertEntry: InsertLedgerEa): Promise<SelectLedgerEa> {
+      validate.validateOrThrow(insertEntry);
       const client = getClient();
       const [entry] = await client.insert(ledgerEa).values(insertEntry).returning();
       return entry;
     },
 
     async update(id: string, entryUpdate: Partial<InsertLedgerEa>): Promise<SelectLedgerEa | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [entry] = await client.update(ledgerEa)
         .set(entryUpdate)
@@ -573,6 +579,7 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
     },
 
     async create(insertPayment: InsertLedgerPayment): Promise<LedgerPayment> {
+      validate.validateOrThrow(insertPayment);
       const client = getClient();
       // Validate currency match between payment type and account
       const [ea] = await client.select().from(ledgerEa).where(eq(ledgerEa.id, insertPayment.ledgerEaId));
@@ -601,6 +608,7 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
     },
 
     async update(id: string, paymentUpdate: Partial<InsertLedgerPayment>): Promise<LedgerPayment | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       // If payment type is being changed, validate currency match
       if (paymentUpdate.paymentType) {
@@ -849,6 +857,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
     },
 
     async create(insertEntry: InsertLedger): Promise<Ledger> {
+      validate.validateOrThrow(insertEntry);
       const client = getClient();
       const [entry] = await client.insert(ledger)
         .values(insertEntry as any)
@@ -857,6 +866,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
     },
 
     async update(id: string, entryUpdate: Partial<InsertLedger>): Promise<Ledger | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [entry] = await client.update(ledger)
         .set(entryUpdate as any)

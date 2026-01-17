@@ -217,6 +217,7 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
     },
 
     async create(type: OptionsTypeName, data: Record<string, any>): Promise<any> {
+      validate.validateOrThrow(type);
       const client = getClient();
       const { table } = getTable(type);
       const [result] = await client.insert(table).values(data as any).returning();
@@ -224,6 +225,7 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
     },
 
     async update(type: OptionsTypeName, id: string, data: Record<string, any>): Promise<any | undefined> {
+      validate.validateOrThrow(type);
       const client = getClient();
       const { table } = getTable(type);
       const tableAny = table as any;

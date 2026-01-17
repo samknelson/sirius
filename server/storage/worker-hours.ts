@@ -398,6 +398,7 @@ export function createWorkerHoursStorage(
     },
 
     async createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult> {
+      validate.validateOrThrow(data);
       const client = getClient();
       const [savedHours] = await client
         .insert(workerHours)
@@ -450,6 +451,7 @@ export function createWorkerHoursStorage(
     },
 
     async updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean }): Promise<WorkerHoursResult | undefined> {
+      validate.validateOrThrow(data);
       const client = getClient();
       const [updated] = await client
         .update(workerHours)

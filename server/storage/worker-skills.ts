@@ -129,6 +129,7 @@ export function createWorkerSkillStorage(): WorkerSkillStorage {
     },
 
     async create(data: InsertWorkerSkill & { message?: string }): Promise<WorkerSkill> {
+      validate.validateOrThrow(data);
       const client = getClient();
       const { message, ...insertData } = data;
       const [result] = await client

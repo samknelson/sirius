@@ -90,6 +90,7 @@ export function createWizardStorage(): WizardStorage {
     },
 
     async create(insertWizard: InsertWizard): Promise<Wizard> {
+      validate.validateOrThrow(insertWizard);
       const client = getClient();
       const [wizard] = await client
         .insert(wizards)
@@ -192,6 +193,7 @@ export function createWizardStorage(): WizardStorage {
     },
 
     async update(id: string, updates: Partial<Omit<InsertWizard, 'id'>>): Promise<Wizard | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [wizard] = await client
         .update(wizards)

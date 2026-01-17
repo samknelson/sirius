@@ -192,6 +192,7 @@ export function createLogsStorage(): LogsStorage {
     },
 
     async create(data: LogInsertData): Promise<WinstonLog> {
+      validate.validateOrThrow(data);
       const client = getClient();
       const [log] = await client
         .insert(winstonLogs)

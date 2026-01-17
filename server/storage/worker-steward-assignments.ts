@@ -171,6 +171,7 @@ export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentS
     },
 
     async createAssignment(data: InsertWorkerStewardAssignment): Promise<WorkerStewardAssignment> {
+      validate.validateOrThrow(data);
       const client = getClient();
       const [assignment] = await client
         .insert(workerStewardAssignments)
@@ -180,6 +181,7 @@ export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentS
     },
 
     async updateAssignment(id: string, data: Partial<InsertWorkerStewardAssignment>): Promise<WorkerStewardAssignment | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [updated] = await client
         .update(workerStewardAssignments)

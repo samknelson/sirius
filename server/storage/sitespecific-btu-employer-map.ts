@@ -112,6 +112,7 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
     },
 
     async create(record: InsertBtuEmployerMap): Promise<BtuEmployerMap> {
+      validate.validateOrThrow(record);
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
@@ -124,6 +125,7 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
     },
 
     async update(id: string, record: Partial<InsertBtuEmployerMap>): Promise<BtuEmployerMap | undefined> {
+      validate.validateOrThrow(record);
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }

@@ -200,6 +200,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
     },
 
     async create(insertSheet: InsertEdlsSheet): Promise<EdlsSheet> {
+      validate.validateOrThrow(insertSheet);
       const client = getClient();
       const [sheet] = await client.insert(edlsSheets).values(insertSheet).returning();
       return sheet;
@@ -218,6 +219,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
     },
 
     async update(id: string, sheetUpdate: Partial<InsertEdlsSheet>): Promise<EdlsSheet | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [sheet] = await client
         .update(edlsSheets)

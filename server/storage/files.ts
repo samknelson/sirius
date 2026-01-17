@@ -100,6 +100,7 @@ export function createFileStorage(): FileStorage {
     },
 
     async create(insertFile: InsertFile): Promise<File> {
+      validate.validateOrThrow(insertFile);
       const client = getClient();
       const [file] = await client
         .insert(files)
@@ -109,6 +110,7 @@ export function createFileStorage(): FileStorage {
     },
 
     async update(id: string, updates: Partial<Omit<InsertFile, 'id' | 'uploadedAt'>>): Promise<File | undefined> {
+      validate.validateOrThrow(updates);
       const client = getClient();
       const [file] = await client
         .update(files)

@@ -58,6 +58,7 @@ export function createBtuCsgStorage(): BtuCsgStorage {
     },
 
     async create(record: InsertBtuCsgRecord): Promise<BtuCsgRecord> {
+      validate.validateOrThrow(record);
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
@@ -70,6 +71,7 @@ export function createBtuCsgStorage(): BtuCsgStorage {
     },
 
     async update(id: string, record: Partial<InsertBtuCsgRecord>): Promise<BtuCsgRecord | undefined> {
+      validate.validateOrThrow(record);
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }

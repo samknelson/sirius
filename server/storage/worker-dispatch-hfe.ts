@@ -163,6 +163,7 @@ export function createWorkerDispatchHfeStorage(): WorkerDispatchHfeStorage {
     },
 
     async create(hfe: InsertWorkerDispatchHfe) {
+      validate.validateOrThrow(hfe);
       const client = getClient();
       const [result] = await client
         .insert(workerDispatchHfe)
@@ -181,6 +182,7 @@ export function createWorkerDispatchHfeStorage(): WorkerDispatchHfeStorage {
     },
 
     async update(id: string, hfe: Partial<InsertWorkerDispatchHfe>) {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [result] = await client
         .update(workerDispatchHfe)

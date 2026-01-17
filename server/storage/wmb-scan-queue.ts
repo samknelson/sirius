@@ -100,6 +100,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async createMonthStatus(month: number, year: number): Promise<TrustWmbScanStatus> {
+      validate.validateOrThrow(month);
       const client = getClient();
       const [status] = await client
         .insert(trustWmbScanStatus)
@@ -109,6 +110,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     },
 
     async updateMonthStatus(id: string, data: Partial<TrustWmbScanStatus>): Promise<TrustWmbScanStatus | undefined> {
+      validate.validateOrThrow(id);
       const client = getClient();
       const [updated] = await client
         .update(trustWmbScanStatus)
