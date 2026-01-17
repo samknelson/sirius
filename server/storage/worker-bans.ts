@@ -50,7 +50,7 @@ function calculateActive(endDate: Date | null | undefined): boolean {
  * Validator for worker bans.
  * Use validate.validate() for ValidationResult or validate.validateOrThrow() for direct value.
  */
-export const validate = createStorageValidator<InsertWorkerBan, WorkerBan, { active: boolean }>(
+export const validate = createStorageValidator<InsertWorkerBan, WorkerBan, { denormActive: boolean }>(
   (data, existing) => {
     const errors: ValidationError[] = [];
     
@@ -84,9 +84,9 @@ export const validate = createStorageValidator<InsertWorkerBan, WorkerBan, { act
       return { ok: false, errors };
     }
     
-    const active = calculateActive(endDate);
+    const denormActive = calculateActive(endDate);
     
-    return { ok: true, value: { active } };
+    return { ok: true, value: { denormActive } };
   }
 );
 
@@ -188,7 +188,7 @@ export function createWorkerBanStorage(): WorkerBanStorage {
         .insert(workerBans)
         .values({
           ...ban,
-          active: validated.active
+          denormActive: validated.denormActive
         })
         .returning();
       
@@ -198,7 +198,7 @@ export function createWorkerBanStorage(): WorkerBanStorage {
         type: created.type,
         startDate: created.startDate,
         endDate: created.endDate,
-        active: created.active ?? true,
+        active: created.denormActive ?? true,
       });
       
       return created;
@@ -215,7 +215,7 @@ export function createWorkerBanStorage(): WorkerBanStorage {
         .update(workerBans)
         .set({
           ...ban,
-          active: validated.active
+          denormActive: validated.denormActive
         })
         .where(eq(workerBans.id, id))
         .returning();
@@ -227,7 +227,7 @@ export function createWorkerBanStorage(): WorkerBanStorage {
           type: updated.type,
           startDate: updated.startDate,
           endDate: updated.endDate,
-          active: updated.active ?? true,
+          active: updated.denormActive ?? true,
         });
       }
       
@@ -247,7 +247,7 @@ export function createWorkerBanStorage(): WorkerBanStorage {
           type: existing.type,
           startDate: existing.startDate,
           endDate: existing.endDate,
-          active: existing.active ?? true,
+          active: existing.denormActive ?? true,
           isDeleted: true,
         });
       }
@@ -280,7 +280,7 @@ async function composeQuery(filters: QueryFilters): Promise<WorkerBan[]> {
   today.setHours(0, 0, 0, 0);
 
   if (filters.active !== undefined) {
-    conditions.push(eq(workerBans.active, filters.active));
+    conditions.push(eq(workerBans.denormActive, filters.active));
   }
 
   if (filters.expired !== undefined) {

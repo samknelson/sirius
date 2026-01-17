@@ -187,7 +187,7 @@ export const workerBans = pgTable("worker_bans", {
   type: varchar("type"),
   startDate: timestamp("start_date").notNull(),
   endDate: timestamp("end_date"),
-  active: boolean("active").default(true),
+  denormActive: boolean("denorm_active").default(true),
   message: text("message"),
   data: jsonb("data"),
 });
@@ -769,7 +769,7 @@ export type WorkerBanType = typeof workerBanTypeEnum[number];
 
 export const insertWorkerBanSchema = createInsertSchema(workerBans).omit({
   id: true,
-  active: true, // Auto-calculated based on end_date
+  denormActive: true, // Auto-calculated based on end_date
 }).extend({
   startDate: z.coerce.date(),
   endDate: z.coerce.date().optional().nullable(),

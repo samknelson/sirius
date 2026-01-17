@@ -34,13 +34,13 @@ export const workerCertifications = pgTable("worker_certifications", {
   startDate: date("start_date"),
   endDate: date("end_date"),
   status: workerCertificationStatusEnum("status").notNull().default("pending"),
-  active: boolean("active").notNull().default(false),
+  denormActive: boolean("denorm_active").notNull().default(false),
   data: jsonb("data"),
 });
 
 export const insertWorkerCertificationSchema = createInsertSchema(workerCertifications).omit({
   id: true,
-  active: true,
+  denormActive: true,
 });
 
 export type WorkerCertification = typeof workerCertifications.$inferSelect;

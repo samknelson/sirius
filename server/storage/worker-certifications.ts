@@ -40,7 +40,7 @@ function calculateActiveStatus(
  * Validator for worker certifications.
  * Use validate.validate() for ValidationResult or validate.validateOrThrow() for direct value.
  */
-export const validate = createStorageValidator<InsertWorkerCertification, WorkerCertification, { active: boolean }>(
+export const validate = createStorageValidator<InsertWorkerCertification, WorkerCertification, { denormActive: boolean }>(
   (data, existing) => {
     const errors: ValidationError[] = [];
     
@@ -72,9 +72,9 @@ export const validate = createStorageValidator<InsertWorkerCertification, Worker
     }
     
     const finalStatus = status ?? 'pending';
-    const active = calculateActiveStatus(startDate, endDate, finalStatus);
+    const denormActive = calculateActiveStatus(startDate, endDate, finalStatus);
     
-    return { ok: true, value: { active } };
+    return { ok: true, value: { denormActive } };
   }
 );
 
@@ -229,7 +229,7 @@ export function createWorkerCertificationStorage(): WorkerCertificationStorage {
         .insert(workerCertifications)
         .values({
           ...insertData,
-          active: validated.active
+          denormActive: validated.denormActive
         })
         .returning();
       
@@ -253,7 +253,7 @@ export function createWorkerCertificationStorage(): WorkerCertificationStorage {
         .update(workerCertifications)
         .set({
           ...updateData,
-          active: validated.active
+          denormActive: validated.denormActive
         })
         .where(eq(workerCertifications.id, id))
         .returning();
@@ -276,7 +276,7 @@ export function createWorkerCertificationStorage(): WorkerCertificationStorage {
       const all = await client.select().from(workerCertifications);
       return all.filter(cert => {
         const shouldBeActive = calculateActiveStatus(cert.startDate, cert.endDate, cert.status);
-        return cert.active && !shouldBeActive;
+        return cert.denormActive && !shouldBeActive;
       });
     },
 
@@ -285,7 +285,7 @@ export function createWorkerCertificationStorage(): WorkerCertificationStorage {
       const all = await client.select().from(workerCertifications);
       return all.filter(cert => {
         const shouldBeActive = calculateActiveStatus(cert.startDate, cert.endDate, cert.status);
-        return !cert.active && shouldBeActive;
+        return !cert.denormActive && shouldBeActive;
       });
     },
   };
