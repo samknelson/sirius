@@ -1,6 +1,12 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { workerDispatchEligDenorm, type InsertWorkerDispatchEligDenorm, type WorkerDispatchEligDenorm } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface WorkerDispatchEligDenormStorage {
   getByWorker(workerId: string): Promise<WorkerDispatchEligDenorm[]>;

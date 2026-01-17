@@ -1,3 +1,4 @@
+import { createNoopValidator } from './utils/validation';
 import { 
   edlsCrews,
   users,
@@ -9,6 +10,11 @@ import { eq, sql, asc } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { StorageLoggingConfig } from "./middleware/logging";
 import { getClient } from "./transaction-context";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface EdlsCrewWithRelations extends EdlsCrew {
   supervisorUser?: { id: string; firstName: string | null; lastName: string | null; email: string };

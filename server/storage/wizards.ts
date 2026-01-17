@@ -1,3 +1,4 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { wizards, wizardReportData, wizardEmployerMonthly, type Wizard, type InsertWizard, type WizardReportData, type InsertWizardReportData } from "@shared/schema";
 import { eq, and, desc, or, lt } from "drizzle-orm";
@@ -5,6 +6,11 @@ import { type StorageLoggingConfig } from "./middleware/logging";
 import { wizardRegistry } from "../wizards";
 import { db } from './db';
 import { runInTransaction } from './transaction-context';
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator<InsertWizard, Wizard>();
 
 export interface MonthlyWizardCreateParams {
   wizard: InsertWizard;

@@ -1,7 +1,13 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { files, type File, type InsertFile } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator<InsertFile, File>();
 
 export interface FileStorage {
   list(filters?: { entityType?: string; entityId?: string; uploadedBy?: string }): Promise<File[]>;

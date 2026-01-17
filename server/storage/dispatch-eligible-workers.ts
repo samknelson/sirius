@@ -1,3 +1,4 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import type { db } from './db';
 import { workers, contacts, workerDispatchEligDenorm, type EligibilityPluginConfig, type JobTypeData } from "@shared/schema";
@@ -10,6 +11,11 @@ import {
 } from "../services/dispatch-elig-plugin-registry";
 import { createDispatchJobStorage } from "./dispatch-jobs";
 import { createUnifiedOptionsStorage } from "./unified-options";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface EligibleWorker {
   id: string;

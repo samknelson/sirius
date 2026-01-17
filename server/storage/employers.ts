@@ -1,7 +1,13 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { employers, type Employer, type InsertEmployer } from "@shared/schema";
 import { eq, sql, inArray } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator<InsertEmployer, Employer>();
 
 export interface EmployerWorker {
   workerId: string;

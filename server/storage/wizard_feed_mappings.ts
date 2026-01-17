@@ -1,6 +1,12 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { wizardFeedMappings, type WizardFeedMapping, type InsertWizardFeedMapping } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface WizardFeedMappingStorage {
   findByUserTypeAndHash(userId: string, type: string, firstRowHash: string): Promise<WizardFeedMapping | undefined>;

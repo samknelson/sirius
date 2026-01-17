@@ -1,3 +1,4 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { 
   dispatches, 
@@ -9,6 +10,11 @@ import {
 } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator<InsertDispatch, Dispatch>();
 
 export interface DispatchWithRelations extends Dispatch {
   worker?: {

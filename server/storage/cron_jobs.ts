@@ -1,7 +1,13 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { cronJobs, cronJobRuns, users, type CronJob, type InsertCronJob, type CronJobRun, type InsertCronJobRun } from "@shared/schema";
 import { eq, desc, and, lt } from "drizzle-orm";
 import { sql } from "drizzle-orm";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator<InsertCronJob, CronJob>();
 
 export interface CronJobStorage {
   list(): Promise<CronJob[]>;

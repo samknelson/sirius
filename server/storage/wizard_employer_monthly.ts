@@ -1,7 +1,13 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { wizardEmployerMonthly, wizards, employers, insertWizardEmployerMonthlySchema } from "@shared/schema";
 import { eq, and, or, inArray } from "drizzle-orm";
 import { z } from "zod";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export type WizardEmployerMonthly = typeof wizardEmployerMonthly.$inferSelect;
 export type InsertWizardEmployerMonthly = z.infer<typeof insertWizardEmployerMonthlySchema>;

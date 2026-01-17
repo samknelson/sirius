@@ -1,3 +1,4 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { db } from './db';
 import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
@@ -18,6 +19,11 @@ import { eq, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, in
 import { alias as pgAlias } from "drizzle-orm/pg-core";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { formatAmount, getCurrency } from "@shared/currency";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface StripePaymentMethodStorage {
   getAll(): Promise<LedgerStripePaymentMethod[]>;

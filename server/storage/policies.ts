@@ -1,7 +1,13 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { policies, type Policy, type InsertPolicy } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator<InsertPolicy, Policy>();
 
 export interface PolicyStorage {
   getAllPolicies(): Promise<Policy[]>;

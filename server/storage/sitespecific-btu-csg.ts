@@ -1,3 +1,4 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { eq, desc } from "drizzle-orm";
 import { tableExists as tableExistsUtil } from "./utils";
@@ -8,6 +9,11 @@ import {
 } from "../../shared/schema/sitespecific/btu/schema";
 import { getTableName } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export type { BtuCsgRecord, InsertBtuCsgRecord };
 

@@ -1,6 +1,12 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { bookmarks, workers, employers, contacts, type Bookmark, type InsertBookmark } from "@shared/schema";
 import { eq, and, desc, inArray } from "drizzle-orm";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator<InsertBookmark, Bookmark>();
 
 export interface EnrichedBookmark extends Bookmark {
   displayName: string;

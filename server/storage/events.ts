@@ -1,3 +1,4 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { 
   events, 
@@ -13,6 +14,11 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator<InsertEvent, Event>();
 
 export interface EventStorage {
   getAll(): Promise<Event[]>;

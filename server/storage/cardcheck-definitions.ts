@@ -1,7 +1,13 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { cardcheckDefinitions, type CardcheckDefinition, type InsertCardcheckDefinition } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator<InsertCardcheckDefinition, CardcheckDefinition>();
 
 export interface CardcheckDefinitionStorage {
   getAllCardcheckDefinitions(): Promise<CardcheckDefinition[]>;

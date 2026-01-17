@@ -1,3 +1,4 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import {
   users,
@@ -19,6 +20,11 @@ import { eq, and, sql, inArray } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import type { ContactsStorage } from "./contacts";
 import { createUserContactSyncService } from "../services/user-contact-sync";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator<InsertUser, User>();
 
 export interface UserStorage {
   // User operations

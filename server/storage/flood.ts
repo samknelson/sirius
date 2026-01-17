@@ -1,6 +1,12 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { flood, type Flood } from "@shared/schema";
 import { eq, and, gt, sql, desc, inArray } from "drizzle-orm";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface FloodStorage {
   recordFloodEvent(event: string, identifier: string, expiresAt: Date): Promise<void>;

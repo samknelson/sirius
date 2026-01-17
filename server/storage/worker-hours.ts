@@ -1,3 +1,4 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import {
   workerHours,
@@ -11,6 +12,11 @@ import { type StorageLoggingConfig } from "./middleware/logging";
 import { storageLogger as logger } from "../logger";
 import type { LedgerNotification } from "../charge-plugins/types";
 import { eventBus, EventType } from "../services/event-bus";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface WorkerHoursResult {
   data: WorkerHours;

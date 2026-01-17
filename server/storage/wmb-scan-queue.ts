@@ -1,3 +1,4 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import {
   trustWmbScanStatus,
@@ -8,6 +9,11 @@ import {
   type TrustWmbScanQueue,
 } from "@shared/schema";
 import { eq, and, sql, gte, inArray, or, desc, asc } from "drizzle-orm";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface QueueEntryWithWorker extends TrustWmbScanQueue {
   workerSiriusId: number | null;

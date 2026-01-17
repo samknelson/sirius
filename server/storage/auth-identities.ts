@@ -1,3 +1,4 @@
+import { createNoopValidator } from './utils/validation';
 import { eq, and } from "drizzle-orm";
 import { getClient } from "./transaction-context";
 import {
@@ -6,6 +7,11 @@ import {
   type InsertAuthIdentity,
   type AuthProviderType,
 } from "@shared/schema";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator<InsertAuthIdentity, AuthIdentity>();
 
 export interface AuthIdentitiesStorage {
   getByProviderAndExternalId(

@@ -196,3 +196,19 @@ export function createAsyncStorageValidator<TInput, TExisting, TDerived>(
     }
   };
 }
+
+/**
+ * Creates a no-op validator stub that always succeeds.
+ * Use this as a placeholder in storage modules that don't have validation yet,
+ * establishing where validation logic should be added later.
+ * 
+ * @example
+ * // In a storage module without validation:
+ * export const validate = createNoopValidator<InsertEmployer, Employer>();
+ * 
+ * // Later, replace with actual validation:
+ * export const validate = createStorageValidator<InsertEmployer, Employer, {}>(...);
+ */
+export function createNoopValidator<TInput, TExisting = never>(): StorageValidator<TInput, TExisting, {}> {
+  return createStorageValidator<TInput, TExisting, {}>(() => ({ ok: true, value: {} }));
+}

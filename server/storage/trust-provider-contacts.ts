@@ -1,8 +1,14 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { trustProviderContacts, contacts, optionsEmployerContactType, trustProviders, type TrustProviderContact, type InsertTrustProviderContact, type Contact, type InsertContact, type TrustProvider } from "@shared/schema";
 import { eq, and, or, ilike } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import type { ContactsStorage } from "./contacts";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface TrustProviderContactStorage {
   create(data: { providerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ providerContact: TrustProviderContact; contact: Contact }>;

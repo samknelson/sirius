@@ -1,7 +1,13 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { winstonLogs, type WinstonLog } from "@shared/schema";
 import { desc, eq, and, sql, or, like, inArray, gte, lte, type SQL } from "drizzle-orm";
 import { eventBus, EventType } from "../services/event-bus";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface LogsQueryParams {
   page?: number;

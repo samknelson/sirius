@@ -1,8 +1,14 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { esigs, cardcheckDefinitions, files, users, workers, contacts, type Esig, type InsertEsig, type Cardcheck, type InsertCardcheck, type File } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 import crypto from "crypto";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface EsigWithSigner extends Esig {
   signer?: {

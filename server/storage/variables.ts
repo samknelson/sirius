@@ -1,7 +1,13 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { variables, type Variable, type InsertVariable } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface VariableStorage {
   getAll(): Promise<Variable[]>;

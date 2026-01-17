@@ -1,7 +1,13 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { bargainingUnits, type BargainingUnit, type InsertBargainingUnit } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator<InsertBargainingUnit, BargainingUnit>();
 
 export interface BargainingUnitStorage {
   getAllBargainingUnits(): Promise<BargainingUnit[]>;

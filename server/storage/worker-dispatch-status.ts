@@ -1,3 +1,4 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { 
   workerDispatchStatus,
@@ -9,6 +10,11 @@ import {
 import { eq } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { eventBus, EventType } from "../services/event-bus";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface WorkerDispatchStatusWithRelations extends WorkerDispatchStatus {
   worker?: {

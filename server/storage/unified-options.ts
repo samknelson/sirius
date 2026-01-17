@@ -1,3 +1,4 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { eq, asc, SQL } from "drizzle-orm";
 import { PgTable, TableConfig } from "drizzle-orm/pg-core";
@@ -19,6 +20,11 @@ import {
   optionsCertifications,
 } from "@shared/schema";
 import { type StorageLoggingConfig } from "./middleware/logging";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export type OptionsTypeName = 
   | "department"

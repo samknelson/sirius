@@ -1,3 +1,4 @@
+import { createNoopValidator } from './utils/validation';
 import { 
   edlsSheets,
   employers,
@@ -13,6 +14,11 @@ import { alias } from "drizzle-orm/pg-core";
 import { StorageLoggingConfig } from "./middleware/logging";
 import { getClient, runInTransaction } from "./transaction-context";
 import { storage } from "./index";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface EdlsSheetWithCrews extends EdlsSheet {
   crews: EdlsCrew[];

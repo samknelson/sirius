@@ -1,3 +1,4 @@
+import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { 
   workerSkills,
@@ -11,6 +12,11 @@ import {
 import { eq, and } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { eventBus, EventType } from "../services/event-bus";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface WorkerSkillWithDetails extends WorkerSkill {
   skill?: OptionsSkill | null;
