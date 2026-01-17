@@ -28,7 +28,7 @@ export const workerBanActiveScanHandler: CronJobHandler = {
         });
 
         return {
-          mode: 'test',
+          mode: context.mode,
           wouldDeactivate,
           wouldActivate,
         };
@@ -55,7 +55,7 @@ export const workerBanActiveScanHandler: CronJobHandler = {
       });
 
       return {
-        mode: 'live',
+        mode: context.mode,
         deactivatedCount,
         activatedCount,
       };
