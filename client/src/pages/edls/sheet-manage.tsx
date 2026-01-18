@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Settings, ChevronDown, Trash2, Lock, Unlock } from "lucide-react";
+import { useLocation } from "wouter";
+import { Settings, ChevronDown, Trash2, Lock, Unlock, Copy } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,11 +46,19 @@ const statusColors: Record<EdlsSheetStatus, string> = {
   reserved: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
 };
 
+interface CopySheetResponse {
+  newSheetId: string;
+  successCount: number;
+  failedAssignments: Array<{ workerId: string; workerName: string; reason: string }>;
+}
+
 function EdlsSheetManageContent() {
   const { sheet } = useEdlsSheetLayout();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const sheetId = sheet.id;
   const [showTrashConfirm, setShowTrashConfirm] = useState(false);
+  const [copyTargetDate, setCopyTargetDate] = useState("");
 
   const currentStatus = (sheet.status as EdlsSheetStatus) || "draft";
   const currentStatusOption = statusOptions.find(s => s.value === currentStatus);
@@ -97,6 +108,61 @@ function EdlsSheetManageContent() {
     },
   });
 
+  const copySheetMutation = useMutation({
+    mutationFn: async (targetDate: string) => {
+      return apiRequest("POST", `/api/edls/sheets/${sheetId}/copy`, { targetDate }) as Promise<CopySheetResponse>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets"] });
+      
+      if (data.failedAssignments.length > 0) {
+        const failedNames = data.failedAssignments.map(f => f.workerName).join(", ");
+        toast({
+          title: "Sheet Copied with Some Failures",
+          description: `${data.successCount} assignments copied successfully. Could not copy: ${failedNames}`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Sheet Copied Successfully",
+          description: `Sheet and ${data.successCount} assignments have been copied to the new date`,
+        });
+      }
+      
+      setCopyTargetDate("");
+      setLocation(`/edls/sheet/${data.newSheetId}`);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to Copy Sheet",
+        description: error?.message || "An error occurred while copying the sheet",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleCopySheet = () => {
+    if (!copyTargetDate) {
+      toast({
+        title: "Date Required",
+        description: "Please select a target date for the copy",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (copyTargetDate === sheet.ymd) {
+      toast({
+        title: "Invalid Date",
+        description: "Target date must be different from the source sheet date",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    copySheetMutation.mutate(copyTargetDate);
+  };
+
   const handleStatusAction = (newStatus: EdlsSheetStatus) => {
     if (newStatus === currentStatus) return;
     
@@ -121,7 +187,7 @@ function EdlsSheetManageContent() {
     if (s.value === "trash" && hasTrashLock) return false;
     return true;
   });
-  const isPending = setStatusMutation.isPending || trashLockMutation.isPending;
+  const isPending = setStatusMutation.isPending || trashLockMutation.isPending || copySheetMutation.isPending;
   const canEdit = currentStatus !== "lock" && currentStatus !== "trash";
 
   return (
@@ -220,6 +286,46 @@ function EdlsSheetManageContent() {
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Copy className="h-5 w-5" />
+            Make a Copy
+          </CardTitle>
+          <CardDescription>
+            Create a copy of this sheet for a different date, including all crews and assignments
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="copy-target-date">Target Date</Label>
+            <div className="flex items-center gap-3">
+              <Input
+                id="copy-target-date"
+                type="date"
+                value={copyTargetDate}
+                onChange={(e) => setCopyTargetDate(e.target.value)}
+                className="w-48"
+                data-testid="input-copy-target-date"
+              />
+              <Button
+                onClick={handleCopySheet}
+                disabled={copySheetMutation.isPending || !copyTargetDate}
+                data-testid="button-copy-sheet"
+              >
+                {copySheetMutation.isPending ? "Copying..." : "Copy Sheet"}
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Current sheet date: {sheet.ymd}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              The new sheet will be created as a draft. If any assignments cannot be copied (e.g., worker already assigned elsewhere on the target date), you will be notified.
+            </p>
           </div>
         </CardContent>
       </Card>

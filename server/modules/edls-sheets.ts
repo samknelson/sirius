@@ -625,4 +625,141 @@ export function registerEdlsSheetsRoutes(
       }
     }
   );
+
+  const copySheetSchema = z.object({
+    targetDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
+  });
+
+  app.post(
+    "/api/edls/sheets/:id/copy",
+    requireAuth,
+    edlsComponent,
+    requireAccess('edls.sheet.manage', req => req.params.id),
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const parsed = copySheetSchema.safeParse(req.body);
+        
+        if (!parsed.success) {
+          res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+          return;
+        }
+        
+        const { targetDate } = parsed.data;
+        
+        // Get the source sheet with crews
+        const sourceSheet = await storage.edlsSheets.getWithRelations(id);
+        if (!sourceSheet) {
+          res.status(404).json({ message: "Sheet not found" });
+          return;
+        }
+        
+        // Validate target date is different from source
+        if (targetDate === sourceSheet.ymd) {
+          res.status(400).json({ message: "Target date must be different from the source sheet date" });
+          return;
+        }
+        
+        // Get source crews
+        const sourceCrews = await storage.edlsCrews.getBySheetId(id);
+        
+        // Get all assignments for the source sheet
+        const sourceAssignments = await storage.edlsAssignments.getBySheetId(id);
+        
+        // Prepare crew data for the new sheet (without IDs)
+        const newCrewsData = sourceCrews.map(crew => ({
+          title: crew.title,
+          workerCount: crew.workerCount,
+          sequence: crew.sequence,
+          supervisor: crew.supervisor,
+          location: crew.location,
+          startTime: crew.startTime,
+          endTime: crew.endTime,
+          taskId: crew.taskId,
+        }));
+        
+        // Create the new sheet with crews
+        // Copy data but exclude trashLock (new sheet should start without protection)
+        const sourceData = (sourceSheet.data as Record<string, any>) || {};
+        const { trashLock: _, ...copiedData } = sourceData;
+        
+        const newSheetData = {
+          ymd: targetDate,
+          title: sourceSheet.title,
+          workerCount: sourceSheet.workerCount,
+          departmentId: sourceSheet.departmentId,
+          employerId: sourceSheet.employerId,
+          supervisor: sourceSheet.supervisor,
+          assignee: sourceSheet.assignee,
+          status: 'draft' as const,
+          data: Object.keys(copiedData).length > 0 ? copiedData : undefined,
+        };
+        
+        const newSheet = await storage.edlsSheets.create(newSheetData, newCrewsData);
+        
+        // Get the newly created crews to map old crew IDs to new ones
+        const newCrews = await storage.edlsCrews.getBySheetId(newSheet.id);
+        
+        // Build a mapping from old crew sequence to new crew ID
+        const crewIdMap = new Map<string, string>();
+        for (const sourceCrew of sourceCrews) {
+          const matchingNewCrew = newCrews.find(nc => nc.sequence === sourceCrew.sequence);
+          if (matchingNewCrew) {
+            crewIdMap.set(sourceCrew.id, matchingNewCrew.id);
+          }
+        }
+        
+        // Copy assignments, tracking failures
+        const failedAssignments: Array<{ workerId: string; workerName: string; reason: string }> = [];
+        let successCount = 0;
+        
+        for (const assignment of sourceAssignments) {
+          const newCrewId = crewIdMap.get(assignment.crewId);
+          if (!newCrewId) {
+            failedAssignments.push({
+              workerId: assignment.workerId,
+              workerName: assignment.worker ? 
+                (assignment.worker.family && assignment.worker.given 
+                  ? `${assignment.worker.family}, ${assignment.worker.given}`
+                  : assignment.worker.displayName || `Worker ${assignment.worker.siriusId || assignment.workerId.slice(0, 8)}`)
+                : assignment.workerId,
+              reason: "Could not find matching crew in new sheet",
+            });
+            continue;
+          }
+          
+          try {
+            await storage.edlsAssignments.create({
+              ymd: targetDate,
+              crewId: newCrewId,
+              workerId: assignment.workerId,
+              data: assignment.data as Record<string, unknown> | undefined,
+            });
+            successCount++;
+          } catch (error: any) {
+            const workerName = assignment.worker ? 
+              (assignment.worker.family && assignment.worker.given 
+                ? `${assignment.worker.family}, ${assignment.worker.given}`
+                : assignment.worker.displayName || `Worker ${assignment.worker.siriusId || assignment.workerId.slice(0, 8)}`)
+              : assignment.workerId;
+            
+            failedAssignments.push({
+              workerId: assignment.workerId,
+              workerName,
+              reason: error.message || "Unknown error",
+            });
+          }
+        }
+        
+        res.status(201).json({
+          newSheetId: newSheet.id,
+          successCount,
+          failedAssignments,
+        });
+      } catch (error) {
+        console.error("Failed to copy sheet:", error);
+        res.status(500).json({ message: "Failed to copy sheet" });
+      }
+    }
+  );
 }
