@@ -228,7 +228,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Worker Ratings",
     description: "Management of worker performance ratings",
     enabledByDefault: false,
-    category: "core"
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/worker/ratings/schema.ts",
+      tables: ["options_worker_ratings"]
+    }
   },
   {
     id: "trust.providers.login",
