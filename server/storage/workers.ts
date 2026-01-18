@@ -126,6 +126,14 @@ export interface WorkerStorage {
   getWorkerBySSN(ssn: string): Promise<Worker | undefined>;
   getWorkerByContactEmail(email: string): Promise<Worker | undefined>;
   getWorkerByContactId(contactId: string): Promise<Worker | undefined>;
+  getWorkersByHomeEmployerId(employerId: string, options?: { excludeAssignedToSheetId?: string }): Promise<Array<{
+    id: string;
+    siriusId: number | null;
+    contactId: string;
+    displayName: string | null;
+    given: string | null;
+    family: string | null;
+  }>>;
   createWorker(name: string): Promise<Worker>;
   // Update methods that delegate to contact storage (contact storage already has logging)
   updateWorkerContactName(workerId: string, name: string): Promise<Worker | undefined>;
@@ -408,6 +416,63 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .from(workers)
         .where(eq(workers.contactId, contactId));
       return worker || undefined;
+    },
+
+    async getWorkersByHomeEmployerId(employerId: string, options?: { excludeAssignedToSheetId?: string }): Promise<Array<{
+      id: string;
+      siriusId: number | null;
+      contactId: string;
+      displayName: string | null;
+      given: string | null;
+      family: string | null;
+    }>> {
+      const client = getClient();
+      
+      if (options?.excludeAssignedToSheetId) {
+        // Exclude workers who are already assigned to crews on this specific sheet
+        const result = await client.execute(sql`
+          SELECT 
+            w.id,
+            w.sirius_id as "siriusId",
+            w.contact_id as "contactId",
+            c.display_name as "displayName",
+            c.given,
+            c.family
+          FROM workers w
+          INNER JOIN contacts c ON w.contact_id = c.id
+          WHERE w.denorm_home_employer_id = ${employerId}
+            AND w.id NOT IN (
+              SELECT ea.worker_id 
+              FROM edls_assignments ea
+              INNER JOIN edls_crews ec ON ea.crew_id = ec.id
+              WHERE ec.sheet_id = ${options.excludeAssignedToSheetId}
+            )
+          ORDER BY c.family, c.given
+        `);
+        return result.rows as Array<{
+          id: string;
+          siriusId: number | null;
+          contactId: string;
+          displayName: string | null;
+          given: string | null;
+          family: string | null;
+        }>;
+      }
+      
+      const result = await client
+        .select({
+          id: workers.id,
+          siriusId: workers.siriusId,
+          contactId: workers.contactId,
+          displayName: contacts.displayName,
+          given: contacts.given,
+          family: contacts.family,
+        })
+        .from(workers)
+        .innerJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(eq(workers.denormHomeEmployerId, employerId))
+        .orderBy(contacts.family, contacts.given);
+      return result;
     },
 
     async createWorker(name: string): Promise<Worker> {

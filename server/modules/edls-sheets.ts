@@ -70,6 +70,28 @@ export function registerEdlsSheetsRoutes(
     }
   });
 
+  app.get("/api/edls/sheets/:id/available-workers", requireAuth, edlsComponent, requireAccess('edls.sheet.view', req => req.params.id), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const sheet = await storage.edlsSheets.get(id);
+      
+      if (!sheet) {
+        res.status(404).json({ message: "Sheet not found" });
+        return;
+      }
+      
+      // Exclude workers already assigned to crews on this sheet
+      const workers = await storage.workers.getWorkersByHomeEmployerId(
+        sheet.employerId,
+        { excludeAssignedToSheetId: id }
+      );
+      res.json(workers);
+    } catch (error) {
+      console.error("Failed to fetch available workers:", error);
+      res.status(500).json({ message: "Failed to fetch available workers" });
+    }
+  });
+
   app.get("/api/edls/supervisor-context", requireAuth, edlsComponent, async (req, res) => {
     try {
       const user = (req as any).user;

@@ -1,8 +1,10 @@
+import { useState, useMemo } from "react";
 import { format } from "date-fns";
-import { Calendar, Users, Clock, MapPin, User, Building, ClipboardList, UserPlus } from "lucide-react";
+import { Calendar, Users, Clock, MapPin, User, Building, ClipboardList, UserPlus, Search } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useQuery } from "@tanstack/react-query";
 import type { EdlsSheetStatus, EdlsCrew } from "@shared/schema";
@@ -198,19 +200,89 @@ function CrewsList() {
   );
 }
 
+interface AvailableWorker {
+  id: string;
+  siriusId: number | null;
+  contactId: string;
+  displayName: string | null;
+  given: string | null;
+  family: string | null;
+}
+
+function formatWorkerName(worker: AvailableWorker): string {
+  if (worker.displayName) return worker.displayName;
+  if (worker.given || worker.family) {
+    return [worker.given, worker.family].filter(Boolean).join(" ");
+  }
+  return worker.siriusId ? `Worker #${worker.siriusId}` : "Unknown Worker";
+}
+
 function AvailableWorkersPanel() {
+  const { sheet } = useEdlsSheetLayout();
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const { data: workers = [], isLoading } = useQuery<AvailableWorker[]>({
+    queryKey: ["/api/edls/sheets", sheet.id, "available-workers"],
+    queryFn: async () => {
+      const response = await fetch(`/api/edls/sheets/${sheet.id}/available-workers`);
+      if (!response.ok) throw new Error("Failed to fetch available workers");
+      return response.json();
+    },
+  });
+
+  const filteredWorkers = useMemo(() => {
+    if (!searchTerm.trim()) return workers;
+    const term = searchTerm.toLowerCase();
+    return workers.filter((worker) => {
+      const name = formatWorkerName(worker).toLowerCase();
+      return name.includes(term);
+    });
+  }, [workers, searchTerm]);
+
   return (
     <Card className="sticky top-4">
-      <CardHeader>
+      <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2">
           <Users className="h-5 w-5" />
-          Available Workers
+          Available Workers ({workers.length})
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <p className="text-muted-foreground text-center py-8" data-testid="text-workers-placeholder">
-          Worker list will be displayed here.
-        </p>
+      <CardContent className="space-y-3">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by name..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9"
+            data-testid="input-search-workers"
+          />
+        </div>
+        
+        {isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : filteredWorkers.length === 0 ? (
+          <p className="text-muted-foreground text-center py-4 text-sm" data-testid="text-no-workers">
+            {workers.length === 0 ? "No workers available" : "No matching workers"}
+          </p>
+        ) : (
+          <div className="space-y-1 max-h-[60vh] overflow-y-auto">
+            {filteredWorkers.map((worker) => (
+              <div
+                key={worker.id}
+                className="flex items-center gap-2 p-2 rounded-md hover-elevate cursor-pointer"
+                data-testid={`worker-${worker.id}`}
+              >
+                <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <span className="text-sm truncate">{formatWorkerName(worker)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
