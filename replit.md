@@ -37,6 +37,8 @@ All database access **MUST** go through a centralized storage layer (`server/sto
 
 **Denormalized Active Status Utility**: Use `calculateDenormActive` from `server/storage/utils/denorm-active.ts` to compute `denormActive` flags based on date ranges. Default behavior: returns `true` if today is within `startDate`-`endDate` range (null start = always started, null end = never expires). Supports `requireStartDate`/`requireEndDate` options to mandate non-null dates, and a `customize` callback for additional predicates (e.g., `status === 'granted'`). Used by `worker-bans.ts` (simple endDate check) and `worker-certifications.ts` (with status customization).
 
+**Ymd Date Handling Framework**: For "date-only" fields where timezone conversion must be avoided (e.g., EDLS sheet dates), use the Ymd utilities from `shared/utils/date.ts`. The `Ymd` type is a string in `YYYY-MM-DD` format. Key functions: `formatYmd(ymd, format)` for display (uses Zeller's congruence for weekday calculation - no Date objects), `getTodayYmd()` for current date, `compareYmd(a, b)` for ordering, `isYmdInRange(ymd, start, end)` for range checks. **CRITICAL**: Never pass Ymd values through `new Date()` as this reintroduces timezone conversion. Database columns storing date-only values should use the `ymd` naming convention and Drizzle's `date()` type which stores as string.
+
 ## System Design Choices
 -   **Worker Management**: Comprehensive CRUD for workers, contacts, and benefits.
 -   **Configurable Settings**: Consolidated options system (`/api/options/:type`) for organizational settings, using a unified metadata-driven storage and registry.
