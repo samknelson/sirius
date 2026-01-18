@@ -188,4 +188,29 @@ export function registerLogRoutes(
       res.status(500).json({ message: "Failed to fetch sheet logs" });
     }
   });
+
+  // GET /api/logs/by-entity - Unified endpoint to get logs by host entity ID (requires staff permission)
+  // This is the preferred endpoint for fetching entity-specific logs
+  app.get("/api/logs/by-entity", requireAuth, requireAccess('staff'), async (req, res) => {
+    try {
+      const { hostEntityId, module, operation, startDate, endDate } = req.query;
+
+      if (!hostEntityId || typeof hostEntityId !== 'string') {
+        return res.status(400).json({ message: "hostEntityId is required" });
+      }
+
+      const logs = await storage.logs.getLogsByHostEntityIds({
+        hostEntityIds: [hostEntityId],
+        module: typeof module === 'string' ? module : undefined,
+        operation: typeof operation === 'string' ? operation : undefined,
+        startDate: typeof startDate === 'string' ? startDate : undefined,
+        endDate: typeof endDate === 'string' ? endDate : undefined,
+      });
+
+      res.json(logs);
+    } catch (error) {
+      console.error("Failed to fetch logs by entity:", error);
+      res.status(500).json({ message: "Failed to fetch logs" });
+    }
+  });
 }
