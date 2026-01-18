@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useQuery } from "@tanstack/react-query";
-import type { EdlsSheetStatus, EdlsCrew } from "@shared/schema";
+import type { EdlsSheetStatus, EdlsCrew, AssignmentExtra } from "@shared/schema";
 
 interface EdlsCrewWithRelations extends EdlsCrew {
   supervisorUser?: UserInfo;
@@ -24,6 +24,7 @@ interface AssignmentWithWorker {
   crewId: string;
   workerId: string;
   date: string;
+  data: AssignmentExtra | null;
   worker: {
     id: string;
     siriusId: number | null;
@@ -47,6 +48,15 @@ function formatWorkerName(worker: AssignmentWithWorker["worker"]): string {
     return [worker.given, worker.family].filter(Boolean).join(" ");
   }
   return `Worker ${worker.siriusId || worker.id.slice(0, 8)}`;
+}
+
+function formatTime12h(time: string | null | undefined): string {
+  if (!time) return "";
+  const [hours, minutes] = time.split(":");
+  const hour = parseInt(hours, 10);
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minutes} ${ampm}`;
 }
 
 const statusColors: Record<EdlsSheetStatus, string> = {
@@ -238,18 +248,27 @@ function EdlsSheetDetailsContent() {
                       <div className="mt-3 pt-3 border-t">
                         <p className="text-xs text-muted-foreground mb-2">Assigned Workers:</p>
                         <div className="space-y-1">
-                          {crewAssignments.map((assignment) => (
-                            <div 
-                              key={assignment.id} 
-                              className="flex items-center gap-3 text-sm"
-                              data-testid={`assignment-${assignment.id}`}
-                            >
-                              <span className="text-muted-foreground w-16 text-right tabular-nums">
-                                {assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—"}
-                              </span>
-                              <span>{formatWorkerName(assignment.worker)}</span>
-                            </div>
-                          ))}
+                          {crewAssignments.map((assignment) => {
+                            const assignmentData = (assignment.data as AssignmentExtra) || {};
+                            return (
+                              <div 
+                                key={assignment.id} 
+                                className="flex items-center gap-3 text-sm"
+                                data-testid={`assignment-${assignment.id}`}
+                              >
+                                <span className="text-muted-foreground w-16 text-right tabular-nums">
+                                  {assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—"}
+                                </span>
+                                <span className="flex-1">{formatWorkerName(assignment.worker)}</span>
+                                {assignmentData.startTime && (
+                                  <Badge variant="outline" className="text-xs">
+                                    <Clock className="h-3 w-3 mr-1" />
+                                    {formatTime12h(assignmentData.startTime)}
+                                  </Badge>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
