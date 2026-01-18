@@ -417,23 +417,8 @@ function CrewCard({ crew }: CrewCardProps) {
   const isSelected = selectedCrewId === crew.id;
   
   const crewAssignments = useMemo(() => {
-    const filtered = assignments.filter(a => a.crewId === crew.id);
-    return filtered.sort((a, b) => {
-      const aData = (a.data as AssignmentExtra) || {};
-      const bData = (b.data as AssignmentExtra) || {};
-      const aClassification = aData.classificationId ? classificationsMap.get(aData.classificationId) : null;
-      const bClassification = bData.classificationId ? classificationsMap.get(bData.classificationId) : null;
-      const aSeq = aClassification?.sequence ?? Infinity;
-      const bSeq = bClassification?.sequence ?? Infinity;
-      if (aSeq !== bSeq) return aSeq - bSeq;
-      const aFamily = (a.worker.family || "").toLowerCase();
-      const bFamily = (b.worker.family || "").toLowerCase();
-      if (aFamily !== bFamily) return aFamily.localeCompare(bFamily);
-      const aGiven = (a.worker.given || "").toLowerCase();
-      const bGiven = (b.worker.given || "").toLowerCase();
-      return aGiven.localeCompare(bGiven);
-    });
-  }, [assignments, crew.id, classificationsMap]);
+    return assignments.filter(a => a.crewId === crew.id);
+  }, [assignments, crew.id]);
   const emptySlotCount = Math.max(0, crew.workerCount - crewAssignments.length);
   const emptySlots = Array.from({ length: emptySlotCount }, (_, i) => i);
 

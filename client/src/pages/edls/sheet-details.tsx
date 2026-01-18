@@ -115,24 +115,6 @@ function EdlsSheetDetailsContent() {
 
   const classificationsMap = useMemo(() => new Map(classifications.map(c => [c.id, c])), [classifications]);
 
-  const sortAssignments = (assignmentsList: AssignmentWithWorker[]) => {
-    return [...assignmentsList].sort((a, b) => {
-      const aData = (a.data as AssignmentExtra) || {};
-      const bData = (b.data as AssignmentExtra) || {};
-      const aClassification = aData.classificationId ? classificationsMap.get(aData.classificationId) : null;
-      const bClassification = bData.classificationId ? classificationsMap.get(bData.classificationId) : null;
-      const aSeq = aClassification?.sequence ?? Infinity;
-      const bSeq = bClassification?.sequence ?? Infinity;
-      if (aSeq !== bSeq) return aSeq - bSeq;
-      const aFamily = (a.worker.family || "").toLowerCase();
-      const bFamily = (b.worker.family || "").toLowerCase();
-      if (aFamily !== bFamily) return aFamily.localeCompare(bFamily);
-      const aGiven = (a.worker.given || "").toLowerCase();
-      const bGiven = (b.worker.given || "").toLowerCase();
-      return aGiven.localeCompare(bGiven);
-    });
-  };
-
   const assignmentsByCrewId = useMemo(() => {
     return assignments.reduce((acc, a) => {
       if (!acc[a.crewId]) acc[a.crewId] = [];
@@ -231,7 +213,7 @@ function EdlsSheetDetailsContent() {
           ) : (
             <div className="space-y-3">
               {crews.map((crew) => {
-                const crewAssignments = sortAssignments(assignmentsByCrewId[crew.id] || []);
+                const crewAssignments = assignmentsByCrewId[crew.id] || [];
                 const crewFilled = crewAssignments.length;
                 return (
                   <div

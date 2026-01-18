@@ -14,6 +14,7 @@ import {
 import { eq, and, sql } from "drizzle-orm";
 import { StorageLoggingConfig } from "./middleware/logging";
 import { getClient, runInTransaction } from "./transaction-context";
+import { createUnifiedOptionsStorage } from "./unified-options";
 
 export const validate = createAsyncStorageValidator<InsertEdlsAssignment, EdlsAssignment, {}>(
   async (data, existing) => {
@@ -118,6 +119,46 @@ export interface EdlsAssignmentsStorage {
   getWorkerAssignmentDetails(workerId: string, sheetYmd: string): Promise<WorkerAssignmentDetails | null>;
 }
 
+async function sortAssignmentsByClassification(
+  assignments: EdlsAssignmentWithWorker[]
+): Promise<EdlsAssignmentWithWorker[]> {
+  if (assignments.length === 0) {
+    return assignments;
+  }
+
+  const optionsStorage = createUnifiedOptionsStorage();
+  const classifications = await optionsStorage.list("classification");
+  
+  const classificationPositionMap = new Map<string, number>();
+  classifications.forEach((c: { id: string }, index: number) => {
+    classificationPositionMap.set(c.id, index);
+  });
+
+  return [...assignments].sort((a, b) => {
+    const aData = a.data as Record<string, unknown> | null;
+    const bData = b.data as Record<string, unknown> | null;
+    const aClassificationId = (aData?.classificationId as string) || null;
+    const bClassificationId = (bData?.classificationId as string) || null;
+
+    const aPos = aClassificationId ? (classificationPositionMap.get(aClassificationId) ?? Infinity) : Infinity;
+    const bPos = bClassificationId ? (classificationPositionMap.get(bClassificationId) ?? Infinity) : Infinity;
+    
+    if (aPos !== bPos) {
+      return aPos - bPos;
+    }
+
+    const aFamily = (a.worker.family || '').toLowerCase();
+    const bFamily = (b.worker.family || '').toLowerCase();
+    if (aFamily !== bFamily) {
+      return aFamily.localeCompare(bFamily);
+    }
+
+    const aGiven = (a.worker.given || '').toLowerCase();
+    const bGiven = (b.worker.given || '').toLowerCase();
+    return aGiven.localeCompare(bGiven);
+  });
+}
+
 export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
   return {
     async getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]> {
@@ -138,10 +179,12 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         .innerJoin(contacts, eq(workers.contactId, contacts.id))
         .where(eq(edlsAssignments.crewId, crewId));
 
-      return rows.map(row => ({
+      const unsortedAssignments = rows.map(row => ({
         ...row.assignment,
         worker: row.worker,
       }));
+
+      return sortAssignmentsByClassification(unsortedAssignments);
     },
 
     async getBySheetId(sheetId: string): Promise<EdlsAssignmentWithWorker[]> {
@@ -163,10 +206,12 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         .innerJoin(contacts, eq(workers.contactId, contacts.id))
         .where(eq(edlsCrews.sheetId, sheetId));
 
-      return rows.map(row => ({
+      const unsortedAssignments = rows.map(row => ({
         ...row.assignment,
         worker: row.worker,
       }));
+
+      return sortAssignmentsByClassification(unsortedAssignments);
     },
 
     async get(id: string): Promise<EdlsAssignment | undefined> {
