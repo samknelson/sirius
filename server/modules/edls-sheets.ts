@@ -80,10 +80,9 @@ export function registerEdlsSheetsRoutes(
         return;
       }
       
-      // Exclude workers already assigned to crews on this sheet
+      // Return all workers for the employer (frontend shows assigned indicator)
       const workers = await storage.workers.getWorkersByHomeEmployerId(
-        sheet.employerId,
-        { excludeAssignedToSheetId: id }
+        sheet.employerId
       );
       res.json(workers);
     } catch (error) {

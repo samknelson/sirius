@@ -1,6 +1,6 @@
 import { useState, useMemo, createContext, useContext } from "react";
 import { formatYmd } from "@shared/utils/date";
-import { Calendar, Users, Clock, MapPin, User, ClipboardList, UserPlus, Search, Check } from "lucide-react";
+import { Calendar, Users, Clock, MapPin, User, ClipboardList, UserPlus, Search, Check, ArrowRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -306,9 +306,14 @@ function formatWorkerName(worker: AvailableWorker): string {
 
 function AvailableWorkersPanel() {
   const { sheet } = useEdlsSheetLayout();
-  const { selectedCrewId, assignWorker, isAssigning } = useAssignments();
+  const { selectedCrewId, assignWorker, isAssigning, assignments } = useAssignments();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
+  
+  const assignedWorkerIds = useMemo(() => 
+    new Set(assignments.map(a => a.workerId)), 
+    [assignments]
+  );
 
   const { data: workers = [], isLoading } = useQuery<AvailableWorker[]>({
     queryKey: ["/api/edls/sheets", sheet.id, "available-workers"],
@@ -329,6 +334,9 @@ function AvailableWorkersPanel() {
   }, [workers, searchTerm]);
 
   const handleWorkerClick = (worker: AvailableWorker) => {
+    if (assignedWorkerIds.has(worker.id)) {
+      return;
+    }
     if (!selectedCrewId) {
       toast({
         title: "No crew selected",
@@ -372,23 +380,31 @@ function AvailableWorkersPanel() {
           </p>
         ) : (
           <div className="space-y-1 max-h-[60vh] overflow-y-auto">
-            {filteredWorkers.map((worker) => (
-              <div
-                key={worker.id}
-                onClick={() => handleWorkerClick(worker)}
-                className={`flex items-center gap-2 p-2 rounded-md cursor-pointer ${
-                  selectedCrewId ? "hover-elevate" : "opacity-60"
-                } ${isAssigning ? "pointer-events-none opacity-50" : ""}`}
-                data-testid={`worker-${worker.id}`}
-              >
-                <span className="text-sm truncate">{formatWorkerName(worker)}</span>
-                {worker.siriusId && (
-                  <Badge variant="outline" className="ml-auto text-xs">
-                    #{worker.siriusId}
-                  </Badge>
-                )}
-              </div>
-            ))}
+            {filteredWorkers.map((worker) => {
+              const isAssigned = assignedWorkerIds.has(worker.id);
+              return (
+                <div
+                  key={worker.id}
+                  onClick={() => handleWorkerClick(worker)}
+                  className={`flex items-center gap-2 p-2 rounded-md ${
+                    isAssigned 
+                      ? "cursor-default opacity-70" 
+                      : `cursor-pointer ${selectedCrewId ? "hover-elevate" : "opacity-60"}`
+                  } ${isAssigning ? "pointer-events-none opacity-50" : ""}`}
+                  data-testid={`worker-${worker.id}`}
+                >
+                  {isAssigned && (
+                    <ArrowRight className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0" />
+                  )}
+                  <span className="text-sm truncate">{formatWorkerName(worker)}</span>
+                  {worker.siriusId && (
+                    <Badge variant="outline" className="ml-auto text-xs">
+                      #{worker.siriusId}
+                    </Badge>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </CardContent>
