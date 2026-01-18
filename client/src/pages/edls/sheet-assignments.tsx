@@ -411,10 +411,27 @@ interface CrewCardProps {
 
 function CrewCard({ crew }: CrewCardProps) {
   const { sheet } = useEdlsSheetLayout();
-  const { selectedCrewId, setSelectedCrewId, assignments, selectedRatingId, workerRatingsMap } = useAssignments();
+  const { selectedCrewId, setSelectedCrewId, assignments, selectedRatingId, workerRatingsMap, classificationsMap } = useAssignments();
   const isSelected = selectedCrewId === crew.id;
   
-  const crewAssignments = assignments.filter(a => a.crewId === crew.id);
+  const crewAssignments = useMemo(() => {
+    const filtered = assignments.filter(a => a.crewId === crew.id);
+    return filtered.sort((a, b) => {
+      const aData = (a.data as AssignmentExtra) || {};
+      const bData = (b.data as AssignmentExtra) || {};
+      const aClassification = aData.classificationId ? classificationsMap.get(aData.classificationId) : null;
+      const bClassification = bData.classificationId ? classificationsMap.get(bData.classificationId) : null;
+      const aSeq = aClassification?.sequence ?? Infinity;
+      const bSeq = bClassification?.sequence ?? Infinity;
+      if (aSeq !== bSeq) return aSeq - bSeq;
+      const aFamily = (a.worker.family || "").toLowerCase();
+      const bFamily = (b.worker.family || "").toLowerCase();
+      if (aFamily !== bFamily) return aFamily.localeCompare(bFamily);
+      const aGiven = (a.worker.given || "").toLowerCase();
+      const bGiven = (b.worker.given || "").toLowerCase();
+      return aGiven.localeCompare(bGiven);
+    });
+  }, [assignments, crew.id, classificationsMap]);
   const emptySlotCount = Math.max(0, crew.workerCount - crewAssignments.length);
   const emptySlots = Array.from({ length: emptySlotCount }, (_, i) => i);
 
@@ -619,9 +636,11 @@ function buildRatingHierarchy(ratings: RatingOption[]): RatingOptionWithLevel[] 
 
 function formatWorkerName(worker: AvailableWorker): string {
   if (worker.displayName) return worker.displayName;
-  if (worker.given || worker.family) {
-    return [worker.given, worker.family].filter(Boolean).join(" ");
+  if (worker.family && worker.given) {
+    return `${worker.family}, ${worker.given}`;
   }
+  if (worker.family) return worker.family;
+  if (worker.given) return worker.given;
   return worker.siriusId ? `Worker #${worker.siriusId}` : "Unknown Worker";
 }
 
