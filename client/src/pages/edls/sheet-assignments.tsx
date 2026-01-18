@@ -623,7 +623,7 @@ function AvailableWorkersPanel() {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentFilter, setCurrentFilter] = useState<AssignmentFilter>("all");
   const [nextFilter, setNextFilter] = useState<AssignmentFilter>("all");
-  const [selectedRatingId, setSelectedRatingId] = useState<string>("");
+  const [selectedRatingId, setSelectedRatingId] = useState<string>("all");
   
   const assignedWorkerIds = useMemo(() => 
     new Set(assignments.map(a => a.workerId)), 
@@ -645,7 +645,7 @@ function AvailableWorkersPanel() {
   const { data: workers = [], isLoading } = useQuery<AvailableWorker[]>({
     queryKey: ["/api/edls/sheets", sheet.id, "available-workers", selectedRatingId],
     queryFn: async () => {
-      const url = selectedRatingId 
+      const url = selectedRatingId && selectedRatingId !== "all"
         ? `/api/edls/sheets/${sheet.id}/available-workers?ratingId=${selectedRatingId}`
         : `/api/edls/sheets/${sheet.id}/available-workers`;
       const response = await fetch(url);
@@ -752,7 +752,7 @@ function AvailableWorkersPanel() {
                 <SelectValue placeholder="All workers" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All workers</SelectItem>
+                <SelectItem value="all">All workers</SelectItem>
                 {ratingOptions.map((option) => (
                   <SelectItem key={option.id} value={option.id}>
                     {option.name}
@@ -789,7 +789,7 @@ function AvailableWorkersPanel() {
                   data-testid={`worker-${worker.id}`}
                 >
                   <StatusDots worker={worker} />
-                  {selectedRatingId && worker.ratingValue !== null && (
+                  {selectedRatingId && selectedRatingId !== "all" && worker.ratingValue !== null && (
                     <StarRating value={worker.ratingValue} />
                   )}
                   <span className="text-sm truncate">{formatWorkerName(worker)}</span>
