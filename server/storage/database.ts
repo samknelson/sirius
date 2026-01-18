@@ -40,6 +40,7 @@ import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingCo
 import { type WorkerCertificationStorage, createWorkerCertificationStorage, workerCertificationLoggingConfig } from "./worker-certifications";
 import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfig } from "./edls-sheets";
 import { type EdlsCrewsStorage, createEdlsCrewsStorage, edlsCrewsLoggingConfig } from "./edls-crews";
+import { type EdlsAssignmentsStorage, createEdlsAssignmentsStorage, edlsAssignmentsLoggingConfig } from "./edls-assignments";
 import { type AuthIdentitiesStorage, createAuthIdentitiesStorage } from "./auth-identities";
 import { type WorkerDispatchEligDenormStorage, createWorkerDispatchEligDenormStorage } from "./worker-dispatch-elig-denorm";
 import { type RawSqlStorage, createRawSqlStorage } from "./raw-sql";
@@ -95,6 +96,7 @@ export interface IStorage {
   workerCertifications: WorkerCertificationStorage;
   edlsSheets: EdlsSheetsStorage;
   edlsCrews: EdlsCrewsStorage;
+  edlsAssignments: EdlsAssignmentsStorage;
   authIdentities: AuthIdentitiesStorage;
   workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
   rawSql: RawSqlStorage;
@@ -147,6 +149,7 @@ export class DatabaseStorage implements IStorage {
   workerCertifications: WorkerCertificationStorage;
   edlsSheets: EdlsSheetsStorage;
   edlsCrews: EdlsCrewsStorage;
+  edlsAssignments: EdlsAssignmentsStorage;
   authIdentities: AuthIdentitiesStorage;
   workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
   rawSql: RawSqlStorage;
@@ -262,6 +265,7 @@ export class DatabaseStorage implements IStorage {
     );
     this.edlsSheets = withStorageLogging(createEdlsSheetsStorage(), edlsSheetsLoggingConfig);
     this.edlsCrews = withStorageLogging(createEdlsCrewsStorage(), edlsCrewsLoggingConfig);
+    this.edlsAssignments = withStorageLogging(createEdlsAssignmentsStorage(), edlsAssignmentsLoggingConfig);
     this.authIdentities = createAuthIdentitiesStorage();
     this.workerDispatchEligDenorm = createWorkerDispatchEligDenormStorage();
     this.rawSql = createRawSqlStorage();

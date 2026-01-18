@@ -352,6 +352,89 @@ export function registerEdlsSheetsRoutes(
     }
   });
 
+  app.get("/api/edls/sheets/:sheetId/assignments", requireAuth, edlsComponent, requireAccess('edls.sheet.view', req => req.params.sheetId), async (req, res) => {
+    try {
+      const { sheetId } = req.params;
+      
+      const sheet = await storage.edlsSheets.get(sheetId);
+      if (!sheet) {
+        res.status(404).json({ message: "Sheet not found" });
+        return;
+      }
+      
+      const assignments = await storage.edlsAssignments.getBySheetId(sheetId);
+      res.json(assignments);
+    } catch (error) {
+      console.error("Failed to fetch assignments:", error);
+      res.status(500).json({ message: "Failed to fetch assignments" });
+    }
+  });
+
+  const createAssignmentSchema = z.object({
+    workerId: z.string().min(1, "Worker ID is required"),
+  });
+
+  app.post("/api/edls/sheets/:sheetId/crews/:crewId/assignments", requireAuth, edlsComponent, requireAccess('edls.sheet.edit', req => req.params.sheetId), async (req, res) => {
+    try {
+      const { sheetId, crewId } = req.params;
+      const parsed = createAssignmentSchema.safeParse(req.body);
+      
+      if (!parsed.success) {
+        res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+        return;
+      }
+      
+      const crew = await storage.edlsCrews.get(crewId);
+      if (!crew) {
+        res.status(404).json({ message: "Crew not found" });
+        return;
+      }
+
+      if (crew.sheetId !== sheetId) {
+        res.status(400).json({ message: "Crew does not belong to this sheet" });
+        return;
+      }
+      
+      const sheet = await storage.edlsSheets.get(sheetId);
+      if (!sheet) {
+        res.status(404).json({ message: "Sheet not found" });
+        return;
+      }
+
+      const worker = await storage.workers.getWorker(parsed.data.workerId);
+      if (!worker) {
+        res.status(404).json({ message: "Worker not found" });
+        return;
+      }
+
+      if (worker.denormHomeEmployerId !== sheet.employerId) {
+        res.status(400).json({ message: "Worker is not an employee of this employer" });
+        return;
+      }
+
+      const existingAssignments = await storage.edlsAssignments.getByCrewId(crewId);
+      if (existingAssignments.length >= crew.workerCount) {
+        res.status(400).json({ message: "Crew is already full" });
+        return;
+      }
+      
+      const assignment = await storage.edlsAssignments.create({
+        crewId,
+        workerId: parsed.data.workerId,
+        date: sheet.date as string,
+      });
+      
+      res.status(201).json(assignment);
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        res.status(400).json({ message: "Worker is already assigned on this date" });
+        return;
+      }
+      console.error("Failed to create assignment:", error);
+      res.status(500).json({ message: "Failed to create assignment" });
+    }
+  });
+
   const setStatusSchema = z.object({
     status: z.enum(["draft", "request", "lock", "trash", "reserved"]),
   });
