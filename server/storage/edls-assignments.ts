@@ -70,6 +70,18 @@ export interface EdlsAssignmentWithWorker extends EdlsAssignment {
   };
 }
 
+export interface AvailableWorkerForSheet {
+  id: string;
+  siriusId: number | null;
+  contactId: string;
+  displayName: string | null;
+  given: string | null;
+  family: string | null;
+  priorStatus: string | null;
+  currentStatus: string | null;
+  nextStatus: string | null;
+}
+
 export interface EdlsAssignmentsStorage {
   getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]>;
   getBySheetId(sheetId: string): Promise<EdlsAssignmentWithWorker[]>;
@@ -77,6 +89,7 @@ export interface EdlsAssignmentsStorage {
   create(assignment: InsertEdlsAssignment): Promise<EdlsAssignment>;
   delete(id: string): Promise<boolean>;
   deleteByCrewId(crewId: string): Promise<number>;
+  getAvailableWorkersForSheet(employerId: string, sheetYmd: string): Promise<AvailableWorkerForSheet[]>;
 }
 
 export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
@@ -155,6 +168,53 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       const client = getClient();
       const result = await client.delete(edlsAssignments).where(eq(edlsAssignments.crewId, crewId)).returning();
       return result.length;
+    },
+
+    async getAvailableWorkersForSheet(employerId: string, sheetYmd: string): Promise<AvailableWorkerForSheet[]> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT 
+          w.id,
+          w.sirius_id as "siriusId",
+          w.contact_id as "contactId",
+          c.display_name as "displayName",
+          c.given,
+          c.family,
+          prior_asg.status as "priorStatus",
+          current_asg.status as "currentStatus",
+          next_asg.status as "nextStatus"
+        FROM workers w
+        INNER JOIN contacts c ON w.contact_id = c.id
+        LEFT JOIN LATERAL (
+          SELECT es.status
+          FROM edls_assignments ea
+          INNER JOIN edls_crews ec ON ea.crew_id = ec.id
+          INNER JOIN edls_sheets es ON ec.sheet_id = es.id
+          WHERE ea.worker_id = w.id AND es.ymd < ${sheetYmd}
+          ORDER BY es.ymd DESC
+          LIMIT 1
+        ) prior_asg ON true
+        LEFT JOIN LATERAL (
+          SELECT es.status
+          FROM edls_assignments ea
+          INNER JOIN edls_crews ec ON ea.crew_id = ec.id
+          INNER JOIN edls_sheets es ON ec.sheet_id = es.id
+          WHERE ea.worker_id = w.id AND es.ymd = ${sheetYmd}
+          LIMIT 1
+        ) current_asg ON true
+        LEFT JOIN LATERAL (
+          SELECT es.status
+          FROM edls_assignments ea
+          INNER JOIN edls_crews ec ON ea.crew_id = ec.id
+          INNER JOIN edls_sheets es ON ec.sheet_id = es.id
+          WHERE ea.worker_id = w.id AND es.ymd > ${sheetYmd}
+          ORDER BY es.ymd ASC
+          LIMIT 1
+        ) next_asg ON true
+        WHERE w.denorm_home_employer_id = ${employerId}
+        ORDER BY c.family, c.given
+      `);
+      return result.rows as unknown as AvailableWorkerForSheet[];
     },
   };
 }

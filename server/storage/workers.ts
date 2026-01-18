@@ -126,16 +126,13 @@ export interface WorkerStorage {
   getWorkerBySSN(ssn: string): Promise<Worker | undefined>;
   getWorkerByContactEmail(email: string): Promise<Worker | undefined>;
   getWorkerByContactId(contactId: string): Promise<Worker | undefined>;
-  getWorkersByHomeEmployerId(employerId: string, options?: { excludeAssignedToSheetId?: string; sheetYmd?: string }): Promise<Array<{
+  getWorkersByHomeEmployerId(employerId: string): Promise<Array<{
     id: string;
     siriusId: number | null;
     contactId: string;
     displayName: string | null;
     given: string | null;
     family: string | null;
-    priorStatus?: string | null;
-    currentStatus?: string | null;
-    nextStatus?: string | null;
   }>>;
   createWorker(name: string): Promise<Worker>;
   // Update methods that delegate to contact storage (contact storage already has logging)
@@ -421,107 +418,15 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return worker || undefined;
     },
 
-    async getWorkersByHomeEmployerId(employerId: string, options?: { excludeAssignedToSheetId?: string; sheetYmd?: string }): Promise<Array<{
+    async getWorkersByHomeEmployerId(employerId: string): Promise<Array<{
       id: string;
       siriusId: number | null;
       contactId: string;
       displayName: string | null;
       given: string | null;
       family: string | null;
-      priorStatus?: string | null;
-      currentStatus?: string | null;
-      nextStatus?: string | null;
     }>> {
       const client = getClient();
-      
-      if (options?.sheetYmd) {
-        // Fetch workers with prior/current/next assignment statuses using lateral joins
-        const result = await client.execute(sql`
-          SELECT 
-            w.id,
-            w.sirius_id as "siriusId",
-            w.contact_id as "contactId",
-            c.display_name as "displayName",
-            c.given,
-            c.family,
-            prior_asg.status as "priorStatus",
-            current_asg.status as "currentStatus",
-            next_asg.status as "nextStatus"
-          FROM workers w
-          INNER JOIN contacts c ON w.contact_id = c.id
-          LEFT JOIN LATERAL (
-            SELECT es.status
-            FROM edls_assignments ea
-            INNER JOIN edls_crews ec ON ea.crew_id = ec.id
-            INNER JOIN edls_sheets es ON ec.sheet_id = es.id
-            WHERE ea.worker_id = w.id AND es.ymd < ${options.sheetYmd}
-            ORDER BY es.ymd DESC
-            LIMIT 1
-          ) prior_asg ON true
-          LEFT JOIN LATERAL (
-            SELECT es.status
-            FROM edls_assignments ea
-            INNER JOIN edls_crews ec ON ea.crew_id = ec.id
-            INNER JOIN edls_sheets es ON ec.sheet_id = es.id
-            WHERE ea.worker_id = w.id AND es.ymd = ${options.sheetYmd}
-            LIMIT 1
-          ) current_asg ON true
-          LEFT JOIN LATERAL (
-            SELECT es.status
-            FROM edls_assignments ea
-            INNER JOIN edls_crews ec ON ea.crew_id = ec.id
-            INNER JOIN edls_sheets es ON ec.sheet_id = es.id
-            WHERE ea.worker_id = w.id AND es.ymd > ${options.sheetYmd}
-            ORDER BY es.ymd ASC
-            LIMIT 1
-          ) next_asg ON true
-          WHERE w.denorm_home_employer_id = ${employerId}
-          ORDER BY c.family, c.given
-        `);
-        return result.rows as Array<{
-          id: string;
-          siriusId: number | null;
-          contactId: string;
-          displayName: string | null;
-          given: string | null;
-          family: string | null;
-          priorStatus: string | null;
-          currentStatus: string | null;
-          nextStatus: string | null;
-        }>;
-      }
-      
-      if (options?.excludeAssignedToSheetId) {
-        // Exclude workers who are already assigned to crews on this specific sheet
-        const result = await client.execute(sql`
-          SELECT 
-            w.id,
-            w.sirius_id as "siriusId",
-            w.contact_id as "contactId",
-            c.display_name as "displayName",
-            c.given,
-            c.family
-          FROM workers w
-          INNER JOIN contacts c ON w.contact_id = c.id
-          WHERE w.denorm_home_employer_id = ${employerId}
-            AND w.id NOT IN (
-              SELECT ea.worker_id 
-              FROM edls_assignments ea
-              INNER JOIN edls_crews ec ON ea.crew_id = ec.id
-              WHERE ec.sheet_id = ${options.excludeAssignedToSheetId}
-            )
-          ORDER BY c.family, c.given
-        `);
-        return result.rows as Array<{
-          id: string;
-          siriusId: number | null;
-          contactId: string;
-          displayName: string | null;
-          given: string | null;
-          family: string | null;
-        }>;
-      }
-      
       const result = await client
         .select({
           id: workers.id,
