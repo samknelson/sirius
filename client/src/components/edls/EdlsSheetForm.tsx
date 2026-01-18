@@ -45,7 +45,7 @@ interface TaskOption {
 
 export interface SheetFormData {
   title: string;
-  date: string;
+  ymd: string;
   departmentId: string;
   workerCount: number;
   supervisor: string;
@@ -97,7 +97,7 @@ export function EdlsSheetForm({
     if (initialData) {
       return {
         title: initialData.sheet.title,
-        date: initialData.sheet.date as string,
+        ymd: initialData.sheet.ymd as string,
         departmentId: initialData.sheet.departmentId,
         workerCount: initialData.sheet.workerCount,
         supervisor: initialData.sheet.supervisor || "",
@@ -116,7 +116,7 @@ export function EdlsSheetForm({
     }
     return {
       title: "",
-      date: new Date().toISOString().split("T")[0],
+      ymd: new Date().toISOString().split("T")[0],
       departmentId: "",
       workerCount: 0,
       supervisor: "",
@@ -140,7 +140,7 @@ export function EdlsSheetForm({
 
   const hasValidationErrors = () => {
     if (supervisorContextLoading || departmentsLoading) return true;
-    if (!formData.title || !formData.date || !formData.departmentId) return true;
+    if (!formData.title || !formData.ymd || !formData.departmentId) return true;
     if (!effectiveSupervisor) return true;
     if (formData.crews.length === 0) return true;
     if (workerCountMismatch) return true;
@@ -222,14 +222,14 @@ export function EdlsSheetForm({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="date">Date *</Label>
+          <Label htmlFor="ymd">Date *</Label>
           <Input
-            id="date"
+            id="ymd"
             type="date"
             data-testid="input-date"
-            value={formData.date}
+            value={formData.ymd}
             onChange={(e) =>
-              setFormData({ ...formData, date: e.target.value })
+              setFormData({ ...formData, ymd: e.target.value })
             }
           />
         </div>
