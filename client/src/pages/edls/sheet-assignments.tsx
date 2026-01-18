@@ -466,6 +466,7 @@ function StatusDots({ worker }: { worker: AvailableWorker }) {
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    e.preventDefault();
     setModalOpen(true);
   };
 
@@ -474,6 +475,7 @@ function StatusDots({ worker }: { worker: AvailableWorker }) {
       <div 
         className="flex items-center gap-0.5 flex-shrink-0 cursor-pointer hover:opacity-80 p-1 -m-1 rounded"
         onClick={handleClick}
+        onMouseDown={(e) => e.stopPropagation()}
         data-testid={`status-dots-${worker.id}`}
         title="Click to view assignment details"
       >
