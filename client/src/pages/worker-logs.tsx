@@ -167,6 +167,7 @@ function WorkerLogsContent() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Timestamp</TableHead>
+                    <TableHead>User</TableHead>
                     <TableHead>Level</TableHead>
                     <TableHead>Module</TableHead>
                     <TableHead>Operation</TableHead>
@@ -179,6 +180,9 @@ function WorkerLogsContent() {
                     <TableRow key={log.id} data-testid={`row-log-${log.id}`}>
                       <TableCell className="font-mono text-sm">
                         {log.timestamp ? format(new Date(log.timestamp), "MMM dd, yyyy HH:mm:ss") : "N/A"}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {log.userEmail || "—"}
                       </TableCell>
                       <TableCell>
                         {log.level && (
@@ -219,8 +223,14 @@ function WorkerLogsContent() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-muted-foreground">ID</Label>
-                  <div className="font-mono" data-testid="text-log-id">{selectedLog.id}</div>
+                  <Label className="text-muted-foreground">Timestamp</Label>
+                  <div className="font-mono" data-testid="text-log-timestamp">
+                    {selectedLog.timestamp ? format(new Date(selectedLog.timestamp), "PPpp") : "N/A"}
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">User</Label>
+                  <div data-testid="text-log-user">{selectedLog.userEmail || "—"}</div>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Level</Label>
@@ -233,14 +243,8 @@ function WorkerLogsContent() {
                   </div>
                 </div>
                 <div>
-                  <Label className="text-muted-foreground">Timestamp</Label>
-                  <div className="font-mono" data-testid="text-log-timestamp">
-                    {selectedLog.timestamp ? format(new Date(selectedLog.timestamp), "PPpp") : "N/A"}
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Source</Label>
-                  <div data-testid="text-log-source">{selectedLog.source || "—"}</div>
+                  <Label className="text-muted-foreground">IP Address</Label>
+                  <div className="font-mono text-sm" data-testid="text-log-ip">{selectedLog.ipAddress || "—"}</div>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Module</Label>
@@ -249,6 +253,14 @@ function WorkerLogsContent() {
                 <div>
                   <Label className="text-muted-foreground">Operation</Label>
                   <div data-testid="text-log-operation">{selectedLog.operation || "—"}</div>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Source</Label>
+                  <div data-testid="text-log-source">{selectedLog.source || "—"}</div>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Log ID</Label>
+                  <div className="font-mono text-sm" data-testid="text-log-id">{selectedLog.id}</div>
                 </div>
                 <div className="col-span-2">
                   <Label className="text-muted-foreground">Entity ID</Label>

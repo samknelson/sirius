@@ -21,4 +21,7 @@ export interface WinstonLog {
   operation: string | null;
   entityId: string | null;
   description: string | null;
+  userId: string | null;
+  userEmail: string | null;
+  ipAddress: string | null;
 }
