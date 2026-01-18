@@ -379,6 +379,14 @@ export const optionsDepartment = pgTable("options_department", {
   data: jsonb("data"),
 });
 
+export const optionsClassifications = pgTable("options_classifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  code: varchar("code", { length: 255 }).unique(),
+  siriusId: varchar("sirius_id", { length: 255 }).unique(),
+  data: jsonb("data"),
+});
+
 export const optionsWorkerWs = pgTable("options_worker_ws", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -964,6 +972,15 @@ export const insertDepartmentSchema = createInsertSchema(optionsDepartment).omit
   id: true,
 });
 
+export const insertClassificationSchema = createInsertSchema(optionsClassifications).omit({
+  id: true,
+}).extend({
+  name: z.string().trim().min(1, "Name is required"),
+  code: z.string().trim().nullable().optional(),
+  siriusId: z.string().trim().nullable().optional(),
+  data: z.record(z.unknown()).nullable().optional(),
+});
+
 export const insertTrustProviderTypeSchema = createInsertSchema(optionsTrustProviderType).omit({
   id: true,
 });
@@ -1171,6 +1188,9 @@ export type EmployerType = typeof optionsEmployerType.$inferSelect;
 
 export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
 export type Department = typeof optionsDepartment.$inferSelect;
+
+export type InsertClassification = z.infer<typeof insertClassificationSchema>;
+export type Classification = typeof optionsClassifications.$inferSelect;
 
 export type InsertTrustProviderType = z.infer<typeof insertTrustProviderTypeSchema>;
 export type TrustProviderType = typeof optionsTrustProviderType.$inferSelect;
