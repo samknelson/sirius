@@ -1,7 +1,7 @@
 import { useState, useMemo, createContext, useContext } from "react";
 import { Link } from "wouter";
 import { formatYmd } from "@shared/utils/date";
-import { Calendar, Users, Clock, MapPin, User, ClipboardList, UserPlus, Search, Check } from "lucide-react";
+import { Calendar, Users, Clock, MapPin, User, ClipboardList, UserPlus, Search, Check, Star } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -325,6 +325,18 @@ interface AvailableWorker {
   priorStatus: string | null;
   currentStatus: string | null;
   nextStatus: string | null;
+  ratingValue: number | null;
+}
+
+interface ComponentConfig {
+  componentId: string;
+  enabled: boolean;
+}
+
+interface RatingOption {
+  id: string;
+  name: string;
+  parent: string | null;
 }
 
 function formatWorkerName(worker: AvailableWorker): string {
@@ -519,6 +531,19 @@ function StatusDots({ worker }: { worker: AvailableWorker }) {
 
 type AssignmentFilter = "all" | "include" | "exclude";
 
+function StarRating({ value }: { value: number }) {
+  return (
+    <div className="flex items-center gap-0.5">
+      {[0, 1, 2, 3].map((i) => (
+        <Star
+          key={i}
+          className={`h-3 w-3 ${i < value ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/30"}`}
+        />
+      ))}
+    </div>
+  );
+}
+
 function AvailableWorkersPanel() {
   const { sheet } = useEdlsSheetLayout();
   const { selectedCrewId, assignWorker, isAssigning, assignments } = useAssignments();
@@ -526,16 +551,32 @@ function AvailableWorkersPanel() {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentFilter, setCurrentFilter] = useState<AssignmentFilter>("all");
   const [nextFilter, setNextFilter] = useState<AssignmentFilter>("all");
+  const [selectedRatingId, setSelectedRatingId] = useState<string>("");
   
   const assignedWorkerIds = useMemo(() => 
     new Set(assignments.map(a => a.workerId)), 
     [assignments]
   );
 
+  const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
+    queryKey: ["/api/components/config"],
+    staleTime: 60000,
+  });
+  
+  const ratingsEnabled = componentConfigs.find(c => c.componentId === "worker.ratings")?.enabled ?? false;
+
+  const { data: ratingOptions = [] } = useQuery<RatingOption[]>({
+    queryKey: ["/api/options/worker-rating"],
+    enabled: ratingsEnabled,
+  });
+
   const { data: workers = [], isLoading } = useQuery<AvailableWorker[]>({
-    queryKey: ["/api/edls/sheets", sheet.id, "available-workers"],
+    queryKey: ["/api/edls/sheets", sheet.id, "available-workers", selectedRatingId],
     queryFn: async () => {
-      const response = await fetch(`/api/edls/sheets/${sheet.id}/available-workers`);
+      const url = selectedRatingId 
+        ? `/api/edls/sheets/${sheet.id}/available-workers?ratingId=${selectedRatingId}`
+        : `/api/edls/sheets/${sheet.id}/available-workers`;
+      const response = await fetch(url);
       if (!response.ok) throw new Error("Failed to fetch available workers");
       return response.json();
     },
@@ -631,6 +672,25 @@ function AvailableWorkersPanel() {
           </div>
         </div>
         
+        {ratingsEnabled && ratingOptions.length > 0 && (
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Rating</label>
+            <Select value={selectedRatingId} onValueChange={setSelectedRatingId}>
+              <SelectTrigger data-testid="select-rating-filter" className="h-8 text-xs">
+                <SelectValue placeholder="All workers" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All workers</SelectItem>
+                {ratingOptions.map((option) => (
+                  <SelectItem key={option.id} value={option.id}>
+                    {option.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        
         {isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-10 w-full" />
@@ -657,6 +717,9 @@ function AvailableWorkersPanel() {
                   data-testid={`worker-${worker.id}`}
                 >
                   <StatusDots worker={worker} />
+                  {selectedRatingId && worker.ratingValue !== null && (
+                    <StarRating value={worker.ratingValue} />
+                  )}
                   <span className="text-sm truncate">{formatWorkerName(worker)}</span>
                   {worker.siriusId && (
                     <Badge variant="outline" className="ml-auto text-xs">
