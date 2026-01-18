@@ -422,6 +422,28 @@ async function getSheetIdFromCrewId(crewId: string): Promise<string | undefined>
   return crew?.sheetId;
 }
 
+async function getWorkerDescription(workerId: string): Promise<string> {
+  const client = getClient();
+  const [row] = await client
+    .select({
+      siriusId: workers.siriusId,
+      displayName: contacts.displayName,
+      given: contacts.given,
+      family: contacts.family,
+    })
+    .from(workers)
+    .innerJoin(contacts, eq(workers.contactId, contacts.id))
+    .where(eq(workers.id, workerId));
+
+  if (!row) return 'unknown worker';
+
+  const name = row.family && row.given 
+    ? `${row.family}, ${row.given}`
+    : row.displayName || 'unknown';
+  
+  return row.siriusId ? `${name} (${row.siriusId})` : name;
+}
+
 export const edlsAssignmentsLoggingConfig: StorageLoggingConfig<EdlsAssignmentsStorage> = {
   module: 'edls-assignments',
   methods: {
@@ -433,33 +455,50 @@ export const edlsAssignmentsLoggingConfig: StorageLoggingConfig<EdlsAssignmentsS
         if (!crewId) return undefined;
         return getSheetIdFromCrewId(crewId);
       },
-      getDescription: async () => `Created assignment for worker`,
+      getDescription: async (args, result) => {
+        const workerId = result?.workerId || args[0]?.workerId;
+        if (!workerId) return 'Created assignment';
+        const workerDesc = await getWorkerDescription(workerId);
+        return `Created assignment for ${workerDesc}`;
+      },
     },
     delete: {
       enabled: true,
       getEntityId: (args) => args[0],
       before: async (args, storage) => {
-        return await storage.get(args[0]);
+        const assignment = await storage.get(args[0]);
+        if (!assignment) return undefined;
+        const workerDesc = await getWorkerDescription(assignment.workerId);
+        return { ...assignment, workerDesc };
       },
       getHostEntityId: async (args, result, beforeState) => {
         const crewId = beforeState?.crewId;
         if (!crewId) return undefined;
         return getSheetIdFromCrewId(crewId);
       },
-      getDescription: async (args) => `Deleted assignment ${args[0]}`,
+      getDescription: async (args, result, beforeState) => {
+        const workerDesc = beforeState?.workerDesc || 'unknown worker';
+        return `Deleted assignment for ${workerDesc}`;
+      },
     },
     updateData: {
       enabled: true,
       getEntityId: (args) => args[0],
       before: async (args, storage) => {
-        return await storage.get(args[0]);
+        const assignment = await storage.get(args[0]);
+        if (!assignment) return undefined;
+        const workerDesc = await getWorkerDescription(assignment.workerId);
+        return { ...assignment, workerDesc };
       },
       getHostEntityId: async (args, result, beforeState) => {
         const crewId = beforeState?.crewId || result?.crewId;
         if (!crewId) return undefined;
         return getSheetIdFromCrewId(crewId);
       },
-      getDescription: async () => `Updated assignment data`,
+      getDescription: async (args, result, beforeState) => {
+        const workerDesc = beforeState?.workerDesc || 'unknown worker';
+        return `Updated assignment for ${workerDesc}`;
+      },
     },
   },
 };
