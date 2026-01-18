@@ -67,6 +67,16 @@ export const insertEdlsAssignmentsSchema = createInsertSchema(edlsAssignments).o
 export type EdlsAssignment = typeof edlsAssignments.$inferSelect;
 export type InsertEdlsAssignment = z.infer<typeof insertEdlsAssignmentsSchema>;
 
+export interface AssignmentExtra {
+  startTime?: string | null;
+}
+
+export const updateAssignmentExtraSchema = z.object({
+  startTime: z.string().nullable().optional(),
+});
+
+export type UpdateAssignmentExtra = z.infer<typeof updateAssignmentExtraSchema>;
+
 export const optionsEdlsTasks = pgTable("options_edls_tasks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
