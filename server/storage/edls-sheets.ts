@@ -40,8 +40,9 @@ export interface PaginatedEdlsSheets {
 export type CrewInput = Omit<InsertEdlsCrew, 'sheetId'> & { id?: string };
 
 /**
- * Input type for sheet validation that includes crews context.
- * The crews array is required for validation but not persisted with the sheet.
+ * Input type for sheet validation that includes optional crews context.
+ * - _crews: Pass crews directly (on create, or when updating crews)
+ * - If _crews is not provided on update, validator loads existing crews from DB
  */
 export interface EdlsSheetValidationInput extends Partial<InsertEdlsSheet> {
   _crews?: Array<{ workerCount: number }>;
@@ -50,19 +51,33 @@ export interface EdlsSheetValidationInput extends Partial<InsertEdlsSheet> {
 /**
  * Validates EDLS sheets:
  * - Ensures workerCount equals the sum of crew workerCounts
- * - Only validates when workerCount is present in input (being created or updated)
- * - Requires _crews context for validation (passed via input)
- * - For updates where only status changes, skip validation by not passing _crews
+ * - Smart loading: if _crews not provided but validation is needed, loads from DB
+ * - Skips crew validation only when neither workerCount nor crews are changing
  */
 export const validate: AsyncStorageValidator<EdlsSheetValidationInput, EdlsSheet, {}> = createAsyncStorageValidator<EdlsSheetValidationInput, EdlsSheet, {}>(
   async (data, existing) => {
     const errors: ValidationError[] = [];
     
-    const crews = data._crews;
+    const isChangingWorkerCount = 'workerCount' in data;
+    const isProvidingCrews = '_crews' in data;
     
-    if (crews !== undefined) {
+    // Only validate crew counts if crews are provided OR workerCount is changing
+    if (isProvidingCrews || isChangingWorkerCount) {
+      // Determine crews to validate against
+      let crews: Array<{ workerCount: number }>;
+      if (isProvidingCrews) {
+        crews = data._crews ?? [];
+      } else if (existing?.id) {
+        // Load existing crews from database
+        crews = await storage.edlsCrews.getBySheetId(existing.id);
+      } else {
+        // No existing record and no crews provided - can't validate
+        crews = [];
+      }
+      
       const workerCount = data.workerCount ?? existing?.workerCount ?? 0;
       const crewsTotal = crews.reduce((sum, crew) => sum + (crew.workerCount || 0), 0);
+      
       if (workerCount !== crewsTotal) {
         errors.push({
           field: 'workerCount',
@@ -276,22 +291,14 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         const [existingSheet] = await client.select().from(edlsSheets).where(eq(edlsSheets.id, id));
         if (!existingSheet) return undefined;
         
-        // Only validate crew counts if crews are being changed OR workerCount is being updated
-        const isChangingCrews = crews !== undefined;
-        const isChangingWorkerCount = 'workerCount' in sheetUpdate;
-        
-        if (isChangingCrews || isChangingWorkerCount) {
-          // If crews are provided, use them for validation; otherwise load existing crews
-          const crewsForValidation = isChangingCrews 
-            ? crews! 
-            : await storage.edlsCrews.getBySheetId(id);
-          
-          // Validate via standard validator with _crews context
-          await validate.validateOrThrow(
-            { ...sheetUpdate, _crews: crewsForValidation },
-            existingSheet
-          );
-        }
+        // Always validate - validator is smart enough to:
+        // - Use provided crews if available
+        // - Load existing crews from DB if workerCount is changing
+        // - Skip crew validation if neither crews nor workerCount are changing
+        const validationInput = crews !== undefined 
+          ? { ...sheetUpdate, _crews: crews }
+          : sheetUpdate;
+        await validate.validateOrThrow(validationInput, existingSheet);
         
         // Update the sheet
         const [updatedSheet] = Object.keys(sheetUpdate).length > 0
