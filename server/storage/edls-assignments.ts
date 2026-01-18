@@ -15,6 +15,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { StorageLoggingConfig } from "./middleware/logging";
 import { getClient, runInTransaction } from "./transaction-context";
 import { createUnifiedOptionsStorage } from "./unified-options";
+import { createEdlsCrewsStorage } from "./edls-crews";
 
 export const validate = createAsyncStorageValidator<InsertEdlsAssignment, EdlsAssignment, {}>(
   async (data, existing) => {
@@ -415,19 +416,50 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
   };
 }
 
+async function getSheetIdFromCrewId(crewId: string): Promise<string | undefined> {
+  const crewsStorage = createEdlsCrewsStorage();
+  const crew = await crewsStorage.get(crewId);
+  return crew?.sheetId;
+}
+
 export const edlsAssignmentsLoggingConfig: StorageLoggingConfig<EdlsAssignmentsStorage> = {
   module: 'edls-assignments',
   methods: {
     create: {
       enabled: true,
       getEntityId: (args, result) => result?.id || 'new',
-      getHostEntityId: (args) => args[0]?.crewId,
+      getHostEntityId: async (args) => {
+        const crewId = args[0]?.crewId;
+        if (!crewId) return undefined;
+        return getSheetIdFromCrewId(crewId);
+      },
       getDescription: async () => `Created assignment for worker`,
     },
     delete: {
       enabled: true,
       getEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        return await storage.get(args[0]);
+      },
+      getHostEntityId: async (args, result, beforeState) => {
+        const crewId = beforeState?.crewId;
+        if (!crewId) return undefined;
+        return getSheetIdFromCrewId(crewId);
+      },
       getDescription: async (args) => `Deleted assignment ${args[0]}`,
+    },
+    updateData: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        return await storage.get(args[0]);
+      },
+      getHostEntityId: async (args, result, beforeState) => {
+        const crewId = beforeState?.crewId || result?.crewId;
+        if (!crewId) return undefined;
+        return getSheetIdFromCrewId(crewId);
+      },
+      getDescription: async () => `Updated assignment data`,
     },
   },
 };
