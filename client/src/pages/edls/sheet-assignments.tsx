@@ -208,6 +208,7 @@ function EditAssignmentExtrasModal({ assignment, sheetId, open, onOpenChange }: 
   const { toast } = useToast();
   const assignmentData = (assignment.data as AssignmentExtra) || {};
   const [startTime, setStartTime] = useState<string>(assignmentData.startTime || "");
+  const [note, setNote] = useState<string>(assignmentData.note || "");
 
   const updateMutation = useMutation({
     mutationFn: async (data: AssignmentExtra) => {
@@ -224,7 +225,10 @@ function EditAssignmentExtrasModal({ assignment, sheetId, open, onOpenChange }: 
   });
 
   const handleSave = () => {
-    updateMutation.mutate({ startTime: startTime || null });
+    updateMutation.mutate({ 
+      startTime: startTime || null,
+      note: note || null,
+    });
   };
 
   return (
@@ -242,6 +246,18 @@ function EditAssignmentExtrasModal({ assignment, sheetId, open, onOpenChange }: 
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
               data-testid="input-start-time"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="note">Note</Label>
+            <Input
+              id="note"
+              type="text"
+              maxLength={35}
+              placeholder="Up to 35 characters"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              data-testid="input-note"
             />
           </div>
         </div>
@@ -293,6 +309,11 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId }: AssignedWorkerSlotP
           onClick={handleUnassign}
         >
           <span className="text-sm">{formatAssignedWorkerName(assignment.worker)}</span>
+          {assignmentData.note && (
+            <span className="text-xs text-muted-foreground truncate max-w-[120px]" title={assignmentData.note}>
+              {assignmentData.note}
+            </span>
+          )}
           {ratingValue !== undefined && (
             <span className="flex items-center text-xs text-muted-foreground">
               <Star className="h-3 w-3 mr-0.5 text-yellow-400" fill="currentColor" />

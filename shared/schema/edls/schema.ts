@@ -69,10 +69,12 @@ export type InsertEdlsAssignment = z.infer<typeof insertEdlsAssignmentsSchema>;
 
 export interface AssignmentExtra {
   startTime?: string | null;
+  note?: string | null;
 }
 
 export const updateAssignmentExtraSchema = z.object({
   startTime: z.string().nullable().optional(),
+  note: z.string().max(35).nullable().optional(),
 });
 
 export type UpdateAssignmentExtra = z.infer<typeof updateAssignmentExtraSchema>;

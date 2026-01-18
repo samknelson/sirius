@@ -259,7 +259,13 @@ function EdlsSheetDetailsContent() {
                                 <span className="text-muted-foreground w-16 text-right tabular-nums">
                                   {assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—"}
                                 </span>
-                                <span className="flex-1">{formatWorkerName(assignment.worker)}</span>
+                                <span>{formatWorkerName(assignment.worker)}</span>
+                                {assignmentData.note && (
+                                  <span className="text-xs text-muted-foreground truncate max-w-[120px]" title={assignmentData.note}>
+                                    {assignmentData.note}
+                                  </span>
+                                )}
+                                <span className="flex-1" />
                                 {assignmentData.startTime && (
                                   <Badge variant="outline" className="text-xs">
                                     <Clock className="h-3 w-3 mr-1" />
