@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -516,11 +517,15 @@ function StatusDots({ worker }: { worker: AvailableWorker }) {
   );
 }
 
+type AssignmentFilter = "all" | "include" | "exclude";
+
 function AvailableWorkersPanel() {
   const { sheet } = useEdlsSheetLayout();
   const { selectedCrewId, assignWorker, isAssigning, assignments } = useAssignments();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
+  const [currentFilter, setCurrentFilter] = useState<AssignmentFilter>("all");
+  const [nextFilter, setNextFilter] = useState<AssignmentFilter>("all");
   
   const assignedWorkerIds = useMemo(() => 
     new Set(assignments.map(a => a.workerId)), 
@@ -537,13 +542,30 @@ function AvailableWorkersPanel() {
   });
 
   const filteredWorkers = useMemo(() => {
-    if (!searchTerm.trim()) return workers;
-    const term = searchTerm.toLowerCase();
-    return workers.filter((worker) => {
-      const name = formatWorkerName(worker).toLowerCase();
-      return name.includes(term);
-    });
-  }, [workers, searchTerm]);
+    let result = workers;
+    
+    if (currentFilter === "include") {
+      result = result.filter(w => w.currentStatus !== null);
+    } else if (currentFilter === "exclude") {
+      result = result.filter(w => w.currentStatus === null);
+    }
+    
+    if (nextFilter === "include") {
+      result = result.filter(w => w.nextStatus !== null);
+    } else if (nextFilter === "exclude") {
+      result = result.filter(w => w.nextStatus === null);
+    }
+    
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter((worker) => {
+        const name = formatWorkerName(worker).toLowerCase();
+        return name.includes(term);
+      });
+    }
+    
+    return result;
+  }, [workers, searchTerm, currentFilter, nextFilter]);
 
   const handleWorkerClick = (worker: AvailableWorker) => {
     if (assignedWorkerIds.has(worker.id)) {
@@ -578,6 +600,35 @@ function AvailableWorkersPanel() {
             className="pl-9"
             data-testid="input-search-workers"
           />
+        </div>
+        
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Current</label>
+            <Select value={currentFilter} onValueChange={(v) => setCurrentFilter(v as AssignmentFilter)}>
+              <SelectTrigger data-testid="select-current-filter" className="h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="include">Has assignment</SelectItem>
+                <SelectItem value="exclude">No assignment</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Next</label>
+            <Select value={nextFilter} onValueChange={(v) => setNextFilter(v as AssignmentFilter)}>
+              <SelectTrigger data-testid="select-next-filter" className="h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="include">Has assignment</SelectItem>
+                <SelectItem value="exclude">No assignment</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         
         {isLoading ? (
