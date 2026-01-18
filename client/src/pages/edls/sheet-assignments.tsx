@@ -538,9 +538,6 @@ function CrewsList() {
 
   return (
     <div className="space-y-4">
-      {!selectedCrewId && (
-        <p className="text-sm text-muted-foreground">Click a crew to select it, then click a worker to assign them.</p>
-      )}
       {crews.map((crew) => (
         <CrewCard key={crew.id} crew={crew} />
       ))}
