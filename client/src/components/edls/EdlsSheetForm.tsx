@@ -405,9 +405,13 @@ export function EdlsSheetForm({
                               handleCrewChange(index, "title", e.target.value)
                             }
                             placeholder="Crew name"
+                            className={!crew.title ? "border-destructive" : ""}
                           />
+                          {!crew.title && (
+                            <p className="text-xs text-destructive">Required</p>
+                          )}
                         </div>
-                        <div className="w-20 space-y-1">
+                        <div className="w-24 space-y-1">
                           <Label className="text-xs">Workers *</Label>
                           <Input
                             type="number"
@@ -421,7 +425,11 @@ export function EdlsSheetForm({
                               )
                             }
                             min={1}
+                            className={crew.workerCount <= 0 ? "border-destructive" : ""}
                           />
+                          {crew.workerCount <= 0 && (
+                            <p className="text-xs text-destructive">Min 1</p>
+                          )}
                         </div>
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
