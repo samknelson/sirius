@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
-import { Calendar, Users, Clock, MapPin, User, Building, ClipboardList, UserPlus, Search } from "lucide-react";
+import { Calendar, Users, Clock, MapPin, User, ClipboardList, UserPlus, Search } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -67,12 +67,6 @@ function SheetSummary() {
             <Calendar className="h-4 w-4 text-muted-foreground" />
             {format(new Date(sheet.date + "T00:00:00"), "EEE, MMM d, yyyy")}
           </div>
-          {sheet.employer && (
-            <div className="flex items-center gap-1.5" data-testid="text-sheet-employer">
-              <Building className="h-4 w-4 text-muted-foreground" />
-              {sheet.employer.name}
-            </div>
-          )}
           <div className="flex items-center gap-1.5" data-testid="text-sheet-workers">
             <Users className="h-4 w-4 text-muted-foreground" />
             {sheet.workerCount} workers needed
