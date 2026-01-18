@@ -43,6 +43,7 @@ interface EdlsSheetWithRelations extends EdlsSheet {
   department?: { id: string; name: string };
   supervisorUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
   assigneeUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
+  assignedCount?: number;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -422,7 +423,9 @@ export default function EdlsSheetsPage() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Users className="h-4 w-4 text-muted-foreground" />
-                        {sheet.workerCount}
+                        <span data-testid={`text-workers-${sheet.id}`}>
+                          {sheet.assignedCount ?? 0}/{sheet.workerCount}
+                        </span>
                       </div>
                     </TableCell>
                     <TableCell>

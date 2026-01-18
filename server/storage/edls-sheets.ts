@@ -5,6 +5,8 @@ import {
 } from './utils/validation';
 import { 
   edlsSheets,
+  edlsCrews,
+  edlsAssignments,
   employers,
   users,
   optionsDepartment,
@@ -28,6 +30,7 @@ export interface EdlsSheetWithRelations extends EdlsSheet {
   department?: { id: string; name: string };
   supervisorUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
   assigneeUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
+  assignedCount?: number;
 }
 
 export interface PaginatedEdlsSheets {
@@ -162,6 +165,13 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       
       const total = countResult?.count || 0;
       
+      const assignedCountSubquery = sql<number>`(
+        SELECT COUNT(*)::int
+        FROM ${edlsAssignments}
+        INNER JOIN ${edlsCrews} ON ${edlsAssignments.crewId} = ${edlsCrews.id}
+        WHERE ${edlsCrews.sheetId} = ${edlsSheets.id}
+      )`.as('assigned_count');
+      
       const baseQuery = client
         .select({
           sheet: edlsSheets,
@@ -185,6 +195,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
             lastName: assigneeUsers.lastName,
             email: assigneeUsers.email,
           },
+          assignedCount: assignedCountSubquery,
         })
         .from(edlsSheets)
         .leftJoin(employers, eq(edlsSheets.employerId, employers.id))
@@ -202,6 +213,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         department: row.department?.id ? row.department : undefined,
         supervisorUser: row.supervisorUser?.id ? row.supervisorUser : undefined,
         assigneeUser: row.assigneeUser?.id ? row.assigneeUser : undefined,
+        assignedCount: row.assignedCount ?? 0,
       }));
       
       return { data, total, page, limit };
