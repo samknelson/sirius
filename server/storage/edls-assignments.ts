@@ -113,6 +113,7 @@ export interface EdlsAssignmentsStorage {
   create(assignment: InsertEdlsAssignment): Promise<EdlsAssignment>;
   delete(id: string): Promise<boolean>;
   deleteByCrewId(crewId: string): Promise<number>;
+  updateData(id: string, data: Record<string, unknown>): Promise<EdlsAssignment | undefined>;
   getAvailableWorkersForSheet(employerId: string, sheetYmd: string, ratingId?: string): Promise<AvailableWorkerForSheet[]>;
   getWorkerAssignmentDetails(workerId: string, sheetYmd: string): Promise<WorkerAssignmentDetails | null>;
 }
@@ -193,6 +194,16 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       const client = getClient();
       const result = await client.delete(edlsAssignments).where(eq(edlsAssignments.crewId, crewId)).returning();
       return result.length;
+    },
+
+    async updateData(id: string, data: Record<string, unknown>): Promise<EdlsAssignment | undefined> {
+      const client = getClient();
+      const [assignment] = await client
+        .update(edlsAssignments)
+        .set({ data })
+        .where(eq(edlsAssignments.id, id))
+        .returning();
+      return assignment || undefined;
     },
 
     async getAvailableWorkersForSheet(employerId: string, sheetYmd: string, ratingId?: string): Promise<AvailableWorkerForSheet[]> {
