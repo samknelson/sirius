@@ -160,7 +160,7 @@ export function registerEdlsSheetsRoutes(
         return { ...crew, supervisor: supervisorValidation.supervisorId };
       });
       
-      const result = await storage.edlsSheets.createWithCrews(finalSheetData, finalCrews);
+      const result = await storage.edlsSheets.create(finalSheetData, finalCrews);
       
       res.status(201).json(result);
     } catch (error) {
@@ -271,7 +271,7 @@ export function registerEdlsSheetsRoutes(
           return { id: crewId, ...crewData, supervisor: finalSheetSupervisor };
         });
         
-        const result = await storage.edlsSheets.updateWithCrews(id, sheetData, finalCrews);
+        const result = await storage.edlsSheets.update(id, sheetData, finalCrews);
         
         res.json(result);
       } else {
