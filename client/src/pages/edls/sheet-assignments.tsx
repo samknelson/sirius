@@ -127,13 +127,15 @@ function formatAssignedWorkerName(worker: AssignmentWithWorker["worker"]): strin
 
 interface AssignedWorkerSlotProps {
   assignment: AssignmentWithWorker;
+  crewId: string;
 }
 
-function AssignedWorkerSlot({ assignment }: AssignedWorkerSlotProps) {
-  const { unassignWorker, isUnassigning } = useAssignments();
+function AssignedWorkerSlot({ assignment, crewId }: AssignedWorkerSlotProps) {
+  const { unassignWorker, isUnassigning, setSelectedCrewId } = useAssignments();
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    setSelectedCrewId(crewId);
     unassignWorker(assignment.id);
   };
 
@@ -230,7 +232,7 @@ function CrewCard({ crew }: CrewCardProps) {
       <CardContent>
         <div className="flex flex-col gap-2">
           {crewAssignments.map((assignment) => (
-            <AssignedWorkerSlot key={assignment.id} assignment={assignment} />
+            <AssignedWorkerSlot key={assignment.id} assignment={assignment} crewId={crew.id} />
           ))}
           {emptySlots.map((slotIndex) => (
             <EmptySlot key={`empty-${slotIndex}`} slotIndex={slotIndex} crewId={crew.id} />
