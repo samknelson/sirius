@@ -221,18 +221,20 @@ export function EdlsSheetForm({
             placeholder="e.g., Morning Shift - January 15"
           />
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="ymd">Date *</Label>
-          <Input
-            id="ymd"
-            type="date"
-            data-testid="input-date"
-            value={formData.ymd}
-            onChange={(e) =>
-              setFormData({ ...formData, ymd: e.target.value })
-            }
-          />
-        </div>
+        {!initialData && (
+          <div className="space-y-2">
+            <Label htmlFor="ymd">Date *</Label>
+            <Input
+              id="ymd"
+              type="date"
+              data-testid="input-date"
+              value={formData.ymd}
+              onChange={(e) =>
+                setFormData({ ...formData, ymd: e.target.value })
+              }
+            />
+          </div>
+        )}
         <div className="space-y-2">
           <Label htmlFor="department">Department *</Label>
           {departmentsLoading ? (

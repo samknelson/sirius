@@ -291,18 +291,21 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         const [existingSheet] = await client.select().from(edlsSheets).where(eq(edlsSheets.id, id));
         if (!existingSheet) return undefined;
         
+        // Strip ymd from update - date cannot be changed after sheet creation
+        const { ymd: _ymd, ...safeSheetUpdate } = sheetUpdate;
+        
         // Always validate - validator is smart enough to:
         // - Use provided crews if available
         // - Load existing crews from DB if workerCount is changing
         // - Skip crew validation if neither crews nor workerCount are changing
         const validationInput = crews !== undefined 
-          ? { ...sheetUpdate, _crews: crews }
-          : sheetUpdate;
+          ? { ...safeSheetUpdate, _crews: crews }
+          : safeSheetUpdate;
         await validate.validateOrThrow(validationInput, existingSheet);
         
         // Update the sheet
-        const [updatedSheet] = Object.keys(sheetUpdate).length > 0
-          ? await client.update(edlsSheets).set(sheetUpdate).where(eq(edlsSheets.id, id)).returning()
+        const [updatedSheet] = Object.keys(safeSheetUpdate).length > 0
+          ? await client.update(edlsSheets).set(safeSheetUpdate).where(eq(edlsSheets.id, id)).returning()
           : [existingSheet];
         
         // If crews were provided, sync them
