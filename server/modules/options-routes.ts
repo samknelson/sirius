@@ -1,8 +1,10 @@
 import type { Express, Request, Response } from "express";
-import { getOptionsType, getAllOptionsTypes } from "./options-registry";
+import { getOptionsType, getAllOptionsTypes, getOptionsStorage } from "./options-registry";
 import { requireAccess } from "../services/access-policy-evaluator";
+import { OptionsTypeName } from "../storage/unified-options";
 
 export function registerConsolidatedOptionsRoutes(app: Express) {
+  // GET /api/options - List all available options types
   app.get("/api/options", requireAccess('authenticated'), async (req: Request, res: Response) => {
     try {
       res.json({ types: getAllOptionsTypes() });
@@ -11,6 +13,36 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
     }
   });
 
+  // GET /api/options/definitions - Get all options resource definitions (for dynamic UI)
+  app.get("/api/options/definitions", requireAccess('authenticated'), async (req: Request, res: Response) => {
+    try {
+      const storage = getOptionsStorage();
+      const definitions = storage.getAllDefinitions();
+      res.json(definitions);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch options definitions" });
+    }
+  });
+
+  // GET /api/options/:type/definition - Get the resource definition for a specific options type
+  // NOTE: This route MUST be defined BEFORE /api/options/:type/:id to avoid routing conflicts
+  app.get("/api/options/:type/definition", requireAccess('authenticated'), async (req: Request, res: Response) => {
+    try {
+      const { type } = req.params;
+      const storage = getOptionsStorage();
+      const definition = storage.getDefinition(type as OptionsTypeName);
+      
+      if (!definition) {
+        return res.status(404).json({ message: `Unknown options type: ${type}` });
+      }
+      
+      res.json(definition);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch options definition" });
+    }
+  });
+
+  // GET /api/options/:type - List all items of a specific options type
   app.get("/api/options/:type", requireAccess('authenticated'), async (req: Request, res: Response) => {
     try {
       const { type } = req.params;
