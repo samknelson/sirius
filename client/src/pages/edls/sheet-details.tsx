@@ -237,16 +237,18 @@ function EdlsSheetDetailsContent() {
                     {crewAssignments.length > 0 && (
                       <div className="mt-3 pt-3 border-t">
                         <p className="text-xs text-muted-foreground mb-2">Assigned Workers:</p>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="space-y-1">
                           {crewAssignments.map((assignment) => (
-                            <Badge 
+                            <div 
                               key={assignment.id} 
-                              variant="outline"
+                              className="flex items-center gap-3 text-sm"
                               data-testid={`assignment-${assignment.id}`}
                             >
-                              {formatWorkerName(assignment.worker)}
-                              {assignment.worker.siriusId && ` #${assignment.worker.siriusId}`}
-                            </Badge>
+                              <span className="text-muted-foreground w-16 text-right tabular-nums">
+                                {assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—"}
+                              </span>
+                              <span>{formatWorkerName(assignment.worker)}</span>
+                            </div>
                           ))}
                         </div>
                       </div>
