@@ -260,12 +260,12 @@ function EdlsSheetDetailsContent() {
                                   {assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—"}
                                 </span>
                                 <span>{formatWorkerName(assignment.worker)}</span>
-                                {assignmentData.note && (
-                                  <span className="text-xs text-muted-foreground truncate max-w-[120px]" title={assignmentData.note}>
-                                    {assignmentData.note}
-                                  </span>
-                                )}
                                 <span className="flex-1" />
+                                {assignmentData.note && (
+                                  <Badge variant="outline" className="text-xs truncate max-w-[120px]" title={assignmentData.note}>
+                                    {assignmentData.note}
+                                  </Badge>
+                                )}
                                 {assignmentData.startTime && (
                                   <Badge variant="outline" className="text-xs">
                                     <Clock className="h-3 w-3 mr-1" />

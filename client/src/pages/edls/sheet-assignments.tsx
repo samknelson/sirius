@@ -309,11 +309,6 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId }: AssignedWorkerSlotP
           onClick={handleUnassign}
         >
           <span className="text-sm">{formatAssignedWorkerName(assignment.worker)}</span>
-          {assignmentData.note && (
-            <span className="text-xs text-muted-foreground truncate max-w-[120px]" title={assignmentData.note}>
-              {assignmentData.note}
-            </span>
-          )}
           {ratingValue !== undefined && (
             <span className="flex items-center text-xs text-muted-foreground">
               <Star className="h-3 w-3 mr-0.5 text-yellow-400" fill="currentColor" />
@@ -322,6 +317,11 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId }: AssignedWorkerSlotP
           )}
         </div>
         <div className="flex items-center gap-1 ml-auto">
+          {assignmentData.note && (
+            <Badge variant="outline" className="text-xs truncate max-w-[120px]" title={assignmentData.note}>
+              {assignmentData.note}
+            </Badge>
+          )}
           {assignmentData.startTime && (
             <Badge variant="outline" className="text-xs">
               <Clock className="h-3 w-3 mr-1" />
