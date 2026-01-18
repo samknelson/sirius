@@ -66,6 +66,13 @@ interface AssignmentWithWorker {
   };
 }
 
+interface ClassificationOption {
+  id: string;
+  name: string;
+  code: string | null;
+  sequence: number;
+}
+
 interface AssignmentsContextValue {
   selectedCrewId: string | null;
   setSelectedCrewId: (id: string | null) => void;
@@ -81,6 +88,8 @@ interface AssignmentsContextValue {
   hierarchicalRatings: RatingOptionWithLevel[];
   availableWorkers: AvailableWorker[];
   isLoadingWorkers: boolean;
+  classifications: ClassificationOption[];
+  classificationsMap: Map<string, ClassificationOption>;
 }
 
 const AssignmentsContext = createContext<AssignmentsContextValue | null>(null);
@@ -206,9 +215,11 @@ interface EditAssignmentExtrasModalProps {
 
 function EditAssignmentExtrasModal({ assignment, sheetId, open, onOpenChange }: EditAssignmentExtrasModalProps) {
   const { toast } = useToast();
+  const { classifications } = useAssignments();
   const assignmentData = (assignment.data as AssignmentExtra) || {};
   const [startTime, setStartTime] = useState<string>(assignmentData.startTime || "");
   const [note, setNote] = useState<string>(assignmentData.note || "");
+  const [classificationId, setClassificationId] = useState<string>(assignmentData.classificationId || "");
 
   const updateMutation = useMutation({
     mutationFn: async (data: AssignmentExtra) => {
@@ -228,6 +239,7 @@ function EditAssignmentExtrasModal({ assignment, sheetId, open, onOpenChange }: 
     updateMutation.mutate({ 
       startTime: startTime || null,
       note: note || null,
+      classificationId: classificationId || null,
     });
   };
 
@@ -260,6 +272,22 @@ function EditAssignmentExtrasModal({ assignment, sheetId, open, onOpenChange }: 
               data-testid="input-note"
             />
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="classification">Classification</Label>
+            <Select value={classificationId} onValueChange={setClassificationId}>
+              <SelectTrigger data-testid="select-classification">
+                <SelectValue placeholder="Select classification" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">None</SelectItem>
+                {classifications.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.code ? `${c.code} - ${c.name}` : c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel">
@@ -281,9 +309,10 @@ interface AssignedWorkerSlotProps {
 }
 
 function AssignedWorkerSlot({ assignment, crewId, sheetId }: AssignedWorkerSlotProps) {
-  const { unassignWorker, isUnassigning, setSelectedCrewId, selectedRatingId, workerRatingsMap } = useAssignments();
+  const { unassignWorker, isUnassigning, setSelectedCrewId, selectedRatingId, workerRatingsMap, classificationsMap } = useAssignments();
   const [editModalOpen, setEditModalOpen] = useState(false);
   const assignmentData = (assignment.data as AssignmentExtra) || {};
+  const classification = assignmentData.classificationId ? classificationsMap.get(assignmentData.classificationId) : null;
 
   const handleUnassign = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -317,6 +346,11 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId }: AssignedWorkerSlotP
           )}
         </div>
         <div className="flex items-center gap-1 ml-auto">
+          {classification && (
+            <Badge variant="outline" className="text-xs">
+              {classification.code || classification.name}
+            </Badge>
+          )}
           {assignmentData.note && (
             <Badge variant="outline" className="text-xs truncate max-w-[120px]" title={assignmentData.note}>
               {assignmentData.note}
@@ -1093,6 +1127,18 @@ function EdlsSheetAssignmentsContent() {
     return map;
   }, [availableWorkers]);
 
+  const { data: classifications = [] } = useQuery<ClassificationOption[]>({
+    queryKey: ["/api/options/classification"],
+  });
+
+  const classificationsMap = useMemo(() => {
+    const map = new Map<string, ClassificationOption>();
+    for (const c of classifications) {
+      map.set(c.id, c);
+    }
+    return map;
+  }, [classifications]);
+
   const assignMutation = useMutation({
     mutationFn: async (workerId: string) => {
       return apiRequest("POST", `/api/edls/sheets/${sheet.id}/crews/${selectedCrewId}/assignments`, { workerId });
@@ -1154,6 +1200,8 @@ function EdlsSheetAssignmentsContent() {
     hierarchicalRatings,
     availableWorkers,
     isLoadingWorkers,
+    classifications,
+    classificationsMap,
   };
 
   return (

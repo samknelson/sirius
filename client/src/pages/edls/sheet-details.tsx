@@ -106,6 +106,12 @@ function EdlsSheetDetailsContent() {
     },
   });
 
+  const { data: classifications = [] } = useQuery<{ id: string; name: string; code: string | null }[]>({
+    queryKey: ["/api/options/classification"],
+  });
+
+  const classificationsMap = new Map(classifications.map(c => [c.id, c]));
+
   const assignmentsByCrewId = assignments.reduce((acc, a) => {
     if (!acc[a.crewId]) acc[a.crewId] = [];
     acc[a.crewId].push(a);
@@ -261,6 +267,11 @@ function EdlsSheetDetailsContent() {
                                 </span>
                                 <span>{formatWorkerName(assignment.worker)}</span>
                                 <span className="flex-1" />
+                                {assignmentData.classificationId && classificationsMap.get(assignmentData.classificationId) && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {classificationsMap.get(assignmentData.classificationId)!.code || classificationsMap.get(assignmentData.classificationId)!.name}
+                                  </Badge>
+                                )}
                                 {assignmentData.note && (
                                   <Badge variant="outline" className="text-xs truncate max-w-[120px]" title={assignmentData.note}>
                                     {assignmentData.note}
