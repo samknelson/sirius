@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { format } from "date-fns";
+import { formatYmd } from "@shared/utils/date";
 import type { EdlsSheet } from "@shared/schema";
 import { useEdlsSheetTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -110,7 +110,7 @@ export function EdlsSheetLayout({ activeTab, children }: EdlsSheetLayoutProps) {
               <div className="flex items-center gap-4 mt-1 text-muted-foreground flex-wrap">
                 <span className="flex items-center gap-1">
                   <Calendar className="h-4 w-4" />
-                  {format(new Date(sheet.date), "PPP")}
+                  {formatYmd(sheet.ymd, 'long')}
                 </span>
                 <span className="flex items-center gap-1">
                   <Users className="h-4 w-4" />
