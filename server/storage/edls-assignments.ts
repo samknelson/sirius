@@ -1,4 +1,7 @@
-import { createNoopValidator } from './utils/validation';
+import { 
+  createAsyncStorageValidator,
+  type ValidationError
+} from './utils/validation';
 import { 
   edlsAssignments,
   edlsCrews,
@@ -10,9 +13,52 @@ import {
 } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { StorageLoggingConfig } from "./middleware/logging";
-import { getClient } from "./transaction-context";
+import { getClient, runInTransaction } from "./transaction-context";
 
-export const validate = createNoopValidator();
+export const validate = createAsyncStorageValidator<InsertEdlsAssignment, EdlsAssignment, {}>(
+  async (data, existing) => {
+    const errors: ValidationError[] = [];
+    const client = getClient();
+    
+    const crewId = data.crewId ?? existing?.crewId;
+    
+    if (crewId) {
+      const crewResult = await client.execute(
+        sql`SELECT id, worker_count FROM edls_crews WHERE id = ${crewId} FOR UPDATE`
+      );
+      const crew = crewResult.rows[0] as { id: string; worker_count: number } | undefined;
+      
+      if (!crew) {
+        errors.push({
+          field: 'crewId',
+          code: 'CREW_NOT_FOUND',
+          message: 'Crew not found'
+        });
+      } else {
+        const countResult = await client.execute(
+          sql`SELECT COUNT(*) as count FROM edls_assignments WHERE crew_id = ${crewId}`
+        );
+        const currentCount = Number((countResult.rows[0] as { count: string })?.count || 0);
+        
+        const isUpdate = !!existing;
+        const effectiveCount = isUpdate ? currentCount : currentCount + 1;
+        
+        if (effectiveCount > crew.worker_count) {
+          errors.push({
+            field: 'crewId',
+            code: 'CREW_FULL',
+            message: 'Crew is already full'
+          });
+        }
+      }
+    }
+    
+    if (errors.length > 0) {
+      return { ok: false, errors };
+    }
+    return { ok: true, value: {} };
+  }
+);
 
 export interface EdlsAssignmentWithWorker extends EdlsAssignment {
   worker: {
@@ -91,10 +137,12 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
     },
 
     async create(insertAssignment: InsertEdlsAssignment): Promise<EdlsAssignment> {
-      validate.validateOrThrow(insertAssignment);
-      const client = getClient();
-      const [assignment] = await client.insert(edlsAssignments).values(insertAssignment).returning();
-      return assignment;
+      return runInTransaction(async () => {
+        await validate.validateOrThrow(insertAssignment);
+        const client = getClient();
+        const [assignment] = await client.insert(edlsAssignments).values(insertAssignment).returning();
+        return assignment;
+      });
     },
 
     async delete(id: string): Promise<boolean> {

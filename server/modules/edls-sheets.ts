@@ -411,12 +411,6 @@ export function registerEdlsSheetsRoutes(
         res.status(400).json({ message: "Worker is not an employee of this employer" });
         return;
       }
-
-      const existingAssignments = await storage.edlsAssignments.getByCrewId(crewId);
-      if (existingAssignments.length >= crew.workerCount) {
-        res.status(400).json({ message: "Crew is already full" });
-        return;
-      }
       
       const assignment = await storage.edlsAssignments.create({
         crewId,
@@ -426,6 +420,11 @@ export function registerEdlsSheetsRoutes(
       
       res.status(201).json(assignment);
     } catch (error: any) {
+      if (error?.name === 'DomainValidationError') {
+        const firstError = error.errors?.[0];
+        res.status(400).json({ message: firstError?.message || "Validation failed" });
+        return;
+      }
       if (error?.code === '23505') {
         res.status(400).json({ message: "Worker is already assigned on this date" });
         return;
