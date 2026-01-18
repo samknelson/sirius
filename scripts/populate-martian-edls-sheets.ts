@@ -137,12 +137,24 @@ function generateTime(hour: number, minute: number = 0): string {
 async function main() {
   console.log("Starting EDLS sheet population script...");
 
-  const employers: Employer[] = await storage.employers.getAllEmployers();
-  if (employers.length === 0) {
-    console.error("No employers found. Please create employers first.");
+  // Get the configured EDLS employer from settings
+  const edlsSettingsRaw = await storage.variables.getVariable('edls_settings');
+  if (!edlsSettingsRaw) {
+    console.error("EDLS settings not found. Please configure EDLS settings first.");
     process.exit(1);
   }
-  console.log(`Found ${employers.length} employers`);
+  const edlsSettings = JSON.parse(JSON.parse(edlsSettingsRaw));
+  if (!edlsSettings.employer) {
+    console.error("No employer configured in EDLS settings. Please configure an employer first.");
+    process.exit(1);
+  }
+  
+  const employer = await storage.employers.getEmployer(edlsSettings.employer);
+  if (!employer) {
+    console.error("Configured EDLS employer not found.");
+    process.exit(1);
+  }
+  console.log(`Using configured EDLS employer: ${employer.name}`);
 
   const departments = await db.select().from(optionsDepartment);
   if (departments.length === 0) {
@@ -165,7 +177,6 @@ async function main() {
   let totalAssignmentsCreated = 0;
 
   for (let i = 0; i < 50; i++) {
-    const employer = getRandomElement(employers);
     const department = getRandomElement(departments);
     
     let title = getRandomElement(martianSheetTitles);
