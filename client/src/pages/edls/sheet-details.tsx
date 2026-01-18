@@ -19,12 +19,34 @@ interface UserInfo {
   email: string;
 }
 
+interface AssignmentWithWorker {
+  id: string;
+  crewId: string;
+  workerId: string;
+  date: string;
+  worker: {
+    id: string;
+    siriusId: number | null;
+    displayName: string | null;
+    given: string | null;
+    family: string | null;
+  };
+}
+
 function formatUserName(user: UserInfo | undefined): string {
   if (!user) return "Not assigned";
   if (user.firstName || user.lastName) {
     return [user.firstName, user.lastName].filter(Boolean).join(" ");
   }
   return user.email;
+}
+
+function formatWorkerName(worker: AssignmentWithWorker["worker"]): string {
+  if (worker.displayName) return worker.displayName;
+  if (worker.given || worker.family) {
+    return [worker.given, worker.family].filter(Boolean).join(" ");
+  }
+  return `Worker ${worker.siriusId || worker.id.slice(0, 8)}`;
 }
 
 const statusColors: Record<EdlsSheetStatus, string> = {
@@ -64,6 +86,24 @@ function EdlsSheetDetailsContent() {
       return response.json();
     },
   });
+
+  const { data: assignments = [] } = useQuery<AssignmentWithWorker[]>({
+    queryKey: ["/api/edls/sheets", sheet.id, "assignments"],
+    queryFn: async () => {
+      const response = await fetch(`/api/edls/sheets/${sheet.id}/assignments`);
+      if (!response.ok) throw new Error("Failed to fetch assignments");
+      return response.json();
+    },
+  });
+
+  const assignmentsByCrewId = assignments.reduce((acc, a) => {
+    if (!acc[a.crewId]) acc[a.crewId] = [];
+    acc[a.crewId].push(a);
+    return acc;
+  }, {} as Record<string, AssignmentWithWorker[]>);
+
+  const totalSlots = crews.reduce((sum, c) => sum + c.workerCount, 0);
+  const filledSlots = assignments.length;
 
   return (
     <div className="space-y-6">
@@ -136,6 +176,9 @@ function EdlsSheetDetailsContent() {
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
             Crews ({crews.length})
+            <Badge variant="outline" className="ml-auto" data-testid="badge-total-assignments">
+              {filledSlots}/{totalSlots} assigned
+            </Badge>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -148,45 +191,69 @@ function EdlsSheetDetailsContent() {
             <p className="text-muted-foreground text-center py-4">No crews assigned to this sheet.</p>
           ) : (
             <div className="space-y-3">
-              {crews.map((crew) => (
-                <div
-                  key={crew.id}
-                  className="border rounded-md p-4"
-                  data-testid={`crew-card-${crew.id}`}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
-                    <h4 className="font-medium" data-testid={`crew-title-${crew.id}`}>
-                      {crew.title}
-                    </h4>
-                    <Badge variant="secondary" data-testid={`crew-workers-${crew.id}`}>
-                      <Users className="h-3 w-3 mr-1" />
-                      {crew.workerCount} workers
-                    </Badge>
-                  </div>
-                  <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-1" data-testid={`crew-time-${crew.id}`}>
-                      <Clock className="h-4 w-4" />
-                      {formatTime(crew.startTime)} - {formatTime(crew.endTime)}
+              {crews.map((crew) => {
+                const crewAssignments = assignmentsByCrewId[crew.id] || [];
+                const crewFilled = crewAssignments.length;
+                return (
+                  <div
+                    key={crew.id}
+                    className="border rounded-md p-4"
+                    data-testid={`crew-card-${crew.id}`}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                      <h4 className="font-medium" data-testid={`crew-title-${crew.id}`}>
+                        {crew.title}
+                      </h4>
+                      <Badge 
+                        variant={crewFilled === crew.workerCount ? "default" : "secondary"} 
+                        data-testid={`crew-workers-${crew.id}`}
+                      >
+                        <Users className="h-3 w-3 mr-1" />
+                        {crewFilled}/{crew.workerCount} workers
+                      </Badge>
                     </div>
-                    {crew.location && (
-                      <div className="flex items-center gap-1" data-testid={`crew-location-${crew.id}`}>
-                        <MapPin className="h-4 w-4" />
-                        {crew.location}
+                    <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-1" data-testid={`crew-time-${crew.id}`}>
+                        <Clock className="h-4 w-4" />
+                        {formatTime(crew.startTime)} - {formatTime(crew.endTime)}
+                      </div>
+                      {crew.location && (
+                        <div className="flex items-center gap-1" data-testid={`crew-location-${crew.id}`}>
+                          <MapPin className="h-4 w-4" />
+                          {crew.location}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1" data-testid={`crew-supervisor-${crew.id}`}>
+                        <User className="h-4 w-4" />
+                        Supervisor: {formatUserName(crew.supervisorUser)}
+                      </div>
+                      {crew.task && (
+                        <div className="flex items-center gap-1" data-testid={`crew-task-${crew.id}`}>
+                          <ClipboardList className="h-4 w-4" />
+                          Task: {crew.task.name}
+                        </div>
+                      )}
+                    </div>
+                    {crewAssignments.length > 0 && (
+                      <div className="mt-3 pt-3 border-t">
+                        <p className="text-xs text-muted-foreground mb-2">Assigned Workers:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {crewAssignments.map((assignment) => (
+                            <Badge 
+                              key={assignment.id} 
+                              variant="outline"
+                              data-testid={`assignment-${assignment.id}`}
+                            >
+                              {formatWorkerName(assignment.worker)}
+                              {assignment.worker.siriusId && ` #${assignment.worker.siriusId}`}
+                            </Badge>
+                          ))}
+                        </div>
                       </div>
                     )}
-                    <div className="flex items-center gap-1" data-testid={`crew-supervisor-${crew.id}`}>
-                      <User className="h-4 w-4" />
-                      Supervisor: {formatUserName(crew.supervisorUser)}
-                    </div>
-                    {crew.task && (
-                      <div className="flex items-center gap-1" data-testid={`crew-task-${crew.id}`}>
-                        <ClipboardList className="h-4 w-4" />
-                        Task: {crew.task.name}
-                      </div>
-                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
