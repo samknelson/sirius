@@ -339,6 +339,54 @@ interface RatingOption {
   parent: string | null;
 }
 
+interface RatingOptionWithLevel extends RatingOption {
+  level: number;
+}
+
+function buildRatingHierarchy(ratings: RatingOption[]): RatingOptionWithLevel[] {
+  const result: RatingOptionWithLevel[] = [];
+  const childrenMap = new Map<string | null, RatingOption[]>();
+  
+  for (const rating of ratings) {
+    const parentKey = rating.parent || null;
+    if (!childrenMap.has(parentKey)) {
+      childrenMap.set(parentKey, []);
+    }
+    childrenMap.get(parentKey)!.push(rating);
+  }
+
+  Array.from(childrenMap.values()).forEach(children => {
+    children.sort((a, b) => a.name.localeCompare(b.name));
+  });
+
+  const processed = new Set<string>();
+
+  function addWithChildren(rating: RatingOption, level: number) {
+    if (processed.has(rating.id)) return;
+    processed.add(rating.id);
+    result.push({ ...rating, level });
+    
+    const children = childrenMap.get(rating.id) || [];
+    for (const child of children) {
+      addWithChildren(child, level + 1);
+    }
+  }
+
+  const topLevel = childrenMap.get(null) || [];
+  for (const rating of topLevel) {
+    addWithChildren(rating, 0);
+  }
+
+  for (const rating of ratings) {
+    if (!processed.has(rating.id)) {
+      result.push({ ...rating, level: 0 });
+      processed.add(rating.id);
+    }
+  }
+
+  return result;
+}
+
 function formatWorkerName(worker: AvailableWorker): string {
   if (worker.displayName) return worker.displayName;
   if (worker.given || worker.family) {
@@ -642,6 +690,8 @@ function AvailableWorkersPanel() {
     enabled: ratingsEnabled,
   });
 
+  const hierarchicalRatings = useMemo(() => buildRatingHierarchy(ratingOptions), [ratingOptions]);
+
   const { data: workers = [], isLoading } = useQuery<AvailableWorker[]>({
     queryKey: ["/api/edls/sheets", sheet.id, "available-workers", selectedRatingId],
     queryFn: async () => {
@@ -753,9 +803,11 @@ function AvailableWorkersPanel() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All workers</SelectItem>
-                {ratingOptions.map((option) => (
+                {hierarchicalRatings.map((option) => (
                   <SelectItem key={option.id} value={option.id}>
-                    {option.name}
+                    <span style={{ paddingLeft: `${option.level * 12}px` }}>
+                      {option.name}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
