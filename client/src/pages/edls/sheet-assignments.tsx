@@ -190,10 +190,12 @@ function SheetSummary() {
 }
 
 function formatAssignedWorkerName(worker: AssignmentWithWorker["worker"]): string {
-  if (worker.displayName) return worker.displayName;
-  if (worker.given || worker.family) {
-    return [worker.given, worker.family].filter(Boolean).join(" ");
+  if (worker.family && worker.given) {
+    return `${worker.family}, ${worker.given}`;
   }
+  if (worker.family) return worker.family;
+  if (worker.given) return worker.given;
+  if (worker.displayName) return worker.displayName;
   return worker.siriusId ? `Worker #${worker.siriusId}` : "Unknown Worker";
 }
 
