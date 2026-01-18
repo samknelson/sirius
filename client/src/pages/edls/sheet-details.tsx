@@ -44,12 +44,12 @@ function formatUserName(user: UserInfo | undefined): string {
 }
 
 function formatWorkerName(worker: AssignmentWithWorker["worker"]): string {
-  if (worker.displayName) return worker.displayName;
   if (worker.family && worker.given) {
     return `${worker.family}, ${worker.given}`;
   }
   if (worker.family) return worker.family;
   if (worker.given) return worker.given;
+  if (worker.displayName) return worker.displayName;
   return `Worker ${worker.siriusId || worker.id.slice(0, 8)}`;
 }
 
