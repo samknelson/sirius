@@ -219,7 +219,7 @@ function EditAssignmentExtrasModal({ assignment, sheetId, open, onOpenChange }: 
   const assignmentData = (assignment.data as AssignmentExtra) || {};
   const [startTime, setStartTime] = useState<string>(assignmentData.startTime || "");
   const [note, setNote] = useState<string>(assignmentData.note || "");
-  const [classificationId, setClassificationId] = useState<string>(assignmentData.classificationId || "");
+  const [classificationId, setClassificationId] = useState<string>(assignmentData.classificationId || "__none__");
 
   const updateMutation = useMutation({
     mutationFn: async (data: AssignmentExtra) => {
@@ -239,7 +239,7 @@ function EditAssignmentExtrasModal({ assignment, sheetId, open, onOpenChange }: 
     updateMutation.mutate({ 
       startTime: startTime || null,
       note: note || null,
-      classificationId: classificationId || null,
+      classificationId: classificationId === "__none__" ? null : classificationId,
     });
   };
 
@@ -279,7 +279,7 @@ function EditAssignmentExtrasModal({ assignment, sheetId, open, onOpenChange }: 
                 <SelectValue placeholder="Select classification" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">None</SelectItem>
+                <SelectItem value="__none__">None</SelectItem>
                 {classifications.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.code ? `${c.code} - ${c.name}` : c.name}
