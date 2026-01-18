@@ -224,6 +224,13 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "worker.ratings",
+    name: "Worker Ratings",
+    description: "Management of worker performance ratings",
+    enabledByDefault: false,
+    category: "core"
+  },
+  {
     id: "trust.providers.login",
     name: "Trust Provider Login",
     description: "Ability for trust provider contacts to log in",
