@@ -80,9 +80,10 @@ export function registerEdlsSheetsRoutes(
         return;
       }
       
-      // Return all workers for the employer (frontend shows assigned indicator)
+      // Return all workers for the employer with assignment status indicators
       const workers = await storage.workers.getWorkersByHomeEmployerId(
-        sheet.employerId
+        sheet.employerId,
+        { sheetYmd: sheet.ymd }
       );
       res.json(workers);
     } catch (error) {

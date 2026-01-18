@@ -1,6 +1,6 @@
 import { useState, useMemo, createContext, useContext } from "react";
 import { formatYmd } from "@shared/utils/date";
-import { Calendar, Users, Clock, MapPin, User, ClipboardList, UserPlus, Search, Check, ArrowRight } from "lucide-react";
+import { Calendar, Users, Clock, MapPin, User, ClipboardList, UserPlus, Search, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -294,6 +294,9 @@ interface AvailableWorker {
   displayName: string | null;
   given: string | null;
   family: string | null;
+  priorStatus: string | null;
+  currentStatus: string | null;
+  nextStatus: string | null;
 }
 
 function formatWorkerName(worker: AvailableWorker): string {
@@ -302,6 +305,36 @@ function formatWorkerName(worker: AvailableWorker): string {
     return [worker.given, worker.family].filter(Boolean).join(" ");
   }
   return worker.siriusId ? `Worker #${worker.siriusId}` : "Unknown Worker";
+}
+
+function getStatusDotColor(status: string | null): string {
+  switch (status) {
+    case "draft": return "bg-gray-400";
+    case "request": return "bg-yellow-400";
+    case "lock": return "bg-green-500";
+    case "trash": return "bg-red-500";
+    case "reserved": return "bg-blue-500";
+    default: return "bg-white border border-gray-300";
+  }
+}
+
+function StatusDots({ worker }: { worker: AvailableWorker }) {
+  return (
+    <div className="flex items-center gap-0.5 flex-shrink-0">
+      <div 
+        className={`w-2 h-2 rounded-full ${getStatusDotColor(worker.priorStatus)}`}
+        title={worker.priorStatus ? `Prior: ${worker.priorStatus}` : "No prior assignment"}
+      />
+      <div 
+        className={`w-2 h-2 rounded-full ${getStatusDotColor(worker.currentStatus)}`}
+        title={worker.currentStatus ? `Current: ${worker.currentStatus}` : "No same-day assignment"}
+      />
+      <div 
+        className={`w-2 h-2 rounded-full ${getStatusDotColor(worker.nextStatus)}`}
+        title={worker.nextStatus ? `Next: ${worker.nextStatus}` : "No upcoming assignment"}
+      />
+    </div>
+  );
 }
 
 function AvailableWorkersPanel() {
@@ -393,9 +426,7 @@ function AvailableWorkersPanel() {
                   } ${isAssigning ? "pointer-events-none opacity-50" : ""}`}
                   data-testid={`worker-${worker.id}`}
                 >
-                  {isAssigned && (
-                    <ArrowRight className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0" />
-                  )}
+                  <StatusDots worker={worker} />
                   <span className="text-sm truncate">{formatWorkerName(worker)}</span>
                   {worker.siriusId && (
                     <Badge variant="outline" className="ml-auto text-xs">
