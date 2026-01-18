@@ -73,6 +73,7 @@ export function registerEdlsSheetsRoutes(
   app.get("/api/edls/sheets/:id/available-workers", requireAuth, edlsComponent, requireAccess('edls.sheet.view', req => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
+      const { ratingId } = req.query;
       const sheet = await storage.edlsSheets.get(id);
       
       if (!sheet) {
@@ -81,9 +82,11 @@ export function registerEdlsSheetsRoutes(
       }
       
       // Return all workers for the employer with assignment status indicators
+      // Optionally filter/sort by rating if ratingId is provided
       const workers = await storage.edlsAssignments.getAvailableWorkersForSheet(
         sheet.employerId,
-        sheet.ymd
+        sheet.ymd,
+        typeof ratingId === 'string' ? ratingId : undefined
       );
       res.json(workers);
     } catch (error) {

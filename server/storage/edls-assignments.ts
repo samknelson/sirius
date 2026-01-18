@@ -80,6 +80,7 @@ export interface AvailableWorkerForSheet {
   priorStatus: string | null;
   currentStatus: string | null;
   nextStatus: string | null;
+  ratingValue: number | null;
 }
 
 export interface WorkerAssignmentDetail {
@@ -112,7 +113,7 @@ export interface EdlsAssignmentsStorage {
   create(assignment: InsertEdlsAssignment): Promise<EdlsAssignment>;
   delete(id: string): Promise<boolean>;
   deleteByCrewId(crewId: string): Promise<number>;
-  getAvailableWorkersForSheet(employerId: string, sheetYmd: string): Promise<AvailableWorkerForSheet[]>;
+  getAvailableWorkersForSheet(employerId: string, sheetYmd: string, ratingId?: string): Promise<AvailableWorkerForSheet[]>;
   getWorkerAssignmentDetails(workerId: string, sheetYmd: string): Promise<WorkerAssignmentDetails | null>;
 }
 
@@ -194,8 +195,20 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       return result.length;
     },
 
-    async getAvailableWorkersForSheet(employerId: string, sheetYmd: string): Promise<AvailableWorkerForSheet[]> {
+    async getAvailableWorkersForSheet(employerId: string, sheetYmd: string, ratingId?: string): Promise<AvailableWorkerForSheet[]> {
       const client = getClient();
+      
+      // Build query with optional rating join
+      const ratingJoin = ratingId 
+        ? sql`INNER JOIN worker_ratings wr ON wr.worker_id = w.id AND wr.rating_id = ${ratingId}`
+        : sql``;
+      const ratingSelect = ratingId
+        ? sql`wr.value as "ratingValue"`
+        : sql`NULL::integer as "ratingValue"`;
+      const orderBy = ratingId
+        ? sql`ORDER BY wr.value DESC, c.family, c.given`
+        : sql`ORDER BY c.family, c.given`;
+      
       const result = await client.execute(sql`
         SELECT 
           w.id,
@@ -206,9 +219,11 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           c.family,
           prior_asg.status as "priorStatus",
           current_asg.status as "currentStatus",
-          next_asg.status as "nextStatus"
+          next_asg.status as "nextStatus",
+          ${ratingSelect}
         FROM workers w
         INNER JOIN contacts c ON w.contact_id = c.id
+        ${ratingJoin}
         LEFT JOIN LATERAL (
           SELECT es.status
           FROM edls_assignments ea
@@ -236,7 +251,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           LIMIT 1
         ) next_asg ON true
         WHERE w.denorm_home_employer_id = ${employerId}
-        ORDER BY c.family, c.given
+        ${orderBy}
       `);
       return result.rows as unknown as AvailableWorkerForSheet[];
     },
