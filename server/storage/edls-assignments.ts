@@ -271,11 +271,11 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       const assignmentsResult = await client.execute(sql`
         SELECT 
           es.id as "sheetId",
-          es.name as "sheetName",
+          es.title as "sheetName",
           es.ymd as "sheetYmd",
           es.status as "sheetStatus",
           ec.id as "crewId",
-          ec.name as "crewName",
+          ec.title as "crewName",
           ec.start_time as "startTime",
           ec.end_time as "endTime",
           COALESCE(sup_c.display_name, CONCAT(sup_c.given, ' ', sup_c.family)) as "supervisorName",
@@ -287,7 +287,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         FROM edls_assignments ea
         INNER JOIN edls_crews ec ON ea.crew_id = ec.id
         INNER JOIN edls_sheets es ON ec.sheet_id = es.id
-        LEFT JOIN users sup ON ec.supervisor_user_id = sup.id
+        LEFT JOIN users sup ON ec.supervisor = sup.id
         LEFT JOIN contacts sup_c ON sup.contact_id = sup_c.id
         WHERE ea.worker_id = ${workerId}
           AND (
