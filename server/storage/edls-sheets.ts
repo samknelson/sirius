@@ -126,7 +126,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
   return {
     async getAll(): Promise<EdlsSheet[]> {
       const client = getClient();
-      return client.select().from(edlsSheets).orderBy(desc(edlsSheets.date));
+      return client.select().from(edlsSheets).orderBy(desc(edlsSheets.ymd));
     },
 
     async getPaginated(page: number, limit: number, filters?: EdlsSheetsFilterOptions): Promise<PaginatedEdlsSheets> {
@@ -139,10 +139,10 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         conditions.push(eq(edlsSheets.employerId, filters.employerId));
       }
       if (filters?.dateFrom) {
-        conditions.push(gte(edlsSheets.date, filters.dateFrom));
+        conditions.push(gte(edlsSheets.ymd, filters.dateFrom));
       }
       if (filters?.dateTo) {
-        conditions.push(lte(edlsSheets.date, filters.dateTo));
+        conditions.push(lte(edlsSheets.ymd, filters.dateTo));
       }
       if (filters?.status) {
         conditions.push(eq(edlsSheets.status, filters.status));
@@ -193,8 +193,8 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         .leftJoin(assigneeUsers, eq(edlsSheets.assignee, assigneeUsers.id));
       
       const rows = whereCondition
-        ? await baseQuery.where(whereCondition).orderBy(desc(edlsSheets.date)).limit(limit).offset(page * limit)
-        : await baseQuery.orderBy(desc(edlsSheets.date)).limit(limit).offset(page * limit);
+        ? await baseQuery.where(whereCondition).orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit)
+        : await baseQuery.orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit);
       
       const data: EdlsSheetWithRelations[] = rows.map(row => ({
         ...row.sheet,
@@ -264,7 +264,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       const client = getClient();
       return client.select().from(edlsSheets)
         .where(eq(edlsSheets.employerId, employerId))
-        .orderBy(desc(edlsSheets.date));
+        .orderBy(desc(edlsSheets.ymd));
     },
 
     async create(insertSheet: InsertEdlsSheet, crews: CrewInput[]): Promise<EdlsSheetWithCrews> {
@@ -363,8 +363,8 @@ export const edlsSheetsLoggingConfig: StorageLoggingConfig<EdlsSheetsStorage> = 
       getHostEntityId: (args, result) => result?.id,
       getDescription: async (args, result) => {
         const title = result?.title || args[0]?.title || 'Untitled';
-        const date = result?.date || args[0]?.date || 'Unknown';
-        return `Created sheet [${title}] [${date}]`;
+        const ymd = result?.ymd || args[0]?.ymd || 'Unknown';
+        return `Created sheet [${title}] [${ymd}]`;
       },
       after: async (args, result) => {
         return {
@@ -373,7 +373,7 @@ export const edlsSheetsLoggingConfig: StorageLoggingConfig<EdlsSheetsStorage> = 
           metadata: {
             sheetId: result?.id,
             title: result?.title,
-            date: result?.date,
+            ymd: result?.ymd,
             crewCount: result?.crews?.length,
           }
         };
@@ -388,8 +388,8 @@ export const edlsSheetsLoggingConfig: StorageLoggingConfig<EdlsSheetsStorage> = 
       },
       getDescription: async (args, result, beforeState) => {
         const title = result?.title || beforeState?.title || 'Untitled';
-        const date = result?.date || beforeState?.date || 'Unknown';
-        return `Updated sheet [${title}] [${date}]`;
+        const ymd = result?.ymd || beforeState?.ymd || 'Unknown';
+        return `Updated sheet [${title}] [${ymd}]`;
       },
       after: async (args, result) => {
         return {
@@ -412,8 +412,8 @@ export const edlsSheetsLoggingConfig: StorageLoggingConfig<EdlsSheetsStorage> = 
       },
       getDescription: async (args, result, beforeState) => {
         const title = beforeState?.title || 'Untitled';
-        const date = beforeState?.date || 'Unknown';
-        return `Deleted sheet [${title}] [${date}]`;
+        const ymd = beforeState?.ymd || 'Unknown';
+        return `Deleted sheet [${title}] [${ymd}]`;
       }
     }
   }

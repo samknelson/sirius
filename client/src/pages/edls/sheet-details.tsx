@@ -1,4 +1,4 @@
-import { format } from "date-fns";
+import { formatYmd } from "@shared/utils/date";
 import { Calendar, Users, FileText, Clock, MapPin, Lock, User, Building, ClipboardList } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -121,7 +121,7 @@ function EdlsSheetDetailsContent() {
               <h3 className="text-sm font-medium text-muted-foreground mb-1">Date</h3>
               <p className="text-foreground flex items-center gap-2" data-testid="text-date">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
-                {format(new Date(sheet.date), "PPP")}
+                {formatYmd(sheet.ymd, 'long')}
               </p>
             </div>
             <div>

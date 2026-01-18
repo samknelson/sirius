@@ -428,7 +428,7 @@ export function registerEdlsSheetsRoutes(
       const assignment = await storage.edlsAssignments.create({
         crewId,
         workerId: parsed.data.workerId,
-        date: sheet.date as string,
+        ymd: sheet.ymd as string,
       });
       
       res.status(201).json(assignment);

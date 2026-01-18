@@ -1,5 +1,5 @@
 import { useState, useMemo, createContext, useContext } from "react";
-import { format } from "date-fns";
+import { formatYmd } from "@shared/utils/date";
 import { Calendar, Users, Clock, MapPin, User, ClipboardList, UserPlus, Search, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -99,7 +99,7 @@ function SheetSummary() {
         <div className="flex flex-wrap gap-4 text-sm">
           <div className="flex items-center gap-1.5" data-testid="text-sheet-date">
             <Calendar className="h-4 w-4 text-muted-foreground" />
-            {format(new Date(sheet.date + "T00:00:00"), "EEE, MMM d, yyyy")}
+            {formatYmd(sheet.ymd, 'weekday-long')}
           </div>
           <div className="flex items-center gap-1.5" data-testid="text-sheet-workers">
             <Users className="h-4 w-4 text-muted-foreground" />

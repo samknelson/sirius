@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { format, addDays, startOfDay } from "date-fns";
+import { formatYmd } from "@shared/utils/date";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -404,7 +405,7 @@ export default function EdlsSheetsPage() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Calendar className="h-4 w-4 text-muted-foreground" />
-                        {format(new Date(sheet.date), "PPP")}
+                        {formatYmd(sheet.ymd, 'long')}
                       </div>
                     </TableCell>
                     <TableCell>

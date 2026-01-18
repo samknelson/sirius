@@ -12,7 +12,7 @@ export const edlsSheets = pgTable("edls_sheets", {
   employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
   departmentId: varchar("department_id").notNull().references(() => optionsDepartment.id, { onDelete: 'cascade' }),
   title: varchar("title", { length: 255 }).notNull(),
-  date: date("date").notNull(),
+  ymd: date("ymd").notNull(),
   workerCount: integer("worker_count").notNull().default(0),
   status: varchar("status", { length: 50 }).notNull().default("draft"),
   supervisor: varchar("supervisor").references(() => users.id, { onDelete: 'set null' }),
@@ -52,12 +52,12 @@ export type InsertEdlsCrew = z.infer<typeof insertEdlsCrewsSchema>;
 
 export const edlsAssignments = pgTable("edls_assignments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  date: date("date").notNull(),
+  ymd: date("ymd").notNull(),
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
   crewId: varchar("crew_id").notNull().references(() => edlsCrews.id, { onDelete: 'cascade' }),
   data: jsonb("data"),
 }, (table) => [
-  unique("edls_assignments_date_worker_id_unique").on(table.date, table.workerId),
+  unique("edls_assignments_ymd_worker_id_unique").on(table.ymd, table.workerId),
 ]);
 
 export const insertEdlsAssignmentsSchema = createInsertSchema(edlsAssignments).omit({
