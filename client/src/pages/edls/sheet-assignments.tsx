@@ -835,7 +835,7 @@ function AvailableWorkersPanel() {
           </div>
         </div>
         
-        {ratingsEnabled && ratingOptions.length > 0 && (
+        {ratingsEnabled && hierarchicalRatings.length > 0 && (
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground">Rating</label>
             <Select value={selectedRatingId} onValueChange={setSelectedRatingId}>

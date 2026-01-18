@@ -61,7 +61,7 @@ All database access **MUST** go through a centralized storage layer (`server/sto
 -   **Dispatch System**: Manages dispatch jobs, job types, listings, and detail pages with various statuses and eligibility plugins.
 -   **Worker Bans**: Tracks worker restrictions and dynamically calculates active status.
 -   **Worker Certifications**: Manages worker certifications with automatic skill sync. When certifications are saved, skills are automatically granted based on active certification status. Worker reassignment properly syncs skills for both old and new workers. Manually assigned skills are preserved (only certification-managed skills are affected).
--   **EDLS (Employer Day Labor Scheduler)**: Manages day labor scheduling with sheets, crews, department-based task assignment, supervisor tracking, and comprehensive audit logging. EDLS-specific worker queries (e.g., `getAvailableWorkersForSheet` with assignment status lateral joins) live in `edls-assignments` storage, not in workers storage. This keeps the workers storage clean of EDLS domain logic.
+-   **EDLS (Employer Day Labor Scheduler)**: Manages day labor scheduling with sheets, crews, department-based task assignment, supervisor tracking, and comprehensive audit logging. EDLS-specific worker queries (e.g., `getAvailableWorkersForSheet` with assignment status lateral joins) live in `edls-assignments` storage, not in workers storage. This keeps the workers storage clean of EDLS domain logic. The Assignments page includes a hierarchical rating filter that shows workers with specific ratings, displays star ratings next to worker names, and shows rating statistics (total sum and average) for both individual crews and the entire sheet when a rating filter is active.
 
 # External Dependencies
 
