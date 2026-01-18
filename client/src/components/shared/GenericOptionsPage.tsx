@@ -38,7 +38,7 @@ import {
 interface FieldDefinition {
   name: string;
   label: string;
-  inputType: 'text' | 'textarea' | 'number' | 'select-self' | 'icon' | 'checkbox' | 'select-options';
+  inputType: 'text' | 'textarea' | 'number' | 'select-self' | 'icon' | 'checkbox' | 'select-options' | 'color';
   required: boolean;
   placeholder?: string;
   helperText?: string;
@@ -259,7 +259,11 @@ export function GenericOptionsPage({ optionsType }: GenericOptionsPageProps) {
       } else if (field.inputType === 'select-self' && value === '_none_') {
         payload[field.name] = null;
       } else if (value !== undefined) {
-        payload[field.name] = typeof value === 'string' ? value.trim() || null : value;
+        if (field.inputType === 'color') {
+          payload[field.name] = value || null;
+        } else {
+          payload[field.name] = typeof value === 'string' ? value.trim() || null : value;
+        }
       }
     }
     
@@ -362,6 +366,19 @@ export function GenericOptionsPage({ optionsType }: GenericOptionsPageProps) {
     
     if (field.inputType === 'checkbox') {
       return value ? "Yes" : "No";
+    }
+    
+    if (field.inputType === 'color') {
+      return value ? (
+        <div className="flex items-center gap-2">
+          <div 
+            className="h-5 w-5 rounded border" 
+            style={{ backgroundColor: value }}
+            title={value}
+          />
+          <span className="text-xs font-mono text-muted-foreground">{value}</span>
+        </div>
+      ) : <span className="text-muted-foreground italic">None</span>;
     }
     
     if (field.inputType === 'select-options' && field.selectOptionsType) {
@@ -530,6 +547,26 @@ export function GenericOptionsPage({ optionsType }: GenericOptionsPageProps) {
           </div>
         );
       }
+      
+      case 'color':
+        return (
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={value || '#6b7280'}
+              onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
+              className="h-9 w-12 rounded border cursor-pointer"
+              data-testid={`color-${isInline ? 'edit' : 'add'}-${field.name}${testIdSuffix}`}
+            />
+            <Input
+              value={value || '#6b7280'}
+              onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
+              placeholder="#6b7280"
+              className="w-28 font-mono text-sm"
+              data-testid={`input-${isInline ? 'edit' : 'add'}-${field.name}${testIdSuffix}`}
+            />
+          </div>
+        );
       
       case 'text':
       default:

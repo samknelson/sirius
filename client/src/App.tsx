@@ -168,7 +168,6 @@ const PostalAddressesConfigPage = lazy(() => import("@/pages/config/addresses"))
 const PhoneNumbersConfigPage = lazy(() => import("@/pages/config/phone-numbers"));
 const DynamicOptionsPage = lazy(() => import("@/pages/config/options"));
 const StewardSettingsPage = lazy(() => import("@/pages/config/steward-settings"));
-const EmploymentStatusesPage = lazy(() => import("@/pages/config/employment-statuses"));
 const EventTypesPage = lazy(() => import("@/pages/config/event-types"));
 const DispatchJobTypesPage = lazy(() => import("@/pages/config/dispatch-job-types"));
 const DispatchJobTypeViewPage = lazy(() => import("@/pages/config/dispatch-job-type-view"));
@@ -1549,16 +1548,6 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <DynamicOptionsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/employment-statuses">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <EmploymentStatusesPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

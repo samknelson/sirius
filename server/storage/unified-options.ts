@@ -53,7 +53,7 @@ export type OptionsTypeName =
 export interface FieldDefinition {
   name: string;
   label: string;
-  inputType: 'text' | 'textarea' | 'number' | 'select-self' | 'icon' | 'checkbox' | 'select-options';
+  inputType: 'text' | 'textarea' | 'number' | 'select-self' | 'icon' | 'checkbox' | 'select-options' | 'color';
   required: boolean;
   placeholder?: string;
   helperText?: string;
@@ -234,12 +234,15 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     pluralName: "Employment Statuses",
     orderByColumn: "sequence" as const,
     loggingModule: "options.employmentStatus",
-    requiredFields: ["name"],
-    optionalFields: ["description", "sequence", "data"],
+    requiredFields: ["name", "code"],
+    optionalFields: ["description", "sequence", "data", "employed"],
     supportsSequencing: true,
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Status name", showInTable: true, columnHeader: "Name" },
-      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: true, columnHeader: "Description" },
+      { name: "code", label: "Code", inputType: "text", required: true, placeholder: "Short code (e.g., FT, PT)", showInTable: true, columnHeader: "Code" },
+      { name: "employed", label: "Employed", inputType: "checkbox", required: false, helperText: "Consider this status as employed", showInTable: true, columnHeader: "Employed" },
+      { name: "color", label: "Color", inputType: "color", required: false, dataField: true, showInTable: true, columnHeader: "Color" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: false },
     ],
   },
   "event-type": {
