@@ -82,6 +82,29 @@ export interface AvailableWorkerForSheet {
   nextStatus: string | null;
 }
 
+export interface WorkerAssignmentDetail {
+  sheetId: string;
+  sheetName: string;
+  sheetYmd: string;
+  sheetStatus: string;
+  crewId: string;
+  crewName: string;
+  startTime: string | null;
+  endTime: string | null;
+  supervisorName: string | null;
+}
+
+export interface WorkerAssignmentDetails {
+  workerId: string;
+  siriusId: number | null;
+  displayName: string | null;
+  given: string | null;
+  family: string | null;
+  prior: WorkerAssignmentDetail | null;
+  current: WorkerAssignmentDetail | null;
+  next: WorkerAssignmentDetail | null;
+}
+
 export interface EdlsAssignmentsStorage {
   getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]>;
   getBySheetId(sheetId: string): Promise<EdlsAssignmentWithWorker[]>;
@@ -90,6 +113,7 @@ export interface EdlsAssignmentsStorage {
   delete(id: string): Promise<boolean>;
   deleteByCrewId(crewId: string): Promise<number>;
   getAvailableWorkersForSheet(employerId: string, sheetYmd: string): Promise<AvailableWorkerForSheet[]>;
+  getWorkerAssignmentDetails(workerId: string, sheetYmd: string): Promise<WorkerAssignmentDetails | null>;
 }
 
 export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
@@ -215,6 +239,108 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         ORDER BY c.family, c.given
       `);
       return result.rows as unknown as AvailableWorkerForSheet[];
+    },
+
+    async getWorkerAssignmentDetails(workerId: string, sheetYmd: string): Promise<WorkerAssignmentDetails | null> {
+      const client = getClient();
+      
+      const workerResult = await client.execute(sql`
+        SELECT 
+          w.id as "workerId",
+          w.sirius_id as "siriusId",
+          c.display_name as "displayName",
+          c.given,
+          c.family
+        FROM workers w
+        INNER JOIN contacts c ON w.contact_id = c.id
+        WHERE w.id = ${workerId}
+      `);
+      
+      if (workerResult.rows.length === 0) {
+        return null;
+      }
+      
+      const worker = workerResult.rows[0] as {
+        workerId: string;
+        siriusId: number | null;
+        displayName: string | null;
+        given: string | null;
+        family: string | null;
+      };
+
+      const assignmentsResult = await client.execute(sql`
+        SELECT 
+          es.id as "sheetId",
+          es.name as "sheetName",
+          es.ymd as "sheetYmd",
+          es.status as "sheetStatus",
+          ec.id as "crewId",
+          ec.name as "crewName",
+          ec.start_time as "startTime",
+          ec.end_time as "endTime",
+          COALESCE(sup_c.display_name, CONCAT(sup_c.given, ' ', sup_c.family)) as "supervisorName",
+          CASE 
+            WHEN es.ymd < ${sheetYmd} THEN 'prior'
+            WHEN es.ymd = ${sheetYmd} THEN 'current'
+            WHEN es.ymd > ${sheetYmd} THEN 'next'
+          END as "period"
+        FROM edls_assignments ea
+        INNER JOIN edls_crews ec ON ea.crew_id = ec.id
+        INNER JOIN edls_sheets es ON ec.sheet_id = es.id
+        LEFT JOIN users sup ON ec.supervisor_user_id = sup.id
+        LEFT JOIN contacts sup_c ON sup.contact_id = sup_c.id
+        WHERE ea.worker_id = ${workerId}
+          AND (
+            (es.ymd < ${sheetYmd} AND es.ymd = (
+              SELECT MAX(es2.ymd) FROM edls_assignments ea2
+              INNER JOIN edls_crews ec2 ON ea2.crew_id = ec2.id
+              INNER JOIN edls_sheets es2 ON ec2.sheet_id = es2.id
+              WHERE ea2.worker_id = ${workerId} AND es2.ymd < ${sheetYmd}
+            ))
+            OR es.ymd = ${sheetYmd}
+            OR (es.ymd > ${sheetYmd} AND es.ymd = (
+              SELECT MIN(es2.ymd) FROM edls_assignments ea2
+              INNER JOIN edls_crews ec2 ON ea2.crew_id = ec2.id
+              INNER JOIN edls_sheets es2 ON ec2.sheet_id = es2.id
+              WHERE ea2.worker_id = ${workerId} AND es2.ymd > ${sheetYmd}
+            ))
+          )
+        ORDER BY es.ymd
+      `);
+
+      let prior: WorkerAssignmentDetail | null = null;
+      let current: WorkerAssignmentDetail | null = null;
+      let next: WorkerAssignmentDetail | null = null;
+
+      for (const row of assignmentsResult.rows) {
+        const detail = row as unknown as WorkerAssignmentDetail & { period: string };
+        const assignmentDetail: WorkerAssignmentDetail = {
+          sheetId: detail.sheetId,
+          sheetName: detail.sheetName,
+          sheetYmd: detail.sheetYmd,
+          sheetStatus: detail.sheetStatus,
+          crewId: detail.crewId,
+          crewName: detail.crewName,
+          startTime: detail.startTime,
+          endTime: detail.endTime,
+          supervisorName: detail.supervisorName,
+        };
+
+        if (detail.period === 'prior') {
+          prior = assignmentDetail;
+        } else if (detail.period === 'current') {
+          current = assignmentDetail;
+        } else if (detail.period === 'next') {
+          next = assignmentDetail;
+        }
+      }
+
+      return {
+        ...worker,
+        prior,
+        current,
+        next,
+      };
     },
   };
 }

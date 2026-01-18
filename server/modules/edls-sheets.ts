@@ -92,6 +92,30 @@ export function registerEdlsSheetsRoutes(
     }
   });
 
+  app.get("/api/edls/sheets/:id/workers/:workerId/assignment-details", requireAuth, edlsComponent, requireAccess('edls.sheet.view', req => req.params.id), async (req, res) => {
+    try {
+      const { id, workerId } = req.params;
+      const sheet = await storage.edlsSheets.get(id);
+      
+      if (!sheet) {
+        res.status(404).json({ message: "Sheet not found" });
+        return;
+      }
+      
+      const details = await storage.edlsAssignments.getWorkerAssignmentDetails(workerId, sheet.ymd);
+      
+      if (!details) {
+        res.status(404).json({ message: "Worker not found" });
+        return;
+      }
+      
+      res.json(details);
+    } catch (error) {
+      console.error("Failed to fetch worker assignment details:", error);
+      res.status(500).json({ message: "Failed to fetch worker assignment details" });
+    }
+  });
+
   app.get("/api/edls/supervisor-context", requireAuth, edlsComponent, async (req, res) => {
     try {
       const user = (req as any).user;

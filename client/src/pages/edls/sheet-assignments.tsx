@@ -5,11 +5,35 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { EdlsSheetStatus, EdlsCrew } from "@shared/schema";
+
+interface WorkerAssignmentDetail {
+  sheetId: string;
+  sheetName: string;
+  sheetYmd: string;
+  sheetStatus: string;
+  crewId: string;
+  crewName: string;
+  startTime: string | null;
+  endTime: string | null;
+  supervisorName: string | null;
+}
+
+interface WorkerAssignmentDetails {
+  workerId: string;
+  siriusId: number | null;
+  displayName: string | null;
+  given: string | null;
+  family: string | null;
+  prior: WorkerAssignmentDetail | null;
+  current: WorkerAssignmentDetail | null;
+  next: WorkerAssignmentDetail | null;
+}
 
 interface EdlsCrewWithRelations extends EdlsCrew {
   supervisorUser?: UserInfo;
@@ -320,22 +344,155 @@ function getStatusDotColor(status: string | null): string {
   }
 }
 
-function StatusDots({ worker }: { worker: AvailableWorker }) {
+function formatWorkerFullName(details: WorkerAssignmentDetails): string {
+  if (details.displayName) return details.displayName;
+  if (details.given || details.family) {
+    return [details.given, details.family].filter(Boolean).join(" ");
+  }
+  return details.siriusId ? `Worker #${details.siriusId}` : "Unknown Worker";
+}
+
+function AssignmentDetailCard({ label, detail }: { label: string; detail: WorkerAssignmentDetail | null }) {
+  if (!detail) {
+    return (
+      <div className="p-3 rounded-md bg-muted/50">
+        <div className="text-xs text-muted-foreground font-medium mb-1">{label}</div>
+        <div className="text-sm text-muted-foreground italic">No assignment</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex items-center gap-0.5 flex-shrink-0">
-      <div 
-        className={`w-2 h-2 rounded-full ${getStatusDotColor(worker.priorStatus)}`}
-        title={worker.priorStatus ? `Prior: ${worker.priorStatus}` : "No prior assignment"}
-      />
-      <div 
-        className={`w-2 h-2 rounded-full ${getStatusDotColor(worker.currentStatus)}`}
-        title={worker.currentStatus ? `Current: ${worker.currentStatus}` : "No same-day assignment"}
-      />
-      <div 
-        className={`w-2 h-2 rounded-full ${getStatusDotColor(worker.nextStatus)}`}
-        title={worker.nextStatus ? `Next: ${worker.nextStatus}` : "No upcoming assignment"}
-      />
+    <div className="p-3 rounded-md bg-muted/50">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs text-muted-foreground font-medium">{label}</span>
+        <Badge variant="outline" className={getStatusDotColor(detail.sheetStatus).replace('bg-', 'bg-opacity-20 border-')}>
+          {detail.sheetStatus}
+        </Badge>
+      </div>
+      <div className="space-y-1 text-sm">
+        <div className="flex items-center gap-2">
+          <ClipboardList className="h-3 w-3 text-muted-foreground" />
+          <span className="font-medium">{detail.sheetName}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Calendar className="h-3 w-3 text-muted-foreground" />
+          <span>{formatYmd(detail.sheetYmd, "weekday-long")}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Users className="h-3 w-3 text-muted-foreground" />
+          <span>{detail.crewName}</span>
+        </div>
+        {detail.supervisorName && (
+          <div className="flex items-center gap-2">
+            <User className="h-3 w-3 text-muted-foreground" />
+            <span>{detail.supervisorName}</span>
+          </div>
+        )}
+        {(detail.startTime || detail.endTime) && (
+          <div className="flex items-center gap-2">
+            <Clock className="h-3 w-3 text-muted-foreground" />
+            <span>{detail.startTime || "—"} - {detail.endTime || "—"}</span>
+          </div>
+        )}
+      </div>
     </div>
+  );
+}
+
+function WorkerAssignmentModal({ 
+  worker, 
+  open, 
+  onOpenChange 
+}: { 
+  worker: AvailableWorker; 
+  open: boolean; 
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { sheet } = useEdlsSheetLayout();
+  
+  const { data: details, isLoading } = useQuery<WorkerAssignmentDetails>({
+    queryKey: ["/api/edls/sheets", sheet.id, "workers", worker.id, "assignment-details"],
+    queryFn: async () => {
+      const response = await fetch(`/api/edls/sheets/${sheet.id}/workers/${worker.id}/assignment-details`);
+      if (!response.ok) throw new Error("Failed to fetch assignment details");
+      return response.json();
+    },
+    enabled: open,
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Worker Assignment Details</DialogTitle>
+        </DialogHeader>
+        
+        {isLoading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </div>
+        ) : details ? (
+          <div className="space-y-4">
+            <div className="border-b pb-3">
+              <div className="text-lg font-semibold">{formatWorkerFullName(details)}</div>
+              <div className="flex gap-2 mt-1">
+                {details.siriusId && (
+                  <Badge variant="secondary">ID: {details.siriusId}</Badge>
+                )}
+                <Badge variant="outline">Worker ID: {details.workerId.slice(0, 8)}...</Badge>
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              <AssignmentDetailCard label="Prior Assignment" detail={details.prior} />
+              <AssignmentDetailCard label="Current Assignment (Same Day)" detail={details.current} />
+              <AssignmentDetailCard label="Next Assignment" detail={details.next} />
+            </div>
+          </div>
+        ) : (
+          <div className="text-muted-foreground">No details available</div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function StatusDots({ worker }: { worker: AvailableWorker }) {
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setModalOpen(true);
+  };
+
+  return (
+    <>
+      <div 
+        className="flex items-center gap-0.5 flex-shrink-0 cursor-pointer hover:opacity-80 p-1 -m-1 rounded"
+        onClick={handleClick}
+        data-testid={`status-dots-${worker.id}`}
+        title="Click to view assignment details"
+      >
+        <div 
+          className={`w-2 h-2 rounded-full ${getStatusDotColor(worker.priorStatus)}`}
+        />
+        <div 
+          className={`w-2 h-2 rounded-full ${getStatusDotColor(worker.currentStatus)}`}
+        />
+        <div 
+          className={`w-2 h-2 rounded-full ${getStatusDotColor(worker.nextStatus)}`}
+        />
+      </div>
+      <WorkerAssignmentModal 
+        worker={worker} 
+        open={modalOpen} 
+        onOpenChange={setModalOpen} 
+      />
+    </>
   );
 }
 
