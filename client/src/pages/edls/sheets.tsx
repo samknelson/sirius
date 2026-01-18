@@ -203,7 +203,7 @@ export default function EdlsSheetsPage() {
           <div>
             <CardTitle data-testid="title-page" className="flex items-center gap-2">
               <FileSpreadsheet className="h-5 w-5" />
-              Day Labor Sheets
+              EDLS Sheets
             </CardTitle>
             <CardDescription>
               Manage employer day labor scheduling sheets
