@@ -537,7 +537,8 @@ function StarRating({ value }: { value: number }) {
       {[0, 1, 2, 3].map((i) => (
         <Star
           key={i}
-          className={`h-3 w-3 ${i < value ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/30"}`}
+          className={`h-3 w-3 ${i < value ? "text-yellow-400" : "text-muted-foreground/30"}`}
+          fill={i < value ? "currentColor" : "none"}
         />
       ))}
     </div>
