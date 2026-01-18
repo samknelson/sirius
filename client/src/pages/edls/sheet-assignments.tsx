@@ -146,7 +146,7 @@ function CrewCard({ crew }: CrewCardProps) {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="flex flex-col gap-2">
           {slots.map((slotIndex) => (
             <AssignmentSlot key={slotIndex} slotIndex={slotIndex} crewId={crew.id} />
           ))}
