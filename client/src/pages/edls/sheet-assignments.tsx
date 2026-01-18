@@ -211,8 +211,7 @@ function EditAssignmentExtrasModal({ assignment, sheetId, open, onOpenChange }: 
 
   const updateMutation = useMutation({
     mutationFn: async (data: AssignmentExtra) => {
-      const response = await apiRequest("PATCH", `/api/edls/sheets/${sheetId}/assignments/${assignment.id}`, data);
-      return response.json();
+      return apiRequest("PATCH", `/api/edls/sheets/${sheetId}/assignments/${assignment.id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheetId, "assignments"] });
