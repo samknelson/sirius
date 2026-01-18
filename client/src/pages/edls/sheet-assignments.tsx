@@ -27,7 +27,7 @@ interface AssignmentWithWorker {
   id: string;
   crewId: string;
   workerId: string;
-  date: string;
+  ymd: string;
   worker: {
     id: string;
     siriusId: number | null;
