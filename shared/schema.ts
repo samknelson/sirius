@@ -715,6 +715,10 @@ export {
   insertOptionsWorkerRatingsSchema,
   type OptionsWorkerRating,
   type InsertOptionsWorkerRating,
+  workerRatings,
+  insertWorkerRatingsSchema,
+  type WorkerRating,
+  type InsertWorkerRating,
 } from "./schema/worker/ratings/schema";
 
 export {
