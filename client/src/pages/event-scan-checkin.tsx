@@ -48,8 +48,7 @@ export default function EventScanCheckin() {
 
   const checkinMutation = useMutation({
     mutationFn: async (payload: QRPayload) => {
-      const response = await apiRequest("POST", `/api/events/${eventId}/scan-checkin`, payload);
-      return response.json();
+      return await apiRequest("POST", `/api/events/${eventId}/scan-checkin`, payload);
     },
     onSuccess: (data: ScanResult) => {
       setLastScanResult(data);
