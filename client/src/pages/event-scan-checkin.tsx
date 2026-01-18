@@ -29,8 +29,8 @@ interface QRPayload {
 }
 
 export default function EventScanCheckin() {
-  const params = useParams<{ eventId: string }>();
-  const eventId = params.eventId;
+  const params = useParams<{ id: string }>();
+  const eventId = params.id;
   const { toast } = useToast();
   
   const [isScanning, setIsScanning] = useState(false);

@@ -1070,11 +1070,13 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/events/:eventId/scan-checkin">
-        <ProtectedRoute permission="admin" component="event">
-          <Suspense fallback={<PageLoader />}>
-            <EventScanCheckinPage />
-          </Suspense>
+      <Route path="/events/:id/scan-checkin">
+        <ProtectedRoute tabId="scan-checkin" entityType="event">
+          <AuthenticatedLayout>
+            <Suspense fallback={<PageLoader />}>
+              <EventScanCheckinPage />
+            </Suspense>
+          </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 

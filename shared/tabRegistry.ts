@@ -212,6 +212,7 @@ export const eventTabTree: HierarchicalTab[] = [
   { id: 'register', label: 'Register', hrefTemplate: '/events/{id}/register', permission: 'staff' },
   { id: 'roster', label: 'Roster', hrefTemplate: '/events/{id}/roster', permission: 'staff' },
   { id: 'self-register', label: 'Self-Register', hrefTemplate: '/events/{id}/self-register', permission: 'staff' },
+  { id: 'scan-checkin', label: 'Scan Check-in', hrefTemplate: '/events/{id}/scan-checkin', permission: 'admin' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/events/{id}/delete', permission: 'admin' },
 ];
 
