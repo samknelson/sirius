@@ -278,7 +278,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           ec.title as "crewName",
           ec.start_time as "startTime",
           ec.end_time as "endTime",
-          COALESCE(sup_c.display_name, CONCAT(sup_c.given, ' ', sup_c.family)) as "supervisorName",
+          CONCAT(sup.first_name, ' ', sup.last_name) as "supervisorName",
           CASE 
             WHEN es.ymd < ${sheetYmd} THEN 'prior'
             WHEN es.ymd = ${sheetYmd} THEN 'current'
@@ -288,7 +288,6 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         INNER JOIN edls_crews ec ON ea.crew_id = ec.id
         INNER JOIN edls_sheets es ON ec.sheet_id = es.id
         LEFT JOIN users sup ON ec.supervisor = sup.id
-        LEFT JOIN contacts sup_c ON sup.contact_id = sup_c.id
         WHERE ea.worker_id = ${workerId}
           AND (
             (es.ymd < ${sheetYmd} AND es.ymd = (
