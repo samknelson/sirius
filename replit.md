@@ -41,7 +41,7 @@ All database access **MUST** go through a centralized storage layer (`server/sto
 
 ## System Design Choices
 -   **Worker Management**: Comprehensive CRUD for workers, contacts, and benefits.
--   **Configurable Settings**: Consolidated options system (`/api/options/:type`) for organizational settings, using a unified metadata-driven storage and registry.
+-   **Configurable Settings**: Consolidated options system (`/api/options/:type`) for organizational settings, using a unified metadata-driven storage and registry. The backend provides field definitions via `/api/options/:type/definition` which the frontend `GenericOptionsPage` component consumes to dynamically render forms and tables. This eliminates duplicated options page code - each options page is now ~5 lines wrapping `GenericOptionsPage`. Field metadata supports: `inputType` (text, textarea, number, icon, checkbox, select-self, select-options), `dataField` (stored in JSON column), `showInTable`, `supportsParent` (hierarchical), `supportsSequencing` (reorderable).
 -   **User Provisioning**: Email-based user provisioning integrated with Replit accounts and automatic contact record synchronization.
 -   **Data Validation**: Extensive Zod schema validation and `libphonenumber-js`.
 -   **Employer & Policy Management**: Manages employer records, contacts, and policy assignments with historical tracking.
