@@ -76,6 +76,7 @@ export interface OptionsResourceDefinition {
   fields: FieldDefinition[];
   supportsSequencing: boolean;
   supportsParent: boolean;
+  requiredComponent?: string;
 }
 
 interface OptionsTableMetadata<T extends PgTable<TableConfig>> {
@@ -90,6 +91,7 @@ interface OptionsTableMetadata<T extends PgTable<TableConfig>> {
   optionalFields: string[];
   supportsParent?: boolean;
   supportsSequencing?: boolean;
+  requiredComponent?: string;
   fields: FieldDefinition[];
 }
 
@@ -301,6 +303,7 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     requiredFields: ["name"],
     optionalFields: ["description", "data"],
     supportsSequencing: false,
+    requiredComponent: "worker.skills",
     fields: [
       { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", dataField: true },
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Welding, Plumbing, Electrical", showInTable: true, columnHeader: "Name" },
@@ -335,6 +338,7 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     requiredFields: ["name"],
     optionalFields: ["siriusId", "data"],
     supportsSequencing: false,
+    requiredComponent: "worker.certifications",
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Certification name", showInTable: true, columnHeader: "Name" },
       { name: "icon", label: "Icon", inputType: "icon", required: false, placeholder: "Select an icon", showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
@@ -354,6 +358,7 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     requiredFields: ["name"],
     optionalFields: ["parent", "data"],
     supportsParent: true,
+    requiredComponent: "worker.ratings",
     supportsSequencing: false,
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Quality, Attendance, Teamwork", showInTable: true, columnHeader: "Name" },
@@ -514,6 +519,7 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
         fields: metadata.fields,
         supportsSequencing: metadata.supportsSequencing ?? false,
         supportsParent: metadata.supportsParent ?? false,
+        requiredComponent: metadata.requiredComponent,
       };
     },
 
@@ -529,6 +535,7 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
           fields: metadata.fields,
           supportsSequencing: metadata.supportsSequencing ?? false,
           supportsParent: metadata.supportsParent ?? false,
+          requiredComponent: metadata.requiredComponent,
         };
       });
     },

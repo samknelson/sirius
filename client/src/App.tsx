@@ -166,13 +166,9 @@ const FloodEventsPage = lazy(() => import("@/pages/flood-events"));
 const FloodEventsConfigPage = lazy(() => import("@/pages/flood-events-config"));
 const PostalAddressesConfigPage = lazy(() => import("@/pages/config/addresses"));
 const PhoneNumbersConfigPage = lazy(() => import("@/pages/config/phone-numbers"));
-const GenderOptionsPage = lazy(() => import("@/pages/config/gender-options"));
+const DynamicOptionsPage = lazy(() => import("@/pages/config/options"));
 const WorkerIDTypesPage = lazy(() => import("@/pages/config/worker-id-types"));
 const WorkerWorkStatusesPage = lazy(() => import("@/pages/config/worker-work-statuses"));
-const SkillOptionsPage = lazy(() => import("@/pages/config/skill-options"));
-const CertificationOptionsPage = lazy(() => import("@/pages/config/certification-options"));
-const RatingOptionsPage = lazy(() => import("@/pages/config/rating-options"));
-const ClassificationOptionsPage = lazy(() => import("@/pages/config/classification-options"));
 const StewardSettingsPage = lazy(() => import("@/pages/config/steward-settings"));
 const EmploymentStatusesPage = lazy(() => import("@/pages/config/employment-statuses"));
 const TrustBenefitTypesPage = lazy(() => import("@/pages/config/trust-benefit-types"));
@@ -1555,11 +1551,11 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/gender-options">
+      <Route path="/config/options/:type">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <GenderOptionsPage />
+              <DynamicOptionsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -1580,46 +1576,6 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <WorkerWorkStatusesPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/skill-options">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <SkillOptionsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/certification-options">
-        <ProtectedRoute permission="admin" component="worker.certifications">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <CertificationOptionsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/classification-options">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <ClassificationOptionsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/rating-options">
-        <ProtectedRoute permission="admin" component="worker.ratings">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <RatingOptionsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
