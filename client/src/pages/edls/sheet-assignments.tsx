@@ -122,6 +122,24 @@ function formatTime(time: string): string {
 
 function SheetSummary() {
   const { sheet } = useEdlsSheetLayout();
+  const { assignments, selectedRatingId, workerRatingsMap } = useAssignments();
+
+  const sheetRatingStats = useMemo(() => {
+    if (selectedRatingId === "all") return null;
+    
+    let total = 0;
+    let count = 0;
+    for (const assignment of assignments) {
+      const rating = workerRatingsMap.get(assignment.workerId);
+      if (rating !== undefined) {
+        total += rating;
+        count++;
+      }
+    }
+    
+    if (count === 0) return { total: 0, average: 0, count: 0 };
+    return { total, average: Math.round((total / count) * 10) / 10, count };
+  }, [assignments, selectedRatingId, workerRatingsMap]);
 
   return (
     <Card>
@@ -134,10 +152,15 @@ function SheetSummary() {
             <Calendar className="h-4 w-4 text-muted-foreground" />
             {formatYmd(sheet.ymd, 'weekday-long')}
           </div>
-          <div className="flex items-center gap-1.5" data-testid="text-sheet-workers">
-            <Users className="h-4 w-4 text-muted-foreground" />
-            {sheet.workerCount} workers needed
-          </div>
+          <Badge variant="secondary" data-testid="text-sheet-workers">
+            {assignments.length} / {sheet.workerCount}
+          </Badge>
+          {sheetRatingStats && (
+            <Badge variant="outline" data-testid="sheet-rating-stats">
+              <Star className="h-3 w-3 mr-1 text-yellow-400" fill="currentColor" />
+              {sheetRatingStats.total} ({sheetRatingStats.average})
+            </Badge>
+          )}
           <Badge 
             className={statusColors[(sheet.status as EdlsSheetStatus) || "draft"]}
             data-testid="badge-sheet-status"
@@ -303,7 +326,7 @@ function CrewCard({ crew }: CrewCardProps) {
 
 function CrewsList() {
   const { sheet } = useEdlsSheetLayout();
-  const { selectedCrewId, selectedRatingId, workerRatingsMap, assignments } = useAssignments();
+  const { selectedCrewId } = useAssignments();
 
   const { data: crews = [], isLoading } = useQuery<EdlsCrewWithRelations[]>({
     queryKey: ["/api/edls/sheets", sheet.id, "crews"],
@@ -313,23 +336,6 @@ function CrewsList() {
       return response.json();
     },
   });
-
-  const sheetRatingStats = useMemo(() => {
-    if (selectedRatingId === "all") return null;
-    
-    let total = 0;
-    let count = 0;
-    for (const assignment of assignments) {
-      const rating = workerRatingsMap.get(assignment.workerId);
-      if (rating !== undefined) {
-        total += rating;
-        count++;
-      }
-    }
-    
-    if (count === 0) return { total: 0, average: 0, count: 0 };
-    return { total, average: Math.round((total / count) * 10) / 10, count };
-  }, [assignments, selectedRatingId, workerRatingsMap]);
 
   if (isLoading) {
     return (
@@ -354,15 +360,6 @@ function CrewsList() {
 
   return (
     <div className="space-y-4">
-      {sheetRatingStats && (
-        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-md">
-          <span className="text-sm text-muted-foreground">Sheet Rating Totals</span>
-          <Badge variant="outline" data-testid="sheet-rating-stats">
-            <Star className="h-3 w-3 mr-1 text-yellow-400" fill="currentColor" />
-            Total: {sheetRatingStats.total} | Avg: {sheetRatingStats.average}
-          </Badge>
-        </div>
-      )}
       {!selectedCrewId && (
         <p className="text-sm text-muted-foreground">Click a crew to select it, then click a worker to assign them.</p>
       )}
