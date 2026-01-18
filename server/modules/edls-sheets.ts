@@ -310,7 +310,12 @@ export function registerEdlsSheetsRoutes(
         
         res.json({ ...updatedSheet, crews: updatedCrews });
       }
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === 'DomainValidationError') {
+        const firstError = error.errors?.[0];
+        res.status(400).json({ message: firstError?.message || "Validation failed" });
+        return;
+      }
       console.error("Failed to update EDLS sheet:", error);
       res.status(500).json({ message: "Failed to update sheet" });
     }
@@ -328,7 +333,12 @@ export function registerEdlsSheetsRoutes(
       
       await storage.edlsSheets.delete(id);
       res.status(204).send();
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === 'DomainValidationError') {
+        const firstError = error.errors?.[0];
+        res.status(400).json({ message: firstError?.message || "Validation failed" });
+        return;
+      }
       console.error("Failed to delete EDLS sheet:", error);
       res.status(500).json({ message: "Failed to delete sheet" });
     }
