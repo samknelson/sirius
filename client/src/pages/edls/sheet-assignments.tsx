@@ -352,6 +352,17 @@ function formatWorkerFullName(details: WorkerAssignmentDetails): string {
   return details.siriusId ? `Worker #${details.siriusId}` : "Unknown Worker";
 }
 
+function getStatusCardStyle(status: string): string {
+  switch (status) {
+    case "draft": return "bg-gray-100 dark:bg-gray-800 border-l-4 border-l-gray-400";
+    case "request": return "bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-l-yellow-400";
+    case "lock": return "bg-green-50 dark:bg-green-900/20 border-l-4 border-l-green-500";
+    case "trash": return "bg-red-50 dark:bg-red-900/20 border-l-4 border-l-red-500";
+    case "reserved": return "bg-blue-50 dark:bg-blue-900/20 border-l-4 border-l-blue-500";
+    default: return "bg-muted/50";
+  }
+}
+
 function AssignmentDetailCard({ label, detail }: { label: string; detail: WorkerAssignmentDetail | null }) {
   if (!detail) {
     return (
@@ -363,10 +374,10 @@ function AssignmentDetailCard({ label, detail }: { label: string; detail: Worker
   }
 
   return (
-    <div className="p-3 rounded-md bg-muted/50">
+    <div className={`p-3 rounded-md ${getStatusCardStyle(detail.sheetStatus)}`}>
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs text-muted-foreground font-medium">{label}</span>
-        <Badge variant="outline" className={getStatusDotColor(detail.sheetStatus).replace('bg-', 'bg-opacity-20 border-')}>
+        <Badge variant="outline">
           {detail.sheetStatus}
         </Badge>
       </div>
