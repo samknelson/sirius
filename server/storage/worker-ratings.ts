@@ -109,8 +109,14 @@ export const workerRatingLoggingConfig: StorageLoggingConfig<WorkerRatingStorage
     },
     upsert: {
       enabled: true,
-      getEntityId: (args, result) => result?.id || 'worker rating',
-      getHostEntityId: (args) => args[0],
+      getEntityId: (args, result) => {
+        const [workerId, ratingId] = args;
+        return result?.id || `${workerId}:${ratingId}`;
+      },
+      getHostEntityId: (args) => {
+        const [workerId] = args;
+        return workerId;
+      },
       getDescription: async (args, result) => {
         const [workerId, ratingId, value] = args;
         const workerName = await getWorkerName(workerId);
