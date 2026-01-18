@@ -1,4 +1,5 @@
 import { useState, useMemo, createContext, useContext } from "react";
+import { Link } from "wouter";
 import { formatYmd } from "@shared/utils/date";
 import { Calendar, Users, Clock, MapPin, User, ClipboardList, UserPlus, Search, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -384,7 +385,13 @@ function AssignmentDetailCard({ label, detail }: { label: string; detail: Worker
       <div className="space-y-1 text-sm">
         <div className="flex items-center gap-2">
           <ClipboardList className="h-3 w-3 text-muted-foreground" />
-          <span className="font-medium">{detail.sheetName}</span>
+          <Link 
+            href={`/edls/sheets/${detail.sheetId}`}
+            className="font-medium text-primary hover:underline"
+            data-testid={`link-sheet-${detail.sheetId}`}
+          >
+            {detail.sheetName}
+          </Link>
         </div>
         <div className="flex items-center gap-2">
           <Calendar className="h-3 w-3 text-muted-foreground" />
