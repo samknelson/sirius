@@ -60,6 +60,7 @@ export const optionsTypeRegistry: Record<string, OptionsTypeConfig> = {
   "edls-task": createTypeConfig("edls-task"),
   "certification": createTypeConfig("certification"),
   "worker-rating": createTypeConfig("worker-rating"),
+  "classification": createTypeConfig("classification"),
 };
 
 export function getOptionsType(type: string): OptionsTypeConfig | undefined {

@@ -172,6 +172,7 @@ const WorkerWorkStatusesPage = lazy(() => import("@/pages/config/worker-work-sta
 const SkillOptionsPage = lazy(() => import("@/pages/config/skill-options"));
 const CertificationOptionsPage = lazy(() => import("@/pages/config/certification-options"));
 const RatingOptionsPage = lazy(() => import("@/pages/config/rating-options"));
+const ClassificationOptionsPage = lazy(() => import("@/pages/config/classification-options"));
 const StewardSettingsPage = lazy(() => import("@/pages/config/steward-settings"));
 const EmploymentStatusesPage = lazy(() => import("@/pages/config/employment-statuses"));
 const TrustBenefitTypesPage = lazy(() => import("@/pages/config/trust-benefit-types"));
@@ -1599,6 +1600,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <CertificationOptionsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/classification-options">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <ClassificationOptionsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

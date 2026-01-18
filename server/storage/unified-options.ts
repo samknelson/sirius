@@ -19,6 +19,7 @@ import {
   optionsEdlsTasks,
   optionsCertifications,
   optionsWorkerRatings,
+  optionsClassifications,
 } from "@shared/schema";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
@@ -43,7 +44,8 @@ export type OptionsTypeName =
   | "skill"
   | "edls-task"
   | "certification"
-  | "worker-rating";
+  | "worker-rating"
+  | "classification";
 
 interface OptionsTableMetadata<T extends PgTable<TableConfig>> {
   table: T;
@@ -184,6 +186,14 @@ const optionsMetadata = {
     requiredFields: ["name"],
     optionalFields: ["parent", "data"],
     supportsParent: true,
+  },
+  "classification": {
+    table: optionsClassifications,
+    displayName: "Classification",
+    orderByColumn: "name" as const,
+    loggingModule: "options.classifications",
+    requiredFields: ["name"],
+    optionalFields: ["code", "siriusId", "data"],
   },
 } as const;
 
