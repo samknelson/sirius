@@ -44,6 +44,7 @@ export interface EdlsSheetsFilterOptions {
   employerId?: string;
   dateFrom?: string;
   dateTo?: string;
+  status?: string;
 }
 
 export interface EdlsSheetsStorage {
@@ -80,6 +81,9 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       }
       if (filters?.dateTo) {
         conditions.push(lte(edlsSheets.date, filters.dateTo));
+      }
+      if (filters?.status) {
+        conditions.push(eq(edlsSheets.status, filters.status));
       }
       
       const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;

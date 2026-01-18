@@ -109,6 +109,7 @@ export default function EdlsSheetsPage() {
   const [otherDate, setOtherDate] = useState<Date | undefined>(undefined);
   const [rangeFromDate, setRangeFromDate] = useState<Date | undefined>(undefined);
   const [rangeToDate, setRangeToDate] = useState<Date | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   
   const dateFilterOptions = useMemo(() => getDateFilterOptions(), []);
   
@@ -137,10 +138,11 @@ export default function EdlsSheetsPage() {
   const queryParams = new URLSearchParams();
   if (dateFrom) queryParams.set("dateFrom", dateFrom);
   if (dateTo) queryParams.set("dateTo", dateTo);
+  if (statusFilter && statusFilter !== "all") queryParams.set("status", statusFilter);
   const queryString = queryParams.toString();
   
   const { data: sheetsData, isLoading } = useQuery<PaginatedEdlsSheets>({
-    queryKey: ["/api/edls/sheets", { dateFrom, dateTo }],
+    queryKey: ["/api/edls/sheets", { dateFrom, dateTo, status: statusFilter }],
     queryFn: async () => {
       const url = queryString ? `/api/edls/sheets?${queryString}` : "/api/edls/sheets";
       const res = await fetch(url, { credentials: "include" });
@@ -246,6 +248,29 @@ export default function EdlsSheetsPage() {
                   {dateFilterOptions.map((option) => (
                     <SelectItem key={option.value} value={option.value} data-testid={`option-date-${option.value}`}>
                       {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                <FileSpreadsheet className="h-4 w-4" />
+                Status
+              </label>
+              <Select 
+                value={statusFilter} 
+                onValueChange={setStatusFilter}
+              >
+                <SelectTrigger className="w-[180px]" data-testid="select-status-filter">
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" data-testid="option-status-all">All Statuses</SelectItem>
+                  {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value} data-testid={`option-status-${value}`}>
+                      {label}
                     </SelectItem>
                   ))}
                 </SelectContent>
