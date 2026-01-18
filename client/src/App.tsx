@@ -227,6 +227,8 @@ const CardcheckViewPage = lazy(() => import("@/pages/cardcheck-view"));
 const EventsListPage = lazy(() => import("@/pages/events"));
 const EventViewPage = lazy(() => import("@/pages/event-view"));
 const EventEditPage = lazy(() => import("@/pages/event-edit"));
+const EventScanCheckinPage = lazy(() => import("@/pages/event-scan-checkin"));
+const WorkerQRCodePage = lazy(() => import("@/pages/worker-qr-code"));
 const EventDeletePage = lazy(() => import("@/pages/event-delete"));
 const EventRegisterPage = lazy(() => import("@/pages/event-register"));
 const EventRosterPage = lazy(() => import("@/pages/event-roster"));
@@ -1065,6 +1067,14 @@ function Router() {
           <AuthenticatedLayout>
             <EventSelfRegisterPage />
           </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/events/:eventId/scan-checkin">
+        <ProtectedRoute permission="admin" component="event">
+          <Suspense fallback={<PageLoader />}>
+            <EventScanCheckinPage />
+          </Suspense>
         </ProtectedRoute>
       </Route>
 
@@ -2235,6 +2245,14 @@ function Router() {
           <AuthenticatedLayout>
             <Dashboard />
           </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/my-qr-code">
+        <ProtectedRoute>
+          <Suspense fallback={<PageLoader />}>
+            <WorkerQRCodePage />
+          </Suspense>
         </ProtectedRoute>
       </Route>
 

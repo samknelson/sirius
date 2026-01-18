@@ -549,6 +549,185 @@ export function registerEventsRoutes(
     }
   });
 
+  // ==================== IN-PERSON SCAN CHECK-IN ====================
+
+  // Register a participant via QR code scan (In-Person Scan method)
+  app.post("/api/events/:id/scan-checkin", eventComponent, requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { type, workerId, timestamp } = req.body;
+
+      // Validate QR code type
+      if (type !== "sirius-event-checkin") {
+        res.status(400).json({ 
+          success: false,
+          message: "Invalid QR code type" 
+        });
+        return;
+      }
+
+      if (!workerId || typeof workerId !== "string") {
+        res.status(400).json({ 
+          success: false,
+          message: "Invalid QR code data: missing or invalid worker ID" 
+        });
+        return;
+      }
+
+      // Validate timestamp is a finite number
+      const parsedTimestamp = Number(timestamp);
+      if (!Number.isFinite(parsedTimestamp)) {
+        res.status(400).json({ 
+          success: false,
+          message: "Invalid QR code data: invalid timestamp" 
+        });
+        return;
+      }
+
+      // Validate timestamp (must be within 90 seconds)
+      const now = Math.floor(Date.now() / 1000);
+      const ageSeconds = now - parsedTimestamp;
+      
+      if (ageSeconds > 90) {
+        res.status(400).json({ 
+          success: false,
+          message: "QR code has expired. Please ask the worker to refresh their code." 
+        });
+        return;
+      }
+
+      if (ageSeconds < -10) {
+        res.status(400).json({ 
+          success: false,
+          message: "QR code timestamp is invalid" 
+        });
+        return;
+      }
+
+      // Get the event
+      const event = await storage.events.get(id);
+      if (!event) {
+        res.status(404).json({ 
+          success: false,
+          message: "Event not found" 
+        });
+        return;
+      }
+
+      // Get the worker and their contact
+      const worker = await storage.workers.getWorker(workerId);
+      if (!worker) {
+        res.status(404).json({ 
+          success: false,
+          message: "Worker not found" 
+        });
+        return;
+      }
+
+      // Get worker's display name
+      const contact = await storage.contacts.getContact(worker.contactId);
+      const workerName = contact?.displayName || "Unknown Worker";
+
+      // Check if already registered
+      const existing = await storage.eventParticipants.getByEventAndContact(id, worker.contactId);
+      if (existing) {
+        res.json({ 
+          success: true,
+          alreadyRegistered: true,
+          message: `${workerName} is already registered for this event`,
+          workerName
+        });
+        return;
+      }
+
+      // Get the event type to determine category
+      const eventType = await storage.options.eventTypes.get(event.eventTypeId);
+      if (!eventType) {
+        res.status(400).json({ 
+          success: false,
+          message: "Event type not found" 
+        });
+        return;
+      }
+
+      const categoryId = eventType.category;
+      const role = "member";
+      const status = "attended";
+
+      // Validate role and status
+      if (!validateParticipantRole(categoryId, role)) {
+        res.status(400).json({ 
+          success: false,
+          message: `Invalid role for this event category` 
+        });
+        return;
+      }
+
+      if (!validateParticipantStatus(categoryId, status)) {
+        res.status(400).json({ 
+          success: false,
+          message: `Invalid status for this event category` 
+        });
+        return;
+      }
+
+      // Create the participant with registration method in data field
+      const participantData = {
+        eventId: id,
+        contactId: worker.contactId,
+        role,
+        status,
+        data: { registrationMethod: "in-person-scan" },
+      };
+
+      const validation = insertEventParticipantSchema.safeParse(participantData);
+      if (!validation.success) {
+        res.status(400).json({ 
+          success: false,
+          message: "Invalid participant data" 
+        });
+        return;
+      }
+
+      const participant = await storage.eventParticipants.create(validation.data);
+
+      // Execute charge plugins (fire-and-forget)
+      void executeParticipantChargePlugins(
+        participant.id,
+        id,
+        event.eventTypeId,
+        worker.contactId,
+        role,
+        status
+      );
+
+      logger.info("In-person scan check-in completed", {
+        service: "events",
+        eventId: id,
+        workerId,
+        participantId: participant.id,
+        registrationMethod: "in-person-scan",
+      });
+
+      res.status(201).json({ 
+        success: true,
+        alreadyRegistered: false,
+        message: `${workerName} has been checked in successfully`,
+        workerName
+      });
+    } catch (error: any) {
+      logger.error("Failed to process scan check-in", {
+        service: "events",
+        eventId: req.params.id,
+        error: error.message,
+      });
+      res.status(500).json({ 
+        success: false,
+        message: "Failed to process check-in" 
+      });
+    }
+  });
+
   // Helper to get contactId for current user
   async function getUserContactId(req: any): Promise<string | null> {
     const user = (req as any).user;
