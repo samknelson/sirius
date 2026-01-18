@@ -386,7 +386,7 @@ function AssignmentDetailCard({ label, detail }: { label: string; detail: Worker
         <div className="flex items-center gap-2">
           <ClipboardList className="h-3 w-3 text-muted-foreground" />
           <Link 
-            href={`/edls/sheets/${detail.sheetId}`}
+            href={`/edls/sheet/${detail.sheetId}`}
             className="font-medium text-primary hover:underline"
             data-testid={`link-sheet-${detail.sheetId}`}
           >
