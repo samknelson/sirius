@@ -133,7 +133,6 @@ function AssignedWorkerSlot({ assignment }: AssignedWorkerSlotProps) {
       className="flex items-center gap-2 p-2 border rounded-md bg-background"
       data-testid={`assigned-${assignment.id}`}
     >
-      <User className="h-4 w-4 text-muted-foreground" />
       <span className="text-sm">{formatAssignedWorkerName(assignment.worker)}</span>
       {assignment.worker.siriusId && (
         <Badge variant="outline" className="ml-auto text-xs">
@@ -372,7 +371,6 @@ function AvailableWorkersPanel() {
                 } ${isAssigning ? "pointer-events-none opacity-50" : ""}`}
                 data-testid={`worker-${worker.id}`}
               >
-                <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                 <span className="text-sm truncate">{formatWorkerName(worker)}</span>
                 {worker.siriusId && (
                   <Badge variant="outline" className="ml-auto text-xs">
