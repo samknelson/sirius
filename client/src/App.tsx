@@ -167,14 +167,8 @@ const FloodEventsConfigPage = lazy(() => import("@/pages/flood-events-config"));
 const PostalAddressesConfigPage = lazy(() => import("@/pages/config/addresses"));
 const PhoneNumbersConfigPage = lazy(() => import("@/pages/config/phone-numbers"));
 const DynamicOptionsPage = lazy(() => import("@/pages/config/options"));
-const WorkerIDTypesPage = lazy(() => import("@/pages/config/worker-id-types"));
-const WorkerWorkStatusesPage = lazy(() => import("@/pages/config/worker-work-statuses"));
 const StewardSettingsPage = lazy(() => import("@/pages/config/steward-settings"));
 const EmploymentStatusesPage = lazy(() => import("@/pages/config/employment-statuses"));
-const TrustBenefitTypesPage = lazy(() => import("@/pages/config/trust-benefit-types"));
-const EmployerContactTypesPage = lazy(() => import("@/pages/config/employer-contact-types"));
-const EmployerTypesPage = lazy(() => import("@/pages/config/employer-types"));
-const ProviderContactTypesPage = lazy(() => import("@/pages/config/provider-contact-types"));
 const EventTypesPage = lazy(() => import("@/pages/config/event-types"));
 const DispatchJobTypesPage = lazy(() => import("@/pages/config/dispatch-job-types"));
 const DispatchJobTypeViewPage = lazy(() => import("@/pages/config/dispatch-job-type-view"));
@@ -1560,26 +1554,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/worker-id-types">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <WorkerIDTypesPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/worker-work-statuses">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <WorkerWorkStatusesPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
       <Route path="/config/employment-statuses">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
@@ -1595,36 +1569,6 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <StewardSettingsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/trust-benefit-types">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <TrustBenefitTypesPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/employer-contact-types">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <EmployerContactTypesPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/employer-types">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <EmployerTypesPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -1814,16 +1758,6 @@ function Router() {
         <ProtectedRoute tabId="logs" entityType="edls_sheet">
           <AuthenticatedLayout>
             <EdlsSheetLogsPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/provider-contact-types">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <ProviderContactTypesPage />
-            </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

@@ -68,8 +68,8 @@ export const configSections: NavSection[] = [
     icon: Heart,
     items: [
       { path: "/trust-benefits", label: "Trust Benefits", icon: Heart, testId: "nav-trust-benefits", permission: "staff" },
-      { path: "/config/trust-benefit-types", label: "Trust Benefit Types", icon: List, testId: "nav-config-trust-benefit-types", permission: "admin" },
-      { path: "/config/provider-contact-types", label: "Provider Contact Types", icon: List, testId: "nav-config-provider-contact-types", permission: "admin" },
+      { path: "/config/options/trust-benefit-type", label: "Trust Benefit Types", icon: List, testId: "nav-config-trust-benefit-types", permission: "admin" },
+      { path: "/config/options/trust-provider-type", label: "Provider Contact Types", icon: List, testId: "nav-config-provider-contact-types", permission: "admin" },
       { path: "/config/trust/providers/user-settings", label: "Provider User Settings", icon: Settings, testId: "nav-config-users-trust-provider-settings", permission: "admin" },
     ],
   },
@@ -79,9 +79,9 @@ export const configSections: NavSection[] = [
     description: "Employer-related configuration",
     icon: Building2,
     items: [
-      { path: "/config/employer-types", label: "Employer Types", icon: List, testId: "nav-config-employer-types", permission: "admin" },
+      { path: "/config/options/employer-type", label: "Employer Types", icon: List, testId: "nav-config-employer-types", permission: "admin" },
       { path: "/config/options/department", label: "Departments", icon: List, testId: "nav-config-departments", permission: "admin" },
-      { path: "/config/employer-contact-types", label: "Employer Contact Types", icon: List, testId: "nav-config-employer-contact-types", permission: "admin" },
+      { path: "/config/options/employer-contact-type", label: "Employer Contact Types", icon: List, testId: "nav-config-employer-contact-types", permission: "admin" },
       { path: "/config/employers/user-settings", label: "Employer User Settings", icon: Settings, testId: "nav-config-users-employer-settings", permission: "admin" },
     ],
   },
@@ -101,8 +101,8 @@ export const configSections: NavSection[] = [
     description: "Configurable dropdown options",
     icon: List,
     items: [
-      { path: "/config/worker-id-types", label: "Worker ID Types", icon: List, testId: "nav-config-worker-id-types", permission: "admin" },
-      { path: "/config/worker-work-statuses", label: "Worker Work Statuses", icon: List, testId: "nav-config-worker-work-statuses", permission: "admin" },
+      { path: "/config/options/worker-id-type", label: "Worker ID Types", icon: List, testId: "nav-config-worker-id-types", permission: "admin" },
+      { path: "/config/options/worker-ws", label: "Worker Work Statuses", icon: List, testId: "nav-config-worker-work-statuses", permission: "admin" },
       { path: "/config/options/skill", label: "Skill Options", icon: List, testId: "nav-config-skill-options", permission: "admin", requiresComponent: "worker.skills" },
       { path: "/config/options/certification", label: "Certifications", icon: FileText, testId: "nav-config-certification-options", permission: "admin", requiresComponent: "worker.certifications" },
       { path: "/config/options/classification", label: "Classifications", icon: List, testId: "nav-config-classification-options", permission: "admin" },
