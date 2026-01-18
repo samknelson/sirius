@@ -9,7 +9,7 @@ import {
   type EdlsCrew,
   type InsertEdlsCrew
 } from "@shared/schema";
-import { eq, desc, sql, and, gte, lte, type SQL } from "drizzle-orm";
+import { eq, ne, desc, sql, and, gte, lte, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { StorageLoggingConfig } from "./middleware/logging";
 import { getClient, runInTransaction } from "./transaction-context";
@@ -84,6 +84,8 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       }
       if (filters?.status) {
         conditions.push(eq(edlsSheets.status, filters.status));
+      } else {
+        conditions.push(ne(edlsSheets.status, 'trash'));
       }
       
       const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
