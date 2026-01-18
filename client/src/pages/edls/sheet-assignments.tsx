@@ -421,6 +421,7 @@ function EdlsSheetAssignmentsContent() {
       });
       queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheet.id, "assignments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheet.id, "available-workers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheet.id, "crews"] });
     },
     onError: (error: any) => {
       const message = error?.message || "Failed to assign worker";
@@ -443,6 +444,7 @@ function EdlsSheetAssignmentsContent() {
       });
       queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheet.id, "assignments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheet.id, "available-workers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheet.id, "crews"] });
     },
     onError: (error: any) => {
       const message = error?.message || "Failed to unassign worker";
