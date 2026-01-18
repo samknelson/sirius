@@ -1,6 +1,10 @@
-import { createNoopValidator } from './utils/validation';
+import { 
+  createAsyncStorageValidator,
+  type ValidationError
+} from './utils/validation';
 import { 
   edlsCrews,
+  edlsAssignments,
   users,
   optionsEdlsTasks,
   type EdlsCrew, 
@@ -9,12 +13,56 @@ import {
 import { eq, sql, asc } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { StorageLoggingConfig } from "./middleware/logging";
-import { getClient } from "./transaction-context";
+import { getClient, runInTransaction } from "./transaction-context";
 
-/**
- * Stub validator - add validation logic here when needed
- */
-export const validate = createNoopValidator();
+export const validate = createAsyncStorageValidator<InsertEdlsCrew, EdlsCrew, {}>(
+  async (data, existing) => {
+    const errors: ValidationError[] = [];
+    const client = getClient();
+    
+    if (!existing) {
+      return { ok: true, value: {} };
+    }
+    
+    const crewId = existing.id;
+    
+    const lockedRows = await client.execute(
+      sql`SELECT id FROM edls_assignments WHERE crew_id = ${crewId} FOR UPDATE`
+    );
+    const assignmentCount = lockedRows.rows.length;
+    
+    if (data.workerCount !== undefined && data.workerCount < assignmentCount) {
+      errors.push({
+        field: 'workerCount',
+        code: 'BELOW_ASSIGNMENT_COUNT',
+        message: `Cannot reduce worker count below ${assignmentCount} (current assignments)`
+      });
+    }
+    
+    if (errors.length > 0) {
+      return { ok: false, errors };
+    }
+    return { ok: true, value: {} };
+  }
+);
+
+export async function validateCrewDelete(crewId: string): Promise<void> {
+  const client = getClient();
+  
+  const lockedRows = await client.execute(
+    sql`SELECT id FROM edls_assignments WHERE crew_id = ${crewId} FOR UPDATE`
+  );
+  const assignmentCount = lockedRows.rows.length;
+  
+  if (assignmentCount > 0) {
+    const { DomainValidationError } = await import('./utils/validation');
+    throw new DomainValidationError([{
+      field: 'id',
+      code: 'HAS_ASSIGNMENTS',
+      message: `Cannot delete crew with ${assignmentCount} active assignment(s)`
+    }]);
+  }
+}
 
 export interface EdlsCrewWithRelations extends EdlsCrew {
   supervisorUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
@@ -78,7 +126,7 @@ export function createEdlsCrewsStorage(): EdlsCrewsStorage {
     },
 
     async create(insertCrew: InsertEdlsCrew): Promise<EdlsCrew> {
-      validate.validateOrThrow(insertCrew);
+      await validate.validateOrThrow(insertCrew);
       const client = getClient();
       const [crew] = await client.insert(edlsCrews).values(insertCrew).returning();
       return crew;
@@ -91,20 +139,29 @@ export function createEdlsCrewsStorage(): EdlsCrewsStorage {
     },
 
     async update(id: string, crewUpdate: Partial<InsertEdlsCrew>): Promise<EdlsCrew | undefined> {
-      validate.validateOrThrow(id);
-      const client = getClient();
-      const [crew] = await client
-        .update(edlsCrews)
-        .set(crewUpdate)
-        .where(eq(edlsCrews.id, id))
-        .returning();
-      return crew || undefined;
+      return runInTransaction(async () => {
+        const client = getClient();
+        const [existing] = await client.select().from(edlsCrews).where(eq(edlsCrews.id, id));
+        if (!existing) return undefined;
+        
+        await validate.validateOrThrow(crewUpdate, existing);
+        
+        const [crew] = await client
+          .update(edlsCrews)
+          .set(crewUpdate)
+          .where(eq(edlsCrews.id, id))
+          .returning();
+        return crew || undefined;
+      });
     },
 
     async delete(id: string): Promise<boolean> {
-      const client = getClient();
-      const result = await client.delete(edlsCrews).where(eq(edlsCrews.id, id)).returning();
-      return result.length > 0;
+      return runInTransaction(async () => {
+        await validateCrewDelete(id);
+        const client = getClient();
+        const result = await client.delete(edlsCrews).where(eq(edlsCrews.id, id)).returning();
+        return result.length > 0;
+      });
     },
 
     async deleteBySheetId(sheetId: string): Promise<number> {
