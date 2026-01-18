@@ -384,6 +384,7 @@ export const optionsClassifications = pgTable("options_classifications", {
   name: text("name").notNull(),
   code: varchar("code", { length: 255 }).unique(),
   siriusId: varchar("sirius_id", { length: 255 }).unique(),
+  sequence: integer("sequence").notNull().default(0),
   data: jsonb("data"),
 });
 

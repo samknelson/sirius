@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Loader2, Plus, Edit, Trash2, Save, X } from "lucide-react";
+import { Loader2, Plus, Edit, Trash2, Save, X, ArrowUp, ArrowDown } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -30,6 +30,7 @@ interface ClassificationOption {
   name: string;
   code: string | null;
   siriusId: string | null;
+  sequence: number;
   data: Record<string, unknown> | null;
 }
 
@@ -50,7 +51,11 @@ export default function ClassificationOptionsPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; code: string | null; siriusId: string | null }) => {
-      return apiRequest("POST", "/api/options/classification", data);
+      const maxSequence = classificationOptions.reduce((max, option) => Math.max(max, option.sequence), -1);
+      return apiRequest("POST", "/api/options/classification", { 
+        ...data, 
+        sequence: maxSequence + 1 
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/options/classification"] });
@@ -91,6 +96,24 @@ export default function ClassificationOptionsPage() {
       toast({
         title: "Error",
         description: error.message || "Failed to update classification.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateSequenceMutation = useMutation({
+    mutationFn: async (data: { id: string; sequence: number }) => {
+      return apiRequest("PUT", `/api/options/classification/${data.id}`, {
+        sequence: data.sequence,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/options/classification"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update sequence.",
         variant: "destructive",
       });
     },
@@ -168,6 +191,24 @@ export default function ClassificationOptionsPage() {
     });
   };
 
+  const moveUp = (option: ClassificationOption) => {
+    const currentIndex = classificationOptions.findIndex(o => o.id === option.id);
+    if (currentIndex > 0) {
+      const prevOption = classificationOptions[currentIndex - 1];
+      updateSequenceMutation.mutate({ id: option.id, sequence: prevOption.sequence });
+      updateSequenceMutation.mutate({ id: prevOption.id, sequence: option.sequence });
+    }
+  };
+
+  const moveDown = (option: ClassificationOption) => {
+    const currentIndex = classificationOptions.findIndex(o => o.id === option.id);
+    if (currentIndex < classificationOptions.length - 1) {
+      const nextOption = classificationOptions[currentIndex + 1];
+      updateSequenceMutation.mutate({ id: option.id, sequence: nextOption.sequence });
+      updateSequenceMutation.mutate({ id: nextOption.id, sequence: option.sequence });
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -204,6 +245,7 @@ export default function ClassificationOptionsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[80px]">Order</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Code</TableHead>
                   <TableHead>Sirius ID</TableHead>
@@ -211,8 +253,30 @@ export default function ClassificationOptionsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {classificationOptions.map((classification) => (
+                {classificationOptions.map((classification, index) => (
                   <TableRow key={classification.id} data-testid={`row-classification-${classification.id}`}>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => moveUp(classification)}
+                          disabled={index === 0}
+                          data-testid={`button-move-up-${classification.id}`}
+                        >
+                          <ArrowUp className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => moveDown(classification)}
+                          disabled={index === classificationOptions.length - 1}
+                          data-testid={`button-move-down-${classification.id}`}
+                        >
+                          <ArrowDown className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
                     <TableCell data-testid={`text-name-${classification.id}`}>
                       {editingId === classification.id ? (
                         <Input

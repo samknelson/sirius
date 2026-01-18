@@ -190,10 +190,10 @@ const optionsMetadata = {
   "classification": {
     table: optionsClassifications,
     displayName: "Classification",
-    orderByColumn: "name" as const,
+    orderByColumn: "sequence" as const,
     loggingModule: "options.classifications",
     requiredFields: ["name"],
-    optionalFields: ["code", "siriusId", "data"],
+    optionalFields: ["code", "siriusId", "sequence", "data"],
   },
 } as const;
 
