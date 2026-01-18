@@ -147,26 +147,30 @@ function SheetSummary() {
         <CardTitle className="text-lg" data-testid="text-sheet-title">{sheet.title}</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="flex flex-wrap gap-4 text-sm">
-          <div className="flex items-center gap-1.5" data-testid="text-sheet-date">
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-            {formatYmd(sheet.ymd, 'weekday-long')}
-          </div>
-          <Badge variant="secondary" data-testid="text-sheet-workers">
-            {assignments.length} / {sheet.workerCount}
-          </Badge>
-          {sheetRatingStats && (
-            <Badge variant="outline" data-testid="sheet-rating-stats">
-              <Star className="h-3 w-3 mr-1 text-yellow-400" fill="currentColor" />
-              {sheetRatingStats.total} ({sheetRatingStats.average})
+        <div className="flex flex-wrap items-center justify-between gap-4 text-sm">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-1.5" data-testid="text-sheet-date">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              {formatYmd(sheet.ymd, 'weekday-long')}
+            </div>
+            <Badge 
+              className={statusColors[(sheet.status as EdlsSheetStatus) || "draft"]}
+              data-testid="badge-sheet-status"
+            >
+              {statusLabels[(sheet.status as EdlsSheetStatus) || "draft"]}
             </Badge>
-          )}
-          <Badge 
-            className={statusColors[(sheet.status as EdlsSheetStatus) || "draft"]}
-            data-testid="badge-sheet-status"
-          >
-            {statusLabels[(sheet.status as EdlsSheetStatus) || "draft"]}
-          </Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            {sheetRatingStats && (
+              <Badge variant="outline" data-testid="sheet-rating-stats">
+                <Star className="h-3 w-3 mr-1 text-yellow-400" fill="currentColor" />
+                {sheetRatingStats.total} ({sheetRatingStats.average})
+              </Badge>
+            )}
+            <Badge variant="secondary" data-testid="text-sheet-workers">
+              {assignments.length} / {sheet.workerCount}
+            </Badge>
+          </div>
         </div>
       </CardContent>
     </Card>
