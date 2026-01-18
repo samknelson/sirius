@@ -45,11 +45,11 @@ interface EdlsSheetWithRelations extends EdlsSheet {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-muted/50",
-  request: "bg-yellow-50 dark:bg-yellow-900/20",
-  lock: "bg-green-50 dark:bg-green-900/20",
-  reserved: "bg-blue-50 dark:bg-blue-900/20",
-  trash: "bg-red-50 dark:bg-red-900/20",
+  draft: "bg-gray-100 dark:bg-gray-800/50",
+  request: "bg-yellow-100 dark:bg-yellow-900/30",
+  lock: "bg-green-100 dark:bg-green-900/30",
+  reserved: "bg-blue-100 dark:bg-blue-900/30",
+  trash: "bg-red-100 dark:bg-red-900/30",
 };
 
 const STATUS_LABELS: Record<string, string> = {
