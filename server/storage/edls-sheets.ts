@@ -1,4 +1,8 @@
-import { createNoopValidator, DomainValidationError } from './utils/validation';
+import { 
+  createAsyncStorageValidator, 
+  type ValidationError,
+  type AsyncStorageValidator 
+} from './utils/validation';
 import { 
   edlsSheets,
   employers,
@@ -14,11 +18,6 @@ import { alias } from "drizzle-orm/pg-core";
 import { StorageLoggingConfig } from "./middleware/logging";
 import { getClient, runInTransaction } from "./transaction-context";
 import { storage } from "./index";
-
-/**
- * Stub validator - add validation logic here when needed
- */
-export const validate = createNoopValidator();
 
 export interface EdlsSheetWithCrews extends EdlsSheet {
   crews: EdlsCrew[];
@@ -41,22 +40,45 @@ export interface PaginatedEdlsSheets {
 export type CrewInput = Omit<InsertEdlsCrew, 'sheetId'> & { id?: string };
 
 /**
- * Validates that the sheet's workerCount matches the sum of all crew workerCounts.
- * Throws a DomainValidationError if the counts don't match.
+ * Input type for sheet validation that includes crews context.
+ * The crews array is required for validation but not persisted with the sheet.
  */
-export function validateSheetCrewCounts(
-  sheetWorkerCount: number,
-  crews: Array<{ workerCount: number }>
-): void {
-  const crewsTotal = crews.reduce((sum, crew) => sum + (crew.workerCount || 0), 0);
-  if (sheetWorkerCount !== crewsTotal) {
-    throw new DomainValidationError([{
-      field: 'workerCount',
-      code: 'WORKER_COUNT_MISMATCH',
-      message: `Sheet worker count (${sheetWorkerCount}) must equal sum of crew worker counts (${crewsTotal})`
-    }]);
-  }
+export interface EdlsSheetValidationInput extends Partial<InsertEdlsSheet> {
+  _crews?: Array<{ workerCount: number }>;
 }
+
+/**
+ * Validates EDLS sheets:
+ * - Ensures workerCount equals the sum of crew workerCounts
+ * - Only validates when workerCount is present in input (being created or updated)
+ * - Requires _crews context for validation (passed via input)
+ * - For updates where only status changes, skip validation by not passing _crews
+ */
+export const validate: AsyncStorageValidator<EdlsSheetValidationInput, EdlsSheet, {}> = createAsyncStorageValidator<EdlsSheetValidationInput, EdlsSheet, {}>(
+  async (data, existing) => {
+    const errors: ValidationError[] = [];
+    
+    const crews = data._crews;
+    
+    if (crews !== undefined) {
+      const workerCount = data.workerCount ?? existing?.workerCount ?? 0;
+      const crewsTotal = crews.reduce((sum, crew) => sum + (crew.workerCount || 0), 0);
+      if (workerCount !== crewsTotal) {
+        errors.push({
+          field: 'workerCount',
+          code: 'WORKER_COUNT_MISMATCH',
+          message: `Sheet worker count (${workerCount}) must equal sum of crew worker counts (${crewsTotal})`
+        });
+      }
+    }
+    
+    if (errors.length > 0) {
+      return { ok: false, errors };
+    }
+    
+    return { ok: true, value: {} };
+  }
+);
 
 export interface EdlsSheetsFilterOptions {
   employerId?: string;
@@ -231,10 +253,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
     },
 
     async create(insertSheet: InsertEdlsSheet, crews: CrewInput[]): Promise<EdlsSheetWithCrews> {
-      validate.validateOrThrow(insertSheet);
-      
-      // Validate crew counts before creating
-      validateSheetCrewCounts(insertSheet.workerCount ?? 0, crews);
+      await validate.validateOrThrow({ ...insertSheet, _crews: crews });
       
       return runInTransaction(async () => {
         const client = getClient();
@@ -262,19 +281,16 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         const isChangingWorkerCount = 'workerCount' in sheetUpdate;
         
         if (isChangingCrews || isChangingWorkerCount) {
-          // Calculate what the final workerCount will be
-          const finalWorkerCount = sheetUpdate.workerCount ?? existingSheet.workerCount;
-          
           // If crews are provided, use them for validation; otherwise load existing crews
-          let crewsForValidation: Array<{ workerCount: number }>;
-          if (isChangingCrews) {
-            crewsForValidation = crews!;
-          } else {
-            crewsForValidation = await storage.edlsCrews.getBySheetId(id);
-          }
+          const crewsForValidation = isChangingCrews 
+            ? crews! 
+            : await storage.edlsCrews.getBySheetId(id);
           
-          // Validate crew counts
-          validateSheetCrewCounts(finalWorkerCount, crewsForValidation);
+          // Validate via standard validator with _crews context
+          await validate.validateOrThrow(
+            { ...sheetUpdate, _crews: crewsForValidation },
+            existingSheet
+          );
         }
         
         // Update the sheet
