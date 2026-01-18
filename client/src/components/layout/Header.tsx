@@ -30,6 +30,7 @@ import {
   Map,
   Upload,
   Briefcase,
+  QrCode,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -191,6 +192,18 @@ export default function Header() {
                     >
                       <User className="h-4 w-4 mr-2" />
                       My Worker
+                    </Button>
+                  </Link>
+                )}
+                {user?.workerId && (
+                  <Link href="/my-qr-code" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location === "/my-qr-code" ? "default" : "ghost"}
+                      className="w-full justify-start"
+                      data-testid="mobile-nav-my-qr-code"
+                    >
+                      <QrCode className="h-4 w-4 mr-2" />
+                      My QR Code
                     </Button>
                   </Link>
                 )}
@@ -628,6 +641,19 @@ export default function Header() {
                 >
                   <User className="h-4 w-4 mr-2" />
                   My Worker
+                </Button>
+              </Link>
+            )}
+
+            {user?.workerId && (
+              <Link href="/my-qr-code">
+                <Button
+                  variant={location === "/my-qr-code" ? "default" : "ghost"}
+                  size="sm"
+                  data-testid="nav-my-qr-code"
+                >
+                  <QrCode className="h-4 w-4 mr-2" />
+                  My QR Code
                 </Button>
               </Link>
             )}
