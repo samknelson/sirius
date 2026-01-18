@@ -320,6 +320,17 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
           ? await client.update(edlsSheets).set(safeSheetUpdate).where(eq(edlsSheets.id, id)).returning()
           : [existingSheet];
         
+        // If status changed to "trash", delete all assignments individually for audit logging
+        if (safeSheetUpdate.status === 'trash' && existingSheet.status !== 'trash') {
+          const sheetCrews = await storage.edlsCrews.getBySheetId(id);
+          for (const crew of sheetCrews) {
+            const crewAssignments = await storage.edlsAssignments.getByCrewId(crew.id);
+            for (const assignment of crewAssignments) {
+              await storage.edlsAssignments.delete(assignment.id);
+            }
+          }
+        }
+        
         // If crews were provided, sync them
         if (crews !== undefined) {
           const existingCrews = await storage.edlsCrews.getBySheetId(id);
