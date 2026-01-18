@@ -7,6 +7,7 @@ const policy = definePolicy({
   entityType: 'edls_sheet',
   component: 'edls',
   cacheKeyFields: ['status', 'supervisor'],
+  noAdminBypass: true, // Even admins must respect locked/trashed status
   
   describeRequirements: () => [
     { permission: 'edls.manager' },

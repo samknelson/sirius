@@ -642,6 +642,21 @@ async function evaluateModularPolicy(
     };
   }
   
+  // Defensive check: entity-scoped policies MUST have an entityId
+  // Fail fast to prevent accidental grants when entityId is missing
+  if (policy.scope === 'entity' && !entityId && !options.entityData) {
+    logger.warn(`Entity-scoped policy invoked without entityId`, {
+      service: SERVICE,
+      userId: user.id,
+      policyId,
+    });
+    return {
+      granted: false,
+      reason: 'Entity-scoped policy requires an entity ID',
+      evaluatedAt: Date.now(),
+    };
+  }
+  
   // Check component requirement for ALL users (feature flag must be enabled)
   if (policy.component) {
     const componentEnabled = await checkComponent(policy.component);
