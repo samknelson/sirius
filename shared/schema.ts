@@ -711,6 +711,13 @@ export {
 } from "./schema/worker/certifications/schema";
 
 export {
+  optionsWorkerRatings,
+  insertOptionsWorkerRatingsSchema,
+  type OptionsWorkerRating,
+  type InsertOptionsWorkerRating,
+} from "./schema/worker/ratings/schema";
+
+export {
   edlsSheets,
   edlsSheetStatusEnum,
   insertEdlsSheetsSchema,

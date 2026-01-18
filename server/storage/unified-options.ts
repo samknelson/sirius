@@ -18,6 +18,7 @@ import {
   optionsSkills,
   optionsEdlsTasks,
   optionsCertifications,
+  optionsWorkerRatings,
 } from "@shared/schema";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
@@ -41,7 +42,8 @@ export type OptionsTypeName =
   | "ledger-payment-type"
   | "skill"
   | "edls-task"
-  | "certification";
+  | "certification"
+  | "worker-rating";
 
 interface OptionsTableMetadata<T extends PgTable<TableConfig>> {
   table: T;
@@ -50,6 +52,7 @@ interface OptionsTableMetadata<T extends PgTable<TableConfig>> {
   loggingModule: string;
   requiredFields: string[];
   optionalFields: string[];
+  supportsParent?: boolean;
 }
 
 const optionsMetadata = {
@@ -173,6 +176,15 @@ const optionsMetadata = {
     requiredFields: ["name"],
     optionalFields: ["siriusId", "data"],
   },
+  "worker-rating": {
+    table: optionsWorkerRatings,
+    displayName: "Rating Type",
+    orderByColumn: "name" as const,
+    loggingModule: "options.workerRatings",
+    requiredFields: ["name"],
+    optionalFields: ["parent", "data"],
+    supportsParent: true,
+  },
 } as const;
 
 export type OptionsMetadataMap = typeof optionsMetadata;
@@ -218,6 +230,16 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
 
     async create(type: OptionsTypeName, data: Record<string, any>): Promise<any> {
       validate.validateOrThrow(type);
+      const metadata = getTable(type) as any;
+      
+      if (metadata.supportsParent && data.parent) {
+        const allItems = await this.list(type);
+        const parentExists = allItems.some((item: any) => item.id === data.parent);
+        if (!parentExists) {
+          throw new Error("Parent does not exist");
+        }
+      }
+      
       const client = getClient();
       const { table } = getTable(type);
       const [result] = await client.insert(table).values(data as any).returning();
@@ -226,8 +248,44 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
 
     async update(type: OptionsTypeName, id: string, data: Record<string, any>): Promise<any | undefined> {
       validate.validateOrThrow(type);
+      const metadata = getTable(type) as any;
+      
+      if (metadata.supportsParent && data.parent !== undefined) {
+        if (data.parent === id) {
+          throw new Error("An item cannot be its own parent");
+        }
+        
+        if (data.parent !== null) {
+          const allItems = await this.list(type);
+          const parentExists = allItems.some((item: any) => item.id === data.parent);
+          if (!parentExists) {
+            throw new Error("Parent does not exist");
+          }
+          
+          const wouldCreateCycle = (targetId: string, newParentId: string): boolean => {
+            const itemMap = new Map(allItems.map((item: any) => [item.id, item]));
+            itemMap.set(targetId, { ...itemMap.get(targetId), parent: newParentId });
+            
+            let current = newParentId;
+            const visited = new Set<string>();
+            while (current) {
+              if (visited.has(current)) return true;
+              if (current === targetId) return true;
+              visited.add(current);
+              const item = itemMap.get(current);
+              current = item?.parent || null;
+            }
+            return false;
+          };
+          
+          if (wouldCreateCycle(id, data.parent)) {
+            throw new Error("This change would create a circular reference");
+          }
+        }
+      }
+      
       const client = getClient();
-      const { table } = getTable(type);
+      const { table } = metadata;
       const tableAny = table as any;
       const [result] = await client
         .update(table)
