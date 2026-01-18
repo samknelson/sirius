@@ -431,6 +431,68 @@ function AssignmentDetailCard({ label, detail }: { label: string; detail: Worker
   );
 }
 
+interface WorkerRatingWithName {
+  id: string;
+  workerId: string;
+  ratingId: string;
+  value: number;
+  ratingName: string;
+}
+
+function WorkerRatingsSection({ workerId, ratingsEnabled }: { workerId: string; ratingsEnabled: boolean }) {
+  const { data: ratings = [], isLoading } = useQuery<WorkerRatingWithName[]>({
+    queryKey: ["/api/worker-ratings/worker", workerId],
+    queryFn: async () => {
+      const response = await fetch(`/api/worker-ratings/worker/${workerId}`);
+      if (!response.ok) throw new Error("Failed to fetch worker ratings");
+      return response.json();
+    },
+    enabled: ratingsEnabled,
+  });
+
+  if (!ratingsEnabled) return null;
+  
+  if (isLoading) {
+    return (
+      <div className="border-t pt-3 space-y-2">
+        <div className="text-sm font-medium text-muted-foreground">Ratings</div>
+        <Skeleton className="h-16 w-full" />
+      </div>
+    );
+  }
+
+  if (ratings.length === 0) {
+    return (
+      <div className="border-t pt-3">
+        <div className="text-sm font-medium text-muted-foreground">Ratings</div>
+        <div className="text-sm text-muted-foreground mt-1">No ratings assigned</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t pt-3">
+      <div className="text-sm font-medium text-muted-foreground mb-2">Ratings</div>
+      <div className="grid grid-cols-2 gap-2">
+        {ratings.map((rating) => (
+          <div key={rating.id} className="flex items-center justify-between bg-muted/50 rounded-md px-2 py-1.5">
+            <span className="text-sm truncate mr-2">{rating.ratingName}</span>
+            <div className="flex items-center gap-0.5 flex-shrink-0">
+              {[0, 1, 2, 3].map((i) => (
+                <Star
+                  key={i}
+                  className={`h-3 w-3 ${i < rating.value ? "text-yellow-400" : "text-muted-foreground/30"}`}
+                  fill={i < rating.value ? "currentColor" : "none"}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function WorkerAssignmentModal({ 
   worker, 
   open, 
@@ -451,6 +513,13 @@ function WorkerAssignmentModal({
     },
     enabled: open,
   });
+
+  const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
+    queryKey: ["/api/components/config"],
+    staleTime: 60000,
+  });
+  
+  const ratingsEnabled = componentConfigs.find(c => c.componentId === "worker.ratings")?.enabled ?? false;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -483,6 +552,8 @@ function WorkerAssignmentModal({
               <AssignmentDetailCard label="Current Assignment (Same Day)" detail={details.current} />
               <AssignmentDetailCard label="Next Assignment" detail={details.next} />
             </div>
+            
+            <WorkerRatingsSection workerId={worker.id} ratingsEnabled={ratingsEnabled} />
           </div>
         ) : (
           <div className="text-muted-foreground">No details available</div>
