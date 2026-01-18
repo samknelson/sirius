@@ -1,17 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { QRCodeSVG } from "qrcode.react";
 import { useState, useEffect, useMemo } from "react";
 import { QrCode, RefreshCw, Clock } from "lucide-react";
-
-interface UserData {
-  id: string;
-  email: string;
-  workerId?: string;
-  contactId?: string;
-  firstName?: string;
-  lastName?: string;
-}
+import { useAuth } from "@/contexts/AuthContext";
 
 function generateQRPayload(workerId: string): string {
   const timestamp = Math.floor(Date.now() / 1000);
@@ -26,9 +17,7 @@ export default function WorkerQRCode() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [secondsUntilRefresh, setSecondsUntilRefresh] = useState(60);
 
-  const { data: user, isLoading, error } = useQuery<UserData>({
-    queryKey: ["/api/auth/user"],
-  });
+  const { user, isLoading } = useAuth();
 
   useEffect(() => {
     const refreshInterval = setInterval(() => {
@@ -58,20 +47,6 @@ export default function WorkerQRCode() {
           <CardContent className="py-12">
             <div className="flex items-center justify-center">
               <div className="animate-pulse text-muted-foreground">Loading...</div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
-          <CardContent className="py-12">
-            <div className="text-center text-destructive" data-testid="text-error">
-              Failed to load user information
             </div>
           </CardContent>
         </Card>
