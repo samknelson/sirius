@@ -174,7 +174,6 @@ const EmploymentStatusesPage = lazy(() => import("@/pages/config/employment-stat
 const TrustBenefitTypesPage = lazy(() => import("@/pages/config/trust-benefit-types"));
 const EmployerContactTypesPage = lazy(() => import("@/pages/config/employer-contact-types"));
 const EmployerTypesPage = lazy(() => import("@/pages/config/employer-types"));
-const DepartmentsPage = lazy(() => import("@/pages/config/departments"));
 const ProviderContactTypesPage = lazy(() => import("@/pages/config/provider-contact-types"));
 const EventTypesPage = lazy(() => import("@/pages/config/event-types"));
 const DispatchJobTypesPage = lazy(() => import("@/pages/config/dispatch-job-types"));
@@ -1626,16 +1625,6 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <EmployerTypesPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/departments">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <DepartmentsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
