@@ -9,7 +9,7 @@ import { getEffectiveUser } from "./masquerade";
 
 const crewInputSchema = insertEdlsCrewsSchema.omit({ sheetId: true });
 
-const sheetWithCrewsSchema = insertEdlsSheetsSchema.extend({
+const sheetWithCrewsSchema = insertEdlsSheetsSchema.omit({ employerId: true }).extend({
   crews: z.array(crewInputSchema).min(1, "At least one crew is required"),
 });
 
@@ -232,9 +232,12 @@ export function registerEdlsSheetsRoutes(
         return;
       }
       
-      const { crews, ...sheetData } = parsed.data;
+      const { crews, ...parsedSheetData } = parsed.data;
       
-      sheetData.employerId = edlsSettings.employer;
+      const sheetData = {
+        ...parsedSheetData,
+        employerId: edlsSettings.employer,
+      };
       
       if (!sheetData.departmentId) {
         sheetData.departmentId = existingSheet.departmentId;
