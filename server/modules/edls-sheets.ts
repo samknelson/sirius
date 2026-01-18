@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { storage } from "../storage";
-import { insertEdlsSheetsSchema, insertEdlsCrewsSchema, type InsertEdlsCrew } from "@shared/schema";
+import { insertEdlsSheetsSchema, insertEdlsCrewsSchema, updateAssignmentExtraSchema, type InsertEdlsCrew } from "@shared/schema";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
 import { z } from "zod";
@@ -506,6 +506,48 @@ export function registerEdlsSheetsRoutes(
       } catch (error) {
         console.error("Failed to delete assignment:", error);
         res.status(500).json({ message: "Failed to delete assignment" });
+      }
+    }
+  );
+
+  app.patch(
+    "/api/edls/sheets/:sheetId/assignments/:assignmentId",
+    requireAuth,
+    edlsComponent,
+    requireAccess('edls.sheet.edit', (req) => req.params.sheetId),
+    async (req, res) => {
+      try {
+        const { sheetId, assignmentId } = req.params;
+        
+        const sheet = await storage.edlsSheets.get(sheetId);
+        if (!sheet) {
+          res.status(404).json({ message: "Sheet not found" });
+          return;
+        }
+        
+        const assignment = await storage.edlsAssignments.get(assignmentId);
+        if (!assignment) {
+          res.status(404).json({ message: "Assignment not found" });
+          return;
+        }
+        
+        const crew = await storage.edlsCrews.get(assignment.crewId);
+        if (!crew || crew.sheetId !== sheetId) {
+          res.status(404).json({ message: "Assignment not found on this sheet" });
+          return;
+        }
+        
+        const parsed = updateAssignmentExtraSchema.safeParse(req.body);
+        if (!parsed.success) {
+          res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+          return;
+        }
+        
+        const updated = await storage.edlsAssignments.updateData(assignmentId, parsed.data);
+        res.json(updated);
+      } catch (error) {
+        console.error("Failed to update assignment:", error);
+        res.status(500).json({ message: "Failed to update assignment" });
       }
     }
   );
