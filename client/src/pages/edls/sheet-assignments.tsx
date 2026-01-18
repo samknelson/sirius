@@ -71,6 +71,13 @@ interface AssignmentsContextValue {
   unassignWorker: (assignmentId: string) => void;
   isAssigning: boolean;
   isUnassigning: boolean;
+  selectedRatingId: string;
+  setSelectedRatingId: (id: string) => void;
+  workerRatingsMap: Map<string, number>;
+  ratingsEnabled: boolean;
+  hierarchicalRatings: RatingOptionWithLevel[];
+  availableWorkers: AvailableWorker[];
+  isLoadingWorkers: boolean;
 }
 
 const AssignmentsContext = createContext<AssignmentsContextValue | null>(null);
@@ -203,12 +210,29 @@ interface CrewCardProps {
 }
 
 function CrewCard({ crew }: CrewCardProps) {
-  const { selectedCrewId, setSelectedCrewId, assignments } = useAssignments();
+  const { selectedCrewId, setSelectedCrewId, assignments, selectedRatingId, workerRatingsMap } = useAssignments();
   const isSelected = selectedCrewId === crew.id;
   
   const crewAssignments = assignments.filter(a => a.crewId === crew.id);
   const emptySlotCount = Math.max(0, crew.workerCount - crewAssignments.length);
   const emptySlots = Array.from({ length: emptySlotCount }, (_, i) => i);
+
+  const ratingStats = useMemo(() => {
+    if (selectedRatingId === "all") return null;
+    
+    let total = 0;
+    let count = 0;
+    for (const assignment of crewAssignments) {
+      const rating = workerRatingsMap.get(assignment.workerId);
+      if (rating !== undefined) {
+        total += rating;
+        count++;
+      }
+    }
+    
+    if (count === 0) return { total: 0, average: 0, count: 0 };
+    return { total, average: Math.round((total / count) * 10) / 10, count };
+  }, [crewAssignments, selectedRatingId, workerRatingsMap]);
 
   const handleClick = () => {
     setSelectedCrewId(isSelected ? null : crew.id);
@@ -228,9 +252,17 @@ function CrewCard({ crew }: CrewCardProps) {
               {crew.title}
             </CardTitle>
           </div>
-          <Badge variant="secondary" data-testid={`crew-worker-count-${crew.id}`}>
-            {crewAssignments.length} / {crew.workerCount}
-          </Badge>
+          <div className="flex items-center gap-2">
+            {ratingStats && (
+              <Badge variant="outline" className="text-xs" data-testid={`crew-rating-${crew.id}`}>
+                <Star className="h-3 w-3 mr-1 text-yellow-400" fill="currentColor" />
+                {ratingStats.total} ({ratingStats.average})
+              </Badge>
+            )}
+            <Badge variant="secondary" data-testid={`crew-worker-count-${crew.id}`}>
+              {crewAssignments.length} / {crew.workerCount}
+            </Badge>
+          </div>
         </div>
         <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
           <div className="flex items-center gap-1" data-testid={`crew-time-${crew.id}`}>
@@ -271,7 +303,7 @@ function CrewCard({ crew }: CrewCardProps) {
 
 function CrewsList() {
   const { sheet } = useEdlsSheetLayout();
-  const { selectedCrewId } = useAssignments();
+  const { selectedCrewId, selectedRatingId, workerRatingsMap, assignments } = useAssignments();
 
   const { data: crews = [], isLoading } = useQuery<EdlsCrewWithRelations[]>({
     queryKey: ["/api/edls/sheets", sheet.id, "crews"],
@@ -281,6 +313,23 @@ function CrewsList() {
       return response.json();
     },
   });
+
+  const sheetRatingStats = useMemo(() => {
+    if (selectedRatingId === "all") return null;
+    
+    let total = 0;
+    let count = 0;
+    for (const assignment of assignments) {
+      const rating = workerRatingsMap.get(assignment.workerId);
+      if (rating !== undefined) {
+        total += rating;
+        count++;
+      }
+    }
+    
+    if (count === 0) return { total: 0, average: 0, count: 0 };
+    return { total, average: Math.round((total / count) * 10) / 10, count };
+  }, [assignments, selectedRatingId, workerRatingsMap]);
 
   if (isLoading) {
     return (
@@ -305,6 +354,15 @@ function CrewsList() {
 
   return (
     <div className="space-y-4">
+      {sheetRatingStats && (
+        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-md">
+          <span className="text-sm text-muted-foreground">Sheet Rating Totals</span>
+          <Badge variant="outline" data-testid="sheet-rating-stats">
+            <Star className="h-3 w-3 mr-1 text-yellow-400" fill="currentColor" />
+            Total: {sheetRatingStats.total} | Avg: {sheetRatingStats.average}
+          </Badge>
+        </div>
+      )}
       {!selectedCrewId && (
         <p className="text-sm text-muted-foreground">Click a crew to select it, then click a worker to assign them.</p>
       )}
@@ -665,44 +723,27 @@ function StarRating({ value }: { value: number }) {
 }
 
 function AvailableWorkersPanel() {
-  const { sheet } = useEdlsSheetLayout();
-  const { selectedCrewId, assignWorker, isAssigning, assignments } = useAssignments();
+  const { 
+    selectedCrewId, 
+    assignWorker, 
+    isAssigning, 
+    assignments,
+    selectedRatingId,
+    setSelectedRatingId,
+    ratingsEnabled,
+    hierarchicalRatings,
+    availableWorkers: workers,
+    isLoadingWorkers: isLoading
+  } = useAssignments();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [currentFilter, setCurrentFilter] = useState<AssignmentFilter>("all");
   const [nextFilter, setNextFilter] = useState<AssignmentFilter>("all");
-  const [selectedRatingId, setSelectedRatingId] = useState<string>("all");
   
   const assignedWorkerIds = useMemo(() => 
     new Set(assignments.map(a => a.workerId)), 
     [assignments]
   );
-
-  const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
-    queryKey: ["/api/components/config"],
-    staleTime: 60000,
-  });
-  
-  const ratingsEnabled = componentConfigs.find(c => c.componentId === "worker.ratings")?.enabled ?? false;
-
-  const { data: ratingOptions = [] } = useQuery<RatingOption[]>({
-    queryKey: ["/api/options/worker-rating"],
-    enabled: ratingsEnabled,
-  });
-
-  const hierarchicalRatings = useMemo(() => buildRatingHierarchy(ratingOptions), [ratingOptions]);
-
-  const { data: workers = [], isLoading } = useQuery<AvailableWorker[]>({
-    queryKey: ["/api/edls/sheets", sheet.id, "available-workers", selectedRatingId],
-    queryFn: async () => {
-      const url = selectedRatingId && selectedRatingId !== "all"
-        ? `/api/edls/sheets/${sheet.id}/available-workers?ratingId=${selectedRatingId}`
-        : `/api/edls/sheets/${sheet.id}/available-workers`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Failed to fetch available workers");
-      return response.json();
-    },
-  });
 
   const filteredWorkers = useMemo(() => {
     let result = workers;
@@ -864,6 +905,7 @@ function EdlsSheetAssignmentsContent() {
   const { sheet } = useEdlsSheetLayout();
   const { toast } = useToast();
   const [selectedCrewId, setSelectedCrewId] = useState<string | null>(null);
+  const [selectedRatingId, setSelectedRatingId] = useState<string>("all");
 
   const { data: assignments = [] } = useQuery<AssignmentWithWorker[]>({
     queryKey: ["/api/edls/sheets", sheet.id, "assignments"],
@@ -873,6 +915,42 @@ function EdlsSheetAssignmentsContent() {
       return response.json();
     },
   });
+
+  const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
+    queryKey: ["/api/components/config"],
+    staleTime: 60000,
+  });
+  
+  const ratingsEnabled = componentConfigs.find(c => c.componentId === "worker.ratings")?.enabled ?? false;
+
+  const { data: ratingOptions = [] } = useQuery<RatingOption[]>({
+    queryKey: ["/api/options/worker-rating"],
+    enabled: ratingsEnabled,
+  });
+
+  const hierarchicalRatings = useMemo(() => buildRatingHierarchy(ratingOptions), [ratingOptions]);
+
+  const { data: availableWorkers = [], isLoading: isLoadingWorkers } = useQuery<AvailableWorker[]>({
+    queryKey: ["/api/edls/sheets", sheet.id, "available-workers", selectedRatingId],
+    queryFn: async () => {
+      const url = selectedRatingId && selectedRatingId !== "all"
+        ? `/api/edls/sheets/${sheet.id}/available-workers?ratingId=${selectedRatingId}`
+        : `/api/edls/sheets/${sheet.id}/available-workers`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Failed to fetch available workers");
+      return response.json();
+    },
+  });
+
+  const workerRatingsMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const worker of availableWorkers) {
+      if (worker.ratingValue !== null) {
+        map.set(worker.id, worker.ratingValue);
+      }
+    }
+    return map;
+  }, [availableWorkers]);
 
   const assignMutation = useMutation({
     mutationFn: async (workerId: string) => {
@@ -928,6 +1006,13 @@ function EdlsSheetAssignmentsContent() {
     unassignWorker: (assignmentId: string) => unassignMutation.mutate(assignmentId),
     isAssigning: assignMutation.isPending,
     isUnassigning: unassignMutation.isPending,
+    selectedRatingId,
+    setSelectedRatingId,
+    workerRatingsMap,
+    ratingsEnabled,
+    hierarchicalRatings,
+    availableWorkers,
+    isLoadingWorkers,
   };
 
   return (
