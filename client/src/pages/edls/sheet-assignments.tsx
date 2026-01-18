@@ -42,7 +42,9 @@ interface AssignmentsContextValue {
   setSelectedCrewId: (id: string | null) => void;
   assignments: AssignmentWithWorker[];
   assignWorker: (workerId: string) => void;
+  unassignWorker: (assignmentId: string) => void;
   isAssigning: boolean;
+  isUnassigning: boolean;
 }
 
 const AssignmentsContext = createContext<AssignmentsContextValue | null>(null);
@@ -128,9 +130,17 @@ interface AssignedWorkerSlotProps {
 }
 
 function AssignedWorkerSlot({ assignment }: AssignedWorkerSlotProps) {
+  const { unassignWorker, isUnassigning } = useAssignments();
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    unassignWorker(assignment.id);
+  };
+
   return (
     <div
-      className="flex items-center gap-2 p-2 border rounded-md bg-background"
+      onClick={handleClick}
+      className={`flex items-center gap-2 p-2 border rounded-md bg-background cursor-pointer hover-elevate ${isUnassigning ? "pointer-events-none opacity-50" : ""}`}
       data-testid={`assigned-${assignment.id}`}
     >
       <span className="text-sm">{formatAssignedWorkerName(assignment.worker)}</span>
@@ -422,12 +432,36 @@ function EdlsSheetAssignmentsContent() {
     },
   });
 
+  const unassignMutation = useMutation({
+    mutationFn: async (assignmentId: string) => {
+      return apiRequest("DELETE", `/api/edls/sheets/${sheet.id}/assignments/${assignmentId}`);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Worker unassigned",
+        description: "The worker has been removed from the crew.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheet.id, "assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheet.id, "available-workers"] });
+    },
+    onError: (error: any) => {
+      const message = error?.message || "Failed to unassign worker";
+      toast({
+        title: "Unassignment failed",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const contextValue: AssignmentsContextValue = {
     selectedCrewId,
     setSelectedCrewId,
     assignments,
     assignWorker: (workerId: string) => assignMutation.mutate(workerId),
+    unassignWorker: (assignmentId: string) => unassignMutation.mutate(assignmentId),
     isAssigning: assignMutation.isPending,
+    isUnassigning: unassignMutation.isPending,
   };
 
   return (

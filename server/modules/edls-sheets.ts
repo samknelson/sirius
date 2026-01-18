@@ -444,6 +444,42 @@ export function registerEdlsSheetsRoutes(
     }
   });
 
+  app.delete(
+    "/api/edls/sheets/:sheetId/assignments/:assignmentId",
+    requireAuth,
+    edlsComponent,
+    requireAccess('edls.sheet.edit', (req) => req.params.sheetId),
+    async (req, res) => {
+      try {
+        const { sheetId, assignmentId } = req.params;
+        
+        const sheet = await storage.edlsSheets.get(sheetId);
+        if (!sheet) {
+          res.status(404).json({ message: "Sheet not found" });
+          return;
+        }
+        
+        const assignment = await storage.edlsAssignments.get(assignmentId);
+        if (!assignment) {
+          res.status(404).json({ message: "Assignment not found" });
+          return;
+        }
+        
+        const crew = await storage.edlsCrews.get(assignment.crewId);
+        if (!crew || crew.sheetId !== sheetId) {
+          res.status(404).json({ message: "Assignment not found on this sheet" });
+          return;
+        }
+        
+        await storage.edlsAssignments.delete(assignmentId);
+        res.status(204).send();
+      } catch (error) {
+        console.error("Failed to delete assignment:", error);
+        res.status(500).json({ message: "Failed to delete assignment" });
+      }
+    }
+  );
+
   const setStatusSchema = z.object({
     status: z.enum(["draft", "request", "lock", "trash", "reserved"]),
   });
