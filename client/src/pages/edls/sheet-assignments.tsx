@@ -1,18 +1,20 @@
 import { useState, useMemo, createContext, useContext } from "react";
 import { Link } from "wouter";
 import { formatYmd } from "@shared/utils/date";
-import { Calendar, Users, Clock, MapPin, User, ClipboardList, UserPlus, Search, Check, Star } from "lucide-react";
+import { Calendar, Users, Clock, MapPin, User, ClipboardList, UserPlus, Search, Check, Star, Pencil } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { EdlsSheetStatus, EdlsCrew } from "@shared/schema";
+import type { EdlsSheetStatus, EdlsCrew, AssignmentExtra } from "@shared/schema";
 
 interface WorkerAssignmentDetail {
   sheetId: string;
@@ -54,6 +56,7 @@ interface AssignmentWithWorker {
   crewId: string;
   workerId: string;
   ymd: string;
+  data: AssignmentExtra | null;
   worker: {
     id: string;
     siriusId: number | null;
@@ -185,33 +188,149 @@ function formatAssignedWorkerName(worker: AssignmentWithWorker["worker"]): strin
   return worker.siriusId ? `Worker #${worker.siriusId}` : "Unknown Worker";
 }
 
+function formatTime12h(time: string | null | undefined): string {
+  if (!time) return "";
+  const [hours, minutes] = time.split(":");
+  const hour = parseInt(hours, 10);
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minutes} ${ampm}`;
+}
+
+interface EditAssignmentExtrasModalProps {
+  assignment: AssignmentWithWorker;
+  sheetId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+function EditAssignmentExtrasModal({ assignment, sheetId, open, onOpenChange }: EditAssignmentExtrasModalProps) {
+  const { toast } = useToast();
+  const assignmentData = (assignment.data as AssignmentExtra) || {};
+  const [startTime, setStartTime] = useState<string>(assignmentData.startTime || "");
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: AssignmentExtra) => {
+      const response = await apiRequest("PATCH", `/api/edls/sheets/${sheetId}/assignments/${assignment.id}`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheetId, "assignments"] });
+      toast({ title: "Assignment updated" });
+      onOpenChange(false);
+    },
+    onError: () => {
+      toast({ title: "Failed to update assignment", variant: "destructive" });
+    },
+  });
+
+  const handleSave = () => {
+    updateMutation.mutate({ startTime: startTime || null });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[400px]">
+        <DialogHeader>
+          <DialogTitle>Edit Assignment</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="startTime">Start Time</Label>
+            <Input
+              id="startTime"
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              data-testid="input-start-time"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel">
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={updateMutation.isPending} data-testid="button-save">
+            {updateMutation.isPending ? "Saving..." : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 interface AssignedWorkerSlotProps {
   assignment: AssignmentWithWorker;
   crewId: string;
+  sheetId: string;
 }
 
-function AssignedWorkerSlot({ assignment, crewId }: AssignedWorkerSlotProps) {
-  const { unassignWorker, isUnassigning, setSelectedCrewId } = useAssignments();
+function AssignedWorkerSlot({ assignment, crewId, sheetId }: AssignedWorkerSlotProps) {
+  const { unassignWorker, isUnassigning, setSelectedCrewId, selectedRatingId, workerRatingsMap } = useAssignments();
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const assignmentData = (assignment.data as AssignmentExtra) || {};
 
-  const handleClick = (e: React.MouseEvent) => {
+  const handleUnassign = (e: React.MouseEvent) => {
     e.stopPropagation();
     setSelectedCrewId(crewId);
     unassignWorker(assignment.id);
   };
 
+  const handleEditClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditModalOpen(true);
+  };
+
+  const ratingValue = selectedRatingId !== "all" ? workerRatingsMap.get(assignment.workerId) : undefined;
+
   return (
-    <div
-      onClick={handleClick}
-      className={`flex items-center gap-2 p-2 border rounded-md bg-background cursor-pointer hover-elevate ${isUnassigning ? "pointer-events-none opacity-50" : ""}`}
-      data-testid={`assigned-${assignment.id}`}
-    >
-      <span className="text-sm">{formatAssignedWorkerName(assignment.worker)}</span>
-      {assignment.worker.siriusId && (
-        <Badge variant="outline" className="ml-auto text-xs">
-          #{assignment.worker.siriusId}
-        </Badge>
-      )}
-    </div>
+    <>
+      <div
+        className={`flex items-center gap-2 p-2 border rounded-md bg-background ${isUnassigning ? "pointer-events-none opacity-50" : ""}`}
+        data-testid={`assigned-${assignment.id}`}
+      >
+        <div 
+          className="flex items-center gap-2 flex-1 cursor-pointer hover-elevate rounded px-1 -mx-1"
+          onClick={handleUnassign}
+        >
+          <span className="text-sm">{formatAssignedWorkerName(assignment.worker)}</span>
+          {ratingValue !== undefined && (
+            <span className="flex items-center text-xs text-muted-foreground">
+              <Star className="h-3 w-3 mr-0.5 text-yellow-400" fill="currentColor" />
+              {ratingValue}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1 ml-auto">
+          {assignmentData.startTime && (
+            <Badge variant="outline" className="text-xs">
+              <Clock className="h-3 w-3 mr-1" />
+              {formatTime12h(assignmentData.startTime)}
+            </Badge>
+          )}
+          {assignment.worker.siriusId && (
+            <Badge variant="outline" className="text-xs">
+              #{assignment.worker.siriusId}
+            </Badge>
+          )}
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-6 w-6"
+            onClick={handleEditClick}
+            data-testid={`button-edit-${assignment.id}`}
+          >
+            <Pencil className="h-3 w-3" />
+          </Button>
+        </div>
+      </div>
+      <EditAssignmentExtrasModal
+        assignment={assignment}
+        sheetId={sheetId}
+        open={editModalOpen}
+        onOpenChange={setEditModalOpen}
+      />
+    </>
   );
 }
 
@@ -237,6 +356,7 @@ interface CrewCardProps {
 }
 
 function CrewCard({ crew }: CrewCardProps) {
+  const { sheet } = useEdlsSheetLayout();
   const { selectedCrewId, setSelectedCrewId, assignments, selectedRatingId, workerRatingsMap } = useAssignments();
   const isSelected = selectedCrewId === crew.id;
   
@@ -317,7 +437,7 @@ function CrewCard({ crew }: CrewCardProps) {
       <CardContent>
         <div className="flex flex-col gap-2">
           {crewAssignments.map((assignment) => (
-            <AssignedWorkerSlot key={assignment.id} assignment={assignment} crewId={crew.id} />
+            <AssignedWorkerSlot key={assignment.id} assignment={assignment} crewId={crew.id} sheetId={sheet.id} />
           ))}
           {emptySlots.map((slotIndex) => (
             <EmptySlot key={`empty-${slotIndex}`} slotIndex={slotIndex} crewId={crew.id} />
