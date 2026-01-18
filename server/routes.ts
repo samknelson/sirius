@@ -64,6 +64,7 @@ import { registerWorkerDispatchHfeRoutes } from "./modules/worker-dispatch-hfe";
 import { registerWorkerBansRoutes } from "./modules/worker-bans";
 import { registerWorkerSkillsRoutes } from "./modules/worker-skills";
 import { registerWorkerCertificationsRoutes } from "./modules/worker-certifications";
+import { registerWorkerRatingsRoutes } from "./modules/worker-ratings";
 import { requireComponent } from "./modules/components";
 import { registerWorkerStewardAssignmentRoutes } from "./modules/worker-steward-assignments";
 import { registerBtuCsgRoutes } from "./modules/sitespecific-btu-csg";
@@ -1092,6 +1093,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register worker certifications routes (handles all access control internally)
   registerWorkerCertificationsRoutes(app, requireAuth, requireAccess, requirePermission);
+
+  // Register worker ratings routes (handles all access control internally)
+  registerWorkerRatingsRoutes(app, requireAuth, requireAccess, requirePermission);
 
   // Register site-specific routes
   registerBtuCsgRoutes(app, requireAuth, requirePermission);
