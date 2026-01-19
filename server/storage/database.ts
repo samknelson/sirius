@@ -18,6 +18,7 @@ import { type CronJobStorage, createCronJobStorage, type CronJobRunStorage, crea
 import { type ChargePluginConfigStorage, createChargePluginConfigStorage } from "./charge-plugins";
 import { type LogsStorage, createLogsStorage } from "./logs";
 import { type WorkerWshStorage, createWorkerWshStorage, workerWshLoggingConfig } from "./worker-wsh";
+import { type WorkerMshStorage, createWorkerMshStorage, workerMshLoggingConfig } from "./worker-msh";
 import { type WorkerHoursStorage, createWorkerHoursStorage, workerHoursLoggingConfig } from "./worker-hours";
 import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./policies";
 import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnitLoggingConfig } from "./bargaining-units";
@@ -73,6 +74,7 @@ export interface IStorage {
   chargePluginConfigs: ChargePluginConfigStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
+  workerMsh: WorkerMshStorage;
   workerHours: WorkerHoursStorage;
   policies: PolicyStorage;
   bargainingUnits: BargainingUnitStorage;
@@ -127,6 +129,7 @@ export class DatabaseStorage implements IStorage {
   chargePluginConfigs: ChargePluginConfigStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
+  workerMsh: WorkerMshStorage;
   workerHours: WorkerHoursStorage;
   policies: PolicyStorage;
   bargainingUnits: BargainingUnitStorage;
@@ -203,6 +206,16 @@ export class DatabaseStorage implements IStorage {
         }
       ),
       workerWshLoggingConfig
+    );
+    this.workerMsh = withStorageLogging(
+      createWorkerMshStorage(
+        this.workers.updateWorkerMemberStatuses.bind(this.workers),
+        async (workerId: string) => {
+          await this.workers.syncWorkerEmployerDenorm(workerId);
+          await this.wmbScanQueue.invalidateWorkerScans(workerId);
+        }
+      ),
+      workerMshLoggingConfig
     );
     this.workerHours = withStorageLogging(
       createWorkerHoursStorage(

@@ -150,6 +150,7 @@ export interface WorkerStorage {
   updateWorkerContactGender(workerId: string, gender: string | null, genderNota: string | null): Promise<Worker | undefined>;
   updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined>;
   updateWorkerStatus(workerId: string, denormWsId: string | null): Promise<Worker | undefined>;
+  updateWorkerMemberStatuses(workerId: string, denormMsIds: string[] | null): Promise<Worker | undefined>;
   setDenormDataProvider(provider: (workerId: string) => Promise<WorkerDenormData>): void;
   syncWorkerEmployerDenorm(workerId: string): Promise<void>;
   deleteWorker(id: string): Promise<boolean>;
@@ -397,6 +398,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           contactId: workers.contactId,
           ssn: workers.ssn,
           denormWsId: workers.denormWsId,
+          denormMsIds: workers.denormMsIds,
           denormJobTitle: workers.denormJobTitle,
           denormHomeEmployerId: workers.denormHomeEmployerId,
           denormEmployerIds: workers.denormEmployerIds,
@@ -564,6 +566,17 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       const [updatedWorker] = await client
         .update(workers)
         .set({ denormWsId })
+        .where(eq(workers.id, workerId))
+        .returning();
+      
+      return updatedWorker || undefined;
+    },
+
+    async updateWorkerMemberStatuses(workerId: string, denormMsIds: string[] | null): Promise<Worker | undefined> {
+      const client = getClient();
+      const [updatedWorker] = await client
+        .update(workers)
+        .set({ denormMsIds })
         .where(eq(workers.id, workerId))
         .returning();
       

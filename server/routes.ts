@@ -32,6 +32,7 @@ import { registerLedgerPaymentRoutes } from "./modules/ledger/payments";
 import { registerAccessPolicyRoutes } from "./modules/access-policies";
 import { registerLogRoutes } from "./modules/logs";
 import { registerWorkerWshRoutes } from "./modules/worker-wsh";
+import { registerWorkerMshRoutes } from "./modules/worker-msh";
 import { registerWorkerHoursRoutes } from "./modules/worker-hours";
 import { registerQuickstartRoutes } from "./modules/quickstart";
 import { registerCronJobRoutes } from "./modules/cron_jobs";
@@ -288,6 +289,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register log management routes
   registerLogRoutes(app, requireAuth, requirePermission, requireAccess);
   registerWorkerWshRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerWsh);
+  registerWorkerMshRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerMsh);
   registerWorkerHoursRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerHours, storage.ledger);
   registerQuickstartRoutes(app);
 
