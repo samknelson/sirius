@@ -47,6 +47,7 @@ import { type AuthIdentitiesStorage, createAuthIdentitiesStorage } from "./auth-
 import { type WorkerDispatchEligDenormStorage, createWorkerDispatchEligDenormStorage } from "./worker-dispatch-elig-denorm";
 import { type RawSqlStorage, createRawSqlStorage } from "./raw-sql";
 import { type ReadOnlyStorage, createReadOnlyStorage } from "./read-only";
+import { type WsBundleStorage, type WsClientStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsBundleStorage, createWsClientStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "./db";
 import { employers, workers, contacts } from "@shared/schema";
@@ -105,6 +106,10 @@ export interface IStorage {
   workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
   rawSql: RawSqlStorage;
   readOnly: ReadOnlyStorage;
+  wsBundles: WsBundleStorage;
+  wsClients: WsClientStorage;
+  wsClientCredentials: WsClientCredentialStorage;
+  wsClientIpRules: WsClientIpRuleStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -160,6 +165,10 @@ export class DatabaseStorage implements IStorage {
   workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
   rawSql: RawSqlStorage;
   readOnly: ReadOnlyStorage;
+  wsBundles: WsBundleStorage;
+  wsClients: WsClientStorage;
+  wsClientCredentials: WsClientCredentialStorage;
+  wsClientIpRules: WsClientIpRuleStorage;
 
   constructor() {
     this.variables = withStorageLogging(createVariableStorage(), variableLoggingConfig);
@@ -287,6 +296,10 @@ export class DatabaseStorage implements IStorage {
     this.workerDispatchEligDenorm = createWorkerDispatchEligDenormStorage();
     this.rawSql = createRawSqlStorage();
     this.readOnly = createReadOnlyStorage();
+    this.wsBundles = createWsBundleStorage();
+    this.wsClients = createWsClientStorage();
+    this.wsClientCredentials = createWsClientCredentialStorage();
+    this.wsClientIpRules = createWsClientIpRuleStorage();
   }
 }
 

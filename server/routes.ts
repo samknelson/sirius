@@ -71,6 +71,9 @@ import { registerWorkerStewardAssignmentRoutes } from "./modules/worker-steward-
 import { registerBtuCsgRoutes } from "./modules/sitespecific-btu-csg";
 import { registerEdlsSheetsRoutes } from "./modules/edls-sheets";
 import { registerEdlsTasksRoutes } from "./modules/edls-tasks";
+import { registerWebServiceBundle } from "./modules/webservices";
+import { setupEdlsRoutes, EDLS_BUNDLE_CODE } from "./modules/webservices/edls";
+import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
 import { registerTerminologyRoutes } from "./modules/terminology";
 import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
@@ -1109,6 +1112,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register EDLS routes
   registerEdlsSheetsRoutes(app, requireAuth, requirePermission);
   registerEdlsTasksRoutes(app, requireAuth, requirePermission);
+
+  // Register Web Service bundles (API access via client credentials)
+  registerWebServiceBundle(app, {
+    bundleCode: EDLS_BUNDLE_CODE,
+    setupRoutes: setupEdlsRoutes,
+  });
+
+  // Register Web Service admin routes (for managing bundles, clients, credentials)
+  registerWebServiceAdminRoutes(app, requireAuth, requirePermission);
 
   const httpServer = createServer(app);
   return httpServer;

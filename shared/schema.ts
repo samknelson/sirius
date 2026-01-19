@@ -57,6 +57,29 @@ export {
   type JobTypeData,
 } from "./schema/dispatch/eligibility-config";
 
+export {
+  wsBundles,
+  wsBundleStatusEnum,
+  insertWsBundleSchema,
+  wsClients,
+  wsClientStatusEnum,
+  insertWsClientSchema,
+  wsClientCredentials,
+  insertWsClientCredentialSchema,
+  wsClientIpRules,
+  insertWsClientIpRuleSchema,
+  type WsBundleStatus,
+  type InsertWsBundle,
+  type WsBundle,
+  type WsClientStatus,
+  type InsertWsClient,
+  type WsClient,
+  type InsertWsClientCredential,
+  type WsClientCredential,
+  type InsertWsClientIpRule,
+  type WsClientIpRule,
+} from "./schema/webservices/schema";
+
 // Session storage table for Replit Auth
 export const sessions = pgTable(
   "sessions",
