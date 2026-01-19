@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { storage } from "../../storage";
-import { processBatchQueueJobs, type ProcessingResult } from "../../services/wmb-scan-queue";
-import { logger } from "../../logger";
-import type { CronJobHandler, CronJobContext, CronJobSummary, CronJobSettingsField } from "../registry";
+import { processBatchQueueJobs } from "../../services/wmb-scan-queue";
+import type { CronJobHandler, CronJobContext, CronJobResult, CronJobSettingsField } from "../registry";
 
 const settingsSchema = z.object({
   batchSize: z.number().int().min(1).max(100).default(10),
@@ -33,93 +32,51 @@ export const processWmbBatchHandler: CronJobHandler = {
     },
   ],
 
-  async execute(context: CronJobContext): Promise<CronJobSummary> {
+  async execute(context: CronJobContext): Promise<CronJobResult> {
     const settings = settingsSchema.parse({
       ...DEFAULT_SETTINGS,
       ...context.settings,
     });
 
-    logger.info('Starting WMB batch processing', {
-      service: 'cron-process-wmb-batch',
-      jobId: context.jobId,
-      batchSize: settings.batchSize,
-      mode: context.mode,
-    });
+    const getQueueStats = async () => {
+      const summary = await storage.wmbScanQueue.getPendingSummary();
+      return summary.reduce(
+        (acc, row) => ({
+          pending: acc.pending + row.pending,
+          processing: acc.processing + row.processing,
+          success: acc.success + row.success,
+          failed: acc.failed + row.failed,
+        }),
+        { pending: 0, processing: 0, success: 0, failed: 0 }
+      );
+    };
 
-    try {
-      let result: ProcessingResult;
-
-      const getQueueStats = async () => {
-        const summary = await storage.wmbScanQueue.getPendingSummary();
-        const totals = summary.reduce(
-          (acc, row) => ({
-            pending: acc.pending + row.pending,
-            processing: acc.processing + row.processing,
-            success: acc.success + row.success,
-            failed: acc.failed + row.failed,
-          }),
-          { pending: 0, processing: 0, success: 0, failed: 0 }
-        );
-        return totals;
-      };
-
-      if (context.mode === 'test') {
-        const stats = await getQueueStats();
-        const wouldProcess = Math.min(stats.pending + stats.processing, settings.batchSize);
-        
-        logger.info('[TEST MODE] WMB batch processing - would process', {
-          service: 'cron-process-wmb-batch',
-          jobId: context.jobId,
-          wouldProcess,
-          batchSize: settings.batchSize,
-        });
-
-        return {
-          mode: 'test',
-          batchSize: settings.batchSize,
-          wouldProcess,
-          queueStatus: {
-            queuedCount: stats.pending,
-            processingCount: stats.processing,
-            completedCount: stats.success,
-            failedCount: stats.failed,
-          },
-        };
-      }
-
-      result = await processBatchQueueJobs(storage, settings.batchSize);
-
+    if (context.mode === 'test') {
       const stats = await getQueueStats();
-
-      logger.info('WMB batch processing completed', {
-        service: 'cron-process-wmb-batch',
-        jobId: context.jobId,
-        processed: result.processed,
-        succeeded: result.succeeded,
-        failed: result.failed,
-      });
+      const wouldProcess = Math.min(stats.pending + stats.processing, settings.batchSize);
 
       return {
-        mode: 'live',
-        batchSize: settings.batchSize,
+        message: `Would process ${wouldProcess} WMB scan jobs (${stats.pending} pending, batch size ${settings.batchSize})`,
+        metadata: {
+          wouldProcess,
+          batchSize: settings.batchSize,
+          queueStatus: stats,
+        },
+      };
+    }
+
+    const result = await processBatchQueueJobs(storage, settings.batchSize);
+    const stats = await getQueueStats();
+
+    return {
+      message: `Processed ${result.processed} jobs: ${result.succeeded} succeeded, ${result.failed} failed`,
+      metadata: {
         processed: result.processed,
         succeeded: result.succeeded,
         failed: result.failed,
-        queueStatus: {
-          queuedCount: stats.pending,
-          processingCount: stats.processing,
-          completedCount: stats.success,
-          failedCount: stats.failed,
-        },
-      };
-
-    } catch (error) {
-      logger.error('Failed to process WMB batch', {
-        service: 'cron-process-wmb-batch',
-        jobId: context.jobId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    }
+        batchSize: settings.batchSize,
+        queueStatus: stats,
+      },
+    };
   },
 };
