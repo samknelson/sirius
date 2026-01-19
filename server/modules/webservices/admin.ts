@@ -224,6 +224,19 @@ export function registerWebServiceAdminRoutes(
     }
   });
 
+  app.post("/api/admin/ws-credentials/:id/reactivate", requireAuth, requirePermission("admin"), async (req, res) => {
+    try {
+      const reactivated = await storage.wsClientCredentials.reactivate(req.params.id);
+      if (!reactivated) {
+        return res.status(404).json({ message: "Credential not found" });
+      }
+      res.json({ message: "Credential reactivated" });
+    } catch (error) {
+      console.error("Failed to reactivate WS credential:", error);
+      res.status(500).json({ message: "Failed to reactivate credential" });
+    }
+  });
+
   app.delete("/api/admin/ws-credentials/:id", requireAuth, requirePermission("admin"), async (req, res) => {
     try {
       const deleted = await storage.wsClientCredentials.delete(req.params.id);

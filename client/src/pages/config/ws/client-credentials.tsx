@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Loader2, Plus, Key, Copy, Check, Trash2, Ban } from "lucide-react";
+import { Loader2, Plus, Key, Copy, Check, Trash2, Ban, RotateCcw } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { WsClientLayout } from "@/components/layouts/WsClientLayout";
 
@@ -82,6 +82,17 @@ function CredentialsContent() {
     },
     onError: (error: any) => {
       toast({ title: "Failed to deactivate credential", description: error?.message || "An error occurred", variant: "destructive" });
+    },
+  });
+
+  const reactivateCredentialMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/admin/ws-credentials/${id}/reactivate`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/ws-clients", params.id, "credentials"] });
+      toast({ title: "Credential reactivated", description: "The credential is now active." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to reactivate credential", description: error?.message || "An error occurred", variant: "destructive" });
     },
   });
 
@@ -173,7 +184,7 @@ function CredentialsContent() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        {cred.isActive && (
+                        {cred.isActive ? (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -183,6 +194,17 @@ function CredentialsContent() {
                             data-testid={`button-deactivate-${cred.id}`}
                           >
                             <Ban className="h-4 w-4" />
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => reactivateCredentialMutation.mutate(cred.id)}
+                            disabled={reactivateCredentialMutation.isPending}
+                            title="Reactivate"
+                            data-testid={`button-reactivate-${cred.id}`}
+                          >
+                            <RotateCcw className="h-4 w-4" />
                           </Button>
                         )}
                         <Button

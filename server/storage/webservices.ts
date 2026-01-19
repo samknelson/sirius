@@ -53,6 +53,7 @@ export interface WsClientCredentialStorage {
   getByClientKey(clientKey: string): Promise<WsClientCredential | undefined>;
   create(clientId: string, label?: string, expiresAt?: Date): Promise<CredentialCreateResult>;
   deactivate(id: string): Promise<boolean>;
+  reactivate(id: string): Promise<boolean>;
   delete(id: string): Promise<boolean>;
   validateSecret(clientKey: string, secret: string): Promise<{ valid: boolean; credential?: WsClientCredential }>;
   recordUsage(id: string): Promise<void>;
@@ -259,6 +260,15 @@ export function createWsClientCredentialStorage(): WsClientCredentialStorage {
       const result = await client
         .update(wsClientCredentials)
         .set({ isActive: false })
+        .where(eq(wsClientCredentials.id, id));
+      return (result.rowCount ?? 0) > 0;
+    },
+
+    async reactivate(id: string): Promise<boolean> {
+      const client = getClient();
+      const result = await client
+        .update(wsClientCredentials)
+        .set({ isActive: true })
         .where(eq(wsClientCredentials.id, id));
       return (result.rowCount ?? 0) > 0;
     },
