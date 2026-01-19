@@ -23,13 +23,40 @@ export interface CronJobSettingsField {
   max?: number; // For number type
 }
 
+/**
+ * Settings adapter for cron jobs with custom settings UI.
+ * Jobs can either use the simple 'fields' mode (using getSettingsFields)
+ * or a 'custom' mode with a registered frontend component.
+ */
+export interface CronJobSettingsAdapter {
+  /** The frontend component ID to render for custom settings */
+  componentId: string;
+  
+  /** 
+   * Load client state for the settings UI.
+   * Returns data needed to render the custom settings component
+   * (e.g., stats, options, current values merged with defaults).
+   */
+  loadClientState: (currentSettings: Record<string, unknown>) => Promise<{
+    clientState: Record<string, unknown>;
+    values: Record<string, unknown>;
+  }>;
+  
+  /**
+   * Validate and transform submitted settings data.
+   * Returns the normalized settings object to persist.
+   */
+  applyUpdate: (data: unknown) => Promise<Record<string, unknown>>;
+}
+
 export interface CronJobHandler {
   execute: (context: CronJobContext) => Promise<CronJobSummary>;
   description?: string;
   requiresComponent?: string; // Component ID that must be enabled for this job to run
   settingsSchema?: z.ZodSchema; // Zod schema for validating settings
   getDefaultSettings?: () => Record<string, unknown>; // Default settings values
-  getSettingsFields?: () => CronJobSettingsField[]; // UI field definitions
+  getSettingsFields?: () => CronJobSettingsField[]; // UI field definitions (for 'fields' mode)
+  settingsAdapter?: CronJobSettingsAdapter; // Custom settings adapter (for 'custom' mode)
 }
 
 export interface RegisteredCronJob {
