@@ -362,6 +362,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async assignPermissionsToRoleBulk(roleId: string, permissionKeys: string[]): Promise<RolePermission[]> {
+      const client = getClient();
       if (permissionKeys.length === 0) {
         return [];
       }
@@ -376,7 +377,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
       }
 
       // Get existing permissions for this role to avoid duplicates
-      const existing = await db
+      const existing = await client
         .select({ permissionKey: rolePermissions.permissionKey })
         .from(rolePermissions)
         .where(eq(rolePermissions.roleId, roleId));
@@ -394,7 +395,7 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
         permissionKey,
       }));
 
-      const result = await db
+      const result = await client
         .insert(rolePermissions)
         .values(values)
         .returning();
