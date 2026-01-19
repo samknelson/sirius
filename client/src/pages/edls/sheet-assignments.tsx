@@ -920,11 +920,27 @@ function AvailableWorkersPanel() {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentFilter, setCurrentFilter] = useState<AssignmentFilter>("all");
   const [nextFilter, setNextFilter] = useState<AssignmentFilter>("all");
+  const [memberStatusFilter, setMemberStatusFilter] = useState<string>("all");
   
   const assignedWorkerIds = useMemo(() => 
     new Set(assignments.map(a => a.workerId)), 
     [assignments]
   );
+
+  const memberStatusOptions = useMemo(() => {
+    const statusMap = new Map<string, { name: string; sequence: number }>();
+    for (const worker of workers) {
+      const key = worker.memberStatusId ?? "__unassigned__";
+      const name = worker.memberStatusName ?? "Unassigned";
+      const sequence = worker.memberStatusSequence ?? 999999;
+      if (!statusMap.has(key)) {
+        statusMap.set(key, { name, sequence });
+      }
+    }
+    return Array.from(statusMap.entries())
+      .map(([id, { name, sequence }]) => ({ id, name, sequence }))
+      .sort((a, b) => a.sequence - b.sequence);
+  }, [workers]);
 
   const filteredWorkers = useMemo(() => {
     let result = workers;
@@ -941,6 +957,14 @@ function AvailableWorkersPanel() {
       result = result.filter(w => w.nextStatus === null);
     }
     
+    if (memberStatusFilter !== "all") {
+      if (memberStatusFilter === "__unassigned__") {
+        result = result.filter(w => w.memberStatusId === null);
+      } else {
+        result = result.filter(w => w.memberStatusId === memberStatusFilter);
+      }
+    }
+    
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       result = result.filter((worker) => {
@@ -950,7 +974,7 @@ function AvailableWorkersPanel() {
     }
     
     return result;
-  }, [workers, searchTerm, currentFilter, nextFilter]);
+  }, [workers, searchTerm, currentFilter, nextFilter, memberStatusFilter]);
 
   const groupedWorkers = useMemo(() => {
     const groups: { name: string; sequence: number; workers: AvailableWorker[] }[] = [];
@@ -1036,6 +1060,25 @@ function AvailableWorkersPanel() {
             </Select>
           </div>
         </div>
+        
+        {memberStatusOptions.length > 0 && (
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Member Status</label>
+            <Select value={memberStatusFilter} onValueChange={setMemberStatusFilter}>
+              <SelectTrigger data-testid="select-member-status-filter" className="h-8 text-xs">
+                <SelectValue placeholder="All statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {memberStatusOptions.map((option) => (
+                  <SelectItem key={option.id} value={option.id}>
+                    {option.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         
         {ratingsEnabled && hierarchicalRatings.length > 0 && (
           <div className="space-y-1">
