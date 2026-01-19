@@ -175,6 +175,7 @@ export const workers = pgTable("workers", {
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
   ssn: text("ssn").unique(),
   denormWsId: varchar("denorm_ws_id").references(() => optionsWorkerWs.id, { onDelete: 'set null' }),
+  denormMsIds: varchar("denorm_ms_ids").array(),
   denormJobTitle: text("denorm_job_title"),
   denormHomeEmployerId: varchar("denorm_home_employer_id").references(() => employers.id, { onDelete: 'set null' }),
   denormEmployerIds: varchar("denorm_employer_ids").array(),
@@ -491,6 +492,18 @@ export const workerWsh = pgTable("worker_wsh", {
   data: jsonb("data"),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
+
+export const workerMsh = pgTable("worker_msh", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  date: date("date").notNull(),
+  workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
+  msId: varchar("ms_id").notNull().references(() => optionsWorkerMs.id, { onDelete: 'cascade' }),
+  industryId: varchar("industry_id").notNull().references(() => optionsIndustry.id, { onDelete: 'cascade' }),
+  data: jsonb("data"),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+}, (table) => ({
+  uniqueWorkerIndustryDate: unique().on(table.workerId, table.industryId, table.date),
+}));
 
 export const contactPostal = pgTable("contact_postal", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -969,6 +982,10 @@ export const insertWorkerWshSchema = createInsertSchema(workerWsh).omit({
   id: true,
 });
 
+export const insertWorkerMshSchema = createInsertSchema(workerMsh).omit({
+  id: true,
+});
+
 export const insertEmployerPolicyHistorySchema = createInsertSchema(employerPolicyHistory).omit({
   id: true,
 });
@@ -1191,6 +1208,9 @@ export type WorkerId = typeof workerIds.$inferSelect;
 
 export type InsertWorkerWsh = z.infer<typeof insertWorkerWshSchema>;
 export type WorkerWsh = typeof workerWsh.$inferSelect;
+
+export type InsertWorkerMsh = z.infer<typeof insertWorkerMshSchema>;
+export type WorkerMsh = typeof workerMsh.$inferSelect;
 
 export type InsertEmployerPolicyHistory = z.infer<typeof insertEmployerPolicyHistorySchema>;
 export type EmployerPolicyHistory = typeof employerPolicyHistory.$inferSelect;
