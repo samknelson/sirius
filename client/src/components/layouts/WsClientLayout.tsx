@@ -1,7 +1,7 @@
 import { ReactNode, createContext, useContext } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ChevronRight, Settings, Key, Shield, Server } from "lucide-react";
+import { ArrowLeft, ChevronRight, Settings, Key, Shield, Server, FlaskConical } from "lucide-react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -165,6 +165,18 @@ export function WsClientLayout({ activeTab, children }: WsClientLayoutProps) {
           >
             <Shield className="h-4 w-4" />
             IP Rules
+          </Link>
+          <Link
+            href={`/config/ws/clients/${id}/test`}
+            className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
+              activeTab === "test"
+                ? "border-primary text-primary font-medium"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+            data-testid="tab-test"
+          >
+            <FlaskConical className="h-4 w-4" />
+            Test
           </Link>
         </nav>
       </div>

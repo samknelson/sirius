@@ -3,6 +3,45 @@ import { z } from "zod";
 import { storage } from "../../storage";
 import { insertWsBundleSchema, insertWsClientSchema, insertWsClientIpRuleSchema } from "@shared/schema";
 
+export interface BundleEndpointMetadata {
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  path: string;
+  description: string;
+  sampleParams?: Record<string, string>;
+  sampleBody?: Record<string, unknown>;
+}
+
+const bundleEndpointsRegistry: Record<string, BundleEndpointMetadata[]> = {
+  edls: [
+    {
+      method: "GET",
+      path: "/sheets",
+      description: "List EDLS sheets with optional filters",
+      sampleParams: {
+        status: "active",
+        page: "1",
+        limit: "20",
+      },
+    },
+    {
+      method: "GET",
+      path: "/sheets/:id",
+      description: "Get a specific EDLS sheet by ID",
+      sampleParams: {
+        id: "<sheet-uuid>",
+      },
+    },
+  ],
+};
+
+export function registerBundleEndpoints(bundleCode: string, endpoints: BundleEndpointMetadata[]): void {
+  bundleEndpointsRegistry[bundleCode] = endpoints;
+}
+
+export function getBundleEndpoints(bundleCode: string): BundleEndpointMetadata[] {
+  return bundleEndpointsRegistry[bundleCode] || [];
+}
+
 type RequireAuth = (req: Request, res: Response, next: NextFunction) => void;
 type RequirePermission = (permission: string) => (req: Request, res: Response, next: NextFunction) => void;
 
@@ -309,6 +348,172 @@ export function registerWebServiceAdminRoutes(
     } catch (error) {
       console.error("Failed to delete WS IP rule:", error);
       res.status(500).json({ message: "Failed to delete IP rule" });
+    }
+  });
+
+  // === Bundle Endpoints Metadata ===
+
+  app.get("/api/admin/ws-bundles/:id/endpoints", requireAuth, requirePermission("admin"), async (req, res) => {
+    try {
+      const bundle = await storage.wsBundles.get(req.params.id);
+      if (!bundle) {
+        return res.status(404).json({ message: "Bundle not found" });
+      }
+      const endpoints = getBundleEndpoints(bundle.code);
+      res.json({ bundleCode: bundle.code, basePath: `/api/ws/${bundle.code}`, endpoints });
+    } catch (error) {
+      console.error("Failed to get bundle endpoints:", error);
+      res.status(500).json({ message: "Failed to get bundle endpoints" });
+    }
+  });
+
+  // === Test Execution ===
+
+  const testRequestSchema = z.object({
+    clientKey: z.string().min(1, "Client key is required"),
+    clientSecret: z.string().min(1, "Client secret is required"),
+    method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
+    path: z.string().min(1, "Path is required"),
+    queryParams: z.record(z.string()).optional(),
+    body: z.unknown().optional(),
+  });
+
+  app.post("/api/admin/ws-clients/:id/test", requireAuth, requirePermission("admin"), async (req, res) => {
+    const startTime = Date.now();
+    
+    try {
+      const client = await storage.wsClients.get(req.params.id);
+      if (!client) {
+        return res.status(404).json({ message: "Client not found" });
+      }
+
+      const parseResult = testRequestSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({
+          message: "Invalid request",
+          errors: parseResult.error.issues.map(i => ({ field: i.path.join("."), message: i.message })),
+        });
+      }
+
+      const { clientKey, clientSecret, method, path, queryParams, body } = parseResult.data;
+
+      // Validate the credentials
+      const validation = await storage.wsClientCredentials.validateSecret(clientKey, clientSecret);
+      if (!validation.valid) {
+        return res.json({
+          success: false,
+          status: 401,
+          error: "Invalid credentials",
+          message: "The provided client key or secret is incorrect",
+          duration: Date.now() - startTime,
+        });
+      }
+
+      if (!validation.credential?.isActive) {
+        return res.json({
+          success: false,
+          status: 401,
+          error: "Credential inactive",
+          message: "The credential is not active",
+          duration: Date.now() - startTime,
+        });
+      }
+
+      // Check if credential belongs to this client
+      if (validation.credential.clientId !== client.id) {
+        return res.json({
+          success: false,
+          status: 401,
+          error: "Credential mismatch",
+          message: "The credential does not belong to this client",
+          duration: Date.now() - startTime,
+        });
+      }
+
+      // Check client status
+      if (client.status !== "active") {
+        return res.json({
+          success: false,
+          status: 403,
+          error: "Client inactive",
+          message: `Client is ${client.status}`,
+          duration: Date.now() - startTime,
+        });
+      }
+
+      // Get the bundle to construct the URL
+      const bundle = await storage.wsBundles.get(client.bundleId);
+      if (!bundle) {
+        return res.json({
+          success: false,
+          status: 500,
+          error: "Bundle not found",
+          message: "The client's bundle configuration is missing",
+          duration: Date.now() - startTime,
+        });
+      }
+
+      // Construct the internal URL
+      const basePath = `/api/ws/${bundle.code}`;
+      const fullPath = `${basePath}${path.startsWith("/") ? path : "/" + path}`;
+      
+      // Build query string
+      const queryString = queryParams && Object.keys(queryParams).length > 0
+        ? "?" + new URLSearchParams(queryParams).toString()
+        : "";
+      
+      const internalUrl = `http://localhost:${process.env.PORT || 5000}${fullPath}${queryString}`;
+
+      // Make the internal request with auth headers
+      const headers: Record<string, string> = {
+        "X-WS-Client-Key": clientKey,
+        "X-WS-Client-Secret": clientSecret,
+        "Content-Type": "application/json",
+      };
+
+      const fetchOptions: RequestInit = {
+        method,
+        headers,
+      };
+
+      if (body && ["POST", "PUT", "PATCH"].includes(method)) {
+        fetchOptions.body = JSON.stringify(body);
+      }
+
+      const response = await fetch(internalUrl, fetchOptions);
+      const responseText = await response.text();
+      
+      let responseData: unknown;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch {
+        responseData = responseText;
+      }
+
+      // Record credential usage
+      await storage.wsClientCredentials.recordUsage(validation.credential.id);
+
+      res.json({
+        success: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        data: responseData,
+        duration: Date.now() - startTime,
+        requestInfo: {
+          method,
+          url: fullPath + queryString,
+        },
+      });
+    } catch (error) {
+      console.error("Failed to execute test request:", error);
+      res.json({
+        success: false,
+        status: 500,
+        error: "Internal error",
+        message: error instanceof Error ? error.message : "An unexpected error occurred",
+        duration: Date.now() - startTime,
+      });
     }
   });
 }
