@@ -123,19 +123,19 @@ function TestContent() {
   const canExecute = clientKey.trim() && clientSecret.trim() && path.trim();
 
   return (
-    <div className="space-y-6">
-      <Card data-testid="card-credentials">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FlaskConical className="h-5 w-5" />
-            Test API Credentials
-          </CardTitle>
-          <CardDescription>
-            Enter your client credentials to test API requests. The secret is only shown once when created.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="space-y-6">
+        <Card data-testid="card-credentials">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FlaskConical className="h-5 w-5" />
+              Credentials
+            </CardTitle>
+            <CardDescription>
+              Enter your client credentials. The secret is only shown once when created.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="client-key">Client Key</Label>
               <Input
@@ -157,143 +157,153 @@ function TestContent() {
                 data-testid="input-client-secret"
               />
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      <Card data-testid="card-request">
-        <CardHeader>
-          <CardTitle>Request</CardTitle>
-          <CardDescription>
-            Configure the API request to test. Base path: {endpointsData?.basePath || `/api/ws/${bundle?.code || "..."}`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {endpointsData && endpointsData.endpoints.length > 0 && (
-            <div className="space-y-2">
-              <Label>Quick Select Endpoint</Label>
-              <Select onValueChange={handleEndpointSelect}>
-                <SelectTrigger data-testid="select-endpoint">
-                  <SelectValue placeholder="Choose an endpoint..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {endpointsData.endpoints.map((ep) => (
-                    <SelectItem
-                      key={`${ep.method}:${ep.path}`}
-                      value={`${ep.method}:${ep.path}`}
-                      data-testid={`option-endpoint-${ep.method}-${ep.path.replace(/[/:]/g, "-")}`}
-                    >
-                      <span className="font-mono text-xs">{ep.method}</span>{" "}
-                      <span>{ep.path}</span> - {ep.description}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          <div className="grid grid-cols-[120px_1fr] gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="method">Method</Label>
-              <Select value={method} onValueChange={(v) => setMethod(v as typeof method)}>
-                <SelectTrigger id="method" data-testid="select-method">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="GET">GET</SelectItem>
-                  <SelectItem value="POST">POST</SelectItem>
-                  <SelectItem value="PUT">PUT</SelectItem>
-                  <SelectItem value="PATCH">PATCH</SelectItem>
-                  <SelectItem value="DELETE">DELETE</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="path">Path</Label>
-              <Input
-                id="path"
-                value={path}
-                onChange={(e) => setPath(e.target.value)}
-                placeholder="/sheets"
-                data-testid="input-path"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="query-params">Query Parameters (JSON object)</Label>
-            <Textarea
-              id="query-params"
-              value={queryParams}
-              onChange={(e) => setQueryParams(e.target.value)}
-              placeholder='{"page": "1", "limit": "10"}'
-              className="font-mono text-sm"
-              rows={3}
-              data-testid="input-query-params"
-            />
-          </div>
-
-          {["POST", "PUT", "PATCH"].includes(method) && (
-            <div className="space-y-2">
-              <Label htmlFor="request-body">Request Body (JSON)</Label>
-              <Textarea
-                id="request-body"
-                value={requestBody}
-                onChange={(e) => setRequestBody(e.target.value)}
-                placeholder="{}"
-                className="font-mono text-sm"
-                rows={5}
-                data-testid="input-request-body"
-              />
-            </div>
-          )}
-
-          <Button
-            onClick={() => testMutation.mutate()}
-            disabled={!canExecute || testMutation.isPending}
-            className="w-full"
-            data-testid="button-execute"
-          >
-            {testMutation.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Play className="h-4 w-4 mr-2" />
-            )}
-            Execute Request
-          </Button>
-        </CardContent>
-      </Card>
-
-      {testResult && (
-        <Card data-testid="card-response">
+        <Card data-testid="card-request">
           <CardHeader>
-            <CardTitle className="flex items-center justify-between">
+            <CardTitle>Request</CardTitle>
+            <CardDescription>
+              Base path: {endpointsData?.basePath || `/api/ws/${bundle?.code || "..."}`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {endpointsData && endpointsData.endpoints.length > 0 && (
+              <div className="space-y-2">
+                <Label>Quick Select Endpoint</Label>
+                <Select onValueChange={handleEndpointSelect}>
+                  <SelectTrigger data-testid="select-endpoint">
+                    <SelectValue placeholder="Choose an endpoint..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {endpointsData.endpoints.map((ep) => (
+                      <SelectItem
+                        key={`${ep.method}:${ep.path}`}
+                        value={`${ep.method}:${ep.path}`}
+                        data-testid={`option-endpoint-${ep.method}-${ep.path.replace(/[/:]/g, "-")}`}
+                      >
+                        <span className="font-mono text-xs">{ep.method}</span>{" "}
+                        <span>{ep.path}</span> - {ep.description}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="grid grid-cols-[100px_1fr] gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="method">Method</Label>
+                <Select value={method} onValueChange={(v) => setMethod(v as typeof method)}>
+                  <SelectTrigger id="method" data-testid="select-method">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="GET">GET</SelectItem>
+                    <SelectItem value="POST">POST</SelectItem>
+                    <SelectItem value="PUT">PUT</SelectItem>
+                    <SelectItem value="PATCH">PATCH</SelectItem>
+                    <SelectItem value="DELETE">DELETE</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="path">Path</Label>
+                <Input
+                  id="path"
+                  value={path}
+                  onChange={(e) => setPath(e.target.value)}
+                  placeholder="/sheets"
+                  data-testid="input-path"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="query-params">Query Parameters (JSON)</Label>
+              <Textarea
+                id="query-params"
+                value={queryParams}
+                onChange={(e) => setQueryParams(e.target.value)}
+                placeholder='{"page": "1", "limit": "10"}'
+                className="font-mono text-sm"
+                rows={2}
+                data-testid="input-query-params"
+              />
+            </div>
+
+            {["POST", "PUT", "PATCH"].includes(method) && (
+              <div className="space-y-2">
+                <Label htmlFor="request-body">Request Body (JSON)</Label>
+                <Textarea
+                  id="request-body"
+                  value={requestBody}
+                  onChange={(e) => setRequestBody(e.target.value)}
+                  placeholder="{}"
+                  className="font-mono text-sm"
+                  rows={4}
+                  data-testid="input-request-body"
+                />
+              </div>
+            )}
+
+            <Button
+              onClick={() => testMutation.mutate()}
+              disabled={!canExecute || testMutation.isPending}
+              className="w-full"
+              data-testid="button-execute"
+            >
+              {testMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4 mr-2" />
+              )}
+              Execute Request
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="space-y-6">
+        <Card data-testid="card-response" className="h-full">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
               <span className="flex items-center gap-2">
-                {testResult.success ? (
-                  <CheckCircle className="h-5 w-5 text-green-500" />
-                ) : (
-                  <XCircle className="h-5 w-5 text-destructive" />
-                )}
+                {testResult ? (
+                  testResult.success ? (
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                  ) : (
+                    <XCircle className="h-5 w-5 text-destructive" />
+                  )
+                ) : null}
                 Response
               </span>
-              <div className="flex items-center gap-2">
-                <Badge variant={testResult.success ? "default" : "destructive"} data-testid="badge-status">
-                  {testResult.status} {testResult.statusText}
-                </Badge>
-                <Badge variant="outline" className="gap-1" data-testid="badge-duration">
-                  <Clock className="h-3 w-3" />
-                  {testResult.duration}ms
-                </Badge>
-              </div>
+              {testResult && (
+                <div className="flex items-center gap-2">
+                  <Badge variant={testResult.success ? "default" : "destructive"} data-testid="badge-status">
+                    {testResult.status} {testResult.statusText}
+                  </Badge>
+                  <Badge variant="outline" className="gap-1" data-testid="badge-duration">
+                    <Clock className="h-3 w-3" />
+                    {testResult.duration}ms
+                  </Badge>
+                </div>
+              )}
             </CardTitle>
-            {testResult.requestInfo && (
+            {testResult?.requestInfo && (
               <CardDescription>
                 {testResult.requestInfo.method} {testResult.requestInfo.url}
               </CardDescription>
             )}
           </CardHeader>
           <CardContent className="space-y-4">
-            {testResult.error && (
+            {!testResult && (
+              <div className="text-muted-foreground text-sm py-8 text-center" data-testid="text-response-placeholder">
+                Execute a request to see the response here.
+              </div>
+            )}
+
+            {testResult?.error && (
               <Alert variant="destructive" data-testid="alert-error">
                 <AlertDescription>
                   <strong>{testResult.error}:</strong> {testResult.message}
@@ -301,29 +311,33 @@ function TestContent() {
               </Alert>
             )}
 
-            <div className="space-y-2">
-              <Label>Response Data</Label>
-              <pre
-                className="bg-muted p-4 rounded-md overflow-auto max-h-[400px] text-sm font-mono whitespace-pre-wrap"
-                data-testid="text-response-data"
-              >
-                {JSON.stringify(testResult.data, null, 2)}
-              </pre>
-            </div>
+            {testResult && (
+              <>
+                <div className="space-y-2">
+                  <Label>Response Data</Label>
+                  <pre
+                    className="bg-muted p-4 rounded-md overflow-auto max-h-[500px] text-sm font-mono whitespace-pre-wrap"
+                    data-testid="text-response-data"
+                  >
+                    {JSON.stringify(testResult.data, null, 2)}
+                  </pre>
+                </div>
 
-            {testResult.headers && Object.keys(testResult.headers).length > 0 && (
-              <details className="text-sm">
-                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                  Response Headers
-                </summary>
-                <pre className="bg-muted p-2 rounded-md mt-2 overflow-auto text-xs font-mono">
-                  {JSON.stringify(testResult.headers, null, 2)}
-                </pre>
-              </details>
+                {testResult.headers && Object.keys(testResult.headers).length > 0 && (
+                  <details className="text-sm">
+                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                      Response Headers
+                    </summary>
+                    <pre className="bg-muted p-2 rounded-md mt-2 overflow-auto text-xs font-mono">
+                      {JSON.stringify(testResult.headers, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
-      )}
+      </div>
     </div>
   );
 }
