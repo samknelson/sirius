@@ -285,7 +285,7 @@ export function GenericOptionsPage({ optionsType }: GenericOptionsPageProps) {
       for (const field of definition.fields) {
         const rawValue = field.dataField ? item.data?.[field.name] : item[field.name];
         if (field.inputType === 'select-options') {
-          data[field.name] = Array.isArray(rawValue) ? rawValue : [];
+          data[field.name] = typeof rawValue === 'string' ? rawValue : '';
         } else {
           data[field.name] = rawValue ?? '';
         }
@@ -383,14 +383,12 @@ export function GenericOptionsPage({ optionsType }: GenericOptionsPageProps) {
     
     if (field.inputType === 'select-options' && field.selectOptionsType) {
       const optionsForType = externalOptionsData?.[field.selectOptionsType] || [];
-      const selectedIds = Array.isArray(value) ? value : [];
-      const selectedNames = selectedIds
-        .map((id: string) => optionsForType.find(o => o.id === id)?.name)
-        .filter(Boolean);
-      if (selectedNames.length === 0) {
+      const selectedId = typeof value === 'string' ? value : '';
+      const selectedOption = optionsForType.find(o => o.id === selectedId);
+      if (!selectedOption) {
         return <span className="text-muted-foreground italic">None</span>;
       }
-      return selectedNames.join(", ");
+      return selectedOption.name;
     }
     
     if (field.name === 'name' && definition?.supportsParent && item.level > 0) {
@@ -492,59 +490,24 @@ export function GenericOptionsPage({ optionsType }: GenericOptionsPageProps) {
       case 'select-options': {
         if (!field.selectOptionsType) return null;
         const optionsForType = externalOptionsData?.[field.selectOptionsType] || [];
-        const selectedIds: string[] = Array.isArray(value) ? value : [];
-        
-        const toggleOption = (optionId: string) => {
-          const newSelection = selectedIds.includes(optionId)
-            ? selectedIds.filter(id => id !== optionId)
-            : [...selectedIds, optionId];
-          setFormData({ ...formData, [field.name]: newSelection });
-        };
-        
-        if (isInline) {
-          return (
-            <div className="border rounded-md p-2 max-h-32 overflow-y-auto space-y-1" data-testid={`multiselect-inline-${field.name}${testIdSuffix}`}>
-              {optionsForType.length === 0 ? (
-                <span className="text-muted-foreground text-sm">No options</span>
-              ) : (
-                optionsForType.map((option) => (
-                  <div key={option.id} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`inline-${field.name}-${option.id}`}
-                      checked={selectedIds.includes(option.id)}
-                      onCheckedChange={() => toggleOption(option.id)}
-                      data-testid={`checkbox-inline-${field.name}-${option.id}`}
-                    />
-                    <label htmlFor={`inline-${field.name}-${option.id}`} className="text-xs cursor-pointer">
-                      {option.name}
-                    </label>
-                  </div>
-                ))
-              )}
-            </div>
-          );
-        }
+        const selectedValue = typeof value === 'string' ? value : '';
         
         return (
-          <div className="border rounded-md p-2 max-h-40 overflow-y-auto space-y-2" data-testid={`multiselect-${field.name}`}>
-            {optionsForType.length === 0 ? (
-              <span className="text-muted-foreground text-sm">No options available</span>
-            ) : (
-              optionsForType.map((option) => (
-                <div key={option.id} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`${field.name}-${option.id}`}
-                    checked={selectedIds.includes(option.id)}
-                    onCheckedChange={() => toggleOption(option.id)}
-                    data-testid={`checkbox-${field.name}-${option.id}`}
-                  />
-                  <label htmlFor={`${field.name}-${option.id}`} className="text-sm cursor-pointer">
-                    {option.name}
-                  </label>
-                </div>
-              ))
-            )}
-          </div>
+          <Select
+            value={selectedValue}
+            onValueChange={(newValue) => setFormData({ ...formData, [field.name]: newValue })}
+          >
+            <SelectTrigger data-testid={`select-${field.name}${testIdSuffix}`}>
+              <SelectValue placeholder={field.placeholder || `Select ${field.label.toLowerCase()}`} />
+            </SelectTrigger>
+            <SelectContent>
+              {optionsForType.map((option) => (
+                <SelectItem key={option.id} value={option.id} data-testid={`select-item-${field.name}-${option.id}`}>
+                  {option.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         );
       }
       
