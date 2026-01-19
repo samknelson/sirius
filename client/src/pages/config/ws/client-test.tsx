@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,10 +9,61 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Loader2, Play, CheckCircle, XCircle, Clock, FlaskConical } from "lucide-react";
+import { Loader2, Play, CheckCircle, XCircle, Clock, FlaskConical, Copy, Check, Terminal } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { WsClientLayout, useWsClientLayout } from "@/components/layouts/WsClientLayout";
+
+function generateCurlCommand(options: {
+  baseUrl: string;
+  method: string;
+  path: string;
+  queryParams: string;
+  requestBody: string;
+  clientKey: string;
+  clientSecret: string;
+}): string {
+  const { baseUrl, method, path, queryParams, requestBody, clientKey, clientSecret } = options;
+  
+  let fullUrl = `${baseUrl}${path}`;
+  
+  if (queryParams.trim()) {
+    try {
+      const params = JSON.parse(queryParams);
+      const searchParams = new URLSearchParams();
+      for (const [key, value] of Object.entries(params)) {
+        searchParams.append(key, String(value));
+      }
+      const qs = searchParams.toString();
+      if (qs) {
+        fullUrl += `?${qs}`;
+      }
+    } catch {
+    }
+  }
+  
+  const parts: string[] = ["curl"];
+  
+  if (method !== "GET") {
+    parts.push(`-X ${method}`);
+  }
+  
+  parts.push(`-H "X-WS-Client-Key: ${clientKey || '<YOUR_CLIENT_KEY>'}"`);
+  parts.push(`-H "X-WS-Client-Secret: ${clientSecret || '<YOUR_CLIENT_SECRET>'}"`);
+  
+  if (["POST", "PUT", "PATCH"].includes(method)) {
+    parts.push('-H "Content-Type: application/json"');
+    
+    if (requestBody.trim()) {
+      const escapedBody = requestBody.replace(/'/g, "'\\''");
+      parts.push(`-d '${escapedBody}'`);
+    }
+  }
+  
+  parts.push(`"${fullUrl}"`);
+  
+  return parts.join(" \\\n  ");
+}
 
 interface BundleEndpoint {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -121,6 +172,37 @@ function TestContent() {
   };
 
   const canExecute = clientKey.trim() && clientSecret.trim() && path.trim();
+  const [copied, setCopied] = useState(false);
+
+  const baseUrl = typeof window !== "undefined" 
+    ? `${window.location.protocol}//${window.location.host}/api/ws/${bundle?.code || "..."}`
+    : `/api/ws/${bundle?.code || "..."}`;
+
+  const curlCommand = useMemo(() => {
+    return generateCurlCommand({
+      baseUrl,
+      method,
+      path,
+      queryParams,
+      requestBody,
+      clientKey,
+      clientSecret,
+    });
+  }, [baseUrl, method, path, queryParams, requestBody, clientKey, clientSecret]);
+
+  const handleCopyCurl = async () => {
+    try {
+      await navigator.clipboard.writeText(curlCommand);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast({
+        title: "Copy failed",
+        description: "Unable to copy to clipboard",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -260,6 +342,41 @@ function TestContent() {
               )}
               Execute Request
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-curl">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2">
+                <Terminal className="h-5 w-5" />
+                cURL Command
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCopyCurl}
+                data-testid="button-copy-curl"
+              >
+                {copied ? (
+                  <Check className="h-4 w-4 mr-1" />
+                ) : (
+                  <Copy className="h-4 w-4 mr-1" />
+                )}
+                {copied ? "Copied" : "Copy"}
+              </Button>
+            </CardTitle>
+            <CardDescription>
+              Use this command to make the same request from your terminal
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <pre
+              className="bg-muted p-4 rounded-md overflow-auto text-sm font-mono whitespace-pre-wrap break-all"
+              data-testid="text-curl-command"
+            >
+              {curlCommand}
+            </pre>
           </CardContent>
         </Card>
       </div>
