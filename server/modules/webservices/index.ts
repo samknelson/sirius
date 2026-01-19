@@ -20,6 +20,16 @@ export function registerWebServiceBundle(app: Express, config: WebServiceBundleC
   
   setupRoutes(router);
   
+  // Add catch-all for unmatched routes within this bundle - returns JSON error
+  // instead of falling through to the HTML catch-all
+  router.all('*', (req, res) => {
+    res.status(404).json({
+      error: 'Not Found',
+      message: `No endpoint matches ${req.method} ${req.baseUrl}${req.path}`,
+      bundle: bundleCode
+    });
+  });
+  
   const mountPath = basePath ?? `/api/ws/${bundleCode}`;
   app.use(mountPath, router);
   
