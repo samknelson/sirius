@@ -179,7 +179,6 @@ export const workers = pgTable("workers", {
   denormHomeEmployerId: varchar("denorm_home_employer_id").references(() => employers.id, { onDelete: 'set null' }),
   denormEmployerIds: varchar("denorm_employer_ids").array(),
   bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),
-  industryId: varchar("industry_id").references(() => optionsIndustry.id, { onDelete: 'set null' }),
 });
 
 export const workerBans = pgTable("worker_bans", {

@@ -1,4 +1,4 @@
-import { Mail, Phone, MapPin, Calendar, IdCard, Gift, Building2, Home, Briefcase, Users, Factory } from "lucide-react";
+import { Mail, Phone, MapPin, Calendar, IdCard, Gift, Building2, Home, Briefcase, Users } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ContactPostal, PhoneNumber as PhoneNumberType, WorkerId, WorkerIdType, TrustWmb, TrustBenefit, Employer, WorkerWs, EmploymentStatus, BargainingUnit } from "@shared/schema";
@@ -96,11 +96,6 @@ function WorkerDetailsContent() {
     queryKey: ["/api/options/worker-ws"],
   });
 
-  // Fetch industries
-  const { data: industries = [] } = useQuery<{ id: string; name: string }[]>({
-    queryKey: ["/api/options/industry"],
-  });
-
   // Fetch current employment
   const { data: currentEmployment = [], isLoading: isLoadingEmployment } = useQuery<CurrentEmploymentEntry[]>({
     queryKey: ["/api/workers", worker.id, "hours", "current"],
@@ -134,11 +129,6 @@ function WorkerDetailsContent() {
   // Find current work status
   const currentWorkStatus = worker.denormWsId 
     ? workStatuses.find(ws => ws.id === worker.denormWsId)
-    : null;
-
-  // Find current industry
-  const currentIndustry = worker.industryId
-    ? industries.find(ind => ind.id === worker.industryId)
     : null;
 
   return (

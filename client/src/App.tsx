@@ -38,7 +38,6 @@ const WorkerIDs = lazy(() => import("@/pages/worker-ids"));
 const WorkerBirthDate = lazy(() => import("@/pages/worker-birth-date"));
 const WorkerGender = lazy(() => import("@/pages/worker-gender"));
 const WorkerWorkStatus = lazy(() => import("@/pages/worker-work-status"));
-const WorkerIndustry = lazy(() => import("@/pages/worker-industry"));
 const WorkerUserPage = lazy(() => import("@/pages/worker-user"));
 const WorkerBargainingUnit = lazy(() => import("@/pages/worker-bargaining-unit"));
 const WorkerSteward = lazy(() => import("@/pages/worker-steward"));
@@ -432,14 +431,6 @@ function Router() {
         <ProtectedRoute tabId="work-status" entityType="worker">
           <AuthenticatedLayout>
             <WorkerWorkStatus />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/workers/:id/industry">
-        <ProtectedRoute tabId="industry" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerIndustry />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
