@@ -178,6 +178,9 @@ const DispatchJobTypePluginsPage = lazy(() => import("@/pages/config/dispatch-jo
 const DispatchDncConfigPage = lazy(() => import("@/pages/config/dispatch-dnc"));
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
+const WsBundlesPage = lazy(() => import("@/pages/config/ws/bundles"));
+const WsClientsPage = lazy(() => import("@/pages/config/ws/clients"));
+const WsClientDetailPage = lazy(() => import("@/pages/config/ws/client-detail"));
 const WorkerBanConfigPage = lazy(() => import("@/pages/config/workers-ban"));
 const DispatchJobsPage = lazy(() => import("@/pages/dispatch/jobs"));
 const DispatchJobDetailsPage = lazy(() => import("@/pages/dispatch/job-details"));
@@ -1649,6 +1652,36 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <EdlsTasksPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/ws/bundles">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WsBundlesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/ws/clients/:id">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WsClientDetailPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/ws/clients">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WsClientsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

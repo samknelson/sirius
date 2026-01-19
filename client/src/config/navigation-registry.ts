@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, 
   CreditCard, Activity, Wallet, Settings, Shield, Key, FileText, 
-  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, Truck, type LucideIcon
+  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, Truck, Network, type LucideIcon
 } from "lucide-react";
 
 export interface NavItem {
@@ -165,6 +165,16 @@ export const configSections: NavSection[] = [
     items: [
       { path: "/config/edls/settings", label: "Settings", icon: Settings, testId: "nav-config-edls-settings", permission: "admin", requiresComponent: "edls" },
       { path: "/config/edls/tasks", label: "Tasks", icon: List, testId: "nav-config-edls-tasks", permission: "admin", requiresComponent: "edls" },
+    ],
+  },
+  {
+    id: "webservices",
+    title: "Web Services",
+    description: "External API access and client management",
+    icon: Network,
+    items: [
+      { path: "/config/ws/bundles", label: "Bundles", icon: Package, testId: "nav-config-ws-bundles", permission: "admin" },
+      { path: "/config/ws/clients", label: "Clients", icon: Key, testId: "nav-config-ws-clients", permission: "admin" },
     ],
   },
 ];
