@@ -199,6 +199,7 @@ export const employers = pgTable("employers", {
   name: text("name").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   typeId: varchar("type_id").references(() => optionsEmployerType.id, { onDelete: 'set null' }),
+  industryId: varchar("industry_id").references(() => optionsIndustry.id, { onDelete: 'set null' }),
   stripeCustomerId: text("stripe_customer_id"),
   denormPolicyId: varchar("denorm_policy_id").references(() => policies.id, { onDelete: 'set null' }),
 });

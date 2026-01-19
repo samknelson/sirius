@@ -13,6 +13,11 @@ import { Save, Building, Building2, Factory, Store, Warehouse, Home, Landmark, H
 import { EmployerLayout, useEmployerLayout } from "@/components/layouts/EmployerLayout";
 import { EmployerType } from "@shared/schema";
 
+interface Industry {
+  id: string;
+  name: string;
+}
+
 const iconMap: Record<string, React.ComponentType<{ className?: string; size?: number }>> = {
   Building,
   Building2,
@@ -32,13 +37,18 @@ function EmployerEditContent() {
   const [editName, setEditName] = useState(employer.name);
   const [editIsActive, setEditIsActive] = useState(employer.isActive);
   const [editTypeId, setEditTypeId] = useState<string | null>(employer.typeId || null);
+  const [editIndustryId, setEditIndustryId] = useState<string | null>(employer.industryId || null);
 
   const { data: employerTypes = [] } = useQuery<EmployerType[]>({
     queryKey: ["/api/options/employer-type"],
   });
 
+  const { data: industries = [] } = useQuery<Industry[]>({
+    queryKey: ["/api/options/industry"],
+  });
+
   const updateEmployerMutation = useMutation({
-    mutationFn: async (data: { name: string; isActive: boolean; typeId: string | null }) => {
+    mutationFn: async (data: { name: string; isActive: boolean; typeId: string | null; industryId: string | null }) => {
       return await apiRequest("PUT", `/api/employers/${employer.id}`, data);
     },
     onSuccess: () => {
@@ -61,7 +71,7 @@ function EmployerEditContent() {
 
   const handleSaveEdit = () => {
     if (editName.trim()) {
-      updateEmployerMutation.mutate({ name: editName.trim(), isActive: editIsActive, typeId: editTypeId });
+      updateEmployerMutation.mutate({ name: editName.trim(), isActive: editIsActive, typeId: editTypeId, industryId: editIndustryId });
     }
   };
 
@@ -112,6 +122,29 @@ function EmployerEditContent() {
                       </SelectItem>
                     );
                   })}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-employer-industry" className="text-sm font-medium text-foreground">
+                Industry
+              </Label>
+              <Select
+                value={editIndustryId || "__none__"}
+                onValueChange={(value) => setEditIndustryId(value === "__none__" ? null : value)}
+              >
+                <SelectTrigger className="w-full" data-testid="select-edit-employer-industry">
+                  <SelectValue placeholder="Select industry (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__" data-testid="select-item-edit-industry-none">
+                    <span className="text-muted-foreground">None</span>
+                  </SelectItem>
+                  {industries.map((industry) => (
+                    <SelectItem key={industry.id} value={industry.id} data-testid={`select-item-edit-industry-${industry.id}`}>
+                      {industry.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

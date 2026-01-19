@@ -7,6 +7,11 @@ import { Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospita
 import { EmployerLayout, useEmployerLayout } from "@/components/layouts/EmployerLayout";
 import { EmployerType } from "@shared/schema";
 
+interface Industry {
+  id: string;
+  name: string;
+}
+
 const iconMap: Record<string, React.ComponentType<{ className?: string; size?: number }>> = {
   Building,
   Building2,
@@ -25,12 +30,20 @@ function EmployerDetailsContent() {
     queryKey: ["/api/options/employer-type"],
   });
 
+  const { data: industries = [], isLoading: isLoadingIndustries } = useQuery<Industry[]>({
+    queryKey: ["/api/options/industry"],
+  });
+
   const employerType = employer.typeId 
     ? employerTypes.find(t => t.id === employer.typeId) 
     : null;
 
   const typeIconName = employerType ? (employerType.data as any)?.icon : null;
   const TypeIconComponent = typeIconName ? (iconMap[typeIconName] || Building) : null;
+
+  const industry = employer.industryId
+    ? industries.find(i => i.id === employer.industryId)
+    : null;
 
   return (
     <Card>
@@ -74,6 +87,16 @@ function EmployerDetailsContent() {
                   </>
                 )}
               </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Industry</label>
+              <p className="text-foreground" data-testid="text-employer-industry">
+                {isLoadingIndustries && employer.industryId ? (
+                  <span className="text-muted-foreground">Loading...</span>
+                ) : (
+                  industry?.name || "Not specified"
+                )}
+              </p>
             </div>
           </div>
         </div>

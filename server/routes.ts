@@ -736,7 +736,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/employers/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, isActive, typeId } = req.body;
+      const { name, isActive, typeId, industryId } = req.body;
       
       const updates: Partial<InsertEmployer> = {};
       
@@ -756,6 +756,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (typeId !== undefined) {
         updates.typeId = typeId === null || typeId === "" ? null : typeId;
+      }
+      
+      if (industryId !== undefined) {
+        updates.industryId = industryId === null || industryId === "" ? null : industryId;
       }
       
       if (Object.keys(updates).length === 0) {
