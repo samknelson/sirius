@@ -32,6 +32,18 @@ export interface LogFilters {
   operations: string[];
 }
 
+export interface ModuleOperationStats {
+  module: string | null;
+  operation: string | null;
+  count: number;
+}
+
+export interface PurgeResult {
+  module: string | null;
+  operation: string | null;
+  deleted: number;
+}
+
 export interface HostEntityLogsParams {
   hostEntityIds: string[];
   entityIds?: string[];
@@ -63,6 +75,9 @@ export interface LogsStorage {
   getLogById(id: number): Promise<WinstonLog | undefined>;
   getLogsByHostEntityIds(params: HostEntityLogsParams): Promise<WinstonLog[]>;
   create(data: LogInsertData): Promise<WinstonLog>;
+  getModuleOperationStats(): Promise<ModuleOperationStats[]>;
+  purgeByModuleOperation(module: string | null, operation: string | null, olderThanDays: number): Promise<PurgeResult>;
+  countByModuleOperationOlderThan(module: string | null, operation: string | null, olderThanDays: number): Promise<number>;
 }
 
 export function createLogsStorage(): LogsStorage {
@@ -230,6 +245,88 @@ export function createLogsStorage(): LogsStorage {
       });
 
       return log;
+    },
+
+    async getModuleOperationStats(): Promise<ModuleOperationStats[]> {
+      const client = getClient();
+      const results = await client
+        .select({
+          module: winstonLogs.module,
+          operation: winstonLogs.operation,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(winstonLogs)
+        .groupBy(winstonLogs.module, winstonLogs.operation)
+        .orderBy(winstonLogs.module, winstonLogs.operation);
+
+      return results.map(r => ({
+        module: r.module,
+        operation: r.operation,
+        count: r.count,
+      }));
+    },
+
+    async countByModuleOperationOlderThan(
+      module: string | null,
+      operation: string | null,
+      olderThanDays: number
+    ): Promise<number> {
+      const client = getClient();
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
+
+      const conditions: SQL[] = [];
+      if (module === null) {
+        conditions.push(sql`${winstonLogs.module} IS NULL`);
+      } else {
+        conditions.push(eq(winstonLogs.module, module));
+      }
+      if (operation === null) {
+        conditions.push(sql`${winstonLogs.operation} IS NULL`);
+      } else {
+        conditions.push(eq(winstonLogs.operation, operation));
+      }
+      conditions.push(lte(winstonLogs.timestamp, cutoffDate));
+
+      const [{ count }] = await client
+        .select({ count: sql<number>`count(*)::int` })
+        .from(winstonLogs)
+        .where(and(...conditions));
+
+      return count;
+    },
+
+    async purgeByModuleOperation(
+      module: string | null,
+      operation: string | null,
+      olderThanDays: number
+    ): Promise<PurgeResult> {
+      const client = getClient();
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
+
+      const conditions: SQL[] = [];
+      if (module === null) {
+        conditions.push(sql`${winstonLogs.module} IS NULL`);
+      } else {
+        conditions.push(eq(winstonLogs.module, module));
+      }
+      if (operation === null) {
+        conditions.push(sql`${winstonLogs.operation} IS NULL`);
+      } else {
+        conditions.push(eq(winstonLogs.operation, operation));
+      }
+      conditions.push(lte(winstonLogs.timestamp, cutoffDate));
+
+      const result = await client
+        .delete(winstonLogs)
+        .where(and(...conditions));
+
+      return {
+        module,
+        operation,
+        deleted: result.rowCount ?? 0,
+      };
     },
   };
 }

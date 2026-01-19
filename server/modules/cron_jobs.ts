@@ -142,4 +142,14 @@ export function registerCronJobRoutes(
       });
     }
   });
+
+  // GET /api/cron-jobs/log-cleanup/stats - Get module/operation stats for log cleanup configuration
+  app.get("/api/cron-jobs/log-cleanup/stats", requireAccess('admin'), async (req, res) => {
+    try {
+      const stats = await storage.logs.getModuleOperationStats();
+      res.json({ stats });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch log stats" });
+    }
+  });
 }

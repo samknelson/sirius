@@ -52,6 +52,12 @@ const DEFAULT_CRON_JOBS: DefaultCronJob[] = [
     schedule: '0 6 * * *', // Daily at 6 AM
     isEnabled: true,
   },
+  {
+    name: 'log-cleanup',
+    description: 'Purges log entries based on configurable retention policies per module/operation combination',
+    schedule: '0 3 * * *', // Daily at 3 AM
+    isEnabled: false, // Disabled by default - must configure policies first
+  },
 ];
 
 export async function bootstrapCronJobs(): Promise<void> {
