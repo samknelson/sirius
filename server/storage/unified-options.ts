@@ -239,10 +239,12 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     orderByColumn: "sequence" as const,
     loggingModule: "options.workerMs",
     requiredFields: ["name", "industryId"],
-    optionalFields: ["description", "sequence", "data"],
+    optionalFields: ["code", "siriusId", "description", "sequence", "data"],
     supportsSequencing: true,
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Member status name", showInTable: true, columnHeader: "Name" },
+      { name: "code", label: "Code", inputType: "text", required: false, placeholder: "Optional code", showInTable: true, columnHeader: "Code" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "Optional Sirius ID", showInTable: true, columnHeader: "Sirius ID" },
       { name: "industryId", label: "Industry", inputType: "select-options", required: true, selectOptionsType: "industry", showInTable: true, columnHeader: "Industry" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: false },
     ],

@@ -409,6 +409,8 @@ export const optionsWorkerWs = pgTable("options_worker_ws", {
 export const optionsWorkerMs = pgTable("options_worker_ms", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  code: varchar("code", { length: 255 }).unique(),
+  siriusId: varchar("sirius_id", { length: 255 }).unique(),
   description: text("description"),
   industryId: varchar("industry_id").notNull().references(() => optionsIndustry.id),
   sequence: integer("sequence").notNull().default(0),
