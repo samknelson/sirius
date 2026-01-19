@@ -1,6 +1,6 @@
 import { Router, type Express, type RequestHandler } from 'express';
-import { requireWebServiceAuth, getWebServiceContext } from '../../middleware/webservice-auth';
-import { logger } from '../../logger';
+import { requireWebServiceAuth, getWebServiceContext, type WebServiceContext } from '../../middleware/webservice-auth';
+import { logger, logWsRequest } from '../../logger';
 
 export interface WebServiceBundleConfig {
   bundleCode: string;
@@ -8,9 +8,41 @@ export interface WebServiceBundleConfig {
   setupRoutes: (router: Router) => void;
 }
 
+// Middleware that logs WS requests after they complete
+function createWsLoggingMiddleware(bundleCode: string): RequestHandler {
+  return (req, res, next) => {
+    // Log when response finishes
+    res.on('finish', () => {
+      const context = res.locals.wsContext as WebServiceContext | undefined;
+      const startTime = res.locals.wsStartTime as number | undefined;
+      
+      // Only log if we have context (authenticated requests)
+      // Auth failures are logged by the auth middleware itself
+      if (context && startTime) {
+        const duration = Date.now() - startTime;
+        
+        logWsRequest({
+          clientId: context.clientId,
+          clientName: context.clientName,
+          credentialId: context.credentialId,
+          bundleCode: context.bundleCode,
+          method: req.method,
+          path: req.originalUrl,
+          status: res.statusCode,
+          duration,
+          ipAddress: context.ipAddress,
+        });
+      }
+    });
+    
+    next();
+  };
+}
+
 export function createWebServiceRouter(bundleCode: string): Router {
   const router = Router();
   router.use(requireWebServiceAuth(bundleCode));
+  router.use(createWsLoggingMiddleware(bundleCode));
   return router;
 }
 

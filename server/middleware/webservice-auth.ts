@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { storage } from '../storage';
-import { logger } from '../logger';
+import { logger, logWsRequest } from '../logger';
 import type { WsClient, WsBundle, WsClientCredential } from '@shared/schema';
 
 export interface WebServiceContext {
@@ -79,35 +79,30 @@ async function authenticateWithCredentials(
   const client = await storage.wsClients.get(credential.clientId);
 
   if (!client) {
-    return { success: false, error: 'Client not found', errorCode: 'CLIENT_NOT_FOUND' };
+    return { success: false, error: 'Client not found', errorCode: 'CLIENT_NOT_FOUND', credential };
   }
 
   if (client.status !== 'active') {
-    return { success: false, error: 'Client is not active', errorCode: 'CLIENT_INACTIVE' };
+    return { success: false, error: 'Client is not active', errorCode: 'CLIENT_INACTIVE', client, credential };
   }
 
   if (!client.bundle) {
-    return { success: false, error: 'Bundle not found', errorCode: 'BUNDLE_NOT_FOUND' };
+    return { success: false, error: 'Bundle not found', errorCode: 'BUNDLE_NOT_FOUND', client, credential };
   }
 
   if (client.bundle.status !== 'active') {
-    return { success: false, error: 'Bundle is not active', errorCode: 'BUNDLE_INACTIVE' };
+    return { success: false, error: 'Bundle is not active', errorCode: 'BUNDLE_INACTIVE', client, credential };
   }
 
   if (bundleCode && client.bundle.code !== bundleCode) {
-    return { success: false, error: 'Client not authorized for this bundle', errorCode: 'BUNDLE_MISMATCH' };
+    return { success: false, error: 'Client not authorized for this bundle', errorCode: 'BUNDLE_MISMATCH', client, credential };
   }
 
   if (client.ipAllowlistEnabled) {
     const clientIp = getClientIp(req);
     const isAllowed = await storage.wsClientIpRules.isIpAllowed(client.id, clientIp);
     if (!isAllowed) {
-      logger.warn('Web service request from unauthorized IP', {
-        clientId: client.id,
-        clientName: client.name,
-        ipAddress: clientIp,
-      });
-      return { success: false, error: 'IP address not allowed', errorCode: 'IP_NOT_ALLOWED' };
+      return { success: false, error: 'IP address not allowed', errorCode: 'IP_NOT_ALLOWED', client, credential };
     }
   }
 
@@ -123,17 +118,27 @@ export interface WebServiceAuthOptions {
 export function createWebServiceAuthMiddleware(options: WebServiceAuthOptions = {}): RequestHandler {
   return async (req: Request, res: Response, next: NextFunction) => {
     const ipAddress = getClientIp(req);
+    const startTime = Date.now();
     
     try {
       const result = await authenticateRequest(req, options.bundleCode);
 
       if (!result.success) {
-        logger.warn('Web service authentication failed', {
-          error: result.error,
-          errorCode: result.errorCode,
-          ipAddress,
-          path: req.path,
+        const duration = Date.now() - startTime;
+        
+        // Log auth failure to database with client ID if available
+        logWsRequest({
+          clientId: result.client?.id || null,
+          clientName: result.client?.name || null,
+          credentialId: result.credential?.id || null,
+          bundleCode: options.bundleCode || null,
           method: req.method,
+          path: req.originalUrl,
+          status: 401,
+          duration,
+          ipAddress,
+          errorCode: result.errorCode,
+          errorMessage: result.error,
         });
 
         return res.status(401).json({
@@ -154,20 +159,31 @@ export function createWebServiceAuthMiddleware(options: WebServiceAuthOptions = 
         ipAddress,
       };
 
-      logger.info('Web service request authenticated', {
-        clientId: client.id,
-        clientName: client.name,
-        bundleCode: client.bundle!.code,
-        path: req.path,
-        method: req.method,
-        ipAddress,
-      });
+      // Store start time and context for centralized logging middleware
+      res.locals.wsStartTime = startTime;
+      res.locals.wsContext = context;
 
       webServiceContext.run(context, () => {
         next();
       });
     } catch (error) {
+      const duration = Date.now() - startTime;
       logger.error('Web service authentication error', { error, ipAddress, path: req.path });
+      
+      logWsRequest({
+        clientId: null,
+        clientName: null,
+        credentialId: null,
+        bundleCode: options.bundleCode || null,
+        method: req.method,
+        path: req.originalUrl,
+        status: 500,
+        duration,
+        ipAddress,
+        errorCode: 'AUTH_ERROR',
+        errorMessage: 'Authentication error',
+      });
+      
       return res.status(500).json({
         error: 'Authentication error',
         code: 'AUTH_ERROR',

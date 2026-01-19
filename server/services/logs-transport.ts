@@ -14,6 +14,15 @@ interface LogsTransportInfo {
   user_id?: string;
   user_email?: string;
   ip_address?: string;
+  // WS request specific fields (stored in meta)
+  method?: string;
+  path?: string;
+  status?: number;
+  duration?: number;
+  client_name?: string;
+  credential_id?: string;
+  bundle_code?: string;
+  error_code?: string;
   [key: string]: unknown;
 }
 

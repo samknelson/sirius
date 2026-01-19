@@ -1,8 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { storage } from '../../storage';
-import { logger } from '../../logger';
-import { getWebServiceContext } from '../../middleware/webservice-auth';
 
 const sheetsQuerySchema = z.object({
   status: z.enum(['draft', 'active', 'closed', 'cancelled']).optional(),
@@ -15,8 +13,6 @@ const sheetsQuerySchema = z.object({
 
 export function setupEdlsRoutes(router: Router): void {
   router.get('/sheets', async (req, res) => {
-    const context = getWebServiceContext();
-    
     try {
       const parseResult = sheetsQuerySchema.safeParse(req.query);
       
@@ -37,14 +33,6 @@ export function setupEdlsRoutes(router: Router): void {
         dateFrom,
         dateTo,
         employerId,
-      });
-
-      logger.info('EDLS sheets query executed via web service', {
-        clientId: context?.clientId,
-        clientName: context?.clientName,
-        filters: { status, dateFrom, dateTo, employerId },
-        resultCount: result.data.length,
-        totalCount: result.total,
       });
 
       return res.json({
@@ -79,11 +67,6 @@ export function setupEdlsRoutes(router: Router): void {
         },
       });
     } catch (error) {
-      logger.error('EDLS sheets query failed', {
-        error,
-        clientId: context?.clientId,
-        path: req.path,
-      });
       return res.status(500).json({
         error: 'Failed to query sheets',
         code: 'QUERY_ERROR',
@@ -92,7 +75,6 @@ export function setupEdlsRoutes(router: Router): void {
   });
 
   router.get('/sheets/:id', async (req, res) => {
-    const context = getWebServiceContext();
     const { id } = req.params;
 
     try {
@@ -104,12 +86,6 @@ export function setupEdlsRoutes(router: Router): void {
           code: 'NOT_FOUND',
         });
       }
-
-      logger.info('EDLS sheet retrieved via web service', {
-        clientId: context?.clientId,
-        clientName: context?.clientName,
-        sheetId: id,
-      });
 
       return res.json({
         id: sheet.id,
@@ -135,11 +111,6 @@ export function setupEdlsRoutes(router: Router): void {
         assignedCount: sheet.assignedCount ?? 0,
       });
     } catch (error) {
-      logger.error('EDLS sheet get failed', {
-        error,
-        clientId: context?.clientId,
-        sheetId: id,
-      });
       return res.status(500).json({
         error: 'Failed to get sheet',
         code: 'GET_ERROR',
