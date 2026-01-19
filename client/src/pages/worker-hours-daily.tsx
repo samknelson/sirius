@@ -360,6 +360,7 @@ function WorkerHoursContent() {
                 <TableHead>Day</TableHead>
                 <TableHead>Employer</TableHead>
                 <TableHead>Employment Status</TableHead>
+                <TableHead>Job Title</TableHead>
                 <TableHead>Home</TableHead>
                 <TableHead className="text-right">Hours</TableHead>
                 {canEdit && <TableHead className="text-right">Actions</TableHead>}
@@ -373,6 +374,7 @@ function WorkerHoursContent() {
                   <TableCell>{entry.day}</TableCell>
                   <TableCell>{entry.employer?.name || "Unknown"}</TableCell>
                   <TableCell>{entry.employmentStatus?.name || "Unknown"}</TableCell>
+                  <TableCell>{entry.jobTitle || "-"}</TableCell>
                   <TableCell>
                     {entry.home && (
                       <Badge variant="default" data-testid={`badge-home-${entry.id}`}>

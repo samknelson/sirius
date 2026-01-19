@@ -44,7 +44,7 @@ export function registerWorkerHoursRoutes(
   app.post("/api/workers/:workerId/hours", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { workerId } = req.params;
-      const { month, year, day, employerId, employmentStatusId, hours, home } = req.body;
+      const { month, year, day, employerId, employmentStatusId, hours, home, jobTitle } = req.body;
 
       if (!month || !year || !day || !employerId || !employmentStatusId) {
         return res.status(400).json({ message: "Month, year, day, employer ID, and employment status ID are required" });
@@ -59,6 +59,7 @@ export function registerWorkerHoursRoutes(
         employmentStatusId,
         hours: hours ?? null,
         home: home ?? false,
+        jobTitle: jobTitle ?? null,
       });
 
       res.status(201).json({
