@@ -96,9 +96,21 @@ export default function ComponentsConfigPage() {
       setIsCheckingSchema(true);
       try {
         const response = await fetch(`/api/components/${componentId}/schema-info`);
+        
+        if (!response.ok) {
+          console.error("Failed to fetch schema info:", response.status, response.statusText);
+          toast({
+            title: "Error",
+            description: "Failed to fetch component schema info. The component may not be properly registered.",
+            variant: "destructive",
+          });
+          setIsCheckingSchema(false);
+          return;
+        }
+        
         const schemaInfo: SchemaInfo = await response.json();
         
-        if (!enabled && schemaInfo.tablesExist.some(exists => exists)) {
+        if (!enabled && schemaInfo.tablesExist?.some(exists => exists)) {
           setPendingAction({ componentId, enabled, component, schemaInfo });
           setIsCheckingSchema(false);
           return;
@@ -111,6 +123,11 @@ export default function ComponentsConfigPage() {
         }
       } catch (error) {
         console.error("Failed to fetch schema info:", error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch component schema info.",
+          variant: "destructive",
+        });
       }
       setIsCheckingSchema(false);
     }
