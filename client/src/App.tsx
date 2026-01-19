@@ -180,7 +180,9 @@ const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
 const WsBundlesPage = lazy(() => import("@/pages/config/ws/bundles"));
 const WsClientsPage = lazy(() => import("@/pages/config/ws/clients"));
-const WsClientDetailPage = lazy(() => import("@/pages/config/ws/client-detail"));
+const WsClientSettingsPage = lazy(() => import("@/pages/config/ws/client-settings"));
+const WsClientCredentialsPage = lazy(() => import("@/pages/config/ws/client-credentials"));
+const WsClientIpRulesPage = lazy(() => import("@/pages/config/ws/client-ip-rules"));
 const WorkerBanConfigPage = lazy(() => import("@/pages/config/workers-ban"));
 const DispatchJobsPage = lazy(() => import("@/pages/dispatch/jobs"));
 const DispatchJobDetailsPage = lazy(() => import("@/pages/dispatch/job-details"));
@@ -1667,12 +1669,26 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/ws/clients/:id/ip-rules">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <WsClientIpRulesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/ws/clients/:id/credentials">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <WsClientCredentialsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/ws/clients/:id">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <WsClientDetailPage />
-            </ConfigurationLayout>
+            <WsClientSettingsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
