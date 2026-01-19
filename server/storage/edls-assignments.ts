@@ -83,6 +83,9 @@ export interface AvailableWorkerForSheet {
   currentStatus: string | null;
   nextStatus: string | null;
   ratingValue: number | null;
+  memberStatusId: string | null;
+  memberStatusName: string | null;
+  memberStatusSequence: number | null;
 }
 
 export interface WorkerAssignmentDetail {
@@ -116,7 +119,7 @@ export interface EdlsAssignmentsStorage {
   delete(id: string): Promise<boolean>;
   deleteByCrewId(crewId: string): Promise<number>;
   updateData(id: string, data: Record<string, unknown>): Promise<EdlsAssignment | undefined>;
-  getAvailableWorkersForSheet(employerId: string, sheetYmd: string, ratingId?: string): Promise<AvailableWorkerForSheet[]>;
+  getAvailableWorkersForSheet(employerId: string, sheetYmd: string, industryId: string | null, ratingId?: string): Promise<AvailableWorkerForSheet[]>;
   getWorkerAssignmentDetails(workerId: string, sheetYmd: string): Promise<WorkerAssignmentDetails | null>;
 }
 
@@ -252,7 +255,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       return assignment || undefined;
     },
 
-    async getAvailableWorkersForSheet(employerId: string, sheetYmd: string, ratingId?: string): Promise<AvailableWorkerForSheet[]> {
+    async getAvailableWorkersForSheet(employerId: string, sheetYmd: string, industryId: string | null, ratingId?: string): Promise<AvailableWorkerForSheet[]> {
       const client = getClient();
       
       // Build query with optional rating join
@@ -262,9 +265,32 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       const ratingSelect = ratingId
         ? sql`wr.value as "ratingValue"`
         : sql`NULL::integer as "ratingValue"`;
-      const orderBy = ratingId
-        ? sql`ORDER BY wr.value DESC, c.family, c.given`
-        : sql`ORDER BY c.family, c.given`;
+      
+      // Build member status join - uses UNNEST on denorm_ms_ids to find the member status for the employer's industry
+      const memberStatusJoin = industryId
+        ? sql`LEFT JOIN LATERAL (
+          SELECT ms.id, ms.name, ms.sequence
+          FROM UNNEST(w.denorm_ms_ids) AS ms_id
+          INNER JOIN options_worker_ms ms ON ms.id = ms_id AND ms.industry_id = ${industryId}
+          LIMIT 1
+        ) member_status ON true`
+        : sql``;
+      const memberStatusSelect = industryId
+        ? sql`member_status.id as "memberStatusId", member_status.name as "memberStatusName", member_status.sequence as "memberStatusSequence"`
+        : sql`NULL::varchar as "memberStatusId", NULL::varchar as "memberStatusName", NULL::integer as "memberStatusSequence"`;
+      
+      // Order by member status sequence first (nulls last), then by rating (if provided), then by name
+      // When industryId is null, skip member status ordering since the lateral join is not included
+      let orderBy;
+      if (industryId && ratingId) {
+        orderBy = sql`ORDER BY COALESCE(member_status.sequence, 999999), wr.value DESC, c.family, c.given`;
+      } else if (industryId) {
+        orderBy = sql`ORDER BY COALESCE(member_status.sequence, 999999), c.family, c.given`;
+      } else if (ratingId) {
+        orderBy = sql`ORDER BY wr.value DESC, c.family, c.given`;
+      } else {
+        orderBy = sql`ORDER BY c.family, c.given`;
+      }
       
       const result = await client.execute(sql`
         SELECT 
@@ -277,10 +303,12 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           prior_asg.status as "priorStatus",
           current_asg.status as "currentStatus",
           next_asg.status as "nextStatus",
-          ${ratingSelect}
+          ${ratingSelect},
+          ${memberStatusSelect}
         FROM workers w
         INNER JOIN contacts c ON w.contact_id = c.id
         ${ratingJoin}
+        ${memberStatusJoin}
         LEFT JOIN LATERAL (
           SELECT es.status
           FROM edls_assignments ea

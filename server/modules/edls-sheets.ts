@@ -81,11 +81,16 @@ export function registerEdlsSheetsRoutes(
         return;
       }
       
+      // Get the employer to extract industryId for member status grouping
+      const employer = await storage.employers.getEmployer(sheet.employerId);
+      const industryId = employer?.industryId ?? null;
+      
       // Return all workers for the employer with assignment status indicators
-      // Optionally filter/sort by rating if ratingId is provided
+      // Workers are grouped by member status (for the employer's industry) and optionally filtered/sorted by rating
       const workers = await storage.edlsAssignments.getAvailableWorkersForSheet(
         sheet.employerId,
         sheet.ymd,
+        industryId,
         typeof ratingId === 'string' ? ratingId : undefined
       );
       res.json(workers);

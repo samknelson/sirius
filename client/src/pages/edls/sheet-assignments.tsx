@@ -560,6 +560,9 @@ interface AvailableWorker {
   currentStatus: string | null;
   nextStatus: string | null;
   ratingValue: number | null;
+  memberStatusId: string | null;
+  memberStatusName: string | null;
+  memberStatusSequence: number | null;
 }
 
 interface ComponentConfig {
@@ -949,6 +952,27 @@ function AvailableWorkersPanel() {
     return result;
   }, [workers, searchTerm, currentFilter, nextFilter]);
 
+  const groupedWorkers = useMemo(() => {
+    const groups: { name: string; sequence: number; workers: AvailableWorker[] }[] = [];
+    const groupMap = new Map<string, { name: string; sequence: number; workers: AvailableWorker[] }>();
+    
+    for (const worker of filteredWorkers) {
+      const groupKey = worker.memberStatusName ?? "__unassigned__";
+      const groupName = worker.memberStatusName ?? "Unassigned";
+      const sequence = worker.memberStatusSequence ?? 999999;
+      
+      if (!groupMap.has(groupKey)) {
+        const group = { name: groupName, sequence, workers: [] as AvailableWorker[] };
+        groupMap.set(groupKey, group);
+        groups.push(group);
+      }
+      groupMap.get(groupKey)!.workers.push(worker);
+    }
+    
+    groups.sort((a, b) => a.sequence - b.sequence);
+    return groups;
+  }, [filteredWorkers]);
+
   const handleWorkerClick = (worker: AvailableWorker) => {
     if (assignedWorkerIds.has(worker.id)) {
       return;
@@ -1045,33 +1069,47 @@ function AvailableWorkersPanel() {
             {workers.length === 0 ? "No workers available" : "No matching workers"}
           </p>
         ) : (
-          <div className="space-y-1 max-h-[60vh] overflow-y-auto">
-            {filteredWorkers.map((worker) => {
-              const isAssigned = assignedWorkerIds.has(worker.id);
-              return (
-                <div
-                  key={worker.id}
-                  onClick={() => handleWorkerClick(worker)}
-                  className={`flex items-center gap-2 p-2 rounded-md ${
-                    isAssigned 
-                      ? "cursor-default opacity-70" 
-                      : `cursor-pointer ${selectedCrewId ? "hover-elevate" : "opacity-60"}`
-                  } ${isAssigning ? "pointer-events-none opacity-50" : ""}`}
-                  data-testid={`worker-${worker.id}`}
-                >
-                  <StatusDots worker={worker} />
-                  {selectedRatingId && selectedRatingId !== "all" && worker.ratingValue !== null && (
-                    <StarRating value={worker.ratingValue} />
-                  )}
-                  <span className="text-sm truncate">{formatWorkerName(worker)}</span>
-                  {worker.siriusId && (
-                    <Badge variant="outline" className="ml-auto text-xs">
-                      #{worker.siriusId}
-                    </Badge>
-                  )}
+          <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+            {groupedWorkers.map((group) => (
+              <div key={group.name} data-testid={`worker-group-${group.name}`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    {group.name}
+                  </span>
+                  <Badge variant="secondary" className="text-xs">
+                    {group.workers.length}
+                  </Badge>
                 </div>
-              );
-            })}
+                <div className="space-y-1">
+                  {group.workers.map((worker) => {
+                    const isAssigned = assignedWorkerIds.has(worker.id);
+                    return (
+                      <div
+                        key={worker.id}
+                        onClick={() => handleWorkerClick(worker)}
+                        className={`flex items-center gap-2 p-2 rounded-md ${
+                          isAssigned 
+                            ? "cursor-default opacity-70" 
+                            : `cursor-pointer ${selectedCrewId ? "hover-elevate" : "opacity-60"}`
+                        } ${isAssigning ? "pointer-events-none opacity-50" : ""}`}
+                        data-testid={`worker-${worker.id}`}
+                      >
+                        <StatusDots worker={worker} />
+                        {selectedRatingId && selectedRatingId !== "all" && worker.ratingValue !== null && (
+                          <StarRating value={worker.ratingValue} />
+                        )}
+                        <span className="text-sm truncate">{formatWorkerName(worker)}</span>
+                        {worker.siriusId && (
+                          <Badge variant="outline" className="ml-auto text-xs">
+                            #{worker.siriusId}
+                          </Badge>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </CardContent>
