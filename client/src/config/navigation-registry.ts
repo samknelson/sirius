@@ -103,6 +103,7 @@ export const configSections: NavSection[] = [
     items: [
       { path: "/config/options/worker-id-type", label: "Worker ID Types", icon: List, testId: "nav-config-worker-id-types", permission: "admin" },
       { path: "/config/options/worker-ws", label: "Worker Work Statuses", icon: List, testId: "nav-config-worker-work-statuses", permission: "admin" },
+      { path: "/config/options/worker-ms", label: "Worker Member Statuses", icon: List, testId: "nav-config-worker-member-statuses", permission: "admin" },
       { path: "/config/options/skill", label: "Skill Options", icon: List, testId: "nav-config-skill-options", permission: "admin", requiresComponent: "worker.skills" },
       { path: "/config/options/certification", label: "Certifications", icon: FileText, testId: "nav-config-certification-options", permission: "admin", requiresComponent: "worker.certifications" },
       { path: "/config/options/classification", label: "Classifications", icon: List, testId: "nav-config-classification-options", permission: "admin" },

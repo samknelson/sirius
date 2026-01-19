@@ -404,6 +404,15 @@ export const optionsWorkerWs = pgTable("options_worker_ws", {
   data: jsonb("data"),
 });
 
+export const optionsWorkerMs = pgTable("options_worker_ms", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  industryId: varchar("industry_id").notNull().references(() => optionsIndustry.id),
+  sequence: integer("sequence").notNull().default(0),
+  data: jsonb("data"),
+});
+
 export const optionsEmploymentStatus = pgTable("options_employment_status", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),

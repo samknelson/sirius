@@ -21,6 +21,7 @@ import {
   optionsWorkerRatings,
   optionsClassifications,
   optionsIndustry,
+  optionsWorkerMs,
 } from "@shared/schema";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
@@ -47,7 +48,8 @@ export type OptionsTypeName =
   | "certification"
   | "worker-rating"
   | "classification"
-  | "industry";
+  | "industry"
+  | "worker-ms";
 
 /**
  * Field definition for dynamic form and table rendering
@@ -225,6 +227,23 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Status name", showInTable: true, columnHeader: "Name" },
       { name: "shortName", label: "Short Name", inputType: "text", required: false, placeholder: "Abbreviated name", showInTable: true, columnHeader: "Short Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: false },
+    ],
+  },
+  "worker-ms": {
+    table: optionsWorkerMs,
+    displayName: "Member Statuses",
+    description: "Manage worker member status options",
+    singularName: "Member Status",
+    pluralName: "Member Statuses",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.workerMs",
+    requiredFields: ["name", "industryId"],
+    optionalFields: ["description", "sequence", "data"],
+    supportsSequencing: true,
+    fields: [
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Member status name", showInTable: true, columnHeader: "Name" },
+      { name: "industryId", label: "Industry", inputType: "select-options", required: true, selectOptionsType: "industry", showInTable: true, columnHeader: "Industry" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: false },
     ],
   },
