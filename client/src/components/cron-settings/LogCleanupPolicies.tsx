@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Save, Loader2, Trash2, AlertCircle } from "lucide-react";
+import { Save, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import type { CronSettingsComponentProps } from "@/lib/cron-settings-registry";
@@ -38,6 +38,7 @@ export function LogCleanupPolicies({ clientState, values, onSave, isSaving }: Cr
   
   const [rows, setRows] = useState<PolicyRow[]>(initialRows);
   const [hasChanges, setHasChanges] = useState(false);
+  const [bulkDays, setBulkDays] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setRows((clientState.rows as PolicyRow[]) ?? []);
@@ -98,16 +99,25 @@ export function LogCleanupPolicies({ clientState, values, onSave, isSaving }: Cr
     setHasChanges(true);
   };
 
-  const handleClearPolicy = (module: string | null, operation: string | null) => {
-    const index = findRowIndex(module, operation);
-    if (index === -1) return;
+  const handleSetAllForModule = (module: string | null) => {
+    const displayName = module ?? "(none)";
+    const daysStr = bulkDays[displayName] ?? "";
+    const days = parseInt(daysStr, 10);
+    if (!days || isNaN(days) || days < 1) return;
     
-    const newRows = [...rows];
-    newRows[index] = {
-      ...newRows[index],
-      retentionDays: null,
-      enabled: false,
-    };
+    const clampedDays = Math.max(1, Math.min(3650, days));
+    
+    const newRows = rows.map(row => {
+      if (row.module === module) {
+        return {
+          ...row,
+          retentionDays: clampedDays,
+          enabled: true,
+        };
+      }
+      return row;
+    });
+    
     setRows(newRows);
     setHasChanges(true);
   };
@@ -218,7 +228,32 @@ export function LogCleanupPolicies({ clientState, values, onSave, isSaving }: Cr
                   </div>
                 </AccordionTrigger>
                 <AccordionContent>
-                  <div className="space-y-2 pb-2">
+                  <div className="space-y-3 pb-2">
+                    <div className="flex items-center gap-2 p-2 rounded-md bg-primary/5 border border-primary/20">
+                      <span className="text-sm text-muted-foreground">Set all to</span>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={3650}
+                        value={bulkDays[group.displayName] ?? ""}
+                        onChange={(e) => setBulkDays({ ...bulkDays, [group.displayName]: e.target.value })}
+                        placeholder="days"
+                        className="w-20 h-8"
+                        data-testid={`input-bulk-days-${group.displayName}`}
+                      />
+                      <span className="text-sm text-muted-foreground">days and enable</span>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleSetAllForModule(group.module)}
+                        disabled={!bulkDays[group.displayName] || parseInt(bulkDays[group.displayName]) < 1}
+                        data-testid={`button-set-all-${group.displayName}`}
+                      >
+                        <CheckCircle2 className="h-4 w-4 mr-1" />
+                        Apply
+                      </Button>
+                    </div>
+                    
                     {group.operations.map((op) => (
                       <div
                         key={`${op.module ?? ''}::${op.operation ?? ''}`}
@@ -249,21 +284,10 @@ export function LogCleanupPolicies({ clientState, values, onSave, isSaving }: Cr
                               disabled={op.retentionDays === null}
                               data-testid={`switch-enabled-${op.module ?? 'none'}-${op.operation ?? 'none'}`}
                             />
-                            <span className="text-xs text-muted-foreground w-12">
+                            <span className="text-xs text-muted-foreground w-8">
                               {op.enabled ? "On" : "Off"}
                             </span>
                           </div>
-                          {op.retentionDays !== null && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => handleClearPolicy(op.module, op.operation)}
-                              data-testid={`button-clear-${op.module ?? 'none'}-${op.operation ?? 'none'}`}
-                            >
-                              <Trash2 className="h-4 w-4 text-muted-foreground" />
-                            </Button>
-                          )}
                         </div>
                       </div>
                     ))}
