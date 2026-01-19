@@ -104,15 +104,14 @@ async function syncWorkerSkillsFromCertifications(
     }
   }
   
-  // Remove skills that are:
-  // 1. Managed by certifications (part of ANY certification option's skill set)
-  // 2. No longer granted by any active certification for this worker
-  // This preserves manually assigned skills (skills not in any certification option)
-  for (const currentSkill of currentSkills) {
-    if (certificationManagedSkills.has(currentSkill.skillId) && !skillsToGrant.has(currentSkill.skillId)) {
-      await deps.workerSkills.delete(currentSkill.id, 'Removed: no active certification grants this skill');
-    }
-  }
+  // NOTE: We intentionally do NOT auto-remove skills when certifications change.
+  // This is because we cannot distinguish between:
+  // - Skills that were auto-granted by a certification
+  // - Skills that were manually assigned by an admin
+  // 
+  // If a certification expires or is removed, the admin must manually remove
+  // any associated skills if desired. This prevents accidentally removing
+  // manually-assigned skills.
 }
 
 /**
