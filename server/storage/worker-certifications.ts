@@ -22,7 +22,7 @@ import { type WorkerSkillStorage } from "./worker-skills";
  * Interface for certification option data that may contain skill associations
  */
 interface CertificationData {
-  skills?: string[];
+  skills?: string[] | string;
   icon?: string;
   defaultDuration?: number;
 }
@@ -55,7 +55,9 @@ async function syncWorkerSkillsFromCertifications(
   const certificationManagedSkills = new Set<string>();
   for (const certOption of allCertOptions) {
     const certData = certOption.data as CertificationData | null;
-    const skills = certData?.skills || [];
+    // Handle skills being either an array or a single string
+    const rawSkills = certData?.skills;
+    const skills: string[] = Array.isArray(rawSkills) ? rawSkills : (rawSkills ? [rawSkills] : []);
     for (const skillId of skills) {
       certificationManagedSkills.add(skillId);
     }
@@ -78,7 +80,9 @@ async function syncWorkerSkillsFromCertifications(
     if (!workerCertification.denormActive || !certification) continue;
     
     const certData = certification.data as CertificationData | null;
-    const skills = certData?.skills || [];
+    // Handle skills being either an array or a single string
+    const rawSkills = certData?.skills;
+    const skills: string[] = Array.isArray(rawSkills) ? rawSkills : (rawSkills ? [rawSkills] : []);
     
     for (const skillId of skills) {
       skillsToGrant.add(skillId);
