@@ -97,11 +97,16 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       
       const data: Record<string, any> = {};
       for (const field of config.requiredFields) {
-        data[field] = typeof req.body[field] === 'string' ? req.body[field].trim() : req.body[field];
+        const value = typeof req.body[field] === 'string' ? req.body[field].trim() : req.body[field];
+        data[field] = value;
       }
       for (const field of config.optionalFields) {
         if (req.body[field] !== undefined) {
-          data[field] = typeof req.body[field] === 'string' ? req.body[field].trim() : req.body[field];
+          const value = typeof req.body[field] === 'string' ? req.body[field].trim() : req.body[field];
+          // Skip empty strings for optional fields to let database defaults apply
+          if (value !== '') {
+            data[field] = value;
+          }
         }
       }
       
@@ -129,10 +134,15 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       
       for (const field of allFields) {
         if (req.body[field] !== undefined) {
-          if (config.requiredFields.includes(field) && (req.body[field] === null || req.body[field] === '')) {
+          const value = typeof req.body[field] === 'string' ? req.body[field].trim() : req.body[field];
+          if (config.requiredFields.includes(field) && (value === null || value === '')) {
             return res.status(400).json({ message: `${field} cannot be empty` });
           }
-          updates[field] = typeof req.body[field] === 'string' ? req.body[field].trim() : req.body[field];
+          // Skip empty strings for optional fields to let database defaults/current values remain
+          if (config.optionalFields.includes(field) && value === '') {
+            continue;
+          }
+          updates[field] = value;
         }
       }
       
