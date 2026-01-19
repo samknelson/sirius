@@ -1,12 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Save, Loader2, Trash2, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import type { CronSettingsComponentProps } from "@/lib/cron-settings-registry";
 
 interface PolicyRow {
@@ -24,9 +24,17 @@ interface RetentionPolicy {
   enabled: boolean;
 }
 
+interface ModuleGroup {
+  module: string | null;
+  displayName: string;
+  operations: PolicyRow[];
+  totalCount: number;
+  configuredCount: number;
+  enabledCount: number;
+}
+
 export function LogCleanupPolicies({ clientState, values, onSave, isSaving }: CronSettingsComponentProps) {
   const initialRows = (clientState.rows as PolicyRow[]) ?? [];
-  const initialPolicies = (values.policies as RetentionPolicy[]) ?? [];
   
   const [rows, setRows] = useState<PolicyRow[]>(initialRows);
   const [hasChanges, setHasChanges] = useState(false);
@@ -35,7 +43,41 @@ export function LogCleanupPolicies({ clientState, values, onSave, isSaving }: Cr
     setRows((clientState.rows as PolicyRow[]) ?? []);
   }, [clientState.rows]);
 
-  const handleRetentionDaysChange = (index: number, value: string) => {
+  const groupedModules = useMemo((): ModuleGroup[] => {
+    const moduleMap = new Map<string | null, PolicyRow[]>();
+    
+    for (const row of rows) {
+      const key = row.module;
+      if (!moduleMap.has(key)) {
+        moduleMap.set(key, []);
+      }
+      moduleMap.get(key)!.push(row);
+    }
+
+    const groups: ModuleGroup[] = Array.from(moduleMap.entries()).map(
+      ([module, operations]: [string | null, PolicyRow[]]) => ({
+        module,
+        displayName: module ?? "(none)",
+        operations: operations.sort((a: PolicyRow, b: PolicyRow) => 
+          (a.operation ?? "").localeCompare(b.operation ?? "")
+        ),
+        totalCount: operations.reduce((sum: number, op: PolicyRow) => sum + op.count, 0),
+        configuredCount: operations.filter((op: PolicyRow) => op.retentionDays !== null).length,
+        enabledCount: operations.filter((op: PolicyRow) => op.enabled).length,
+      })
+    );
+
+    return groups.sort((a: ModuleGroup, b: ModuleGroup) => a.displayName.localeCompare(b.displayName));
+  }, [rows]);
+
+  const findRowIndex = (module: string | null, operation: string | null): number => {
+    return rows.findIndex(r => r.module === module && r.operation === operation);
+  };
+
+  const handleRetentionDaysChange = (module: string | null, operation: string | null, value: string) => {
+    const index = findRowIndex(module, operation);
+    if (index === -1) return;
+    
     const newRows = [...rows];
     const numValue = value === "" ? null : parseInt(value, 10);
     newRows[index] = {
@@ -46,14 +88,20 @@ export function LogCleanupPolicies({ clientState, values, onSave, isSaving }: Cr
     setHasChanges(true);
   };
 
-  const handleEnabledChange = (index: number, enabled: boolean) => {
+  const handleEnabledChange = (module: string | null, operation: string | null, enabled: boolean) => {
+    const index = findRowIndex(module, operation);
+    if (index === -1) return;
+    
     const newRows = [...rows];
     newRows[index] = { ...newRows[index], enabled };
     setRows(newRows);
     setHasChanges(true);
   };
 
-  const handleClearPolicy = (index: number) => {
+  const handleClearPolicy = (module: string | null, operation: string | null) => {
+    const index = findRowIndex(module, operation);
+    if (index === -1) return;
+    
     const newRows = [...rows];
     newRows[index] = {
       ...newRows[index],
@@ -81,7 +129,7 @@ export function LogCleanupPolicies({ clientState, values, onSave, isSaving }: Cr
   const enabledCount = rows.filter(r => r.enabled).length;
   const configuredCount = rows.filter(r => r.retentionDays !== null).length;
 
-  const formatLabel = (value: string | null): string => {
+  const formatOperation = (value: string | null): string => {
     if (value === null) return "(none)";
     return value;
   };
@@ -133,75 +181,98 @@ export function LogCleanupPolicies({ clientState, values, onSave, isSaving }: Cr
           </Alert>
         )}
 
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Module</TableHead>
-                <TableHead>Operation</TableHead>
-                <TableHead className="text-right">Log Count</TableHead>
-                <TableHead className="w-32">Retention (days)</TableHead>
-                <TableHead className="w-24">Enabled</TableHead>
-                <TableHead className="w-16"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                    No log entries found in the database
-                  </TableCell>
-                </TableRow>
-              ) : (
-                rows.map((row, index) => (
-                  <TableRow key={`${row.module ?? ''}::${row.operation ?? ''}`} data-testid={`row-policy-${index}`}>
-                    <TableCell className="font-mono text-sm">
-                      {formatLabel(row.module)}
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">
-                      {formatLabel(row.operation)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {row.count.toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={3650}
-                        value={row.retentionDays ?? ""}
-                        onChange={(e) => handleRetentionDaysChange(index, e.target.value)}
-                        placeholder="days"
-                        className="w-24 h-8"
-                        data-testid={`input-retention-${index}`}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Switch
-                        checked={row.enabled}
-                        onCheckedChange={(checked) => handleEnabledChange(index, checked)}
-                        disabled={row.retentionDays === null}
-                        data-testid={`switch-enabled-${index}`}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {row.retentionDays !== null && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleClearPolicy(index)}
-                          data-testid={`button-clear-${index}`}
-                        >
-                          <Trash2 className="h-4 w-4 text-muted-foreground" />
-                        </Button>
+        {groupedModules.length === 0 ? (
+          <div className="rounded-md border p-8 text-center text-muted-foreground">
+            No log entries found in the database
+          </div>
+        ) : (
+          <Accordion type="multiple" className="space-y-2" data-testid="accordion-modules">
+            {groupedModules.map((group) => (
+              <AccordionItem
+                key={group.displayName}
+                value={group.displayName}
+                className="border rounded-md px-4"
+                data-testid={`accordion-module-${group.displayName}`}
+              >
+                <AccordionTrigger className="hover:no-underline py-3">
+                  <div className="flex items-center justify-between w-full pr-4 gap-4">
+                    <span className="font-mono font-medium text-sm">{group.displayName}</span>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        {group.operations.length} ops
+                      </Badge>
+                      <Badge variant="outline" className="text-xs tabular-nums">
+                        {group.totalCount.toLocaleString()} logs
+                      </Badge>
+                      {group.configuredCount > 0 && (
+                        <Badge variant="secondary" className="text-xs">
+                          {group.configuredCount} configured
+                        </Badge>
                       )}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                      {group.enabledCount > 0 && (
+                        <Badge variant="default" className="text-xs">
+                          {group.enabledCount} enabled
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-2 pb-2">
+                    {group.operations.map((op) => (
+                      <div
+                        key={`${op.module ?? ''}::${op.operation ?? ''}`}
+                        className="flex items-center gap-3 py-2 px-2 rounded-md bg-muted/50"
+                        data-testid={`row-policy-${op.module ?? 'none'}-${op.operation ?? 'none'}`}
+                      >
+                        <span className="font-mono text-sm min-w-32 flex-shrink-0">
+                          {formatOperation(op.operation)}
+                        </span>
+                        <span className="text-sm text-muted-foreground tabular-nums min-w-20 text-right">
+                          {op.count.toLocaleString()} logs
+                        </span>
+                        <div className="flex items-center gap-2 ml-auto">
+                          <Input
+                            type="number"
+                            min={1}
+                            max={3650}
+                            value={op.retentionDays ?? ""}
+                            onChange={(e) => handleRetentionDaysChange(op.module, op.operation, e.target.value)}
+                            placeholder="days"
+                            className="w-20 h-8"
+                            data-testid={`input-retention-${op.module ?? 'none'}-${op.operation ?? 'none'}`}
+                          />
+                          <div className="flex items-center gap-1.5">
+                            <Switch
+                              checked={op.enabled}
+                              onCheckedChange={(checked) => handleEnabledChange(op.module, op.operation, checked)}
+                              disabled={op.retentionDays === null}
+                              data-testid={`switch-enabled-${op.module ?? 'none'}-${op.operation ?? 'none'}`}
+                            />
+                            <span className="text-xs text-muted-foreground w-12">
+                              {op.enabled ? "On" : "Off"}
+                            </span>
+                          </div>
+                          {op.retentionDays !== null && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleClearPolicy(op.module, op.operation)}
+                              data-testid={`button-clear-${op.module ?? 'none'}-${op.operation ?? 'none'}`}
+                            >
+                              <Trash2 className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        )}
 
         <p className="text-sm text-muted-foreground">
           Logs older than the retention period will be permanently deleted when the cleanup job runs.
