@@ -388,6 +388,14 @@ export const optionsClassifications = pgTable("options_classifications", {
   data: jsonb("data"),
 });
 
+export const optionsIndustry = pgTable("options_industries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  code: varchar("code", { length: 255 }).unique(),
+  siriusId: varchar("sirius_id", { length: 255 }).unique(),
+  data: jsonb("data"),
+});
+
 export const optionsWorkerWs = pgTable("options_worker_ws", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),

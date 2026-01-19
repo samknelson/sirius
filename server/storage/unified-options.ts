@@ -20,6 +20,7 @@ import {
   optionsCertifications,
   optionsWorkerRatings,
   optionsClassifications,
+  optionsIndustry,
 } from "@shared/schema";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
@@ -45,7 +46,8 @@ export type OptionsTypeName =
   | "edls-task"
   | "certification"
   | "worker-rating"
-  | "classification";
+  | "classification"
+  | "industry";
 
 /**
  * Field definition for dynamic form and table rendering
@@ -381,6 +383,23 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     supportsSequencing: true,
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Classification name", showInTable: true, columnHeader: "Name" },
+      { name: "code", label: "Code", inputType: "text", required: false, placeholder: "Short code", showInTable: true, columnHeader: "Code" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
+    ],
+  },
+  "industry": {
+    table: optionsIndustry,
+    displayName: "Industries",
+    description: "Manage industry options for workers",
+    singularName: "Industry",
+    pluralName: "Industries",
+    orderByColumn: "name" as const,
+    loggingModule: "options.industries",
+    requiredFields: ["name"],
+    optionalFields: ["code", "siriusId", "data"],
+    supportsSequencing: false,
+    fields: [
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Industry name", showInTable: true, columnHeader: "Name" },
       { name: "code", label: "Code", inputType: "text", required: false, placeholder: "Short code", showInTable: true, columnHeader: "Code" },
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
