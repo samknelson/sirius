@@ -1,11 +1,12 @@
 import { ReactNode, createContext, useContext } from "react";
-import { useParams, Link, useLocation } from "wouter";
+import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ChevronRight, Settings, Key, Shield, Server, FlaskConical } from "lucide-react";
+import { ArrowLeft, ChevronRight, Server } from "lucide-react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { useWsClientTabAccess } from "@/hooks/useTabAccess";
 import type { WsClient, WsBundle } from "@shared/schema";
 
 interface WsClientLayoutProps {
@@ -43,7 +44,6 @@ function StatusBadge({ status }: { status: string }) {
 
 export function WsClientLayout({ activeTab, children }: WsClientLayoutProps) {
   const { id } = useParams<{ id: string }>();
-  const [location] = useLocation();
 
   const { data: client, isLoading: clientLoading, error: clientError } = useQuery<WsClient>({
     queryKey: ["/api/admin/ws-clients", id],
@@ -55,6 +55,8 @@ export function WsClientLayout({ activeTab, children }: WsClientLayoutProps) {
   });
 
   const bundle = bundles.find((b) => b.id === client?.bundleId);
+
+  const { tabs: mainTabs } = useWsClientTabAccess(id);
 
   usePageTitle(client?.name || "Client Details");
 
@@ -130,54 +132,23 @@ export function WsClientLayout({ activeTab, children }: WsClientLayoutProps) {
 
       <div className="border-b border-border mb-6">
         <nav className="flex gap-6" data-testid="nav-tabs">
-          <Link
-            href={`/config/ws/clients/${id}`}
-            className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === "settings"
-                ? "border-primary text-primary font-medium"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-            data-testid="tab-settings"
-          >
-            <Settings className="h-4 w-4" />
-            Settings
-          </Link>
-          <Link
-            href={`/config/ws/clients/${id}/credentials`}
-            className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === "credentials"
-                ? "border-primary text-primary font-medium"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-            data-testid="tab-credentials"
-          >
-            <Key className="h-4 w-4" />
-            Credentials
-          </Link>
-          <Link
-            href={`/config/ws/clients/${id}/ip-rules`}
-            className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === "ip-rules"
-                ? "border-primary text-primary font-medium"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-            data-testid="tab-ip-rules"
-          >
-            <Shield className="h-4 w-4" />
-            IP Rules
-          </Link>
-          <Link
-            href={`/config/ws/clients/${id}/test`}
-            className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === "test"
-                ? "border-primary text-primary font-medium"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-            data-testid="tab-test"
-          >
-            <FlaskConical className="h-4 w-4" />
-            Test
-          </Link>
+          {mainTabs.map((tab) => {
+            const isActive = tab.id === activeTab;
+            return (
+              <Link
+                key={tab.id}
+                href={tab.href}
+                className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
+                  isActive
+                    ? "border-primary text-primary font-medium"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+                data-testid={`tab-${tab.id}`}
+              >
+                {tab.label}
+              </Link>
+            );
+          })}
         </nav>
       </div>
 

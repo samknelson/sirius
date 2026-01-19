@@ -60,7 +60,8 @@ export type TabEntityType =
   | 'ledger_payment'
   | 'trust_benefit'
   | 'worker_hours'
-  | 'user';
+  | 'user'
+  | 'ws_client';
 
 /**
  * Tab check request for batch access evaluation
@@ -399,6 +400,17 @@ export const userTabTree: HierarchicalTab[] = [
 ];
 
 /**
+ * Web service client entity tab tree
+ */
+export const wsClientTabTree: HierarchicalTab[] = [
+  { id: 'settings', label: 'Settings', hrefTemplate: '/config/ws/clients/{id}', permission: 'admin' },
+  { id: 'credentials', label: 'Credentials', hrefTemplate: '/config/ws/clients/{id}/credentials', permission: 'admin' },
+  { id: 'ip-rules', label: 'IP Rules', hrefTemplate: '/config/ws/clients/{id}/ip-rules', permission: 'admin' },
+  { id: 'test', label: 'Test', hrefTemplate: '/config/ws/clients/{id}/test', permission: 'admin' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/config/ws/clients/{id}/logs', permission: 'admin' },
+];
+
+/**
  * Entity tab trees by type
  */
 export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
@@ -420,6 +432,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   trust_benefit: trustBenefitTabTree,
   worker_hours: workerHoursTabTree,
   user: userTabTree,
+  ws_client: wsClientTabTree,
 };
 
 /**
@@ -624,4 +637,5 @@ export const tabRegistry: Record<TabEntityType, TabDefinition[]> = {
   trust_benefit: flattenTabTree(trustBenefitTabTree),
   worker_hours: flattenTabTree(workerHoursTabTree),
   user: flattenTabTree(userTabTree),
+  ws_client: flattenTabTree(wsClientTabTree),
 };

@@ -184,6 +184,7 @@ const WsClientSettingsPage = lazy(() => import("@/pages/config/ws/client-setting
 const WsClientCredentialsPage = lazy(() => import("@/pages/config/ws/client-credentials"));
 const WsClientIpRulesPage = lazy(() => import("@/pages/config/ws/client-ip-rules"));
 const WsClientTestPage = lazy(() => import("@/pages/config/ws/client-test"));
+const WsClientLogsPage = lazy(() => import("@/pages/config/ws/client-logs"));
 const WorkerBanConfigPage = lazy(() => import("@/pages/config/workers-ban"));
 const DispatchJobsPage = lazy(() => import("@/pages/dispatch/jobs"));
 const DispatchJobDetailsPage = lazy(() => import("@/pages/dispatch/job-details"));
@@ -1666,6 +1667,14 @@ function Router() {
             <ConfigurationLayout>
               <WsBundlesPage />
             </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/ws/clients/:id/logs">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <WsClientLogsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

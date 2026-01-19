@@ -367,3 +367,14 @@ export function useEdlsSheetTabAccess(sheetId: string | undefined, enabled = tru
     enabled 
   });
 }
+
+/**
+ * Hook specifically for web service client entity tabs
+ */
+export function useWsClientTabAccess(clientId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'ws_client', 
+    entityId: clientId, 
+    enabled 
+  });
+}
