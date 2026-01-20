@@ -1,0 +1,395 @@
+@timestamp,@message
+2026-01-20 18:11:43.516,Hello from Docker!
+2026-01-20 18:11:43.516,This message shows that your installation appears to be working correctly.
+2026-01-20 18:11:43.516,"To generate this message, Docker took the following steps:"
+2026-01-20 18:11:43.516, 1. The Docker client contacted the Docker daemon.
+2026-01-20 18:11:43.516," 2. The Docker daemon pulled the ""hello-world"" image from the Docker Hub."
+2026-01-20 18:11:43.516,    (amd64)
+2026-01-20 18:11:43.516, 3. The Docker daemon created a new container from that image which runs the
+2026-01-20 18:11:43.516,    executable that produces the output you are currently reading.
+2026-01-20 18:11:43.516," 4. The Docker daemon streamed that output to the Docker client, which sent it"
+2026-01-20 18:11:43.516,    to your terminal.
+2026-01-20 18:11:43.516,"To try something more ambitious, you can run an Ubuntu container with:"
+2026-01-20 18:11:43.516, $ docker run -it ubuntu bash
+2026-01-20 18:11:43.516,"Share images, automate workflows, and more with a free Docker ID:"
+2026-01-20 18:11:43.516, https://hub.docker.com/
+2026-01-20 18:11:43.516,"For more examples and ideas, visit:"
+2026-01-20 18:11:43.516, https://docs.docker.com/get-started/
+2026-01-20 18:10:25.327,Hello from Docker!
+2026-01-20 18:10:25.327,This message shows that your installation appears to be working correctly.
+2026-01-20 18:10:25.327,"To generate this message, Docker took the following steps:"
+2026-01-20 18:10:25.327, 1. The Docker client contacted the Docker daemon.
+2026-01-20 18:10:25.327," 2. The Docker daemon pulled the ""hello-world"" image from the Docker Hub."
+2026-01-20 18:10:25.327,    (amd64)
+2026-01-20 18:10:25.327, 3. The Docker daemon created a new container from that image which runs the
+2026-01-20 18:10:25.327,    executable that produces the output you are currently reading.
+2026-01-20 18:10:25.327," 4. The Docker daemon streamed that output to the Docker client, which sent it"
+2026-01-20 18:10:25.327,    to your terminal.
+2026-01-20 18:10:25.327,"To try something more ambitious, you can run an Ubuntu container with:"
+2026-01-20 18:10:25.327, $ docker run -it ubuntu bash
+2026-01-20 18:10:25.327,"Share images, automate workflows, and more with a free Docker ID:"
+2026-01-20 18:10:25.327, https://hub.docker.com/
+2026-01-20 18:10:25.327,"For more examples and ideas, visit:"
+2026-01-20 18:10:25.327, https://docs.docker.com/get-started/
+2026-01-20 18:08:00.590,Hello from Docker!
+2026-01-20 18:08:00.590,This message shows that your installation appears to be working correctly.
+2026-01-20 18:08:00.590,"To generate this message, Docker took the following steps:"
+2026-01-20 18:08:00.590, 1. The Docker client contacted the Docker daemon.
+2026-01-20 18:08:00.590," 2. The Docker daemon pulled the ""hello-world"" image from the Docker Hub."
+2026-01-20 18:08:00.590,    (amd64)
+2026-01-20 18:08:00.590, 3. The Docker daemon created a new container from that image which runs the
+2026-01-20 18:08:00.590,    executable that produces the output you are currently reading.
+2026-01-20 18:08:00.590," 4. The Docker daemon streamed that output to the Docker client, which sent it"
+2026-01-20 18:08:00.590,    to your terminal.
+2026-01-20 18:08:00.590,"To try something more ambitious, you can run an Ubuntu container with:"
+2026-01-20 18:08:00.590, $ docker run -it ubuntu bash
+2026-01-20 18:08:00.590,"Share images, automate workflows, and more with a free Docker ID:"
+2026-01-20 18:08:00.590, https://hub.docker.com/
+2026-01-20 18:08:00.590,"For more examples and ideas, visit:"
+2026-01-20 18:08:00.590, https://docs.docker.com/get-started/
+2026-01-20 18:05:56.442,Hello from Docker!
+2026-01-20 18:05:56.442,This message shows that your installation appears to be working correctly.
+2026-01-20 18:05:56.442,"To generate this message, Docker took the following steps:"
+2026-01-20 18:05:56.442, 1. The Docker client contacted the Docker daemon.
+2026-01-20 18:05:56.442," 2. The Docker daemon pulled the ""hello-world"" image from the Docker Hub."
+2026-01-20 18:05:56.442,    (amd64)
+2026-01-20 18:05:56.442, 3. The Docker daemon created a new container from that image which runs the
+2026-01-20 18:05:56.442,    executable that produces the output you are currently reading.
+2026-01-20 18:05:56.442," 4. The Docker daemon streamed that output to the Docker client, which sent it"
+2026-01-20 18:05:56.442,    to your terminal.
+2026-01-20 18:05:56.442,"To try something more ambitious, you can run an Ubuntu container with:"
+2026-01-20 18:05:56.442, $ docker run -it ubuntu bash
+2026-01-20 18:05:56.442,"Share images, automate workflows, and more with a free Docker ID:"
+2026-01-20 18:05:56.442, https://hub.docker.com/
+2026-01-20 18:05:56.442,"For more examples and ideas, visit:"
+2026-01-20 18:05:56.442, https://docs.docker.com/get-started/
+2026-01-20 18:05:08.431,npm notice
+2026-01-20 18:05:08.431,npm notice New major version of npm available! 10.8.2 -> 11.7.0
+2026-01-20 18:05:08.431,npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.7.0
+2026-01-20 18:05:08.431,npm notice To update run: npm install -g npm@11.7.0
+2026-01-20 18:05:08.431,npm notice
+2026-01-20 18:05:08.412,node:internal/errors:496
+2026-01-20 18:05:08.412,    ErrorCaptureStackTrace(err);
+2026-01-20 18:05:08.412,    ^
+2026-01-20 18:05:08.412,"TypeError [ERR_INVALID_ARG_TYPE]: The ""paths[0]"" argument must be of type string. Received undefined"
+2026-01-20 18:05:08.412,    at new NodeError (node:internal/errors:405:5)
+2026-01-20 18:05:08.412,    at validateString (node:internal/validators:162:11)
+2026-01-20 18:05:08.412,    at Object.resolve (node:path:1097:7)
+2026-01-20 18:05:08.412,    at file:///app/dist/index.js:37975:18
+2026-01-20 18:05:08.412,    at ModuleJob.run (node:internal/modules/esm/module_job:195:25)
+2026-01-20 18:05:08.412,    at async ModuleLoader.import (node:internal/modules/esm/loader:337:24)
+2026-01-20 18:05:08.412,    at async loadESM (node:internal/process/esm_loader:34:7)
+2026-01-20 18:05:08.412,    at async handleMainPromise (node:internal/modules/run_main:106:12) {
+2026-01-20 18:05:08.412,  code: 'ERR_INVALID_ARG_TYPE'
+2026-01-20 18:05:08.412,}
+2026-01-20 18:05:08.412,Node.js v18.20.5
+2026-01-20 18:05:08.392,"06:05:08 PM [app] INFO: Registered charge plugin: btu-steward-attendance {""service"":""charge-plugin-registry"",""triggers"":[""participant_saved""],""requiredComponent"":""sitespecific.btu""}"
+2026-01-20 18:05:08.391,"06:05:08 PM [app] INFO: Registered charge plugin: payment-simple-allocation {""service"":""charge-plugin-registry"",""triggers"":[""payment_saved""]}"
+2026-01-20 18:05:08.390,"06:05:08 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {""service"":""charge-plugin-registry"",""triggers"":[""wmb_saved""],""requiredComponent"":""sitespecific.gbhet.legal""}"
+2026-01-20 18:05:04.633,> rest-express@1.0.0 start
+2026-01-20 18:05:04.633,> NODE_ENV=production node dist/index.js
+2026-01-20 18:05:03.602,npm warn config production Use `--omit=dev` instead.
+2026-01-20 18:04:05.164,npm notice
+2026-01-20 18:04:05.164,npm notice New major version of npm available! 10.8.2 -> 11.7.0
+2026-01-20 18:04:05.164,npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.7.0
+2026-01-20 18:04:05.164,npm notice To update run: npm install -g npm@11.7.0
+2026-01-20 18:04:05.164,npm notice
+2026-01-20 18:04:05.146,node:internal/errors:496
+2026-01-20 18:04:05.146,    ErrorCaptureStackTrace(err);
+2026-01-20 18:04:05.146,    ^
+2026-01-20 18:04:05.146,"TypeError [ERR_INVALID_ARG_TYPE]: The ""paths[0]"" argument must be of type string. Received undefined"
+2026-01-20 18:04:05.146,    at new NodeError (node:internal/errors:405:5)
+2026-01-20 18:04:05.146,    at validateString (node:internal/validators:162:11)
+2026-01-20 18:04:05.146,    at Object.resolve (node:path:1097:7)
+2026-01-20 18:04:05.146,    at file:///app/dist/index.js:37975:18
+2026-01-20 18:04:05.146,    at ModuleJob.run (node:internal/modules/esm/module_job:195:25)
+2026-01-20 18:04:05.146,    at async ModuleLoader.import (node:internal/modules/esm/loader:337:24)
+2026-01-20 18:04:05.146,    at async loadESM (node:internal/process/esm_loader:34:7)
+2026-01-20 18:04:05.146,    at async handleMainPromise (node:internal/modules/run_main:106:12) {
+2026-01-20 18:04:05.146,  code: 'ERR_INVALID_ARG_TYPE'
+2026-01-20 18:04:05.146,}
+2026-01-20 18:04:05.146,Node.js v18.20.5
+2026-01-20 18:04:05.127,"06:04:05 PM [app] INFO: Registered charge plugin: payment-simple-allocation {""service"":""charge-plugin-registry"",""triggers"":[""payment_saved""]}"
+2026-01-20 18:04:05.127,"06:04:05 PM [app] INFO: Registered charge plugin: btu-steward-attendance {""service"":""charge-plugin-registry"",""triggers"":[""participant_saved""],""requiredComponent"":""sitespecific.btu""}"
+2026-01-20 18:04:05.125,"06:04:05 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {""service"":""charge-plugin-registry"",""triggers"":[""wmb_saved""],""requiredComponent"":""sitespecific.gbhet.legal""}"
+2026-01-20 18:04:00.751,> rest-express@1.0.0 start
+2026-01-20 18:04:00.751,> NODE_ENV=production node dist/index.js
+2026-01-20 18:03:59.733,npm warn config production Use `--omit=dev` instead.
+2026-01-20 18:02:16.122,npm notice
+2026-01-20 18:02:16.122,npm notice New major version of npm available! 10.8.2 -> 11.7.0
+2026-01-20 18:02:16.122,npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.7.0
+2026-01-20 18:02:16.122,npm notice To update run: npm install -g npm@11.7.0
+2026-01-20 18:02:16.122,npm notice
+2026-01-20 18:02:16.044,node:internal/errors:496
+2026-01-20 18:02:16.044,    ErrorCaptureStackTrace(err);
+2026-01-20 18:02:16.044,    ^
+2026-01-20 18:02:16.044,"TypeError [ERR_INVALID_ARG_TYPE]: The ""paths[0]"" argument must be of type string. Received undefined"
+2026-01-20 18:02:16.044,    at new NodeError (node:internal/errors:405:5)
+2026-01-20 18:02:16.044,    at validateString (node:internal/validators:162:11)
+2026-01-20 18:02:16.044,    at Object.resolve (node:path:1097:7)
+2026-01-20 18:02:16.044,    at file:///app/dist/index.js:37975:18
+2026-01-20 18:02:16.044,    at ModuleJob.run (node:internal/modules/esm/module_job:195:25)
+2026-01-20 18:02:16.044,    at async ModuleLoader.import (node:internal/modules/esm/loader:337:24)
+2026-01-20 18:02:16.044,    at async loadESM (node:internal/process/esm_loader:34:7)
+2026-01-20 18:02:16.044,    at async handleMainPromise (node:internal/modules/run_main:106:12) {
+2026-01-20 18:02:16.044,  code: 'ERR_INVALID_ARG_TYPE'
+2026-01-20 18:02:16.044,}
+2026-01-20 18:02:16.044,Node.js v18.20.5
+2026-01-20 18:02:16.023,"06:02:16 PM [app] INFO: Registered charge plugin: btu-steward-attendance {""service"":""charge-plugin-registry"",""triggers"":[""participant_saved""],""requiredComponent"":""sitespecific.btu""}"
+2026-01-20 18:02:16.022,"06:02:16 PM [app] INFO: Registered charge plugin: payment-simple-allocation {""service"":""charge-plugin-registry"",""triggers"":[""payment_saved""]}"
+2026-01-20 18:02:16.021,"06:02:16 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {""service"":""charge-plugin-registry"",""triggers"":[""wmb_saved""],""requiredComponent"":""sitespecific.gbhet.legal""}"
+2026-01-20 18:02:12.319,> rest-express@1.0.0 start
+2026-01-20 18:02:12.319,> NODE_ENV=production node dist/index.js
+2026-01-20 18:02:11.219,npm warn config production Use `--omit=dev` instead.
+2026-01-20 18:01:08.580,npm notice
+2026-01-20 18:01:08.580,npm notice New major version of npm available! 10.8.2 -> 11.7.0
+2026-01-20 18:01:08.580,npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.7.0
+2026-01-20 18:01:08.580,npm notice To update run: npm install -g npm@11.7.0
+2026-01-20 18:01:08.580,npm notice
+2026-01-20 18:01:08.561,node:internal/errors:496
+2026-01-20 18:01:08.561,    ErrorCaptureStackTrace(err);
+2026-01-20 18:01:08.561,    ^
+2026-01-20 18:01:08.561,"TypeError [ERR_INVALID_ARG_TYPE]: The ""paths[0]"" argument must be of type string. Received undefined"
+2026-01-20 18:01:08.561,    at new NodeError (node:internal/errors:405:5)
+2026-01-20 18:01:08.561,    at validateString (node:internal/validators:162:11)
+2026-01-20 18:01:08.561,    at Object.resolve (node:path:1097:7)
+2026-01-20 18:01:08.561,    at file:///app/dist/index.js:37975:18
+2026-01-20 18:01:08.561,    at ModuleJob.run (node:internal/modules/esm/module_job:195:25)
+2026-01-20 18:01:08.561,    at async ModuleLoader.import (node:internal/modules/esm/loader:337:24)
+2026-01-20 18:01:08.561,    at async loadESM (node:internal/process/esm_loader:34:7)
+2026-01-20 18:01:08.561,    at async handleMainPromise (node:internal/modules/run_main:106:12) {
+2026-01-20 18:01:08.561,  code: 'ERR_INVALID_ARG_TYPE'
+2026-01-20 18:01:08.561,}
+2026-01-20 18:01:08.561,Node.js v18.20.5
+2026-01-20 18:01:08.487,"06:01:08 PM [app] INFO: Registered charge plugin: btu-steward-attendance {""service"":""charge-plugin-registry"",""triggers"":[""participant_saved""],""requiredComponent"":""sitespecific.btu""}"
+2026-01-20 18:01:08.486,"06:01:08 PM [app] INFO: Registered charge plugin: payment-simple-allocation {""service"":""charge-plugin-registry"",""triggers"":[""payment_saved""]}"
+2026-01-20 18:01:08.485,"06:01:08 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {""service"":""charge-plugin-registry"",""triggers"":[""wmb_saved""],""requiredComponent"":""sitespecific.gbhet.legal""}"
+2026-01-20 18:01:04.982,> rest-express@1.0.0 start
+2026-01-20 18:01:04.982,> NODE_ENV=production node dist/index.js
+2026-01-20 18:01:03.902,npm warn config production Use `--omit=dev` instead.
+2026-01-20 17:59:22.335,npm notice
+2026-01-20 17:59:22.335,npm notice New major version of npm available! 10.8.2 -> 11.7.0
+2026-01-20 17:59:22.335,npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.7.0
+2026-01-20 17:59:22.335,npm notice To update run: npm install -g npm@11.7.0
+2026-01-20 17:59:22.335,npm notice
+2026-01-20 17:59:22.265,node:internal/errors:496
+2026-01-20 17:59:22.265,    ErrorCaptureStackTrace(err);
+2026-01-20 17:59:22.265,    ^
+2026-01-20 17:59:22.265,"TypeError [ERR_INVALID_ARG_TYPE]: The ""paths[0]"" argument must be of type string. Received undefined"
+2026-01-20 17:59:22.265,    at new NodeError (node:internal/errors:405:5)
+2026-01-20 17:59:22.265,    at validateString (node:internal/validators:162:11)
+2026-01-20 17:59:22.265,    at Object.resolve (node:path:1097:7)
+2026-01-20 17:59:22.265,    at file:///app/dist/index.js:37975:18
+2026-01-20 17:59:22.265,    at ModuleJob.run (node:internal/modules/esm/module_job:195:25)
+2026-01-20 17:59:22.265,    at async ModuleLoader.import (node:internal/modules/esm/loader:337:24)
+2026-01-20 17:59:22.265,    at async loadESM (node:internal/process/esm_loader:34:7)
+2026-01-20 17:59:22.265,    at async handleMainPromise (node:internal/modules/run_main:106:12) {
+2026-01-20 17:59:22.265,  code: 'ERR_INVALID_ARG_TYPE'
+2026-01-20 17:59:22.265,}
+2026-01-20 17:59:22.265,Node.js v18.20.5
+2026-01-20 17:59:22.246,"05:59:22 PM [app] INFO: Registered charge plugin: payment-simple-allocation {""service"":""charge-plugin-registry"",""triggers"":[""payment_saved""]}"
+2026-01-20 17:59:22.246,"05:59:22 PM [app] INFO: Registered charge plugin: btu-steward-attendance {""service"":""charge-plugin-registry"",""triggers"":[""participant_saved""],""requiredComponent"":""sitespecific.btu""}"
+2026-01-20 17:59:22.245,"05:59:22 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {""service"":""charge-plugin-registry"",""triggers"":[""wmb_saved""],""requiredComponent"":""sitespecific.gbhet.legal""}"
+2026-01-20 17:59:18.584,> rest-express@1.0.0 start
+2026-01-20 17:59:18.584,> NODE_ENV=production node dist/index.js
+2026-01-20 17:59:17.779,npm warn config production Use `--omit=dev` instead.
+2026-01-20 17:52:30.774,Hello from Docker!
+2026-01-20 17:52:30.774,This message shows that your installation appears to be working correctly.
+2026-01-20 17:52:30.774,"To generate this message, Docker took the following steps:"
+2026-01-20 17:52:30.774, 1. The Docker client contacted the Docker daemon.
+2026-01-20 17:52:30.774," 2. The Docker daemon pulled the ""hello-world"" image from the Docker Hub."
+2026-01-20 17:52:30.774,    (amd64)
+2026-01-20 17:52:30.774, 3. The Docker daemon created a new container from that image which runs the
+2026-01-20 17:52:30.774,    executable that produces the output you are currently reading.
+2026-01-20 17:52:30.774," 4. The Docker daemon streamed that output to the Docker client, which sent it"
+2026-01-20 17:52:30.774,    to your terminal.
+2026-01-20 17:52:30.774,"To try something more ambitious, you can run an Ubuntu container with:"
+2026-01-20 17:52:30.774, $ docker run -it ubuntu bash
+2026-01-20 17:52:30.774,"Share images, automate workflows, and more with a free Docker ID:"
+2026-01-20 17:52:30.774, https://hub.docker.com/
+2026-01-20 17:52:30.774,"For more examples and ideas, visit:"
+2026-01-20 17:52:30.774, https://docs.docker.com/get-started/
+2026-01-20 17:51:32.256,Hello from Docker!
+2026-01-20 17:51:32.256,This message shows that your installation appears to be working correctly.
+2026-01-20 17:51:32.256,"To generate this message, Docker took the following steps:"
+2026-01-20 17:51:32.256, 1. The Docker client contacted the Docker daemon.
+2026-01-20 17:51:32.256," 2. The Docker daemon pulled the ""hello-world"" image from the Docker Hub."
+2026-01-20 17:51:32.256,    (amd64)
+2026-01-20 17:51:32.256, 3. The Docker daemon created a new container from that image which runs the
+2026-01-20 17:51:32.256,    executable that produces the output you are currently reading.
+2026-01-20 17:51:32.256," 4. The Docker daemon streamed that output to the Docker client, which sent it"
+2026-01-20 17:51:32.256,    to your terminal.
+2026-01-20 17:51:32.256,"To try something more ambitious, you can run an Ubuntu container with:"
+2026-01-20 17:51:32.256, $ docker run -it ubuntu bash
+2026-01-20 17:51:32.256,"Share images, automate workflows, and more with a free Docker ID:"
+2026-01-20 17:51:32.256, https://hub.docker.com/
+2026-01-20 17:51:32.256,"For more examples and ideas, visit:"
+2026-01-20 17:51:32.256, https://docs.docker.com/get-started/
+2026-01-20 17:50:20.543,Hello from Docker!
+2026-01-20 17:50:20.543,This message shows that your installation appears to be working correctly.
+2026-01-20 17:50:20.543,"To generate this message, Docker took the following steps:"
+2026-01-20 17:50:20.543, 1. The Docker client contacted the Docker daemon.
+2026-01-20 17:50:20.543," 2. The Docker daemon pulled the ""hello-world"" image from the Docker Hub."
+2026-01-20 17:50:20.543,    (amd64)
+2026-01-20 17:50:20.543, 3. The Docker daemon created a new container from that image which runs the
+2026-01-20 17:50:20.543,    executable that produces the output you are currently reading.
+2026-01-20 17:50:20.543," 4. The Docker daemon streamed that output to the Docker client, which sent it"
+2026-01-20 17:50:20.543,    to your terminal.
+2026-01-20 17:50:20.543,"To try something more ambitious, you can run an Ubuntu container with:"
+2026-01-20 17:50:20.543, $ docker run -it ubuntu bash
+2026-01-20 17:50:20.543,"Share images, automate workflows, and more with a free Docker ID:"
+2026-01-20 17:50:20.543, https://hub.docker.com/
+2026-01-20 17:50:20.543,"For more examples and ideas, visit:"
+2026-01-20 17:50:20.543, https://docs.docker.com/get-started/
+2026-01-20 17:49:38.049,"{""level"":""info"",""ts"":1768931378.0493588,""msg"":""shutdown complete"",""signal"":""SIGTERM"",""exit_code"":0}"
+2026-01-20 17:49:38.047,"{""level"":""warn"",""ts"":1768931378.045923,""msg"":""exiting; byeee!! 👋"",""signal"":""SIGTERM""}"
+2026-01-20 17:49:38.047,"{""level"":""info"",""ts"":1768931378.047599,""logger"":""http"",""msg"":""servers shutting down with eternal grace period""}"
+2026-01-20 17:49:38.045,"{""level"":""info"",""ts"":1768931378.0455458,""msg"":""shutting down apps, then terminating"",""signal"":""SIGTERM""}"
+2026-01-20 17:48:46.284,Hello from Docker!
+2026-01-20 17:48:46.284,This message shows that your installation appears to be working correctly.
+2026-01-20 17:48:46.284,"To generate this message, Docker took the following steps:"
+2026-01-20 17:48:46.284, 1. The Docker client contacted the Docker daemon.
+2026-01-20 17:48:46.284," 2. The Docker daemon pulled the ""hello-world"" image from the Docker Hub."
+2026-01-20 17:48:46.284,    (amd64)
+2026-01-20 17:48:46.284, 3. The Docker daemon created a new container from that image which runs the
+2026-01-20 17:48:46.284,    executable that produces the output you are currently reading.
+2026-01-20 17:48:46.284," 4. The Docker daemon streamed that output to the Docker client, which sent it"
+2026-01-20 17:48:46.284,    to your terminal.
+2026-01-20 17:48:46.284,"To try something more ambitious, you can run an Ubuntu container with:"
+2026-01-20 17:48:46.284, $ docker run -it ubuntu bash
+2026-01-20 17:48:46.284,"Share images, automate workflows, and more with a free Docker ID:"
+2026-01-20 17:48:46.284, https://hub.docker.com/
+2026-01-20 17:48:46.284,"For more examples and ideas, visit:"
+2026-01-20 17:48:46.284, https://docs.docker.com/get-started/
+2026-01-20 17:47:56.310,"{""level"":""info"",""ts"":1768931276.3099377,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""38906"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.134:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000098443,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:47:56.307,"{""level"":""info"",""ts"":1768931276.3076565,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""19464"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.134:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000091425,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:47:56.248,"{""level"":""info"",""ts"":1768931276.2479355,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""1314"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.134:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000107783,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:47:52.908,"{""level"":""info"",""ts"":1768931272.908889,""msg"":""shutdown complete"",""signal"":""SIGTERM"",""exit_code"":0}"
+2026-01-20 17:47:52.907,"{""level"":""warn"",""ts"":1768931272.9064908,""msg"":""exiting; byeee!! 👋"",""signal"":""SIGTERM""}"
+2026-01-20 17:47:52.907,"{""level"":""info"",""ts"":1768931272.9075913,""logger"":""http"",""msg"":""servers shutting down with eternal grace period""}"
+2026-01-20 17:47:52.906,"{""level"":""info"",""ts"":1768931272.9064639,""msg"":""shutting down apps, then terminating"",""signal"":""SIGTERM""}"
+2026-01-20 17:47:26.289,"{""level"":""info"",""ts"":1768931246.289029,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""20382"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.134:3000"",""uri"":""/api/health"",""headers"":{""Accept-Encoding"":[""gzip, compressed""],""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.00010986,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:47:26.277,"{""level"":""info"",""ts"":1768931246.2773137,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""10494"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.134:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000121593,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:47:26.224,"{""level"":""info"",""ts"":1768931246.2244494,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""59708"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.134:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000124783,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:46:56.261,"{""level"":""info"",""ts"":1768931216.2617137,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""46002"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.134:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000108482,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:46:56.258,"{""level"":""info"",""ts"":1768931216.2579138,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""19088"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.134:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000106796,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:46:56.196,"{""level"":""info"",""ts"":1768931216.1967516,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""6550"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.134:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000102541,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:46:26.259,"{""level"":""info"",""ts"":1768931186.2592254,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""41498"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.134:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000120636,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:46:26.255,"{""level"":""info"",""ts"":1768931186.2557313,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""51196"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.134:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.00009247,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:46:26.189,"{""level"":""info"",""ts"":1768931186.1895666,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""49786"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.134:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000109176,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:46:24.341,"{""level"":""info"",""ts"":1768931184.3417668,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""8458"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.91:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000094463,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:46:24.315,"{""level"":""info"",""ts"":1768931184.3155813,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""54448"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.91:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000100692,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:46:24.309,"{""level"":""info"",""ts"":1768931184.309834,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""6360"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.91:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000108453,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:45:56.256,"{""level"":""info"",""ts"":1768931156.256426,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""29214"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.134:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000090156,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:45:56.253,"{""level"":""info"",""ts"":1768931156.2529864,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""13302"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.134:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000099505,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:45:56.187,"{""level"":""info"",""ts"":1768931156.1871655,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""56982"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.134:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000113273,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:45:54.321,"{""level"":""info"",""ts"":1768931154.321319,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""49250"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.91:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000148518,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:45:54.288,"{""level"":""info"",""ts"":1768931154.2886574,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""31530"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.91:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000161982,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:45:54.282,"{""level"":""info"",""ts"":1768931154.2825723,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""38268"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.91:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000099574,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:45:26.255,"{""level"":""info"",""ts"":1768931126.2549882,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""33302"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.134:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000140519,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:45:26.255,"{""level"":""info"",""ts"":1768931126.2553222,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""49338"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.134:3000"",""uri"":""/api/health"",""headers"":{""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""],""Connection"":[""close""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000081439,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:45:26.190,"{""level"":""info"",""ts"":1768931126.1904652,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""60370"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.134:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.003438214,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:45:24.292,"{""level"":""info"",""ts"":1768931124.2925787,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""28382"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.91:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000123688,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:45:24.259,"{""level"":""info"",""ts"":1768931124.2594423,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""30812"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.91:3000"",""uri"":""/api/health"",""headers"":{""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""],""Connection"":[""close""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000076987,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:45:24.258,"{""level"":""info"",""ts"":1768931124.2586486,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""35678"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.91:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000203747,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:45:18.873,"{""level"":""info"",""ts"":1768931118.8730626,""logger"":""tls"",""msg"":""finished cleaning storage units""}"
+2026-01-20 17:45:18.872,"{""level"":""info"",""ts"":1768931118.8727806,""logger"":""tls"",""msg"":""cleaning storage unit"",""storage"":""FileStorage:/root/.local/share/caddy""}"
+2026-01-20 17:45:18.864,"{""level"":""info"",""ts"":1768931118.8642457,""logger"":""http.log"",""msg"":""server running"",""name"":""srv0"",""protocols"":[""h1"",""h2"",""h3""]}"
+2026-01-20 17:45:18.864,"{""level"":""info"",""ts"":1768931118.8643286,""msg"":""serving initial configuration""}"
+2026-01-20 17:45:18.863,"{""level"":""info"",""ts"":1768931118.862948,""logger"":""http.auto_https"",""msg"":""automatic HTTPS is completely disabled for server"",""server_name"":""srv0""}"
+2026-01-20 17:45:18.863,"{""level"":""info"",""ts"":1768931118.8634448,""logger"":""tls.cache.maintenance"",""msg"":""started background certificate maintenance"",""cache"":""0xc0002bdd80""}"
+2026-01-20 17:45:18.862,"{""level"":""warn"",""ts"":1768931118.8621297,""logger"":""admin"",""msg"":""admin endpoint disabled""}"
+2026-01-20 17:45:18.861,"{""level"":""info"",""ts"":1768931118.861807,""msg"":""adapted config to JSON"",""adapter"":""caddyfile""}"
+2026-01-20 17:45:18.854,"{""level"":""info"",""ts"":1768931118.8543262,""msg"":""using config from file"",""file"":""/assets/Caddyfile""}"
+2026-01-20 17:44:54.261,"{""level"":""info"",""ts"":1768931094.261846,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""15158"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.91:3000"",""uri"":""/api/health"",""headers"":{""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""],""Connection"":[""close""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000095653,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:44:54.235,"{""level"":""info"",""ts"":1768931094.2352483,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""33992"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.91:3000"",""uri"":""/api/health"",""headers"":{""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""],""Connection"":[""close""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000110488,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:44:54.227,"{""level"":""info"",""ts"":1768931094.227837,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""55830"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.91:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000101726,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:44:24.230,"{""level"":""info"",""ts"":1768931064.2306936,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""2422"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.91:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.00009801,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:44:24.206,"{""level"":""info"",""ts"":1768931064.2061355,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""53152"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.91:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000106664,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:44:24.206,"{""level"":""info"",""ts"":1768931064.206311,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""8314"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.91:3000"",""uri"":""/api/health"",""headers"":{""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""],""Connection"":[""close""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.00007568,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:43:55.533,"{""level"":""info"",""ts"":1768931035.5273137,""msg"":""shutdown complete"",""signal"":""SIGTERM"",""exit_code"":0}"
+2026-01-20 17:43:55.525,"{""level"":""warn"",""ts"":1768931035.5252259,""msg"":""exiting; byeee!! 👋"",""signal"":""SIGTERM""}"
+2026-01-20 17:43:55.525,"{""level"":""info"",""ts"":1768931035.5253341,""logger"":""http"",""msg"":""servers shutting down with eternal grace period""}"
+2026-01-20 17:43:55.521,"{""level"":""info"",""ts"":1768931035.5219018,""msg"":""shutting down apps, then terminating"",""signal"":""SIGTERM""}"
+2026-01-20 17:43:54.212,"{""level"":""info"",""ts"":1768931034.2123656,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""42614"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.91:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000101956,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:43:54.207,"{""level"":""info"",""ts"":1768931034.2075052,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""20196"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.91:3000"",""uri"":""/api/health"",""headers"":{""Accept-Encoding"":[""gzip, compressed""],""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.002225658,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:43:54.207,"{""level"":""info"",""ts"":1768931034.2075052,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""42000"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.91:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.002145393,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:43:42.038,"{""level"":""info"",""ts"":1768931022.0380802,""logger"":""tls"",""msg"":""finished cleaning storage units""}"
+2026-01-20 17:43:42.037,"{""level"":""info"",""ts"":1768931022.037798,""logger"":""tls"",""msg"":""cleaning storage unit"",""storage"":""FileStorage:/root/.local/share/caddy""}"
+2026-01-20 17:43:42.034,"{""level"":""info"",""ts"":1768931022.0345852,""logger"":""http.log"",""msg"":""server running"",""name"":""srv0"",""protocols"":[""h1"",""h2"",""h3""]}"
+2026-01-20 17:43:42.034,"{""level"":""info"",""ts"":1768931022.034617,""msg"":""serving initial configuration""}"
+2026-01-20 17:43:42.030,"{""level"":""info"",""ts"":1768931022.030052,""logger"":""tls.cache.maintenance"",""msg"":""started background certificate maintenance"",""cache"":""0xc000629600""}"
+2026-01-20 17:43:42.030,"{""level"":""info"",""ts"":1768931022.0306098,""logger"":""http.auto_https"",""msg"":""automatic HTTPS is completely disabled for server"",""server_name"":""srv0""}"
+2026-01-20 17:43:42.028,"{""level"":""info"",""ts"":1768931022.0281487,""msg"":""adapted config to JSON"",""adapter"":""caddyfile""}"
+2026-01-20 17:43:42.028,"{""level"":""warn"",""ts"":1768931022.0288653,""logger"":""admin"",""msg"":""admin endpoint disabled""}"
+2026-01-20 17:43:42.018,"{""level"":""info"",""ts"":1768931022.018586,""msg"":""using config from file"",""file"":""/assets/Caddyfile""}"
+2026-01-20 17:42:20.010,"{""level"":""info"",""ts"":1768930940.0107071,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""47930"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.172:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000097599,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:42:19.314,"{""level"":""info"",""ts"":1768930939.3142881,""msg"":""shutdown complete"",""signal"":""SIGTERM"",""exit_code"":0}"
+2026-01-20 17:42:19.312,"{""level"":""warn"",""ts"":1768930939.3121665,""msg"":""exiting; byeee!! 👋"",""signal"":""SIGTERM""}"
+2026-01-20 17:42:19.312,"{""level"":""info"",""ts"":1768930939.3123336,""logger"":""http"",""msg"":""servers shutting down with eternal grace period""}"
+2026-01-20 17:42:19.311,"{""level"":""info"",""ts"":1768930939.3117137,""msg"":""shutting down apps, then terminating"",""signal"":""SIGTERM""}"
+2026-01-20 17:42:17.099,"{""level"":""info"",""ts"":1768930937.0996869,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""6034"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.172:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000091603,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:42:16.994,"{""level"":""info"",""ts"":1768930936.99455,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""57034"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.172:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.00009609,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:41:49.979,"{""level"":""info"",""ts"":1768930909.9796188,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""58210"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.172:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000093425,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:41:47.091,"{""level"":""info"",""ts"":1768930907.0915365,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""11738"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.172:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.00009215,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:41:46.983,"{""level"":""info"",""ts"":1768930906.9830787,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""35028"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.172:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000097197,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:41:19.969,"{""level"":""info"",""ts"":1768930879.969465,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""22116"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.172:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000105097,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:41:17.070,"{""level"":""info"",""ts"":1768930877.0700662,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""21246"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.172:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000095054,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:41:16.974,"{""level"":""info"",""ts"":1768930876.9748113,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""9978"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.172:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000104398,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:40:52.116,"{""level"":""info"",""ts"":1768930852.1161947,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""9776"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.224:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000095384,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:40:49.956,"{""level"":""info"",""ts"":1768930849.9567957,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""21506"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.172:3000"",""uri"":""/api/health"",""headers"":{""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""],""Connection"":[""close""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000091835,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:40:47.058,"{""level"":""info"",""ts"":1768930847.0585856,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""48534"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.172:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000093258,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:40:46.967,"{""level"":""info"",""ts"":1768930846.9674575,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""1518"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.172:3000"",""uri"":""/api/health"",""headers"":{""Accept-Encoding"":[""gzip, compressed""],""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000096855,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:40:44.813,"{""level"":""info"",""ts"":1768930844.8137403,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""53112"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.224:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.00009258,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:40:40.266,"{""level"":""info"",""ts"":1768930840.2659574,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""48032"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.224:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.00009955,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:40:22.109,"{""level"":""info"",""ts"":1768930822.1093402,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""20632"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.224:3000"",""uri"":""/api/health"",""headers"":{""Accept-Encoding"":[""gzip, compressed""],""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000103645,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:40:19.950,"{""level"":""info"",""ts"":1768930819.9503057,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""20022"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.172:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000106946,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:40:17.032,"{""level"":""info"",""ts"":1768930817.0327032,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""45434"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.172:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000092534,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:40:16.959,"{""level"":""info"",""ts"":1768930816.9594436,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""10046"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.172:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000099732,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:40:14.783,"{""level"":""info"",""ts"":1768930814.783119,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""14790"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.224:3000"",""uri"":""/api/health"",""headers"":{""Accept-Encoding"":[""gzip, compressed""],""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000099331,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:40:10.238,"{""level"":""info"",""ts"":1768930810.2383082,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""35070"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.224:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000113692,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:39:52.096,"{""level"":""info"",""ts"":1768930792.0962431,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""26162"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.224:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000093101,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:39:49.950,"{""level"":""info"",""ts"":1768930789.9506423,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""30854"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.172:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000098421,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:39:47.005,"{""level"":""info"",""ts"":1768930787.0048249,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""61774"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.172:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000103951,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:39:46.952,"{""level"":""info"",""ts"":1768930786.9522207,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""49244"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.11.172:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.004446404,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:39:44.755,"{""level"":""info"",""ts"":1768930784.7551503,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""37080"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.224:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000091179,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:39:40.225,"{""level"":""info"",""ts"":1768930780.225583,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.55"",""remote_port"":""50332"",""client_ip"":""10.192.10.55"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.224:3000"",""uri"":""/api/health"",""headers"":{""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""],""Connection"":[""close""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000094283,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:39:37.756,"{""level"":""info"",""ts"":1768930777.7562046,""logger"":""tls"",""msg"":""finished cleaning storage units""}"
+2026-01-20 17:39:37.755,"{""level"":""info"",""ts"":1768930777.7558692,""logger"":""tls"",""msg"":""cleaning storage unit"",""storage"":""FileStorage:/root/.local/share/caddy""}"
+2026-01-20 17:39:37.750,"{""level"":""info"",""ts"":1768930777.7503176,""logger"":""tls.cache.maintenance"",""msg"":""started background certificate maintenance"",""cache"":""0xc000354380""}"
+2026-01-20 17:39:37.749,"{""level"":""info"",""ts"":1768930777.7492177,""logger"":""http.log"",""msg"":""server running"",""name"":""srv0"",""protocols"":[""h1"",""h2"",""h3""]}"
+2026-01-20 17:39:37.749,"{""level"":""info"",""ts"":1768930777.7492416,""msg"":""serving initial configuration""}"
+2026-01-20 17:39:37.748,"{""level"":""info"",""ts"":1768930777.7486284,""logger"":""http.auto_https"",""msg"":""automatic HTTPS is completely disabled for server"",""server_name"":""srv0""}"
+2026-01-20 17:39:37.747,"{""level"":""info"",""ts"":1768930777.7472978,""msg"":""adapted config to JSON"",""adapter"":""caddyfile""}"
+2026-01-20 17:39:37.747,"{""level"":""warn"",""ts"":1768930777.747638,""logger"":""admin"",""msg"":""admin endpoint disabled""}"
+2026-01-20 17:39:37.744,"{""level"":""info"",""ts"":1768930777.7448165,""msg"":""using config from file"",""file"":""/assets/Caddyfile""}"
+2026-01-20 17:39:22.095,"{""level"":""info"",""ts"":1768930762.095546,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.11.44"",""remote_port"":""43320"",""client_ip"":""10.192.11.44"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.224:3000"",""uri"":""/api/health"",""headers"":{""Accept-Encoding"":[""gzip, compressed""],""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000092531,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:39:14.746,"{""level"":""info"",""ts"":1768930754.7460477,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""34344"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.224:3000"",""uri"":""/api/health"",""headers"":{""Accept-Encoding"":[""gzip, compressed""],""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000088452,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:38:44.720,"{""level"":""info"",""ts"":1768930724.7199633,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""20412"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.224:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.00009525,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:38:40.839,"{""level"":""info"",""ts"":1768930720.839809,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""57810"",""client_ip"":""185.196.8.135"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""sirius-application-52ad1x2n.fctl.app"",""uri"":""/.git/config"",""headers"":{""Accept"":[""text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8""],""Accept-Encoding"":[""gzip, deflate, br""],""X-Forwarded-Port"":[""443""],""Sec-Fetch-Dest"":[""document""],""Sec-Fetch-Site"":[""none""],""Accept-Language"":[""en-US,en;q=0.9""],""Upgrade-Insecure-Requests"":[""1""],""Sec-Fetch-User"":[""?1""],""X-Forwarded-For"":[""185.196.8.135""],""X-Forwarded-Proto"":[""https""],""X-Amzn-Trace-Id"":[""Root=1-696fbda0-22bd0b2c7deffb9b6aa9b3ae""],""Sec-Ch-Ua-Platform"":[""\""Android\""""],""Sec-Ch-Ua-Mobile"":[""?1""],""Cache-Control"":[""max-age=0""],""Sec-Fetch-Mode"":[""navigate""],""Sec-Ch-Ua"":[""\""Chromium\"";v=\""131\"", \""Google Chrome\"";v=\""131\"", \""Not_A Brand\"";v=\""24\""""],""User-Agent"":[""Mozilla/5.0 (Linux; Android 13; SM-A546B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.000122248,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:38:14.725,"{""level"":""info"",""ts"":1768930694.7256784,""logger"":""http.log.access.log0"",""msg"":""handled request"",""request"":{""remote_ip"":""10.192.10.95"",""remote_port"":""30782"",""client_ip"":""10.192.10.95"",""proto"":""HTTP/1.1"",""method"":""GET"",""host"":""10.192.10.224:3000"",""uri"":""/api/health"",""headers"":{""Connection"":[""close""],""User-Agent"":[""ELB-HealthChecker/2.0""],""Accept-Encoding"":[""gzip, compressed""]}},""bytes_read"":0,""user_id"":"""",""duration"":0.00482728,""size"":0,""status"":404,""resp_headers"":{""Server"":[""Caddy""]}}"
+2026-01-20 17:38:07.300,"{""level"":""info"",""ts"":1768930687.3001053,""logger"":""tls"",""msg"":""finished cleaning storage units""}"
+2026-01-20 17:38:07.299,"{""level"":""info"",""ts"":1768930687.299896,""logger"":""tls"",""msg"":""cleaning storage unit"",""storage"":""FileStorage:/root/.local/share/caddy""}"
+2026-01-20 17:38:07.296,"{""level"":""info"",""ts"":1768930687.2963269,""logger"":""http.log"",""msg"":""server running"",""name"":""srv0"",""protocols"":[""h1"",""h2"",""h3""]}"
+2026-01-20 17:38:07.296,"{""level"":""info"",""ts"":1768930687.2964222,""msg"":""serving initial configuration""}"
+2026-01-20 17:38:07.293,"{""level"":""info"",""ts"":1768930687.2933617,""logger"":""tls.cache.maintenance"",""msg"":""started background certificate maintenance"",""cache"":""0xc0002f8c80""}"
+2026-01-20 17:38:07.292,"{""level"":""info"",""ts"":1768930687.2919595,""msg"":""adapted config to JSON"",""adapter"":""caddyfile""}"
+2026-01-20 17:38:07.292,"{""level"":""warn"",""ts"":1768930687.292211,""logger"":""admin"",""msg"":""admin endpoint disabled""}"
+2026-01-20 17:38:07.292,"{""level"":""info"",""ts"":1768930687.292785,""logger"":""http.auto_https"",""msg"":""automatic HTTPS is completely disabled for server"",""server_name"":""srv0""}"
+2026-01-20 17:38:07.290,"{""level"":""info"",""ts"":1768930687.2900398,""msg"":""using config from file"",""file"":""/assets/Caddyfile""}"
+2026-01-20 17:37:18.765,Hello from Docker!
+2026-01-20 17:37:18.765,This message shows that your installation appears to be working correctly.
+2026-01-20 17:37:18.765,"To generate this message, Docker took the following steps:"
+2026-01-20 17:37:18.765, 1. The Docker client contacted the Docker daemon.
+2026-01-20 17:37:18.765," 2. The Docker daemon pulled the ""hello-world"" image from the Docker Hub."
+2026-01-20 17:37:18.765,    (amd64)
+2026-01-20 17:37:18.765, 3. The Docker daemon created a new container from that image which runs the
+2026-01-20 17:37:18.765,    executable that produces the output you are currently reading.
+2026-01-20 17:37:18.765," 4. The Docker daemon streamed that output to the Docker client, which sent it"
+2026-01-20 17:37:18.765,    to your terminal.
+2026-01-20 17:37:18.765,"To try something more ambitious, you can run an Ubuntu container with:"
+2026-01-20 17:37:18.765, $ docker run -it ubuntu bash
+2026-01-20 17:37:18.765,"Share images, automate workflows, and more with a free Docker ID:"
+2026-01-20 17:37:18.765, https://hub.docker.com/
+2026-01-20 17:37:18.765,"For more examples and ideas, visit:"
+2026-01-20 17:37:18.765, https://docs.docker.com/get-started/
