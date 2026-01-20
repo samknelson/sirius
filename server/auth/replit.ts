@@ -8,6 +8,7 @@ import connectPg from "connect-pg-simple";
 import { storage } from "../storage";
 import { storageLogger, logger } from "../logger";
 import { getRequestContext } from "../middleware/request-context";
+import { isMockAuthEnabled } from "./currentUser";
 
 function getClientIp(req: Request): string {
   const forwardedFor = req.headers['x-forwarded-for'];
@@ -202,6 +203,31 @@ export async function setupReplitAuth(app: Express) {
   app.use(getSession());
   app.use(passport.initialize());
   app.use(passport.session());
+
+  // Skip OIDC setup if running in mock mode outside of Replit (no REPL_ID)
+  const isRunningOutsideReplit = !process.env.REPL_ID;
+  if (isMockAuthEnabled() && isRunningOutsideReplit) {
+    logger.info("Mock auth enabled without REPL_ID - skipping Replit OIDC setup", {
+      source: "auth",
+    });
+    
+    // Set up minimal passport serialization for session support
+    passport.serializeUser((user: Express.User, cb) => cb(null, user));
+    passport.deserializeUser((user: Express.User, cb) => cb(null, user));
+    
+    // Provide stub routes that redirect appropriately in mock mode
+    app.get("/api/login", (_req, res) => {
+      res.redirect("/");
+    });
+    app.get("/api/callback", (_req, res) => {
+      res.redirect("/");
+    });
+    app.get("/api/logout", (_req, res) => {
+      res.redirect("/");
+    });
+    
+    return;
+  }
 
   const config = await getOidcConfig();
 
