@@ -1,0 +1,89 @@
+Here is the exact configuration to punch in for a successful first deployment. I have selected the "Safety First" options to minimize the chance of a crash.
+
+### 1. General & Target Configuration
+
+* **Name:** `Sirius-Prod` (or whatever you prefer)
+* **Target type:** **Simple (Fargate)**
+* *Reason:* It manages the messy server stuff for you. It's worth the slightly higher cost for the peace of mind.
+
+
+
+### 2. App Configuration
+
+* **App size:** **0.5 vCPU / 1 GB** (You can start smaller than the 1 vCPU default to save money, usually ~$18/mo. If that option isn't visible, stick with the default).
+* **Minimum app instances:** `1`
+* **Maximum app instances:** `1`
+* *Reason:* We don't want auto-scaling yet. It complicates logs.
+
+
+* **File system storage:** Leave blank.
+
+### 3. Build Configuration (The Most Important Part)
+
+* **Build type:** **Nixpacks**
+* *Reason:* It automatically detects Node versions and installs system dependencies better than a raw Dockerfile.
+
+
+* **Base path:** `.` (Leave as dot)
+* **Install command:** `npm install`
+* **Build command:** `npm run build`
+* *Crucial:* This relies on the `package.json` script we discussed earlier (`cd client && npm run build...`).
+
+
+* **Start command:** `npm start`
+* **Pre-deploy command:** `npx drizzle-kit migrate`
+* *Magic:* This runs your database migrations automatically *before* the new server takes traffic. If this fails, the deploy stops safely.
+
+
+* **Include environment variables in build environment:** **CHECKED (Yes)**
+* *Reason:* Vite (Frontend) needs access to env vars (like `NEXT_PUBLIC_...` or `VITE_...`) during the *Build* phase to bake them into the HTML.
+
+
+
+### 4. Builder Configuration
+
+* **Builder type:** **EC2 (recommended)**
+* *Reason:* It's faster and cheaper.
+
+
+* **Builder instance size:** Default (16 vCPU).
+
+### 5. Network Configuration
+
+* **Internal port:** `3000`
+* *Action Item:* Double-check your `server.ts`. It **must** have code like `app.listen(process.env.PORT || 3000)`. If you hardcoded 8080, change this setting to 8080.
+
+
+* **Health check path:** `/`
+* *Reason:* AWS will ping this URL to see if the app is alive. Since your server returns the React `index.html` for any route, `/` will return a 200 OK status.
+
+
+* **Health check grace period:** `120` (Increase to 2 minutes)
+* *Reason:* Node apps can be slow to start up. Give it time so AWS doesn't kill it prematurely.
+
+
+
+### 6. Logging
+
+* **Log to CloudWatch:** **Checked**
+* *Reason:* You need logs to debug why it crashed (it usually crashes once).
+
+
+
+### 7. Integrations / Miscellaneous
+
+* **Enable container insights:** Unchecked (Saves money).
+* **Sentry source map:** Skip for now.
+
+---
+
+### One Final Step Before You Click "Create Project"
+
+Once you click Create, it will ask for **Environment Variables**. Have these ready to paste:
+
+1. `DATABASE_URL`: Your Neon connection string (`postgres://...`).
+2. `NODE_ENV`: `production`
+3. `PORT`: `3000`
+
+**Ready? Hit "Create Project".**
+*Expect the first deployment to take about 8-12 minutes* (It has to provision the VPC, Load Balancer, and Security Groups from scratch). Do not refresh the page if it looks stuck on "Provisioning."
