@@ -1,0 +1,327 @@
+@timestamp,@message
+2026-01-20 18:58:59.371,Hello from Docker!
+2026-01-20 18:58:59.371,This message shows that your installation appears to be working correctly.
+2026-01-20 18:58:59.371,"To generate this message, Docker took the following steps:"
+2026-01-20 18:58:59.371, 1. The Docker client contacted the Docker daemon.
+2026-01-20 18:58:59.371," 2. The Docker daemon pulled the ""hello-world"" image from the Docker Hub."
+2026-01-20 18:58:59.371,    (amd64)
+2026-01-20 18:58:59.371, 3. The Docker daemon created a new container from that image which runs the
+2026-01-20 18:58:59.371,    executable that produces the output you are currently reading.
+2026-01-20 18:58:59.371," 4. The Docker daemon streamed that output to the Docker client, which sent it"
+2026-01-20 18:58:59.371,    to your terminal.
+2026-01-20 18:58:59.371,"To try something more ambitious, you can run an Ubuntu container with:"
+2026-01-20 18:58:59.371, $ docker run -it ubuntu bash
+2026-01-20 18:58:59.371,"Share images, automate workflows, and more with a free Docker ID:"
+2026-01-20 18:58:59.371, https://hub.docker.com/
+2026-01-20 18:58:59.371,"For more examples and ideas, visit:"
+2026-01-20 18:58:59.371, https://docs.docker.com/get-started/
+2026-01-20 18:57:35.806,Hello from Docker!
+2026-01-20 18:57:35.806,This message shows that your installation appears to be working correctly.
+2026-01-20 18:57:35.806,"To generate this message, Docker took the following steps:"
+2026-01-20 18:57:35.806, 1. The Docker client contacted the Docker daemon.
+2026-01-20 18:57:35.806," 2. The Docker daemon pulled the ""hello-world"" image from the Docker Hub."
+2026-01-20 18:57:35.806,    (amd64)
+2026-01-20 18:57:35.806, 3. The Docker daemon created a new container from that image which runs the
+2026-01-20 18:57:35.806,    executable that produces the output you are currently reading.
+2026-01-20 18:57:35.806," 4. The Docker daemon streamed that output to the Docker client, which sent it"
+2026-01-20 18:57:35.806,    to your terminal.
+2026-01-20 18:57:35.806,"To try something more ambitious, you can run an Ubuntu container with:"
+2026-01-20 18:57:35.806, $ docker run -it ubuntu bash
+2026-01-20 18:57:35.806,"Share images, automate workflows, and more with a free Docker ID:"
+2026-01-20 18:57:35.806, https://hub.docker.com/
+2026-01-20 18:57:35.806,"For more examples and ideas, visit:"
+2026-01-20 18:57:35.806, https://docs.docker.com/get-started/
+2026-01-20 18:57:09.698,Hello from Docker!
+2026-01-20 18:57:09.698,This message shows that your installation appears to be working correctly.
+2026-01-20 18:57:09.698,"To generate this message, Docker took the following steps:"
+2026-01-20 18:57:09.698, 1. The Docker client contacted the Docker daemon.
+2026-01-20 18:57:09.698," 2. The Docker daemon pulled the ""hello-world"" image from the Docker Hub."
+2026-01-20 18:57:09.698,    (amd64)
+2026-01-20 18:57:09.698, 3. The Docker daemon created a new container from that image which runs the
+2026-01-20 18:57:09.698,    executable that produces the output you are currently reading.
+2026-01-20 18:57:09.698," 4. The Docker daemon streamed that output to the Docker client, which sent it"
+2026-01-20 18:57:09.698,    to your terminal.
+2026-01-20 18:57:09.698,"To try something more ambitious, you can run an Ubuntu container with:"
+2026-01-20 18:57:09.698, $ docker run -it ubuntu bash
+2026-01-20 18:57:09.698,"Share images, automate workflows, and more with a free Docker ID:"
+2026-01-20 18:57:09.698, https://hub.docker.com/
+2026-01-20 18:57:09.698,"For more examples and ideas, visit:"
+2026-01-20 18:57:09.698, https://docs.docker.com/get-started/
+2026-01-20 18:56:09.767,Hello from Docker!
+2026-01-20 18:56:09.767,This message shows that your installation appears to be working correctly.
+2026-01-20 18:56:09.767,"To generate this message, Docker took the following steps:"
+2026-01-20 18:56:09.767, 1. The Docker client contacted the Docker daemon.
+2026-01-20 18:56:09.767," 2. The Docker daemon pulled the ""hello-world"" image from the Docker Hub."
+2026-01-20 18:56:09.767,    (amd64)
+2026-01-20 18:56:09.767, 3. The Docker daemon created a new container from that image which runs the
+2026-01-20 18:56:09.767,    executable that produces the output you are currently reading.
+2026-01-20 18:56:09.767," 4. The Docker daemon streamed that output to the Docker client, which sent it"
+2026-01-20 18:56:09.767,    to your terminal.
+2026-01-20 18:56:09.767,"To try something more ambitious, you can run an Ubuntu container with:"
+2026-01-20 18:56:09.767, $ docker run -it ubuntu bash
+2026-01-20 18:56:09.767,"Share images, automate workflows, and more with a free Docker ID:"
+2026-01-20 18:56:09.767, https://hub.docker.com/
+2026-01-20 18:56:09.767,"For more examples and ideas, visit:"
+2026-01-20 18:56:09.767, https://docs.docker.com/get-started/
+2026-01-20 18:54:48.099,Hello from Docker!
+2026-01-20 18:54:48.099,This message shows that your installation appears to be working correctly.
+2026-01-20 18:54:48.099,"To generate this message, Docker took the following steps:"
+2026-01-20 18:54:48.099, 1. The Docker client contacted the Docker daemon.
+2026-01-20 18:54:48.099," 2. The Docker daemon pulled the ""hello-world"" image from the Docker Hub."
+2026-01-20 18:54:48.099,    (amd64)
+2026-01-20 18:54:48.099, 3. The Docker daemon created a new container from that image which runs the
+2026-01-20 18:54:48.099,    executable that produces the output you are currently reading.
+2026-01-20 18:54:48.099," 4. The Docker daemon streamed that output to the Docker client, which sent it"
+2026-01-20 18:54:48.099,    to your terminal.
+2026-01-20 18:54:48.099,"To try something more ambitious, you can run an Ubuntu container with:"
+2026-01-20 18:54:48.099, $ docker run -it ubuntu bash
+2026-01-20 18:54:48.099,"Share images, automate workflows, and more with a free Docker ID:"
+2026-01-20 18:54:48.099, https://hub.docker.com/
+2026-01-20 18:54:48.099,"For more examples and ideas, visit:"
+2026-01-20 18:54:48.099, https://docs.docker.com/get-started/
+2026-01-20 18:54:08.318,npm notice
+2026-01-20 18:54:08.318,npm notice New major version of npm available! 10.8.2 -> 11.7.0
+2026-01-20 18:54:08.318,npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.7.0
+2026-01-20 18:54:08.318,npm notice To update run: npm install -g npm@11.7.0
+2026-01-20 18:54:08.318,npm notice
+2026-01-20 18:54:08.300,node:internal/errors:496
+2026-01-20 18:54:08.300,    ErrorCaptureStackTrace(err);
+2026-01-20 18:54:08.300,    ^
+2026-01-20 18:54:08.300,"TypeError [ERR_INVALID_ARG_TYPE]: The ""paths[0]"" argument must be of type string. Received undefined"
+2026-01-20 18:54:08.300,    at new NodeError (node:internal/errors:405:5)
+2026-01-20 18:54:08.300,    at validateString (node:internal/validators:162:11)
+2026-01-20 18:54:08.300,    at Object.resolve (node:path:1097:7)
+2026-01-20 18:54:08.300,    at file:///app/dist/index.js:37976:18
+2026-01-20 18:54:08.300,    at ModuleJob.run (node:internal/modules/esm/module_job:195:25)
+2026-01-20 18:54:08.300,    at async ModuleLoader.import (node:internal/modules/esm/loader:337:24)
+2026-01-20 18:54:08.300,    at async loadESM (node:internal/process/esm_loader:34:7)
+2026-01-20 18:54:08.300,    at async handleMainPromise (node:internal/modules/run_main:106:12) {
+2026-01-20 18:54:08.300,  code: 'ERR_INVALID_ARG_TYPE'
+2026-01-20 18:54:08.300,}
+2026-01-20 18:54:08.300,Node.js v18.20.5
+2026-01-20 18:54:08.226,"06:54:08 PM [app] INFO: Registered charge plugin: btu-steward-attendance {""service"":""charge-plugin-registry"",""triggers"":[""participant_saved""],""requiredComponent"":""sitespecific.btu""}"
+2026-01-20 18:54:08.225,"06:54:08 PM [app] INFO: Registered charge plugin: payment-simple-allocation {""service"":""charge-plugin-registry"",""triggers"":[""payment_saved""]}"
+2026-01-20 18:54:08.224,"06:54:08 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {""service"":""charge-plugin-registry"",""triggers"":[""wmb_saved""],""requiredComponent"":""sitespecific.gbhet.legal""}"
+2026-01-20 18:54:04.311,> rest-express@1.0.0 start
+2026-01-20 18:54:04.311,> NODE_ENV=production node dist/index.js
+2026-01-20 18:54:03.433,npm warn config production Use `--omit=dev` instead.
+2026-01-20 18:53:01.171,npm notice
+2026-01-20 18:53:01.171,npm notice New major version of npm available! 10.8.2 -> 11.7.0
+2026-01-20 18:53:01.171,npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.7.0
+2026-01-20 18:53:01.171,npm notice To update run: npm install -g npm@11.7.0
+2026-01-20 18:53:01.171,npm notice
+2026-01-20 18:53:01.138,node:internal/errors:496
+2026-01-20 18:53:01.138,    ErrorCaptureStackTrace(err);
+2026-01-20 18:53:01.138,    ^
+2026-01-20 18:53:01.138,"TypeError [ERR_INVALID_ARG_TYPE]: The ""paths[0]"" argument must be of type string. Received undefined"
+2026-01-20 18:53:01.138,    at new NodeError (node:internal/errors:405:5)
+2026-01-20 18:53:01.138,    at validateString (node:internal/validators:162:11)
+2026-01-20 18:53:01.138,    at Object.resolve (node:path:1097:7)
+2026-01-20 18:53:01.138,    at file:///app/dist/index.js:37976:18
+2026-01-20 18:53:01.138,    at ModuleJob.run (node:internal/modules/esm/module_job:195:25)
+2026-01-20 18:53:01.138,    at async ModuleLoader.import (node:internal/modules/esm/loader:337:24)
+2026-01-20 18:53:01.138,    at async loadESM (node:internal/process/esm_loader:34:7)
+2026-01-20 18:53:01.138,    at async handleMainPromise (node:internal/modules/run_main:106:12) {
+2026-01-20 18:53:01.138,  code: 'ERR_INVALID_ARG_TYPE'
+2026-01-20 18:53:01.138,}
+2026-01-20 18:53:01.138,Node.js v18.20.5
+2026-01-20 18:53:01.062,"06:53:01 PM [app] INFO: Registered charge plugin: btu-steward-attendance {""service"":""charge-plugin-registry"",""triggers"":[""participant_saved""],""requiredComponent"":""sitespecific.btu""}"
+2026-01-20 18:53:01.061,"06:53:01 PM [app] INFO: Registered charge plugin: payment-simple-allocation {""service"":""charge-plugin-registry"",""triggers"":[""payment_saved""]}"
+2026-01-20 18:53:01.060,"06:53:01 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {""service"":""charge-plugin-registry"",""triggers"":[""wmb_saved""],""requiredComponent"":""sitespecific.gbhet.legal""}"
+2026-01-20 18:52:57.544,> rest-express@1.0.0 start
+2026-01-20 18:52:57.544,> NODE_ENV=production node dist/index.js
+2026-01-20 18:52:56.682,npm warn config production Use `--omit=dev` instead.
+2026-01-20 18:51:36.825,npm notice
+2026-01-20 18:51:36.825,npm notice New major version of npm available! 10.8.2 -> 11.7.0
+2026-01-20 18:51:36.825,npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.7.0
+2026-01-20 18:51:36.825,npm notice To update run: npm install -g npm@11.7.0
+2026-01-20 18:51:36.825,npm notice
+2026-01-20 18:51:36.756,node:internal/errors:496
+2026-01-20 18:51:36.756,    ErrorCaptureStackTrace(err);
+2026-01-20 18:51:36.756,    ^
+2026-01-20 18:51:36.756,"TypeError [ERR_INVALID_ARG_TYPE]: The ""paths[0]"" argument must be of type string. Received undefined"
+2026-01-20 18:51:36.756,    at new NodeError (node:internal/errors:405:5)
+2026-01-20 18:51:36.756,    at validateString (node:internal/validators:162:11)
+2026-01-20 18:51:36.756,    at Object.resolve (node:path:1097:7)
+2026-01-20 18:51:36.756,    at file:///app/dist/index.js:37976:18
+2026-01-20 18:51:36.756,    at ModuleJob.run (node:internal/modules/esm/module_job:195:25)
+2026-01-20 18:51:36.756,    at async ModuleLoader.import (node:internal/modules/esm/loader:337:24)
+2026-01-20 18:51:36.756,    at async loadESM (node:internal/process/esm_loader:34:7)
+2026-01-20 18:51:36.756,    at async handleMainPromise (node:internal/modules/run_main:106:12) {
+2026-01-20 18:51:36.756,  code: 'ERR_INVALID_ARG_TYPE'
+2026-01-20 18:51:36.756,}
+2026-01-20 18:51:36.756,Node.js v18.20.5
+2026-01-20 18:51:36.743,"06:51:36 PM [app] INFO: Registered charge plugin: payment-simple-allocation {""service"":""charge-plugin-registry"",""triggers"":[""payment_saved""]}"
+2026-01-20 18:51:36.743,"06:51:36 PM [app] INFO: Registered charge plugin: btu-steward-attendance {""service"":""charge-plugin-registry"",""triggers"":[""participant_saved""],""requiredComponent"":""sitespecific.btu""}"
+2026-01-20 18:51:36.742,"06:51:36 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {""service"":""charge-plugin-registry"",""triggers"":[""wmb_saved""],""requiredComponent"":""sitespecific.gbhet.legal""}"
+2026-01-20 18:51:33.223,> rest-express@1.0.0 start
+2026-01-20 18:51:33.223,> NODE_ENV=production node dist/index.js
+2026-01-20 18:51:32.375,npm warn config production Use `--omit=dev` instead.
+2026-01-20 18:50:32.422,npm notice
+2026-01-20 18:50:32.422,npm notice New major version of npm available! 10.8.2 -> 11.7.0
+2026-01-20 18:50:32.422,npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.7.0
+2026-01-20 18:50:32.422,npm notice To update run: npm install -g npm@11.7.0
+2026-01-20 18:50:32.422,npm notice
+2026-01-20 18:50:32.355,node:internal/errors:496
+2026-01-20 18:50:32.355,    ErrorCaptureStackTrace(err);
+2026-01-20 18:50:32.355,    ^
+2026-01-20 18:50:32.355,"TypeError [ERR_INVALID_ARG_TYPE]: The ""paths[0]"" argument must be of type string. Received undefined"
+2026-01-20 18:50:32.355,    at new NodeError (node:internal/errors:405:5)
+2026-01-20 18:50:32.355,    at validateString (node:internal/validators:162:11)
+2026-01-20 18:50:32.355,    at Object.resolve (node:path:1097:7)
+2026-01-20 18:50:32.355,    at file:///app/dist/index.js:37976:18
+2026-01-20 18:50:32.355,    at ModuleJob.run (node:internal/modules/esm/module_job:195:25)
+2026-01-20 18:50:32.355,    at async ModuleLoader.import (node:internal/modules/esm/loader:337:24)
+2026-01-20 18:50:32.355,    at async loadESM (node:internal/process/esm_loader:34:7)
+2026-01-20 18:50:32.355,    at async handleMainPromise (node:internal/modules/run_main:106:12) {
+2026-01-20 18:50:32.355,  code: 'ERR_INVALID_ARG_TYPE'
+2026-01-20 18:50:32.355,}
+2026-01-20 18:50:32.355,Node.js v18.20.5
+2026-01-20 18:50:32.336,"06:50:32 PM [app] INFO: Registered charge plugin: btu-steward-attendance {""service"":""charge-plugin-registry"",""triggers"":[""participant_saved""],""requiredComponent"":""sitespecific.btu""}"
+2026-01-20 18:50:32.335,"06:50:32 PM [app] INFO: Registered charge plugin: payment-simple-allocation {""service"":""charge-plugin-registry"",""triggers"":[""payment_saved""]}"
+2026-01-20 18:50:32.334,"06:50:32 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {""service"":""charge-plugin-registry"",""triggers"":[""wmb_saved""],""requiredComponent"":""sitespecific.gbhet.legal""}"
+2026-01-20 18:50:28.551,> rest-express@1.0.0 start
+2026-01-20 18:50:28.551,> NODE_ENV=production node dist/index.js
+2026-01-20 18:50:27.557,npm warn config production Use `--omit=dev` instead.
+2026-01-20 18:47:58.278,npm notice
+2026-01-20 18:47:58.278,npm notice New major version of npm available! 10.8.2 -> 11.7.0
+2026-01-20 18:47:58.278,npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.7.0
+2026-01-20 18:47:58.278,npm notice To update run: npm install -g npm@11.7.0
+2026-01-20 18:47:58.278,npm notice
+2026-01-20 18:47:58.257,node:internal/errors:496
+2026-01-20 18:47:58.257,    ErrorCaptureStackTrace(err);
+2026-01-20 18:47:58.257,    ^
+2026-01-20 18:47:58.257,"TypeError [ERR_INVALID_ARG_TYPE]: The ""paths[0]"" argument must be of type string. Received undefined"
+2026-01-20 18:47:58.257,    at new NodeError (node:internal/errors:405:5)
+2026-01-20 18:47:58.257,    at validateString (node:internal/validators:162:11)
+2026-01-20 18:47:58.257,    at Object.resolve (node:path:1097:7)
+2026-01-20 18:47:58.257,    at file:///app/dist/index.js:37976:18
+2026-01-20 18:47:58.257,    at ModuleJob.run (node:internal/modules/esm/module_job:195:25)
+2026-01-20 18:47:58.257,    at async ModuleLoader.import (node:internal/modules/esm/loader:337:24)
+2026-01-20 18:47:58.257,    at async loadESM (node:internal/process/esm_loader:34:7)
+2026-01-20 18:47:58.257,    at async handleMainPromise (node:internal/modules/run_main:106:12) {
+2026-01-20 18:47:58.257,  code: 'ERR_INVALID_ARG_TYPE'
+2026-01-20 18:47:58.257,}
+2026-01-20 18:47:58.257,Node.js v18.20.5
+2026-01-20 18:47:58.182,"06:47:58 PM [app] INFO: Registered charge plugin: btu-steward-attendance {""service"":""charge-plugin-registry"",""triggers"":[""participant_saved""],""requiredComponent"":""sitespecific.btu""}"
+2026-01-20 18:47:58.181,"06:47:58 PM [app] INFO: Registered charge plugin: payment-simple-allocation {""service"":""charge-plugin-registry"",""triggers"":[""payment_saved""]}"
+2026-01-20 18:47:58.180,"06:47:58 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {""service"":""charge-plugin-registry"",""triggers"":[""wmb_saved""],""requiredComponent"":""sitespecific.gbhet.legal""}"
+2026-01-20 18:47:54.756,> rest-express@1.0.0 start
+2026-01-20 18:47:54.756,> NODE_ENV=production node dist/index.js
+2026-01-20 18:47:53.899,npm warn config production Use `--omit=dev` instead.
+2026-01-20 18:11:43.516,Hello from Docker!
+2026-01-20 18:11:43.516,This message shows that your installation appears to be working correctly.
+2026-01-20 18:11:43.516,"To generate this message, Docker took the following steps:"
+2026-01-20 18:11:43.516, 1. The Docker client contacted the Docker daemon.
+2026-01-20 18:11:43.516," 2. The Docker daemon pulled the ""hello-world"" image from the Docker Hub."
+2026-01-20 18:11:43.516,    (amd64)
+2026-01-20 18:11:43.516, 3. The Docker daemon created a new container from that image which runs the
+2026-01-20 18:11:43.516,    executable that produces the output you are currently reading.
+2026-01-20 18:11:43.516," 4. The Docker daemon streamed that output to the Docker client, which sent it"
+2026-01-20 18:11:43.516,    to your terminal.
+2026-01-20 18:11:43.516,"To try something more ambitious, you can run an Ubuntu container with:"
+2026-01-20 18:11:43.516, $ docker run -it ubuntu bash
+2026-01-20 18:11:43.516,"Share images, automate workflows, and more with a free Docker ID:"
+2026-01-20 18:11:43.516, https://hub.docker.com/
+2026-01-20 18:11:43.516,"For more examples and ideas, visit:"
+2026-01-20 18:11:43.516, https://docs.docker.com/get-started/
+2026-01-20 18:10:25.327,Hello from Docker!
+2026-01-20 18:10:25.327,This message shows that your installation appears to be working correctly.
+2026-01-20 18:10:25.327,"To generate this message, Docker took the following steps:"
+2026-01-20 18:10:25.327, 1. The Docker client contacted the Docker daemon.
+2026-01-20 18:10:25.327," 2. The Docker daemon pulled the ""hello-world"" image from the Docker Hub."
+2026-01-20 18:10:25.327,    (amd64)
+2026-01-20 18:10:25.327, 3. The Docker daemon created a new container from that image which runs the
+2026-01-20 18:10:25.327,    executable that produces the output you are currently reading.
+2026-01-20 18:10:25.327," 4. The Docker daemon streamed that output to the Docker client, which sent it"
+2026-01-20 18:10:25.327,    to your terminal.
+2026-01-20 18:10:25.327,"To try something more ambitious, you can run an Ubuntu container with:"
+2026-01-20 18:10:25.327, $ docker run -it ubuntu bash
+2026-01-20 18:10:25.327,"Share images, automate workflows, and more with a free Docker ID:"
+2026-01-20 18:10:25.327, https://hub.docker.com/
+2026-01-20 18:10:25.327,"For more examples and ideas, visit:"
+2026-01-20 18:10:25.327, https://docs.docker.com/get-started/
+2026-01-20 18:08:00.590,Hello from Docker!
+2026-01-20 18:08:00.590,This message shows that your installation appears to be working correctly.
+2026-01-20 18:08:00.590,"To generate this message, Docker took the following steps:"
+2026-01-20 18:08:00.590, 1. The Docker client contacted the Docker daemon.
+2026-01-20 18:08:00.590," 2. The Docker daemon pulled the ""hello-world"" image from the Docker Hub."
+2026-01-20 18:08:00.590,    (amd64)
+2026-01-20 18:08:00.590, 3. The Docker daemon created a new container from that image which runs the
+2026-01-20 18:08:00.590,    executable that produces the output you are currently reading.
+2026-01-20 18:08:00.590," 4. The Docker daemon streamed that output to the Docker client, which sent it"
+2026-01-20 18:08:00.590,    to your terminal.
+2026-01-20 18:08:00.590,"To try something more ambitious, you can run an Ubuntu container with:"
+2026-01-20 18:08:00.590, $ docker run -it ubuntu bash
+2026-01-20 18:08:00.590,"Share images, automate workflows, and more with a free Docker ID:"
+2026-01-20 18:08:00.590, https://hub.docker.com/
+2026-01-20 18:08:00.590,"For more examples and ideas, visit:"
+2026-01-20 18:08:00.590, https://docs.docker.com/get-started/
+2026-01-20 18:05:56.442,Hello from Docker!
+2026-01-20 18:05:56.442,This message shows that your installation appears to be working correctly.
+2026-01-20 18:05:56.442,"To generate this message, Docker took the following steps:"
+2026-01-20 18:05:56.442, 1. The Docker client contacted the Docker daemon.
+2026-01-20 18:05:56.442," 2. The Docker daemon pulled the ""hello-world"" image from the Docker Hub."
+2026-01-20 18:05:56.442,    (amd64)
+2026-01-20 18:05:56.442, 3. The Docker daemon created a new container from that image which runs the
+2026-01-20 18:05:56.442,    executable that produces the output you are currently reading.
+2026-01-20 18:05:56.442," 4. The Docker daemon streamed that output to the Docker client, which sent it"
+2026-01-20 18:05:56.442,    to your terminal.
+2026-01-20 18:05:56.442,"To try something more ambitious, you can run an Ubuntu container with:"
+2026-01-20 18:05:56.442, $ docker run -it ubuntu bash
+2026-01-20 18:05:56.442,"Share images, automate workflows, and more with a free Docker ID:"
+2026-01-20 18:05:56.442, https://hub.docker.com/
+2026-01-20 18:05:56.442,"For more examples and ideas, visit:"
+2026-01-20 18:05:56.442, https://docs.docker.com/get-started/
+2026-01-20 18:05:08.431,npm notice
+2026-01-20 18:05:08.431,npm notice New major version of npm available! 10.8.2 -> 11.7.0
+2026-01-20 18:05:08.431,npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.7.0
+2026-01-20 18:05:08.431,npm notice To update run: npm install -g npm@11.7.0
+2026-01-20 18:05:08.431,npm notice
+2026-01-20 18:05:08.412,node:internal/errors:496
+2026-01-20 18:05:08.412,    ErrorCaptureStackTrace(err);
+2026-01-20 18:05:08.412,    ^
+2026-01-20 18:05:08.412,"TypeError [ERR_INVALID_ARG_TYPE]: The ""paths[0]"" argument must be of type string. Received undefined"
+2026-01-20 18:05:08.412,    at new NodeError (node:internal/errors:405:5)
+2026-01-20 18:05:08.412,    at validateString (node:internal/validators:162:11)
+2026-01-20 18:05:08.412,    at Object.resolve (node:path:1097:7)
+2026-01-20 18:05:08.412,    at file:///app/dist/index.js:37975:18
+2026-01-20 18:05:08.412,    at ModuleJob.run (node:internal/modules/esm/module_job:195:25)
+2026-01-20 18:05:08.412,    at async ModuleLoader.import (node:internal/modules/esm/loader:337:24)
+2026-01-20 18:05:08.412,    at async loadESM (node:internal/process/esm_loader:34:7)
+2026-01-20 18:05:08.412,    at async handleMainPromise (node:internal/modules/run_main:106:12) {
+2026-01-20 18:05:08.412,  code: 'ERR_INVALID_ARG_TYPE'
+2026-01-20 18:05:08.412,}
+2026-01-20 18:05:08.412,Node.js v18.20.5
+2026-01-20 18:05:08.392,"06:05:08 PM [app] INFO: Registered charge plugin: btu-steward-attendance {""service"":""charge-plugin-registry"",""triggers"":[""participant_saved""],""requiredComponent"":""sitespecific.btu""}"
+2026-01-20 18:05:08.391,"06:05:08 PM [app] INFO: Registered charge plugin: payment-simple-allocation {""service"":""charge-plugin-registry"",""triggers"":[""payment_saved""]}"
+2026-01-20 18:05:08.390,"06:05:08 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {""service"":""charge-plugin-registry"",""triggers"":[""wmb_saved""],""requiredComponent"":""sitespecific.gbhet.legal""}"
+2026-01-20 18:05:04.633,> rest-express@1.0.0 start
+2026-01-20 18:05:04.633,> NODE_ENV=production node dist/index.js
+2026-01-20 18:05:03.602,npm warn config production Use `--omit=dev` instead.
+2026-01-20 18:04:05.164,npm notice
+2026-01-20 18:04:05.164,npm notice New major version of npm available! 10.8.2 -> 11.7.0
+2026-01-20 18:04:05.164,npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.7.0
+2026-01-20 18:04:05.164,npm notice To update run: npm install -g npm@11.7.0
+2026-01-20 18:04:05.164,npm notice
+2026-01-20 18:04:05.146,node:internal/errors:496
+2026-01-20 18:04:05.146,    ErrorCaptureStackTrace(err);
+2026-01-20 18:04:05.146,    ^
+2026-01-20 18:04:05.146,"TypeError [ERR_INVALID_ARG_TYPE]: The ""paths[0]"" argument must be of type string. Received undefined"
+2026-01-20 18:04:05.146,    at new NodeError (node:internal/errors:405:5)
+2026-01-20 18:04:05.146,    at validateString (node:internal/validators:162:11)
+2026-01-20 18:04:05.146,    at Object.resolve (node:path:1097:7)
+2026-01-20 18:04:05.146,    at file:///app/dist/index.js:37975:18
+2026-01-20 18:04:05.146,    at ModuleJob.run (node:internal/modules/esm/module_job:195:25)
+2026-01-20 18:04:05.146,    at async ModuleLoader.import (node:internal/modules/esm/loader:337:24)
+2026-01-20 18:04:05.146,    at async loadESM (node:internal/process/esm_loader:34:7)
+2026-01-20 18:04:05.146,    at async handleMainPromise (node:internal/modules/run_main:106:12) {
+2026-01-20 18:04:05.146,  code: 'ERR_INVALID_ARG_TYPE'
+2026-01-20 18:04:05.146,}
+2026-01-20 18:04:05.146,Node.js v18.20.5
+2026-01-20 18:04:05.127,"06:04:05 PM [app] INFO: Registered charge plugin: payment-simple-allocation {""service"":""charge-plugin-registry"",""triggers"":[""payment_saved""]}"
+2026-01-20 18:04:05.127,"06:04:05 PM [app] INFO: Registered charge plugin: btu-steward-attendance {""service"":""charge-plugin-registry"",""triggers"":[""participant_saved""],""requiredComponent"":""sitespecific.btu""}"
+2026-01-20 18:04:05.125,"06:04:05 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {""service"":""charge-plugin-registry"",""triggers"":[""wmb_saved""],""requiredComponent"":""sitespecific.gbhet.legal""}"
+2026-01-20 18:04:00.751,> rest-express@1.0.0 start
+2026-01-20 18:04:00.751,> NODE_ENV=production node dist/index.js
+2026-01-20 18:03:59.733,npm warn config production Use `--omit=dev` instead.
