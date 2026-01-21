@@ -8,7 +8,6 @@ import connectPg from "connect-pg-simple";
 import { storage } from "../storage";
 import { storageLogger, logger } from "../logger";
 import { getRequestContext } from "../middleware/request-context";
-import { isMockAuthEnabled } from "./currentUser";
 
 function getClientIp(req: Request): string {
   const forwardedFor = req.headers['x-forwarded-for'];
@@ -205,10 +204,9 @@ export async function setupReplitAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // Skip OIDC setup if running in mock mode outside of Replit (no REPL_ID)
-  const isRunningOutsideReplit = !process.env.REPL_ID;
-  if (isMockAuthEnabled() && isRunningOutsideReplit) {
-    logger.info("Mock auth enabled without REPL_ID - skipping Replit OIDC setup", {
+  // Replit OIDC requires REPL_ID environment variable
+  if (!process.env.REPL_ID) {
+    logger.warn("REPL_ID not set - Replit OIDC auth will not be available. Configure an alternative auth provider for non-Replit environments.", {
       source: "auth",
     });
     
@@ -216,12 +214,12 @@ export async function setupReplitAuth(app: Express) {
     passport.serializeUser((user: Express.User, cb) => cb(null, user));
     passport.deserializeUser((user: Express.User, cb) => cb(null, user));
     
-    // Provide stub routes that redirect appropriately in mock mode
+    // Provide stub routes that indicate auth is not configured
     app.get("/api/login", (_req, res) => {
-      res.redirect("/");
+      res.status(503).json({ message: "Authentication not configured. REPL_ID is required for Replit OIDC." });
     });
     app.get("/api/callback", (_req, res) => {
-      res.redirect("/");
+      res.status(503).json({ message: "Authentication not configured." });
     });
     app.get("/api/logout", (_req, res) => {
       res.redirect("/");
@@ -322,14 +320,19 @@ export async function setupReplitAuth(app: Express) {
     
     if (user?.claims?.sub) {
       try {
-        const replitUserId = user.claims.sub;
+        const externalId = user.claims.sub;
+        const providerType = user.providerType || "replit";
         const wasMasquerading = !!session.masqueradeUserId;
         
         let dbUser;
         if (session.masqueradeUserId) {
           dbUser = await storage.users.getUser(session.masqueradeUserId);
         } else {
-          dbUser = await storage.users.getUserByReplitId(replitUserId);
+          // Look up user via auth_identity
+          const identity = await storage.authIdentities.getByProviderAndExternalId(providerType, externalId);
+          if (identity) {
+            dbUser = await storage.users.getUser(identity.userId);
+          }
         }
         
         if (dbUser) {
@@ -381,29 +384,6 @@ export async function setupReplitAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
-  // Handle mock auth mode (for AWS/external deployments without REPL_ID)
-  const isRunningOutsideReplit = !process.env.REPL_ID;
-  if (isMockAuthEnabled() && isRunningOutsideReplit) {
-    const { getCurrentUser } = await import("./currentUser");
-    const authContext = await getCurrentUser(req);
-    
-    if (authContext.user) {
-      // Inject mock user into request for downstream handlers
-      (req as any).user = {
-        claims: authContext.claims,
-        dbUser: authContext.user,
-        expires_at: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now
-        access_token: null,
-        refresh_token: null,
-      };
-      // Make passport methods work for mock mode
-      (req as any).isAuthenticated = () => true;
-      (req as any).logout = (callback: (err?: any) => void) => callback();
-      return next();
-    }
-    return res.status(401).json({ message: "Unauthorized - Mock user not found" });
-  }
-
   const user = req.user as any;
 
   if (!req.isAuthenticated() || !user.expires_at) {
