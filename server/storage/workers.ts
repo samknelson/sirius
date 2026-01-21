@@ -266,7 +266,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         ? sql`AND EXISTS (
             SELECT 1 FROM employers e 
             WHERE e.id = ANY(w.denorm_employer_ids) 
-            AND e.employer_type_id = ${employerTypeId}
+            AND e.type_id = ${employerTypeId}
           )`
         : sql``;
       
@@ -474,7 +474,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         ? sql`AND EXISTS (
             SELECT 1 FROM employers e 
             WHERE e.id = ANY(w.denorm_employer_ids) 
-            AND e.employer_type_id = ${employerTypeId}
+            AND e.type_id = ${employerTypeId}
           )`
         : sql``;
       
