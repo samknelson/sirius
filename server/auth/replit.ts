@@ -373,6 +373,29 @@ export async function setupReplitAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  // Handle mock auth mode (for AWS/external deployments without REPL_ID)
+  const isRunningOutsideReplit = !process.env.REPL_ID;
+  if (isMockAuthEnabled() && isRunningOutsideReplit) {
+    const { getCurrentUser } = await import("./currentUser");
+    const authContext = await getCurrentUser(req);
+    
+    if (authContext.user) {
+      // Inject mock user into request for downstream handlers
+      (req as any).user = {
+        claims: authContext.claims,
+        dbUser: authContext.user,
+        expires_at: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now
+        access_token: null,
+        refresh_token: null,
+      };
+      // Make passport methods work for mock mode
+      (req as any).isAuthenticated = () => true;
+      (req as any).logout = (callback: (err?: any) => void) => callback();
+      return next();
+    }
+    return res.status(401).json({ message: "Unauthorized - Mock user not found" });
+  }
+
   const user = req.user as any;
 
   if (!req.isAuthenticated() || !user.expires_at) {
