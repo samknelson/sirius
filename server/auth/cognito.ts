@@ -172,6 +172,7 @@ export async function setupCognitoAuth(app: Express): Promise<boolean> {
     "/api/auth/cognito",
     passport.authenticate("cognito", { 
       scope: ["openid", "email", "profile"],
+      callbackURL: process.env.COGNITO_CALLBACK_URL,
     })
   );
 
