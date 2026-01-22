@@ -54,6 +54,37 @@
           }
         }
       ]
+    },
+    {
+      "id": "preview",
+      "name": "PR Preview",
+      "region": "us-east-1",
+      "source": {
+        "pr": {
+          "commentEnabled": true,
+          "labels": []
+        }
+      },
+      "services": [
+        {
+          "id": "sirius-app-preview",
+          "name": "Sirius Application (Preview)",
+          "type": "fargate",
+          "buildType": "nixpacks",
+          "buildCommand": "npm run build",
+          "startCommand": "npm run start:preview",
+          "cpu": 0.25,
+          "memory": 0.5,
+          "minInstances": 1,
+          "maxInstances": 1,
+          "port": 3000,
+          "healthCheckPath": "/api/health",
+          "envVariables": {
+            "NODE_ENV": "production",
+            "MOCK_AUTH": "true"
+          }
+        }
+      ]
     }
   ]
 }
