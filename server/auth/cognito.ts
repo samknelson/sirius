@@ -202,6 +202,26 @@ export async function setupCognitoAuth(app: Express): Promise<boolean> {
     });
   });
 
+  // Debug endpoint to verify configuration (remove in production if sensitive)
+  app.get("/api/auth/cognito/debug", (_req, res) => {
+    const callbackUrl = process.env.COGNITO_CALLBACK_URL || '';
+    const domain = process.env.COGNITO_DOMAIN || '';
+    
+    res.json({
+      configured: true,
+      callbackUrl,
+      callbackUrlLength: callbackUrl.length,
+      callbackUrlEncoded: encodeURIComponent(callbackUrl),
+      domain,
+      authorizationURL: urls.authorizationURL,
+      tokenURL: urls.tokenURL,
+      clientId: process.env.COGNITO_CLIENT_ID?.substring(0, 8) + '...',
+      region: process.env.COGNITO_REGION || 'us-east-1',
+      // Show what the full auth URL would look like
+      sampleAuthUrl: `${urls.authorizationURL}?response_type=code&client_id=${process.env.COGNITO_CLIENT_ID}&redirect_uri=${encodeURIComponent(callbackUrl)}&scope=openid%20email%20profile`,
+    });
+  });
+
   logger.info("AWS Cognito OAuth configured", {
     source: "auth",
     domain: process.env.COGNITO_DOMAIN,
