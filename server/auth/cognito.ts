@@ -146,6 +146,9 @@ export async function setupCognitoAuth(app: Express): Promise<boolean> {
             return done(new Error("User not found"), undefined);
           }
 
+          // Set expiration to 24 hours from now (Cognito tokens typically expire in 1 hour, but we use refresh)
+          const expiresAt = Math.floor(Date.now() / 1000) + (24 * 60 * 60);
+          
           const sessionUser = {
             claims: {
               sub: externalId,
@@ -154,6 +157,8 @@ export async function setupCognitoAuth(app: Express): Promise<boolean> {
               last_name: user.lastName,
             },
             providerType: PROVIDER_TYPE,
+            expires_at: expiresAt,
+            dbUser: user,
           };
 
           return done(null, sessionUser);
@@ -173,7 +178,7 @@ export async function setupCognitoAuth(app: Express): Promise<boolean> {
     passport.authenticate("cognito", { 
       scope: ["openid", "email", "profile"],
       callbackURL: process.env.COGNITO_CALLBACK_URL,
-    })
+    } as any)
   );
 
   app.get(
