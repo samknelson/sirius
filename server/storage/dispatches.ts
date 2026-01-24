@@ -322,6 +322,37 @@ export function createDispatchStorage(): DispatchStorage {
         .where(eq(dispatches.workerId, workerId))
         .orderBy(desc(dispatches.startDate));
 
+      // Gather all commIds from all dispatches for batch fetch
+      const allCommIds: string[] = [];
+      for (const row of rows) {
+        if (row.dispatch.commIds) {
+          allCommIds.push(...row.dispatch.commIds);
+        }
+      }
+
+      // Batch fetch all comm records
+      let commMap = new Map<string, CommSummary>();
+      if (allCommIds.length > 0) {
+        const commRecords = await client
+          .select({
+            id: comm.id,
+            medium: comm.medium,
+            status: comm.status,
+            sent: comm.sent,
+          })
+          .from(comm)
+          .where(inArray(comm.id, allCommIds));
+        
+        for (const c of commRecords) {
+          commMap.set(c.id, {
+            id: c.id,
+            medium: c.medium,
+            status: c.status,
+            sent: c.sent,
+          });
+        }
+      }
+
       return rows.map(row => ({
         ...row.dispatch,
         worker: row.worker ? {
@@ -329,6 +360,9 @@ export function createDispatchStorage(): DispatchStorage {
           contact: row.contact,
         } : null,
         job: row.job,
+        comms: (row.dispatch.commIds || [])
+          .map(id => commMap.get(id))
+          .filter((c): c is CommSummary => c !== undefined),
       }));
     },
 

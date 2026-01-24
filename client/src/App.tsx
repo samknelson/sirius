@@ -60,6 +60,7 @@ const WorkerCurrentEmployment = lazy(() => import("@/pages/worker-current-employ
 const WorkerEmploymentHistory = lazy(() => import("@/pages/worker-employment-history"));
 const WorkerHoursMonthly = lazy(() => import("@/pages/worker-hours-monthly"));
 const WorkerHoursDaily = lazy(() => import("@/pages/worker-hours-daily"));
+const WorkerDispatches = lazy(() => import("@/pages/worker-dispatches"));
 const WorkerHoursView = lazy(() => import("@/pages/worker-hours-view"));
 const WorkerHoursEdit = lazy(() => import("@/pages/worker-hours-edit"));
 const WorkerHoursDelete = lazy(() => import("@/pages/worker-hours-delete"));
@@ -637,6 +638,14 @@ function Router() {
         <ProtectedRoute tabId="daily" entityType="worker">
           <AuthenticatedLayout>
             <WorkerHoursDaily />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/employment/dispatches">
+        <ProtectedRoute tabId="dispatches" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerDispatches />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
