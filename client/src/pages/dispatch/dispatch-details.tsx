@@ -76,31 +76,30 @@ function DispatchDetailsContent() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2" data-testid="title-status-section">
-            <Clock className="h-5 w-5" />
-            Status
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Badge className={statusColors[dispatch.status] || statusColors.pending} data-testid="badge-dispatch-status">
-            {formatStatus(dispatch.status)}
-          </Badge>
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base" data-testid="title-status-section">
+              <Clock className="h-4 w-4" />
+              Status
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Badge className={statusColors[dispatch.status] || statusColors.pending} data-testid="badge-dispatch-status">
+              {formatStatus(dispatch.status)}
+            </Badge>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2" data-testid="title-worker-section">
-            <User className="h-5 w-5" />
-            Worker
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <div>
-              <span className="text-muted-foreground text-sm">Name</span>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base" data-testid="title-worker-section">
+              <User className="h-4 w-4" />
+              Worker
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1">
               {dispatch.worker ? (
                 <Link href={`/workers/${dispatch.workerId}`}>
                   <p className="font-medium text-foreground hover:underline cursor-pointer" data-testid="link-worker-name">
@@ -112,27 +111,21 @@ function DispatchDetailsContent() {
                   {workerName}
                 </p>
               )}
+              {dispatch.worker?.siriusId && (
+                <p className="font-mono text-sm text-muted-foreground" data-testid="text-sirius-id">#{dispatch.worker.siriusId}</p>
+              )}
             </div>
-            {dispatch.worker?.siriusId && (
-              <div>
-                <span className="text-muted-foreground text-sm">Sirius ID</span>
-                <p className="font-mono text-sm" data-testid="text-sirius-id">{dispatch.worker.siriusId}</p>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2" data-testid="title-job-section">
-            <Briefcase className="h-5 w-5" />
-            Job
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div>
-            <span className="text-muted-foreground text-sm">Job Title</span>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base" data-testid="title-job-section">
+              <Briefcase className="h-4 w-4" />
+              Job
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
             {dispatch.job ? (
               <Link href={`/dispatch/job/${dispatch.jobId}`}>
                 <p className="font-medium text-foreground hover:underline cursor-pointer" data-testid="link-job-title">
@@ -144,38 +137,38 @@ function DispatchDetailsContent() {
                 Unknown Job
               </p>
             )}
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2" data-testid="title-dates-section">
-            <Calendar className="h-5 w-5" />
-            Dates
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <span className="text-muted-foreground text-sm">Start Date</span>
-              <p className="font-medium" data-testid="text-start-date">
-                {dispatch.startDate
-                  ? format(new Date(dispatch.startDate), "MMM d, yyyy")
-                  : "Not set"}
-              </p>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base" data-testid="title-dates-section">
+              <Calendar className="h-4 w-4" />
+              Dates
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-6">
+              <div>
+                <span className="text-muted-foreground text-xs">Start</span>
+                <p className="font-medium text-sm" data-testid="text-start-date">
+                  {dispatch.startDate
+                    ? format(new Date(dispatch.startDate), "MMM d, yyyy")
+                    : "Not set"}
+                </p>
+              </div>
+              <div>
+                <span className="text-muted-foreground text-xs">End</span>
+                <p className="font-medium text-sm" data-testid="text-end-date">
+                  {dispatch.endDate
+                    ? format(new Date(dispatch.endDate), "MMM d, yyyy")
+                    : "Not set"}
+                </p>
+              </div>
             </div>
-            <div>
-              <span className="text-muted-foreground text-sm">End Date</span>
-              <p className="font-medium" data-testid="text-end-date">
-                {dispatch.endDate
-                  ? format(new Date(dispatch.endDate), "MMM d, yyyy")
-                  : "Not set"}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader>
