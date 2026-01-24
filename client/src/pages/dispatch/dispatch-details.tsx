@@ -3,7 +3,17 @@ import { Link } from "wouter";
 import { DispatchLayout, useDispatchLayout } from "@/components/layouts/DispatchLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { User, Briefcase, Calendar, Clock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { User, Briefcase, Calendar, Clock, Bell, Mail, MessageSquare, ExternalLink } from "lucide-react";
+import type { CommSummary } from "../../../../server/storage/dispatches";
 
 const statusColors: Record<string, string> = {
   pending: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300",
@@ -14,8 +24,45 @@ const statusColors: Record<string, string> = {
   declined: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300",
 };
 
+const commStatusColors: Record<string, string> = {
+  pending: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300",
+  queued: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
+  sent: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
+  delivered: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
+  failed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300",
+  bounced: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300",
+};
+
 function formatStatus(status: string): string {
   return status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+function getMediumIcon(medium: string) {
+  const normalizedMedium = medium.toLowerCase().replace(/[-_]/g, '');
+  switch (normalizedMedium) {
+    case 'email':
+      return <Mail className="h-4 w-4" />;
+    case 'sms':
+      return <MessageSquare className="h-4 w-4" />;
+    case 'inapp':
+      return <Bell className="h-4 w-4" />;
+    default:
+      return <Bell className="h-4 w-4" />;
+  }
+}
+
+function getMediumLabel(medium: string): string {
+  const normalizedMedium = medium.toLowerCase().replace(/[-_]/g, '');
+  switch (normalizedMedium) {
+    case 'email':
+      return 'Email';
+    case 'sms':
+      return 'SMS';
+    case 'inapp':
+      return 'In-App';
+    default:
+      return medium;
+  }
 }
 
 function DispatchDetailsContent() {
@@ -127,6 +174,67 @@ function DispatchDetailsContent() {
               </p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2" data-testid="title-notifications-section">
+            <Bell className="h-5 w-5" />
+            Notifications
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!dispatch.comms || dispatch.comms.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8" data-testid="empty-state-notifications">
+              <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-3">
+                <Bell className="text-muted-foreground" size={24} />
+              </div>
+              <p className="text-muted-foreground text-center text-sm" data-testid="text-no-notifications">
+                No notifications have been sent for this dispatch.
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Medium</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Sent</TableHead>
+                  <TableHead className="w-16">View</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {dispatch.comms.map((comm: CommSummary) => (
+                  <TableRow key={comm.id} data-testid={`row-comm-${comm.id}`}>
+                    <TableCell data-testid={`text-medium-${comm.id}`}>
+                      <div className="flex items-center gap-2">
+                        {getMediumIcon(comm.medium)}
+                        <span>{getMediumLabel(comm.medium)}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell data-testid={`text-status-${comm.id}`}>
+                      <Badge className={commStatusColors[comm.status] || commStatusColors.pending}>
+                        {formatStatus(comm.status)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell data-testid={`text-sent-${comm.id}`}>
+                      {comm.sent
+                        ? format(new Date(comm.sent), "MMM d, yyyy h:mm a")
+                        : "-"}
+                    </TableCell>
+                    <TableCell>
+                      <Link href={`/comm/${comm.id}`}>
+                        <Button variant="ghost" size="icon" data-testid={`button-view-comm-${comm.id}`}>
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

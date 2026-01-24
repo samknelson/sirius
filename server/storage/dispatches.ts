@@ -322,6 +322,29 @@ export function createDispatchStorage(): DispatchStorage {
 
       if (!row) return undefined;
 
+      // Fetch comm records for this dispatch
+      const commIds = row.dispatch.commIds || [];
+      let comms: CommSummary[] = [];
+      
+      if (commIds.length > 0) {
+        const commRecords = await client
+          .select({
+            id: comm.id,
+            medium: comm.medium,
+            status: comm.status,
+            sent: comm.sent,
+          })
+          .from(comm)
+          .where(inArray(comm.id, commIds));
+
+        comms = commRecords.map(c => ({
+          id: c.id,
+          medium: c.medium,
+          status: c.status,
+          sent: c.sent,
+        }));
+      }
+
       return {
         ...row.dispatch,
         worker: row.worker ? {
@@ -329,6 +352,7 @@ export function createDispatchStorage(): DispatchStorage {
           contact: row.contact,
         } : null,
         job: row.job,
+        comms,
       };
     },
 
