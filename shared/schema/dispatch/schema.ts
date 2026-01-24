@@ -63,6 +63,7 @@ export const dispatches = pgTable("dispatches", {
   data: jsonb("data"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
+  commIds: varchar("comm_ids").array(),
 });
 
 export const insertDispatchSchema = createInsertSchema(dispatches).omit({
