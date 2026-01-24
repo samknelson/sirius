@@ -105,18 +105,19 @@ function DispatchJobTypeNotificationsContent() {
       <CardContent className="space-y-4">
         {NOTIFICATION_MEDIA_OPTIONS.map((option) => {
           const Icon = option.icon;
+          const isPending = saveNotificationsMutation.isPending;
           return (
             <div 
               key={option.id} 
-              className="flex items-center gap-4 p-4 border rounded-md cursor-pointer hover-elevate"
-              onClick={() => toggleMedia(option.id)}
+              className={`flex items-center gap-4 p-4 border rounded-md ${isPending ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover-elevate'}`}
+              onClick={() => !isPending && toggleMedia(option.id)}
               data-testid={`row-media-${option.id}`}
             >
               <Checkbox
                 id={`media-${option.id}`}
                 checked={isMediaSelected(option.id)}
-                onCheckedChange={() => toggleMedia(option.id)}
-                disabled={saveNotificationsMutation.isPending}
+                disabled={isPending}
+                onClick={(e) => e.stopPropagation()}
                 data-testid={`checkbox-media-${option.id}`}
               />
               <Icon className="h-5 w-5 text-muted-foreground" />
