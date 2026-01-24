@@ -1,5 +1,6 @@
+import { useState, useMemo } from "react";
 import { Link } from "wouter";
-import { Eye, User, Briefcase, Mail, MessageSquare, Bell, ExternalLink } from "lucide-react";
+import { Eye, User, Briefcase, Mail, MessageSquare, Bell, ExternalLink, Filter } from "lucide-react";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { DispatchWithRelations, CommSummary } from "../../../../server/storage/dispatches";
 
 const statusColors: Record<string, string> = {
@@ -121,6 +129,16 @@ function getJobTitle(dispatch: DispatchWithRelations): string {
   return dispatch.job?.title || 'Unknown Job';
 }
 
+const statusOptions = [
+  { value: "all", label: "All Statuses" },
+  { value: "pending", label: "Pending" },
+  { value: "notified", label: "Notified" },
+  { value: "accepted", label: "Accepted" },
+  { value: "layoff", label: "Layoff" },
+  { value: "resigned", label: "Resigned" },
+  { value: "declined", label: "Declined" },
+];
+
 export interface DispatchListTableProps {
   dispatches: DispatchWithRelations[];
   showWorker?: boolean;
@@ -132,8 +150,36 @@ export function DispatchListTable({
   showWorker = false,
   showJob = false,
 }: DispatchListTableProps) {
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const filteredDispatches = useMemo(() => {
+    if (statusFilter === "all") return dispatches;
+    return dispatches.filter(d => d.status === statusFilter);
+  }, [dispatches, statusFilter]);
+
   return (
-    <Table>
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Filter className="h-4 w-4 text-muted-foreground" />
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[180px]" data-testid="select-status-filter">
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            {statusOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value} data-testid={`option-status-${option.value}`}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {statusFilter !== "all" && (
+          <span className="text-sm text-muted-foreground">
+            {filteredDispatches.length} of {dispatches.length}
+          </span>
+        )}
+      </div>
+      <Table>
       <TableHeader>
         <TableRow>
           {showWorker && <TableHead>Worker</TableHead>}
@@ -146,7 +192,7 @@ export function DispatchListTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        {dispatches.map((dispatch) => (
+        {filteredDispatches.map((dispatch) => (
           <TableRow key={dispatch.id} data-testid={`row-dispatch-${dispatch.id}`}>
             {showWorker && (
               <TableCell data-testid={`text-worker-${dispatch.id}`}>
@@ -239,5 +285,6 @@ export function DispatchListTable({
         ))}
       </TableBody>
     </Table>
+    </div>
   );
 }
