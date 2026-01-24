@@ -26,6 +26,7 @@ export function registerDispatchJobsRoutes(
         jobTypeId, 
         startDateFrom, 
         startDateTo,
+        running,
         page: pageParam,
         limit: limitParam 
       } = req.query;
@@ -49,6 +50,9 @@ export function registerDispatchJobsRoutes(
       }
       if (startDateTo && typeof startDateTo === 'string') {
         filters.startDateTo = new Date(startDateTo);
+      }
+      if (running === 'true') {
+        filters.running = true;
       }
       
       const result = await storage.dispatchJobs.getPaginated(page, limit, filters);

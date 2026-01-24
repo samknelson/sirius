@@ -21,6 +21,7 @@ export interface DispatchJobFilters {
   jobTypeId?: string;
   startDateFrom?: Date;
   startDateTo?: Date;
+  running?: boolean;
 }
 
 export interface DispatchJobWithRelations extends DispatchJob {
@@ -166,6 +167,9 @@ export function createDispatchJobStorage(): DispatchJobStorage {
       }
       if (filters?.startDateTo) {
         conditions.push(lte(dispatchJobs.startDate, filters.startDateTo));
+      }
+      if (filters?.running !== undefined) {
+        conditions.push(eq(dispatchJobs.running, filters.running));
       }
       
       const hasFilters = conditions.length > 0;
