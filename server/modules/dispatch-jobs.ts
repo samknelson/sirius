@@ -202,12 +202,12 @@ export function registerDispatchJobsRoutes(
   app.get("/api/dispatch-jobs/:id/eligible-workers", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
-      const { limit: limitParam, offset: offsetParam, siriusId: siriusIdParam, name: nameParam } = req.query;
+      const { limit: limitParam, offset: offsetParam, siriusId: siriusIdParam, name: nameParam, excludeWithDispatches: excludeParam } = req.query;
       
       const limit = Math.min(parseInt(limitParam as string) || 100, 500);
       const offset = parseInt(offsetParam as string) || 0;
       
-      const filters: { siriusId?: number; name?: string } = {};
+      const filters: { siriusId?: number; name?: string; excludeWithDispatches?: boolean } = {};
       if (siriusIdParam) {
         const parsed = parseInt(siriusIdParam as string);
         if (!isNaN(parsed)) {
@@ -216,6 +216,9 @@ export function registerDispatchJobsRoutes(
       }
       if (nameParam && typeof nameParam === "string" && nameParam.trim()) {
         filters.name = nameParam.trim();
+      }
+      if (excludeParam === "true" || excludeParam === "1") {
+        filters.excludeWithDispatches = true;
       }
       
       const eligibleWorkersStorage = createDispatchEligibleWorkersStorage();

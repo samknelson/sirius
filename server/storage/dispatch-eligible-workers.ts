@@ -1,7 +1,7 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import type { db } from './db';
-import { workers, contacts, workerDispatchEligDenorm, type EligibilityPluginConfig, type JobTypeData } from "@shared/schema";
+import { workers, contacts, workerDispatchEligDenorm, dispatches, type EligibilityPluginConfig, type JobTypeData } from "@shared/schema";
 import { sql, eq, and, exists, notExists, or, ilike, inArray } from "drizzle-orm";
 import { logger } from "../logger";
 import { 
@@ -26,6 +26,7 @@ export interface EligibleWorker {
 export interface EligibleWorkersFilters {
   siriusId?: number;
   name?: string;
+  excludeWithDispatches?: boolean; // Exclude workers who already have a dispatch for this job
 }
 
 export interface EligibleWorkersResult {
@@ -234,6 +235,17 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
   }
   if (filters?.name) {
     filterConditions.push(ilike(contacts.displayName, `%${filters.name}%`));
+  }
+  // Exclude workers who already have a dispatch for this job
+  if (filters?.excludeWithDispatches) {
+    const existingDispatchSubquery = client
+      .select({ one: sql`1` })
+      .from(dispatches)
+      .where(and(
+        eq(dispatches.workerId, workers.id),
+        eq(dispatches.jobId, jobId)
+      ));
+    filterConditions.push(notExists(existingDispatchSubquery));
   }
 
   const allConditions = [...whereConditions, ...filterConditions];
