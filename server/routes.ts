@@ -385,6 +385,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/workers/search - Search workers by name or ID (requires workers.view permission)
+  app.get("/api/workers/search", requireAuth, requirePermission("staff"), async (req, res) => {
+    try {
+      const { q, limit: limitParam } = req.query;
+      const query = typeof q === 'string' ? q.trim() : '';
+      const limit = Math.min(parseInt(limitParam as string) || 10, 50);
+      
+      if (!query || query.length < 2) {
+        res.json({ workers: [], total: 0 });
+        return;
+      }
+      
+      const result = await storage.workers.searchWorkers(query, limit);
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to search workers:", error);
+      res.status(500).json({ message: "Failed to search workers" });
+    }
+  });
+
   // GET /api/workers/employers/summary - Get employer summary for all workers (requires workers.view permission)
   app.get("/api/workers/employers/summary", requireAuth, requirePermission("staff"), async (req, res) => {
     try {

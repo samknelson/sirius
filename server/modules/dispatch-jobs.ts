@@ -269,4 +269,23 @@ export function registerDispatchJobsRoutes(
       res.status(500).json({ message: "Failed to fetch eligible workers SQL" });
     }
   });
+
+  app.get("/api/dispatch-jobs/:id/check-eligibility/:workerId", dispatchComponent, requireAccess('admin'), async (req, res) => {
+    try {
+      const { id, workerId } = req.params;
+      
+      const eligibleWorkersStorage = createDispatchEligibleWorkersStorage();
+      const result = await eligibleWorkersStorage.checkWorkerEligibility(id, workerId);
+      
+      if (!result) {
+        res.status(404).json({ message: "Job or worker not found" });
+        return;
+      }
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to check worker eligibility:", error);
+      res.status(500).json({ message: "Failed to check worker eligibility" });
+    }
+  });
 }
