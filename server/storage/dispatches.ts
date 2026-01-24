@@ -338,6 +338,9 @@ export function createDispatchStorage(): DispatchStorage {
       }
 
       switch (newStatus) {
+        case "pending":
+          return { possible: true };
+        
         case "notified": {
           if (job.status !== "open") {
             return { possible: false, reason: `Job must be open to notify workers (current status: ${job.status})` };
