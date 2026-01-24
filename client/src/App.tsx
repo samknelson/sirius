@@ -193,6 +193,8 @@ const DispatchJobDispatchesListPage = lazy(() => import("@/pages/dispatch/job-di
 const DispatchJobDispatchesCbnPage = lazy(() => import("@/pages/dispatch/job-dispatches-cbn"));
 const DispatchJobEligibleWorkersPage = lazy(() => import("@/pages/dispatch/job-eligible-workers"));
 const DispatchJobNewPage = lazy(() => import("@/pages/dispatch/job-new"));
+const DispatchDetailsPage = lazy(() => import("@/pages/dispatch/dispatch-details"));
+const DispatchEditPage = lazy(() => import("@/pages/dispatch/dispatch-edit"));
 const MasqueradePage = lazy(() => import("@/pages/config/masquerade"));
 const SystemModePage = lazy(() => import("@/pages/config/system-mode"));
 const DefaultPolicyPage = lazy(() => import("@/pages/config/default-policy"));
@@ -1784,6 +1786,22 @@ function Router() {
         <ProtectedRoute tabId="eligible-workers" entityType="dispatch_job">
           <AuthenticatedLayout>
             <DispatchJobEligibleWorkersPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/:id">
+        <ProtectedRoute tabId="details" entityType="dispatch">
+          <AuthenticatedLayout>
+            <DispatchDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="dispatch">
+          <AuthenticatedLayout>
+            <DispatchEditPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

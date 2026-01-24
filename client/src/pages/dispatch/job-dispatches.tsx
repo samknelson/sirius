@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Users, Plus } from "lucide-react";
+import { Users, Eye } from "lucide-react";
 import { format } from "date-fns";
 import { DispatchJobLayout, useDispatchJobLayout } from "@/components/layouts/DispatchJobLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,12 +46,7 @@ function JobDispatchesContent() {
   const { job } = useDispatchJobLayout();
 
   const { data: dispatches, isLoading } = useQuery<DispatchWithRelations[]>({
-    queryKey: ["/api/dispatches/job", job.id],
-    queryFn: async () => {
-      const response = await fetch(`/api/dispatches/job/${job.id}`);
-      if (!response.ok) throw new Error("Failed to fetch dispatches");
-      return response.json();
-    },
+    queryKey: [`/api/dispatches/job/${job.id}`],
   });
 
   if (isLoading) {
@@ -81,12 +76,12 @@ function JobDispatchesContent() {
       </CardHeader>
       <CardContent>
         {!dispatches || dispatches.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12">
+          <div className="flex flex-col items-center justify-center py-12" data-testid="empty-state-no-dispatches">
             <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
               <Users className="text-muted-foreground" size={32} />
             </div>
-            <h3 className="text-lg font-medium text-foreground mb-2">No Dispatches Yet</h3>
-            <p className="text-muted-foreground text-center mb-4">
+            <h3 className="text-lg font-medium text-foreground mb-2" data-testid="text-empty-title">No Dispatches Yet</h3>
+            <p className="text-muted-foreground text-center mb-4" data-testid="text-empty-message">
               No workers have been dispatched to this job yet.
             </p>
           </div>
@@ -98,15 +93,16 @@ function JobDispatchesContent() {
                 <TableHead>Status</TableHead>
                 <TableHead>Start Date</TableHead>
                 <TableHead>End Date</TableHead>
+                <TableHead className="w-16">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {dispatches.map((dispatch) => (
                 <TableRow key={dispatch.id} data-testid={`row-dispatch-${dispatch.id}`}>
-                  <TableCell>
+                  <TableCell data-testid={`text-worker-${dispatch.id}`}>
                     {dispatch.worker ? (
                       <Link href={`/workers/${dispatch.workerId}`}>
-                        <span className="text-foreground hover:underline cursor-pointer">
+                        <span className="text-foreground hover:underline cursor-pointer" data-testid={`link-worker-${dispatch.id}`}>
                           {getWorkerName(dispatch)}
                         </span>
                       </Link>
@@ -114,20 +110,27 @@ function JobDispatchesContent() {
                       <span className="text-muted-foreground">{getWorkerName(dispatch)}</span>
                     )}
                   </TableCell>
-                  <TableCell>
-                    <Badge className={statusColors[dispatch.status] || statusColors.pending}>
+                  <TableCell data-testid={`text-status-${dispatch.id}`}>
+                    <Badge className={statusColors[dispatch.status] || statusColors.pending} data-testid={`badge-status-${dispatch.id}`}>
                       {formatStatus(dispatch.status)}
                     </Badge>
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-testid={`text-start-date-${dispatch.id}`}>
                     {dispatch.startDate
                       ? format(new Date(dispatch.startDate), "MMM d, yyyy")
                       : "-"}
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-testid={`text-end-date-${dispatch.id}`}>
                     {dispatch.endDate
                       ? format(new Date(dispatch.endDate), "MMM d, yyyy")
                       : "-"}
+                  </TableCell>
+                  <TableCell>
+                    <Link href={`/dispatch/${dispatch.id}`}>
+                      <Button variant="ghost" size="icon" data-testid={`button-view-${dispatch.id}`}>
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </Link>
                   </TableCell>
                 </TableRow>
               ))}

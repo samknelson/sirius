@@ -259,6 +259,17 @@ export function useCronJobTabAccess(jobName: string | undefined, enabled = true)
 }
 
 /**
+ * Hook specifically for dispatch entity tabs
+ */
+export function useDispatchTabAccess(dispatchId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'dispatch', 
+    entityId: dispatchId, 
+    enabled 
+  });
+}
+
+/**
  * Hook specifically for dispatch job entity tabs
  */
 export function useDispatchJobTabAccess(jobId: string | undefined, enabled = true) {

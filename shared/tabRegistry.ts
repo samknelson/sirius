@@ -53,6 +53,7 @@ export type TabEntityType =
   | 'bargaining_unit'
   | 'btu_csg'
   | 'cron_job'
+  | 'dispatch'
   | 'dispatch_job'
   | 'dispatch_job_type'
   | 'edls_sheet'
@@ -248,6 +249,14 @@ export const cronJobTabTree: HierarchicalTab[] = [
 ];
 
 /**
+ * Dispatch entity tab tree (individual dispatch records)
+ */
+export const dispatchTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/dispatch/{id}', permission: 'staff', component: 'dispatch' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/dispatch/{id}/edit', permission: 'staff', component: 'dispatch' },
+];
+
+/**
  * Dispatch job entity tab tree
  */
 export const dispatchJobTabTree: HierarchicalTab[] = [
@@ -434,6 +443,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   bargaining_unit: bargainingUnitTabTree,
   btu_csg: btuCsgTabTree,
   cron_job: cronJobTabTree,
+  dispatch: dispatchTabTree,
   dispatch_job: dispatchJobTabTree,
   dispatch_job_type: dispatchJobTypeTabTree,
   edls_sheet: edlsSheetTabTree,
@@ -639,6 +649,7 @@ export const tabRegistry: Record<TabEntityType, TabDefinition[]> = {
   bargaining_unit: flattenTabTree(bargainingUnitTabTree),
   btu_csg: flattenTabTree(btuCsgTabTree),
   cron_job: flattenTabTree(cronJobTabTree),
+  dispatch: flattenTabTree(dispatchTabTree),
   dispatch_job: flattenTabTree(dispatchJobTabTree),
   dispatch_job_type: flattenTabTree(dispatchJobTypeTabTree),
   edls_sheet: flattenTabTree(edlsSheetTabTree),
