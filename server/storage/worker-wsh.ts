@@ -3,10 +3,12 @@ import { getClient } from './transaction-context';
 import {
   workerWsh,
   optionsWorkerWs,
+  workers,
   type WorkerWsh,
 } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
+import { eventBus, EventType } from "../services/event-bus";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -26,6 +28,14 @@ export function createWorkerWshStorage(
 ): WorkerWshStorage {
   async function syncWorkerCurrentWorkStatus(workerId: string): Promise<void> {
     const client = getClient();
+    
+    const [currentWorker] = await client
+      .select({ denormWsId: workers.denormWsId })
+      .from(workers)
+      .where(eq(workers.id, workerId));
+    
+    const previousWsId = currentWorker?.denormWsId || null;
+    
     const [mostRecent] = await client
       .select()
       .from(workerWsh)
@@ -33,7 +43,19 @@ export function createWorkerWshStorage(
       .orderBy(desc(workerWsh.date), sql`${workerWsh.createdAt} DESC NULLS LAST`, desc(workerWsh.id))
       .limit(1);
 
-    await updateWorkerStatus(workerId, mostRecent?.wsId || null);
+    const newWsId = mostRecent?.wsId || null;
+    
+    await updateWorkerStatus(workerId, newWsId);
+    
+    if (previousWsId !== newWsId) {
+      await eventBus.emit(EventType.WORKER_WS_CHANGED, {
+        workerId,
+        wsId: newWsId,
+        previousWsId,
+      }).catch(err => {
+        console.error("Failed to emit WORKER_WS_CHANGED event for worker", workerId, err);
+      });
+    }
     
     if (onWorkerDataChanged) {
       await onWorkerDataChanged(workerId).catch(err => {
