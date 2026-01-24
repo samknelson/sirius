@@ -49,8 +49,7 @@ export const dispatchStatusEnum = [
   "requested",
   "pending", 
   "notified", 
-  "accepted_primary", 
-  "accepted_secondary", 
+  "accepted", 
   "layoff", 
   "resigned", 
   "declined"
