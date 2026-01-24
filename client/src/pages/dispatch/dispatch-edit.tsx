@@ -6,30 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Save, Loader2 } from "lucide-react";
-import { dispatchStatusEnum, type DispatchStatus } from "@shared/schema";
-
-const statusOptions = dispatchStatusEnum;
-
-function formatStatus(status: string): string {
-  return status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-}
 
 function DispatchEditContent() {
   const { dispatch } = useDispatchLayout();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  const [status, setStatus] = useState<DispatchStatus>(dispatch.status as DispatchStatus);
   const formatDateForInput = (date: string | Date | null): string => {
     if (!date) return "";
     if (typeof date === "string") return date.split("T")[0];
@@ -39,7 +24,7 @@ function DispatchEditContent() {
   const [endDate, setEndDate] = useState(formatDateForInput(dispatch.endDate));
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { status: string; startDate: string | null; endDate: string | null }) => {
+    mutationFn: async (data: { startDate: string | null; endDate: string | null }) => {
       return apiRequest("PUT", `/api/dispatches/${dispatch.id}`, data);
     },
     onSuccess: () => {
@@ -63,7 +48,6 @@ function DispatchEditContent() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     updateMutation.mutate({
-      status,
       startDate: startDate || null,
       endDate: endDate || null,
     });
@@ -74,27 +58,11 @@ function DispatchEditContent() {
       <CardHeader>
         <CardTitle data-testid="title-edit-dispatch">Edit Dispatch</CardTitle>
         <CardDescription data-testid="text-edit-description">
-          Update the dispatch status and dates
+          Update the dispatch dates
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="status">Status</Label>
-            <Select value={status} onValueChange={(val) => setStatus(val as DispatchStatus)}>
-              <SelectTrigger id="status" data-testid="select-status">
-                <SelectValue placeholder="Select status" />
-              </SelectTrigger>
-              <SelectContent>
-                {statusOptions.map((opt) => (
-                  <SelectItem key={opt} value={opt} data-testid={`option-status-${opt}`}>
-                    {formatStatus(opt)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="startDate">Start Date</Label>
