@@ -2,7 +2,7 @@ import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import type { db } from './db';
 import { workers, contacts, workerDispatchEligDenorm, type EligibilityPluginConfig, type JobTypeData } from "@shared/schema";
-import { sql, eq, and, exists, notExists, or, ilike } from "drizzle-orm";
+import { sql, eq, and, exists, notExists, or, ilike, inArray } from "drizzle-orm";
 import { logger } from "../logger";
 import { 
   dispatchEligPluginRegistry, 
@@ -131,13 +131,18 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
   const whereConditions = appliedConditions.flatMap(({ condition }) => {
     switch (condition.type) {
       case "exists": {
+        // If values array is provided, use inArray for matching any of the values
+        const valueCondition = condition.values && condition.values.length > 0
+          ? inArray(workerDispatchEligDenorm.value, condition.values)
+          : eq(workerDispatchEligDenorm.value, condition.value);
+        
         const subquery = client
           .select({ one: sql`1` })
           .from(workerDispatchEligDenorm)
           .where(and(
             eq(workerDispatchEligDenorm.workerId, workers.id),
             eq(workerDispatchEligDenorm.category, condition.category),
-            eq(workerDispatchEligDenorm.value, condition.value)
+            valueCondition
           ));
         return [exists(subquery)];
       }
