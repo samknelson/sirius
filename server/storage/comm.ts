@@ -1,6 +1,6 @@
 import { getClient } from './transaction-context';
 import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, commPostal, commPostalOptin, commInapp, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin, type CommEmail, type InsertCommEmail, type CommEmailOptin, type InsertCommEmailOptin, type CommPostal, type InsertCommPostal, type CommPostalOptin, type InsertCommPostalOptin, type CommInapp, type InsertCommInapp } from "@shared/schema";
-import { eq, desc, and, SQL } from "drizzle-orm";
+import { eq, desc, and, SQL, inArray } from "drizzle-orm";
 import { phoneValidationService } from "../services/phone-validation";
 import { storageLogger } from "../logger";
 import { 
@@ -84,6 +84,7 @@ export interface CommWithDetails extends Comm {
 
 export interface CommStorage {
   getComm(id: string): Promise<Comm | undefined>;
+  getByIds(ids: string[]): Promise<Comm[]>;
   getCommsByContact(contactId: string): Promise<Comm[]>;
   getCommsByContactWithSms(contactId: string): Promise<CommWithSms[]>;
   getCommsByContactWithDetails(contactId: string): Promise<CommWithDetails[]>;
@@ -129,6 +130,12 @@ export function createCommStorage(): CommStorage {
       const client = getClient();
       const [result] = await client.select().from(comm).where(eq(comm.id, id));
       return result || undefined;
+    },
+
+    async getByIds(ids: string[]): Promise<Comm[]> {
+      if (ids.length === 0) return [];
+      const client = getClient();
+      return await client.select().from(comm).where(inArray(comm.id, ids)).orderBy(desc(comm.sent));
     },
 
     async getCommsByContact(contactId: string): Promise<Comm[]> {

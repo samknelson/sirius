@@ -5,11 +5,13 @@ import {
   dispatchJobs,
   workers,
   contacts,
+  comm,
   type Dispatch, 
   type InsertDispatch,
-  type DispatchStatus
+  type DispatchStatus,
+  type Comm
 } from "@shared/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, inArray } from "drizzle-orm";
 import { eventBus, EventType } from "../services/event-bus";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
@@ -17,6 +19,13 @@ import { type StorageLoggingConfig } from "./middleware/logging";
  * Stub validator - add validation logic here when needed
  */
 export const validate = createNoopValidator<InsertDispatch, Dispatch>();
+
+export interface CommSummary {
+  id: string;
+  medium: string;
+  status: string;
+  sent: Date | null;
+}
 
 export interface DispatchWithRelations extends Dispatch {
   worker?: {
@@ -34,6 +43,7 @@ export interface DispatchWithRelations extends Dispatch {
     title: string;
     employerId: string;
   } | null;
+  comms?: CommSummary[];
 }
 
 export interface SetStatusResult {
@@ -252,6 +262,25 @@ export function createDispatchStorage(): DispatchStorage {
         .where(eq(dispatches.jobId, jobId))
         .orderBy(desc(dispatches.startDate));
 
+      const allCommIds = rows.flatMap(row => row.dispatch.commIds || []);
+      let commMap: Map<string, CommSummary> = new Map();
+      
+      if (allCommIds.length > 0) {
+        const commRecords = await client
+          .select({
+            id: comm.id,
+            medium: comm.medium,
+            status: comm.status,
+            sent: comm.sent,
+          })
+          .from(comm)
+          .where(inArray(comm.id, allCommIds));
+        
+        for (const c of commRecords) {
+          commMap.set(c.id, c);
+        }
+      }
+
       return rows.map(row => ({
         ...row.dispatch,
         worker: row.worker ? {
@@ -259,6 +288,9 @@ export function createDispatchStorage(): DispatchStorage {
           contact: row.contact,
         } : null,
         job: row.job,
+        comms: (row.dispatch.commIds || [])
+          .map(id => commMap.get(id))
+          .filter((c): c is CommSummary => c !== undefined),
       }));
     },
 
