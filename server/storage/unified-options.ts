@@ -298,6 +298,7 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Job type name", showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: true, columnHeader: "Description" },
+      { name: "eligibleWorkStatuses", label: "Eligible Work Statuses", inputType: "select-options", required: false, helperText: "Work statuses eligible for jobs of this type (leave empty for all)", showInTable: false, selectOptionsType: "worker-ws", dataField: true },
     ],
   },
   "ledger-payment-type": {
