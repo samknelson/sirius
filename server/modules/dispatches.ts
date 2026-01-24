@@ -144,4 +144,27 @@ export function registerDispatchesRoutes(
       res.status(500).json({ message: "Failed to delete dispatch" });
     }
   });
+
+  app.post("/api/dispatches/:id/set-status", dispatchComponent, requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+
+      if (!status || !dispatchStatusEnum.includes(status)) {
+        res.status(400).json({ message: `Invalid status. Must be one of: ${dispatchStatusEnum.join(', ')}` });
+        return;
+      }
+
+      const result = await storage.dispatches.setStatus(id, status);
+      
+      if (!result.success) {
+        res.status(400).json({ message: result.error });
+        return;
+      }
+
+      res.json(result.dispatch);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to set dispatch status" });
+    }
+  });
 }
