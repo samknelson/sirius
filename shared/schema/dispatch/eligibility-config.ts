@@ -32,9 +32,12 @@ export interface EligibilityPluginMetadata {
   configFields?: PluginConfigField[];
 }
 
+export type NotificationMedia = 'email' | 'sms' | 'in-app';
+
 export interface JobTypeData {
   icon?: string;
   eligibility?: EligibilityPluginConfig[];
   minWorkers?: number;
   maxWorkers?: number;
+  notificationMedia?: NotificationMedia[];
 }
