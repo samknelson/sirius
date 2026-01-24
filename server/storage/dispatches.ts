@@ -6,9 +6,11 @@ import {
   workers,
   contacts,
   type Dispatch, 
-  type InsertDispatch
+  type InsertDispatch,
+  type DispatchStatus
 } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
+import { eventBus, EventType } from "../services/event-bus";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
 /**
@@ -34,6 +36,11 @@ export interface DispatchWithRelations extends Dispatch {
   } | null;
 }
 
+export interface SetStatusResult {
+  possible: boolean;
+  reason?: string;
+}
+
 export interface DispatchStorage {
   getAll(): Promise<Dispatch[]>;
   get(id: string): Promise<Dispatch | undefined>;
@@ -43,6 +50,8 @@ export interface DispatchStorage {
   create(dispatch: InsertDispatch): Promise<Dispatch>;
   update(id: string, dispatch: Partial<InsertDispatch>): Promise<Dispatch | undefined>;
   delete(id: string): Promise<boolean>;
+  setStatusPossible(dispatchId: string, newStatus: DispatchStatus): Promise<SetStatusResult>;
+  setStatus(dispatchId: string, newStatus: DispatchStatus): Promise<{ success: boolean; dispatch?: Dispatch; error?: string }>;
 }
 
 async function getWorkerName(workerId: string): Promise<string> {
@@ -313,6 +322,86 @@ export function createDispatchStorage(): DispatchStorage {
       const client = getClient();
       const result = await client.delete(dispatches).where(eq(dispatches.id, id)).returning();
       return result.length > 0;
+    },
+
+    async setStatusPossible(dispatchId: string, newStatus: DispatchStatus): Promise<SetStatusResult> {
+      const client = getClient();
+      
+      const [dispatch] = await client.select().from(dispatches).where(eq(dispatches.id, dispatchId));
+      if (!dispatch) {
+        return { possible: false, reason: "Dispatch not found" };
+      }
+
+      const [job] = await client.select().from(dispatchJobs).where(eq(dispatchJobs.id, dispatch.jobId));
+      if (!job) {
+        return { possible: false, reason: "Job not found" };
+      }
+
+      switch (newStatus) {
+        case "notified": {
+          if (job.status !== "open") {
+            return { possible: false, reason: `Job must be open to notify workers (current status: ${job.status})` };
+          }
+          
+          const workerCount = job.workerCount;
+          if (workerCount != null && workerCount > 0) {
+            const acceptedDispatches = await client
+              .select()
+              .from(dispatches)
+              .where(and(
+                eq(dispatches.jobId, dispatch.jobId),
+                eq(dispatches.status, "accepted")
+              ));
+            
+            if (acceptedDispatches.length >= workerCount) {
+              return { possible: false, reason: `Job is full (${acceptedDispatches.length}/${workerCount} workers accepted)` };
+            }
+          }
+          
+          return { possible: true };
+        }
+        
+        default:
+          return { possible: false, reason: `Status transition to "${newStatus}" is not implemented` };
+      }
+    },
+
+    async setStatus(dispatchId: string, newStatus: DispatchStatus): Promise<{ success: boolean; dispatch?: Dispatch; error?: string }> {
+      const client = getClient();
+      
+      const checkResult = await this.setStatusPossible(dispatchId, newStatus);
+      if (!checkResult.possible) {
+        return { success: false, error: checkResult.reason };
+      }
+
+      const [currentDispatch] = await client.select().from(dispatches).where(eq(dispatches.id, dispatchId));
+      if (!currentDispatch) {
+        return { success: false, error: "Dispatch not found" };
+      }
+
+      const previousStatus = currentDispatch.status;
+
+      const [updatedDispatch] = await client
+        .update(dispatches)
+        .set({ status: newStatus })
+        .where(eq(dispatches.id, dispatchId))
+        .returning();
+
+      if (!updatedDispatch) {
+        return { success: false, error: "Failed to update dispatch status" };
+      }
+
+      eventBus.emit(EventType.DISPATCH_SAVED, {
+        dispatchId: updatedDispatch.id,
+        workerId: updatedDispatch.workerId,
+        jobId: updatedDispatch.jobId,
+        status: updatedDispatch.status,
+        previousStatus,
+      }).catch(err => {
+        console.error("Failed to emit DISPATCH_SAVED event:", err);
+      });
+
+      return { success: true, dispatch: updatedDispatch };
     }
   };
 }
