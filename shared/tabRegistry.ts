@@ -272,7 +272,17 @@ export const dispatchJobTabTree: HierarchicalTab[] = [
       { id: 'dispatches-cbn', label: 'Call by Name', hrefTemplate: '/dispatch/job/{id}/dispatches/cbn', permission: 'staff', component: 'dispatch' },
     ]
   },
-  { id: 'eligible-workers', label: 'Eligible Workers', hrefTemplate: '/dispatch/job/{id}/eligible-workers', permission: 'staff', component: 'dispatch' },
+  { 
+    id: 'eligible-workers', 
+    label: 'Eligible Workers', 
+    hrefTemplate: '/dispatch/job/{id}/eligible-workers/list', 
+    permission: 'staff', 
+    component: 'dispatch',
+    children: [
+      { id: 'eligible-workers-list', label: 'List', hrefTemplate: '/dispatch/job/{id}/eligible-workers/list', permission: 'staff', component: 'dispatch' },
+      { id: 'eligible-workers-check', label: 'Check', hrefTemplate: '/dispatch/job/{id}/eligible-workers/check', permission: 'staff', component: 'dispatch' },
+    ]
+  },
   { id: 'edit', label: 'Edit', hrefTemplate: '/dispatch/job/{id}/edit', permission: 'staff', component: 'dispatch' },
 ];
 

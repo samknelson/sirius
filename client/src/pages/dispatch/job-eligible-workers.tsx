@@ -437,7 +437,7 @@ function EligibleWorkersContent() {
 
 export default function DispatchJobEligibleWorkersPage() {
   return (
-    <DispatchJobLayout activeTab="eligible-workers">
+    <DispatchJobLayout activeTab="eligible-workers-list">
       <EligibleWorkersContent />
     </DispatchJobLayout>
   );
