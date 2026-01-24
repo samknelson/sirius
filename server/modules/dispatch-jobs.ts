@@ -201,6 +201,11 @@ export function registerDispatchJobsRoutes(
       const job = await storage.dispatchJobs.update(id, { running });
       res.json(job);
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update job running status";
+      if (message.includes('Cannot set job to running')) {
+        res.status(400).json({ message });
+        return;
+      }
       res.status(500).json({ message: "Failed to update job running status" });
     }
   });
