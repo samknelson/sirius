@@ -131,7 +131,6 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'history', label: 'History', hrefTemplate: '/workers/{id}/employment/history', policyId: 'worker.view' },
       { id: 'monthly', label: 'Monthly', hrefTemplate: '/workers/{id}/employment/monthly', policyId: 'worker.view' },
       { id: 'daily', label: 'Daily', hrefTemplate: '/workers/{id}/employment/daily', policyId: 'worker.view' },
-      { id: 'dispatches', label: 'Dispatches', hrefTemplate: '/workers/{id}/employment/dispatches', policyId: 'worker.view', component: 'dispatch' },
     ]
   },
   { 
@@ -155,6 +154,7 @@ export const workerTabTree: HierarchicalTab[] = [
     id: 'dispatch', label: 'Dispatch', hrefTemplate: '/workers/{id}/dispatch/status', policyId: 'worker.view', component: 'dispatch',
     children: [
       { id: 'dispatch-status', label: 'Status', hrefTemplate: '/workers/{id}/dispatch/status', policyId: 'worker.view', component: 'dispatch' },
+      { id: 'dispatch-list', label: 'List', hrefTemplate: '/workers/{id}/dispatch/list', policyId: 'worker.view', component: 'dispatch' },
       { id: 'dispatch-dnc', label: 'Do Not Call', hrefTemplate: '/workers/{id}/dispatch/do-not-call', policyId: 'worker.view', component: 'dispatch.dnc' },
       { id: 'dispatch-hfe', label: 'Hold for Employer', hrefTemplate: '/workers/{id}/dispatch/hold-for-employer', policyId: 'worker.view', component: 'dispatch.hfe' },
     ]

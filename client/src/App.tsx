@@ -642,8 +642,8 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/workers/:id/employment/dispatches">
-        <ProtectedRoute tabId="dispatches" entityType="worker">
+      <Route path="/workers/:id/dispatch/list">
+        <ProtectedRoute tabId="dispatch-list" entityType="worker">
           <AuthenticatedLayout>
             <WorkerDispatches />
           </AuthenticatedLayout>
