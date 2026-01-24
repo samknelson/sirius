@@ -245,7 +245,7 @@ export function DispatchListTable({
             </TableCell>
             <TableCell>
               <div className="flex gap-1">
-                {showJob && dispatch.workerId && (
+                {showWorker && dispatch.workerId && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Link href={`/workers/${dispatch.workerId}`}>
@@ -257,7 +257,7 @@ export function DispatchListTable({
                     <TooltipContent>View Worker</TooltipContent>
                   </Tooltip>
                 )}
-                {showWorker && dispatch.jobId && (
+                {showJob && dispatch.jobId && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Link href={`/dispatch/job/${dispatch.jobId}`}>
