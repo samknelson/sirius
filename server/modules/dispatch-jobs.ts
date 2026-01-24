@@ -178,6 +178,29 @@ export function registerDispatchJobsRoutes(
     }
   });
 
+  app.patch("/api/dispatch-jobs/:id/running", dispatchComponent, requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { running } = req.body;
+      
+      if (typeof running !== 'boolean') {
+        res.status(400).json({ message: "running must be a boolean" });
+        return;
+      }
+      
+      const existingJob = await storage.dispatchJobs.get(id);
+      if (!existingJob) {
+        res.status(404).json({ message: "Dispatch job not found" });
+        return;
+      }
+      
+      const job = await storage.dispatchJobs.update(id, { running });
+      res.json(job);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update job running status" });
+    }
+  });
+
   app.delete("/api/dispatch-jobs/:id", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;

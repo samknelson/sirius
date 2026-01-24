@@ -263,6 +263,7 @@ export const dispatchTabTree: HierarchicalTab[] = [
  */
 export const dispatchJobTabTree: HierarchicalTab[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/dispatch/job/{id}', permission: 'staff', component: 'dispatch' },
+  { id: 'run', label: 'Run', hrefTemplate: '/dispatch/job/{id}/run', permission: 'staff', component: 'dispatch' },
   { 
     id: 'dispatches', 
     label: 'Dispatches', 
