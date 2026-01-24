@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { DispatchJobTypeLayout, useDispatchJobTypeLayout } from "@/components/layouts/DispatchJobTypeLayout";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Loader2, Shield } from "lucide-react";
+import { Loader2, Shield, Settings } from "lucide-react";
+import { PluginConfigModal } from "@/components/dispatch/PluginConfigModal";
 import type { EligibilityPluginMetadata, EligibilityPluginConfig, JobTypeData } from "@shared/schema";
 
 function DispatchJobTypePluginsContent() {
@@ -20,6 +21,8 @@ function DispatchJobTypePluginsContent() {
     jobTypeData?.eligibility || []
   );
   const [hasChanges, setHasChanges] = useState(false);
+  const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [selectedPlugin, setSelectedPlugin] = useState<EligibilityPluginMetadata | null>(null);
 
   const { data: eligibilityPlugins = [], isLoading: pluginsLoading } = useQuery<EligibilityPluginMetadata[]>({
     queryKey: ["/api/dispatch-eligibility-plugins"],
@@ -44,6 +47,29 @@ function DispatchJobTypePluginsContent() {
   const isPluginEnabled = (pluginId: string): boolean => {
     const config = formEligibility.find(p => p.pluginId === pluginId);
     return config?.enabled ?? false;
+  };
+
+  const getPluginConfig = (pluginId: string): EligibilityPluginConfig["config"] => {
+    const config = formEligibility.find(p => p.pluginId === pluginId);
+    return config?.config || {};
+  };
+
+  const openConfigModal = (plugin: EligibilityPluginMetadata) => {
+    setSelectedPlugin(plugin);
+    setConfigModalOpen(true);
+  };
+
+  const handleSavePluginConfig = (newConfig: EligibilityPluginConfig["config"]) => {
+    if (!selectedPlugin) return;
+    
+    setFormEligibility(prev => {
+      const existing = prev.find(p => p.pluginId === selectedPlugin.id);
+      if (existing) {
+        return prev.map(p => p.pluginId === selectedPlugin.id ? { ...p, config: newConfig } : p);
+      }
+      return [...prev, { pluginId: selectedPlugin.id, enabled: false, config: newConfig }];
+    });
+    setHasChanges(true);
   };
 
   const saveMutation = useMutation({
@@ -98,28 +124,43 @@ function DispatchJobTypePluginsContent() {
           </p>
         ) : (
           <div className="space-y-4">
-            {eligibilityPlugins.map((plugin) => (
-              <div 
-                key={plugin.id} 
-                className="flex items-center justify-between p-4 border rounded-md"
-                data-testid={`row-plugin-${plugin.id}`}
-              >
-                <div className="space-y-1">
-                  <Label htmlFor={`plugin-${plugin.id}`} className="font-medium">
-                    {plugin.name}
-                  </Label>
-                  {plugin.description && (
-                    <p className="text-sm text-muted-foreground">{plugin.description}</p>
-                  )}
+            {eligibilityPlugins.map((plugin) => {
+              const hasConfigFields = plugin.configFields && plugin.configFields.length > 0;
+              return (
+                <div 
+                  key={plugin.id} 
+                  className="flex items-center justify-between p-4 border rounded-md"
+                  data-testid={`row-plugin-${plugin.id}`}
+                >
+                  <div className="space-y-1 flex-1">
+                    <Label htmlFor={`plugin-${plugin.id}`} className="font-medium">
+                      {plugin.name}
+                    </Label>
+                    {plugin.description && (
+                      <p className="text-sm text-muted-foreground">{plugin.description}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {hasConfigFields && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => openConfigModal(plugin)}
+                        data-testid={`button-configure-${plugin.id}`}
+                      >
+                        <Settings className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <Switch
+                      id={`plugin-${plugin.id}`}
+                      checked={isPluginEnabled(plugin.id)}
+                      onCheckedChange={() => togglePluginEnabled(plugin.id)}
+                      data-testid={`switch-plugin-${plugin.id}`}
+                    />
+                  </div>
                 </div>
-                <Switch
-                  id={`plugin-${plugin.id}`}
-                  checked={isPluginEnabled(plugin.id)}
-                  onCheckedChange={() => togglePluginEnabled(plugin.id)}
-                  data-testid={`switch-plugin-${plugin.id}`}
-                />
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -146,6 +187,16 @@ function DispatchJobTypePluginsContent() {
           )}
         </div>
       </CardContent>
+
+      {selectedPlugin && (
+        <PluginConfigModal
+          open={configModalOpen}
+          onOpenChange={setConfigModalOpen}
+          plugin={selectedPlugin}
+          currentConfig={getPluginConfig(selectedPlugin.id)}
+          onSave={handleSavePluginConfig}
+        />
+      )}
     </Card>
   );
 }
