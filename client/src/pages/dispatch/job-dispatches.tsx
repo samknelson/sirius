@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Users, Eye, Mail, MessageSquare, Bell, ExternalLink } from "lucide-react";
+import { Users, Eye, User, Mail, MessageSquare, Bell, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import { DispatchJobLayout, useDispatchJobLayout } from "@/components/layouts/DispatchJobLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -205,11 +205,30 @@ function JobDispatchesContent() {
                       : "-"}
                   </TableCell>
                   <TableCell>
-                    <Link href={`/dispatch/${dispatch.id}`}>
-                      <Button variant="ghost" size="icon" data-testid={`button-view-${dispatch.id}`}>
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                    </Link>
+                    <div className="flex gap-1">
+                      {dispatch.workerId && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Link href={`/workers/${dispatch.workerId}`}>
+                              <Button variant="ghost" size="icon" data-testid={`button-worker-${dispatch.id}`}>
+                                <User className="h-4 w-4" />
+                              </Button>
+                            </Link>
+                          </TooltipTrigger>
+                          <TooltipContent>View Worker</TooltipContent>
+                        </Tooltip>
+                      )}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Link href={`/dispatch/${dispatch.id}`}>
+                            <Button variant="ghost" size="icon" data-testid={`button-view-${dispatch.id}`}>
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                        </TooltipTrigger>
+                        <TooltipContent>View Dispatch</TooltipContent>
+                      </Tooltip>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
