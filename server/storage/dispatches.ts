@@ -12,7 +12,7 @@ import {
   type DispatchStatus,
   type Comm
 } from "@shared/schema";
-import { eq, desc, and, inArray } from "drizzle-orm";
+import { eq, desc, and, inArray, ne } from "drizzle-orm";
 import { eventBus, EventType } from "../services/event-bus";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
@@ -401,6 +401,8 @@ export function createDispatchStorage(): DispatchStorage {
         return { possible: false, reason: "Job not found" };
       }
 
+      const currentStatus = dispatch.status;
+
       switch (newStatus) {
         case "pending":
           return { possible: true };
@@ -425,6 +427,40 @@ export function createDispatchStorage(): DispatchStorage {
             }
           }
           
+          return { possible: true };
+        }
+
+        case "declined": {
+          if (currentStatus !== "pending" && currentStatus !== "notified") {
+            return { possible: false, reason: `Can only decline from pending or notified status (current: ${currentStatus})` };
+          }
+          return { possible: true };
+        }
+
+        case "layoff":
+        case "resigned": {
+          if (currentStatus !== "accepted") {
+            return { possible: false, reason: `Can only set ${newStatus} from accepted status (current: ${currentStatus})` };
+          }
+          return { possible: true };
+        }
+
+        case "accepted": {
+          const workerCount = job.workerCount;
+          if (workerCount != null && workerCount > 0) {
+            const acceptedDispatches = await client
+              .select()
+              .from(dispatches)
+              .where(and(
+                eq(dispatches.jobId, dispatch.jobId),
+                eq(dispatches.status, "accepted"),
+                ne(dispatches.id, dispatchId)
+              ));
+            
+            if (acceptedDispatches.length >= workerCount) {
+              return { possible: false, reason: `Job is full (${acceptedDispatches.length}/${workerCount} workers accepted)` };
+            }
+          }
           return { possible: true };
         }
         
