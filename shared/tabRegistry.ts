@@ -254,6 +254,7 @@ export const cronJobTabTree: HierarchicalTab[] = [
 export const dispatchTabTree: HierarchicalTab[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/dispatch/{id}', permission: 'staff', component: 'dispatch' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/dispatch/{id}/edit', permission: 'staff', component: 'dispatch' },
+  { id: 'manage', label: 'Manage', hrefTemplate: '/dispatch/{id}/manage', permission: 'staff', component: 'dispatch' },
 ];
 
 /**
