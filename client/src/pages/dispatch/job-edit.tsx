@@ -30,7 +30,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Save, X } from "lucide-react";
 import { format } from "date-fns";
 import { Link } from "wouter";
-import { type Employer, type DispatchJobType, type JobTypeData, type OptionsSkill } from "@shared/schema";
+import { type Employer, type DispatchJobType, type JobTypeData, type OptionsSkill, dispatchJobStatusEnum, type DispatchJobStatus } from "@shared/schema";
 import { DispatchJobLayout, useDispatchJobLayout } from "@/components/layouts/DispatchJobLayout";
 import { renderIcon } from "@/components/ui/icon-picker";
 
@@ -46,6 +46,7 @@ type FormData = {
   jobTypeId: string;
   startDate: string;
   workerCount: string;
+  status: DispatchJobStatus;
 };
 
 interface JobData {
@@ -89,6 +90,7 @@ function DispatchJobEditContent() {
       jobTypeId: job.jobTypeId || "",
       startDate: format(new Date(job.startDate), "yyyy-MM-dd"),
       workerCount: job.workerCount?.toString() || "",
+      status: job.status as DispatchJobStatus,
     },
   });
 
@@ -122,6 +124,7 @@ function DispatchJobEditContent() {
         jobTypeId: data.jobTypeId || null,
         startDate: new Date(data.startDate).toISOString(),
         workerCount: workerCountNum,
+        status: data.status,
         data: hasData ? updatedJobData : undefined,
       });
     },
@@ -288,6 +291,31 @@ function DispatchJobEditContent() {
                         data-testid="input-startdate"
                       />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-status">
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {dispatchJobStatusEnum.map((status) => (
+                          <SelectItem key={status} value={status} data-testid={`option-status-${status}`}>
+                            {status.charAt(0).toUpperCase() + status.slice(1)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
