@@ -145,6 +145,33 @@ export function registerDispatchesRoutes(
     }
   });
 
+  app.get("/api/dispatches/:id/status-options", dispatchComponent, requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const dispatch = await storage.dispatches.get(id);
+      if (!dispatch) {
+        res.status(404).json({ message: "Dispatch not found" });
+        return;
+      }
+
+      const results = await Promise.all(
+        dispatchStatusEnum.map(async (status) => {
+          const result = await storage.dispatches.setStatusPossible(id, status);
+          return {
+            status,
+            possible: result.possible,
+            reason: result.reason,
+          };
+        })
+      );
+
+      res.json(results);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get status options" });
+    }
+  });
+
   app.post("/api/dispatches/:id/set-status", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
