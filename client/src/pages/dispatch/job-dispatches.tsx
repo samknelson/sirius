@@ -140,7 +140,7 @@ function JobDispatchesContent() {
 
 export default function JobDispatchesPage() {
   return (
-    <DispatchJobLayout activeTab="dispatches">
+    <DispatchJobLayout activeTab="dispatches-list">
       <JobDispatchesContent />
     </DispatchJobLayout>
   );

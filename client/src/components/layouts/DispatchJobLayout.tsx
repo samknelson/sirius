@@ -1,4 +1,4 @@
-import { createContext, useContext, ReactNode } from "react";
+import { createContext, useContext, ReactNode, useMemo } from "react";
 import { Briefcase, ArrowLeft } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -54,7 +54,14 @@ export function DispatchJobLayout({ activeTab, children }: DispatchJobLayoutProp
   });
 
   // Hook must be called before any conditional returns (React rules of hooks)
-  const { tabs: mainTabs } = useDispatchJobTabAccess(id || "");
+  const { tabs: mainTabs, getActiveRoot } = useDispatchJobTabAccess(id || "");
+
+  // Get the active root tab and its children for sub-tab rendering
+  const activeRoot = useMemo(() => {
+    return getActiveRoot(activeTab);
+  }, [activeTab, getActiveRoot]);
+
+  const subTabs = activeRoot?.children;
 
   // Set page title based on job title
   usePageTitle(job?.title);
@@ -131,7 +138,9 @@ export function DispatchJobLayout({ activeTab, children }: DispatchJobLayoutProp
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center space-x-2 py-3">
             {mainTabs.map((tab) => {
-              const isActive = tab.id === activeTab;
+              // A root tab is active if it matches the activeTab directly,
+              // or if the activeRoot matches this tab (meaning one of its children is active)
+              const isActive = tab.id === activeTab || activeRoot?.id === tab.id;
               return isActive ? (
                 <Button
                   key={tab.id}
@@ -156,6 +165,38 @@ export function DispatchJobLayout({ activeTab, children }: DispatchJobLayoutProp
           </div>
         </div>
       </section>
+
+      {/* Sub-Tab Navigation - rendered dynamically when parent has children */}
+      {subTabs && subTabs.length > 0 && (
+        <section className="bg-muted/30 border-b border-border">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center space-x-2 py-2 pl-4">
+              {subTabs.map((tab) => (
+                tab.id === activeTab ? (
+                  <Button
+                    key={tab.id}
+                    variant="secondary"
+                    size="sm"
+                    data-testid={`button-job-${tab.id}`}
+                  >
+                    {tab.label}
+                  </Button>
+                ) : (
+                  <Link key={tab.id} href={tab.href}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      data-testid={`button-job-${tab.id}`}
+                    >
+                      {tab.label}
+                    </Button>
+                  </Link>
+                )
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {children}
