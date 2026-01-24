@@ -148,25 +148,35 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
       }
       
       case "not_exists": {
+        // If values array is provided, use inArray for matching any of the values
+        const valueCondition = condition.values && condition.values.length > 0
+          ? inArray(workerDispatchEligDenorm.value, condition.values)
+          : eq(workerDispatchEligDenorm.value, condition.value);
+        
         const subquery = client
           .select({ one: sql`1` })
           .from(workerDispatchEligDenorm)
           .where(and(
             eq(workerDispatchEligDenorm.workerId, workers.id),
             eq(workerDispatchEligDenorm.category, condition.category),
-            eq(workerDispatchEligDenorm.value, condition.value)
+            valueCondition
           ));
         return [notExists(subquery)];
       }
       
       case "exists_or_none": {
+        // If values array is provided, use inArray for matching any of the values
+        const valueCondition = condition.values && condition.values.length > 0
+          ? inArray(workerDispatchEligDenorm.value, condition.values)
+          : eq(workerDispatchEligDenorm.value, condition.value);
+        
         const valueSubquery = client
           .select({ one: sql`1` })
           .from(workerDispatchEligDenorm)
           .where(and(
             eq(workerDispatchEligDenorm.workerId, workers.id),
             eq(workerDispatchEligDenorm.category, condition.category),
-            eq(workerDispatchEligDenorm.value, condition.value)
+            valueCondition
           ));
         const categorySubquery = client
           .select({ one: sql`1` })
