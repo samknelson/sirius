@@ -2,6 +2,7 @@ import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { 
   dispatchJobs, 
+  dispatches,
   employers,
   optionsDispatchJobType,
   type DispatchJob, 
@@ -27,6 +28,7 @@ export interface DispatchJobFilters {
 export interface DispatchJobWithRelations extends DispatchJob {
   employer?: { id: string; name: string };
   jobType?: { id: string; name: string; data: unknown } | null;
+  acceptedCount?: number;
 }
 
 export interface PaginatedDispatchJobs {
@@ -243,10 +245,16 @@ export function createDispatchJobStorage(): DispatchJobStorage {
       
       if (!row) return undefined;
       
+      const [countResult] = await client
+        .select({ count: sql<number>`count(*)::int` })
+        .from(dispatches)
+        .where(and(eq(dispatches.jobId, id), eq(dispatches.status, 'accepted')));
+      
       return {
         ...row.job,
         employer: row.employer || undefined,
         jobType: row.jobType,
+        acceptedCount: countResult?.count || 0,
       };
     },
 

@@ -111,6 +111,36 @@ function DispatchJobDetailsContent() {
             </p>
           </div>
         )}
+        {job.workerCount != null && (
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-2">Worker Capacity</h3>
+            <div className="space-y-2" data-testid="worker-capacity">
+              <div className="flex items-center justify-between text-sm">
+                <span className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <span>Accepted Dispatches</span>
+                </span>
+                <span className="font-medium">
+                  {job.acceptedCount ?? 0} / {job.workerCount}
+                </span>
+              </div>
+              <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-primary transition-all duration-300"
+                  style={{ 
+                    width: `${Math.min(100, ((job.acceptedCount ?? 0) / job.workerCount) * 100)}%` 
+                  }}
+                  data-testid="progress-bar"
+                />
+              </div>
+              {(job.acceptedCount ?? 0) >= job.workerCount && (
+                <p className="text-sm text-green-600 dark:text-green-400 font-medium">
+                  Fully staffed
+                </p>
+              )}
+            </div>
+          </div>
+        )}
         {skillsComponentEnabled && requiredSkills.length > 0 && (
           <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-2">Required Skills</h3>
