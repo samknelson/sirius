@@ -52,8 +52,7 @@ function DispatchManageContent() {
 
   const setStatusMutation = useMutation({
     mutationFn: async (newStatus: DispatchStatus) => {
-      const response = await apiRequest("POST", `/api/dispatches/${dispatch.id}/set-status`, { status: newStatus });
-      return response.json();
+      return apiRequest("POST", `/api/dispatches/${dispatch.id}/set-status`, { status: newStatus });
     },
     onSuccess: () => {
       setError(null);
