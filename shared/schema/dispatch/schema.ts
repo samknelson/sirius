@@ -46,7 +46,6 @@ export type DispatchJob = typeof dispatchJobs.$inferSelect;
 
 // Dispatches (worker assignments to jobs)
 export const dispatchStatusEnum = [
-  "requested",
   "pending", 
   "notified", 
   "accepted", 

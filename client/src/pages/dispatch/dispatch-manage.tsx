@@ -15,7 +15,6 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 const statusLabels: Record<string, string> = {
-  requested: "Requested",
   pending: "Pending",
   notified: "Notified",
   accepted: "Accepted",

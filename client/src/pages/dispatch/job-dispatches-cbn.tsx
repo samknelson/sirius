@@ -49,7 +49,7 @@ function JobDispatchesCbnContent() {
           apiRequest("POST", "/api/dispatches", {
             jobId: job.id,
             workerId,
-            status: "requested",
+            status: "pending",
           })
         )
       );
@@ -58,7 +58,7 @@ function JobDispatchesCbnContent() {
     onSuccess: (_, workerIds) => {
       toast({
         title: "Dispatches Created",
-        description: `Created ${workerIds.length} dispatch${workerIds.length === 1 ? "" : "es"} with status "Requested"`,
+        description: `Created ${workerIds.length} dispatch${workerIds.length === 1 ? "" : "es"} with status "Pending"`,
       });
       setSelectedWorkers(new Set());
       queryClient.invalidateQueries({ queryKey: [`/api/dispatch-jobs/${job.id}/eligible-workers`] });
