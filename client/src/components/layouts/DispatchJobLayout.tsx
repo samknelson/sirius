@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode, useMemo } from "react";
-import { Briefcase, ArrowLeft } from "lucide-react";
+import { Briefcase, ArrowLeft, Play } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -123,6 +123,12 @@ export function DispatchJobLayout({ activeTab, children }: DispatchJobLayoutProp
                 <Badge className={statusColors[job.status]} data-testid="badge-status">
                   {job.status}
                 </Badge>
+                {job.running && (
+                  <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300" data-testid="badge-running">
+                    <Play className="h-3 w-3 mr-1" />
+                    Running
+                  </Badge>
+                )}
               </div>
               <p className="text-muted-foreground mt-1">
                 {job.employer?.name}

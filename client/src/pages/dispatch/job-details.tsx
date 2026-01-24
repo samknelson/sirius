@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { DispatchJobLayout, useDispatchJobLayout } from "@/components/layouts/DispatchJobLayout";
 import {
   Briefcase, Truck, HardHat, Wrench, Clock, Calendar,
-  ClipboardList, Package, MapPin, Users,
+  ClipboardList, Package, MapPin, Users, Play, Square,
   type LucideIcon
 } from "lucide-react";
 import { renderIcon } from "@/components/ui/icon-picker";
@@ -62,6 +62,22 @@ function DispatchJobDetailsContent() {
           <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-1">Status</h3>
             <p className="text-foreground capitalize" data-testid="text-status">{job.status}</p>
+          </div>
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-1">Running</h3>
+            <div data-testid="text-running">
+              {job.running ? (
+                <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                  <Play className="h-4 w-4" />
+                  <span>Yes</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Square className="h-4 w-4" />
+                  <span>No</span>
+                </div>
+              )}
+            </div>
           </div>
           <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-1">Employer</h3>
