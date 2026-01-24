@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect, useMemo } from "react";
+import { useQueries } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 import type { EligibilityPluginMetadata, EligibilityPluginConfig, PluginConfigField } from "@shared/schema";
 
@@ -23,36 +24,65 @@ interface OptionItem {
 
 export function PluginConfigModal({ open, onOpenChange, plugin, currentConfig, onSave }: PluginConfigModalProps) {
   const [formData, setFormData] = useState<Record<string, unknown>>({});
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
-  const selectOptionsTypes = (plugin.configFields || [])
-    .filter(f => f.inputType === "select-options" && f.selectOptionsType)
-    .map(f => f.selectOptionsType as string);
+  const selectOptionsTypes = useMemo(() => 
+    (plugin.configFields || [])
+      .filter(f => f.inputType === "select-options" && f.selectOptionsType)
+      .map(f => f.selectOptionsType as string)
+      .filter((v, i, arr) => arr.indexOf(v) === i),
+    [plugin.configFields]
+  );
 
-  const { data: optionsData, isLoading: optionsLoading } = useQuery<Record<string, OptionItem[]>>({
-    queryKey: ["/api/options/bulk", ...selectOptionsTypes],
-    queryFn: async () => {
-      if (selectOptionsTypes.length === 0) return {};
-      const results: Record<string, OptionItem[]> = {};
-      await Promise.all(
-        selectOptionsTypes.map(async (type) => {
-          const response = await fetch(`/api/options/${type}`);
-          if (response.ok) {
-            results[type] = await response.json();
-          }
-        })
-      );
-      return results;
-    },
-    enabled: open && selectOptionsTypes.length > 0,
+  const optionsQueries = useQueries({
+    queries: selectOptionsTypes.map(type => ({
+      queryKey: ["/api/options", type],
+      enabled: open,
+    })),
   });
+
+  const optionsData = useMemo(() => {
+    const data: Record<string, OptionItem[]> = {};
+    selectOptionsTypes.forEach((type, index) => {
+      if (optionsQueries[index]?.data) {
+        data[type] = optionsQueries[index].data as OptionItem[];
+      }
+    });
+    return data;
+  }, [selectOptionsTypes, optionsQueries]);
+
+  const optionsLoading = optionsQueries.some(q => q.isLoading);
 
   useEffect(() => {
     if (open) {
       setFormData({ ...currentConfig });
+      setValidationErrors({});
     }
   }, [open, currentConfig]);
 
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+    const configFields = plugin.configFields || [];
+    
+    for (const field of configFields) {
+      if (field.required) {
+        const value = formData[field.name];
+        if (field.inputType === "select-options" && field.multiSelect) {
+          if (!Array.isArray(value) || value.length === 0) {
+            errors[field.name] = `${field.label} is required`;
+          }
+        } else if (value === undefined || value === null || value === "") {
+          errors[field.name] = `${field.label} is required`;
+        }
+      }
+    }
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleSave = () => {
+    if (!validateForm()) return;
     onSave(formData);
     onOpenChange(false);
   };
@@ -64,15 +94,6 @@ export function PluginConfigModal({ open, onOpenChange, plugin, currentConfig, o
       case "select-options": {
         if (!field.selectOptionsType) return null;
         const options = optionsData?.[field.selectOptionsType] || [];
-        const selectedValues = Array.isArray(value) ? value : [];
-
-        const toggleOption = (optionId: string, checked: boolean) => {
-          const current = Array.isArray(formData[field.name]) ? formData[field.name] as string[] : [];
-          const updated = checked
-            ? [...current, optionId]
-            : current.filter(id => id !== optionId);
-          setFormData({ ...formData, [field.name]: updated });
-        };
 
         if (optionsLoading) {
           return (
@@ -91,25 +112,56 @@ export function PluginConfigModal({ open, onOpenChange, plugin, currentConfig, o
           );
         }
 
+        if (field.multiSelect) {
+          const selectedValues = Array.isArray(value) ? value : [];
+          const toggleOption = (optionId: string, checked: boolean) => {
+            const current = Array.isArray(formData[field.name]) ? formData[field.name] as string[] : [];
+            const updated = checked
+              ? [...current, optionId]
+              : current.filter(id => id !== optionId);
+            setFormData({ ...formData, [field.name]: updated });
+          };
+
+          return (
+            <div className="space-y-2 max-h-48 overflow-y-auto border rounded-md p-2">
+              {options.map((option) => (
+                <div key={option.id} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`${field.name}-${option.id}`}
+                    checked={selectedValues.includes(option.id)}
+                    onCheckedChange={(checked) => toggleOption(option.id, checked === true)}
+                    data-testid={`checkbox-${field.name}-${option.id}`}
+                  />
+                  <Label 
+                    htmlFor={`${field.name}-${option.id}`} 
+                    className="text-sm font-normal cursor-pointer"
+                  >
+                    {option.name}
+                  </Label>
+                </div>
+              ))}
+            </div>
+          );
+        }
+
+        const selectedValue = typeof value === "string" ? value : "";
         return (
-          <div className="space-y-2 max-h-48 overflow-y-auto border rounded-md p-2">
-            {options.map((option) => (
-              <div key={option.id} className="flex items-center space-x-2">
-                <Checkbox
-                  id={`${field.name}-${option.id}`}
-                  checked={selectedValues.includes(option.id)}
-                  onCheckedChange={(checked) => toggleOption(option.id, checked === true)}
-                  data-testid={`checkbox-${field.name}-${option.id}`}
-                />
-                <Label 
-                  htmlFor={`${field.name}-${option.id}`} 
-                  className="text-sm font-normal cursor-pointer"
-                >
+          <Select
+            value={selectedValue || "_none_"}
+            onValueChange={(v) => setFormData({ ...formData, [field.name]: v === "_none_" ? null : v })}
+          >
+            <SelectTrigger data-testid={`select-${field.name}`}>
+              <SelectValue placeholder={`Select ${field.label.toLowerCase()}`} />
+            </SelectTrigger>
+            <SelectContent>
+              {!field.required && <SelectItem value="_none_">None</SelectItem>}
+              {options.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
                   {option.name}
-                </Label>
-              </div>
-            ))}
-          </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         );
       }
 
@@ -176,7 +228,10 @@ export function PluginConfigModal({ open, onOpenChange, plugin, currentConfig, o
                   {field.required && <span className="text-destructive ml-1">*</span>}
                 </Label>
                 {renderField(field)}
-                {field.helperText && (
+                {validationErrors[field.name] && (
+                  <p className="text-sm text-destructive">{validationErrors[field.name]}</p>
+                )}
+                {field.helperText && !validationErrors[field.name] && (
                   <p className="text-sm text-muted-foreground">{field.helperText}</p>
                 )}
               </div>

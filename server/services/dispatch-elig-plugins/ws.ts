@@ -33,6 +33,7 @@ export const dispatchWsPlugin: DispatchEligPlugin = {
       required: false,
       helperText: "Work statuses eligible for jobs of this type (leave empty for all)",
       selectOptionsType: "worker-ws",
+      multiSelect: true,
     },
   ],
 

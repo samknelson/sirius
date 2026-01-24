@@ -20,6 +20,7 @@ export interface PluginConfigField {
   required: boolean;
   helperText?: string;
   selectOptionsType?: string;
+  multiSelect?: boolean;
 }
 
 export interface EligibilityPluginMetadata {
