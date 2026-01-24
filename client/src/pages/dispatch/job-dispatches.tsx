@@ -18,6 +18,7 @@ import {
 import type { DispatchWithRelations } from "../../../../server/storage/dispatches";
 
 const statusColors: Record<string, string> = {
+  requested: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300",
   pending: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300",
   notified: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
   accepted_primary: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
