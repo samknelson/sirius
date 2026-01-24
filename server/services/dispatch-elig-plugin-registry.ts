@@ -1,7 +1,7 @@
 import { logger } from "../logger";
 import { isComponentEnabledSync, isCacheInitialized } from "./component-cache";
 import { eventBus, EventType } from "./event-bus";
-import type { EligibilityPluginMetadata, EligibilityPluginConfig } from "@shared/schema";
+import type { EligibilityPluginMetadata, EligibilityPluginConfig, PluginConfigField } from "@shared/schema";
 
 /**
  * Represents a condition that a plugin contributes to the eligible workers query.
@@ -73,6 +73,8 @@ export interface DispatchEligPlugin {
   componentId: string;
   /** Optional event handlers this plugin wants to subscribe to */
   eventHandlers?: PluginEventHandler[];
+  /** Optional configuration fields that can be set per job type */
+  configFields?: PluginConfigField[];
   recomputeWorker(workerId: string): Promise<void>;
   /**
    * Returns the eligibility condition this plugin contributes to the query.
@@ -236,6 +238,7 @@ class DispatchEligPluginRegistry {
       description: plugin.description,
       componentId: plugin.componentId,
       componentEnabled: isComponentEnabledSync(plugin.componentId),
+      configFields: plugin.configFields,
     }));
   }
 }

@@ -1,7 +1,6 @@
 import { logger } from "../../logger";
 import { storage } from "../../storage";
 import { createWorkerDispatchEligDenormStorage } from "../../storage/worker-dispatch-elig-denorm";
-import { createDispatchJobStorage } from "../../storage/dispatch-jobs";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../dispatch-elig-plugin-registry";
 import { EventType } from "../event-bus";
 import { isComponentEnabledSync, isCacheInitialized } from "../component-cache";
@@ -9,7 +8,7 @@ import { isComponentEnabledSync, isCacheInitialized } from "../component-cache";
 const WS_CATEGORY = "ws";
 const COMPONENT_ID = "dispatch";
 
-interface JobTypeData {
+interface WsPluginConfig {
   eligibleWorkStatuses?: string[];
 }
 
@@ -26,42 +25,32 @@ export const dispatchWsPlugin: DispatchEligPlugin = {
     },
   ],
 
-  async getEligibilityCondition(context: EligibilityQueryContext, _config: Record<string, unknown>): Promise<EligibilityCondition | null> {
-    const jobStorage = createDispatchJobStorage();
-    const job = await jobStorage.getWithRelations(context.jobId);
-    
-    if (!job) {
-      logger.warn(`Job not found for work status eligibility check`, {
-        service: "dispatch-elig-ws",
-        jobId: context.jobId,
-      });
-      return null;
-    }
+  configFields: [
+    {
+      name: "eligibleWorkStatuses",
+      label: "Eligible Work Statuses",
+      inputType: "select-options",
+      required: false,
+      helperText: "Work statuses eligible for jobs of this type (leave empty for all)",
+      selectOptionsType: "worker-ws",
+    },
+  ],
 
-    if (!job.jobType) {
-      logger.debug(`No job type for job, work status filter not applied`, {
-        service: "dispatch-elig-ws",
-        jobId: context.jobId,
-      });
-      return null;
-    }
-
-    const jobTypeData = job.jobType.data as JobTypeData | null;
-    const eligibleWorkStatuses = jobTypeData?.eligibleWorkStatuses || [];
+  async getEligibilityCondition(_context: EligibilityQueryContext, config: Record<string, unknown>): Promise<EligibilityCondition | null> {
+    const pluginConfig = config as WsPluginConfig;
+    const eligibleWorkStatuses = pluginConfig?.eligibleWorkStatuses || [];
 
     if (eligibleWorkStatuses.length === 0) {
-      logger.debug(`No eligible work statuses configured for job type, all workers eligible`, {
+      logger.debug(`No eligible work statuses configured, all workers eligible`, {
         service: "dispatch-elig-ws",
-        jobId: context.jobId,
-        jobTypeId: job.jobType.id,
+        jobId: _context.jobId,
       });
       return null;
     }
 
-    logger.debug(`Job type requires specific work statuses for eligibility`, {
+    logger.debug(`Plugin requires specific work statuses for eligibility`, {
       service: "dispatch-elig-ws",
-      jobId: context.jobId,
-      jobTypeId: job.jobType.id,
+      jobId: _context.jobId,
       eligibleWorkStatusCount: eligibleWorkStatuses.length,
     });
 
