@@ -260,12 +260,27 @@ export function createDispatchJobStorage(): DispatchJobStorage {
       return job;
     },
 
-    async update(id: string, jobUpdate: Partial<InsertDispatchJob>): Promise<DispatchJob | undefined> {
-      validate.validateOrThrow(id);
+    async update(id: string, jobUpdate: Partial<InsertDispatchJob & { running?: boolean }>): Promise<DispatchJob | undefined> {
       const client = getClient();
+      
+      const [existingJob] = await client.select().from(dispatchJobs).where(eq(dispatchJobs.id, id));
+      if (!existingJob) {
+        return undefined;
+      }
+      
+      const updates = { ...jobUpdate };
+      
+      if (updates.running === true && existingJob.status !== 'open') {
+        throw new Error('Cannot set job to running unless status is open');
+      }
+      
+      if (updates.status !== undefined && updates.status !== 'open' && existingJob.running) {
+        updates.running = false;
+      }
+      
       const [job] = await client
         .update(dispatchJobs)
-        .set(jobUpdate)
+        .set(updates)
         .where(eq(dispatchJobs.id, id))
         .returning();
       return job || undefined;
