@@ -104,6 +104,99 @@ async function getJobEmployerId(jobId: string): Promise<string | undefined> {
   return job?.employerId;
 }
 
+interface SearchDispatchesCriteria {
+  jobId?: string;
+  workerId?: string;
+}
+
+async function searchDispatches(criteria: SearchDispatchesCriteria): Promise<DispatchWithRelations[]> {
+  if (!criteria.jobId && !criteria.workerId) {
+    throw new Error('searchDispatches requires at least one criterion (jobId or workerId)');
+  }
+  
+  const client = getClient();
+  
+  const conditions = [];
+  if (criteria.jobId) {
+    conditions.push(eq(dispatches.jobId, criteria.jobId));
+  }
+  if (criteria.workerId) {
+    conditions.push(eq(dispatches.workerId, criteria.workerId));
+  }
+
+  const baseQuery = client
+    .select({
+      dispatch: dispatches,
+      worker: {
+        id: workers.id,
+        siriusId: workers.siriusId,
+      },
+      contact: {
+        id: contacts.id,
+        given: contacts.given,
+        family: contacts.family,
+        displayName: contacts.displayName,
+      },
+      job: {
+        id: dispatchJobs.id,
+        title: dispatchJobs.title,
+        employerId: dispatchJobs.employerId,
+      },
+      employer: {
+        id: employers.id,
+        name: employers.name,
+      },
+    })
+    .from(dispatches)
+    .leftJoin(workers, eq(dispatches.workerId, workers.id))
+    .leftJoin(contacts, eq(workers.contactId, contacts.id))
+    .leftJoin(dispatchJobs, eq(dispatches.jobId, dispatchJobs.id))
+    .leftJoin(employers, eq(dispatchJobs.employerId, employers.id));
+
+  const rows = await baseQuery
+    .where(and(...conditions))
+    .orderBy(desc(dispatches.startDate));
+
+  const allCommIds = rows.flatMap(row => row.dispatch.commIds || []);
+  const commMap = new Map<string, CommSummary>();
+
+  if (allCommIds.length > 0) {
+    const commRecords = await client
+      .select({
+        id: comm.id,
+        medium: comm.medium,
+        status: comm.status,
+        sent: comm.sent,
+      })
+      .from(comm)
+      .where(inArray(comm.id, allCommIds));
+
+    for (const c of commRecords) {
+      commMap.set(c.id, {
+        id: c.id,
+        medium: c.medium,
+        status: c.status,
+        sent: c.sent,
+      });
+    }
+  }
+
+  return rows.map(row => ({
+    ...row.dispatch,
+    worker: row.worker ? {
+      ...row.worker,
+      contact: row.contact,
+    } : null,
+    job: row.job ? {
+      ...row.job,
+      employer: row.employer,
+    } : null,
+    comms: (row.dispatch.commIds || [])
+      .map(id => commMap.get(id))
+      .filter((c): c is CommSummary => c !== undefined),
+  }));
+}
+
 export const dispatchLoggingConfig: StorageLoggingConfig<DispatchStorage> = {
   module: 'dispatches',
   methods: {
@@ -240,143 +333,11 @@ export function createDispatchStorage(): DispatchStorage {
     },
 
     async getByJob(jobId: string): Promise<DispatchWithRelations[]> {
-      const client = getClient();
-      const rows = await client
-        .select({
-          dispatch: dispatches,
-          worker: {
-            id: workers.id,
-            siriusId: workers.siriusId,
-          },
-          contact: {
-            id: contacts.id,
-            given: contacts.given,
-            family: contacts.family,
-            displayName: contacts.displayName,
-          },
-          job: {
-            id: dispatchJobs.id,
-            title: dispatchJobs.title,
-            employerId: dispatchJobs.employerId,
-          },
-        })
-        .from(dispatches)
-        .leftJoin(workers, eq(dispatches.workerId, workers.id))
-        .leftJoin(contacts, eq(workers.contactId, contacts.id))
-        .leftJoin(dispatchJobs, eq(dispatches.jobId, dispatchJobs.id))
-        .where(eq(dispatches.jobId, jobId))
-        .orderBy(desc(dispatches.startDate));
-
-      const allCommIds = rows.flatMap(row => row.dispatch.commIds || []);
-      let commMap: Map<string, CommSummary> = new Map();
-      
-      if (allCommIds.length > 0) {
-        const commRecords = await client
-          .select({
-            id: comm.id,
-            medium: comm.medium,
-            status: comm.status,
-            sent: comm.sent,
-          })
-          .from(comm)
-          .where(inArray(comm.id, allCommIds));
-        
-        for (const c of commRecords) {
-          commMap.set(c.id, c);
-        }
-      }
-
-      return rows.map(row => ({
-        ...row.dispatch,
-        worker: row.worker ? {
-          ...row.worker,
-          contact: row.contact,
-        } : null,
-        job: row.job,
-        comms: (row.dispatch.commIds || [])
-          .map(id => commMap.get(id))
-          .filter((c): c is CommSummary => c !== undefined),
-      }));
+      return searchDispatches({ jobId });
     },
 
     async getByWorker(workerId: string): Promise<DispatchWithRelations[]> {
-      const client = getClient();
-      const rows = await client
-        .select({
-          dispatch: dispatches,
-          worker: {
-            id: workers.id,
-            siriusId: workers.siriusId,
-          },
-          contact: {
-            id: contacts.id,
-            given: contacts.given,
-            family: contacts.family,
-            displayName: contacts.displayName,
-          },
-          job: {
-            id: dispatchJobs.id,
-            title: dispatchJobs.title,
-            employerId: dispatchJobs.employerId,
-          },
-          employer: {
-            id: employers.id,
-            name: employers.name,
-          },
-        })
-        .from(dispatches)
-        .leftJoin(workers, eq(dispatches.workerId, workers.id))
-        .leftJoin(contacts, eq(workers.contactId, contacts.id))
-        .leftJoin(dispatchJobs, eq(dispatches.jobId, dispatchJobs.id))
-        .leftJoin(employers, eq(dispatchJobs.employerId, employers.id))
-        .where(eq(dispatches.workerId, workerId))
-        .orderBy(desc(dispatches.startDate));
-
-      // Gather all commIds from all dispatches for batch fetch
-      const allCommIds: string[] = [];
-      for (const row of rows) {
-        if (row.dispatch.commIds) {
-          allCommIds.push(...row.dispatch.commIds);
-        }
-      }
-
-      // Batch fetch all comm records
-      let commMap = new Map<string, CommSummary>();
-      if (allCommIds.length > 0) {
-        const commRecords = await client
-          .select({
-            id: comm.id,
-            medium: comm.medium,
-            status: comm.status,
-            sent: comm.sent,
-          })
-          .from(comm)
-          .where(inArray(comm.id, allCommIds));
-        
-        for (const c of commRecords) {
-          commMap.set(c.id, {
-            id: c.id,
-            medium: c.medium,
-            status: c.status,
-            sent: c.sent,
-          });
-        }
-      }
-
-      return rows.map(row => ({
-        ...row.dispatch,
-        worker: row.worker ? {
-          ...row.worker,
-          contact: row.contact,
-        } : null,
-        job: row.job ? {
-          ...row.job,
-          employer: row.employer,
-        } : null,
-        comms: (row.dispatch.commIds || [])
-          .map(id => commMap.get(id))
-          .filter((c): c is CommSummary => c !== undefined),
-      }));
+      return searchDispatches({ workerId });
     },
 
     async create(insertDispatch: InsertDispatch): Promise<Dispatch> {
