@@ -11,7 +11,7 @@ export const optionsDispatchJobType = pgTable("options_dispatch_job_type", {
   data: jsonb("data"),
 });
 
-export const dispatchJobStatusEnum = ["draft", "open", "running", "closed", "archived"] as const;
+export const dispatchJobStatusEnum = ["draft", "open", "closed", "archived"] as const;
 export type DispatchJobStatus = typeof dispatchJobStatusEnum[number];
 
 export const dispatchJobs = pgTable("dispatch_jobs", {
