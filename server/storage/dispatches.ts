@@ -6,6 +6,7 @@ import {
   workers,
   contacts,
   comm,
+  employers,
   type Dispatch, 
   type InsertDispatch,
   type DispatchStatus,
@@ -42,6 +43,10 @@ export interface DispatchWithRelations extends Dispatch {
     id: string;
     title: string;
     employerId: string;
+    employer?: {
+      id: string;
+      name: string;
+    } | null;
   } | null;
   comms?: CommSummary[];
 }
@@ -314,11 +319,16 @@ export function createDispatchStorage(): DispatchStorage {
             title: dispatchJobs.title,
             employerId: dispatchJobs.employerId,
           },
+          employer: {
+            id: employers.id,
+            name: employers.name,
+          },
         })
         .from(dispatches)
         .leftJoin(workers, eq(dispatches.workerId, workers.id))
         .leftJoin(contacts, eq(workers.contactId, contacts.id))
         .leftJoin(dispatchJobs, eq(dispatches.jobId, dispatchJobs.id))
+        .leftJoin(employers, eq(dispatchJobs.employerId, employers.id))
         .where(eq(dispatches.workerId, workerId))
         .orderBy(desc(dispatches.startDate));
 
@@ -359,7 +369,10 @@ export function createDispatchStorage(): DispatchStorage {
           ...row.worker,
           contact: row.contact,
         } : null,
-        job: row.job,
+        job: row.job ? {
+          ...row.job,
+          employer: row.employer,
+        } : null,
         comms: (row.dispatch.commIds || [])
           .map(id => commMap.get(id))
           .filter((c): c is CommSummary => c !== undefined),

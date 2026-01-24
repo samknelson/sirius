@@ -163,11 +163,20 @@ export function DispatchListTable({
             )}
             {showJob && (
               <TableCell data-testid={`text-job-${dispatch.id}`}>
-                <Link href={`/dispatch/job/${dispatch.jobId}`}>
-                  <span className="text-foreground hover:underline cursor-pointer" data-testid={`link-job-${dispatch.id}`}>
-                    {getJobTitle(dispatch)}
-                  </span>
-                </Link>
+                <div className="flex flex-col">
+                  <Link href={`/dispatch/job/${dispatch.jobId}`}>
+                    <span className="text-foreground hover:underline cursor-pointer" data-testid={`link-job-${dispatch.id}`}>
+                      {getJobTitle(dispatch)}
+                    </span>
+                  </Link>
+                  {dispatch.job?.employer && (
+                    <Link href={`/employers/${dispatch.job.employer.id}`}>
+                      <span className="text-muted-foreground text-sm hover:underline cursor-pointer" data-testid={`link-employer-${dispatch.id}`}>
+                        {dispatch.job.employer.name}
+                      </span>
+                    </Link>
+                  )}
+                </div>
               </TableCell>
             )}
             <TableCell data-testid={`text-status-${dispatch.id}`}>
