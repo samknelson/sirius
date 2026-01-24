@@ -15,6 +15,7 @@ interface PluginConfigModalProps {
   plugin: EligibilityPluginMetadata;
   currentConfig: EligibilityPluginConfig["config"];
   onSave: (config: EligibilityPluginConfig["config"]) => void;
+  isSaving?: boolean;
 }
 
 interface OptionItem {
@@ -22,7 +23,7 @@ interface OptionItem {
   name: string;
 }
 
-export function PluginConfigModal({ open, onOpenChange, plugin, currentConfig, onSave }: PluginConfigModalProps) {
+export function PluginConfigModal({ open, onOpenChange, plugin, currentConfig, onSave, isSaving = false }: PluginConfigModalProps) {
   const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
@@ -84,7 +85,7 @@ export function PluginConfigModal({ open, onOpenChange, plugin, currentConfig, o
   const handleSave = () => {
     if (!validateForm()) return;
     onSave(formData);
-    onOpenChange(false);
+    // Modal will be closed by parent after successful save
   };
 
   const renderField = (field: PluginConfigField) => {
@@ -240,10 +241,11 @@ export function PluginConfigModal({ open, onOpenChange, plugin, currentConfig, o
         )}
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} data-testid="button-cancel">
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isSaving} data-testid="button-cancel">
             Cancel
           </Button>
-          <Button onClick={handleSave} data-testid="button-save-config">
+          <Button onClick={handleSave} disabled={isSaving} data-testid="button-save-config">
+            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save
           </Button>
         </DialogFooter>
