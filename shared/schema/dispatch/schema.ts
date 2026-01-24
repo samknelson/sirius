@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, varchar, jsonb, index, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, varchar, jsonb, index, integer, boolean } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -21,6 +21,7 @@ export const dispatchJobs = pgTable("dispatch_jobs", {
   title: text("title").notNull(),
   description: text("description"),
   status: varchar("status").notNull().default("draft"),
+  running: boolean("running").notNull().default(false),
   startDate: timestamp("start_date").notNull(),
   workerCount: integer("worker_count"),
   data: jsonb("data"),
