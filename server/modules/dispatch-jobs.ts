@@ -114,7 +114,7 @@ export function registerDispatchJobsRoutes(
         return;
       }
       
-      const { employerId, jobTypeId, title, description, status, startDate, data } = req.body;
+      const { employerId, jobTypeId, title, description, status, startDate, workerCount, data } = req.body;
       const updates: any = {};
       
       if (employerId !== undefined) {
@@ -161,6 +161,10 @@ export function registerDispatchJobsRoutes(
       
       if (startDate !== undefined) {
         updates.startDate = new Date(startDate);
+      }
+      
+      if (workerCount !== undefined) {
+        updates.workerCount = workerCount;
       }
       
       if (data !== undefined) {
