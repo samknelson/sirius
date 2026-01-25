@@ -7,13 +7,15 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertTriangle, Loader2, Users, CheckCircle, Plus, Trash2, ExternalLink } from "lucide-react";
+import { AlertTriangle, Loader2, Users, CheckCircle, Plus, Trash2, ExternalLink, Building2, Phone, Mail, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { User, Role, Variable, RolePermission, BargainingUnit, Employer, WorkerStewardAssignment } from "@shared/schema";
 import { useTerm } from "@/contexts/TerminologyContext";
 import { Link } from "wouter";
+import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
 import {
   Table,
   TableBody,
@@ -44,6 +46,210 @@ interface StewardConfig {
 interface WorkerStewardAssignmentWithDetails extends WorkerStewardAssignment {
   employer?: { id: string; name: string };
   bargainingUnit?: { id: string; name: string };
+}
+
+interface WorkerRepresentativeDetails {
+  id: string;
+  workerId: string;
+  employerId: string;
+  bargainingUnitId: string;
+  employer: {
+    id: string;
+    name: string;
+  };
+  bargainingUnit: {
+    id: string;
+    name: string;
+  };
+  steward: {
+    id: string;
+    contactId: string;
+    displayName: string;
+    email: string | null;
+    primaryPhoneNumber: string | null;
+  };
+  matchesWorkerBargainingUnit: boolean;
+}
+
+function YourStewardRepresentativesSection() {
+  const { worker } = useWorkerLayout();
+  const term = useTerm();
+
+  const { data: representatives = [], isLoading } = useQuery<WorkerRepresentativeDetails[]>({
+    queryKey: ["/api/workers", worker.id, "representatives"],
+  });
+
+  const groupedByEmployer = representatives.reduce((acc, rep) => {
+    const employerId = rep.employer.id;
+    if (!acc[employerId]) {
+      acc[employerId] = {
+        employer: rep.employer,
+        stewards: [],
+      };
+    }
+    acc[employerId].stewards.push(rep);
+    return acc;
+  }, {} as Record<string, { employer: { id: string; name: string }; stewards: WorkerRepresentativeDetails[] }>);
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Your {term("steward", { lowercase: true })} representatives
+          </CardTitle>
+          <CardDescription>
+            {term("steward", { plural: true })} who represent you at your current employers
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (representatives.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Your {term("steward", { lowercase: true })} representatives
+          </CardTitle>
+          <CardDescription>
+            {term("steward", { plural: true })} who represent you at your current employers
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4">
+              <Users className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <p className="text-muted-foreground" data-testid="text-no-representatives">
+              No {term("steward", { plural: true, lowercase: true })} are currently assigned to represent you at your active employers.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Your {term("steward", { lowercase: true })} representatives
+          </CardTitle>
+          <CardDescription>
+            {term("steward", { plural: true })} who represent you at your current employers
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            These are the {term("steward", { plural: true, lowercase: true })} assigned to represent workers at your current employers.
+            Contact them if you need assistance with workplace issues.
+          </p>
+        </CardContent>
+      </Card>
+
+      {Object.values(groupedByEmployer).map(({ employer, stewards }) => (
+        <Card key={employer.id}>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-lg">{employer.name}</CardTitle>
+            </div>
+            <Link href={`/employers/${employer.id}`}>
+              <Button variant="ghost" size="icon" data-testid={`button-view-employer-${employer.id}`}>
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{term("steward")}</TableHead>
+                  <TableHead>Bargaining Unit</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Phone</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {stewards.map((rep) => (
+                  <TableRow key={rep.id} data-testid={`row-representative-${rep.id}`}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Link href={`/workers/${rep.steward.id}`}>
+                          <span className="font-medium hover:underline cursor-pointer" data-testid={`link-steward-${rep.steward.id}`}>
+                            {rep.steward.displayName}
+                          </span>
+                        </Link>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Badge 
+                          variant={rep.matchesWorkerBargainingUnit ? "default" : "secondary"}
+                          data-testid={`badge-bargaining-unit-${rep.id}`}
+                        >
+                          {rep.bargainingUnit.name}
+                        </Badge>
+                        {!rep.matchesWorkerBargainingUnit && (
+                          <span 
+                            className="text-xs text-muted-foreground flex items-center gap-1" 
+                            title="This steward represents a different bargaining unit than yours"
+                            data-testid={`text-different-unit-${rep.id}`}
+                          >
+                            <AlertCircle className="h-3 w-3" />
+                            Different unit
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {rep.steward.email ? (
+                        <a 
+                          href={`mailto:${rep.steward.email}`}
+                          className="flex items-center gap-1 text-sm hover:underline"
+                          data-testid={`link-email-${rep.id}`}
+                        >
+                          <Mail className="h-3 w-3" />
+                          {rep.steward.email}
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {rep.steward.primaryPhoneNumber ? (
+                        <a 
+                          href={`tel:${rep.steward.primaryPhoneNumber}`}
+                          className="flex items-center gap-1 text-sm hover:underline"
+                          data-testid={`link-phone-${rep.id}`}
+                        >
+                          <Phone className="h-3 w-3" />
+                          {formatPhoneNumberForDisplay(rep.steward.primaryPhoneNumber)}
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">-</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
 }
 
 function StewardAssignmentsSection() {
@@ -584,6 +790,8 @@ function WorkerStewardContent() {
 
   return (
     <div className="space-y-6">
+      <YourStewardRepresentativesSection />
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

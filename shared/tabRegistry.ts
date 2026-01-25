@@ -147,7 +147,6 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'cardchecks', label: 'Cardchecks', hrefTemplate: '/workers/{id}/union/cardchecks', policyId: 'worker.view', component: 'cardcheck' },
       { id: 'bargaining-unit', label: 'Bargaining Unit', hrefTemplate: '/workers/{id}/union/bargaining-unit', permission: 'staff', component: 'bargainingunits' },
       { id: 'steward', label: 'Steward', hrefTemplate: '/workers/{id}/union/steward', permission: 'staff', component: 'worker.steward', termKey: 'steward' },
-      { id: 'representatives', label: 'Representatives', hrefTemplate: '/workers/{id}/union/representatives', policyId: 'worker.view', component: 'worker.steward' },
     ]
   },
   { 
