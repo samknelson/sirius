@@ -268,6 +268,7 @@ export function DispatchJobsList({
                   <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Running</TableHead>
+                  <TableHead>Workers</TableHead>
                   <TableHead>Start Date</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -317,6 +318,15 @@ export function DispatchJobsList({
                           </div>
                         ) : (
                           <span className="text-muted-foreground text-sm">No</span>
+                        )}
+                      </TableCell>
+                      <TableCell data-testid={`text-workers-${job.id}`}>
+                        {job.workerCount != null ? (
+                          <span className={job.acceptedCount != null && job.acceptedCount >= job.workerCount ? "text-green-600 dark:text-green-400 font-medium" : ""}>
+                            {job.acceptedCount ?? 0} / {job.workerCount}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
                       <TableCell data-testid={`text-date-${job.id}`}>

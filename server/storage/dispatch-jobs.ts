@@ -8,7 +8,7 @@ import {
   type DispatchJob, 
   type InsertDispatchJob
 } from "@shared/schema";
-import { eq, desc, and, gte, lte, sql, SQL } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, SQL, inArray } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
 /**
@@ -218,10 +218,29 @@ export function createDispatchJobStorage(): DispatchJobStorage {
         ? await baseQuery.where(whereClause!).orderBy(desc(dispatchJobs.startDate)).limit(limit).offset(page * limit)
         : await baseQuery.orderBy(desc(dispatchJobs.startDate)).limit(limit).offset(page * limit);
       
+      const jobIds = rows.map(r => r.job.id);
+      
+      const acceptedCounts = jobIds.length > 0 
+        ? await client
+            .select({ 
+              jobId: dispatches.jobId,
+              count: sql<number>`count(*)::int` 
+            })
+            .from(dispatches)
+            .where(and(
+              inArray(dispatches.jobId, jobIds),
+              eq(dispatches.status, 'accepted')
+            ))
+            .groupBy(dispatches.jobId)
+        : [];
+      
+      const acceptedCountMap = new Map(acceptedCounts.map(r => [r.jobId, r.count]));
+      
       const data: DispatchJobWithRelations[] = rows.map(row => ({
         ...row.job,
         employer: row.employer || undefined,
         jobType: row.jobType,
+        acceptedCount: acceptedCountMap.get(row.job.id) || 0,
       }));
       
       return { data, total, page, limit };
