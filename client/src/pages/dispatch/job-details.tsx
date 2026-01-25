@@ -6,10 +6,29 @@ import { DispatchJobLayout, useDispatchJobLayout } from "@/components/layouts/Di
 import {
   Briefcase, Truck, HardHat, Wrench, Clock, Calendar,
   ClipboardList, Package, MapPin, Users, Play, Square,
+  CheckCircle, XCircle, Bell, Pause, LogOut,
   type LucideIcon
 } from "lucide-react";
 import { renderIcon } from "@/components/ui/icon-picker";
 import type { OptionsSkill } from "@shared/schema";
+
+interface DispatchStatusCounts {
+  pending: number;
+  notified: number;
+  accepted: number;
+  layoff: number;
+  resigned: number;
+  declined: number;
+}
+
+const statusConfig: Record<keyof DispatchStatusCounts, { label: string; icon: LucideIcon; color: string }> = {
+  pending: { label: "Pending", icon: Clock, color: "text-yellow-600 dark:text-yellow-400" },
+  notified: { label: "Notified", icon: Bell, color: "text-blue-600 dark:text-blue-400" },
+  accepted: { label: "Accepted", icon: CheckCircle, color: "text-green-600 dark:text-green-400" },
+  declined: { label: "Declined", icon: XCircle, color: "text-red-600 dark:text-red-400" },
+  layoff: { label: "Layoff", icon: Pause, color: "text-orange-600 dark:text-orange-400" },
+  resigned: { label: "Resigned", icon: LogOut, color: "text-muted-foreground" },
+};
 
 interface ComponentConfig {
   componentId: string;
@@ -114,7 +133,7 @@ function DispatchJobDetailsContent() {
         {job.workerCount != null && (
           <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-2">Worker Capacity</h3>
-            <div className="space-y-2" data-testid="worker-capacity">
+            <div className="space-y-3" data-testid="worker-capacity">
               <div className="flex items-center justify-between text-sm">
                 <span className="flex items-center gap-2">
                   <Users className="h-4 w-4 text-muted-foreground" />
@@ -137,6 +156,26 @@ function DispatchJobDetailsContent() {
                 <p className="text-sm text-green-600 dark:text-green-400 font-medium">
                   Fully staffed
                 </p>
+              )}
+              {job.statusCounts && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t" data-testid="dispatch-status-counts">
+                  {(Object.keys(statusConfig) as Array<keyof DispatchStatusCounts>).map((status) => {
+                    const config = statusConfig[status];
+                    const count = job.statusCounts?.[status] ?? 0;
+                    const Icon = config.icon;
+                    return (
+                      <div 
+                        key={status} 
+                        className="flex items-center gap-2 text-sm"
+                        data-testid={`status-count-${status}`}
+                      >
+                        <Icon className={`h-4 w-4 ${config.color}`} />
+                        <span className="text-muted-foreground">{config.label}:</span>
+                        <span className="font-medium">{count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>

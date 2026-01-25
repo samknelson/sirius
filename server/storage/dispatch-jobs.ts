@@ -25,10 +25,20 @@ export interface DispatchJobFilters {
   running?: boolean;
 }
 
+export interface DispatchStatusCounts {
+  pending: number;
+  notified: number;
+  accepted: number;
+  layoff: number;
+  resigned: number;
+  declined: number;
+}
+
 export interface DispatchJobWithRelations extends DispatchJob {
   employer?: { id: string; name: string };
   jobType?: { id: string; name: string; data: unknown } | null;
   acceptedCount?: number;
+  statusCounts?: DispatchStatusCounts;
 }
 
 export interface PaginatedDispatchJobs {
@@ -245,16 +255,36 @@ export function createDispatchJobStorage(): DispatchJobStorage {
       
       if (!row) return undefined;
       
-      const [countResult] = await client
-        .select({ count: sql<number>`count(*)::int` })
+      const statusCountsResult = await client
+        .select({ 
+          status: dispatches.status,
+          count: sql<number>`count(*)::int` 
+        })
         .from(dispatches)
-        .where(and(eq(dispatches.jobId, id), eq(dispatches.status, 'accepted')));
+        .where(eq(dispatches.jobId, id))
+        .groupBy(dispatches.status);
+      
+      const statusCounts: DispatchStatusCounts = {
+        pending: 0,
+        notified: 0,
+        accepted: 0,
+        layoff: 0,
+        resigned: 0,
+        declined: 0,
+      };
+      
+      for (const row of statusCountsResult) {
+        if (row.status in statusCounts) {
+          statusCounts[row.status as keyof DispatchStatusCounts] = row.count;
+        }
+      }
       
       return {
         ...row.job,
         employer: row.employer || undefined,
         jobType: row.jobType,
-        acceptedCount: countResult?.count || 0,
+        acceptedCount: statusCounts.accepted,
+        statusCounts,
       };
     },
 
