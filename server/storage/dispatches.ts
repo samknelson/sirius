@@ -5,16 +5,28 @@ import {
   dispatchJobs,
   workers,
   contacts,
+  comm,
+  employers,
   type Dispatch, 
-  type InsertDispatch
+  type InsertDispatch,
+  type DispatchStatus,
+  type Comm
 } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, inArray, ne } from "drizzle-orm";
+import { eventBus, EventType } from "../services/event-bus";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
 /**
  * Stub validator - add validation logic here when needed
  */
 export const validate = createNoopValidator<InsertDispatch, Dispatch>();
+
+export interface CommSummary {
+  id: string;
+  medium: string;
+  status: string;
+  sent: Date | null;
+}
 
 export interface DispatchWithRelations extends Dispatch {
   worker?: {
@@ -31,7 +43,17 @@ export interface DispatchWithRelations extends Dispatch {
     id: string;
     title: string;
     employerId: string;
+    employer?: {
+      id: string;
+      name: string;
+    } | null;
   } | null;
+  comms?: CommSummary[];
+}
+
+export interface SetStatusResult {
+  possible: boolean;
+  reason?: string;
 }
 
 export interface DispatchStorage {
@@ -43,6 +65,8 @@ export interface DispatchStorage {
   create(dispatch: InsertDispatch): Promise<Dispatch>;
   update(id: string, dispatch: Partial<InsertDispatch>): Promise<Dispatch | undefined>;
   delete(id: string): Promise<boolean>;
+  setStatusPossible(dispatchId: string, newStatus: DispatchStatus): Promise<SetStatusResult>;
+  setStatus(dispatchId: string, newStatus: DispatchStatus): Promise<{ success: boolean; dispatch?: Dispatch; error?: string }>;
 }
 
 async function getWorkerName(workerId: string): Promise<string> {
@@ -78,6 +102,99 @@ async function getJobEmployerId(jobId: string): Promise<string | undefined> {
     .from(dispatchJobs)
     .where(eq(dispatchJobs.id, jobId));
   return job?.employerId;
+}
+
+interface SearchDispatchesCriteria {
+  jobId?: string;
+  workerId?: string;
+}
+
+async function searchDispatches(criteria: SearchDispatchesCriteria): Promise<DispatchWithRelations[]> {
+  if (!criteria.jobId && !criteria.workerId) {
+    throw new Error('searchDispatches requires at least one criterion (jobId or workerId)');
+  }
+  
+  const client = getClient();
+  
+  const conditions = [];
+  if (criteria.jobId) {
+    conditions.push(eq(dispatches.jobId, criteria.jobId));
+  }
+  if (criteria.workerId) {
+    conditions.push(eq(dispatches.workerId, criteria.workerId));
+  }
+
+  const baseQuery = client
+    .select({
+      dispatch: dispatches,
+      worker: {
+        id: workers.id,
+        siriusId: workers.siriusId,
+      },
+      contact: {
+        id: contacts.id,
+        given: contacts.given,
+        family: contacts.family,
+        displayName: contacts.displayName,
+      },
+      job: {
+        id: dispatchJobs.id,
+        title: dispatchJobs.title,
+        employerId: dispatchJobs.employerId,
+      },
+      employer: {
+        id: employers.id,
+        name: employers.name,
+      },
+    })
+    .from(dispatches)
+    .leftJoin(workers, eq(dispatches.workerId, workers.id))
+    .leftJoin(contacts, eq(workers.contactId, contacts.id))
+    .leftJoin(dispatchJobs, eq(dispatches.jobId, dispatchJobs.id))
+    .leftJoin(employers, eq(dispatchJobs.employerId, employers.id));
+
+  const rows = await baseQuery
+    .where(and(...conditions))
+    .orderBy(desc(dispatches.startDate));
+
+  const allCommIds = rows.flatMap(row => row.dispatch.commIds || []);
+  const commMap = new Map<string, CommSummary>();
+
+  if (allCommIds.length > 0) {
+    const commRecords = await client
+      .select({
+        id: comm.id,
+        medium: comm.medium,
+        status: comm.status,
+        sent: comm.sent,
+      })
+      .from(comm)
+      .where(inArray(comm.id, allCommIds));
+
+    for (const c of commRecords) {
+      commMap.set(c.id, {
+        id: c.id,
+        medium: c.medium,
+        status: c.status,
+        sent: c.sent,
+      });
+    }
+  }
+
+  return rows.map(row => ({
+    ...row.dispatch,
+    worker: row.worker ? {
+      ...row.worker,
+      contact: row.contact,
+    } : null,
+    job: row.job ? {
+      ...row.job,
+      employer: row.employer,
+    } : null,
+    comms: (row.dispatch.commIds || [])
+      .map(id => commMap.get(id))
+      .filter((c): c is CommSummary => c !== undefined),
+  }));
 }
 
 export const dispatchLoggingConfig: StorageLoggingConfig<DispatchStorage> = {
@@ -205,6 +322,29 @@ export function createDispatchStorage(): DispatchStorage {
 
       if (!row) return undefined;
 
+      // Fetch comm records for this dispatch
+      const commIds = row.dispatch.commIds || [];
+      let comms: CommSummary[] = [];
+      
+      if (commIds.length > 0) {
+        const commRecords = await client
+          .select({
+            id: comm.id,
+            medium: comm.medium,
+            status: comm.status,
+            sent: comm.sent,
+          })
+          .from(comm)
+          .where(inArray(comm.id, commIds));
+
+        comms = commRecords.map(c => ({
+          id: c.id,
+          medium: c.medium,
+          status: c.status,
+          sent: c.sent,
+        }));
+      }
+
       return {
         ...row.dispatch,
         worker: row.worker ? {
@@ -212,83 +352,16 @@ export function createDispatchStorage(): DispatchStorage {
           contact: row.contact,
         } : null,
         job: row.job,
+        comms,
       };
     },
 
     async getByJob(jobId: string): Promise<DispatchWithRelations[]> {
-      const client = getClient();
-      const rows = await client
-        .select({
-          dispatch: dispatches,
-          worker: {
-            id: workers.id,
-            siriusId: workers.siriusId,
-          },
-          contact: {
-            id: contacts.id,
-            given: contacts.given,
-            family: contacts.family,
-            displayName: contacts.displayName,
-          },
-          job: {
-            id: dispatchJobs.id,
-            title: dispatchJobs.title,
-            employerId: dispatchJobs.employerId,
-          },
-        })
-        .from(dispatches)
-        .leftJoin(workers, eq(dispatches.workerId, workers.id))
-        .leftJoin(contacts, eq(workers.contactId, contacts.id))
-        .leftJoin(dispatchJobs, eq(dispatches.jobId, dispatchJobs.id))
-        .where(eq(dispatches.jobId, jobId))
-        .orderBy(desc(dispatches.startDate));
-
-      return rows.map(row => ({
-        ...row.dispatch,
-        worker: row.worker ? {
-          ...row.worker,
-          contact: row.contact,
-        } : null,
-        job: row.job,
-      }));
+      return searchDispatches({ jobId });
     },
 
     async getByWorker(workerId: string): Promise<DispatchWithRelations[]> {
-      const client = getClient();
-      const rows = await client
-        .select({
-          dispatch: dispatches,
-          worker: {
-            id: workers.id,
-            siriusId: workers.siriusId,
-          },
-          contact: {
-            id: contacts.id,
-            given: contacts.given,
-            family: contacts.family,
-            displayName: contacts.displayName,
-          },
-          job: {
-            id: dispatchJobs.id,
-            title: dispatchJobs.title,
-            employerId: dispatchJobs.employerId,
-          },
-        })
-        .from(dispatches)
-        .leftJoin(workers, eq(dispatches.workerId, workers.id))
-        .leftJoin(contacts, eq(workers.contactId, contacts.id))
-        .leftJoin(dispatchJobs, eq(dispatches.jobId, dispatchJobs.id))
-        .where(eq(dispatches.workerId, workerId))
-        .orderBy(desc(dispatches.startDate));
-
-      return rows.map(row => ({
-        ...row.dispatch,
-        worker: row.worker ? {
-          ...row.worker,
-          contact: row.contact,
-        } : null,
-        job: row.job,
-      }));
+      return searchDispatches({ workerId });
     },
 
     async create(insertDispatch: InsertDispatch): Promise<Dispatch> {
@@ -313,6 +386,125 @@ export function createDispatchStorage(): DispatchStorage {
       const client = getClient();
       const result = await client.delete(dispatches).where(eq(dispatches.id, id)).returning();
       return result.length > 0;
+    },
+
+    async setStatusPossible(dispatchId: string, newStatus: DispatchStatus): Promise<SetStatusResult> {
+      const client = getClient();
+      
+      const [dispatch] = await client.select().from(dispatches).where(eq(dispatches.id, dispatchId));
+      if (!dispatch) {
+        return { possible: false, reason: "Dispatch not found" };
+      }
+
+      const [job] = await client.select().from(dispatchJobs).where(eq(dispatchJobs.id, dispatch.jobId));
+      if (!job) {
+        return { possible: false, reason: "Job not found" };
+      }
+
+      const currentStatus = dispatch.status;
+
+      switch (newStatus) {
+        case "pending":
+          return { possible: true };
+        
+        case "notified": {
+          if (job.status !== "open") {
+            return { possible: false, reason: `Job must be open to notify workers (current status: ${job.status})` };
+          }
+          
+          const workerCount = job.workerCount;
+          if (workerCount != null && workerCount > 0) {
+            const acceptedDispatches = await client
+              .select()
+              .from(dispatches)
+              .where(and(
+                eq(dispatches.jobId, dispatch.jobId),
+                eq(dispatches.status, "accepted")
+              ));
+            
+            if (acceptedDispatches.length >= workerCount) {
+              return { possible: false, reason: `Job is full (${acceptedDispatches.length}/${workerCount} workers accepted)` };
+            }
+          }
+          
+          return { possible: true };
+        }
+
+        case "declined": {
+          if (currentStatus !== "pending" && currentStatus !== "notified") {
+            return { possible: false, reason: `Can only decline from pending or notified status (current: ${currentStatus})` };
+          }
+          return { possible: true };
+        }
+
+        case "layoff":
+        case "resigned": {
+          if (currentStatus !== "accepted") {
+            return { possible: false, reason: `Can only set ${newStatus} from accepted status (current: ${currentStatus})` };
+          }
+          return { possible: true };
+        }
+
+        case "accepted": {
+          const workerCount = job.workerCount;
+          if (workerCount != null && workerCount > 0) {
+            const acceptedDispatches = await client
+              .select()
+              .from(dispatches)
+              .where(and(
+                eq(dispatches.jobId, dispatch.jobId),
+                eq(dispatches.status, "accepted"),
+                ne(dispatches.id, dispatchId)
+              ));
+            
+            if (acceptedDispatches.length >= workerCount) {
+              return { possible: false, reason: `Job is full (${acceptedDispatches.length}/${workerCount} workers accepted)` };
+            }
+          }
+          return { possible: true };
+        }
+        
+        default:
+          return { possible: false, reason: `Status transition to "${newStatus}" is not implemented` };
+      }
+    },
+
+    async setStatus(dispatchId: string, newStatus: DispatchStatus): Promise<{ success: boolean; dispatch?: Dispatch; error?: string }> {
+      const client = getClient();
+      
+      const checkResult = await this.setStatusPossible(dispatchId, newStatus);
+      if (!checkResult.possible) {
+        return { success: false, error: checkResult.reason };
+      }
+
+      const [currentDispatch] = await client.select().from(dispatches).where(eq(dispatches.id, dispatchId));
+      if (!currentDispatch) {
+        return { success: false, error: "Dispatch not found" };
+      }
+
+      const previousStatus = currentDispatch.status;
+
+      const [updatedDispatch] = await client
+        .update(dispatches)
+        .set({ status: newStatus })
+        .where(eq(dispatches.id, dispatchId))
+        .returning();
+
+      if (!updatedDispatch) {
+        return { success: false, error: "Failed to update dispatch status" };
+      }
+
+      eventBus.emit(EventType.DISPATCH_SAVED, {
+        dispatchId: updatedDispatch.id,
+        workerId: updatedDispatch.workerId,
+        jobId: updatedDispatch.jobId,
+        status: updatedDispatch.status,
+        previousStatus,
+      }).catch(err => {
+        console.error("Failed to emit DISPATCH_SAVED event:", err);
+      });
+
+      return { success: true, dispatch: updatedDispatch };
     }
   };
 }

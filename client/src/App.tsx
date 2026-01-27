@@ -42,7 +42,6 @@ const WorkerMemberStatus = lazy(() => import("@/pages/worker-member-status"));
 const WorkerUserPage = lazy(() => import("@/pages/worker-user"));
 const WorkerBargainingUnit = lazy(() => import("@/pages/worker-bargaining-unit"));
 const WorkerSteward = lazy(() => import("@/pages/worker-steward"));
-const WorkerRepresentatives = lazy(() => import("@/pages/worker-representatives"));
 const WorkerDispatchStatus = lazy(() => import("@/pages/workers/dispatch-status"));
 const WorkerDispatchDoNotCall = lazy(() => import("@/pages/workers/dispatch-do-not-call"));
 const WorkerDispatchHoldForEmployer = lazy(() => import("@/pages/workers/dispatch-hold-for-employer"));
@@ -60,6 +59,7 @@ const WorkerCurrentEmployment = lazy(() => import("@/pages/worker-current-employ
 const WorkerEmploymentHistory = lazy(() => import("@/pages/worker-employment-history"));
 const WorkerHoursMonthly = lazy(() => import("@/pages/worker-hours-monthly"));
 const WorkerHoursDaily = lazy(() => import("@/pages/worker-hours-daily"));
+const WorkerDispatches = lazy(() => import("@/pages/worker-dispatches"));
 const WorkerHoursView = lazy(() => import("@/pages/worker-hours-view"));
 const WorkerHoursEdit = lazy(() => import("@/pages/worker-hours-edit"));
 const WorkerHoursDelete = lazy(() => import("@/pages/worker-hours-delete"));
@@ -175,6 +175,7 @@ const DispatchJobTypeViewPage = lazy(() => import("@/pages/config/dispatch-job-t
 const DispatchJobTypeEditPage = lazy(() => import("@/pages/config/dispatch-job-type-edit"));
 const DispatchJobTypeDeletePage = lazy(() => import("@/pages/config/dispatch-job-type-delete"));
 const DispatchJobTypePluginsPage = lazy(() => import("@/pages/config/dispatch-job-type-plugins"));
+const DispatchJobTypeNotificationsPage = lazy(() => import("@/pages/config/dispatch-job-type-notifications"));
 const DispatchDncConfigPage = lazy(() => import("@/pages/config/dispatch-dnc"));
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
@@ -189,9 +190,15 @@ const WorkerBanConfigPage = lazy(() => import("@/pages/config/workers-ban"));
 const DispatchJobsPage = lazy(() => import("@/pages/dispatch/jobs"));
 const DispatchJobDetailsPage = lazy(() => import("@/pages/dispatch/job-details"));
 const DispatchJobEditPage = lazy(() => import("@/pages/dispatch/job-edit"));
-const DispatchJobDispatchesPage = lazy(() => import("@/pages/dispatch/job-dispatches"));
+const DispatchJobDispatchesListPage = lazy(() => import("@/pages/dispatch/job-dispatches"));
+const DispatchJobDispatchesCbnPage = lazy(() => import("@/pages/dispatch/job-dispatches-cbn"));
 const DispatchJobEligibleWorkersPage = lazy(() => import("@/pages/dispatch/job-eligible-workers"));
+const DispatchJobEligibleWorkersCheckPage = lazy(() => import("@/pages/dispatch/job-eligible-check"));
 const DispatchJobNewPage = lazy(() => import("@/pages/dispatch/job-new"));
+const DispatchJobRunPage = lazy(() => import("@/pages/dispatch/job-run"));
+const DispatchDetailsPage = lazy(() => import("@/pages/dispatch/dispatch-details"));
+const DispatchEditPage = lazy(() => import("@/pages/dispatch/dispatch-edit"));
+const DispatchManagePage = lazy(() => import("@/pages/dispatch/dispatch-manage"));
 const MasqueradePage = lazy(() => import("@/pages/config/masquerade"));
 const SystemModePage = lazy(() => import("@/pages/config/system-mode"));
 const DefaultPolicyPage = lazy(() => import("@/pages/config/default-policy"));
@@ -555,14 +562,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/workers/:id/union/representatives">
-        <ProtectedRoute tabId="representatives" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerRepresentatives />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
       <Route path="/workers/:id/dispatch/status">
         <ProtectedRoute tabId="dispatch-status" entityType="worker">
           <AuthenticatedLayout>
@@ -631,6 +630,14 @@ function Router() {
         <ProtectedRoute tabId="daily" entityType="worker">
           <AuthenticatedLayout>
             <WorkerHoursDaily />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/dispatch/list">
+        <ProtectedRoute tabId="dispatch-list" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerDispatches />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1623,6 +1630,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/dispatch-job-type/:id/notifications">
+        <ProtectedRoute tabId="notifications" entityType="dispatch_job_type">
+          <AuthenticatedLayout>
+            <DispatchJobTypeNotificationsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/dispatch-job-type/:id/delete">
         <ProtectedRoute tabId="delete" entityType="dispatch_job_type">
           <AuthenticatedLayout>
@@ -1763,18 +1778,66 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/dispatch/job/:id/dispatches">
-        <ProtectedRoute tabId="dispatches" entityType="dispatch_job">
+      <Route path="/dispatch/job/:id/run">
+        <ProtectedRoute tabId="run" entityType="dispatch_job">
           <AuthenticatedLayout>
-            <DispatchJobDispatchesPage />
+            <DispatchJobRunPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
-      <Route path="/dispatch/job/:id/eligible-workers">
-        <ProtectedRoute tabId="eligible-workers" entityType="dispatch_job">
+      <Route path="/dispatch/job/:id/dispatches/list">
+        <ProtectedRoute tabId="dispatches-list" entityType="dispatch_job">
+          <AuthenticatedLayout>
+            <DispatchJobDispatchesListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job/:id/dispatches/cbn">
+        <ProtectedRoute tabId="dispatches-cbn" entityType="dispatch_job">
+          <AuthenticatedLayout>
+            <DispatchJobDispatchesCbnPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job/:id/eligible-workers/list">
+        <ProtectedRoute tabId="eligible-workers-list" entityType="dispatch_job">
           <AuthenticatedLayout>
             <DispatchJobEligibleWorkersPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job/:id/eligible-workers/check">
+        <ProtectedRoute tabId="eligible-workers-check" entityType="dispatch_job">
+          <AuthenticatedLayout>
+            <DispatchJobEligibleWorkersCheckPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/:id">
+        <ProtectedRoute tabId="details" entityType="dispatch">
+          <AuthenticatedLayout>
+            <DispatchDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="dispatch">
+          <AuthenticatedLayout>
+            <DispatchEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/:id/manage">
+        <ProtectedRoute tabId="manage" entityType="dispatch">
+          <AuthenticatedLayout>
+            <DispatchManagePage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

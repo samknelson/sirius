@@ -117,8 +117,14 @@ export interface WorkerWithDetails {
   benefits: Array<{ id: string; name: string; typeName: string; typeIcon: string | null }> | null;
 }
 
+export interface WorkerSearchResult {
+  workers: Array<{ id: string; siriusId: number; displayName: string }>;
+  total: number;
+}
+
 export interface WorkerStorage {
   getAllWorkers(): Promise<Worker[]>;
+  searchWorkers(query: string, limit?: number): Promise<WorkerSearchResult>;
   getWorkersWithDetails(): Promise<WorkerWithDetails[]>;
   getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]>;
   getWorkersCurrentBenefits(month?: number, year?: number): Promise<WorkerCurrentBenefits[]>;
@@ -173,6 +179,49 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     async getAllWorkers(): Promise<Worker[]> {
       const client = getClient();
       return await client.select().from(workers);
+    },
+
+    async searchWorkers(query: string, limit: number = 10): Promise<WorkerSearchResult> {
+      const client = getClient();
+      const trimmedQuery = query.trim();
+      
+      const numericQuery = parseInt(trimmedQuery, 10);
+      const isNumeric = !isNaN(numericQuery);
+      
+      let results;
+      if (isNumeric) {
+        results = await client
+          .select({
+            id: workers.id,
+            siriusId: workers.siriusId,
+            displayName: contacts.displayName,
+          })
+          .from(workers)
+          .innerJoin(contacts, eq(workers.contactId, contacts.id))
+          .where(eq(workers.siriusId, numericQuery))
+          .limit(limit);
+      } else {
+        results = await client
+          .select({
+            id: workers.id,
+            siriusId: workers.siriusId,
+            displayName: contacts.displayName,
+          })
+          .from(workers)
+          .innerJoin(contacts, eq(workers.contactId, contacts.id))
+          .where(sql`${contacts.displayName} ILIKE ${'%' + trimmedQuery + '%'}`)
+          .orderBy(contacts.displayName)
+          .limit(limit);
+      }
+      
+      return {
+        workers: results.map(r => ({
+          id: r.id,
+          siriusId: r.siriusId,
+          displayName: r.displayName || `Worker #${r.siriusId}`,
+        })),
+        total: results.length,
+      };
     },
 
     async getWorkersWithDetails(): Promise<WorkerWithDetails[]> {

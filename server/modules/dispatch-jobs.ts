@@ -26,6 +26,7 @@ export function registerDispatchJobsRoutes(
         jobTypeId, 
         startDateFrom, 
         startDateTo,
+        running,
         page: pageParam,
         limit: limitParam 
       } = req.query;
@@ -49,6 +50,9 @@ export function registerDispatchJobsRoutes(
       }
       if (startDateTo && typeof startDateTo === 'string') {
         filters.startDateTo = new Date(startDateTo);
+      }
+      if (running === 'true') {
+        filters.running = true;
       }
       
       const result = await storage.dispatchJobs.getPaginated(page, limit, filters);
@@ -181,6 +185,10 @@ export function registerDispatchJobsRoutes(
         updates.workerCount = workerCount === null ? null : parseInt(workerCount, 10);
       }
       
+      if (workerCount !== undefined) {
+        updates.workerCount = workerCount;
+      }
+      
       if (data !== undefined) {
         updates.data = data;
       }
@@ -189,6 +197,34 @@ export function registerDispatchJobsRoutes(
       res.json(job);
     } catch (error) {
       res.status(500).json({ message: "Failed to update dispatch job" });
+    }
+  });
+
+  app.patch("/api/dispatch-jobs/:id/running", dispatchComponent, requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { running } = req.body;
+      
+      if (typeof running !== 'boolean') {
+        res.status(400).json({ message: "running must be a boolean" });
+        return;
+      }
+      
+      const existingJob = await storage.dispatchJobs.get(id);
+      if (!existingJob) {
+        res.status(404).json({ message: "Dispatch job not found" });
+        return;
+      }
+      
+      const job = await storage.dispatchJobs.update(id, { running });
+      res.json(job);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update job running status";
+      if (message.includes('Cannot set job to running')) {
+        res.status(400).json({ message });
+        return;
+      }
+      res.status(500).json({ message: "Failed to update job running status" });
     }
   });
 
@@ -220,12 +256,12 @@ export function registerDispatchJobsRoutes(
   app.get("/api/dispatch-jobs/:id/eligible-workers", dispatchComponent, requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
-      const { limit: limitParam, offset: offsetParam, siriusId: siriusIdParam, name: nameParam } = req.query;
+      const { limit: limitParam, offset: offsetParam, siriusId: siriusIdParam, name: nameParam, excludeWithDispatches: excludeParam } = req.query;
       
       const limit = Math.min(parseInt(limitParam as string) || 100, 500);
       const offset = parseInt(offsetParam as string) || 0;
       
-      const filters: { siriusId?: number; name?: string } = {};
+      const filters: { siriusId?: number; name?: string; excludeWithDispatches?: boolean } = {};
       if (siriusIdParam) {
         const parsed = parseInt(siriusIdParam as string);
         if (!isNaN(parsed)) {
@@ -234,6 +270,9 @@ export function registerDispatchJobsRoutes(
       }
       if (nameParam && typeof nameParam === "string" && nameParam.trim()) {
         filters.name = nameParam.trim();
+      }
+      if (excludeParam === "true" || excludeParam === "1") {
+        filters.excludeWithDispatches = true;
       }
       
       const eligibleWorkersStorage = createDispatchEligibleWorkersStorage();
@@ -282,6 +321,25 @@ export function registerDispatchJobsRoutes(
     } catch (error) {
       console.error("Failed to fetch eligible workers SQL:", error);
       res.status(500).json({ message: "Failed to fetch eligible workers SQL" });
+    }
+  });
+
+  app.get("/api/dispatch-jobs/:id/check-eligibility/:workerId", dispatchComponent, requireAccess('admin'), async (req, res) => {
+    try {
+      const { id, workerId } = req.params;
+      
+      const eligibleWorkersStorage = createDispatchEligibleWorkersStorage();
+      const result = await eligibleWorkersStorage.checkWorkerEligibility(id, workerId);
+      
+      if (!result) {
+        res.status(404).json({ message: "Job or worker not found" });
+        return;
+      }
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to check worker eligibility:", error);
+      res.status(500).json({ message: "Failed to check worker eligibility" });
     }
   });
 }

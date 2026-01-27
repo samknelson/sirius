@@ -2,12 +2,13 @@ import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { 
   dispatchJobs, 
+  dispatches,
   employers,
   optionsDispatchJobType,
   type DispatchJob, 
   type InsertDispatchJob
 } from "@shared/schema";
-import { eq, desc, and, gte, lte, sql, SQL } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, SQL, inArray } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
 /**
@@ -21,11 +22,23 @@ export interface DispatchJobFilters {
   jobTypeId?: string;
   startDateFrom?: Date;
   startDateTo?: Date;
+  running?: boolean;
+}
+
+export interface DispatchStatusCounts {
+  pending: number;
+  notified: number;
+  accepted: number;
+  layoff: number;
+  resigned: number;
+  declined: number;
 }
 
 export interface DispatchJobWithRelations extends DispatchJob {
   employer?: { id: string; name: string };
   jobType?: { id: string; name: string; data: unknown } | null;
+  acceptedCount?: number;
+  statusCounts?: DispatchStatusCounts;
 }
 
 export interface PaginatedDispatchJobs {
@@ -167,6 +180,9 @@ export function createDispatchJobStorage(): DispatchJobStorage {
       if (filters?.startDateTo) {
         conditions.push(lte(dispatchJobs.startDate, filters.startDateTo));
       }
+      if (filters?.running !== undefined) {
+        conditions.push(eq(dispatchJobs.running, filters.running));
+      }
       
       const hasFilters = conditions.length > 0;
       const whereClause = hasFilters ? and(...conditions) : undefined;
@@ -202,10 +218,29 @@ export function createDispatchJobStorage(): DispatchJobStorage {
         ? await baseQuery.where(whereClause!).orderBy(desc(dispatchJobs.startDate)).limit(limit).offset(page * limit)
         : await baseQuery.orderBy(desc(dispatchJobs.startDate)).limit(limit).offset(page * limit);
       
+      const jobIds = rows.map(r => r.job.id);
+      
+      const acceptedCounts = jobIds.length > 0 
+        ? await client
+            .select({ 
+              jobId: dispatches.jobId,
+              count: sql<number>`count(*)::int` 
+            })
+            .from(dispatches)
+            .where(and(
+              inArray(dispatches.jobId, jobIds),
+              eq(dispatches.status, 'accepted')
+            ))
+            .groupBy(dispatches.jobId)
+        : [];
+      
+      const acceptedCountMap = new Map(acceptedCounts.map(r => [r.jobId, r.count]));
+      
       const data: DispatchJobWithRelations[] = rows.map(row => ({
         ...row.job,
         employer: row.employer || undefined,
         jobType: row.jobType,
+        acceptedCount: acceptedCountMap.get(row.job.id) || 0,
       }));
       
       return { data, total, page, limit };
@@ -239,10 +274,36 @@ export function createDispatchJobStorage(): DispatchJobStorage {
       
       if (!row) return undefined;
       
+      const statusCountsResult = await client
+        .select({ 
+          status: dispatches.status,
+          count: sql<number>`count(*)::int` 
+        })
+        .from(dispatches)
+        .where(eq(dispatches.jobId, id))
+        .groupBy(dispatches.status);
+      
+      const statusCounts: DispatchStatusCounts = {
+        pending: 0,
+        notified: 0,
+        accepted: 0,
+        layoff: 0,
+        resigned: 0,
+        declined: 0,
+      };
+      
+      for (const row of statusCountsResult) {
+        if (row.status in statusCounts) {
+          statusCounts[row.status as keyof DispatchStatusCounts] = row.count;
+        }
+      }
+      
       return {
         ...row.job,
         employer: row.employer || undefined,
         jobType: row.jobType,
+        acceptedCount: statusCounts.accepted,
+        statusCounts,
       };
     },
 
@@ -260,12 +321,27 @@ export function createDispatchJobStorage(): DispatchJobStorage {
       return job;
     },
 
-    async update(id: string, jobUpdate: Partial<InsertDispatchJob>): Promise<DispatchJob | undefined> {
-      validate.validateOrThrow(id);
+    async update(id: string, jobUpdate: Partial<InsertDispatchJob & { running?: boolean }>): Promise<DispatchJob | undefined> {
       const client = getClient();
+      
+      const [existingJob] = await client.select().from(dispatchJobs).where(eq(dispatchJobs.id, id));
+      if (!existingJob) {
+        return undefined;
+      }
+      
+      const updates = { ...jobUpdate };
+      
+      if (updates.running === true && existingJob.status !== 'open') {
+        throw new Error('Cannot set job to running unless status is open');
+      }
+      
+      if (updates.status !== undefined && updates.status !== 'open' && existingJob.running) {
+        updates.running = false;
+      }
+      
       const [job] = await client
         .update(dispatchJobs)
-        .set(jobUpdate)
+        .set(updates)
         .where(eq(dispatchJobs.id, id))
         .returning();
       return job || undefined;

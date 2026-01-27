@@ -53,6 +53,7 @@ export type TabEntityType =
   | 'bargaining_unit'
   | 'btu_csg'
   | 'cron_job'
+  | 'dispatch'
   | 'dispatch_job'
   | 'dispatch_job_type'
   | 'edls_sheet'
@@ -146,13 +147,13 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'cardchecks', label: 'Cardchecks', hrefTemplate: '/workers/{id}/union/cardchecks', policyId: 'worker.view', component: 'cardcheck' },
       { id: 'bargaining-unit', label: 'Bargaining Unit', hrefTemplate: '/workers/{id}/union/bargaining-unit', permission: 'staff', component: 'bargainingunits' },
       { id: 'steward', label: 'Steward', hrefTemplate: '/workers/{id}/union/steward', permission: 'staff', component: 'worker.steward', termKey: 'steward' },
-      { id: 'representatives', label: 'Representatives', hrefTemplate: '/workers/{id}/union/representatives', policyId: 'worker.view', component: 'worker.steward' },
     ]
   },
   { 
     id: 'dispatch', label: 'Dispatch', hrefTemplate: '/workers/{id}/dispatch/status', policyId: 'worker.view', component: 'dispatch',
     children: [
       { id: 'dispatch-status', label: 'Status', hrefTemplate: '/workers/{id}/dispatch/status', policyId: 'worker.view', component: 'dispatch' },
+      { id: 'dispatch-list', label: 'List', hrefTemplate: '/workers/{id}/dispatch/list', policyId: 'worker.view', component: 'dispatch' },
       { id: 'dispatch-dnc', label: 'Do Not Call', hrefTemplate: '/workers/{id}/dispatch/do-not-call', policyId: 'worker.view', component: 'dispatch.dnc' },
       { id: 'dispatch-hfe', label: 'Hold for Employer', hrefTemplate: '/workers/{id}/dispatch/hold-for-employer', policyId: 'worker.view', component: 'dispatch.hfe' },
     ]
@@ -248,12 +249,42 @@ export const cronJobTabTree: HierarchicalTab[] = [
 ];
 
 /**
+ * Dispatch entity tab tree (individual dispatch records)
+ */
+export const dispatchTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/dispatch/{id}', permission: 'staff', component: 'dispatch' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/dispatch/{id}/edit', permission: 'staff', component: 'dispatch' },
+  { id: 'manage', label: 'Manage', hrefTemplate: '/dispatch/{id}/manage', permission: 'staff', component: 'dispatch' },
+];
+
+/**
  * Dispatch job entity tab tree
  */
 export const dispatchJobTabTree: HierarchicalTab[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/dispatch/job/{id}', permission: 'staff', component: 'dispatch' },
-  { id: 'dispatches', label: 'Dispatches', hrefTemplate: '/dispatch/job/{id}/dispatches', permission: 'staff', component: 'dispatch' },
-  { id: 'eligible-workers', label: 'Eligible Workers', hrefTemplate: '/dispatch/job/{id}/eligible-workers', permission: 'staff', component: 'dispatch' },
+  { id: 'run', label: 'Run', hrefTemplate: '/dispatch/job/{id}/run', permission: 'staff', component: 'dispatch' },
+  { 
+    id: 'dispatches', 
+    label: 'Dispatches', 
+    hrefTemplate: '/dispatch/job/{id}/dispatches/list', 
+    permission: 'staff', 
+    component: 'dispatch',
+    children: [
+      { id: 'dispatches-list', label: 'List', hrefTemplate: '/dispatch/job/{id}/dispatches/list', permission: 'staff', component: 'dispatch' },
+      { id: 'dispatches-cbn', label: 'Call by Name', hrefTemplate: '/dispatch/job/{id}/dispatches/cbn', permission: 'staff', component: 'dispatch' },
+    ]
+  },
+  { 
+    id: 'eligible-workers', 
+    label: 'Eligible Workers', 
+    hrefTemplate: '/dispatch/job/{id}/eligible-workers/list', 
+    permission: 'staff', 
+    component: 'dispatch',
+    children: [
+      { id: 'eligible-workers-list', label: 'List', hrefTemplate: '/dispatch/job/{id}/eligible-workers/list', permission: 'staff', component: 'dispatch' },
+      { id: 'eligible-workers-check', label: 'Check', hrefTemplate: '/dispatch/job/{id}/eligible-workers/check', permission: 'staff', component: 'dispatch' },
+    ]
+  },
   { id: 'edit', label: 'Edit', hrefTemplate: '/dispatch/job/{id}/edit', permission: 'staff', component: 'dispatch' },
 ];
 
@@ -264,6 +295,7 @@ export const dispatchJobTypeTabTree: HierarchicalTab[] = [
   { id: 'view', label: 'View', hrefTemplate: '/config/dispatch-job-type/{id}', permission: 'staff', component: 'dispatch' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/config/dispatch-job-type/{id}/edit', permission: 'staff', component: 'dispatch' },
   { id: 'plugins', label: 'Plugins', hrefTemplate: '/config/dispatch-job-type/{id}/plugins', permission: 'staff', component: 'dispatch' },
+  { id: 'notifications', label: 'Notifications', hrefTemplate: '/config/dispatch-job-type/{id}/notifications', permission: 'staff', component: 'dispatch' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/config/dispatch-job-type/{id}/delete', permission: 'staff', component: 'dispatch' },
 ];
 
@@ -424,6 +456,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   bargaining_unit: bargainingUnitTabTree,
   btu_csg: btuCsgTabTree,
   cron_job: cronJobTabTree,
+  dispatch: dispatchTabTree,
   dispatch_job: dispatchJobTabTree,
   dispatch_job_type: dispatchJobTypeTabTree,
   edls_sheet: edlsSheetTabTree,
@@ -629,6 +662,7 @@ export const tabRegistry: Record<TabEntityType, TabDefinition[]> = {
   bargaining_unit: flattenTabTree(bargainingUnitTabTree),
   btu_csg: flattenTabTree(btuCsgTabTree),
   cron_job: flattenTabTree(cronJobTabTree),
+  dispatch: flattenTabTree(dispatchTabTree),
   dispatch_job: flattenTabTree(dispatchJobTabTree),
   dispatch_job_type: flattenTabTree(dispatchJobTypeTabTree),
   edls_sheet: flattenTabTree(edlsSheetTabTree),

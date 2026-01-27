@@ -40,6 +40,9 @@ import { initializeDispatchEligSystem } from "./services/dispatch-elig-plugins";
 // Import worker ban notifications
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
 
+// Import dispatch notifications
+import { initDispatchNotifications } from "./services/dispatch-notifications";
+
 // Import modular access policies (triggers registration via loader)
 import "@shared/access-policies/loader";
 import { registerEntityAccessModule } from "./modules/entity-access";
@@ -192,6 +195,10 @@ app.use((req, res, next) => {
   // Initialize worker ban notifications
   initWorkerBanNotifications();
   logger.info("Worker ban notifications initialized", { source: "startup" });
+
+  // Initialize dispatch notifications
+  initDispatchNotifications();
+  logger.info("Dispatch notifications initialized", { source: "startup" });
 
   // Register charge plugin event listeners
   // Note: Charge plugins are currently called directly from storage for backwards compatibility.

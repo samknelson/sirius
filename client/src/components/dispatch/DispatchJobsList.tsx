@@ -21,11 +21,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { 
-  Eye, Plus, Calendar,
+  Eye, Plus, Calendar, Play,
   Briefcase, Truck, HardHat, Wrench, Clock, 
   ClipboardList, Package, MapPin, Users,
   type LucideIcon
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { dispatchJobStatusEnum, type Employer, type DispatchJobType } from "@shared/schema";
 import type { PaginatedDispatchJobs } from "../../../../server/storage/dispatch-jobs";
@@ -40,7 +41,6 @@ const iconMap: Record<string, LucideIcon> = {
 const statusColors: Record<string, string> = {
   draft: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300",
   open: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
-  running: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
   closed: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300",
   archived: "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300",
 };
@@ -64,6 +64,7 @@ export function DispatchJobsList({
   const [jobTypeFilter, setJobTypeFilter] = useState<string>("all");
   const [startDateFrom, setStartDateFrom] = useState<string>("");
   const [startDateTo, setStartDateTo] = useState<string>("");
+  const [runningOnly, setRunningOnly] = useState<boolean>(false);
 
   const filters = useMemo(() => {
     const f: Record<string, string> = {};
@@ -76,12 +77,13 @@ export function DispatchJobsList({
     if (jobTypeFilter && jobTypeFilter !== "all") f.jobTypeId = jobTypeFilter;
     if (startDateFrom) f.startDateFrom = startDateFrom;
     if (startDateTo) f.startDateTo = startDateTo;
+    if (runningOnly) f.running = "true";
     return f;
-  }, [employerId, employerFilter, statusFilter, jobTypeFilter, startDateFrom, startDateTo]);
+  }, [employerId, employerFilter, statusFilter, jobTypeFilter, startDateFrom, startDateTo, runningOnly]);
 
   useEffect(() => {
     setPage(0);
-  }, [employerId, employerFilter, statusFilter, jobTypeFilter, startDateFrom, startDateTo]);
+  }, [employerId, employerFilter, statusFilter, jobTypeFilter, startDateFrom, startDateTo, runningOnly]);
 
   const { data: employers = [] } = useQuery<Employer[]>({
     queryKey: ["/api/employers"],
@@ -118,6 +120,7 @@ export function DispatchJobsList({
     setJobTypeFilter("all");
     setStartDateFrom("");
     setStartDateTo("");
+    setRunningOnly(false);
     setPage(0);
   };
 
@@ -125,7 +128,8 @@ export function DispatchJobsList({
                      statusFilter !== "all" || 
                      jobTypeFilter !== "all" || 
                      startDateFrom || 
-                     startDateTo;
+                     startDateTo ||
+                     runningOnly;
 
   const filterCount = showEmployerColumn ? 5 : 4;
   const gridClass = showEmployerColumn 
@@ -220,6 +224,21 @@ export function DispatchJobsList({
         </div>
       </div>
 
+      <div className="flex items-center space-x-2">
+        <Checkbox
+          id="running-only"
+          checked={runningOnly}
+          onCheckedChange={(checked) => setRunningOnly(checked === true)}
+          data-testid="checkbox-running-only"
+        />
+        <label
+          htmlFor="running-only"
+          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+        >
+          Show running jobs only
+        </label>
+      </div>
+
       {hasFilters && (
         <div className="flex justify-end">
           <Button
@@ -248,6 +267,8 @@ export function DispatchJobsList({
                   {showEmployerColumn && <TableHead>Employer</TableHead>}
                   <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Running</TableHead>
+                  <TableHead>Workers</TableHead>
                   <TableHead>Start Date</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -288,6 +309,25 @@ export function DispatchJobsList({
                         >
                           <span className="capitalize">{job.status}</span>
                         </Badge>
+                      </TableCell>
+                      <TableCell data-testid={`text-running-${job.id}`}>
+                        {job.running ? (
+                          <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                            <Play className="h-4 w-4" />
+                            <span className="text-sm">Yes</span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">No</span>
+                        )}
+                      </TableCell>
+                      <TableCell data-testid={`text-workers-${job.id}`}>
+                        {job.workerCount != null ? (
+                          <span className={job.acceptedCount != null && job.acceptedCount >= job.workerCount ? "text-green-600 dark:text-green-400 font-medium" : ""}>
+                            {job.acceptedCount ?? 0} / {job.workerCount}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell data-testid={`text-date-${job.id}`}>
                         {format(new Date(job.startDate), "MMM d, yyyy")}
