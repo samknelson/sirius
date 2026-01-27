@@ -38,7 +38,7 @@ export default function DispatchJobTypeLayout({ children, activeTab }: DispatchJ
   const { id } = useParams<{ id: string }>();
 
   const { data: jobType, isLoading, error } = useQuery<DispatchJobType>({
-    queryKey: ["/api/dispatch-job-types", id],
+    queryKey: ["/api/options/dispatch-job-type", id],
   });
 
   // Hook must be called before any conditional returns (React rules of hooks)

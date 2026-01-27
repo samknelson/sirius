@@ -238,7 +238,7 @@ export function WorkersTable({
 
   // Fetch employer types for filter dropdown icons
   const { data: employerTypes = [] } = useQuery<{ id: string; name: string; data?: Record<string, unknown> | null }[]>({
-    queryKey: ["/api/employer-types"],
+    queryKey: ["/api/options/employer-type"],
   });
 
   // Fetch bargaining units for filter dropdown
@@ -416,6 +416,7 @@ export function WorkersTable({
       contactId: worker.contact_id,
       siriusId: worker.sirius_id,
       denormWsId: worker.denorm_ws_id,
+      denormJobTitle: worker.denorm_job_title,
       denormHomeEmployerId: worker.denorm_home_employer_id,
       denormEmployerIds: worker.denorm_employer_ids,
       contactName: worker.contact_name || 'Unknown',

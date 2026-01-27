@@ -49,7 +49,7 @@ export default function EventLayout({ children, activeTab }: EventLayoutProps) {
   });
 
   const { data: eventTypes = [] } = useQuery<EventType[]>({
-    queryKey: ["/api/event-types"],
+    queryKey: ["/api/options/event-type"],
   });
 
   const { tabs: mainTabs } = useEventTabAccess(id);

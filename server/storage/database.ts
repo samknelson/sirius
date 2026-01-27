@@ -1,58 +1,12 @@
-import {
-  type VariableStorage,
-  createVariableStorage,
-  variableLoggingConfig,
-} from "./variables";
-import {
-  type UserStorage,
-  createUserStorage,
-  userLoggingConfig,
-} from "./users";
-import {
-  type WorkerStorage,
-  createWorkerStorage,
-  workerLoggingConfig,
-} from "./workers";
-import {
-  type EmployerStorage,
-  createEmployerStorage,
-  employerLoggingConfig,
-} from "./employers";
-import {
-  type ContactsStorage,
-  createContactsStorage,
-  type AddressStorage,
-  type PhoneNumberStorage,
-  contactLoggingConfig,
-  addressLoggingConfig,
-  phoneNumberLoggingConfig,
-} from "./contacts";
-import {
-  type OptionsStorage,
-  createOptionsStorage,
-  createEmployerContactTypeStorage,
-  type EmployerContactTypeStorage,
-  employerContactTypeLoggingConfig,
-} from "./options";
-import {
-  type TrustBenefitStorage,
-  createTrustBenefitStorage,
-  trustBenefitLoggingConfig,
-} from "./trust-benefits";
-import {
-  type TrustProviderStorage,
-  createTrustProviderStorage,
-} from "./trust-providers";
-import {
-  type TrustProviderContactStorage,
-  createTrustProviderContactStorage,
-  trustProviderContactLoggingConfig,
-} from "./trust-provider-contacts";
-import {
-  type WorkerIdStorage,
-  createWorkerIdStorage,
-  workerIdLoggingConfig,
-} from "./worker-ids";
+import { type VariableStorage, createVariableStorage, variableLoggingConfig } from "./variables";
+import { type UserStorage, createUserStorage, userLoggingConfig } from "./users";
+import { type WorkerStorage, createWorkerStorage, workerLoggingConfig } from "./workers";
+import { type EmployerStorage, createEmployerStorage, employerLoggingConfig } from "./employers";
+import { type ContactsStorage, createContactsStorage, type AddressStorage, type PhoneNumberStorage, contactLoggingConfig, addressLoggingConfig, phoneNumberLoggingConfig } from "./contacts";
+import { type TrustBenefitStorage, createTrustBenefitStorage, trustBenefitLoggingConfig } from "./trust-benefits";
+import { type TrustProviderStorage, createTrustProviderStorage } from "./trust-providers";
+import { type TrustProviderContactStorage, createTrustProviderContactStorage, trustProviderContactLoggingConfig } from "./trust-provider-contacts";
+import { type WorkerIdStorage, createWorkerIdStorage, workerIdLoggingConfig } from "./worker-ids";
 import { type BookmarkStorage, createBookmarkStorage } from "./bookmarks";
 import {
   type LedgerStorage,
@@ -95,113 +49,40 @@ import {
   createChargePluginConfigStorage,
 } from "./charge-plugins";
 import { type LogsStorage, createLogsStorage } from "./logs";
-import {
-  type WorkerWshStorage,
-  createWorkerWshStorage,
-  workerWshLoggingConfig,
-} from "./worker-wsh";
-import {
-  type WorkerHoursStorage,
-  createWorkerHoursStorage,
-  workerHoursLoggingConfig,
-} from "./worker-hours";
-import {
-  type PolicyStorage,
-  createPolicyStorage,
-  policyLoggingConfig,
-} from "./policies";
-import {
-  type EmployerPolicyHistoryStorage,
-  createEmployerPolicyHistoryStorage,
-  employerPolicyHistoryLoggingConfig,
-} from "./employer-policy-history";
-import {
-  type WmbScanQueueStorage,
-  createWmbScanQueueStorage,
-} from "./wmb-scan-queue";
-import {
-  type CardcheckDefinitionStorage,
-  createCardcheckDefinitionStorage,
-  cardcheckDefinitionLoggingConfig,
-} from "./cardcheck-definitions";
-import {
-  type CardcheckStorage,
-  createCardcheckStorage,
-  cardcheckLoggingConfig,
-} from "./cardchecks";
-import {
-  type EsigStorage,
-  createEsigStorage,
-  esigLoggingConfig,
-} from "./esigs";
-import {
-  type SessionStorage,
-  createSessionStorage,
-  sessionLoggingConfig,
-} from "./sessions";
+import { type WorkerWshStorage, createWorkerWshStorage, workerWshLoggingConfig } from "./worker-wsh";
+import { type WorkerMshStorage, createWorkerMshStorage, workerMshLoggingConfig } from "./worker-msh";
+import { type WorkerHoursStorage, createWorkerHoursStorage, workerHoursLoggingConfig } from "./worker-hours";
+import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./policies";
+import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnitLoggingConfig } from "./bargaining-units";
+import { type EmployerPolicyHistoryStorage, createEmployerPolicyHistoryStorage, employerPolicyHistoryLoggingConfig } from "./employer-policy-history";
+import { type WmbScanQueueStorage, createWmbScanQueueStorage } from "./wmb-scan-queue";
+import { type CardcheckDefinitionStorage, createCardcheckDefinitionStorage, cardcheckDefinitionLoggingConfig } from "./cardcheck-definitions";
+import { type CardcheckStorage, createCardcheckStorage, cardcheckLoggingConfig } from "./cardchecks";
+import { type EsigStorage, createEsigStorage, esigLoggingConfig } from "./esigs";
+import { type SessionStorage, createSessionStorage, sessionLoggingConfig } from "./sessions";
 import { type FloodStorage, createFloodStorage } from "./flood";
-import {
-  type BargainingUnitStorage,
-  createBargainingUnitStorage,
-  bargainingUnitLoggingConfig,
-} from "./bargaining-units";
-import {
-  type EventStorage,
-  type EventOccurrenceStorage,
-  type EventParticipantStorage,
-  createEventStorage,
-  createEventOccurrenceStorage,
-  createEventParticipantStorage,
-  eventLoggingConfig,
-  eventOccurrenceLoggingConfig,
-  eventParticipantLoggingConfig,
-} from "./events";
-import {
-  type DispatchJobStorage,
-  createDispatchJobStorage,
-  dispatchJobLoggingConfig,
-} from "./dispatch-jobs";
-import {
-  type DispatchStorage,
-  createDispatchStorage,
-  dispatchLoggingConfig,
-} from "./dispatches";
-import {
-  type WorkerStewardAssignmentStorage,
-  createWorkerStewardAssignmentStorage,
-  workerStewardAssignmentLoggingConfig,
-} from "./worker-steward-assignments";
-import {
-  type BtuCsgStorage,
-  createBtuCsgStorage,
-  btuCsgLoggingConfig,
-} from "./sitespecific-btu-csg";
-import {
-  type BtuEmployerMapStorage,
-  createBtuEmployerMapStorage,
-  btuEmployerMapLoggingConfig,
-} from "./sitespecific-btu-employer-map";
-import {
-  type WorkerBanStorage,
-  createWorkerBanStorage,
-  workerBanLoggingConfig,
-} from "./worker-bans";
-import {
-  type WorkerDispatchDncStorage,
-  createWorkerDispatchDncStorage,
-  workerDispatchDncLoggingConfig,
-} from "./worker-dispatch-dnc";
-import {
-  withStorageLogging,
-  type StorageLoggingConfig,
-} from "./middleware/logging";
-import { db } from "../db";
-import {
-  optionsEmploymentStatus,
-  employers,
-  workers,
-  contacts,
-} from "@shared/schema";
+import { type EventStorage, createEventStorage, eventLoggingConfig, type EventOccurrenceStorage, createEventOccurrenceStorage, eventOccurrenceLoggingConfig, type EventParticipantStorage, createEventParticipantStorage, eventParticipantLoggingConfig } from "./events";
+import { type DispatchJobStorage, createDispatchJobStorage, dispatchJobLoggingConfig } from "./dispatch-jobs";
+import { type DispatchStorage, createDispatchStorage, dispatchLoggingConfig } from "./dispatches";
+import { type WorkerStewardAssignmentStorage, createWorkerStewardAssignmentStorage, workerStewardAssignmentLoggingConfig } from "./worker-steward-assignments";
+import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./sitespecific-btu-csg";
+import { type BtuEmployerMapStorage, createBtuEmployerMapStorage, btuEmployerMapLoggingConfig } from "./sitespecific-btu-employer-map";
+import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
+import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./worker-dispatch-dnc";
+import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./worker-skills";
+import { type WorkerCertificationStorage, createWorkerCertificationStorage, workerCertificationLoggingConfig } from "./worker-certifications";
+import { type WorkerRatingStorage, createWorkerRatingStorage, workerRatingLoggingConfig } from "./worker-ratings";
+import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfig } from "./edls-sheets";
+import { type EdlsCrewsStorage, createEdlsCrewsStorage, edlsCrewsLoggingConfig } from "./edls-crews";
+import { type EdlsAssignmentsStorage, createEdlsAssignmentsStorage, edlsAssignmentsLoggingConfig } from "./edls-assignments";
+import { type AuthIdentitiesStorage, createAuthIdentitiesStorage } from "./auth-identities";
+import { type WorkerDispatchEligDenormStorage, createWorkerDispatchEligDenormStorage } from "./worker-dispatch-elig-denorm";
+import { type RawSqlStorage, createRawSqlStorage } from "./raw-sql";
+import { type ReadOnlyStorage, createReadOnlyStorage } from "./read-only";
+import { type WsBundleStorage, type WsClientStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsBundleStorage, createWsClientStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
+import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
+import { db } from "./db";
+import { employers, workers, contacts } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 export interface IStorage {
@@ -210,7 +91,6 @@ export interface IStorage {
   workers: WorkerStorage;
   employers: EmployerStorage;
   contacts: ContactsStorage;
-  options: OptionsStorage;
   trustBenefits: TrustBenefitStorage;
   trustProviders: TrustProviderStorage;
   trustProviderContacts: TrustProviderContactStorage;
@@ -227,6 +107,7 @@ export interface IStorage {
   chargePluginConfigs: ChargePluginConfigStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
+  workerMsh: WorkerMshStorage;
   workerHours: WorkerHoursStorage;
   policies: PolicyStorage;
   bargainingUnits: BargainingUnitStorage;
@@ -247,6 +128,20 @@ export interface IStorage {
   btuEmployerMap: BtuEmployerMapStorage;
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
+  workerSkills: WorkerSkillStorage;
+  workerCertifications: WorkerCertificationStorage;
+  workerRatings: WorkerRatingStorage;
+  edlsSheets: EdlsSheetsStorage;
+  edlsCrews: EdlsCrewsStorage;
+  edlsAssignments: EdlsAssignmentsStorage;
+  authIdentities: AuthIdentitiesStorage;
+  workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
+  rawSql: RawSqlStorage;
+  readOnly: ReadOnlyStorage;
+  wsBundles: WsBundleStorage;
+  wsClients: WsClientStorage;
+  wsClientCredentials: WsClientCredentialStorage;
+  wsClientIpRules: WsClientIpRuleStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -255,7 +150,6 @@ export class DatabaseStorage implements IStorage {
   workers: WorkerStorage;
   employers: EmployerStorage;
   contacts: ContactsStorage;
-  options: OptionsStorage;
   trustBenefits: TrustBenefitStorage;
   trustProviders: TrustProviderStorage;
   trustProviderContacts: TrustProviderContactStorage;
@@ -272,6 +166,7 @@ export class DatabaseStorage implements IStorage {
   chargePluginConfigs: ChargePluginConfigStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
+  workerMsh: WorkerMshStorage;
   workerHours: WorkerHoursStorage;
   policies: PolicyStorage;
   bargainingUnits: BargainingUnitStorage;
@@ -292,34 +187,42 @@ export class DatabaseStorage implements IStorage {
   btuEmployerMap: BtuEmployerMapStorage;
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
+  workerSkills: WorkerSkillStorage;
+  workerCertifications: WorkerCertificationStorage;
+  workerRatings: WorkerRatingStorage;
+  edlsSheets: EdlsSheetsStorage;
+  edlsCrews: EdlsCrewsStorage;
+  edlsAssignments: EdlsAssignmentsStorage;
+  authIdentities: AuthIdentitiesStorage;
+  workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
+  rawSql: RawSqlStorage;
+  readOnly: ReadOnlyStorage;
+  wsBundles: WsBundleStorage;
+  wsClients: WsClientStorage;
+  wsClientCredentials: WsClientCredentialStorage;
+  wsClientIpRules: WsClientIpRuleStorage;
 
   constructor() {
     this.variables = withStorageLogging(
       createVariableStorage(),
       variableLoggingConfig,
     );
-    this.contacts = withStorageLogging(
-      createContactsStorage(addressLoggingConfig, phoneNumberLoggingConfig),
-      contactLoggingConfig,
-    );
+    // Create contacts storage with logging for sub-storages
+    const contactsBase = createContactsStorage(addressLoggingConfig, phoneNumberLoggingConfig);
+    // Apply logging to contact methods and preserve sub-storages
+    const contactsWithLogging = withStorageLogging(contactsBase, contactLoggingConfig);
+    this.contacts = {
+      ...contactsWithLogging,
+      addresses: contactsBase.addresses,
+      phoneNumbers: contactsBase.phoneNumbers,
+    };
     this.users = withStorageLogging(createUserStorage(this.contacts), userLoggingConfig);
     this.workers = withStorageLogging(
       createWorkerStorage(this.contacts),
       workerLoggingConfig,
     );
-    this.employers = withStorageLogging(
-      createEmployerStorage(),
-      employerLoggingConfig,
-    );
-
-    // Create options storage with logged employer contact types
-    const optionsStorage = createOptionsStorage();
-    optionsStorage.employerContactTypes = withStorageLogging(
-      createEmployerContactTypeStorage(),
-      employerContactTypeLoggingConfig,
-    );
-    this.options = optionsStorage;
-
+    this.employers = withStorageLogging(createEmployerStorage(), employerLoggingConfig);
+    
     this.trustBenefits = withStorageLogging(
       createTrustBenefitStorage(),
       trustBenefitLoggingConfig,
@@ -370,6 +273,16 @@ export class DatabaseStorage implements IStorage {
       ),
       workerWshLoggingConfig,
     );
+    this.workerMsh = withStorageLogging(
+      createWorkerMshStorage(
+        this.workers.updateWorkerMemberStatuses.bind(this.workers),
+        async (workerId: string) => {
+          await this.workers.syncWorkerEmployerDenorm(workerId);
+          await this.wmbScanQueue.invalidateWorkerScans(workerId);
+        }
+      ),
+      workerMshLoggingConfig
+    );
     this.workerHours = withStorageLogging(
       createWorkerHoursStorage(
         async (workerId: string) => {
@@ -379,6 +292,10 @@ export class DatabaseStorage implements IStorage {
       ),
       workerHoursLoggingConfig,
     );
+    
+    // Inject denorm data provider into workers storage now that workerHours is available
+    this.workers.setDenormDataProvider(this.workerHours.getDenormData.bind(this.workerHours));
+    
     this.policies = withStorageLogging(
       createPolicyStorage(),
       policyLoggingConfig,
@@ -416,42 +333,32 @@ export class DatabaseStorage implements IStorage {
     );
     this.flood = createFloodStorage();
     this.events = withStorageLogging(createEventStorage(), eventLoggingConfig);
-    this.eventOccurrences = withStorageLogging(
-      createEventOccurrenceStorage(),
-      eventOccurrenceLoggingConfig,
+    this.eventOccurrences = withStorageLogging(createEventOccurrenceStorage(), eventOccurrenceLoggingConfig);
+    this.eventParticipants = withStorageLogging(createEventParticipantStorage(), eventParticipantLoggingConfig);
+    this.dispatchJobs = withStorageLogging(createDispatchJobStorage(), dispatchJobLoggingConfig);
+    this.dispatches = withStorageLogging(createDispatchStorage(), dispatchLoggingConfig);
+    this.workerStewardAssignments = withStorageLogging(createWorkerStewardAssignmentStorage(), workerStewardAssignmentLoggingConfig);
+    this.btuCsg = withStorageLogging(createBtuCsgStorage(), btuCsgLoggingConfig);
+    this.btuEmployerMap = withStorageLogging(createBtuEmployerMapStorage(), btuEmployerMapLoggingConfig);
+    this.workerBans = withStorageLogging(createWorkerBanStorage(), workerBanLoggingConfig);
+    this.workerDispatchDnc = withStorageLogging(createWorkerDispatchDncStorage(), workerDispatchDncLoggingConfig);
+    this.workerSkills = withStorageLogging(createWorkerSkillStorage(), workerSkillLoggingConfig);
+    this.workerCertifications = withStorageLogging(
+      createWorkerCertificationStorage({ workerSkills: this.workerSkills }), 
+      workerCertificationLoggingConfig
     );
-    this.eventParticipants = withStorageLogging(
-      createEventParticipantStorage(),
-      eventParticipantLoggingConfig,
-    );
-    this.dispatchJobs = withStorageLogging(
-      createDispatchJobStorage(),
-      dispatchJobLoggingConfig,
-    );
-    this.dispatches = withStorageLogging(
-      createDispatchStorage(),
-      dispatchLoggingConfig,
-    );
-    this.workerStewardAssignments = withStorageLogging(
-      createWorkerStewardAssignmentStorage(),
-      workerStewardAssignmentLoggingConfig,
-    );
-    this.btuCsg = withStorageLogging(
-      createBtuCsgStorage(),
-      btuCsgLoggingConfig,
-    );
-    this.btuEmployerMap = withStorageLogging(
-      createBtuEmployerMapStorage(),
-      btuEmployerMapLoggingConfig,
-    );
-    this.workerBans = withStorageLogging(
-      createWorkerBanStorage(),
-      workerBanLoggingConfig,
-    );
-    this.workerDispatchDnc = withStorageLogging(
-      createWorkerDispatchDncStorage(),
-      workerDispatchDncLoggingConfig,
-    );
+    this.workerRatings = withStorageLogging(createWorkerRatingStorage(), workerRatingLoggingConfig);
+    this.edlsSheets = withStorageLogging(createEdlsSheetsStorage(), edlsSheetsLoggingConfig);
+    this.edlsCrews = withStorageLogging(createEdlsCrewsStorage(), edlsCrewsLoggingConfig);
+    this.edlsAssignments = withStorageLogging(createEdlsAssignmentsStorage(), edlsAssignmentsLoggingConfig);
+    this.authIdentities = createAuthIdentitiesStorage();
+    this.workerDispatchEligDenorm = createWorkerDispatchEligDenormStorage();
+    this.rawSql = createRawSqlStorage();
+    this.readOnly = createReadOnlyStorage();
+    this.wsBundles = createWsBundleStorage();
+    this.wsClients = createWsClientStorage();
+    this.wsClientCredentials = createWsClientCredentialStorage();
+    this.wsClientIpRules = createWsClientIpRuleStorage();
   }
 }
 

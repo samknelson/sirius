@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { getClient } from './transaction-context';
 import {
   workers,
   contacts,
@@ -12,11 +12,70 @@ import {
   type TrustBenefit,
   type Employer,
 } from "@shared/schema";
-import { eq, sql, desc, and } from "drizzle-orm";
+import { eq, sql, desc, and, ne } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
+import type { WorkerDenormData } from "./worker-hours";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { logger } from "../logger";
 import { eventBus, EventType } from "../services/event-bus";
+import { 
+  type ValidationError,
+  createAsyncStorageValidator
+} from "./utils/validation";
+import { parseSSN, validateSSN } from "@shared/utils/ssn";
+
+export const ssnValidate = createAsyncStorageValidator<{ ssn: string | null; workerId?: string }, never, { ssn: string | null }>(
+  async (data) => {
+    const errors: ValidationError[] = [];
+    
+    if (!data.ssn || !data.ssn.trim()) {
+      return { ok: true, value: { ssn: null } };
+    }
+    
+    const cleanSSN = data.ssn.trim();
+    
+    let parsedSSN: string;
+    try {
+      parsedSSN = parseSSN(cleanSSN);
+    } catch (error) {
+      errors.push({
+        field: 'ssn',
+        code: 'INVALID_FORMAT',
+        message: error instanceof Error ? error.message : "Invalid SSN format"
+      });
+      return { ok: false, errors };
+    }
+    
+    const validation = validateSSN(parsedSSN);
+    if (!validation.valid) {
+      errors.push({
+        field: 'ssn',
+        code: 'INVALID_SSN',
+        message: validation.error || "Invalid SSN"
+      });
+      return { ok: false, errors };
+    }
+    
+    if (data.workerId) {
+      const client = getClient();
+      const [existingWorker] = await client
+        .select({ id: workers.id })
+        .from(workers)
+        .where(and(eq(workers.ssn, parsedSSN), ne(workers.id, data.workerId)));
+      
+      if (existingWorker) {
+        errors.push({
+          field: 'ssn',
+          code: 'DUPLICATE_SSN',
+          message: "This SSN is already assigned to another worker"
+        });
+        return { ok: false, errors };
+      }
+    }
+    
+    return { ok: true, value: { ssn: parsedSSN } };
+  }
+);
 
 export interface WorkerEmployerSummary {
   workerId: string;
@@ -34,6 +93,7 @@ export interface WorkerWithDetails {
   contact_id: string;
   ssn: string | null;
   denorm_ws_id: string | null;
+  denorm_job_title: string | null;
   denorm_home_employer_id: string | null;
   denorm_employer_ids: string[] | null;
   contact_name: string | null;
@@ -90,8 +150,14 @@ export interface WorkersPaginationParams {
   hasMultipleEmployers?: boolean;
 }
 
+export interface WorkerSearchResult {
+  workers: Array<{ id: string; siriusId: number; displayName: string }>;
+  total: number;
+}
+
 export interface WorkerStorage {
   getAllWorkers(): Promise<Worker[]>;
+  searchWorkers(query: string, limit?: number): Promise<WorkerSearchResult>;
   getWorkersWithDetails(): Promise<WorkerWithDetails[]>;
   getWorkersWithDetailsPaginated(params: WorkersPaginationParams): Promise<PaginatedWorkersResult>;
   getWorkersForExport(params: WorkersExportParams): Promise<WorkerWithDetails[]>;
@@ -101,6 +167,14 @@ export interface WorkerStorage {
   getWorkerBySSN(ssn: string): Promise<Worker | undefined>;
   getWorkerByContactEmail(email: string): Promise<Worker | undefined>;
   getWorkerByContactId(contactId: string): Promise<Worker | undefined>;
+  getWorkersByHomeEmployerId(employerId: string): Promise<Array<{
+    id: string;
+    siriusId: number | null;
+    contactId: string;
+    displayName: string | null;
+    given: string | null;
+    family: string | null;
+  }>>;
   createWorker(name: string): Promise<Worker>;
   // Update methods that delegate to contact storage (contact storage already has logging)
   updateWorkerContactName(workerId: string, name: string): Promise<Worker | undefined>;
@@ -117,6 +191,8 @@ export interface WorkerStorage {
   updateWorkerContactGender(workerId: string, gender: string | null, genderNota: string | null): Promise<Worker | undefined>;
   updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined>;
   updateWorkerStatus(workerId: string, denormWsId: string | null): Promise<Worker | undefined>;
+  updateWorkerMemberStatuses(workerId: string, denormMsIds: string[] | null): Promise<Worker | undefined>;
+  setDenormDataProvider(provider: (workerId: string) => Promise<WorkerDenormData>): void;
   syncWorkerEmployerDenorm(workerId: string): Promise<void>;
   updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined>;
   deleteWorker(id: string): Promise<boolean>;
@@ -129,23 +205,75 @@ export interface WorkerStorage {
 }
 
 export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerStorage {
+  let denormDataProvider: ((workerId: string) => Promise<WorkerDenormData>) | null = null;
+
   const storage = {
+    setDenormDataProvider(provider: (workerId: string) => Promise<WorkerDenormData>): void {
+      denormDataProvider = provider;
+    },
+
     async getAllWorkers(): Promise<Worker[]> {
-      return await db.select().from(workers);
+      const client = getClient();
+      return await client.select().from(workers);
+    },
+
+    async searchWorkers(query: string, limit: number = 10): Promise<WorkerSearchResult> {
+      const client = getClient();
+      const trimmedQuery = query.trim();
+      
+      const numericQuery = parseInt(trimmedQuery, 10);
+      const isNumeric = !isNaN(numericQuery);
+      
+      let results;
+      if (isNumeric) {
+        results = await client
+          .select({
+            id: workers.id,
+            siriusId: workers.siriusId,
+            displayName: contacts.displayName,
+          })
+          .from(workers)
+          .innerJoin(contacts, eq(workers.contactId, contacts.id))
+          .where(eq(workers.siriusId, numericQuery))
+          .limit(limit);
+      } else {
+        results = await client
+          .select({
+            id: workers.id,
+            siriusId: workers.siriusId,
+            displayName: contacts.displayName,
+          })
+          .from(workers)
+          .innerJoin(contacts, eq(workers.contactId, contacts.id))
+          .where(sql`${contacts.displayName} ILIKE ${'%' + trimmedQuery + '%'}`)
+          .orderBy(contacts.displayName)
+          .limit(limit);
+      }
+      
+      return {
+        workers: results.map(r => ({
+          id: r.id,
+          siriusId: r.siriusId,
+          displayName: r.displayName || `Worker #${r.siriusId}`,
+        })),
+        total: results.length,
+      };
     },
 
     async getWorkersWithDetails(): Promise<WorkerWithDetails[]> {
+      const client = getClient();
       const now = new Date();
       const currentMonth = now.getMonth() + 1;
       const currentYear = now.getFullYear();
       
-      const result = await db.execute(sql`
+      const result = await client.execute(sql`
         SELECT 
           w.id,
           w.sirius_id,
           w.contact_id,
           w.ssn,
           w.denorm_ws_id,
+          w.denorm_job_title,
           w.denorm_home_employer_id,
           w.denorm_employer_ids,
           c.display_name as contact_name,
@@ -329,7 +457,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         : sql``;
       
       // Get total count first (without benefits aggregation for speed)
-      const countResult = await db.execute(sql`
+      const client = getClient();
+      const countResult = await client.execute(sql`
         SELECT COUNT(*) as total
         FROM workers w
         INNER JOIN contacts c ON w.contact_id = c.id
@@ -341,7 +470,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       const orderDirection = sortOrder === 'desc' ? sql`DESC` : sql`ASC`;
       
       // Get paginated workers with details
-      const result = await db.execute(sql`
+      const result = await client.execute(sql`
         SELECT 
           w.id,
           w.sirius_id,
@@ -535,7 +664,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       const orderDirection = sortOrder === 'desc' ? sql`DESC` : sql`ASC`;
       
       // Get all matching workers with details (no pagination limit)
-      const result = await db.execute(sql`
+      const client = getClient();
+      const result = await client.execute(sql`
         SELECT 
           w.id,
           w.sirius_id,
@@ -632,7 +762,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]> {
-      const result = await db.execute(sql`
+      const client = getClient();
+      const result = await client.execute(sql`
         WITH latest_hours AS (
           SELECT DISTINCT ON (worker_id, employer_id)
             worker_id,
@@ -677,11 +808,12 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async getWorkersCurrentBenefits(month?: number, year?: number): Promise<WorkerCurrentBenefits[]> {
+      const client = getClient();
       const now = new Date();
       const currentMonth = month ?? (now.getMonth() + 1);
       const currentYear = year ?? now.getFullYear();
 
-      const result = await db.execute(sql`
+      const result = await client.execute(sql`
         SELECT 
           w.id as worker_id,
           COALESCE(
@@ -718,11 +850,13 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async getWorker(id: string): Promise<Worker | undefined> {
-      const [worker] = await db.select().from(workers).where(eq(workers.id, id));
+      const client = getClient();
+      const [worker] = await client.select().from(workers).where(eq(workers.id, id));
       return worker || undefined;
     },
 
     async getWorkerBySSN(ssn: string): Promise<Worker | undefined> {
+      const client = getClient();
       // Parse SSN to normalize format before lookup
       const { parseSSN } = await import('@shared/utils/ssn');
       let normalizedSSN: string;
@@ -735,7 +869,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       
       // Use SQL to strip non-digits from database column for comparison
       // This allows matching both normalized SSNs (123456789) and legacy dashed SSNs (123-45-6789)
-      const [worker] = await db
+      const [worker] = await client
         .select()
         .from(workers)
         .where(sql`regexp_replace(${workers.ssn}, '[^0-9]', '', 'g') = ${normalizedSSN}`);
@@ -744,13 +878,16 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async getWorkerByContactEmail(email: string): Promise<Worker | undefined> {
-      const [result] = await db
+      const client = getClient();
+      const [result] = await client
         .select({
           id: workers.id,
           siriusId: workers.siriusId,
           contactId: workers.contactId,
           ssn: workers.ssn,
           denormWsId: workers.denormWsId,
+          denormMsIds: workers.denormMsIds,
+          denormJobTitle: workers.denormJobTitle,
           denormHomeEmployerId: workers.denormHomeEmployerId,
           denormEmployerIds: workers.denormEmployerIds,
           bargainingUnitId: workers.bargainingUnitId,
@@ -763,14 +900,41 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async getWorkerByContactId(contactId: string): Promise<Worker | undefined> {
-      const [worker] = await db
+      const client = getClient();
+      const [worker] = await client
         .select()
         .from(workers)
         .where(eq(workers.contactId, contactId));
       return worker || undefined;
     },
 
+    async getWorkersByHomeEmployerId(employerId: string): Promise<Array<{
+      id: string;
+      siriusId: number | null;
+      contactId: string;
+      displayName: string | null;
+      given: string | null;
+      family: string | null;
+    }>> {
+      const client = getClient();
+      const result = await client
+        .select({
+          id: workers.id,
+          siriusId: workers.siriusId,
+          contactId: workers.contactId,
+          displayName: contacts.displayName,
+          given: contacts.given,
+          family: contacts.family,
+        })
+        .from(workers)
+        .innerJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(eq(workers.denormHomeEmployerId, employerId))
+        .orderBy(contacts.family, contacts.given);
+      return result;
+    },
+
     async createWorker(name: string): Promise<Worker> {
+      const client = getClient();
       // For simple name input, parse into given/family names
       const nameParts = name.trim().split(' ');
       const given = nameParts[0] || '';
@@ -784,7 +948,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       });
       
       // Create worker with the contact reference
-      const [worker] = await db
+      const [worker] = await client
         .insert(workers)
         .values({ contactId: contact.id })
         .returning();
@@ -793,8 +957,9 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async updateWorkerContactName(workerId: string, name: string): Promise<Worker | undefined> {
+      const client = getClient();
       // Get the current worker to find its contact
-      const [currentWorker] = await db.select().from(workers).where(eq(workers.id, workerId));
+      const [currentWorker] = await client.select().from(workers).where(eq(workers.id, workerId));
       if (!currentWorker) {
         return undefined;
       }
@@ -816,8 +981,9 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         credentials?: string;
       }
     ): Promise<Worker | undefined> {
+      const client = getClient();
       // Get the current worker to find its contact
-      const [currentWorker] = await db.select().from(workers).where(eq(workers.id, workerId));
+      const [currentWorker] = await client.select().from(workers).where(eq(workers.id, workerId));
       if (!currentWorker) {
         return undefined;
       }
@@ -829,8 +995,9 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async updateWorkerContactEmail(workerId: string, email: string): Promise<Worker | undefined> {
+      const client = getClient();
       // Get the current worker to find its contact
-      const [currentWorker] = await db.select().from(workers).where(eq(workers.id, workerId));
+      const [currentWorker] = await client.select().from(workers).where(eq(workers.id, workerId));
       if (!currentWorker) {
         return undefined;
       }
@@ -842,8 +1009,9 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async updateWorkerContactBirthDate(workerId: string, birthDate: string | null): Promise<Worker | undefined> {
+      const client = getClient();
       // Get the current worker to find its contact
-      const [currentWorker] = await db.select().from(workers).where(eq(workers.id, workerId));
+      const [currentWorker] = await client.select().from(workers).where(eq(workers.id, workerId));
       if (!currentWorker) {
         return undefined;
       }
@@ -855,8 +1023,9 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async updateWorkerContactGender(workerId: string, gender: string | null, genderNota: string | null): Promise<Worker | undefined> {
+      const client = getClient();
       // Get the current worker to find its contact
-      const [currentWorker] = await db.select().from(workers).where(eq(workers.id, workerId));
+      const [currentWorker] = await client.select().from(workers).where(eq(workers.id, workerId));
       if (!currentWorker) {
         return undefined;
       }
@@ -868,56 +1037,21 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined> {
-      const cleanSSN = ssn.trim();
+      const client = getClient();
+      const validated = await ssnValidate.validateOrThrow({ ssn, workerId });
       
-      // Allow clearing the SSN
-      if (!cleanSSN) {
-        const [updatedWorker] = await db
-          .update(workers)
-          .set({ ssn: null })
-          .where(eq(workers.id, workerId))
-          .returning();
-        
-        return updatedWorker || undefined;
-      }
+      const [updatedWorker] = await client
+        .update(workers)
+        .set({ ssn: validated.ssn })
+        .where(eq(workers.id, workerId))
+        .returning();
       
-      // Import SSN utilities
-      const { parseSSN, validateSSN } = await import("@shared/utils/ssn");
-      
-      // Parse SSN to normalize format (strips non-digits, pads with zeros)
-      let parsedSSN: string;
-      try {
-        parsedSSN = parseSSN(cleanSSN);
-      } catch (error) {
-        throw new Error(error instanceof Error ? error.message : "Invalid SSN format");
-      }
-      
-      // Validate SSN format and rules
-      const validation = validateSSN(parsedSSN);
-      if (!validation.valid) {
-        throw new Error(validation.error || "Invalid SSN");
-      }
-      
-      try {
-        // Update the worker's SSN with parsed (normalized) value
-        const [updatedWorker] = await db
-          .update(workers)
-          .set({ ssn: parsedSSN })
-          .where(eq(workers.id, workerId))
-          .returning();
-        
-        return updatedWorker || undefined;
-      } catch (error: any) {
-        // Check for unique constraint violation
-        if (error.code === '23505' && error.constraint === 'workers_ssn_unique') {
-          throw new Error("This SSN is already assigned to another worker");
-        }
-        throw error;
-      }
+      return updatedWorker || undefined;
     },
 
     async updateWorkerStatus(workerId: string, denormWsId: string | null): Promise<Worker | undefined> {
-      const [updatedWorker] = await db
+      const client = getClient();
+      const [updatedWorker] = await client
         .update(workers)
         .set({ denormWsId })
         .where(eq(workers.id, workerId))
@@ -926,49 +1060,42 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return updatedWorker || undefined;
     },
 
+    async updateWorkerMemberStatuses(workerId: string, denormMsIds: string[] | null): Promise<Worker | undefined> {
+      const client = getClient();
+      const [updatedWorker] = await client
+        .update(workers)
+        .set({ denormMsIds })
+        .where(eq(workers.id, workerId))
+        .returning();
+      
+      return updatedWorker || undefined;
+    },
+
     async syncWorkerEmployerDenorm(workerId: string): Promise<void> {
-      const result = await db.execute(sql`
-        WITH latest_hours AS (
-          SELECT DISTINCT ON (employer_id)
-            employer_id,
-            home
-          FROM worker_hours
-          WHERE worker_id = ${workerId}
-          ORDER BY employer_id, year DESC, month DESC, day DESC
-        ),
-        latest_ws AS (
-          SELECT ws_id
-          FROM worker_wsh
-          WHERE worker_id = ${workerId}
-          ORDER BY date DESC, created_at DESC NULLS LAST, id DESC
-          LIMIT 1
-        )
-        SELECT 
-          (SELECT employer_id FROM latest_hours WHERE home = true LIMIT 1) as home_employer_id,
-          ARRAY(SELECT employer_id FROM latest_hours) as employer_ids,
-          (SELECT ws_id FROM latest_ws) as latest_ws_id
-      `);
+      if (!denormDataProvider) {
+        throw new Error("Denorm data provider not set. Call setDenormDataProvider first.");
+      }
       
-      const row = result.rows[0] as { home_employer_id: string | null; employer_ids: string[] | null; latest_ws_id: string | null } | undefined;
-      const homeEmployerId = row?.home_employer_id || null;
-      const employerIds = row?.employer_ids?.length ? row.employer_ids : null;
-      const denormWsId = homeEmployerId ? (row?.latest_ws_id || null) : null;
+      const denormData = await denormDataProvider(workerId);
       
-      await db
+      const client = getClient();
+      await client
         .update(workers)
         .set({
-          denormHomeEmployerId: homeEmployerId,
-          denormEmployerIds: employerIds,
-          denormWsId: denormWsId,
+          denormHomeEmployerId: denormData.homeEmployerId,
+          denormEmployerIds: denormData.employerIds,
+          denormWsId: denormData.latestWsId,
+          denormJobTitle: denormData.jobTitle,
         })
         .where(eq(workers.id, workerId));
     },
 
     async updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined> {
+      const client = getClient();
       // Normalize empty string to null
       const normalizedId = bargainingUnitId && bargainingUnitId.trim() ? bargainingUnitId.trim() : null;
       
-      const [updatedWorker] = await db
+      const [updatedWorker] = await client
         .update(workers)
         .set({ bargainingUnitId: normalizedId })
         .where(eq(workers.id, workerId))
@@ -978,14 +1105,15 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async deleteWorker(id: string): Promise<boolean> {
+      const client = getClient();
       // Get the worker to find its contact
-      const [worker] = await db.select().from(workers).where(eq(workers.id, id));
+      const [worker] = await client.select().from(workers).where(eq(workers.id, id));
       if (!worker) {
         return false;
       }
       
       // Delete the worker first
-      const result = await db.delete(workers).where(eq(workers.id, id)).returning();
+      const result = await client.delete(workers).where(eq(workers.id, id)).returning();
       
       // If worker was deleted, also delete the corresponding contact using contact storage
       if (result.length > 0) {
@@ -997,7 +1125,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
     // Worker benefits methods
     async getWorkerBenefits(workerId: string): Promise<any[]> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           id: trustWmb.id,
           month: trustWmb.month,
@@ -1018,7 +1147,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb> {
-      const [wmb] = await db
+      const client = getClient();
+      const [wmb] = await client
         .insert(trustWmb)
         .values(data)
         .returning();
@@ -1062,7 +1192,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async deleteWorkerBenefit(id: string): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(trustWmb)
         .where(eq(trustWmb.id, id))
         .returning();
@@ -1109,7 +1240,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .select({ id: trustWmb.id })
         .from(trustWmb)
         .where(
@@ -1146,7 +1278,8 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
       getEntityId: (args, result) => result?.id || 'new worker',
       getHostEntityId: (args, result) => result?.id,
       after: async (args, result, storage) => {
-        const [contact] = await db.select().from(contacts).where(eq(contacts.id, result.contactId));
+        const client = getClient();
+        const [contact] = await client.select().from(contacts).where(eq(contacts.id, result.contactId));
         return {
           worker: result,
           contact: contact,
@@ -1170,7 +1303,8 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
           return null;
         }
         
-        const [contact] = await db.select().from(contacts).where(eq(contacts.id, worker.contactId));
+        const client = getClient();
+        const [contact] = await client.select().from(contacts).where(eq(contacts.id, worker.contactId));
         return {
           worker: worker,
           contact: contact,
@@ -1207,7 +1341,8 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
           return null;
         }
         
-        const [workStatus] = await db.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, worker.denormWsId));
+        const client = getClient();
+        const [workStatus] = await client.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, worker.denormWsId));
         return {
           worker: worker,
           workStatus: workStatus,
@@ -1234,7 +1369,8 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
           };
         }
         
-        const [workStatus] = await db.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, result.denormWsId));
+        const client = getClient();
+        const [workStatus] = await client.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, result.denormWsId));
         return {
           worker: result,
           workStatus: workStatus,

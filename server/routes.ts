@@ -13,7 +13,7 @@ import { registerEmployerContactRoutes } from "./modules/employer-contacts";
 import { registerTrustBenefitsRoutes } from "./modules/trust-benefits";
 import { registerTrustProvidersRoutes } from "./modules/trust-providers";
 import { registerTrustProviderContactRoutes } from "./modules/trust-provider-contacts";
-import { registerOptionsRoutes } from "./modules/options";
+import { registerConsolidatedOptionsRoutes } from "./modules/options-routes";
 import { registerWorkerIdsRoutes } from "./modules/worker-ids";
 import { registerAddressValidationRoutes } from "./modules/address-validation";
 import {
@@ -39,6 +39,7 @@ import { registerLedgerPaymentRoutes } from "./modules/ledger/payments";
 import { registerAccessPolicyRoutes } from "./modules/access-policies";
 import { registerLogRoutes } from "./modules/logs";
 import { registerWorkerWshRoutes } from "./modules/worker-wsh";
+import { registerWorkerMshRoutes } from "./modules/worker-msh";
 import { registerWorkerHoursRoutes } from "./modules/worker-hours";
 import { registerQuickstartRoutes } from "./modules/quickstart";
 import { registerCronJobRoutes } from "./modules/cron_jobs";
@@ -69,16 +70,24 @@ import { registerWorkerDispatchStatusRoutes } from "./modules/worker-dispatch-st
 import { registerWorkerDispatchDncRoutes } from "./modules/worker-dispatch-dnc";
 import { registerWorkerDispatchHfeRoutes } from "./modules/worker-dispatch-hfe";
 import { registerWorkerBansRoutes } from "./modules/worker-bans";
+import { registerWorkerSkillsRoutes } from "./modules/worker-skills";
+import { registerWorkerCertificationsRoutes } from "./modules/worker-certifications";
+import { registerWorkerRatingsRoutes } from "./modules/worker-ratings";
 import { requireComponent } from "./modules/components";
 import { registerWorkerStewardAssignmentRoutes } from "./modules/worker-steward-assignments";
 import { registerBtuCsgRoutes } from "./modules/sitespecific-btu-csg";
+import { registerEdlsSheetsRoutes } from "./modules/edls-sheets";
+import { registerEdlsTasksRoutes } from "./modules/edls-tasks";
+import { registerWebServiceBundle } from "./modules/webservices";
+import { setupEdlsRoutes, EDLS_BUNDLE_CODE } from "./modules/webservices/edls";
+import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
 import { registerTerminologyRoutes } from "./modules/terminology";
 import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
 import { addressValidationService } from "./services/address-validation";
 import { phoneValidationService } from "./services/phone-validation";
 import { serviceRegistry } from "./services/service-registry";
-import { isAuthenticated } from "./replitAuth";
+import { isAuthenticated } from "./auth";
 
 // Authentication middleware
 const requireAuth = isAuthenticated;
@@ -90,12 +99,11 @@ const requirePermission = (permissionKey: string) => {
     if (!user || !user.claims) {
       return res.status(401).json({ message: "Authentication required" });
     }
-
-    // Get database user ID from Replit user ID, respecting masquerade
-    const replitUserId = user.claims.sub;
+    
+    // Get database user ID from external ID, respecting masquerade
     const session = req.session as any;
     const { getEffectiveUser } = await import("./modules/masquerade");
-    const { dbUser } = await getEffectiveUser(session, replitUserId);
+    const { dbUser } = await getEffectiveUser(session, user);
     if (!dbUser) {
       return res.status(401).json({ message: "User not found" });
     }
@@ -157,15 +165,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/auth/user", requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
-      const replitUserId = user.claims.sub;
       const session = req.session as any;
 
       // Get effective user (handles masquerading)
-      const { dbUser, originalUser } = await getEffectiveUser(
-        session,
-        replitUserId,
-      );
-
+      const { dbUser, originalUser } = await getEffectiveUser(session, user);
+      
       if (!dbUser) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -268,10 +272,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register trust provider contacts routes
   registerTrustProviderContactRoutes(app, requireAuth, requirePermission);
-
-  // Register options routes (worker-id-types, employer-contact-types, worker-work-statuses, employment-statuses)
-  registerOptionsRoutes(app, requireAuth, requirePermission);
-
+  
+  // Register consolidated options routes (/api/options/:type)
+  registerConsolidatedOptionsRoutes(app);
+  
   // Register worker IDs routes
   registerWorkerIdsRoutes(app, requireAuth, requirePermission);
 
@@ -308,6 +312,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register log management routes
   registerLogRoutes(app, requireAuth, requirePermission, requireAccess);
   registerWorkerWshRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerWsh);
+  registerWorkerMshRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerMsh);
   registerWorkerHoursRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerHours, storage.ledger);
   registerQuickstartRoutes(app);
 
@@ -544,6 +549,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/workers/search - Search workers by name or ID (requires workers.view permission)
+  app.get("/api/workers/search", requireAuth, requirePermission("staff"), async (req, res) => {
+    try {
+      const { q, limit: limitParam } = req.query;
+      const query = typeof q === 'string' ? q.trim() : '';
+      const limit = Math.min(parseInt(limitParam as string) || 10, 50);
+      
+      if (!query || query.length < 2) {
+        res.json({ workers: [], total: 0 });
+        return;
+      }
+      
+      const result = await storage.workers.searchWorkers(query, limit);
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to search workers:", error);
+      res.status(500).json({ message: "Failed to search workers" });
+    }
+  });
+
   // GET /api/workers/employers/summary - Get employer summary for all workers (requires staff permission)
   app.get("/api/workers/employers/summary", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
@@ -772,9 +797,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Use getEffectiveUser to support masquerade
       const user = (req as any).user;
-      const replitUserId = user?.claims?.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, replitUserId);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser?.email) {
         res.json([]);
@@ -905,7 +929,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/employers/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, isActive, typeId } = req.body;
+      const { name, isActive, typeId, industryId } = req.body;
       
       const updates: Partial<InsertEmployer> = {};
       
@@ -926,7 +950,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (typeId !== undefined) {
         updates.typeId = typeId;
       }
-
+      
+      if (industryId !== undefined) {
+        updates.industryId = industryId === null || industryId === "" ? null : industryId;
+      }
+      
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ message: "No fields to update" });
       }
@@ -1292,8 +1320,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register worker bans routes (handles all access control internally)
   registerWorkerBansRoutes(app, requireAuth, requireAccess);
 
+  // Register worker skills routes (handles all access control internally)
+  registerWorkerSkillsRoutes(app, requireAuth, requireAccess);
+
+  // Register worker certifications routes (handles all access control internally)
+  registerWorkerCertificationsRoutes(app, requireAuth, requireAccess, requirePermission);
+
+  // Register worker ratings routes (handles all access control internally)
+  registerWorkerRatingsRoutes(app, requireAuth, requireAccess, requirePermission);
+
   // Register site-specific routes
   registerBtuCsgRoutes(app, requireAuth, requirePermission);
+
+  // Register EDLS routes
+  registerEdlsSheetsRoutes(app, requireAuth, requirePermission);
+  registerEdlsTasksRoutes(app, requireAuth, requirePermission);
+
+  // Register Web Service bundles (API access via client credentials)
+  registerWebServiceBundle(app, {
+    bundleCode: EDLS_BUNDLE_CODE,
+    setupRoutes: setupEdlsRoutes,
+  });
+
+  // Register Web Service admin routes (for managing bundles, clients, credentials)
+  registerWebServiceAdminRoutes(app, requireAuth, requirePermission);
 
   const httpServer = createServer(app);
   return httpServer;

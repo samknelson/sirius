@@ -53,13 +53,16 @@ export type TabEntityType =
   | 'bargaining_unit'
   | 'btu_csg'
   | 'cron_job'
+  | 'dispatch'
   | 'dispatch_job'
   | 'dispatch_job_type'
+  | 'edls_sheet'
   | 'ledger_account'
   | 'ledger_payment'
   | 'trust_benefit'
   | 'worker_hours'
-  | 'user';
+  | 'user'
+  | 'ws_client';
 
 /**
  * Tab check request for batch access evaluation
@@ -95,7 +98,11 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'birth-date', label: 'Birth Date', hrefTemplate: '/workers/{id}/birth-date', policyId: 'worker.view' },
       { id: 'gender', label: 'Gender', hrefTemplate: '/workers/{id}/gender', policyId: 'worker.view' },
       { id: 'work-status', label: 'Work Status', hrefTemplate: '/workers/{id}/work-status', permission: 'staff' },
+      { id: 'member-status', label: 'Member Status', hrefTemplate: '/workers/{id}/member-status', permission: 'staff' },
       { id: 'user', label: 'User', hrefTemplate: '/workers/{id}/user', permission: 'staff' },
+      { id: 'skills', label: 'Skills', hrefTemplate: '/workers/{id}/skills', policyId: 'worker.view', component: 'worker.skills' },
+      { id: 'certifications', label: 'Certifications', hrefTemplate: '/workers/{id}/certifications', policyId: 'worker.view', component: 'worker.certifications' },
+      { id: 'ratings', label: 'Ratings', hrefTemplate: '/workers/{id}/ratings', permission: 'staff', component: 'worker.ratings' },
       { id: 'bans', label: 'Bans', hrefTemplate: '/workers/{id}/bans', policyId: 'worker.view', component: 'dispatch' },
     ]
   },
@@ -140,13 +147,13 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'cardchecks', label: 'Cardchecks', hrefTemplate: '/workers/{id}/union/cardchecks', policyId: 'worker.view', component: 'cardcheck' },
       { id: 'bargaining-unit', label: 'Bargaining Unit', hrefTemplate: '/workers/{id}/union/bargaining-unit', permission: 'staff', component: 'bargainingunits' },
       { id: 'steward', label: 'Steward', hrefTemplate: '/workers/{id}/union/steward', permission: 'staff', component: 'worker.steward', termKey: 'steward' },
-      { id: 'representatives', label: 'Representatives', hrefTemplate: '/workers/{id}/union/representatives', policyId: 'worker.view', component: 'worker.steward' },
     ]
   },
   { 
     id: 'dispatch', label: 'Dispatch', hrefTemplate: '/workers/{id}/dispatch/status', policyId: 'worker.view', component: 'dispatch',
     children: [
       { id: 'dispatch-status', label: 'Status', hrefTemplate: '/workers/{id}/dispatch/status', policyId: 'worker.view', component: 'dispatch' },
+      { id: 'dispatch-list', label: 'List', hrefTemplate: '/workers/{id}/dispatch/list', policyId: 'worker.view', component: 'dispatch' },
       { id: 'dispatch-dnc', label: 'Do Not Call', hrefTemplate: '/workers/{id}/dispatch/do-not-call', policyId: 'worker.view', component: 'dispatch.dnc' },
       { id: 'dispatch-hfe', label: 'Hold for Employer', hrefTemplate: '/workers/{id}/dispatch/hold-for-employer', policyId: 'worker.view', component: 'dispatch.hfe' },
     ]
@@ -243,13 +250,43 @@ export const cronJobTabTree: HierarchicalTab[] = [
 ];
 
 /**
+ * Dispatch entity tab tree (individual dispatch records)
+ */
+export const dispatchTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/dispatch/{id}', permission: 'staff', component: 'dispatch' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/dispatch/{id}/edit', permission: 'staff', component: 'dispatch' },
+  { id: 'manage', label: 'Manage', hrefTemplate: '/dispatch/{id}/manage', permission: 'staff', component: 'dispatch' },
+];
+
+/**
  * Dispatch job entity tab tree
  */
 export const dispatchJobTabTree: HierarchicalTab[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/dispatch/job/{id}', permission: 'staff', component: 'dispatch' },
-  { id: 'dispatches', label: 'Dispatches', hrefTemplate: '/dispatch/job/{id}/dispatches', permission: 'staff', component: 'dispatch' },
-  { id: 'eligible-workers', label: 'Eligible Workers', hrefTemplate: '/dispatch/job/{id}/eligible-workers', permission: 'staff', component: 'dispatch' },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/dispatch/job/{id}/edit', permission: 'dispatch.edit', component: 'dispatch' },
+  { id: 'run', label: 'Run', hrefTemplate: '/dispatch/job/{id}/run', permission: 'staff', component: 'dispatch' },
+  { 
+    id: 'dispatches', 
+    label: 'Dispatches', 
+    hrefTemplate: '/dispatch/job/{id}/dispatches/list', 
+    permission: 'staff', 
+    component: 'dispatch',
+    children: [
+      { id: 'dispatches-list', label: 'List', hrefTemplate: '/dispatch/job/{id}/dispatches/list', permission: 'staff', component: 'dispatch' },
+      { id: 'dispatches-cbn', label: 'Call by Name', hrefTemplate: '/dispatch/job/{id}/dispatches/cbn', permission: 'staff', component: 'dispatch' },
+    ]
+  },
+  { 
+    id: 'eligible-workers', 
+    label: 'Eligible Workers', 
+    hrefTemplate: '/dispatch/job/{id}/eligible-workers/list', 
+    permission: 'staff', 
+    component: 'dispatch',
+    children: [
+      { id: 'eligible-workers-list', label: 'List', hrefTemplate: '/dispatch/job/{id}/eligible-workers/list', permission: 'staff', component: 'dispatch' },
+      { id: 'eligible-workers-check', label: 'Check', hrefTemplate: '/dispatch/job/{id}/eligible-workers/check', permission: 'staff', component: 'dispatch' },
+    ]
+  },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/dispatch/job/{id}/edit', permission: 'staff', component: 'dispatch' },
 ];
 
 /**
@@ -257,9 +294,21 @@ export const dispatchJobTabTree: HierarchicalTab[] = [
  */
 export const dispatchJobTypeTabTree: HierarchicalTab[] = [
   { id: 'view', label: 'View', hrefTemplate: '/config/dispatch-job-type/{id}', permission: 'staff', component: 'dispatch' },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/config/dispatch-job-type/{id}/edit', permission: 'dispatch.edit', component: 'dispatch' },
-  { id: 'plugins', label: 'Plugins', hrefTemplate: '/config/dispatch-job-type/{id}/plugins', permission: 'dispatch.edit', component: 'dispatch' },
-  { id: 'delete', label: 'Delete', hrefTemplate: '/config/dispatch-job-type/{id}/delete', permission: 'dispatch.delete', component: 'dispatch' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/config/dispatch-job-type/{id}/edit', permission: 'staff', component: 'dispatch' },
+  { id: 'plugins', label: 'Plugins', hrefTemplate: '/config/dispatch-job-type/{id}/plugins', permission: 'staff', component: 'dispatch' },
+  { id: 'notifications', label: 'Notifications', hrefTemplate: '/config/dispatch-job-type/{id}/notifications', permission: 'staff', component: 'dispatch' },
+  { id: 'delete', label: 'Delete', hrefTemplate: '/config/dispatch-job-type/{id}/delete', permission: 'staff', component: 'dispatch' },
+];
+
+/**
+ * EDLS sheet entity tab tree
+ */
+export const edlsSheetTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/edls/sheet/{id}', policyId: 'edls.sheet.view', component: 'edls' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/edls/sheet/{id}/edit', policyId: 'edls.sheet.edit', component: 'edls' },
+  { id: 'manage', label: 'Manage', hrefTemplate: '/edls/sheet/{id}/manage', policyId: 'edls.sheet.manage', component: 'edls' },
+  { id: 'assignments', label: 'Assignments', hrefTemplate: '/edls/sheet/{id}/assignments', policyId: 'edls.sheet.view', component: 'edls' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.coordinator', component: 'edls' },
 ];
 
 /**
@@ -294,9 +343,9 @@ export const trustBenefitTabTree: HierarchicalTab[] = [
  * Worker hours entry tab tree
  */
 export const workerHoursTabTree: HierarchicalTab[] = [
-  { id: 'view', label: 'View', hrefTemplate: '/worker-hours/{id}', permission: 'staff' },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/worker-hours/{id}/edit', permission: 'workers.edit' },
-  { id: 'delete', label: 'Delete', hrefTemplate: '/worker-hours/{id}/delete', permission: 'workers.delete' },
+  { id: 'view', label: 'View', hrefTemplate: '/hours/{id}', permission: 'staff' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/hours/{id}/edit', permission: 'workers.edit' },
+  { id: 'delete', label: 'Delete', hrefTemplate: '/hours/{id}/delete', permission: 'workers.delete' },
 ];
 
 /**
@@ -348,23 +397,23 @@ export const providerContactTabTree: HierarchicalTab[] = [
       { id: 'send-inapp', label: 'Send In-App', hrefTemplate: '/trust-provider-contacts/{id}/comm/send-inapp', permission: 'communication.send' },
     ],
   },
-  { id: 'user', label: 'User', hrefTemplate: '/trust-provider-contacts/{id}/user', permission: 'users.view' },
+  { id: 'user', label: 'User', hrefTemplate: '/trust-provider-contacts/{id}/user', permission: 'admin' },
 ];
 
 /**
  * User entity tab tree
  */
 export const userTabTree: HierarchicalTab[] = [
-  { id: 'details', label: 'Details', hrefTemplate: '/users/{id}', permission: 'users.view' },
+  { id: 'details', label: 'Details', hrefTemplate: '/users/{id}', permission: 'admin' },
   { 
     id: 'contact', 
     label: 'Contact', 
     hrefTemplate: '/users/{id}/contact/email', 
-    permission: 'users.view',
+    permission: 'admin',
     children: [
-      { id: 'email', label: 'Email', hrefTemplate: '/users/{id}/contact/email', permission: 'users.view' },
-      { id: 'phone-numbers', label: 'Phone Numbers', hrefTemplate: '/users/{id}/contact/phone-numbers', permission: 'users.view' },
-      { id: 'addresses', label: 'Addresses', hrefTemplate: '/users/{id}/contact/addresses', permission: 'users.view' },
+      { id: 'email', label: 'Email', hrefTemplate: '/users/{id}/contact/email', permission: 'admin' },
+      { id: 'phone-numbers', label: 'Phone Numbers', hrefTemplate: '/users/{id}/contact/phone-numbers', permission: 'admin' },
+      { id: 'addresses', label: 'Addresses', hrefTemplate: '/users/{id}/contact/addresses', permission: 'admin' },
     ],
   },
   { 
@@ -380,7 +429,18 @@ export const userTabTree: HierarchicalTab[] = [
       { id: 'send-inapp', label: 'Send In-App', hrefTemplate: '/users/{id}/comm/send-inapp', permission: 'communication.send' },
     ],
   },
-  { id: 'logs', label: 'Logs', hrefTemplate: '/users/{id}/logs', permission: 'users.view' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/users/{id}/logs', permission: 'admin' },
+];
+
+/**
+ * Web service client entity tab tree
+ */
+export const wsClientTabTree: HierarchicalTab[] = [
+  { id: 'settings', label: 'Settings', hrefTemplate: '/config/ws/clients/{id}', permission: 'admin' },
+  { id: 'credentials', label: 'Credentials', hrefTemplate: '/config/ws/clients/{id}/credentials', permission: 'admin' },
+  { id: 'ip-rules', label: 'IP Rules', hrefTemplate: '/config/ws/clients/{id}/ip-rules', permission: 'admin' },
+  { id: 'test', label: 'Test', hrefTemplate: '/config/ws/clients/{id}/test', permission: 'admin' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/config/ws/clients/{id}/logs', permission: 'admin' },
 ];
 
 /**
@@ -397,13 +457,16 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   bargaining_unit: bargainingUnitTabTree,
   btu_csg: btuCsgTabTree,
   cron_job: cronJobTabTree,
+  dispatch: dispatchTabTree,
   dispatch_job: dispatchJobTabTree,
   dispatch_job_type: dispatchJobTypeTabTree,
+  edls_sheet: edlsSheetTabTree,
   ledger_account: ledgerAccountTabTree,
   ledger_payment: ledgerPaymentTabTree,
   trust_benefit: trustBenefitTabTree,
   worker_hours: workerHoursTabTree,
   user: userTabTree,
+  ws_client: wsClientTabTree,
 };
 
 /**
@@ -600,11 +663,14 @@ export const tabRegistry: Record<TabEntityType, TabDefinition[]> = {
   bargaining_unit: flattenTabTree(bargainingUnitTabTree),
   btu_csg: flattenTabTree(btuCsgTabTree),
   cron_job: flattenTabTree(cronJobTabTree),
+  dispatch: flattenTabTree(dispatchTabTree),
   dispatch_job: flattenTabTree(dispatchJobTabTree),
   dispatch_job_type: flattenTabTree(dispatchJobTypeTabTree),
+  edls_sheet: flattenTabTree(edlsSheetTabTree),
   ledger_account: flattenTabTree(ledgerAccountTabTree),
   ledger_payment: flattenTabTree(ledgerPaymentTabTree),
   trust_benefit: flattenTabTree(trustBenefitTabTree),
   worker_hours: flattenTabTree(workerHoursTabTree),
   user: flattenTabTree(userTabTree),
+  ws_client: flattenTabTree(wsClientTabTree),
 };

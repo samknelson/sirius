@@ -1,5 +1,5 @@
 export { cronJobRegistry, registerCronJob, getCronJobHandler, getAllCronJobs } from './registry';
-export type { CronJobHandler, CronJobContext, CronJobSummary, CronJobSettingsField, RegisteredCronJob } from './registry';
+export type { CronJobHandler, CronJobContext, CronJobSummary, CronJobSettingsField, CronJobSettingsAdapter, RegisteredCronJob } from './registry';
 export { cronScheduler } from './scheduler';
 export { bootstrapCronJobs } from './bootstrap';
 export { deleteExpiredReportsHandler } from './jobs/deleteExpiredReports';
@@ -8,4 +8,7 @@ export { processWmbBatchHandler } from './jobs/processWmbBatch';
 export { deleteExpiredFloodEventsHandler } from './jobs/deleteExpiredFloodEvents';
 export { deleteExpiredHfeHandler } from './jobs/deleteExpiredHfe';
 export { sweepExpiredBanEligHandler } from './jobs/sweepExpiredBanElig';
-export { syncBanActiveStatusHandler } from './jobs/syncBanActiveStatus';
+export { workerBanActiveScanHandler } from './jobs/workerBanActiveScan';
+export { workerCertificationActiveScanHandler } from './jobs/workerCertificationActiveScan';
+export { logCleanupHandler } from './jobs/logCleanup';
+export type { RetentionPolicy, LogCleanupSettings } from './jobs/logCleanup';

@@ -800,8 +800,7 @@ export function registerWizardRoutes(
         // Get current user for uploadedBy
         const user = (req as any).user;
         const session = req.session as any;
-        const replitUserId = user?.claims?.sub;
-        const { dbUser } = await getEffectiveUser(session, replitUserId);
+        const { dbUser } = await getEffectiveUser(session, user);
 
         if (!dbUser) {
           return res.status(401).json({ message: "User not found" });
@@ -962,9 +961,8 @@ export function registerWizardRoutes(
         }
 
         // Get database user from Replit user
-        const replitUserId = user?.claims?.sub;
         const session = req.session as any;
-        const { dbUser } = await getEffectiveUser(session, replitUserId);
+        const { dbUser } = await getEffectiveUser(session, user);
 
         if (!dbUser) {
           return res.status(401).json({ message: "User not found" });
@@ -1063,9 +1061,8 @@ export function registerWizardRoutes(
         }
 
         // Get database user from Replit user
-        const replitUserId = user?.claims?.sub;
         const session = req.session as any;
-        const { dbUser } = await getEffectiveUser(session, replitUserId);
+        const { dbUser } = await getEffectiveUser(session, user);
 
         if (!dbUser) {
           return res.status(401).json({ message: "User not found" });

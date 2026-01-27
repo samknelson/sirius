@@ -1,4 +1,5 @@
-import { db } from "../db";
+import { createNoopValidator } from './utils/validation';
+import { getClient } from './transaction-context';
 import { eq, desc, ilike, or, and, SQL } from "drizzle-orm";
 import { tableExists as tableExistsUtil } from "./utils";
 import { 
@@ -8,6 +9,11 @@ import {
 } from "../../shared/schema/sitespecific/btu/schema";
 import { getTableName } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export type { BtuEmployerMap, InsertBtuEmployerMap };
 
@@ -44,6 +50,7 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
 
+      const client = getClient();
       const conditions: SQL[] = [];
 
       if (filters?.search) {
@@ -72,7 +79,7 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
       }
 
       if (conditions.length > 0) {
-        return db
+        return client
           .select()
           .from(sitespecificBtuEmployerMap)
           .where(and(...conditions))
@@ -83,7 +90,7 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
           );
       }
 
-      return db
+      return client
         .select()
         .from(sitespecificBtuEmployerMap)
         .orderBy(
@@ -97,7 +104,8 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select()
         .from(sitespecificBtuEmployerMap)
         .where(eq(sitespecificBtuEmployerMap.id, id));
@@ -105,10 +113,12 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
     },
 
     async create(record: InsertBtuEmployerMap): Promise<BtuEmployerMap> {
+      validate.validateOrThrow(record);
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .insert(sitespecificBtuEmployerMap)
         .values(record)
         .returning();
@@ -116,10 +126,12 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
     },
 
     async update(id: string, record: Partial<InsertBtuEmployerMap>): Promise<BtuEmployerMap | undefined> {
+      validate.validateOrThrow(record);
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .update(sitespecificBtuEmployerMap)
         .set(record)
         .where(eq(sitespecificBtuEmployerMap.id, id))
@@ -131,7 +143,8 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .delete(sitespecificBtuEmployerMap)
         .where(eq(sitespecificBtuEmployerMap.id, id))
         .returning({ id: sitespecificBtuEmployerMap.id });
@@ -152,7 +165,8 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .selectDistinct({ departmentId: sitespecificBtuEmployerMap.departmentId, departmentTitle: sitespecificBtuEmployerMap.departmentTitle })
         .from(sitespecificBtuEmployerMap)
         .orderBy(sitespecificBtuEmployerMap.departmentTitle);
@@ -165,7 +179,8 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .selectDistinct({ locationId: sitespecificBtuEmployerMap.locationId, locationTitle: sitespecificBtuEmployerMap.locationTitle })
         .from(sitespecificBtuEmployerMap)
         .orderBy(sitespecificBtuEmployerMap.locationTitle);
@@ -178,7 +193,8 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .selectDistinct({ employerName: sitespecificBtuEmployerMap.employerName })
         .from(sitespecificBtuEmployerMap)
         .orderBy(sitespecificBtuEmployerMap.employerName);

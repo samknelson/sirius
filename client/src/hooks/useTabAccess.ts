@@ -259,6 +259,17 @@ export function useCronJobTabAccess(jobName: string | undefined, enabled = true)
 }
 
 /**
+ * Hook specifically for dispatch entity tabs
+ */
+export function useDispatchTabAccess(dispatchId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'dispatch', 
+    entityId: dispatchId, 
+    enabled 
+  });
+}
+
+/**
  * Hook specifically for dispatch job entity tabs
  */
 export function useDispatchJobTabAccess(jobId: string | undefined, enabled = true) {
@@ -353,6 +364,28 @@ export function useUserTabAccess(userId: string | undefined, enabled = true) {
   return useTabAccess({ 
     entityType: 'user', 
     entityId: userId, 
+    enabled 
+  });
+}
+
+/**
+ * Hook specifically for EDLS sheet entity tabs
+ */
+export function useEdlsSheetTabAccess(sheetId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'edls_sheet', 
+    entityId: sheetId, 
+    enabled 
+  });
+}
+
+/**
+ * Hook specifically for web service client entity tabs
+ */
+export function useWsClientTabAccess(clientId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'ws_client', 
+    entityId: clientId, 
     enabled 
   });
 }

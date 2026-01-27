@@ -1,5 +1,5 @@
-import { sql } from "drizzle-orm";
-import { pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial, index, numeric } from "drizzle-orm/pg-core";
+import { sql, relations } from "drizzle-orm";
+import { pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial, index, uniqueIndex, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -55,7 +55,32 @@ export {
   type JobTypeEligibility,
   type EligibilityPluginMetadata,
   type JobTypeData,
+  type PluginConfigField,
+  type NotificationMedia,
 } from "./schema/dispatch/eligibility-config";
+
+export {
+  wsBundles,
+  wsBundleStatusEnum,
+  insertWsBundleSchema,
+  wsClients,
+  wsClientStatusEnum,
+  insertWsClientSchema,
+  wsClientCredentials,
+  insertWsClientCredentialSchema,
+  wsClientIpRules,
+  insertWsClientIpRuleSchema,
+  type WsBundleStatus,
+  type InsertWsBundle,
+  type WsBundle,
+  type WsClientStatus,
+  type InsertWsClient,
+  type WsClient,
+  type InsertWsClientCredential,
+  type WsClientCredential,
+  type InsertWsClientIpRule,
+  type WsClientIpRule,
+} from "./schema/webservices/schema";
 
 // Session storage table for Replit Auth
 export const sessions = pgTable(
@@ -70,7 +95,6 @@ export const sessions = pgTable(
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  replitUserId: varchar("replit_user_id").unique(),
   email: varchar("email").notNull().unique(),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
@@ -82,6 +106,53 @@ export const users = pgTable("users", {
   lastLogin: timestamp("last_login"),
   data: jsonb("data"),
 });
+
+export const authProviderTypeEnum = pgEnum("auth_provider_type", [
+  "replit",
+  "okta",
+  "saml",
+  "oauth",
+  "local",
+]);
+
+export const authIdentities = pgTable(
+  "auth_identities",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    providerType: authProviderTypeEnum("provider_type").notNull(),
+    externalId: varchar("external_id").notNull(),
+    email: varchar("email"),
+    displayName: varchar("display_name"),
+    profileImageUrl: varchar("profile_image_url"),
+    passwordHash: varchar("password_hash"),
+    refreshToken: text("refresh_token"),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+    updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+    lastUsedAt: timestamp("last_used_at"),
+  },
+  (table) => [
+    index("idx_auth_identities_user").on(table.userId),
+    uniqueIndex("idx_auth_identities_provider_external_unique").on(
+      table.providerType,
+      table.externalId
+    ),
+  ]
+);
+
+export const authIdentitiesRelations = relations(authIdentities, ({ one }) => ({
+  user: one(users, {
+    fields: [authIdentities.userId],
+    references: [users.id],
+  }),
+}));
+
+export type AuthIdentity = typeof authIdentities.$inferSelect;
+export type InsertAuthIdentity = typeof authIdentities.$inferInsert;
+export type AuthProviderType = (typeof authProviderTypeEnum.enumValues)[number];
 
 export const roles = pgTable("roles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -129,6 +200,8 @@ export const workers = pgTable("workers", {
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
   ssn: text("ssn").unique(),
   denormWsId: varchar("denorm_ws_id").references(() => optionsWorkerWs.id, { onDelete: 'set null' }),
+  denormMsIds: varchar("denorm_ms_ids").array(),
+  denormJobTitle: text("denorm_job_title"),
   denormHomeEmployerId: varchar("denorm_home_employer_id").references(() => employers.id, { onDelete: 'set null' }),
   denormEmployerIds: varchar("denorm_employer_ids").array(),
   bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),
@@ -140,7 +213,7 @@ export const workerBans = pgTable("worker_bans", {
   type: varchar("type"),
   startDate: timestamp("start_date").notNull(),
   endDate: timestamp("end_date"),
-  active: boolean("active").default(true),
+  denormActive: boolean("denorm_active").default(true),
   message: text("message"),
   data: jsonb("data"),
 });
@@ -151,6 +224,7 @@ export const employers = pgTable("employers", {
   name: text("name").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   typeId: varchar("type_id").references(() => optionsEmployerType.id, { onDelete: 'set null' }),
+  industryId: varchar("industry_id").references(() => optionsIndustry.id, { onDelete: 'set null' }),
   stripeCustomerId: text("stripe_customer_id"),
   denormPolicyId: varchar("denorm_policy_id").references(() => policies.id, { onDelete: 'set null' }),
 });
@@ -195,6 +269,7 @@ export const workerHours = pgTable("worker_hours", {
   employmentStatusId: varchar("employment_status_id").notNull().references(() => optionsEmploymentStatus.id, { onDelete: 'cascade' }),
   hours: doublePrecision("hours"),
   home: boolean("home").default(false).notNull(),
+  jobTitle: text("job_title"),
 }, (table) => ({
   uniqueWorkerEmployerYearMonthDay: unique().on(table.workerId, table.employerId, table.year, table.month, table.day),
 }));
@@ -325,10 +400,44 @@ export const optionsEmployerType = pgTable("options_employer_type", {
   data: jsonb("data"),
 });
 
+export const optionsDepartment = pgTable("options_department", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  data: jsonb("data"),
+});
+
+export const optionsClassifications = pgTable("options_classifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  code: varchar("code", { length: 255 }).unique(),
+  siriusId: varchar("sirius_id", { length: 255 }).unique(),
+  sequence: integer("sequence").notNull().default(0),
+  data: jsonb("data"),
+});
+
+export const optionsIndustry = pgTable("options_industries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  code: varchar("code", { length: 255 }).unique(),
+  siriusId: varchar("sirius_id", { length: 255 }).unique(),
+  data: jsonb("data"),
+});
+
 export const optionsWorkerWs = pgTable("options_worker_ws", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   description: text("description"),
+  sequence: integer("sequence").notNull().default(0),
+  data: jsonb("data"),
+});
+
+export const optionsWorkerMs = pgTable("options_worker_ms", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  code: varchar("code", { length: 255 }).unique(),
+  siriusId: varchar("sirius_id", { length: 255 }).unique(),
+  description: text("description"),
+  industryId: varchar("industry_id").notNull().references(() => optionsIndustry.id),
   sequence: integer("sequence").notNull().default(0),
   data: jsonb("data"),
 });
@@ -408,6 +517,18 @@ export const workerWsh = pgTable("worker_wsh", {
   data: jsonb("data"),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
+
+export const workerMsh = pgTable("worker_msh", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  date: date("date").notNull(),
+  workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
+  msId: varchar("ms_id").notNull().references(() => optionsWorkerMs.id, { onDelete: 'cascade' }),
+  industryId: varchar("industry_id").notNull().references(() => optionsIndustry.id, { onDelete: 'cascade' }),
+  data: jsonb("data"),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+}, (table) => ({
+  uniqueWorkerIndustryDate: unique().on(table.workerId, table.industryId, table.date),
+}));
 
 export const contactPostal = pgTable("contact_postal", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -633,6 +754,64 @@ export {
   type InsertBtuEmployerMap,
 } from "./schema/sitespecific/btu/schema";
 
+export {
+  optionsSkills,
+  insertOptionsSkillsSchema,
+  type OptionsSkill,
+  type InsertOptionsSkill,
+  workerSkills,
+  insertWorkerSkillsSchema,
+  type WorkerSkill,
+  type InsertWorkerSkill,
+} from "./schema/worker/skills/schema";
+
+export {
+  optionsCertifications,
+  insertOptionsCertificationsSchema,
+  type OptionsCertification,
+  type InsertOptionsCertification,
+  workerCertificationStatusEnum,
+  workerCertifications,
+  insertWorkerCertificationSchema,
+  type WorkerCertification,
+  type InsertWorkerCertification,
+} from "./schema/worker/certifications/schema";
+
+export {
+  optionsWorkerRatings,
+  insertOptionsWorkerRatingsSchema,
+  type OptionsWorkerRating,
+  type InsertOptionsWorkerRating,
+  workerRatings,
+  insertWorkerRatingsSchema,
+  type WorkerRating,
+  type InsertWorkerRating,
+} from "./schema/worker/ratings/schema";
+
+export {
+  edlsSheets,
+  edlsSheetStatusEnum,
+  insertEdlsSheetsSchema,
+  type EdlsSheet,
+  type EdlsSheetStatus,
+  type InsertEdlsSheet,
+  edlsCrews,
+  insertEdlsCrewsSchema,
+  type EdlsCrew,
+  type InsertEdlsCrew,
+  edlsAssignments,
+  insertEdlsAssignmentsSchema,
+  updateAssignmentExtraSchema,
+  type EdlsAssignment,
+  type InsertEdlsAssignment,
+  type AssignmentExtra,
+  type UpdateAssignmentExtra,
+  optionsEdlsTasks,
+  insertEdlsTaskSchema,
+  type EdlsTask,
+  type InsertEdlsTask,
+} from "./schema/edls/schema";
+
 // Zod schemas for validation
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -675,7 +854,7 @@ export type WorkerBanType = typeof workerBanTypeEnum[number];
 
 export const insertWorkerBanSchema = createInsertSchema(workerBans).omit({
   id: true,
-  active: true, // Auto-calculated based on end_date
+  denormActive: true, // Auto-calculated based on end_date
 }).extend({
   startDate: z.coerce.date(),
   endDate: z.coerce.date().optional().nullable(),
@@ -828,6 +1007,10 @@ export const insertWorkerWshSchema = createInsertSchema(workerWsh).omit({
   id: true,
 });
 
+export const insertWorkerMshSchema = createInsertSchema(workerMsh).omit({
+  id: true,
+});
+
 export const insertEmployerPolicyHistorySchema = createInsertSchema(employerPolicyHistory).omit({
   id: true,
 });
@@ -846,6 +1029,19 @@ export const insertEmployerContactTypeSchema = createInsertSchema(optionsEmploye
 
 export const insertEmployerTypeSchema = createInsertSchema(optionsEmployerType).omit({
   id: true,
+});
+
+export const insertDepartmentSchema = createInsertSchema(optionsDepartment).omit({
+  id: true,
+});
+
+export const insertClassificationSchema = createInsertSchema(optionsClassifications).omit({
+  id: true,
+}).extend({
+  name: z.string().trim().min(1, "Name is required"),
+  code: z.string().trim().nullable().optional(),
+  siriusId: z.string().trim().nullable().optional(),
+  data: z.record(z.unknown()).nullable().optional(),
 });
 
 export const insertTrustProviderTypeSchema = createInsertSchema(optionsTrustProviderType).omit({
@@ -1038,6 +1234,9 @@ export type WorkerId = typeof workerIds.$inferSelect;
 export type InsertWorkerWsh = z.infer<typeof insertWorkerWshSchema>;
 export type WorkerWsh = typeof workerWsh.$inferSelect;
 
+export type InsertWorkerMsh = z.infer<typeof insertWorkerMshSchema>;
+export type WorkerMsh = typeof workerMsh.$inferSelect;
+
 export type InsertEmployerPolicyHistory = z.infer<typeof insertEmployerPolicyHistorySchema>;
 export type EmployerPolicyHistory = typeof employerPolicyHistory.$inferSelect;
 
@@ -1052,6 +1251,12 @@ export type EmployerContactType = typeof optionsEmployerContactType.$inferSelect
 
 export type InsertEmployerType = z.infer<typeof insertEmployerTypeSchema>;
 export type EmployerType = typeof optionsEmployerType.$inferSelect;
+
+export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
+export type Department = typeof optionsDepartment.$inferSelect;
+
+export type InsertClassification = z.infer<typeof insertClassificationSchema>;
+export type Classification = typeof optionsClassifications.$inferSelect;
 
 export type InsertTrustProviderType = z.infer<typeof insertTrustProviderTypeSchema>;
 export type TrustProviderType = typeof optionsTrustProviderType.$inferSelect;

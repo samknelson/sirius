@@ -6,6 +6,7 @@ export interface SystemModeResponse {
 
 export interface SiteSettings {
   siteName: string;
+  siteTitle: string;
   footer: string;
 }
 
@@ -20,4 +21,7 @@ export interface WinstonLog {
   operation: string | null;
   entityId: string | null;
   description: string | null;
+  userId: string | null;
+  userEmail: string | null;
+  ipAddress: string | null;
 }

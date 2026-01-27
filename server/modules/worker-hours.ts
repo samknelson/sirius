@@ -95,7 +95,7 @@ export function registerWorkerHoursRoutes(
   app.patch("/api/worker-hours/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
-      const { year, month, day, employerId, employmentStatusId, hours, home } = req.body;
+      const { year, month, day, employerId, employmentStatusId, hours, home, jobTitle } = req.body;
 
       const result = await workerHoursStorage.updateWorkerHours(id, {
         year,
@@ -105,6 +105,7 @@ export function registerWorkerHoursRoutes(
         employmentStatusId,
         hours,
         home,
+        jobTitle,
       });
 
       if (!result) {

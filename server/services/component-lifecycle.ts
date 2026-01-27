@@ -1,7 +1,5 @@
-import { db } from "../db";
 import { storage } from "../storage";
 import { tableExists } from "../storage/utils";
-import { sql } from "drizzle-orm";
 import {
   getComponentById,
   getComponentSchemaStateVariableName,
@@ -224,7 +222,7 @@ export async function disableComponentSchema(
       const exists = await tableExists(tableName);
       
       if (exists) {
-        await db.execute(sql.raw(`DROP TABLE IF EXISTS ${tableName} CASCADE`));
+        await storage.rawSql.execute(`DROP TABLE IF EXISTS ${tableName} CASCADE`);
       }
       
       operations.push({

@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +16,24 @@ import { useToast } from "@/hooks/use-toast";
 import { CronJobLayout, useCronJobLayout } from "@/components/layouts/CronJobLayout";
 import { format } from "date-fns";
 import { CronJobRun } from "@/lib/cron-types";
+import { getCronSettingsComponent } from "@/lib/cron-settings-registry";
+import "@/components/cron-settings";
+
+interface SettingsDescriptor {
+  mode: "fields" | "custom";
+  componentId?: string;
+  clientState?: Record<string, unknown>;
+  values?: Record<string, unknown>;
+  fields?: Array<{
+    key: string;
+    label: string;
+    type: "number" | "string" | "boolean";
+    description?: string;
+    min?: number;
+    max?: number;
+  }>;
+  defaultSettings?: Record<string, unknown>;
+}
 
 interface CronJobOutputData {
   executionTimeMs: number;
@@ -49,6 +67,39 @@ function CronJobSettingsContent() {
     const merged = { ...job.defaultSettings, ...(job.settings || {}) };
     setLocalSettings(merged);
   }, [job.settings, job.defaultSettings]);
+
+  // Fetch settings descriptor from the new endpoint
+  const settingsQuery = useQuery<SettingsDescriptor>({
+    queryKey: ["/api/cron-jobs", name, "settings"],
+    queryFn: async () => {
+      const res = await fetch(`/api/cron-jobs/${encodeURIComponent(name!)}/settings`);
+      if (!res.ok) throw new Error("Failed to fetch settings");
+      return res.json();
+    },
+  });
+
+  // Mutation for saving custom settings via the new endpoint
+  const saveCustomSettingsMutation = useMutation({
+    mutationFn: async (data: unknown) => {
+      return await apiRequest("PATCH", `/api/cron-jobs/${encodeURIComponent(name!)}/settings`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cron-jobs", name] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cron-jobs", name, "settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cron-jobs"] });
+      toast({
+        title: "Settings Updated",
+        description: "The job settings have been saved successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to Save Settings",
+        description: error.message || "Failed to save job settings",
+        variant: "destructive",
+      });
+    },
+  });
 
   const runMutation = useMutation({
     mutationFn: async () => {
@@ -343,7 +394,28 @@ function CronJobSettingsContent() {
             </div>
           </div>
 
-          {job.settingsFields && job.settingsFields.length > 0 && (
+          {/* Custom settings component or standard fields */}
+          {settingsQuery.data?.mode === "custom" && settingsQuery.data.componentId && (() => {
+            const CustomComponent = getCronSettingsComponent(settingsQuery.data.componentId);
+            if (CustomComponent) {
+              return (
+                <>
+                  <Separator />
+                  <CustomComponent
+                    clientState={settingsQuery.data.clientState ?? {}}
+                    values={settingsQuery.data.values ?? {}}
+                    onSave={async (data) => {
+                      await saveCustomSettingsMutation.mutateAsync(data);
+                    }}
+                    isSaving={saveCustomSettingsMutation.isPending}
+                  />
+                </>
+              );
+            }
+            return null;
+          })()}
+
+          {settingsQuery.data?.mode === "fields" && settingsQuery.data.fields && settingsQuery.data.fields.length > 0 && (
             <>
               <Separator />
               <div className="space-y-4">
@@ -354,7 +426,7 @@ function CronJobSettingsContent() {
                   </p>
                 </div>
                 <div className="space-y-4">
-                  {job.settingsFields.map((field) => (
+                  {settingsQuery.data.fields.map((field) => (
                     <div key={field.key} className="space-y-2">
                       <Label htmlFor={`setting-${field.key}`}>{field.label}</Label>
                       {field.description && (

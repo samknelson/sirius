@@ -1,4 +1,5 @@
-import { db } from "../db";
+import { createNoopValidator } from './utils/validation';
+import { getClient } from './transaction-context';
 import { 
   events, 
   eventOccurrences,
@@ -13,6 +14,11 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator<InsertEvent, Event>();
 
 export interface EventStorage {
   getAll(): Promise<Event[]>;
@@ -92,21 +98,27 @@ export const eventOccurrenceLoggingConfig: StorageLoggingConfig<EventOccurrenceS
 export function createEventStorage(): EventStorage {
   return {
     async getAll(): Promise<Event[]> {
-      return db.select().from(events).orderBy(desc(events.createdAt));
+      const client = getClient();
+      return client.select().from(events).orderBy(desc(events.createdAt));
     },
 
     async get(id: string): Promise<Event | undefined> {
-      const [event] = await db.select().from(events).where(eq(events.id, id));
+      const client = getClient();
+      const [event] = await client.select().from(events).where(eq(events.id, id));
       return event || undefined;
     },
 
     async create(insertEvent: InsertEvent): Promise<Event> {
-      const [event] = await db.insert(events).values(insertEvent).returning();
+      validate.validateOrThrow(insertEvent);
+      const client = getClient();
+      const [event] = await client.insert(events).values(insertEvent).returning();
       return event;
     },
 
     async update(id: string, eventUpdate: Partial<InsertEvent>): Promise<Event | undefined> {
-      const [event] = await db
+      validate.validateOrThrow(eventUpdate);
+      const client = getClient();
+      const [event] = await client
         .update(events)
         .set(eventUpdate)
         .where(eq(events.id, id))
@@ -115,7 +127,8 @@ export function createEventStorage(): EventStorage {
     },
 
     async delete(id: string): Promise<boolean> {
-      const result = await db.delete(events).where(eq(events.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(events).where(eq(events.id, id)).returning();
       return result.length > 0;
     }
   };
@@ -124,18 +137,21 @@ export function createEventStorage(): EventStorage {
 export function createEventOccurrenceStorage(): EventOccurrenceStorage {
   return {
     async getAll(eventId: string): Promise<EventOccurrence[]> {
-      return db.select().from(eventOccurrences)
+      const client = getClient();
+      return client.select().from(eventOccurrences)
         .where(eq(eventOccurrences.eventId, eventId))
         .orderBy(eventOccurrences.startAt);
     },
 
     async get(id: string): Promise<EventOccurrence | undefined> {
-      const [occurrence] = await db.select().from(eventOccurrences).where(eq(eventOccurrences.id, id));
+      const client = getClient();
+      const [occurrence] = await client.select().from(eventOccurrences).where(eq(eventOccurrences.id, id));
       return occurrence || undefined;
     },
 
     async getByDateRange(startDate: Date, endDate: Date): Promise<EventOccurrence[]> {
-      return db.select().from(eventOccurrences)
+      const client = getClient();
+      return client.select().from(eventOccurrences)
         .where(and(
           gte(eventOccurrences.startAt, startDate),
           lte(eventOccurrences.startAt, endDate)
@@ -144,17 +160,20 @@ export function createEventOccurrenceStorage(): EventOccurrenceStorage {
     },
 
     async create(insertOccurrence: InsertEventOccurrence): Promise<EventOccurrence> {
-      const [occurrence] = await db.insert(eventOccurrences).values(insertOccurrence).returning();
+      const client = getClient();
+      const [occurrence] = await client.insert(eventOccurrences).values(insertOccurrence).returning();
       return occurrence;
     },
 
     async createMany(insertOccurrences: InsertEventOccurrence[]): Promise<EventOccurrence[]> {
+      const client = getClient();
       if (insertOccurrences.length === 0) return [];
-      return db.insert(eventOccurrences).values(insertOccurrences).returning();
+      return client.insert(eventOccurrences).values(insertOccurrences).returning();
     },
 
     async update(id: string, occurrenceUpdate: Partial<InsertEventOccurrence>): Promise<EventOccurrence | undefined> {
-      const [occurrence] = await db
+      const client = getClient();
+      const [occurrence] = await client
         .update(eventOccurrences)
         .set(occurrenceUpdate)
         .where(eq(eventOccurrences.id, id))
@@ -163,12 +182,14 @@ export function createEventOccurrenceStorage(): EventOccurrenceStorage {
     },
 
     async delete(id: string): Promise<boolean> {
-      const result = await db.delete(eventOccurrences).where(eq(eventOccurrences.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(eventOccurrences).where(eq(eventOccurrences.id, id)).returning();
       return result.length > 0;
     },
 
     async deleteByEventId(eventId: string): Promise<number> {
-      const result = await db.delete(eventOccurrences).where(eq(eventOccurrences.eventId, eventId)).returning();
+      const client = getClient();
+      const result = await client.delete(eventOccurrences).where(eq(eventOccurrences.eventId, eventId)).returning();
       return result.length;
     }
   };
@@ -218,7 +239,8 @@ export const eventParticipantLoggingConfig: StorageLoggingConfig<EventParticipan
 export function createEventParticipantStorage(): EventParticipantStorage {
   return {
     async getByEventId(eventId: string): Promise<EventParticipantWithContact[]> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           id: eventParticipants.id,
           eventId: eventParticipants.eventId,
@@ -241,12 +263,14 @@ export function createEventParticipantStorage(): EventParticipantStorage {
     },
 
     async get(id: string): Promise<EventParticipant | undefined> {
-      const [participant] = await db.select().from(eventParticipants).where(eq(eventParticipants.id, id));
+      const client = getClient();
+      const [participant] = await client.select().from(eventParticipants).where(eq(eventParticipants.id, id));
       return participant || undefined;
     },
 
     async getByEventAndContact(eventId: string, contactId: string): Promise<EventParticipant | undefined> {
-      const [participant] = await db.select().from(eventParticipants)
+      const client = getClient();
+      const [participant] = await client.select().from(eventParticipants)
         .where(and(
           eq(eventParticipants.eventId, eventId),
           eq(eventParticipants.contactId, contactId)
@@ -255,12 +279,14 @@ export function createEventParticipantStorage(): EventParticipantStorage {
     },
 
     async create(insertParticipant: InsertEventParticipant): Promise<EventParticipant> {
-      const [participant] = await db.insert(eventParticipants).values(insertParticipant).returning();
+      const client = getClient();
+      const [participant] = await client.insert(eventParticipants).values(insertParticipant).returning();
       return participant;
     },
 
     async update(id: string, participantUpdate: Partial<InsertEventParticipant>): Promise<EventParticipant | undefined> {
-      const [participant] = await db
+      const client = getClient();
+      const [participant] = await client
         .update(eventParticipants)
         .set(participantUpdate)
         .where(eq(eventParticipants.id, id))
@@ -269,7 +295,8 @@ export function createEventParticipantStorage(): EventParticipantStorage {
     },
 
     async delete(id: string): Promise<boolean> {
-      const result = await db.delete(eventParticipants).where(eq(eventParticipants.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(eventParticipants).where(eq(eventParticipants.id, id)).returning();
       return result.length > 0;
     }
   };

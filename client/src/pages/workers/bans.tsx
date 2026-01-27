@@ -217,8 +217,8 @@ function BansContent() {
                 {bans.map((ban) => (
                   <TableRow key={ban.id} data-testid={`row-ban-${ban.id}`}>
                     <TableCell>
-                      <Badge variant={ban.active ? "destructive" : "secondary"}>
-                        {ban.active ? "Active" : "Expired"}
+                      <Badge variant={ban.denormActive ? "destructive" : "secondary"}>
+                        {ban.denormActive ? "Active" : "Expired"}
                       </Badge>
                     </TableCell>
                     <TableCell>

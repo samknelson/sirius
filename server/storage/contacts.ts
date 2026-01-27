@@ -1,7 +1,152 @@
-import { db } from "../db";
+import { getClient } from './transaction-context';
 import { contacts, contactPostal, phoneNumbers, optionsGender, trustProviderContacts, employerContacts, type Contact, type InsertContact, type ContactPostal, type InsertContactPostal, type PhoneNumber, type InsertPhoneNumber } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
+import { 
+  type ValidationError,
+  createStorageValidator
+} from "./utils/validation";
+
+export const addressValidate = createStorageValidator<InsertContactPostal, ContactPostal, {}>(
+  (data, existing) => {
+    const errors: ValidationError[] = [];
+    
+    const isPrimary = data.isPrimary !== undefined ? data.isPrimary : existing?.isPrimary;
+    const isActive = data.isActive !== undefined ? data.isActive : existing?.isActive;
+    const wasActive = existing?.isActive;
+    const wasPrimary = existing?.isPrimary;
+    
+    if (!existing) {
+      if (isPrimary && isActive === false) {
+        errors.push({ 
+          field: 'isPrimary', 
+          code: 'INACTIVE_PRIMARY', 
+          message: "Cannot create an inactive address as primary. Either activate the address or don't set it as primary." 
+        });
+      }
+    } else {
+      if (wasPrimary && isActive === false) {
+        errors.push({ 
+          field: 'isActive', 
+          code: 'DEACTIVATE_PRIMARY', 
+          message: "Cannot deactivate a primary address. Set another address as primary first." 
+        });
+      }
+      
+      if (!wasActive && data.isPrimary === true) {
+        errors.push({ 
+          field: 'isPrimary', 
+          code: 'INACTIVE_PRIMARY', 
+          message: "Cannot set an inactive address as primary. Activate the address first." 
+        });
+      }
+    }
+    
+    if (errors.length > 0) return { ok: false, errors };
+    return { ok: true, value: {} };
+  }
+);
+
+export const phoneValidate = createStorageValidator<InsertPhoneNumber, PhoneNumber, {}>(
+  (data, existing) => {
+    const errors: ValidationError[] = [];
+    
+    const isPrimary = data.isPrimary !== undefined ? data.isPrimary : existing?.isPrimary;
+    const isActive = data.isActive !== undefined ? data.isActive : existing?.isActive;
+    const wasActive = existing?.isActive;
+    const wasPrimary = existing?.isPrimary;
+    
+    if (!existing) {
+      if (isPrimary && isActive === false) {
+        errors.push({ 
+          field: 'isPrimary', 
+          code: 'INACTIVE_PRIMARY', 
+          message: "Cannot create an inactive phone number as primary. Either activate the phone number or don't set it as primary." 
+        });
+      }
+    } else {
+      if (wasPrimary && isActive === false) {
+        errors.push({ 
+          field: 'isActive', 
+          code: 'DEACTIVATE_PRIMARY', 
+          message: "Cannot deactivate a primary phone number. Set another phone number as primary first." 
+        });
+      }
+      
+      if (!wasActive && data.isPrimary === true) {
+        errors.push({ 
+          field: 'isPrimary', 
+          code: 'INACTIVE_PRIMARY', 
+          message: "Cannot set an inactive phone number as primary. Activate the phone number first." 
+        });
+      }
+    }
+    
+    if (errors.length > 0) return { ok: false, errors };
+    return { ok: true, value: {} };
+  }
+);
+
+export const emailValidate = createStorageValidator<{ email: string | null }, never, { email: string | null }>(
+  (data) => {
+    const errors: ValidationError[] = [];
+    const cleanEmail = data.email?.trim() ?? "";
+    
+    if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      errors.push({ 
+        field: 'email', 
+        code: 'INVALID_FORMAT', 
+        message: "Invalid email format" 
+      });
+    }
+    
+    if (errors.length > 0) return { ok: false, errors };
+    return { ok: true, value: { email: cleanEmail || null } };
+  }
+);
+
+export const birthDateValidate = createStorageValidator<{ birthDate: string | null }, never, { birthDate: string | null }>(
+  (data) => {
+    const errors: ValidationError[] = [];
+    const birthDate = data.birthDate;
+    
+    if (birthDate) {
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(birthDate)) {
+        errors.push({ 
+          field: 'birthDate', 
+          code: 'INVALID_FORMAT', 
+          message: "Invalid date format. Expected YYYY-MM-DD" 
+        });
+      } else {
+        const [yearStr, monthStr, dayStr] = birthDate.split('-');
+        const year = parseInt(yearStr, 10);
+        const month = parseInt(monthStr, 10);
+        const day = parseInt(dayStr, 10);
+        
+        if (month < 1 || month > 12) {
+          errors.push({ 
+            field: 'birthDate', 
+            code: 'INVALID_MONTH', 
+            message: "Invalid month. Must be between 1 and 12" 
+          });
+        } else {
+          const daysInMonth = [31, (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+          if (day < 1 || day > daysInMonth[month - 1]) {
+            errors.push({ 
+              field: 'birthDate', 
+              code: 'INVALID_DAY', 
+              message: `Invalid day. Must be between 1 and ${daysInMonth[month - 1]} for the given month` 
+            });
+          }
+        }
+      }
+    }
+    
+    if (errors.length > 0) return { ok: false, errors };
+    return { ok: true, value: { birthDate: birthDate || null } };
+  }
+);
 
 // Address Storage Interface
 export interface AddressStorage {
@@ -71,33 +216,33 @@ export interface ContactsStorage {
 export function createAddressStorage(): AddressStorage {
   return {
     async getAllContactPostal(): Promise<ContactPostal[]> {
-      return await db.select().from(contactPostal);
+      const client = getClient();
+      return await client.select().from(contactPostal);
     },
 
     async getContactPostal(id: string): Promise<ContactPostal | undefined> {
-      const [address] = await db.select().from(contactPostal).where(eq(contactPostal.id, id));
+      const client = getClient();
+      const [address] = await client.select().from(contactPostal).where(eq(contactPostal.id, id));
       return address || undefined;
     },
 
     async getContactPostalByContact(contactId: string): Promise<ContactPostal[]> {
-      return await db.select().from(contactPostal).where(eq(contactPostal.contactId, contactId)).orderBy(desc(contactPostal.isPrimary));
+      const client = getClient();
+      return await client.select().from(contactPostal).where(eq(contactPostal.contactId, contactId)).orderBy(desc(contactPostal.isPrimary));
     },
 
     async createContactPostal(insertContactPostal: InsertContactPostal): Promise<ContactPostal> {
-      // Validation: Prevent creating an inactive primary address
-      if (insertContactPostal.isPrimary && insertContactPostal.isActive === false) {
-        throw new Error("Cannot create an inactive address as primary. Either activate the address or don't set it as primary.");
-      }
+      const client = getClient();
+      addressValidate.validateOrThrow(insertContactPostal);
 
-      // If creating a primary address, first unset any existing primary addresses for this contact
       if (insertContactPostal.isPrimary) {
-        await db
+        await client
           .update(contactPostal)
           .set({ isPrimary: false })
           .where(eq(contactPostal.contactId, insertContactPostal.contactId));
       }
       
-      const [address] = await db
+      const [address] = await client
         .insert(contactPostal)
         .values(insertContactPostal)
         .returning();
@@ -105,31 +250,22 @@ export function createAddressStorage(): AddressStorage {
     },
 
     async updateContactPostal(id: string, addressUpdate: Partial<InsertContactPostal>): Promise<ContactPostal | undefined> {
-      // Get the current address to perform validation checks
-      const [currentAddress] = await db.select().from(contactPostal).where(eq(contactPostal.id, id));
+      const client = getClient();
+      const [currentAddress] = await client.select().from(contactPostal).where(eq(contactPostal.id, id));
       if (!currentAddress) {
         throw new Error("Address not found");
       }
 
-      // Validation: Prevent making a primary address inactive
-      if (currentAddress.isPrimary && addressUpdate.isActive === false) {
-        throw new Error("Cannot deactivate a primary address. Set another address as primary first.");
-      }
+      addressValidate.validateOrThrow(addressUpdate, currentAddress);
 
-      // Validation: Prevent making an inactive address primary
-      if (!currentAddress.isActive && addressUpdate.isPrimary === true) {
-        throw new Error("Cannot set an inactive address as primary. Activate the address first.");
-      }
-
-      // If setting as primary, unset any existing primary addresses for this contact
       if (addressUpdate.isPrimary) {
-        await db
+        await client
           .update(contactPostal)
           .set({ isPrimary: false })
           .where(eq(contactPostal.contactId, currentAddress.contactId));
       }
       
-      const [address] = await db
+      const [address] = await client
         .update(contactPostal)
         .set(addressUpdate)
         .where(eq(contactPostal.id, id))
@@ -139,30 +275,26 @@ export function createAddressStorage(): AddressStorage {
     },
 
     async deleteContactPostal(id: string): Promise<boolean> {
-      const result = await db.delete(contactPostal).where(eq(contactPostal.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(contactPostal).where(eq(contactPostal.id, id)).returning();
       return result.length > 0;
     },
 
     async setAddressAsPrimary(addressId: string, contactId: string): Promise<ContactPostal | undefined> {
-      // Get the current address to validate it can be set as primary
-      const [currentAddress] = await db.select().from(contactPostal).where(eq(contactPostal.id, addressId));
+      const client = getClient();
+      const [currentAddress] = await client.select().from(contactPostal).where(eq(contactPostal.id, addressId));
       if (!currentAddress) {
         throw new Error("Address not found");
       }
 
-      // Validation: Prevent setting an inactive address as primary
-      if (!currentAddress.isActive) {
-        throw new Error("Cannot set an inactive address as primary. Activate the address first.");
-      }
+      addressValidate.validateOrThrow({ isPrimary: true }, currentAddress);
 
-      // First, unset all primary addresses for this contact
-      await db
+      await client
         .update(contactPostal)
         .set({ isPrimary: false })
         .where(eq(contactPostal.contactId, contactId));
       
-      // Then set the specified address as primary
-      const [address] = await db
+      const [address] = await client
         .update(contactPostal)
         .set({ isPrimary: true })
         .where(and(eq(contactPostal.id, addressId), eq(contactPostal.contactId, contactId)))
@@ -177,33 +309,33 @@ export function createAddressStorage(): AddressStorage {
 export function createPhoneNumberStorage(): PhoneNumberStorage {
   return {
     async getAllPhoneNumbers(): Promise<PhoneNumber[]> {
-      return await db.select().from(phoneNumbers);
+      const client = getClient();
+      return await client.select().from(phoneNumbers);
     },
 
     async getPhoneNumber(id: string): Promise<PhoneNumber | undefined> {
-      const [phoneNumber] = await db.select().from(phoneNumbers).where(eq(phoneNumbers.id, id));
+      const client = getClient();
+      const [phoneNumber] = await client.select().from(phoneNumbers).where(eq(phoneNumbers.id, id));
       return phoneNumber || undefined;
     },
 
     async getPhoneNumbersByContact(contactId: string): Promise<PhoneNumber[]> {
-      return await db.select().from(phoneNumbers).where(eq(phoneNumbers.contactId, contactId)).orderBy(desc(phoneNumbers.isPrimary));
+      const client = getClient();
+      return await client.select().from(phoneNumbers).where(eq(phoneNumbers.contactId, contactId)).orderBy(desc(phoneNumbers.isPrimary));
     },
 
     async createPhoneNumber(insertPhoneNumber: InsertPhoneNumber): Promise<PhoneNumber> {
-      // Validation: Prevent creating an inactive primary phone number
-      if (insertPhoneNumber.isPrimary && insertPhoneNumber.isActive === false) {
-        throw new Error("Cannot create an inactive phone number as primary. Either activate the phone number or don't set it as primary.");
-      }
+      const client = getClient();
+      phoneValidate.validateOrThrow(insertPhoneNumber);
 
-      // If creating a primary phone number, first unset any existing primary phone numbers for this contact
       if (insertPhoneNumber.isPrimary) {
-        await db
+        await client
           .update(phoneNumbers)
           .set({ isPrimary: false })
           .where(eq(phoneNumbers.contactId, insertPhoneNumber.contactId));
       }
       
-      const [phoneNumber] = await db
+      const [phoneNumber] = await client
         .insert(phoneNumbers)
         .values(insertPhoneNumber)
         .returning();
@@ -211,31 +343,22 @@ export function createPhoneNumberStorage(): PhoneNumberStorage {
     },
 
     async updatePhoneNumber(id: string, phoneNumberUpdate: Partial<InsertPhoneNumber>): Promise<PhoneNumber | undefined> {
-      // Get the current phone number to perform validation checks
-      const [currentPhoneNumber] = await db.select().from(phoneNumbers).where(eq(phoneNumbers.id, id));
+      const client = getClient();
+      const [currentPhoneNumber] = await client.select().from(phoneNumbers).where(eq(phoneNumbers.id, id));
       if (!currentPhoneNumber) {
         throw new Error("Phone number not found");
       }
 
-      // Validation: Prevent making a primary phone number inactive
-      if (currentPhoneNumber.isPrimary && phoneNumberUpdate.isActive === false) {
-        throw new Error("Cannot deactivate a primary phone number. Set another phone number as primary first.");
-      }
+      phoneValidate.validateOrThrow(phoneNumberUpdate, currentPhoneNumber);
 
-      // Validation: Prevent making an inactive phone number primary
-      if (!currentPhoneNumber.isActive && phoneNumberUpdate.isPrimary === true) {
-        throw new Error("Cannot set an inactive phone number as primary. Activate the phone number first.");
-      }
-
-      // If setting as primary, unset any existing primary phone numbers for this contact
       if (phoneNumberUpdate.isPrimary) {
-        await db
+        await client
           .update(phoneNumbers)
           .set({ isPrimary: false })
           .where(eq(phoneNumbers.contactId, currentPhoneNumber.contactId));
       }
       
-      const [phoneNumber] = await db
+      const [phoneNumber] = await client
         .update(phoneNumbers)
         .set(phoneNumberUpdate)
         .where(eq(phoneNumbers.id, id))
@@ -245,30 +368,26 @@ export function createPhoneNumberStorage(): PhoneNumberStorage {
     },
 
     async deletePhoneNumber(id: string): Promise<boolean> {
-      const result = await db.delete(phoneNumbers).where(eq(phoneNumbers.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(phoneNumbers).where(eq(phoneNumbers.id, id)).returning();
       return result.length > 0;
     },
 
     async setPhoneNumberAsPrimary(phoneNumberId: string, contactId: string): Promise<PhoneNumber | undefined> {
-      // Get the current phone number to validate it can be set as primary
-      const [currentPhoneNumber] = await db.select().from(phoneNumbers).where(eq(phoneNumbers.id, phoneNumberId));
+      const client = getClient();
+      const [currentPhoneNumber] = await client.select().from(phoneNumbers).where(eq(phoneNumbers.id, phoneNumberId));
       if (!currentPhoneNumber) {
         throw new Error("Phone number not found");
       }
 
-      // Validation: Prevent setting an inactive phone number as primary
-      if (!currentPhoneNumber.isActive) {
-        throw new Error("Cannot set an inactive phone number as primary. Activate the phone number first.");
-      }
+      phoneValidate.validateOrThrow({ isPrimary: true }, currentPhoneNumber);
 
-      // First, unset all primary phone numbers for this contact
-      await db
+      await client
         .update(phoneNumbers)
         .set({ isPrimary: false })
         .where(eq(phoneNumbers.contactId, contactId));
       
-      // Then set the specified phone number as primary
-      const [phoneNumber] = await db
+      const [phoneNumber] = await client
         .update(phoneNumbers)
         .set({ isPrimary: true })
         .where(and(eq(phoneNumbers.id, phoneNumberId), eq(phoneNumbers.contactId, contactId)))
@@ -305,12 +424,14 @@ function trimName(value: string | null | undefined): string | null {
 export function createContactStorage(): ContactStorage {
   return {
     async getContact(id: string): Promise<Contact | undefined> {
-      const [contact] = await db.select().from(contacts).where(eq(contacts.id, id));
+      const client = getClient();
+      const [contact] = await client.select().from(contacts).where(eq(contacts.id, id));
       return contact || undefined;
     },
 
     async getContactByEmail(email: string): Promise<Contact | undefined> {
-      const [contact] = await db
+      const client = getClient();
+      const [contact] = await client
         .select()
         .from(contacts)
         .where(
@@ -323,6 +444,7 @@ export function createContactStorage(): ContactStorage {
     },
 
     async createContact(insertContact: InsertContact): Promise<Contact> {
+      const client = getClient();
       // Import the generateDisplayName function
       const { generateDisplayName } = await import("@shared/schema");
       
@@ -340,7 +462,7 @@ export function createContactStorage(): ContactStorage {
       // Generate display name from canonicalized components (or use provided displayName)
       const displayName = insertContact.displayName || generateDisplayName(canonicalized);
       
-      const [contact] = await db
+      const [contact] = await client
         .insert(contacts)
         .values({
           ...insertContact,
@@ -357,6 +479,7 @@ export function createContactStorage(): ContactStorage {
     },
 
     async updateName(contactId: string, name: string): Promise<Contact | undefined> {
+      const client = getClient();
       // For simple name input, parse into given/family names
       const nameParts = name.trim().split(' ');
       const given = nameParts[0] || '';
@@ -370,7 +493,7 @@ export function createContactStorage(): ContactStorage {
       const displayName = [canonicalizedGiven, canonicalizedFamily].filter(Boolean).join(' ');
       
       // Update the contact's name components
-      const [contact] = await db
+      const [contact] = await client
         .update(contacts)
         .set({
           given: canonicalizedGiven,
@@ -394,6 +517,7 @@ export function createContactStorage(): ContactStorage {
         credentials?: string;
       }
     ): Promise<Contact | undefined> {
+      const client = getClient();
       // Import the generateDisplayName function
       const { generateDisplayName } = await import("@shared/schema");
       
@@ -412,7 +536,7 @@ export function createContactStorage(): ContactStorage {
       const displayName = generateDisplayName(canonicalized);
       
       // Update the contact's name components
-      const [contact] = await db
+      const [contact] = await client
         .update(contacts)
         .set({
           title: canonicalized.title,
@@ -430,17 +554,12 @@ export function createContactStorage(): ContactStorage {
     },
 
     async updateEmail(contactId: string, email: string | null): Promise<Contact | undefined> {
-      const cleanEmail = email?.trim() ?? "";
+      const client = getClient();
+      const validated = emailValidate.validateOrThrow({ email });
       
-      // Basic email validation
-      if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-        throw new Error("Invalid email format");
-      }
-      
-      // Update the contact's email
-      const [contact] = await db
+      const [contact] = await client
         .update(contacts)
-        .set({ email: cleanEmail || null })
+        .set({ email: validated.email })
         .where(eq(contacts.id, contactId))
         .returning();
       
@@ -448,35 +567,12 @@ export function createContactStorage(): ContactStorage {
     },
 
     async updateBirthDate(contactId: string, birthDate: string | null): Promise<Contact | undefined> {
-      // Validate birth date format if provided
-      if (birthDate) {
-        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (!dateRegex.test(birthDate)) {
-          throw new Error("Invalid date format. Expected YYYY-MM-DD");
-        }
-        
-        // Parse and validate calendar date
-        const [yearStr, monthStr, dayStr] = birthDate.split('-');
-        const year = parseInt(yearStr, 10);
-        const month = parseInt(monthStr, 10);
-        const day = parseInt(dayStr, 10);
-        
-        // Validate month range
-        if (month < 1 || month > 12) {
-          throw new Error("Invalid month. Must be between 1 and 12");
-        }
-        
-        // Validate day range based on month
-        const daysInMonth = [31, (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-        if (day < 1 || day > daysInMonth[month - 1]) {
-          throw new Error(`Invalid day. Must be between 1 and ${daysInMonth[month - 1]} for the given month`);
-        }
-      }
+      const client = getClient();
+      const validated = birthDateValidate.validateOrThrow({ birthDate });
       
-      // Update the contact's birth date
-      const [contact] = await db
+      const [contact] = await client
         .update(contacts)
-        .set({ birthDate: birthDate || null })
+        .set({ birthDate: validated.birthDate })
         .where(eq(contacts.id, contactId))
         .returning();
       
@@ -484,9 +580,10 @@ export function createContactStorage(): ContactStorage {
     },
 
     async updateGender(contactId: string, gender: string | null, genderNota: string | null): Promise<Contact | undefined> {
+      const client = getClient();
       // If clearing gender, clear all gender fields
       if (!gender) {
-        const [contact] = await db
+        const [contact] = await client
           .update(contacts)
           .set({ 
             gender: null,
@@ -500,7 +597,7 @@ export function createContactStorage(): ContactStorage {
       }
       
       // Fetch the gender option to check if it's nota
-      const [genderOption] = await db.select().from(optionsGender).where(eq(optionsGender.id, gender));
+      const [genderOption] = await client.select().from(optionsGender).where(eq(optionsGender.id, gender));
       if (!genderOption) {
         throw new Error("Invalid gender option");
       }
@@ -523,7 +620,7 @@ export function createContactStorage(): ContactStorage {
       }
       
       // Update the contact's gender fields
-      const [contact] = await db
+      const [contact] = await client
         .update(contacts)
         .set({ 
           gender,
@@ -537,7 +634,8 @@ export function createContactStorage(): ContactStorage {
     },
 
     async deleteContact(id: string): Promise<boolean> {
-      const result = await db.delete(contacts).where(eq(contacts.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(contacts).where(eq(contacts.id, id)).returning();
       return result.length > 0;
     },
   };
@@ -600,66 +698,87 @@ function formatAddressForLog(address: any): string {
     parts.push(cityStateZip.join(', '));
   }
   
-  return parts.length > 0 ? parts.join(', ') : 'Unknown';
+  return parts.length > 0 ? parts.join(', ') : 'No address details';
 }
 
 /**
- * Helper function to calculate changes between before and after address states
+ * Logging configuration for address storage operations
  */
-function calculateAddressChanges(before: any, after: any): Record<string, { from: any; to: any }> {
-  if (before === null || before === undefined || after === null || after === undefined) {
-    return {};
-  }
-
-  if (typeof before !== 'object' || typeof after !== 'object') {
-    return before !== after ? { value: { from: before, to: after } } : {};
-  }
-
-  const changes: Record<string, { from: any; to: any }> = {};
-  const allKeys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]));
-
-  for (const key of allKeys) {
-    const beforeValue = before[key];
-    const afterValue = after[key];
-
-    if (JSON.stringify(beforeValue) !== JSON.stringify(afterValue)) {
-      changes[key] = { from: beforeValue, to: afterValue };
+export const addressLoggingConfig: StorageLoggingConfig<AddressStorage> = {
+  module: 'contacts.addresses',
+  methods: {
+    createContactPostal: {
+      enabled: true,
+      getEntityId: (args) => args[0]?.contactId || 'new address',
+      getHostEntityId: (args, result) => result?.contactId,
+      after: async (args, result) => {
+        return result;
+      },
+      getDescription: async (args, result) => {
+        const address = result;
+        return `Created address: ${formatAddressForLog(address)}`;
+      }
+    },
+    updateContactPostal: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: async (args, result, beforeState) => {
+        return result?.contactId || beforeState?.contactId;
+      },
+      before: async (args, storage) => {
+        return await storage.getContactPostal(args[0]);
+      },
+      after: async (args, result) => {
+        return result;
+      },
+      getDescription: async (args, result, beforeState, afterState) => {
+        const address = afterState || beforeState;
+        const changes: string[] = [];
+        
+        if (beforeState && afterState) {
+          if (beforeState.isPrimary !== afterState.isPrimary) {
+            changes.push(afterState.isPrimary ? 'set as primary' : 'unset as primary');
+          }
+          if (beforeState.isActive !== afterState.isActive) {
+            changes.push(afterState.isActive ? 'activated' : 'deactivated');
+          }
+        }
+        
+        if (changes.length > 0) {
+          return `Updated address (${changes.join(', ')}): ${formatAddressForLog(address)}`;
+        }
+        return `Updated address: ${formatAddressForLog(address)}`;
+      }
+    },
+    deleteContactPostal: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: async (args, result, beforeState) => {
+        return beforeState?.contactId;
+      },
+      before: async (args, storage) => {
+        return await storage.getContactPostal(args[0]);
+      },
+      getDescription: async (args, result, beforeState) => {
+        return `Deleted address: ${formatAddressForLog(beforeState)}`;
+      }
+    },
+    setAddressAsPrimary: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[1],
+      before: async (args, storage) => {
+        return await storage.getContactPostal(args[0]);
+      },
+      after: async (args, result) => {
+        return result;
+      },
+      getDescription: async (args, result) => {
+        return `Set address as primary: ${formatAddressForLog(result)}`;
+      }
     }
   }
-
-  return changes;
-}
-
-/**
- * Helper function to find the parent entity (trust provider or employer) for a contact
- * Returns the provider/employer ID if found, otherwise returns the contact ID
- */
-async function getParentEntityForContact(contactId: string): Promise<string> {
-  // Check if contact belongs to a trust provider contact
-  const [providerContact] = await db
-    .select({ providerId: trustProviderContacts.providerId })
-    .from(trustProviderContacts)
-    .where(eq(trustProviderContacts.contactId, contactId))
-    .limit(1);
-  
-  if (providerContact) {
-    return providerContact.providerId;
-  }
-  
-  // Check if contact belongs to an employer contact
-  const [employerContact] = await db
-    .select({ employerId: employerContacts.employerId })
-    .from(employerContacts)
-    .where(eq(employerContacts.contactId, contactId))
-    .limit(1);
-  
-  if (employerContact) {
-    return employerContact.employerId;
-  }
-  
-  // Fall back to contact ID if no parent entity found
-  return contactId;
-}
+};
 
 /**
  * Helper function to format phone number for display in logs
@@ -668,295 +787,195 @@ function formatPhoneNumberForLog(phoneNumber: any): string {
   if (!phoneNumber) return 'Unknown';
   
   const parts: string[] = [];
-  if (phoneNumber.formattedNumber) {
-    parts.push(phoneNumber.formattedNumber);
-  } else if (phoneNumber.number) {
-    parts.push(phoneNumber.number);
+  
+  if (phoneNumber.phoneNumber) {
+    parts.push(phoneNumber.phoneNumber);
   }
   
-  if (phoneNumber.friendlyName) {
-    parts.push(`(${phoneNumber.friendlyName})`);
+  if (phoneNumber.label) {
+    parts.push(`(${phoneNumber.label})`);
   }
   
-  return parts.length > 0 ? parts.join(' ') : 'Unknown';
+  return parts.length > 0 ? parts.join(' ') : 'No phone number details';
 }
-
-/**
- * Helper function to calculate changes between before and after states
- */
-function calculatePhoneNumberChanges(before: any, after: any): Record<string, { from: any; to: any }> {
-  if (before === null || before === undefined || after === null || after === undefined) {
-    return {};
-  }
-
-  if (typeof before !== 'object' || typeof after !== 'object') {
-    return before !== after ? { value: { from: before, to: after } } : {};
-  }
-
-  const changes: Record<string, { from: any; to: any }> = {};
-  const allKeys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]));
-
-  for (const key of allKeys) {
-    const beforeValue = before[key];
-    const afterValue = after[key];
-
-    if (JSON.stringify(beforeValue) !== JSON.stringify(afterValue)) {
-      changes[key] = { from: beforeValue, to: afterValue };
-    }
-  }
-
-  return changes;
-}
-
-/**
- * Logging configuration for contact storage operations
- * 
- * Logs all contact mutations with full argument capture and change tracking.
- */
-export const contactLoggingConfig: StorageLoggingConfig<ContactsStorage> = {
-  module: 'contacts',
-  methods: {
-    createContact: {
-      enabled: true,
-      getEntityId: (args) => args[0]?.displayName || args[0]?.given || args[0]?.family || 'new contact',
-      getHostEntityId: (args, result) => result?.id,
-      after: async (args, result, storage) => {
-        return result; // Capture created contact
-      }
-    },
-    updateName: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Contact ID
-      getHostEntityId: (args) => args[0], // Contact ID
-      before: async (args, storage) => {
-        return await storage.getContact(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      }
-    },
-    updateNameComponents: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Contact ID
-      getHostEntityId: (args) => args[0], // Contact ID
-      before: async (args, storage) => {
-        return await storage.getContact(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      }
-    },
-    updateEmail: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Contact ID
-      getHostEntityId: (args) => args[0], // Contact ID
-      before: async (args, storage) => {
-        return await storage.getContact(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      }
-    },
-    updateBirthDate: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Contact ID
-      getHostEntityId: (args) => args[0], // Contact ID
-      before: async (args, storage) => {
-        return await storage.getContact(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      }
-    },
-    updateGender: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Contact ID
-      getHostEntityId: (args) => args[0], // Contact ID
-      before: async (args, storage) => {
-        return await storage.getContact(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      }
-    },
-    deleteContact: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Contact ID
-      getHostEntityId: (args) => args[0], // Contact ID
-      before: async (args, storage) => {
-        return await storage.getContact(args[0]); // Capture what's being deleted
-      }
-    }
-  }
-};
-
-/**
- * Logging configuration for address storage operations
- * 
- * Logs all postal address mutations with full argument capture and change tracking.
- * Associates logs with parent entity (trust provider or employer) when applicable.
- */
-export const addressLoggingConfig: StorageLoggingConfig<AddressStorage> = {
-  module: 'contacts.addresses',
-  methods: {
-    createContactPostal: {
-      enabled: true,
-      getEntityId: (args) => args[0]?.contactId || 'new address',
-      getHostEntityId: async (args, result) => {
-        const contactId = result?.contactId || args[0]?.contactId;
-        return await getParentEntityForContact(contactId);
-      },
-      after: async (args, result, storage) => {
-        return result; // Capture created address
-      },
-      getDescription: (args, result, beforeState, afterState) => {
-        const addressDisplay = formatAddressForLog(afterState);
-        return `Created address "${addressDisplay}"`;
-      }
-    },
-    updateContactPostal: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Address ID
-      getHostEntityId: async (args, result, beforeState) => {
-        const contactId = result?.contactId || beforeState?.contactId;
-        return await getParentEntityForContact(contactId);
-      },
-      before: async (args, storage) => {
-        return await storage.getContactPostal(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      },
-      getDescription: (args, result, beforeState, afterState) => {
-        const addressDisplay = formatAddressForLog(afterState || beforeState);
-        const changes = calculateAddressChanges(beforeState, afterState);
-        const changedFields = Object.keys(changes);
-        
-        if (changedFields.length === 0) {
-          return `Updated address "${addressDisplay}" (no changes detected)`;
-        }
-        
-        const fieldList = changedFields.join(', ');
-        return `Updated address "${addressDisplay}" (changed: ${fieldList})`;
-      }
-    },
-    deleteContactPostal: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Address ID
-      getHostEntityId: async (args, result, beforeState) => {
-        const contactId = beforeState?.contactId;
-        return await getParentEntityForContact(contactId);
-      },
-      before: async (args, storage) => {
-        return await storage.getContactPostal(args[0]); // Capture what's being deleted
-      },
-      getDescription: (args, result, beforeState, afterState) => {
-        const addressDisplay = formatAddressForLog(beforeState);
-        return `Deleted address "${addressDisplay}"`;
-      }
-    },
-    setAddressAsPrimary: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Address ID
-      getHostEntityId: async (args, result, beforeState) => {
-        const contactId = result?.contactId || beforeState?.contactId;
-        return await getParentEntityForContact(contactId);
-      },
-      before: async (args, storage) => {
-        return await storage.getContactPostal(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      },
-      getDescription: (args, result, beforeState, afterState) => {
-        const addressDisplay = formatAddressForLog(afterState || beforeState);
-        return `Set address "${addressDisplay}" as primary`;
-      }
-    }
-  }
-};
 
 /**
  * Logging configuration for phone number storage operations
- * 
- * Logs all phone number mutations with full argument capture and change tracking.
- * Associates logs with parent entity (trust provider or employer) when applicable.
  */
 export const phoneNumberLoggingConfig: StorageLoggingConfig<PhoneNumberStorage> = {
   module: 'contacts.phoneNumbers',
   methods: {
     createPhoneNumber: {
       enabled: true,
-      getEntityId: (args) => args[0]?.contactId || 'new phone',
-      getHostEntityId: async (args, result) => {
-        const contactId = result?.contactId || args[0]?.contactId;
-        return await getParentEntityForContact(contactId);
+      getEntityId: (args) => args[0]?.contactId || 'new phone number',
+      getHostEntityId: (args, result) => result?.contactId,
+      after: async (args, result) => {
+        return result;
       },
-      after: async (args, result, storage) => {
-        return result; // Capture created phone number
-      },
-      getDescription: (args, result, beforeState, afterState) => {
-        const phoneDisplay = formatPhoneNumberForLog(afterState);
-        return `Created phone number "${phoneDisplay}"`;
+      getDescription: async (args, result) => {
+        return `Created phone number: ${formatPhoneNumberForLog(result)}`;
       }
     },
     updatePhoneNumber: {
       enabled: true,
-      getEntityId: (args) => args[0], // Phone number ID
+      getEntityId: (args) => args[0],
       getHostEntityId: async (args, result, beforeState) => {
-        const contactId = result?.contactId || beforeState?.contactId;
-        return await getParentEntityForContact(contactId);
+        return result?.contactId || beforeState?.contactId;
       },
       before: async (args, storage) => {
-        return await storage.getPhoneNumber(args[0]); // Current state
+        return await storage.getPhoneNumber(args[0]);
       },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
+      after: async (args, result) => {
+        return result;
       },
-      getDescription: (args, result, beforeState, afterState) => {
-        const phoneDisplay = formatPhoneNumberForLog(afterState || beforeState);
-        const changes = calculatePhoneNumberChanges(beforeState, afterState);
-        const changedFields = Object.keys(changes);
+      getDescription: async (args, result, beforeState, afterState) => {
+        const phoneNumber = afterState || beforeState;
+        const changes: string[] = [];
         
-        if (changedFields.length === 0) {
-          return `Updated phone number "${phoneDisplay}" (no changes detected)`;
+        if (beforeState && afterState) {
+          if (beforeState.isPrimary !== afterState.isPrimary) {
+            changes.push(afterState.isPrimary ? 'set as primary' : 'unset as primary');
+          }
+          if (beforeState.isActive !== afterState.isActive) {
+            changes.push(afterState.isActive ? 'activated' : 'deactivated');
+          }
         }
         
-        const fieldList = changedFields.join(', ');
-        return `Updated phone number "${phoneDisplay}" (changed: ${fieldList})`;
+        if (changes.length > 0) {
+          return `Updated phone number (${changes.join(', ')}): ${formatPhoneNumberForLog(phoneNumber)}`;
+        }
+        return `Updated phone number: ${formatPhoneNumberForLog(phoneNumber)}`;
       }
     },
     deletePhoneNumber: {
       enabled: true,
-      getEntityId: (args) => args[0], // Phone number ID
+      getEntityId: (args) => args[0],
       getHostEntityId: async (args, result, beforeState) => {
-        const contactId = beforeState?.contactId;
-        return await getParentEntityForContact(contactId);
+        return beforeState?.contactId;
       },
       before: async (args, storage) => {
-        return await storage.getPhoneNumber(args[0]); // Capture what's being deleted
+        return await storage.getPhoneNumber(args[0]);
       },
-      getDescription: (args, result, beforeState, afterState) => {
-        const phoneDisplay = formatPhoneNumberForLog(beforeState);
-        return `Deleted phone number "${phoneDisplay}"`;
+      getDescription: async (args, result, beforeState) => {
+        return `Deleted phone number: ${formatPhoneNumberForLog(beforeState)}`;
       }
     },
     setPhoneNumberAsPrimary: {
       enabled: true,
-      getEntityId: (args) => args[0], // Phone number ID
-      getHostEntityId: async (args, result, beforeState) => {
-        const contactId = result?.contactId || beforeState?.contactId;
-        return await getParentEntityForContact(contactId);
-      },
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[1],
       before: async (args, storage) => {
-        return await storage.getPhoneNumber(args[0]); // Current state
+        return await storage.getPhoneNumber(args[0]);
       },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
+      after: async (args, result) => {
+        return result;
       },
-      getDescription: (args, result, beforeState, afterState) => {
-        const phoneDisplay = formatPhoneNumberForLog(afterState || beforeState);
-        return `Set phone number "${phoneDisplay}" as primary`;
+      getDescription: async (args, result) => {
+        return `Set phone number as primary: ${formatPhoneNumberForLog(result)}`;
+      }
+    }
+  }
+};
+
+export const contactLoggingConfig: StorageLoggingConfig<ContactStorage> = {
+  module: 'contacts',
+  methods: {
+    createContact: {
+      enabled: true,
+      getEntityId: (args, result) => result?.id || 'new contact',
+      getHostEntityId: (args, result) => result?.id,
+      after: async (args, result) => {
+        return result;
+      },
+      getDescription: async (args, result) => {
+        return `Created contact: ${result?.displayName || result?.email || 'Unknown'}`;
+      }
+    },
+    updateName: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        return await storage.getContact(args[0]);
+      },
+      after: async (args, result) => {
+        return result;
+      },
+      getDescription: async (args, result, beforeState) => {
+        const oldName = beforeState?.displayName || 'Unknown';
+        const newName = result?.displayName || args[1] || 'Unknown';
+        return `Updated contact name: ${oldName} -> ${newName}`;
+      }
+    },
+    updateNameComponents: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        return await storage.getContact(args[0]);
+      },
+      after: async (args, result) => {
+        return result;
+      },
+      getDescription: async (args, result, beforeState) => {
+        const oldName = beforeState?.displayName || 'Unknown';
+        const newName = result?.displayName || 'Unknown';
+        return `Updated contact name components: ${oldName} -> ${newName}`;
+      }
+    },
+    updateEmail: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        return await storage.getContact(args[0]);
+      },
+      after: async (args, result) => {
+        return result;
+      },
+      getDescription: async (args, result, beforeState) => {
+        const oldEmail = beforeState?.email || 'none';
+        const newEmail = result?.email || args[1] || 'none';
+        return `Updated contact email: ${oldEmail} -> ${newEmail}`;
+      }
+    },
+    updateBirthDate: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        return await storage.getContact(args[0]);
+      },
+      after: async (args, result) => {
+        return result;
+      },
+      getDescription: async (args, result) => {
+        return `Updated contact birth date for: ${result?.displayName || 'Unknown'}`;
+      }
+    },
+    updateGender: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        return await storage.getContact(args[0]);
+      },
+      after: async (args, result) => {
+        return result;
+      },
+      getDescription: async (args, result) => {
+        return `Updated contact gender for: ${result?.displayName || 'Unknown'}`;
+      }
+    },
+    deleteContact: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: async (args, result, beforeState) => beforeState?.id || args[0],
+      before: async (args, storage) => {
+        return await storage.getContact(args[0]);
+      },
+      getDescription: async (args, result, beforeState) => {
+        return `Deleted contact: ${beforeState?.displayName || 'Unknown'}`;
       }
     }
   }

@@ -67,7 +67,7 @@ export default function GbhetLegalHourlyConfigFormPage() {
   });
 
   const { data: employmentStatuses = [] } = useQuery<EmploymentStatus[]>({
-    queryKey: ["/api/employment-statuses"],
+    queryKey: ["/api/options/employment-status"],
   });
 
   const form = useForm<FormData>({

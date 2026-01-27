@@ -1,4 +1,5 @@
-import { db } from "../db";
+import { createNoopValidator } from './utils/validation';
+import { getClient } from './transaction-context';
 import { eq, desc } from "drizzle-orm";
 import { tableExists as tableExistsUtil } from "./utils";
 import { 
@@ -8,6 +9,11 @@ import {
 } from "../../shared/schema/sitespecific/btu/schema";
 import { getTableName } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export type { BtuCsgRecord, InsertBtuCsgRecord };
 
@@ -32,7 +38,8 @@ export function createBtuCsgStorage(): BtuCsgStorage {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      return db
+      const client = getClient();
+      return client
         .select()
         .from(sitespecificBtuCsg)
         .orderBy(desc(sitespecificBtuCsg.createdAt));
@@ -42,7 +49,8 @@ export function createBtuCsgStorage(): BtuCsgStorage {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select()
         .from(sitespecificBtuCsg)
         .where(eq(sitespecificBtuCsg.id, id));
@@ -50,10 +58,12 @@ export function createBtuCsgStorage(): BtuCsgStorage {
     },
 
     async create(record: InsertBtuCsgRecord): Promise<BtuCsgRecord> {
+      validate.validateOrThrow(record);
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .insert(sitespecificBtuCsg)
         .values(record)
         .returning();
@@ -61,10 +71,12 @@ export function createBtuCsgStorage(): BtuCsgStorage {
     },
 
     async update(id: string, record: Partial<InsertBtuCsgRecord>): Promise<BtuCsgRecord | undefined> {
+      validate.validateOrThrow(record);
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .update(sitespecificBtuCsg)
         .set(record)
         .where(eq(sitespecificBtuCsg.id, id))
@@ -76,7 +88,8 @@ export function createBtuCsgStorage(): BtuCsgStorage {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .delete(sitespecificBtuCsg)
         .where(eq(sitespecificBtuCsg.id, id))
         .returning({ id: sitespecificBtuCsg.id });

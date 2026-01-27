@@ -1,4 +1,5 @@
-import { db } from "../db";
+import { createNoopValidator } from './utils/validation';
+import { getClient } from './transaction-context';
 import {
   users,
   roles,
@@ -20,16 +21,19 @@ import { type StorageLoggingConfig } from "./middleware/logging";
 import type { ContactsStorage } from "./contacts";
 import { createUserContactSyncService } from "../services/user-contact-sync";
 
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator<InsertUser, User>();
+
 export interface UserStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
-  getUserByReplitId(replitUserId: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, user: Partial<InsertUser>): Promise<User | undefined>;
   updateUserLastLogin(id: string): Promise<User | undefined>;
-  linkReplitAccount(userId: string, replitUserId: string, userData: Partial<UpsertUser>): Promise<User | undefined>;
   deleteUser(id: string): Promise<boolean>;
   getAllUsers(): Promise<User[]>;
   getAllUsersWithRoles(): Promise<(User & { roles: Role[] })[]>;
@@ -75,22 +79,21 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
   return {
     // User operations
     async getUser(id: string): Promise<User | undefined> {
-      const [user] = await db.select().from(users).where(eq(users.id, id));
-      return user || undefined;
-    },
-
-    async getUserByReplitId(replitUserId: string): Promise<User | undefined> {
-      const [user] = await db.select().from(users).where(eq(users.replitUserId, replitUserId));
+      const client = getClient();
+      const [user] = await client.select().from(users).where(eq(users.id, id));
       return user || undefined;
     },
 
     async getUserByEmail(email: string): Promise<User | undefined> {
-      const [user] = await db.select().from(users).where(eq(users.email, email));
+      const client = getClient();
+      const [user] = await client.select().from(users).where(eq(users.email, email));
       return user || undefined;
     },
 
     async upsertUser(userData: UpsertUser): Promise<User> {
-      const [user] = await db
+      validate.validateOrThrow(userData);
+      const client = getClient();
+      const [user] = await client
         .insert(users)
         .values(userData)
         .onConflictDoUpdate({
@@ -112,33 +115,10 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
       return user;
     },
 
-    async linkReplitAccount(userId: string, replitUserId: string, userData: Partial<UpsertUser>): Promise<User | undefined> {
-      const previousUser = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
-      const previousEmail = previousUser?.email;
-      
-      const [user] = await db
-        .update(users)
-        .set({
-          replitUserId,
-          email: userData.email,
-          firstName: userData.firstName,
-          lastName: userData.lastName,
-          profileImageUrl: userData.profileImageUrl,
-          accountStatus: 'linked',
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, userId))
-        .returning();
-      
-      if (user && contactSync) {
-        await contactSync.ensureContactForUser(user, previousEmail);
-      }
-      
-      return user || undefined;
-    },
-
     async createUser(insertUser: InsertUser): Promise<User> {
-      const [user] = await db
+      validate.validateOrThrow(insertUser);
+      const client = getClient();
+      const [user] = await client
         .insert(users)
         .values(insertUser)
         .returning();
@@ -151,10 +131,12 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async updateUser(id: string, userUpdate: Partial<InsertUser>): Promise<User | undefined> {
-      const previousUser = await db.select().from(users).where(eq(users.id, id)).then(r => r[0]);
+      validate.validateOrThrow(userUpdate);
+      const client = getClient();
+      const previousUser = await client.select().from(users).where(eq(users.id, id)).then(r => r[0]);
       const previousEmail = previousUser?.email;
       
-      const [user] = await db
+      const [user] = await client
         .update(users)
         .set(userUpdate)
         .where(eq(users.id, id))
@@ -168,7 +150,8 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async updateUserLastLogin(id: string): Promise<User | undefined> {
-      const [user] = await db
+      const client = getClient();
+      const [user] = await client
         .update(users)
         .set({ lastLogin: new Date() })
         .where(eq(users.id, id))
@@ -177,18 +160,21 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async deleteUser(id: string): Promise<boolean> {
-      const result = await db.delete(users).where(eq(users.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(users).where(eq(users.id, id)).returning();
       return result.length > 0;
     },
 
     async getAllUsers(): Promise<User[]> {
-      return db.select().from(users);
+      const client = getClient();
+      return client.select().from(users);
     },
 
     async getAllUsersWithRoles(): Promise<(User & { roles: Role[] })[]> {
-      const allUsers = await db.select().from(users);
+      const client = getClient();
+      const allUsers = await client.select().from(users);
       
-      const userRoleData = await db
+      const userRoleData = await client
         .select({
           userId: userRoles.userId,
           roleId: roles.id,
@@ -221,12 +207,14 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async hasAnyUsers(): Promise<boolean> {
-      const [result] = await db.select({ count: sql<number>`count(*)` }).from(users);
+      const client = getClient();
+      const [result] = await client.select({ count: sql<number>`count(*)` }).from(users);
       return (result?.count ?? 0) > 0;
     },
 
     async updateUserData(id: string, data: Record<string, unknown>): Promise<User | undefined> {
-      const [user] = await db
+      const client = getClient();
+      const [user] = await client
         .update(users)
         .set({ data, updatedAt: new Date() })
         .where(eq(users.id, id))
@@ -235,22 +223,26 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async getUserData(id: string): Promise<Record<string, unknown> | null> {
-      const [user] = await db.select({ data: users.data }).from(users).where(eq(users.id, id));
+      const client = getClient();
+      const [user] = await client.select({ data: users.data }).from(users).where(eq(users.id, id));
       return (user?.data as Record<string, unknown>) || null;
     },
 
     // Role operations
     async getAllRoles(): Promise<Role[]> {
-      return db.select().from(roles).orderBy(roles.sequence, roles.name);
+      const client = getClient();
+      return client.select().from(roles).orderBy(roles.sequence, roles.name);
     },
 
     async getRole(id: string): Promise<Role | undefined> {
-      const [role] = await db.select().from(roles).where(eq(roles.id, id));
+      const client = getClient();
+      const [role] = await client.select().from(roles).where(eq(roles.id, id));
       return role || undefined;
     },
 
     async createRole(insertRole: InsertRole): Promise<Role> {
-      const [role] = await db
+      const client = getClient();
+      const [role] = await client
         .insert(roles)
         .values(insertRole)
         .returning();
@@ -258,7 +250,8 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async updateRole(id: string, roleUpdate: Partial<InsertRole>): Promise<Role | undefined> {
-      const [role] = await db
+      const client = getClient();
+      const [role] = await client
         .update(roles)
         .set(roleUpdate)
         .where(eq(roles.id, id))
@@ -267,12 +260,14 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async deleteRole(id: string): Promise<boolean> {
-      const result = await db.delete(roles).where(eq(roles.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(roles).where(eq(roles.id, id)).returning();
       return result.length > 0;
     },
 
     async updateRoleSequence(id: string, sequence: number): Promise<Role | undefined> {
-      const [role] = await db
+      const client = getClient();
+      const [role] = await client
         .update(roles)
         .set({ sequence })
         .where(eq(roles.id, id))
@@ -295,7 +290,8 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
 
     // User-Role assignment operations
     async assignRoleToUser(assignment: AssignRole): Promise<UserRole> {
-      const [userRole] = await db
+      const client = getClient();
+      const [userRole] = await client
         .insert(userRoles)
         .values(assignment)
         .returning();
@@ -303,7 +299,8 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async unassignRoleFromUser(userId: string, roleId: string): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(userRoles)
         .where(and(eq(userRoles.userId, userId), eq(userRoles.roleId, roleId)))
         .returning();
@@ -311,7 +308,8 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async getUserRoles(userId: string): Promise<Role[]> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .select({
           id: roles.id,
           name: roles.name,
@@ -327,10 +325,10 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async getUsersWithRole(roleId: string): Promise<User[]> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .select({
           id: users.id,
-          replitUserId: users.replitUserId,
           email: users.email,
           firstName: users.firstName,
           lastName: users.lastName,
@@ -350,11 +348,12 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
 
     // Role-Permission assignment operations
     async assignPermissionToRole(assignment: AssignPermission): Promise<RolePermission> {
+      const client = getClient();
       if (!permissionRegistry.exists(assignment.permissionKey)) {
         throw new Error(`Permission '${assignment.permissionKey}' does not exist in the registry`);
       }
       
-      const [rolePermission] = await db
+      const [rolePermission] = await client
         .insert(rolePermissions)
         .values(assignment)
         .returning();
@@ -362,7 +361,8 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async unassignPermissionFromRole(roleId: string, permissionKey: string): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(rolePermissions)
         .where(and(eq(rolePermissions.roleId, roleId), eq(rolePermissions.permissionKey, permissionKey)))
         .returning();
@@ -370,7 +370,8 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async getRolePermissions(roleId: string): Promise<PermissionDefinition[]> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .select({
           permissionKey: rolePermissions.permissionKey,
         })
@@ -383,7 +384,8 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async getRolesWithPermission(permissionKey: string): Promise<Role[]> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .select({
           id: roles.id,
           name: roles.name,
@@ -399,7 +401,8 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async getAllRolePermissions(): Promise<(RolePermission & { role: Role })[]> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .select({
           roleId: rolePermissions.roleId,
           permissionKey: rolePermissions.permissionKey,
@@ -426,7 +429,8 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
 
     // Authorization helpers
     async getUserPermissions(userId: string): Promise<PermissionDefinition[]> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .select({
           permissionKey: rolePermissions.permissionKey,
         })
@@ -442,7 +446,8 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async userHasPermission(userId: string, permissionKey: string): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .select({ permissionKey: rolePermissions.permissionKey })
         .from(userRoles)
         .innerJoin(roles, eq(userRoles.roleId, roles.id))
@@ -452,13 +457,13 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     },
 
     async getUsersWithAnyPermission(permissionKeys: string[]): Promise<User[]> {
+      const client = getClient();
       if (permissionKeys.length === 0) {
         return [];
       }
-      const result = await db
+      const result = await client
         .selectDistinct({
           id: users.id,
-          replitUserId: users.replitUserId,
           email: users.email,
           firstName: users.firstName,
           lastName: users.lastName,
@@ -550,25 +555,6 @@ export const userLoggingConfig: StorageLoggingConfig<UserStorage> = {
         return `Deleted user "${userName}"`;
       }
     },
-    linkReplitAccount: {
-      enabled: true,
-      getEntityId: (args) => args[0], // User ID
-      getHostEntityId: (args) => args[0], // User ID is the host
-      before: async (args, storage) => {
-        return await storage.getUser(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      },
-      getDescription: async (args, result, beforeState, afterState) => {
-        const user = afterState || beforeState;
-        if (!user) return `Linked Replit account for user ${args[0]}`;
-        const userName = user.firstName && user.lastName
-          ? `${user.firstName} ${user.lastName}`
-          : user.email;
-        return `Linked Replit account for "${userName}"`;
-      }
-    },
     createRole: {
       enabled: true,
       getEntityId: (args) => args[0]?.name || 'new role',
@@ -643,6 +629,12 @@ export const userLoggingConfig: StorageLoggingConfig<UserStorage> = {
       getEntityId: (args) => args[0]?.roleId || 'role',
       after: async (args, result, storage) => {
         return result; // Capture permission assignment
+      },
+      getDescription: async (args, result, beforeState, afterState, storage) => {
+        const assignment = args[0];
+        const role = await storage.getRole(assignment.roleId);
+        const roleName = role?.name || 'Unknown role';
+        return `Assigned permission "${assignment.permissionKey}" to role "${roleName}"`;
       }
     },
     unassignPermissionFromRole: {
@@ -652,6 +644,13 @@ export const userLoggingConfig: StorageLoggingConfig<UserStorage> = {
         // Capture the permissions before removal
         const permissions = await storage.getRolePermissions(args[0]);
         return { roleId: args[0], permissionKey: args[1], permissions };
+      },
+      getDescription: async (args, result, beforeState, afterState, storage) => {
+        const roleId = args[0];
+        const permissionKey = args[1];
+        const role = await storage.getRole(roleId);
+        const roleName = role?.name || 'Unknown role';
+        return `Unassigned permission "${permissionKey}" from role "${roleName}"`;
       }
     }
   }

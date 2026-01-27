@@ -32,7 +32,7 @@ export function AddEmployerForm() {
   const [, setLocation] = useLocation();
 
   const { data: employerTypes = [] } = useQuery<EmployerType[]>({
-    queryKey: ["/api/employer-types"],
+    queryKey: ["/api/options/employer-type"],
   });
 
   const addEmployerMutation = useMutation({

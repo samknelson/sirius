@@ -1,13 +1,20 @@
-import { db } from "../db";
+import { createNoopValidator } from './utils/validation';
+import { getClient } from './transaction-context';
 import { 
   dispatchJobs, 
+  dispatches,
   employers,
   optionsDispatchJobType,
   type DispatchJob, 
   type InsertDispatchJob
 } from "@shared/schema";
-import { eq, desc, and, gte, lte, sql, SQL } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, SQL, inArray } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator<InsertDispatchJob, DispatchJob>();
 
 export interface DispatchJobFilters {
   employerId?: string;
@@ -15,11 +22,23 @@ export interface DispatchJobFilters {
   jobTypeId?: string;
   startDateFrom?: Date;
   startDateTo?: Date;
+  running?: boolean;
+}
+
+export interface DispatchStatusCounts {
+  pending: number;
+  notified: number;
+  accepted: number;
+  layoff: number;
+  resigned: number;
+  declined: number;
 }
 
 export interface DispatchJobWithRelations extends DispatchJob {
   employer?: { id: string; name: string };
   jobType?: { id: string; name: string; data: unknown } | null;
+  acceptedCount?: number;
+  statusCounts?: DispatchStatusCounts;
 }
 
 export interface PaginatedDispatchJobs {
@@ -42,7 +61,8 @@ export interface DispatchJobStorage {
 
 async function getJobTypeName(jobTypeId: string | null | undefined): Promise<string> {
   if (!jobTypeId) return '';
-  const [jobType] = await db.select({ name: optionsDispatchJobType.name })
+  const client = getClient();
+  const [jobType] = await client.select({ name: optionsDispatchJobType.name })
     .from(optionsDispatchJobType)
     .where(eq(optionsDispatchJobType.id, jobTypeId));
   return jobType?.name || '';
@@ -137,10 +157,12 @@ export const dispatchJobLoggingConfig: StorageLoggingConfig<DispatchJobStorage> 
 export function createDispatchJobStorage(): DispatchJobStorage {
   return {
     async getAll(): Promise<DispatchJob[]> {
-      return db.select().from(dispatchJobs).orderBy(desc(dispatchJobs.createdAt));
+      const client = getClient();
+      return client.select().from(dispatchJobs).orderBy(desc(dispatchJobs.createdAt));
     },
 
     async getPaginated(page: number, limit: number, filters?: DispatchJobFilters): Promise<PaginatedDispatchJobs> {
+      const client = getClient();
       const conditions: SQL[] = [];
       
       if (filters?.employerId) {
@@ -158,11 +180,14 @@ export function createDispatchJobStorage(): DispatchJobStorage {
       if (filters?.startDateTo) {
         conditions.push(lte(dispatchJobs.startDate, filters.startDateTo));
       }
+      if (filters?.running !== undefined) {
+        conditions.push(eq(dispatchJobs.running, filters.running));
+      }
       
       const hasFilters = conditions.length > 0;
       const whereClause = hasFilters ? and(...conditions) : undefined;
       
-      const countQuery = db
+      const countQuery = client
         .select({ count: sql<number>`count(*)::int` })
         .from(dispatchJobs);
       
@@ -172,7 +197,7 @@ export function createDispatchJobStorage(): DispatchJobStorage {
       
       const total = countResult?.count || 0;
       
-      const baseQuery = db
+      const baseQuery = client
         .select({
           job: dispatchJobs,
           employer: {
@@ -193,22 +218,43 @@ export function createDispatchJobStorage(): DispatchJobStorage {
         ? await baseQuery.where(whereClause!).orderBy(desc(dispatchJobs.startDate)).limit(limit).offset(page * limit)
         : await baseQuery.orderBy(desc(dispatchJobs.startDate)).limit(limit).offset(page * limit);
       
+      const jobIds = rows.map(r => r.job.id);
+      
+      const acceptedCounts = jobIds.length > 0 
+        ? await client
+            .select({ 
+              jobId: dispatches.jobId,
+              count: sql<number>`count(*)::int` 
+            })
+            .from(dispatches)
+            .where(and(
+              inArray(dispatches.jobId, jobIds),
+              eq(dispatches.status, 'accepted')
+            ))
+            .groupBy(dispatches.jobId)
+        : [];
+      
+      const acceptedCountMap = new Map(acceptedCounts.map(r => [r.jobId, r.count]));
+      
       const data: DispatchJobWithRelations[] = rows.map(row => ({
         ...row.job,
         employer: row.employer || undefined,
         jobType: row.jobType,
+        acceptedCount: acceptedCountMap.get(row.job.id) || 0,
       }));
       
       return { data, total, page, limit };
     },
 
     async get(id: string): Promise<DispatchJob | undefined> {
-      const [job] = await db.select().from(dispatchJobs).where(eq(dispatchJobs.id, id));
+      const client = getClient();
+      const [job] = await client.select().from(dispatchJobs).where(eq(dispatchJobs.id, id));
       return job || undefined;
     },
 
     async getWithRelations(id: string): Promise<DispatchJobWithRelations | undefined> {
-      const [row] = await db
+      const client = getClient();
+      const [row] = await client
         .select({
           job: dispatchJobs,
           employer: {
@@ -228,35 +274,82 @@ export function createDispatchJobStorage(): DispatchJobStorage {
       
       if (!row) return undefined;
       
+      const statusCountsResult = await client
+        .select({ 
+          status: dispatches.status,
+          count: sql<number>`count(*)::int` 
+        })
+        .from(dispatches)
+        .where(eq(dispatches.jobId, id))
+        .groupBy(dispatches.status);
+      
+      const statusCounts: DispatchStatusCounts = {
+        pending: 0,
+        notified: 0,
+        accepted: 0,
+        layoff: 0,
+        resigned: 0,
+        declined: 0,
+      };
+      
+      for (const row of statusCountsResult) {
+        if (row.status in statusCounts) {
+          statusCounts[row.status as keyof DispatchStatusCounts] = row.count;
+        }
+      }
+      
       return {
         ...row.job,
         employer: row.employer || undefined,
         jobType: row.jobType,
+        acceptedCount: statusCounts.accepted,
+        statusCounts,
       };
     },
 
     async getByEmployer(employerId: string): Promise<DispatchJob[]> {
-      return db.select().from(dispatchJobs)
+      const client = getClient();
+      return client.select().from(dispatchJobs)
         .where(eq(dispatchJobs.employerId, employerId))
         .orderBy(desc(dispatchJobs.startDate));
     },
 
     async create(insertJob: InsertDispatchJob): Promise<DispatchJob> {
-      const [job] = await db.insert(dispatchJobs).values(insertJob).returning();
+      validate.validateOrThrow(insertJob);
+      const client = getClient();
+      const [job] = await client.insert(dispatchJobs).values(insertJob).returning();
       return job;
     },
 
-    async update(id: string, jobUpdate: Partial<InsertDispatchJob>): Promise<DispatchJob | undefined> {
-      const [job] = await db
+    async update(id: string, jobUpdate: Partial<InsertDispatchJob & { running?: boolean }>): Promise<DispatchJob | undefined> {
+      const client = getClient();
+      
+      const [existingJob] = await client.select().from(dispatchJobs).where(eq(dispatchJobs.id, id));
+      if (!existingJob) {
+        return undefined;
+      }
+      
+      const updates = { ...jobUpdate };
+      
+      if (updates.running === true && existingJob.status !== 'open') {
+        throw new Error('Cannot set job to running unless status is open');
+      }
+      
+      if (updates.status !== undefined && updates.status !== 'open' && existingJob.running) {
+        updates.running = false;
+      }
+      
+      const [job] = await client
         .update(dispatchJobs)
-        .set(jobUpdate)
+        .set(updates)
         .where(eq(dispatchJobs.id, id))
         .returning();
       return job || undefined;
     },
 
     async delete(id: string): Promise<boolean> {
-      const result = await db.delete(dispatchJobs).where(eq(dispatchJobs.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(dispatchJobs).where(eq(dispatchJobs.id, id)).returning();
       return result.length > 0;
     }
   };

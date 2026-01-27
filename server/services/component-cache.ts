@@ -1,5 +1,5 @@
 import { storage } from "../storage";
-import { getAllComponents, getComponentById, getAncestorComponentIds } from "../../shared/components";
+import { getAllComponents, getComponentById } from "../../shared/components";
 import { logger } from "../logger";
 
 export type ComponentEnabledMap = Record<string, boolean>;
@@ -81,19 +81,6 @@ export function isComponentEnabledSync(componentId: string): boolean {
   const component = getComponentById(componentId);
   if (!component) {
     return false;
-  }
-
-  const ancestors = getAncestorComponentIds(componentId);
-  for (const ancestorId of ancestors) {
-    const ancestorComponent = getComponentById(ancestorId);
-    if (!ancestorComponent) {
-      continue;
-    }
-    
-    const ancestorEnabled = cachedComponentState[ancestorId] ?? ancestorComponent.enabledByDefault;
-    if (!ancestorEnabled) {
-      return false;
-    }
   }
 
   return cachedComponentState[componentId] ?? component.enabledByDefault;

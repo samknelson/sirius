@@ -1,8 +1,34 @@
-import { db } from "../db";
+import { getClient } from './transaction-context';
 import { employerContacts, contacts, optionsEmployerContactType, employers, users, type EmployerContact, type InsertEmployerContact, type Contact, type InsertContact, type Employer } from "@shared/schema";
 import { eq, and, or, like, ilike, sql, inArray } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import type { ContactsStorage } from "./contacts";
+import { 
+  type ValidationError,
+  createStorageValidator
+} from "./utils/validation";
+
+/**
+ * Validates required email for employer contacts
+ * Returns trimmed email value to match original behavior
+ */
+export const employerContactEmailValidate = createStorageValidator<{ email: string | null | undefined }, never, { email: string }>(
+  (data) => {
+    const errors: ValidationError[] = [];
+    const trimmedEmail = data.email?.trim() || '';
+    
+    if (!trimmedEmail) {
+      errors.push({
+        field: 'email',
+        code: 'REQUIRED',
+        message: "Email is required for employer contacts"
+      });
+      return { ok: false, errors };
+    }
+    
+    return { ok: true, value: { email: trimmedEmail } };
+  }
+);
 
 export interface EmployerContactStorage {
   create(data: { employerId: string; contactData: InsertContact & { email?: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }>;
@@ -27,13 +53,14 @@ export interface EmployerContactStorage {
 export function createEmployerContactStorage(contactsStorage: ContactsStorage): EmployerContactStorage {
   return {
     async create(data: { employerId: string; contactData: InsertContact & { email?: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }> {
+      const client = getClient();
+      
       // Email is optional for all contact types
-
       // Create the contact first using contacts storage
       const contact = await contactsStorage.createContact(data.contactData);
 
       // Create the employer contact relationship
-      const [employerContact] = await db
+      const [employerContact] = await client
         .insert(employerContacts)
         .values({
           employerId: data.employerId,
@@ -46,7 +73,8 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
     },
 
     async listByEmployer(employerId: string): Promise<Array<EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           employerContact: employerContacts,
           contact: contacts,
@@ -65,7 +93,8 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
     },
 
     async listByContactId(contactId: string): Promise<Array<EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           employerContact: employerContacts,
           contact: contacts,
@@ -84,7 +113,8 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
     },
 
     async getAll(filters?: { employerId?: string; contactName?: string; contactTypeId?: string }): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null; data: unknown } | null }>> {
-      let query = db
+      const client = getClient();
+      let query = client
         .select({
           employerContact: employerContacts,
           contact: contacts,
@@ -133,7 +163,8 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
     },
 
     async get(id: string): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           employerContact: employerContacts,
           contact: contacts,
@@ -157,7 +188,8 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
     },
 
     async update(id: string, data: { contactTypeId?: string | null }): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null> {
-      const [updated] = await db
+      const client = getClient();
+      const [updated] = await client
         .update(employerContacts)
         .set({ contactTypeId: data.contactTypeId })
         .where(eq(employerContacts.id, id))
@@ -171,7 +203,8 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
     },
 
     async updateContactEmail(id: string, email: string | null): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null> {
-      const employerContact = await db.query.employerContacts.findFirst({
+      const client = getClient();
+      const employerContact = await client.query.employerContacts.findFirst({
         where: eq(employerContacts.id, id),
       });
 
@@ -198,7 +231,8 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
         credentials?: string;
       }
     ): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null> {
-      const employerContact = await db.query.employerContacts.findFirst({
+      const client = getClient();
+      const employerContact = await client.query.employerContacts.findFirst({
         where: eq(employerContacts.id, id),
       });
 
@@ -212,16 +246,18 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
     },
 
     async delete(id: string): Promise<boolean> {
-      const result = await db.delete(employerContacts).where(eq(employerContacts.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(employerContacts).where(eq(employerContacts.id, id)).returning();
       return result.length > 0;
     },
 
     async getUserAccountStatuses(employerContactIds: string[]): Promise<Array<{ employerContactId: string; userId: string | null; hasUser: boolean; accountStatus: string | null }>> {
+      const client = getClient();
       if (employerContactIds.length === 0) {
         return [];
       }
 
-      const results = await db
+      const results = await client
         .select({
           employerContactId: employerContacts.id,
           userId: users.id,

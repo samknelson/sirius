@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { requireAccess } from "../services/access-policy-evaluator";
-import { getAllComponents, getComponentById, getDescendantComponentIds, getAncestorComponentIds, ComponentConfig, ComponentDefinition, ComponentSchemaState } from "../../shared/components";
+import { getAllComponents, getComponentById, ComponentConfig, ComponentDefinition, ComponentSchemaState } from "../../shared/components";
 import {
   enableComponentSchema,
   disableComponentSchema,
@@ -22,7 +22,6 @@ type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Respo
 
 /**
  * Get the configuration state for all components
- * Uses isComponentEnabled which includes hierarchical parent checking
  */
 async function getComponentConfigs(): Promise<ComponentConfig[]> {
   if (!isCacheInitialized()) {
@@ -46,7 +45,6 @@ async function getComponentConfigs(): Promise<ComponentConfig[]> {
 
 /**
  * Get all enabled component IDs
- * Returns only components that are fully enabled (including parent checks)
  * Uses in-memory cache for performance
  */
 export async function getEnabledComponentIds(): Promise<string[]> {
@@ -58,7 +56,6 @@ export async function getEnabledComponentIds(): Promise<string[]> {
 
 /**
  * Check if a component is enabled
- * Also checks that all parent components are enabled (hierarchical check)
  * Uses in-memory cache for performance
  */
 export async function isComponentEnabled(componentId: string): Promise<boolean> {
@@ -130,44 +127,6 @@ export function registerComponentRoutes(
         return res.status(404).json({ message: "Component not found" });
       }
 
-      // When disabling, check if any descendant components are still enabled
-      if (!enabled) {
-        const descendantIds = getDescendantComponentIds(componentId);
-        const enabledDescendants = descendantIds.filter(id => isComponentEnabledSync(id));
-        
-        if (enabledDescendants.length > 0) {
-          const descendantNames = enabledDescendants.map(id => {
-            const desc = getComponentById(id);
-            return desc ? desc.name : id;
-          });
-          
-          return res.status(400).json({
-            message: `Cannot disable "${component.name}" because the following dependent components are still enabled. Please disable them first.`,
-            enabledDescendants: enabledDescendants,
-            enabledDescendantNames: descendantNames
-          });
-        }
-      }
-
-      // When enabling, check if any ancestor components are disabled
-      if (enabled) {
-        const ancestorIds = getAncestorComponentIds(componentId);
-        const disabledAncestors = ancestorIds.filter(id => !isComponentEnabledSync(id));
-        
-        if (disabledAncestors.length > 0) {
-          const ancestorNames = disabledAncestors.map(id => {
-            const anc = getComponentById(id);
-            return anc ? anc.name : id;
-          });
-          
-          return res.status(400).json({
-            message: `Cannot enable "${component.name}" because the following parent components are disabled. Please enable them first.`,
-            disabledAncestors: disabledAncestors,
-            disabledAncestorNames: ancestorNames
-          });
-        }
-      }
-
       const shouldRetainData = retainData !== false;
 
       if (component.managesSchema && !enabled && !shouldRetainData) {
@@ -217,9 +176,8 @@ export function registerComponentRoutes(
       res.json({
         componentId,
         enabled: effectiveEnabled,
-        requestedState: enabled,
         managesSchema: component.managesSchema || false,
-        message: `Component ${enabled ? 'enabled' : 'disabled'} successfully${effectiveEnabled !== enabled ? ' (but disabled due to parent component)' : ''}`
+        message: `Component ${enabled ? 'enabled' : 'disabled'} successfully`
       });
     } catch (error) {
       console.error("Failed to update component configuration:", error);

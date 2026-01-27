@@ -15,10 +15,10 @@ function DispatchJobTypeDeleteContent() {
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("DELETE", `/api/dispatch-job-types/${jobType.id}`);
+      return apiRequest("DELETE", `/api/options/dispatch-job-type/${jobType.id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dispatch-job-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/dispatch-job-type"] });
       toast({
         title: "Success",
         description: "Job type deleted successfully.",

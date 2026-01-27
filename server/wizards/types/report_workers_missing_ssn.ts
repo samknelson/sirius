@@ -1,5 +1,7 @@
 import { WizardReport, ReportConfig, ReportColumn, ReportRecord } from '../report.js';
-import { storage } from '../../storage/index.js';
+import { storage } from '../../storage';
+import { workers, contacts } from '@shared/schema';
+import { eq, or, isNull } from 'drizzle-orm';
 
 export class ReportWorkersMissingSSN extends WizardReport {
   name = 'report_workers_missing_ssn';
@@ -41,28 +43,24 @@ export class ReportWorkersMissingSSN extends WizardReport {
     batchSize: number = 100,
     onProgress?: (progress: { processed: number; total: number }) => void
   ): Promise<ReportRecord[]> {
-    // Use database query with JOIN to fetch workers and contacts efficiently
-    const { db } = await import('../../db.js');
-    const { workers, contacts } = await import('@shared/schema');
-    const { eq, or, isNull } = await import('drizzle-orm');
-
-    // Query workers with missing SSN, joining with contacts table
-    const workersWithMissingSSN = await db
-      .select({
-        workerId: workers.id,
-        siriusId: workers.siriusId,
-        displayName: contacts.displayName,
-        email: contacts.email,
-        birthDate: contacts.birthDate
-      })
-      .from(workers)
-      .innerJoin(contacts, eq(workers.contactId, contacts.id))
-      .where(
-        or(
-          isNull(workers.ssn),
-          eq(workers.ssn, '')
-        )
-      );
+    const workersWithMissingSSN = await storage.readOnly.query(async (db) => {
+      return db
+        .select({
+          workerId: workers.id,
+          siriusId: workers.siriusId,
+          displayName: contacts.displayName,
+          email: contacts.email,
+          birthDate: contacts.birthDate
+        })
+        .from(workers)
+        .innerJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(
+          or(
+            isNull(workers.ssn),
+            eq(workers.ssn, '')
+          )
+        );
+    });
 
     const records: ReportRecord[] = workersWithMissingSSN.map(worker => ({
       workerId: worker.workerId,
@@ -72,7 +70,6 @@ export class ReportWorkersMissingSSN extends WizardReport {
       birthDate: worker.birthDate || null
     }));
 
-    // Report progress
     if (onProgress) {
       onProgress({
         processed: records.length,

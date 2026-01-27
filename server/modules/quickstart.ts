@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { z } from "zod";
 import { exportQuickstart, importQuickstart, listQuickstarts, deleteQuickstart } from "../services/quickstart";
-import { isAuthenticated } from "../replitAuth";
+import { isAuthenticated } from "../auth";
 import { requireAccess } from "../services/access-policy-evaluator";
 
 const exportSchema = z.object({

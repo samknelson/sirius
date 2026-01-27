@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, 
   CreditCard, Activity, Wallet, Settings, Shield, Key, FileText, 
-  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, type LucideIcon
+  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, type LucideIcon
 } from "lucide-react";
 
 export interface NavItem {
@@ -68,8 +68,8 @@ export const configSections: NavSection[] = [
     icon: Heart,
     items: [
       { path: "/trust-benefits", label: "Trust Benefits", icon: Heart, testId: "nav-trust-benefits", permission: "staff" },
-      { path: "/config/trust-benefit-types", label: "Trust Benefit Types", icon: List, testId: "nav-config-trust-benefit-types", permission: "admin" },
-      { path: "/config/provider-contact-types", label: "Provider Contact Types", icon: List, testId: "nav-config-provider-contact-types", permission: "admin" },
+      { path: "/config/options/trust-benefit-type", label: "Trust Benefit Types", icon: List, testId: "nav-config-trust-benefit-types", permission: "admin" },
+      { path: "/config/options/trust-provider-type", label: "Provider Contact Types", icon: List, testId: "nav-config-provider-contact-types", permission: "admin" },
       { path: "/config/trust/providers/user-settings", label: "Provider User Settings", icon: Settings, testId: "nav-config-users-trust-provider-settings", permission: "admin" },
     ],
   },
@@ -79,8 +79,9 @@ export const configSections: NavSection[] = [
     description: "Employer-related configuration",
     icon: Building2,
     items: [
-      { path: "/config/employer-types", label: "Employer Types", icon: List, testId: "nav-config-employer-types", permission: "admin" },
-      { path: "/config/employer-contact-types", label: "Employer Contact Types", icon: List, testId: "nav-config-employer-contact-types", permission: "admin" },
+      { path: "/config/options/employer-type", label: "Employer Types", icon: List, testId: "nav-config-employer-types", permission: "admin" },
+      { path: "/config/options/department", label: "Departments", icon: List, testId: "nav-config-departments", permission: "admin" },
+      { path: "/config/options/employer-contact-type", label: "Employer Contact Types", icon: List, testId: "nav-config-employer-contact-types", permission: "admin" },
       { path: "/config/employers/user-settings", label: "Employer User Settings", icon: Settings, testId: "nav-config-users-employer-settings", permission: "admin" },
     ],
   },
@@ -91,7 +92,7 @@ export const configSections: NavSection[] = [
     icon: Phone,
     items: [
       { path: "/config/addresses", label: "Postal Addresses", icon: MapPin, testId: "nav-config-addresses", permission: "admin" },
-      { path: "/config/gender-options", label: "Gender Options", icon: List, testId: "nav-config-gender-options", permission: "admin" },
+      { path: "/config/options/gender", label: "Gender Options", icon: List, testId: "nav-config-gender-options", permission: "admin" },
     ],
   },
   {
@@ -100,20 +101,18 @@ export const configSections: NavSection[] = [
     description: "Configurable dropdown options",
     icon: List,
     items: [
-      { path: "/config/worker-id-types", label: "Worker ID Types", icon: List, testId: "nav-config-worker-id-types", permission: "admin" },
-      { path: "/config/worker-work-statuses", label: "Worker Work Statuses", icon: List, testId: "nav-config-worker-work-statuses", permission: "admin" },
-      { path: "/config/employment-statuses", label: "Employment Statuses", icon: List, testId: "nav-config-employment-statuses", permission: "admin" },
+      { path: "/config/options/worker-id-type", label: "Worker ID Types", icon: List, testId: "nav-config-worker-id-types", permission: "admin" },
+      { path: "/config/options/worker-ws", label: "Worker Work Statuses", icon: List, testId: "nav-config-worker-work-statuses", permission: "admin" },
+      { path: "/config/options/worker-ms", label: "Worker Member Statuses", icon: List, testId: "nav-config-worker-member-statuses", permission: "admin" },
+      { path: "/config/options/skill", label: "Skill Options", icon: List, testId: "nav-config-skill-options", permission: "admin", requiresComponent: "worker.skills" },
+      { path: "/config/options/certification", label: "Certifications", icon: FileText, testId: "nav-config-certification-options", permission: "admin", requiresComponent: "worker.certifications" },
+      { path: "/config/options/classification", label: "Classifications", icon: List, testId: "nav-config-classification-options", permission: "admin" },
+      { path: "/config/options/industry", label: "Industries", icon: List, testId: "nav-config-industry-options", permission: "admin" },
+      { path: "/config/options/worker-rating", label: "Rating Types", icon: List, testId: "nav-config-rating-options", permission: "admin", requiresComponent: "worker.ratings" },
+      { path: "/config/options/employment-status", label: "Employment Statuses", icon: List, testId: "nav-config-employment-statuses", permission: "admin" },
       { path: "/config/steward-settings", label: "Steward", icon: Users, testId: "nav-config-steward-settings", permission: "admin", requiresComponent: "worker.steward" },
-      { path: "/config/workers/user-settings", label: "Worker User Settings", icon: Settings, testId: "nav-config-users-worker-settings", permission: "admin" },
-    ],
-  },
-  {
-    id: "workers",
-    title: "Workers",
-    description: "Worker management and configuration",
-    icon: Users,
-    items: [
       { path: "/config/workers/ban", label: "Ban Notifications", icon: Shield, testId: "nav-config-workers-ban", permission: "admin", requiresComponent: "worker.ban" },
+      { path: "/config/workers/user-settings", label: "Worker User Settings", icon: Settings, testId: "nav-config-users-worker-settings", permission: "admin" },
     ],
   },
   {
@@ -166,6 +165,26 @@ export const configSections: NavSection[] = [
           { path: "/config/ledger/stripe/payment-types", label: "Payment Methods", icon: CreditCard, testId: "nav-ledger-stripe-payment-types", permission: "admin" },
         ],
       },
+    ],
+  },
+  {
+    id: "edls",
+    title: "EDLS",
+    description: "Employer Day Labor Scheduler configuration",
+    icon: Calendar,
+    items: [
+      { path: "/config/edls/settings", label: "Settings", icon: Settings, testId: "nav-config-edls-settings", permission: "admin", requiresComponent: "edls" },
+      { path: "/config/edls/tasks", label: "Tasks", icon: List, testId: "nav-config-edls-tasks", permission: "admin", requiresComponent: "edls" },
+    ],
+  },
+  {
+    id: "webservices",
+    title: "Web Services",
+    description: "External API access and client management",
+    icon: Network,
+    items: [
+      { path: "/config/ws/bundles", label: "Bundles", icon: Package, testId: "nav-config-ws-bundles", permission: "admin" },
+      { path: "/config/ws/clients", label: "Clients", icon: Key, testId: "nav-config-ws-clients", permission: "admin" },
     ],
   },
 ];

@@ -1,4 +1,5 @@
-import { db } from "../db";
+import { createNoopValidator } from './utils/validation';
+import { getClient } from './transaction-context';
 import { bargainingUnits, type BargainingUnit, type InsertBargainingUnit } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
@@ -11,6 +12,11 @@ export interface BargainingUnitData {
   accountRates?: AccountRates;
   [key: string]: unknown;
 }
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator<InsertBargainingUnit, BargainingUnit>();
 
 export interface BargainingUnitStorage {
   getAllBargainingUnits(): Promise<BargainingUnit[]>;
@@ -28,11 +34,13 @@ export interface BargainingUnitStorage {
 export function createBargainingUnitStorage(): BargainingUnitStorage {
   const storage: BargainingUnitStorage = {
     async getAllBargainingUnits(): Promise<BargainingUnit[]> {
-      return await db.select().from(bargainingUnits);
+      const client = getClient();
+      return await client.select().from(bargainingUnits);
     },
 
     async getBargainingUnitById(id: string): Promise<BargainingUnit | undefined> {
-      const [unit] = await db
+      const client = getClient();
+      const [unit] = await client
         .select()
         .from(bargainingUnits)
         .where(eq(bargainingUnits.id, id));
@@ -40,7 +48,8 @@ export function createBargainingUnitStorage(): BargainingUnitStorage {
     },
 
     async getBargainingUnitBySiriusId(siriusId: string): Promise<BargainingUnit | undefined> {
-      const [unit] = await db
+      const client = getClient();
+      const [unit] = await client
         .select()
         .from(bargainingUnits)
         .where(eq(bargainingUnits.siriusId, siriusId));
@@ -48,7 +57,9 @@ export function createBargainingUnitStorage(): BargainingUnitStorage {
     },
 
     async createBargainingUnit(data: InsertBargainingUnit): Promise<BargainingUnit> {
-      const [unit] = await db
+      validate.validateOrThrow(data);
+      const client = getClient();
+      const [unit] = await client
         .insert(bargainingUnits)
         .values(data)
         .returning();
@@ -56,7 +67,9 @@ export function createBargainingUnitStorage(): BargainingUnitStorage {
     },
 
     async updateBargainingUnit(id: string, data: Partial<InsertBargainingUnit>): Promise<BargainingUnit | undefined> {
-      const [updated] = await db
+      validate.validateOrThrow(data as InsertBargainingUnit);
+      const client = getClient();
+      const [updated] = await client
         .update(bargainingUnits)
         .set(data)
         .where(eq(bargainingUnits.id, id))
@@ -65,7 +78,8 @@ export function createBargainingUnitStorage(): BargainingUnitStorage {
     },
 
     async deleteBargainingUnit(id: string): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(bargainingUnits)
         .where(eq(bargainingUnits.id, id))
         .returning();
@@ -162,7 +176,7 @@ export const bargainingUnitLoggingConfig: StorageLoggingConfig<BargainingUnitSto
         const newRates = newData?.accountRates || {};
         
         const rateChanges: string[] = [];
-        const allAccountIds = [...new Set([...Object.keys(oldRates), ...Object.keys(newRates)])];
+        const allAccountIds = Array.from(new Set([...Object.keys(oldRates), ...Object.keys(newRates)]));
         for (const accountId of allAccountIds) {
           const oldRate = oldRates[accountId];
           const newRate = newRates[accountId];

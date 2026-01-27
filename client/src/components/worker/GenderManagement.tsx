@@ -46,7 +46,7 @@ export default function GenderManagement({ contactId, canEdit = true }: GenderMa
 
   // Fetch gender options
   const { data: genderOptions = [], isLoading: isLoadingOptions } = useQuery<GenderOption[]>({
-    queryKey: ["/api/gender-options"],
+    queryKey: ["/api/options/gender"],
   });
 
   // Get worker ID from URL

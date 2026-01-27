@@ -142,6 +142,13 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "sitespecific.hta",
+    name: "HTA Customization",
+    description: "Custom functionality for Hospitality Training Academy",
+    enabledByDefault: false,
+    category: "site-specific"
+  },
+  {
     id: "employer.login",
     name: "Employer Login",
     description: "Ability for employers to log in",
@@ -196,6 +203,45 @@ export const componentRegistry: ComponentDefinition[] = [
         description: "Access to shop steward functionality for workers"
       }
     ]
+  },
+  {
+    id: "worker.skills",
+    name: "Worker Skills",
+    description: "Management of worker skills and qualifications",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/worker/skills/schema.ts",
+      tables: ["options_skills", "worker_skills"]
+    }
+  },
+  {
+    id: "worker.certifications",
+    name: "Worker Certifications",
+    description: "Management of worker certifications and credentials",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/worker/certifications/schema.ts",
+      tables: ["options_certifications"]
+    }
+  },
+  {
+    id: "worker.ratings",
+    name: "Worker Ratings",
+    description: "Management of worker performance ratings",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/worker/ratings/schema.ts",
+      tables: ["options_worker_ratings"]
+    }
   },
   {
     id: "trust.providers.login",
@@ -357,6 +403,33 @@ export const componentRegistry: ComponentDefinition[] = [
     permissions: [
       { key: "debug", description: "Access to debug tools and raw data viewers" }
     ]
+  },
+  {
+    id: "edls",
+    name: "Employer Day Labor Scheduler",
+    description: "Day labor scheduling functionality for employers",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/edls/schema.ts",
+      tables: ["edls_sheets"]
+    },
+    permissions: [
+      { key: "edls.manager", description: "Full EDLS management access" },
+      { key: "edls.coordinator", description: "EDLS coordination and scheduling access" },
+      { key: "edls.supervisor", description: "EDLS supervisory access" },
+      { key: "edls.reader", description: "Read-only access to EDLS data" },
+      { key: "edls.worker.advisor", description: "Worker advisor access for EDLS" }
+    ]
+  },
+  {
+    id: "sitespecific.freeman",
+    name: "Freeman Customization",
+    description: "Custom functionality for Freeman",
+    enabledByDefault: false,
+    category: "site-specific"
   }
 ];
 

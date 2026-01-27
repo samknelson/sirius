@@ -20,6 +20,7 @@ interface WorkerHoursEntry {
   employmentStatusId: string;
   hours: number | null;
   home: boolean;
+  jobTitle: string | null;
   employer: Employer;
   employmentStatus: EmploymentStatus;
 }
@@ -67,10 +68,10 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
   const { tabs: mainTabs } = useWorkerHoursTabAccess(hoursId || "");
 
   // Set page title based on hours entry period
-  const hoursTitle = hoursEntry 
+  const pageTitleText = hoursEntry 
     ? `${getMonthName(hoursEntry.month)} ${hoursEntry.year}` 
     : undefined;
-  usePageTitle(hoursTitle);
+  usePageTitle(pageTitleText);
 
   const isError = !!error;
 

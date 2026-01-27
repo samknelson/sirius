@@ -1,6 +1,9 @@
 import { FeedWizard, FeedField, ValidationError } from '../feed.js';
 import { WizardStatus, WizardStep, LaunchArgument } from '../base.js';
 import { storage } from '../../storage/index.js';
+import { createUnifiedOptionsStorage } from '../../storage/unified-options.js';
+
+const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
 /**
  * Preprocess SSN value to normalize format
@@ -309,7 +312,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
    */
   private async getEmploymentStatusOptions(): Promise<Array<{ id: string; name: string; code: string; employed: boolean }>> {
     if (!this.employmentStatusCache) {
-      const statuses = await storage.options.employmentStatus.getAll();
+      const statuses = await unifiedOptionsStorage.list("employment-status");
       this.employmentStatusCache = statuses.map(s => ({ id: s.id, name: s.name, code: s.code, employed: s.employed }));
     }
     return this.employmentStatusCache;
@@ -320,7 +323,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
    */
   private async getWorkStatusOptions(): Promise<Array<{ id: string; name: string }>> {
     if (!this.workStatusCache) {
-      const statuses = await storage.options.workerWs.getAll();
+      const statuses = await unifiedOptionsStorage.list("worker-ws");
       this.workStatusCache = statuses.map(s => ({ id: s.id, name: s.name }));
     }
     return this.workStatusCache;
@@ -357,7 +360,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     // Get current work status name if it exists
     let currentWorkStatusName: string | null = null;
     if (worker.denormWsId) {
-      const currentWs = await storage.options.workerWs.get(worker.denormWsId);
+      const currentWs = await unifiedOptionsStorage.get("worker-ws", worker.denormWsId);
       currentWorkStatusName = currentWs?.name || null;
     }
 
@@ -620,7 +623,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     const genderValue = row.gender?.toString().trim();
     if (genderValue) {
       // Look up gender option by name or code
-      const genderOptions = await storage.options.gender.getAllGenderOptions();
+      const genderOptions = await unifiedOptionsStorage.list("gender");
       const normalizedInput = normalizeForComparison(genderValue);
       
       const matchingGender = genderOptions.find((option: { id: string; name: string; code: string }) => {

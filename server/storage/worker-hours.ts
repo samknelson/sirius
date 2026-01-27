@@ -1,6 +1,8 @@
-import { db } from "../db";
+import { createNoopValidator } from './utils/validation';
+import { getClient } from './transaction-context';
 import {
   workerHours,
+  workerWsh,
   employers,
   optionsEmploymentStatus,
   type WorkerHours,
@@ -10,6 +12,11 @@ import { type StorageLoggingConfig } from "./middleware/logging";
 import { storageLogger as logger } from "../logger";
 import type { LedgerNotification } from "../charge-plugins/types";
 import { eventBus, EventType } from "../services/event-bus";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface WorkerHoursResult {
   data: WorkerHours;
@@ -21,7 +28,15 @@ export interface WorkerHoursDeleteResult {
   notifications: LedgerNotification[];
 }
 
+export interface WorkerDenormData {
+  homeEmployerId: string | null;
+  employerIds: string[] | null;
+  latestWsId: string | null;
+  jobTitle: string | null;
+}
+
 export interface WorkerHoursStorage {
+  getDenormData(workerId: string): Promise<WorkerDenormData>;
   getWorkerHoursById(id: string): Promise<any | undefined>;
   getWorkerHours(workerId: string): Promise<any[]>;
   getWorkerHoursCurrent(workerId: string): Promise<any[]>;
@@ -29,8 +44,8 @@ export interface WorkerHoursStorage {
   getWorkerHoursMonthly(workerId: string): Promise<any[]>;
   getMonthlyHoursTotal(workerId: string, employerId: string, year: number, month: number, employmentStatusIds?: string[]): Promise<number>;
   getWorkerMonthlyHoursAllEmployers(workerId: string, year: number, month: number): Promise<number>;
-  createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult>;
-  updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean }): Promise<WorkerHoursResult | undefined>;
+  createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult>;
+  updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult | undefined>;
   deleteWorkerHours(id: string): Promise<WorkerHoursDeleteResult>;
   upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult>;
 }
@@ -47,8 +62,56 @@ export function createWorkerHoursStorage(
   }
 
   const storage: WorkerHoursStorage = {
+    async getDenormData(workerId: string): Promise<WorkerDenormData> {
+      const client = getClient();
+      
+      // Query 1: Get latest hours per employer (for employer_ids and home_employer_id)
+      const hoursResult = await client.execute(sql`
+        SELECT DISTINCT ON (employer_id)
+          employer_id,
+          home
+        FROM worker_hours
+        WHERE worker_id = ${workerId}
+        ORDER BY employer_id, year DESC, month DESC, day DESC
+      `);
+      
+      const hoursRows = hoursResult.rows as Array<{ employer_id: string; home: boolean | null }>;
+      const employerIds = hoursRows.length > 0 ? hoursRows.map(r => r.employer_id) : null;
+      const homeEmployerId = hoursRows.find(r => r.home === true)?.employer_id || null;
+      
+      // Query 2: Get job title from the most recent home hours record
+      const homeHoursResult = await client.execute(sql`
+        SELECT job_title
+        FROM worker_hours
+        WHERE worker_id = ${workerId} AND home = true
+        ORDER BY year DESC, month DESC, day DESC
+        LIMIT 1
+      `);
+      const homeHoursRow = homeHoursResult.rows[0] as { job_title: string | null } | undefined;
+      const jobTitle = homeHoursRow?.job_title || null;
+      
+      // Query 3: Get latest work status
+      const [wsResult] = await client
+        .select({ wsId: workerWsh.wsId })
+        .from(workerWsh)
+        .where(eq(workerWsh.workerId, workerId))
+        .orderBy(desc(workerWsh.date), sql`${workerWsh.createdAt} DESC NULLS LAST`, desc(workerWsh.id))
+        .limit(1);
+      
+      // Only set latestWsId if the worker has a home employer
+      const latestWsId = homeEmployerId ? (wsResult?.wsId || null) : null;
+      
+      return {
+        homeEmployerId,
+        employerIds,
+        latestWsId,
+        jobTitle,
+      };
+    },
+
     async getWorkerHoursById(id: string): Promise<any | undefined> {
-      const [result] = await db
+      const client = getClient();
+      const [result] = await client
         .select({
           id: workerHours.id,
           month: workerHours.month,
@@ -59,6 +122,7 @@ export function createWorkerHoursStorage(
           employmentStatusId: workerHours.employmentStatusId,
           hours: workerHours.hours,
           home: workerHours.home,
+          jobTitle: workerHours.jobTitle,
           employer: employers,
           employmentStatus: optionsEmploymentStatus,
         })
@@ -71,7 +135,8 @@ export function createWorkerHoursStorage(
     },
 
     async getWorkerHours(workerId: string): Promise<any[]> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           id: workerHours.id,
           month: workerHours.month,
@@ -82,6 +147,7 @@ export function createWorkerHoursStorage(
           employmentStatusId: workerHours.employmentStatusId,
           hours: workerHours.hours,
           home: workerHours.home,
+          jobTitle: workerHours.jobTitle,
           employer: employers,
           employmentStatus: optionsEmploymentStatus,
         })
@@ -95,7 +161,8 @@ export function createWorkerHoursStorage(
     },
 
     async getWorkerHoursCurrent(workerId: string): Promise<any[]> {
-      const results = await db.execute(sql`
+      const client = getClient();
+      const results = await client.execute(sql`
         SELECT DISTINCT ON (wh.employer_id)
           wh.id,
           wh.month,
@@ -149,7 +216,8 @@ export function createWorkerHoursStorage(
     },
 
     async getWorkerHoursHistory(workerId: string): Promise<any[]> {
-      const results = await db.execute(sql`
+      const client = getClient();
+      const results = await client.execute(sql`
         WITH status_changes AS (
           SELECT
             wh.id,
@@ -220,7 +288,8 @@ export function createWorkerHoursStorage(
     },
 
     async getWorkerHoursMonthly(workerId: string): Promise<any[]> {
-      const results = await db.execute(sql`
+      const client = getClient();
+      const results = await client.execute(sql`
         SELECT
           wh.employer_id,
           wh.year,
@@ -285,7 +354,8 @@ export function createWorkerHoursStorage(
     },
 
     async getMonthlyHoursTotal(workerId: string, employerId: string, year: number, month: number, employmentStatusIds?: string[]): Promise<number> {
-      let query = db
+      const client = getClient();
+      let query = client
         .select({ totalHours: sql<number>`COALESCE(SUM(${workerHours.hours}), 0)` })
         .from(workerHours)
         .where(and(
@@ -297,7 +367,7 @@ export function createWorkerHoursStorage(
 
       if (employmentStatusIds && employmentStatusIds.length > 0) {
         const { inArray } = await import("drizzle-orm");
-        query = db
+        query = client
           .select({ totalHours: sql<number>`COALESCE(SUM(${workerHours.hours}), 0)` })
           .from(workerHours)
           .where(and(
@@ -314,7 +384,8 @@ export function createWorkerHoursStorage(
     },
 
     async getWorkerMonthlyHoursAllEmployers(workerId: string, year: number, month: number): Promise<number> {
-      const [result] = await db
+      const client = getClient();
+      const [result] = await client
         .select({ totalHours: sql<number>`COALESCE(SUM(${workerHours.hours}), 0)` })
         .from(workerHours)
         .where(and(
@@ -327,7 +398,9 @@ export function createWorkerHoursStorage(
     },
 
     async createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult> {
-      const [savedHours] = await db
+      validate.validateOrThrow(data);
+      const client = getClient();
+      const [savedHours] = await client
         .insert(workerHours)
         .values(data)
         .returning();
@@ -378,7 +451,9 @@ export function createWorkerHoursStorage(
     },
 
     async updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean }): Promise<WorkerHoursResult | undefined> {
-      const [updated] = await db
+      validate.validateOrThrow(data);
+      const client = getClient();
+      const [updated] = await client
         .update(workerHours)
         .set(data)
         .where(eq(workerHours.id, id))
@@ -432,7 +507,8 @@ export function createWorkerHoursStorage(
     },
 
     async deleteWorkerHours(id: string): Promise<WorkerHoursDeleteResult> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(workerHours)
         .where(eq(workerHours.id, id))
         .returning();
@@ -484,7 +560,8 @@ export function createWorkerHoursStorage(
     },
 
     async upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult> {
-      const [savedHours] = await db
+      const client = getClient();
+      const [savedHours] = await client
         .insert(workerHours)
         .values({
           ...data,
@@ -556,11 +633,12 @@ export const workerHoursLoggingConfig: StorageLoggingConfig<WorkerHoursStorage> 
       getEntityId: (args, result) => result?.data?.id || 'new hours entry',
       getHostEntityId: (args) => args[0]?.workerId,
       after: async (args, result, storage) => {
+        const client = getClient();
         const hoursData = result?.data;
         if (!hoursData) return null;
         
-        const [employer] = await db.select().from(employers).where(eq(employers.id, hoursData.employerId));
-        const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursData.employmentStatusId));
+        const [employer] = await client.select().from(employers).where(eq(employers.id, hoursData.employerId));
+        const [employmentStatus] = await client.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursData.employmentStatusId));
         return {
           hours: hoursData,
           employer: employer,
@@ -582,17 +660,19 @@ export const workerHoursLoggingConfig: StorageLoggingConfig<WorkerHoursStorage> 
         if (beforeState?.hours?.workerId) {
           return beforeState.hours.workerId;
         }
-        const [hoursEntry] = await db.select().from(workerHours).where(eq(workerHours.id, args[0]));
+        const client = getClient();
+        const [hoursEntry] = await client.select().from(workerHours).where(eq(workerHours.id, args[0]));
         return hoursEntry?.workerId;
       },
       before: async (args, storage) => {
-        const [hoursEntry] = await db.select().from(workerHours).where(eq(workerHours.id, args[0]));
+        const client = getClient();
+        const [hoursEntry] = await client.select().from(workerHours).where(eq(workerHours.id, args[0]));
         if (!hoursEntry) {
           return null;
         }
         
-        const [employer] = await db.select().from(employers).where(eq(employers.id, hoursEntry.employerId));
-        const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursEntry.employmentStatusId));
+        const [employer] = await client.select().from(employers).where(eq(employers.id, hoursEntry.employerId));
+        const [employmentStatus] = await client.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursEntry.employmentStatusId));
         return {
           hours: hoursEntry,
           employer: employer,
@@ -605,11 +685,12 @@ export const workerHoursLoggingConfig: StorageLoggingConfig<WorkerHoursStorage> 
         };
       },
       after: async (args, result, storage) => {
+        const client = getClient();
         const hoursData = result?.data;
         if (!hoursData) return null;
         
-        const [employer] = await db.select().from(employers).where(eq(employers.id, hoursData.employerId));
-        const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursData.employmentStatusId));
+        const [employer] = await client.select().from(employers).where(eq(employers.id, hoursData.employerId));
+        const [employmentStatus] = await client.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursData.employmentStatusId));
         return {
           hours: hoursData,
           employer: employer,
@@ -630,17 +711,19 @@ export const workerHoursLoggingConfig: StorageLoggingConfig<WorkerHoursStorage> 
         if (beforeState?.hours?.workerId) {
           return beforeState.hours.workerId;
         }
-        const [hoursEntry] = await db.select().from(workerHours).where(eq(workerHours.id, args[0]));
+        const client = getClient();
+        const [hoursEntry] = await client.select().from(workerHours).where(eq(workerHours.id, args[0]));
         return hoursEntry?.workerId;
       },
       before: async (args, storage) => {
-        const [hoursEntry] = await db.select().from(workerHours).where(eq(workerHours.id, args[0]));
+        const client = getClient();
+        const [hoursEntry] = await client.select().from(workerHours).where(eq(workerHours.id, args[0]));
         if (!hoursEntry) {
           return null;
         }
         
-        const [employer] = await db.select().from(employers).where(eq(employers.id, hoursEntry.employerId));
-        const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursEntry.employmentStatusId));
+        const [employer] = await client.select().from(employers).where(eq(employers.id, hoursEntry.employerId));
+        const [employmentStatus] = await client.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursEntry.employmentStatusId));
         return {
           hours: hoursEntry,
           employer: employer,
@@ -667,7 +750,8 @@ export const workerHoursLoggingConfig: StorageLoggingConfig<WorkerHoursStorage> 
         return `Worker hours ${operation}d for worker ${workerId} (${year}/${month})`;
       },
       before: async (args, storage) => {
-        const [existingEntry] = await db
+        const client = getClient();
+        const [existingEntry] = await client
           .select()
           .from(workerHours)
           .where(
@@ -684,8 +768,8 @@ export const workerHoursLoggingConfig: StorageLoggingConfig<WorkerHoursStorage> 
           return null;
         }
         
-        const [employer] = await db.select().from(employers).where(eq(employers.id, existingEntry.employerId));
-        const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, existingEntry.employmentStatusId));
+        const [employer] = await client.select().from(employers).where(eq(employers.id, existingEntry.employerId));
+        const [employmentStatus] = await client.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, existingEntry.employmentStatusId));
         return {
           hours: existingEntry,
           employer: employer,
@@ -700,11 +784,12 @@ export const workerHoursLoggingConfig: StorageLoggingConfig<WorkerHoursStorage> 
         };
       },
       after: async (args, result, storage, beforeState) => {
+        const client = getClient();
         const hoursData = result?.data;
         if (!hoursData) return null;
         
-        const [employer] = await db.select().from(employers).where(eq(employers.id, hoursData.employerId));
-        const [employmentStatus] = await db.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursData.employmentStatusId));
+        const [employer] = await client.select().from(employers).where(eq(employers.id, hoursData.employerId));
+        const [employmentStatus] = await client.select().from(optionsEmploymentStatus).where(eq(optionsEmploymentStatus.id, hoursData.employmentStatusId));
         
         const operation = beforeState && beforeState.hours ? 'update' : 'create';
         

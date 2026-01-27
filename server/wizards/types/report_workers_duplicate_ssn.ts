@@ -1,4 +1,7 @@
 import { WizardReport, ReportConfig, ReportColumn, ReportRecord } from '../report.js';
+import { storage } from '../../storage';
+import { workers, contacts } from '@shared/schema';
+import { eq, and, isNotNull, ne, sql } from 'drizzle-orm';
 
 export class ReportWorkersDuplicateSSN extends WizardReport {
   name = 'report_workers_duplicate_ssn';
@@ -6,9 +9,6 @@ export class ReportWorkersDuplicateSSN extends WizardReport {
   description = 'Generate a report of Social Security Numbers that are associated with more than one worker';
   category = 'Workers';
 
-  /**
-   * Override to use SSN as the primary key instead of workerId
-   */
   getPrimaryKeyField(): string {
     return 'ssn';
   }
@@ -41,65 +41,59 @@ export class ReportWorkersDuplicateSSN extends WizardReport {
     batchSize: number = 100,
     onProgress?: (progress: { processed: number; total: number }) => void
   ): Promise<ReportRecord[]> {
-    const { db } = await import('../../db.js');
-    const { workers, contacts } = await import('@shared/schema');
-    const { eq, and, isNotNull, ne, sql, inArray } = await import('drizzle-orm');
-
-    // First, find all SSNs that appear more than once
-    const duplicateSSNs = await db
-      .select({
-        ssn: workers.ssn,
-        count: sql<number>`count(*)::int`
-      })
-      .from(workers)
-      .where(
-        and(
-          isNotNull(workers.ssn),
-          ne(workers.ssn, '')
-        )
-      )
-      .groupBy(workers.ssn)
-      .having(sql`count(*) > 1`);
-
-    if (duplicateSSNs.length === 0) {
-      return [];
-    }
-
-    const records: ReportRecord[] = [];
-    const total = duplicateSSNs.length;
-
-    // For each duplicate SSN, fetch all workers with that SSN and create one record
-    for (let i = 0; i < total; i++) {
-      const { ssn, count } = duplicateSSNs[i];
-
-      // Fetch all workers with this SSN
-      const workersWithSSN = await db
+    return storage.readOnly.query(async (db) => {
+      const duplicateSSNs = await db
         .select({
-          workerId: workers.id,
-          siriusId: workers.siriusId,
-          displayName: contacts.displayName
+          ssn: workers.ssn,
+          count: sql<number>`count(*)::int`
         })
         .from(workers)
-        .innerJoin(contacts, eq(workers.contactId, contacts.id))
-        .where(eq(workers.ssn, ssn!));
+        .where(
+          and(
+            isNotNull(workers.ssn),
+            ne(workers.ssn, '')
+          )
+        )
+        .groupBy(workers.ssn)
+        .having(sql`count(*) > 1`);
 
-      // Create one record per SSN with embedded worker details
-      records.push({
-        ssn: ssn!,
-        workerCount: count,
-        workers: workersWithSSN.map(w => `${w.displayName} (ID: ${w.siriusId})`).join(', '),
-        workerIds: workersWithSSN.map(w => w.workerId), // For linking
-        workerDetails: workersWithSSN // For frontend rendering with links
-      });
-
-      if (onProgress) {
-        onProgress({
-          processed: i + 1,
-          total
-        });
+      if (duplicateSSNs.length === 0) {
+        return [];
       }
-    }
 
-    return records;
+      const records: ReportRecord[] = [];
+      const total = duplicateSSNs.length;
+
+      for (let i = 0; i < total; i++) {
+        const { ssn, count } = duplicateSSNs[i];
+
+        const workersWithSSN = await db
+          .select({
+            workerId: workers.id,
+            siriusId: workers.siriusId,
+            displayName: contacts.displayName
+          })
+          .from(workers)
+          .innerJoin(contacts, eq(workers.contactId, contacts.id))
+          .where(eq(workers.ssn, ssn!));
+
+        records.push({
+          ssn: ssn!,
+          workerCount: count,
+          workers: workersWithSSN.map(w => `${w.displayName} (ID: ${w.siriusId})`).join(', '),
+          workerIds: workersWithSSN.map(w => w.workerId),
+          workerDetails: workersWithSSN
+        });
+
+        if (onProgress) {
+          onProgress({
+            processed: i + 1,
+            total
+          });
+        }
+      }
+
+      return records;
+    });
   }
 }

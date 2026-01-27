@@ -25,7 +25,7 @@ function EmployerContactEditContent() {
   const { toast } = useToast();
 
   const { data: contactTypes } = useQuery<EmployerContactType[]>({
-    queryKey: ["/api/employer-contact-types"],
+    queryKey: ["/api/options/employer-contact-type"],
   });
 
   const form = useForm<UpdateContactTypeFormData>({

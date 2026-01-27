@@ -13,17 +13,31 @@ export const jobTypeEligibilitySchema = z.object({
 export type EligibilityPluginConfig = z.infer<typeof eligibilityPluginConfigSchema>;
 export type JobTypeEligibility = z.infer<typeof jobTypeEligibilitySchema>;
 
+export interface PluginConfigField {
+  name: string;
+  label: string;
+  inputType: "select-options" | "text" | "number" | "checkbox";
+  required: boolean;
+  helperText?: string;
+  selectOptionsType?: string;
+  multiSelect?: boolean;
+}
+
 export interface EligibilityPluginMetadata {
   id: string;
   name: string;
   description: string;
   componentId: string;
   componentEnabled: boolean;
+  configFields?: PluginConfigField[];
 }
+
+export type NotificationMedia = 'email' | 'sms' | 'in-app';
 
 export interface JobTypeData {
   icon?: string;
   eligibility?: EligibilityPluginConfig[];
   minWorkers?: number;
   maxWorkers?: number;
+  notificationMedia?: NotificationMedia[];
 }

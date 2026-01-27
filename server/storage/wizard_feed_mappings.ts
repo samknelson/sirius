@@ -1,6 +1,12 @@
-import { db } from "../db";
+import { createNoopValidator } from './utils/validation';
+import { getClient } from './transaction-context';
 import { wizardFeedMappings, type WizardFeedMapping, type InsertWizardFeedMapping } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface WizardFeedMappingStorage {
   findByUserTypeAndHash(userId: string, type: string, firstRowHash: string): Promise<WizardFeedMapping | undefined>;
@@ -17,7 +23,8 @@ export function createWizardFeedMappingStorage(): WizardFeedMappingStorage {
       type: string, 
       firstRowHash: string
     ): Promise<WizardFeedMapping | undefined> {
-      const [mapping] = await db
+      const client = getClient();
+      const [mapping] = await client
         .select()
         .from(wizardFeedMappings)
         .where(
@@ -34,7 +41,9 @@ export function createWizardFeedMappingStorage(): WizardFeedMappingStorage {
     },
 
     async create(insertMapping: InsertWizardFeedMapping): Promise<WizardFeedMapping> {
-      const [mapping] = await db
+      validate.validateOrThrow(insertMapping);
+      const client = getClient();
+      const [mapping] = await client
         .insert(wizardFeedMappings)
         .values(insertMapping)
         .returning();
@@ -45,7 +54,9 @@ export function createWizardFeedMappingStorage(): WizardFeedMappingStorage {
       id: string, 
       updates: Partial<Omit<InsertWizardFeedMapping, 'id'>>
     ): Promise<WizardFeedMapping | undefined> {
-      const [mapping] = await db
+      validate.validateOrThrow(id);
+      const client = getClient();
+      const [mapping] = await client
         .update(wizardFeedMappings)
         .set({
           ...updates,
@@ -57,7 +68,8 @@ export function createWizardFeedMappingStorage(): WizardFeedMappingStorage {
     },
 
     async delete(id: string): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(wizardFeedMappings)
         .where(eq(wizardFeedMappings.id, id))
         .returning();
@@ -65,13 +77,14 @@ export function createWizardFeedMappingStorage(): WizardFeedMappingStorage {
     },
 
     async listByUser(userId: string, type?: string): Promise<WizardFeedMapping[]> {
+      const client = getClient();
       const conditions = [eq(wizardFeedMappings.userId, userId)];
       
       if (type) {
         conditions.push(eq(wizardFeedMappings.type, type));
       }
 
-      return db
+      return client
         .select()
         .from(wizardFeedMappings)
         .where(and(...conditions))

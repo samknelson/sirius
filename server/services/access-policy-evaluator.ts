@@ -136,7 +136,6 @@ const accessCache = new AccessCache();
 export interface AccessControlStorage {
   getUserPermissions(userId: string): Promise<string[]>;
   hasPermission(userId: string, permissionKey: string): Promise<boolean>;
-  getUserByReplitId(replitUserId: string): Promise<User | undefined>;
   getUser(userId: string): Promise<User | undefined>;
 }
 
@@ -178,15 +177,14 @@ export interface AccessContext {
 
 /**
  * Build access context from an Express request
- * Handles Replit Auth and masquerading
+ * Handles authentication and masquerading via resolveDbUser helper
  */
 export async function buildContext(req: Request): Promise<AccessContext> {
   let user: User | null = null;
 
-  // Check if user is authenticated via Replit
-  const replitUser = (req as any).user;
-  if (replitUser && replitUser.claims && storage) {
-    const replitUserId = replitUser.claims.sub;
+  // Check if user is authenticated
+  const sessionUser = (req as any).user;
+  if (sessionUser && sessionUser.claims && storage) {
     const session = (req as any).session;
 
     // Check if masquerading
@@ -196,11 +194,9 @@ export async function buildContext(req: Request): Promise<AccessContext> {
         user = masqueradeUser;
       }
     } else {
-      // Normal authentication - look up database user by Replit ID
-      const dbUser = await storage.getUserByReplitId(replitUserId);
-      if (dbUser) {
-        user = dbUser;
-      }
+      // Normal authentication - use resolveDbUser helper
+      const { resolveDbUser } = await import("../auth/helpers");
+      user = await resolveDbUser(sessionUser, sessionUser.claims.sub);
     }
   }
 
@@ -583,19 +579,57 @@ async function evaluateModularPolicy(
   }
   
   // Check cache (same logic as declarative policies)
-  const shouldUseCache = !options.skipCache && !options.entityData;
-  const cacheKey = shouldUseCache && user ? buildCacheKey(user.id, policyId, entityId) : null;
-  if (cacheKey) {
-    const cached = accessCache.get(cacheKey);
-    if (cached) {
-      logger.debug(`Modular policy cache hit`, { 
-        service: SERVICE, 
-        userId: user?.id, 
-        policyId, 
-        entityId,
-        granted: cached.granted 
-      });
-      return cached;
+  // Skip cache if: options.skipCache, entityData provided, or policy declares skipCache
+  const shouldUseCache = !options.skipCache && !options.entityData && !policy.skipCache;
+  
+  // Pre-load entity if cacheKeyFields are specified (needed to build extended cache key)
+  let preloadedEntity: Record<string, any> | null = null;
+  let cacheKey: string | null = null;
+  
+  if (shouldUseCache && user) {
+    // Build cache key, optionally including entity field values
+    if (policy.cacheKeyFields && policy.cacheKeyFields.length > 0 && entityId) {
+      // Load entity first to get field values for cache key
+      const entityType = policy.entityType;
+      if (entityType) {
+        const loader = getEntityLoader(entityType);
+        if (loader) {
+          preloadedEntity = await loader(entityId, storage);
+          if (preloadedEntity) {
+            // Build extended cache key with field values
+            const fieldValues = policy.cacheKeyFields
+              .map(field => `${field}:${preloadedEntity![field] ?? 'null'}`)
+              .join(':');
+            cacheKey = `${buildCacheKey(user.id, policyId, entityId)}:${fieldValues}`;
+          } else {
+            // Entity not found - skip cache since we can't build proper key
+            cacheKey = null;
+          }
+        } else {
+          // No loader - fall back to basic cache key
+          cacheKey = buildCacheKey(user.id, policyId, entityId);
+        }
+      } else {
+        // No entity type - fall back to basic cache key
+        cacheKey = buildCacheKey(user.id, policyId, entityId);
+      }
+    } else {
+      // No cacheKeyFields - use basic cache key
+      cacheKey = buildCacheKey(user.id, policyId, entityId);
+    }
+    
+    if (cacheKey) {
+      const cached = accessCache.get(cacheKey);
+      if (cached) {
+        logger.debug(`Modular policy cache hit`, { 
+          service: SERVICE, 
+          userId: user?.id, 
+          policyId, 
+          entityId,
+          granted: cached.granted 
+        });
+        return cached;
+      }
     }
   }
   
@@ -604,6 +638,21 @@ async function evaluateModularPolicy(
     return {
       granted: false,
       reason: 'Authentication required',
+      evaluatedAt: Date.now(),
+    };
+  }
+  
+  // Defensive check: entity-scoped policies MUST have an entityId
+  // Fail fast to prevent accidental grants when entityId is missing
+  if (policy.scope === 'entity' && !entityId && !options.entityData) {
+    logger.warn(`Entity-scoped policy invoked without entityId`, {
+      service: SERVICE,
+      userId: user.id,
+      policyId,
+    });
+    return {
+      granted: false,
+      reason: 'Entity-scoped policy requires an entity ID',
       evaluatedAt: Date.now(),
     };
   }
@@ -623,8 +672,9 @@ async function evaluateModularPolicy(
   }
   
   // Check if user is admin (bypass permission/entity checks after component check)
+  // Skip admin bypass if the policy explicitly requires all users to go through evaluation
   const isAdmin = await accessStorage.hasPermission(user.id, 'admin');
-  if (isAdmin) {
+  if (isAdmin && !policy.noAdminBypass) {
     const result: AccessResult = {
       granted: true,
       reason: 'Admin bypass',
@@ -662,6 +712,9 @@ async function evaluateModularPolicy(
     storage,
     accessStorage,
     checkComponent,
+    preloadedEntity: preloadedEntity ?? undefined,
+    preloadedEntityType: policy.entityType,
+    preloadedEntityId: entityId,
     evaluatePolicy: async (delegatePolicyId: string, delegateEntityId?: string, delegateEntityData?: Record<string, any>) => {
       const result = await evaluatePolicy(
         user,

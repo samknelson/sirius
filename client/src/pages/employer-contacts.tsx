@@ -80,7 +80,7 @@ function EmployerContactsContent() {
   });
 
   const { data: contactTypes } = useQuery<EmployerContactType[]>({
-    queryKey: ["/api/employer-contact-types"],
+    queryKey: ["/api/options/employer-contact-type"],
   });
 
   // Fetch phone numbers and addresses for all contacts

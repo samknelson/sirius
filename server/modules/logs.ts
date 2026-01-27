@@ -52,6 +52,32 @@ export function registerLogRoutes(
     }
   });
 
+  // GET /api/logs/by-entity - Unified endpoint to get logs by host entity ID (requires staff permission)
+  // This is the preferred endpoint for fetching entity-specific logs
+  // NOTE: This route must be defined BEFORE /api/logs/:id to avoid route matching conflicts
+  app.get("/api/logs/by-entity", requireAuth, requireAccess('staff'), async (req, res) => {
+    try {
+      const { hostEntityId, module, operation, startDate, endDate } = req.query;
+
+      if (!hostEntityId || typeof hostEntityId !== 'string') {
+        return res.status(400).json({ message: "hostEntityId is required" });
+      }
+
+      const logs = await storage.logs.getLogsByHostEntityIds({
+        hostEntityIds: [hostEntityId],
+        module: typeof module === 'string' ? module : undefined,
+        operation: typeof operation === 'string' ? operation : undefined,
+        startDate: typeof startDate === 'string' ? startDate : undefined,
+        endDate: typeof endDate === 'string' ? endDate : undefined,
+      });
+
+      res.json(logs);
+    } catch (error) {
+      console.error("Failed to fetch logs by entity:", error);
+      res.status(500).json({ message: "Failed to fetch logs" });
+    }
+  });
+
   // GET /api/logs/:id - Get a single log by ID (requires admin policy)
   app.get("/api/logs/:id", requireAccess('admin'), async (req, res) => {
     try {
@@ -156,6 +182,36 @@ export function registerLogRoutes(
     } catch (error) {
       console.error("Failed to fetch employer logs:", error);
       res.status(500).json({ message: "Failed to fetch employer logs" });
+    }
+  });
+
+  // GET /api/edls/sheets/:sheetId/logs - Get all logs related to an EDLS sheet (requires edls.coordinator permission)
+  app.get("/api/edls/sheets/:sheetId/logs", requireAuth, requireAccess('edls.coordinator'), async (req, res) => {
+    try {
+      const { sheetId } = req.params;
+      const { module, operation, startDate, endDate } = req.query;
+
+      // Verify the sheet exists
+      const sheet = await storage.edlsSheets.get(sheetId);
+      if (!sheet) {
+        return res.status(404).json({ message: "Sheet not found" });
+      }
+
+      // Query by sheet ID as host entity - this captures:
+      // - Sheet operations (hostEntityId = sheetId)
+      // - Crew operations (hostEntityId = sheetId)
+      const logs = await storage.logs.getLogsByHostEntityIds({
+        hostEntityIds: [sheetId],
+        module: typeof module === 'string' ? module : undefined,
+        operation: typeof operation === 'string' ? operation : undefined,
+        startDate: typeof startDate === 'string' ? startDate : undefined,
+        endDate: typeof endDate === 'string' ? endDate : undefined,
+      });
+
+      res.json(logs);
+    } catch (error) {
+      console.error("Failed to fetch EDLS sheet logs:", error);
+      res.status(500).json({ message: "Failed to fetch sheet logs" });
     }
   });
 }

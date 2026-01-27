@@ -1,7 +1,48 @@
-import { db } from "../db";
+import { getClient } from './transaction-context';
 import { cardchecks, cardcheckDefinitions, workers, contacts, bargainingUnits, employers, type Cardcheck, type InsertCardcheck } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
+import { 
+  type ValidationError,
+  createAsyncStorageValidator
+} from "./utils/validation";
+
+export const cardcheckValidate = createAsyncStorageValidator<InsertCardcheck, Cardcheck, {}>(
+  async (data, existing) => {
+    const errors: ValidationError[] = [];
+    const client = getClient();
+    
+    const status = data.status !== undefined ? data.status : existing?.status;
+    const workerId = data.workerId ?? existing?.workerId;
+    const cardcheckDefinitionId = data.cardcheckDefinitionId ?? existing?.cardcheckDefinitionId;
+    
+    if (status === "signed" && workerId && cardcheckDefinitionId) {
+      const wasAlreadySigned = existing?.status === "signed";
+      
+      if (!wasAlreadySigned) {
+        const existingSigned = await client
+          .select()
+          .from(cardchecks)
+          .where(and(
+            eq(cardchecks.workerId, workerId),
+            eq(cardchecks.cardcheckDefinitionId, cardcheckDefinitionId),
+            eq(cardchecks.status, "signed")
+          ));
+        
+        if (existingSigned.length > 0) {
+          errors.push({
+            field: 'status',
+            code: 'DUPLICATE_SIGNED',
+            message: "A signed cardcheck of this type already exists for this worker"
+          });
+        }
+      }
+    }
+    
+    if (errors.length > 0) return { ok: false, errors };
+    return { ok: true, value: {} };
+  }
+);
 
 export interface CardcheckStatusSummary {
   workerId: string;
@@ -39,11 +80,13 @@ export interface CardcheckStorage {
 export function createCardcheckStorage(): CardcheckStorage {
   const storage: CardcheckStorage = {
     async getAllCardchecks(): Promise<Cardcheck[]> {
-      return await db.select().from(cardchecks);
+      const client = getClient();
+      return await client.select().from(cardchecks);
     },
 
     async getCardcheckById(id: string): Promise<Cardcheck | undefined> {
-      const [cardcheck] = await db
+      const client = getClient();
+      const [cardcheck] = await client
         .select()
         .from(cardchecks)
         .where(eq(cardchecks.id, id));
@@ -51,7 +94,8 @@ export function createCardcheckStorage(): CardcheckStorage {
     },
 
     async getCardcheckByEsigId(esigId: string): Promise<Cardcheck | undefined> {
-      const [cardcheck] = await db
+      const client = getClient();
+      const [cardcheck] = await client
         .select()
         .from(cardchecks)
         .where(eq(cardchecks.esigId, esigId));
@@ -59,21 +103,24 @@ export function createCardcheckStorage(): CardcheckStorage {
     },
 
     async getCardchecksByWorkerId(workerId: string): Promise<Cardcheck[]> {
-      return await db
+      const client = getClient();
+      return await client
         .select()
         .from(cardchecks)
         .where(eq(cardchecks.workerId, workerId));
     },
 
     async getCardchecksByDefinitionId(definitionId: string): Promise<Cardcheck[]> {
-      return await db
+      const client = getClient();
+      return await client
         .select()
         .from(cardchecks)
         .where(eq(cardchecks.cardcheckDefinitionId, definitionId));
     },
 
     async getCardcheckStatusSummary(): Promise<CardcheckStatusSummary[]> {
-      const definitions = await db.select().from(cardcheckDefinitions);
+      const client = getClient();
+      const definitions = await client.select().from(cardcheckDefinitions);
       const definitionsWithIcons = definitions.filter(d => {
         const data = d.data as any;
         return data?.icon;
@@ -83,8 +130,8 @@ export function createCardcheckStorage(): CardcheckStorage {
         return [];
       }
       
-      const allWorkers = await db.select({ id: workers.id }).from(workers);
-      const allCardchecks = await db.select().from(cardchecks);
+      const allWorkers = await client.select({ id: workers.id }).from(workers);
+      const allCardchecks = await client.select().from(cardchecks);
       
       const cardcheckMap = new Map<string, Map<string, string>>();
       for (const cc of allCardchecks) {
@@ -117,14 +164,15 @@ export function createCardcheckStorage(): CardcheckStorage {
     },
 
     async getAllSignedCardchecksWithDetails(): Promise<SignedCardcheckWithDetails[]> {
-      const signedCards = await db
+      const client = getClient();
+      const signedCards = await client
         .select()
         .from(cardchecks)
         .where(eq(cardchecks.status, "signed"));
       
       if (signedCards.length === 0) return [];
       
-      const workersData = await db
+      const workersData = await client
         .select({
           id: workers.id,
           siriusId: workers.siriusId,
@@ -136,7 +184,7 @@ export function createCardcheckStorage(): CardcheckStorage {
       
       const workerMap = new Map(workersData.map(w => [w.id, w]));
       
-      const contactsData = await db
+      const contactsData = await client
         .select({
           id: contacts.id,
           given: contacts.given,
@@ -147,7 +195,7 @@ export function createCardcheckStorage(): CardcheckStorage {
       
       const contactMap = new Map(contactsData.map(c => [c.id, c]));
       
-      const buData = await db
+      const buData = await client
         .select({
           id: bargainingUnits.id,
           name: bargainingUnits.name,
@@ -156,7 +204,7 @@ export function createCardcheckStorage(): CardcheckStorage {
       
       const buMap = new Map(buData.map(b => [b.id, b.name]));
       
-      const employerData = await db
+      const employerData = await client
         .select({
           id: employers.id,
           name: employers.name,
@@ -201,21 +249,10 @@ export function createCardcheckStorage(): CardcheckStorage {
     },
 
     async createCardcheck(data: InsertCardcheck): Promise<Cardcheck> {
-      if (data.status === "signed") {
-        const existing = await db
-          .select()
-          .from(cardchecks)
-          .where(and(
-            eq(cardchecks.workerId, data.workerId),
-            eq(cardchecks.cardcheckDefinitionId, data.cardcheckDefinitionId),
-            eq(cardchecks.status, "signed")
-          ));
-        if (existing.length > 0) {
-          throw new Error("A signed cardcheck of this type already exists for this worker");
-        }
-      }
+      const client = getClient();
+      await cardcheckValidate.validateOrThrow(data);
       
-      const [cardcheck] = await db
+      const [cardcheck] = await client
         .insert(cardchecks)
         .values(data)
         .returning();
@@ -223,24 +260,15 @@ export function createCardcheckStorage(): CardcheckStorage {
     },
 
     async updateCardcheck(id: string, data: Partial<InsertCardcheck>): Promise<Cardcheck | undefined> {
-      if (data.status === "signed") {
-        const current = await storage.getCardcheckById(id);
-        if (current && current.status !== "signed") {
-          const existing = await db
-            .select()
-            .from(cardchecks)
-            .where(and(
-              eq(cardchecks.workerId, current.workerId),
-              eq(cardchecks.cardcheckDefinitionId, current.cardcheckDefinitionId),
-              eq(cardchecks.status, "signed")
-            ));
-          if (existing.length > 0) {
-            throw new Error("A signed cardcheck of this type already exists for this worker");
-          }
-        }
+      const client = getClient();
+      const current = await storage.getCardcheckById(id);
+      if (!current) {
+        return undefined;
       }
       
-      const [updated] = await db
+      await cardcheckValidate.validateOrThrow(data, current);
+      
+      const [updated] = await client
         .update(cardchecks)
         .set(data)
         .where(eq(cardchecks.id, id))
@@ -249,7 +277,8 @@ export function createCardcheckStorage(): CardcheckStorage {
     },
 
     async deleteCardcheck(id: string): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(cardchecks)
         .where(eq(cardchecks.id, id))
         .returning();
@@ -261,13 +290,14 @@ export function createCardcheckStorage(): CardcheckStorage {
 }
 
 async function getWorkerName(workerId: string): Promise<string> {
-  const [worker] = await db
+  const client = getClient();
+  const [worker] = await client
     .select({ contactId: workers.contactId, siriusId: workers.siriusId })
     .from(workers)
     .where(eq(workers.id, workerId));
   if (!worker) return 'Unknown Worker';
   
-  const [contact] = await db
+  const [contact] = await client
     .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
     .from(contacts)
     .where(eq(contacts.id, worker.contactId));
@@ -277,7 +307,8 @@ async function getWorkerName(workerId: string): Promise<string> {
 }
 
 async function getDefinitionName(definitionId: string): Promise<string> {
-  const [definition] = await db
+  const client = getClient();
+  const [definition] = await client
     .select({ name: cardcheckDefinitions.name, siriusId: cardcheckDefinitions.siriusId })
     .from(cardcheckDefinitions)
     .where(eq(cardcheckDefinitions.id, definitionId));
@@ -315,7 +346,8 @@ export const cardcheckLoggingConfig: StorageLoggingConfig<CardcheckStorage> = {
         if (beforeState?.cardcheck?.workerId) {
           return beforeState.cardcheck.workerId;
         }
-        const [cardcheck] = await db.select().from(cardchecks).where(eq(cardchecks.id, args[0]));
+        const client = getClient();
+        const [cardcheck] = await client.select().from(cardchecks).where(eq(cardchecks.id, args[0]));
         return cardcheck?.workerId;
       },
       getDescription: async (args, result, beforeState) => {

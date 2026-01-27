@@ -56,7 +56,7 @@ function WorkerWorkStatusContent() {
 
   // Fetch work status options
   const { data: workStatuses = [] } = useQuery<WorkStatus[]>({
-    queryKey: ["/api/worker-work-statuses"],
+    queryKey: ["/api/options/worker-ws"],
   });
 
   // Create mutation

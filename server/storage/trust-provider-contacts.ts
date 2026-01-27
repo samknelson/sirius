@@ -1,8 +1,14 @@
-import { db } from "../db";
+import { createNoopValidator } from './utils/validation';
+import { getClient } from './transaction-context';
 import { trustProviderContacts, contacts, optionsEmployerContactType, trustProviders, type TrustProviderContact, type InsertTrustProviderContact, type Contact, type InsertContact, type TrustProvider } from "@shared/schema";
 import { eq, and, or, ilike } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import type { ContactsStorage } from "./contacts";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface TrustProviderContactStorage {
   create(data: { providerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ providerContact: TrustProviderContact; contact: Contact }>;
@@ -25,19 +31,21 @@ export interface TrustProviderContactStorage {
 export function createTrustProviderContactStorage(contactsStorage: ContactsStorage): TrustProviderContactStorage {
   return {
     async create(data: { providerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ providerContact: TrustProviderContact; contact: Contact }> {
+      validate.validateOrThrow(data);
+      const client = getClient();
       // Validate email is provided
       if (!data.contactData.email || !data.contactData.email.trim()) {
         throw new Error("Email is required for provider contacts");
       }
 
       // Create the contact first
-      const [contact] = await db
+      const [contact] = await client
         .insert(contacts)
         .values(data.contactData)
         .returning();
 
       // Create the provider contact relationship
-      const [providerContact] = await db
+      const [providerContact] = await client
         .insert(trustProviderContacts)
         .values({
           providerId: data.providerId,
@@ -50,7 +58,8 @@ export function createTrustProviderContactStorage(contactsStorage: ContactsStora
     },
 
     async listByProvider(providerId: string): Promise<Array<TrustProviderContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           providerContact: trustProviderContacts,
           contact: contacts,
@@ -69,7 +78,8 @@ export function createTrustProviderContactStorage(contactsStorage: ContactsStora
     },
 
     async getAll(filters?: { providerId?: string; contactName?: string; contactTypeId?: string }): Promise<Array<TrustProviderContact & { contact: Contact; provider: TrustProvider; contactType?: { id: string; name: string; description: string | null } | null }>> {
-      let query = db
+      const client = getClient();
+      let query = client
         .select({
           providerContact: trustProviderContacts,
           contact: contacts,
@@ -118,7 +128,8 @@ export function createTrustProviderContactStorage(contactsStorage: ContactsStora
     },
 
     async get(id: string): Promise<(TrustProviderContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           providerContact: trustProviderContacts,
           contact: contacts,
@@ -142,7 +153,8 @@ export function createTrustProviderContactStorage(contactsStorage: ContactsStora
     },
 
     async update(id: string, data: { contactTypeId?: string | null }): Promise<(TrustProviderContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null> {
-      const [updated] = await db
+      const client = getClient();
+      const [updated] = await client
         .update(trustProviderContacts)
         .set({ contactTypeId: data.contactTypeId })
         .where(eq(trustProviderContacts.id, id))
@@ -156,7 +168,8 @@ export function createTrustProviderContactStorage(contactsStorage: ContactsStora
     },
 
     async updateContactEmail(id: string, email: string | null): Promise<(TrustProviderContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null> {
-      const providerContact = await db.query.trustProviderContacts.findFirst({
+      const client = getClient();
+      const providerContact = await client.query.trustProviderContacts.findFirst({
         where: eq(trustProviderContacts.id, id),
       });
 
@@ -166,7 +179,7 @@ export function createTrustProviderContactStorage(contactsStorage: ContactsStora
 
       const normalizedEmail = email === null || email === "null" || email?.trim() === "" ? null : email.trim();
 
-      await db
+      await client
         .update(contacts)
         .set({ email: normalizedEmail })
         .where(eq(contacts.id, providerContact.contactId));
@@ -192,7 +205,8 @@ export function createTrustProviderContactStorage(contactsStorage: ContactsStora
     },
 
     async delete(id: string): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(trustProviderContacts)
         .where(eq(trustProviderContacts.id, id))
         .returning();

@@ -1,7 +1,13 @@
-import { db } from "../db";
+import { createNoopValidator } from './utils/validation';
+import { getClient } from './transaction-context';
 import { winstonLogs, type WinstonLog } from "@shared/schema";
 import { desc, eq, and, sql, or, like, inArray, gte, lte, type SQL } from "drizzle-orm";
 import { eventBus, EventType } from "../services/event-bus";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface LogsQueryParams {
   page?: number;
@@ -24,6 +30,18 @@ export interface LogsResult {
 export interface LogFilters {
   modules: string[];
   operations: string[];
+}
+
+export interface ModuleOperationStats {
+  module: string | null;
+  operation: string | null;
+  count: number;
+}
+
+export interface PurgeResult {
+  module: string | null;
+  operation: string | null;
+  deleted: number;
 }
 
 export interface HostEntityLogsParams {
@@ -57,11 +75,15 @@ export interface LogsStorage {
   getLogById(id: number): Promise<WinstonLog | undefined>;
   getLogsByHostEntityIds(params: HostEntityLogsParams): Promise<WinstonLog[]>;
   create(data: LogInsertData): Promise<WinstonLog>;
+  getModuleOperationStats(): Promise<ModuleOperationStats[]>;
+  purgeByModuleOperation(module: string | null, operation: string | null, olderThanDays: number): Promise<PurgeResult>;
+  countByModuleOperationOlderThan(module: string | null, operation: string | null, olderThanDays: number): Promise<number>;
 }
 
 export function createLogsStorage(): LogsStorage {
   return {
     async getLogs(params: LogsQueryParams): Promise<LogsResult> {
+      const client = getClient();
       const page = Math.max(1, params.page ?? 1);
       const limit = Math.min(100, Math.max(1, params.limit ?? 50));
       const offset = (page - 1) * limit;
@@ -85,12 +107,12 @@ export function createLogsStorage(): LogsStorage {
 
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-      const [{ count }] = await db
+      const [{ count }] = await client
         .select({ count: sql<number>`count(*)::int` })
         .from(winstonLogs)
         .where(whereClause);
 
-      const logs = await db
+      const logs = await client
         .select()
         .from(winstonLogs)
         .where(whereClause)
@@ -110,12 +132,13 @@ export function createLogsStorage(): LogsStorage {
     },
 
     async getLogFilters(): Promise<LogFilters> {
+      const client = getClient();
       const [modules, operations] = await Promise.all([
-        db.selectDistinct({ module: winstonLogs.module })
+        client.selectDistinct({ module: winstonLogs.module })
           .from(winstonLogs)
           .where(sql`${winstonLogs.module} IS NOT NULL`)
           .orderBy(winstonLogs.module),
-        db.selectDistinct({ operation: winstonLogs.operation })
+        client.selectDistinct({ operation: winstonLogs.operation })
           .from(winstonLogs)
           .where(sql`${winstonLogs.operation} IS NOT NULL`)
           .orderBy(winstonLogs.operation),
@@ -128,7 +151,8 @@ export function createLogsStorage(): LogsStorage {
     },
 
     async getLogById(id: number): Promise<WinstonLog | undefined> {
-      const [log] = await db
+      const client = getClient();
+      const [log] = await client
         .select()
         .from(winstonLogs)
         .where(eq(winstonLogs.id, id))
@@ -138,6 +162,7 @@ export function createLogsStorage(): LogsStorage {
     },
 
     async getLogsByHostEntityIds(params: HostEntityLogsParams): Promise<WinstonLog[]> {
+      const client = getClient();
       const idConditions = [];
       
       if (params.hostEntityIds.length > 0) {
@@ -168,7 +193,7 @@ export function createLogsStorage(): LogsStorage {
         conditions.push(lte(winstonLogs.timestamp, new Date(params.endDate)));
       }
 
-      let query = db
+      let query = client
         .select()
         .from(winstonLogs)
         .where(and(...conditions))
@@ -182,7 +207,9 @@ export function createLogsStorage(): LogsStorage {
     },
 
     async create(data: LogInsertData): Promise<WinstonLog> {
-      const [log] = await db
+      validate.validateOrThrow(data);
+      const client = getClient();
+      const [log] = await client
         .insert(winstonLogs)
         .values({
           level: data.level,
@@ -218,6 +245,88 @@ export function createLogsStorage(): LogsStorage {
       });
 
       return log;
+    },
+
+    async getModuleOperationStats(): Promise<ModuleOperationStats[]> {
+      const client = getClient();
+      const results = await client
+        .select({
+          module: winstonLogs.module,
+          operation: winstonLogs.operation,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(winstonLogs)
+        .groupBy(winstonLogs.module, winstonLogs.operation)
+        .orderBy(winstonLogs.module, winstonLogs.operation);
+
+      return results.map(r => ({
+        module: r.module,
+        operation: r.operation,
+        count: r.count,
+      }));
+    },
+
+    async countByModuleOperationOlderThan(
+      module: string | null,
+      operation: string | null,
+      olderThanDays: number
+    ): Promise<number> {
+      const client = getClient();
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
+
+      const conditions: SQL[] = [];
+      if (module === null) {
+        conditions.push(sql`${winstonLogs.module} IS NULL`);
+      } else {
+        conditions.push(eq(winstonLogs.module, module));
+      }
+      if (operation === null) {
+        conditions.push(sql`${winstonLogs.operation} IS NULL`);
+      } else {
+        conditions.push(eq(winstonLogs.operation, operation));
+      }
+      conditions.push(lte(winstonLogs.timestamp, cutoffDate));
+
+      const [{ count }] = await client
+        .select({ count: sql<number>`count(*)::int` })
+        .from(winstonLogs)
+        .where(and(...conditions));
+
+      return count;
+    },
+
+    async purgeByModuleOperation(
+      module: string | null,
+      operation: string | null,
+      olderThanDays: number
+    ): Promise<PurgeResult> {
+      const client = getClient();
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
+
+      const conditions: SQL[] = [];
+      if (module === null) {
+        conditions.push(sql`${winstonLogs.module} IS NULL`);
+      } else {
+        conditions.push(eq(winstonLogs.module, module));
+      }
+      if (operation === null) {
+        conditions.push(sql`${winstonLogs.operation} IS NULL`);
+      } else {
+        conditions.push(eq(winstonLogs.operation, operation));
+      }
+      conditions.push(lte(winstonLogs.timestamp, cutoffDate));
+
+      const result = await client
+        .delete(winstonLogs)
+        .where(and(...conditions));
+
+      return {
+        module,
+        operation,
+        deleted: result.rowCount ?? 0,
+      };
     },
   };
 }

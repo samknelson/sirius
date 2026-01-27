@@ -1,3 +1,4 @@
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
@@ -7,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import {
   Form,
   FormControl,
@@ -24,34 +27,59 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, X } from "lucide-react";
 import { format } from "date-fns";
 import { Link } from "wouter";
-import { dispatchJobStatusEnum, type Employer, type DispatchJobType, type JobTypeData } from "@shared/schema";
+import { type Employer, type DispatchJobType, type JobTypeData, type OptionsSkill, dispatchJobStatusEnum, type DispatchJobStatus } from "@shared/schema";
 import { DispatchJobLayout, useDispatchJobLayout } from "@/components/layouts/DispatchJobLayout";
-import { useEffect, useMemo } from "react";
+import { renderIcon } from "@/components/ui/icon-picker";
+
+interface ComponentConfig {
+  componentId: string;
+  enabled: boolean;
+}
 
 type FormData = {
   title: string;
   description?: string;
   employerId: string;
   jobTypeId: string;
-  status: typeof dispatchJobStatusEnum[number];
   startDate: string;
   workerCount: string;
+  status: DispatchJobStatus;
 };
+
+interface JobData {
+  requiredSkills?: string[];
+}
 
 function DispatchJobEditContent() {
   const { job } = useDispatchJobLayout();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  
+  const jobData = job.data as JobData | null;
+  const [selectedSkills, setSelectedSkills] = useState<string[]>(jobData?.requiredSkills || []);
 
   const { data: employers = [] } = useQuery<Employer[]>({
     queryKey: ["/api/employers"],
   });
 
   const { data: jobTypes = [] } = useQuery<DispatchJobType[]>({
-    queryKey: ["/api/dispatch-job-types"],
+    queryKey: ["/api/options/dispatch-job-type"],
+  });
+
+  const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
+    queryKey: ["/api/components/config"],
+  });
+
+  const skillsComponentEnabled = componentConfigs.some(
+    (c) => c.componentId === "worker.skills" && c.enabled
+  );
+
+  const { data: skills = [] } = useQuery<OptionsSkill[]>({
+    queryKey: ["/api/options/skill"],
+    enabled: skillsComponentEnabled,
   });
 
   const form = useForm<FormData>({
@@ -60,9 +88,9 @@ function DispatchJobEditContent() {
       description: job.description || "",
       employerId: job.employerId,
       jobTypeId: job.jobTypeId || "",
-      status: job.status as typeof dispatchJobStatusEnum[number],
       startDate: format(new Date(job.startDate), "yyyy-MM-dd"),
       workerCount: job.workerCount?.toString() || "",
+      status: job.status as DispatchJobStatus,
     },
   });
 
@@ -86,11 +114,18 @@ function DispatchJobEditContent() {
   const updateMutation = useMutation({
     mutationFn: async (data: FormData) => {
       const workerCountNum = data.workerCount ? parseInt(data.workerCount, 10) : null;
+      const updatedJobData: JobData = {
+        ...(jobData ?? {}),
+        requiredSkills: selectedSkills.length > 0 ? selectedSkills : undefined,
+      };
+      const hasData = Object.values(updatedJobData).some((v) => v !== undefined);
       return apiRequest("PUT", `/api/dispatch-jobs/${job.id}`, {
         ...data,
         jobTypeId: data.jobTypeId || null,
         startDate: new Date(data.startDate).toISOString(),
         workerCount: workerCountNum,
+        status: data.status,
+        data: hasData ? updatedJobData : undefined,
       });
     },
     onSuccess: () => {
@@ -245,31 +280,6 @@ function DispatchJobEditContent() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="status"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Status *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger data-testid="select-status">
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {dispatchJobStatusEnum.map((status) => (
-                          <SelectItem key={status} value={status}>
-                            <span className="capitalize">{status}</span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
                 name="startDate"
                 render={({ field }) => (
                   <FormItem>
@@ -281,6 +291,31 @@ function DispatchJobEditContent() {
                         data-testid="input-startdate"
                       />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-status">
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {dispatchJobStatusEnum.map((status) => (
+                          <SelectItem key={status} value={status} data-testid={`option-status-${status}`}>
+                            {status.charAt(0).toUpperCase() + status.slice(1)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -327,6 +362,66 @@ function DispatchJobEditContent() {
               />
             ) : (
               <input type="hidden" {...form.register("workerCount")} />
+            )}
+
+            {skillsComponentEnabled && skills.length > 0 && (
+              <div className="space-y-3">
+                <FormLabel>Required Skills</FormLabel>
+                <div className="flex flex-wrap gap-2 min-h-[36px] p-2 border rounded-md bg-muted/30">
+                  {selectedSkills.length === 0 ? (
+                    <span className="text-muted-foreground text-sm">No skills required</span>
+                  ) : (
+                    selectedSkills.map((skillId) => {
+                      const skill = skills.find((s) => s.id === skillId);
+                      if (!skill) return null;
+                      const skillData = skill.data as { icon?: string } | null;
+                      return (
+                        <Badge
+                          key={skillId}
+                          variant="secondary"
+                          className="gap-1"
+                          data-testid={`badge-skill-${skillId}`}
+                        >
+                          {skillData?.icon && renderIcon(skillData.icon, "h-3 w-3")}
+                          {skill.name}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-4 w-4 p-0 ml-1"
+                            onClick={() => setSelectedSkills(selectedSkills.filter((id) => id !== skillId))}
+                            data-testid={`button-remove-skill-${skillId}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </Badge>
+                      );
+                    })
+                  )}
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {skills
+                    .filter((skill) => !selectedSkills.includes(skill.id))
+                    .map((skill) => {
+                      const skillData = skill.data as { icon?: string } | null;
+                      return (
+                        <div
+                          key={skill.id}
+                          className="flex items-center gap-2 p-2 rounded-md border hover-elevate cursor-pointer"
+                          onClick={() => setSelectedSkills([...selectedSkills, skill.id])}
+                          data-testid={`option-skill-${skill.id}`}
+                        >
+                          <Checkbox
+                            checked={false}
+                            onCheckedChange={() => setSelectedSkills([...selectedSkills, skill.id])}
+                          />
+                          {skillData?.icon && renderIcon(skillData.icon, "h-4 w-4 text-muted-foreground")}
+                          <span className="text-sm">{skill.name}</span>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
             )}
 
             <div className="flex items-center gap-2 pt-4">
