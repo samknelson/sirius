@@ -16,6 +16,7 @@ import {
 import { sitespecificBtuEmployerMap } from "@shared/schema/sitespecific/btu/schema";
 import { eq, and, sql, inArray, not } from "drizzle-orm";
 import { storage } from "./index";
+import { createUnifiedOptionsStorage } from "./unified-options";
 import { log } from "../logger";
 
 const BPS_EMPLOYEE_ID_TYPE_NAME = "BPS Employee ID";
@@ -94,16 +95,18 @@ export interface BtuWorkerImportStorage {
 }
 
 export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
+  const unifiedOptionsStorage = createUnifiedOptionsStorage();
+  
   return {
     async ensureBpsEmployeeIdType(): Promise<{ id: string; name: string }> {
-      const existingTypes = await storage.options.workerIdTypes.getAllWorkerIdTypes();
-      const existingType = existingTypes.find(t => t.name === BPS_EMPLOYEE_ID_TYPE_NAME);
+      const existingTypes = await unifiedOptionsStorage.list("worker-id-type");
+      const existingType = existingTypes.find((t: any) => t.name === BPS_EMPLOYEE_ID_TYPE_NAME);
       
       if (existingType) {
         return { id: existingType.id, name: existingType.name };
       }
       
-      const newType = await storage.options.workerIdTypes.createWorkerIdType({
+      const newType = await unifiedOptionsStorage.create("worker-id-type", {
         name: BPS_EMPLOYEE_ID_TYPE_NAME,
         sequence: 0,
       });
