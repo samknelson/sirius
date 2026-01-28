@@ -22,6 +22,7 @@ import {
   Server,
   ScanLine,
   ClipboardCheck,
+  FileCheck,
   List,
   Key,
   Clock,
@@ -395,6 +396,18 @@ export default function Header() {
                         >
                           <ClipboardCheck className="h-4 w-4 mr-2" />
                           Organizing
+                        </Button>
+                      </Link>
+                    )}
+                    {hasComponent("cardcheck") && hasPermission("staff") && (
+                      <Link href="/reports/cardchecks" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location === "/reports/cardchecks" ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-cardcheck-report"
+                        >
+                          <FileCheck className="h-4 w-4 mr-2" />
+                          Card Check Report
                         </Button>
                       </Link>
                     )}
@@ -862,6 +875,16 @@ export default function Header() {
                         <div className="flex items-center cursor-pointer" data-testid="menu-employers-organizing">
                           <ClipboardCheck className="h-4 w-4 mr-2" />
                           Organizing
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasComponent("cardcheck") && hasPermission("staff") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/reports/cardchecks" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-cardcheck-report">
+                          <FileCheck className="h-4 w-4 mr-2" />
+                          Card Check Report
                         </div>
                       </Link>
                     </DropdownMenuItem>

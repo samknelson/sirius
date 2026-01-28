@@ -238,6 +238,7 @@ const CardcheckDefinitionViewPage = lazy(() => import("@/pages/cardcheck-definit
 const CardcheckDefinitionEditPage = lazy(() => import("@/pages/cardcheck-definition-edit"));
 const WorkerCardchecks = lazy(() => import("@/pages/worker-cardchecks"));
 const CardcheckViewPage = lazy(() => import("@/pages/cardcheck-view"));
+const CardcheckReportPage = lazy(() => import("@/pages/cardcheck-report"));
 const EventsListPage = lazy(() => import("@/pages/events"));
 const EventViewPage = lazy(() => import("@/pages/event-view"));
 const EventEditPage = lazy(() => import("@/pages/event-edit"));
@@ -1054,6 +1055,14 @@ function Router() {
         <ProtectedRoute tabId="dispatch" entityType="employer">
           <AuthenticatedLayout>
             <EmployerDispatchPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/reports/cardchecks">
+        <ProtectedRoute permission="staff" component="cardcheck">
+          <AuthenticatedLayout>
+            <CardcheckReportPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

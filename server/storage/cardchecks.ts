@@ -1,6 +1,6 @@
 import { getClient } from './transaction-context';
 import { cardchecks, cardcheckDefinitions, workers, contacts, bargainingUnits, employers, type Cardcheck, type InsertCardcheck } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gte, lte, sql, isNull, isNotNull, inArray, count } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 import { 
   type ValidationError,
@@ -64,6 +64,29 @@ export interface SignedCardcheckWithDetails {
   signedDate: Date | null;
 }
 
+export interface CardcheckReportFilters {
+  signedDateFrom?: string;
+  signedDateTo?: string;
+  hasPreviousCardcheck?: boolean;
+  status?: 'pending' | 'signed' | 'revoked';
+  bargainingUnitId?: string;
+}
+
+export interface CardcheckReportItem {
+  cardcheckId: string;
+  workerId: string;
+  workerSiriusId: number;
+  workerName: string;
+  bargainingUnitId: string | null;
+  bargainingUnitName: string | null;
+  status: 'pending' | 'signed' | 'revoked';
+  signedDate: Date | null;
+  hasPreviousCardcheck: boolean;
+  previousCardcheckCount: number;
+  definitionId: string;
+  definitionName: string;
+}
+
 export interface CardcheckStorage {
   getAllCardchecks(): Promise<Cardcheck[]>;
   getCardcheckById(id: string): Promise<Cardcheck | undefined>;
@@ -72,6 +95,7 @@ export interface CardcheckStorage {
   getCardchecksByDefinitionId(definitionId: string): Promise<Cardcheck[]>;
   getCardcheckStatusSummary(): Promise<CardcheckStatusSummary[]>;
   getAllSignedCardchecksWithDetails(): Promise<SignedCardcheckWithDetails[]>;
+  getCardcheckReport(filters: CardcheckReportFilters): Promise<CardcheckReportItem[]>;
   createCardcheck(data: InsertCardcheck): Promise<Cardcheck>;
   updateCardcheck(id: string, data: Partial<InsertCardcheck>): Promise<Cardcheck | undefined>;
   deleteCardcheck(id: string): Promise<boolean>;
@@ -242,6 +266,129 @@ export function createCardcheckStorage(): CardcheckStorage {
           employerNames,
           rate: card.rate,
           signedDate: card.signedDate,
+        });
+      }
+      
+      return results;
+    },
+
+    async getCardcheckReport(filters: CardcheckReportFilters): Promise<CardcheckReportItem[]> {
+      const client = getClient();
+      
+      const conditions: any[] = [];
+      
+      if (filters.status) {
+        conditions.push(eq(cardchecks.status, filters.status));
+      }
+      
+      if (filters.signedDateFrom) {
+        conditions.push(gte(cardchecks.signedDate, new Date(filters.signedDateFrom)));
+      }
+      
+      if (filters.signedDateTo) {
+        const endDate = new Date(filters.signedDateTo);
+        endDate.setHours(23, 59, 59, 999);
+        conditions.push(lte(cardchecks.signedDate, endDate));
+      }
+      
+      const allCardchecks = conditions.length > 0
+        ? await client.select().from(cardchecks).where(and(...conditions))
+        : await client.select().from(cardchecks);
+      
+      if (allCardchecks.length === 0) return [];
+      
+      const workerIds = Array.from(new Set(allCardchecks.map(c => c.workerId)));
+      const workersData = await client
+        .select({
+          id: workers.id,
+          siriusId: workers.siriusId,
+          contactId: workers.contactId,
+          bargainingUnitId: workers.bargainingUnitId,
+        })
+        .from(workers)
+        .where(inArray(workers.id, workerIds));
+      
+      const workerMap = new Map(workersData.map(w => [w.id, w]));
+      
+      const contactIds = workersData.map(w => w.contactId).filter(Boolean);
+      const contactsData = contactIds.length > 0
+        ? await client
+            .select({
+              id: contacts.id,
+              given: contacts.given,
+              family: contacts.family,
+              displayName: contacts.displayName,
+            })
+            .from(contacts)
+            .where(inArray(contacts.id, contactIds))
+        : [];
+      
+      const contactMap = new Map(contactsData.map(c => [c.id, c]));
+      
+      const buData = await client
+        .select({
+          id: bargainingUnits.id,
+          name: bargainingUnits.name,
+        })
+        .from(bargainingUnits);
+      
+      const buMap = new Map(buData.map(b => [b.id, b.name]));
+      
+      const defData = await client
+        .select({
+          id: cardcheckDefinitions.id,
+          name: cardcheckDefinitions.name,
+        })
+        .from(cardcheckDefinitions);
+      
+      const defMap = new Map(defData.map(d => [d.id, d.name]));
+      
+      const previousCountsQuery = await client
+        .select({
+          workerId: cardchecks.workerId,
+          count: count(),
+        })
+        .from(cardchecks)
+        .where(inArray(cardchecks.workerId, workerIds))
+        .groupBy(cardchecks.workerId);
+      
+      const cardcheckCountMap = new Map(previousCountsQuery.map(r => [r.workerId, Number(r.count)]));
+      
+      const results: CardcheckReportItem[] = [];
+      
+      for (const card of allCardchecks) {
+        const worker = workerMap.get(card.workerId);
+        if (!worker) continue;
+        
+        if (filters.bargainingUnitId && worker.bargainingUnitId !== filters.bargainingUnitId) {
+          continue;
+        }
+        
+        const totalCardchecks = cardcheckCountMap.get(card.workerId) || 0;
+        const hasPrevious = totalCardchecks > 1;
+        
+        if (filters.hasPreviousCardcheck !== undefined && hasPrevious !== filters.hasPreviousCardcheck) {
+          continue;
+        }
+        
+        const contact = contactMap.get(worker.contactId);
+        const workerName = contact 
+          ? `${contact.family || ''}, ${contact.given || ''}`.trim().replace(/^,\s*|,\s*$/g, '') || contact.displayName || `Worker #${worker.siriusId}`
+          : `Worker #${worker.siriusId}`;
+        
+        results.push({
+          cardcheckId: card.id,
+          workerId: card.workerId,
+          workerSiriusId: worker.siriusId,
+          workerName,
+          bargainingUnitId: worker.bargainingUnitId,
+          bargainingUnitName: worker.bargainingUnitId ? buMap.get(worker.bargainingUnitId) || null : null,
+          status: card.status,
+          signedDate: card.signedDate,
+          hasPreviousCardcheck: hasPrevious,
+          previousCardcheckCount: totalCardchecks - 1,
+          definitionId: card.cardcheckDefinitionId,
+          definitionName: defMap.get(card.cardcheckDefinitionId) || 'Unknown',
         });
       }
       

@@ -187,6 +187,41 @@ export function registerCardchecksRoutes(
     }
   });
 
+  // GET /api/reports/cardchecks - Get cardcheck report with filters
+  app.get("/api/reports/cardchecks", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
+    try {
+      const { signedDateFrom, signedDateTo, hasPreviousCardcheck, status, bargainingUnitId } = req.query;
+      
+      const filters: any = {};
+      
+      if (signedDateFrom && typeof signedDateFrom === 'string') {
+        filters.signedDateFrom = signedDateFrom;
+      }
+      
+      if (signedDateTo && typeof signedDateTo === 'string') {
+        filters.signedDateTo = signedDateTo;
+      }
+      
+      if (hasPreviousCardcheck !== undefined && hasPreviousCardcheck !== '') {
+        filters.hasPreviousCardcheck = hasPreviousCardcheck === 'true';
+      }
+      
+      if (status && typeof status === 'string' && ['pending', 'signed', 'revoked'].includes(status)) {
+        filters.status = status as 'pending' | 'signed' | 'revoked';
+      }
+      
+      if (bargainingUnitId && typeof bargainingUnitId === 'string') {
+        filters.bargainingUnitId = bargainingUnitId;
+      }
+      
+      const report = await storage.cardchecks.getCardcheckReport(filters);
+      res.json(report);
+    } catch (error: any) {
+      console.error("Failed to fetch cardcheck report:", error);
+      res.status(500).json({ message: "Failed to fetch cardcheck report" });
+    }
+  });
+
   // GET /api/employers/organizing - Get organizing employer list with card check stats
   app.get("/api/employers/organizing", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
     try {
