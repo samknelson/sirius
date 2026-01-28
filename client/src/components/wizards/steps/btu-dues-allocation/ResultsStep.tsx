@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, AlertCircle, Download, DollarSign, FileCheck, FileWarning, FileX, FileMinus } from "lucide-react";
+import { CheckCircle2, XCircle, AlertCircle, Download, DollarSign, FileCheck, FileWarning, FileX, FileMinus, FileQuestion } from "lucide-react";
 import { format } from "date-fns";
 
 interface ResultsStepProps {
@@ -55,6 +55,7 @@ interface CardCheckComparisonReport {
   matchingRate: CardCheckComparisonEntry[];
   mismatchingRate: CardCheckComparisonEntry[];
   noCardCheck: CardCheckComparisonEntry[];
+  cardCheckMissingRate: CardCheckComparisonEntry[];
   cardCheckNoAllocation: CardCheckComparisonEntry[];
   workerNotFound: WorkerNotFoundEntry[];
 }
@@ -292,7 +293,7 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
               <Card>
                 <CardContent className="pt-4 text-center">
                   <div className="text-2xl font-bold text-green-600">{comparisonReport.matchingRate.length}</div>
@@ -313,6 +314,12 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
               </Card>
               <Card>
                 <CardContent className="pt-4 text-center">
+                  <div className="text-2xl font-bold text-orange-600">{comparisonReport.cardCheckMissingRate?.length || 0}</div>
+                  <div className="text-xs text-muted-foreground">Card, No Rate</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 text-center">
                   <div className="text-2xl font-bold text-blue-600">{comparisonReport.cardCheckNoAllocation.length}</div>
                   <div className="text-xs text-muted-foreground">Card, No Allocation</div>
                 </CardContent>
@@ -326,7 +333,7 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
             </div>
 
             <Tabs defaultValue="matching" className="w-full">
-              <TabsList className="grid w-full grid-cols-5">
+              <TabsList className="grid w-full grid-cols-6">
                 <TabsTrigger value="matching" className="flex items-center gap-1" data-testid="tab-matching">
                   <FileCheck className="h-3 w-3" />
                   <span className="hidden sm:inline">Matching</span>
@@ -341,6 +348,11 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                   <FileX className="h-3 w-3" />
                   <span className="hidden sm:inline">No Card</span>
                   <Badge variant="secondary" className="ml-1">{comparisonReport.noCardCheck.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="missing-rate" className="flex items-center gap-1" data-testid="tab-missing-rate">
+                  <FileQuestion className="h-3 w-3" />
+                  <span className="hidden sm:inline">No Rate</span>
+                  <Badge variant="secondary" className="ml-1">{comparisonReport.cardCheckMissingRate?.length || 0}</Badge>
                 </TabsTrigger>
                 <TabsTrigger value="card-no-alloc" className="flex items-center gap-1" data-testid="tab-card-no-alloc">
                   <FileMinus className="h-3 w-3" />
@@ -386,6 +398,18 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                   </CardHeader>
                   <CardContent>
                     <ComparisonTable entries={comparisonReport.noCardCheck} showCardRate={false} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+              
+              <TabsContent value="missing-rate" data-testid="panel-missing-rate">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Signed Card Check with No Rate</CardTitle>
+                    <CardDescription>Workers who had dues allocated and have a signed card check, but no rate was recorded on the card</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ComparisonTable entries={comparisonReport.cardCheckMissingRate || []} showCardRate={false} />
                   </CardContent>
                 </Card>
               </TabsContent>

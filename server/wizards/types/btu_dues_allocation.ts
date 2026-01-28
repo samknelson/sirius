@@ -32,6 +32,7 @@ export interface CardCheckComparisonReport {
   matchingRate: CardCheckComparisonEntry[];
   mismatchingRate: CardCheckComparisonEntry[];
   noCardCheck: CardCheckComparisonEntry[];
+  cardCheckMissingRate: CardCheckComparisonEntry[];
   cardCheckNoAllocation: CardCheckComparisonEntry[];
   workerNotFound: WorkerNotFoundEntry[];
 }
@@ -509,6 +510,7 @@ export class BtuDuesAllocationWizard extends FeedWizard {
       matchingRate: [],
       mismatchingRate: [],
       noCardCheck: [],
+      cardCheckMissingRate: [],
       cardCheckNoAllocation: [],
       workerNotFound: workersNotFound,
     };
@@ -530,7 +532,7 @@ export class BtuDuesAllocationWizard extends FeedWizard {
       if (!cardCheck) {
         comparisonReport.noCardCheck.push(entry);
       } else if (cardCheck.rate === null) {
-        comparisonReport.noCardCheck.push(entry);
+        comparisonReport.cardCheckMissingRate.push(entry);
       } else if (Math.abs(cardCheck.rate - allocated.amount) < 0.01) {
         comparisonReport.matchingRate.push(entry);
       } else {
@@ -557,6 +559,7 @@ export class BtuDuesAllocationWizard extends FeedWizard {
       matchingRate: comparisonReport.matchingRate.length,
       mismatchingRate: comparisonReport.mismatchingRate.length,
       noCardCheck: comparisonReport.noCardCheck.length,
+      cardCheckMissingRate: comparisonReport.cardCheckMissingRate.length,
       cardCheckNoAllocation: comparisonReport.cardCheckNoAllocation.length,
       workerNotFound: comparisonReport.workerNotFound.length,
     });
