@@ -3,6 +3,7 @@ import { WizardStatus, WizardStep, createStandardStatuses, LaunchArgument } from
 import { storage } from '../../storage/index.js';
 import { createBtuWorkerImportStorage } from '../../storage/btu-worker-import.js';
 import { createCardcheckStorage, SignedCardcheckWithDetails } from '../../storage/cardchecks.js';
+import { createBargainingUnitStorage, type BargainingUnitData } from '../../storage/bargaining-units.js';
 import { executeChargePlugins, TriggerType, DuesImportSavedContext } from '../../charge-plugins/index.js';
 import { parse as parseCSV } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
@@ -506,6 +507,17 @@ export class BtuDuesAllocationWizard extends FeedWizard {
       cardCheckByWorkerId.set(cc.workerId, cc);
     }
     
+    const bargainingUnitStorage = createBargainingUnitStorage();
+    const allBargainingUnits = await bargainingUnitStorage.getAllBargainingUnits();
+    const buRateMap = new Map<string, number>();
+    for (const bu of allBargainingUnits) {
+      const data = bu.data as BargainingUnitData | null;
+      const rate = data?.accountRates?.[accountId];
+      if (rate !== undefined) {
+        buRateMap.set(bu.id, rate);
+      }
+    }
+    
     const comparisonReport: CardCheckComparisonReport = {
       matchingRate: [],
       mismatchingRate: [],
@@ -519,6 +531,15 @@ export class BtuDuesAllocationWizard extends FeedWizard {
     for (const [workerId, allocated] of allocatedEntries) {
       const cardCheck = cardCheckByWorkerId.get(workerId);
       
+      let effectiveRate: number | null = null;
+      if (cardCheck) {
+        if (cardCheck.rate !== null) {
+          effectiveRate = cardCheck.rate;
+        } else if (cardCheck.bargainingUnitId) {
+          effectiveRate = buRateMap.get(cardCheck.bargainingUnitId) ?? null;
+        }
+      }
+      
       const entry: CardCheckComparisonEntry = {
         workerId: allocated.workerId,
         workerSiriusId: allocated.workerSiriusId,
@@ -526,14 +547,14 @@ export class BtuDuesAllocationWizard extends FeedWizard {
         bargainingUnitName: allocated.bargainingUnitName,
         employerNames: allocated.employerNames,
         allocatedAmount: allocated.amount,
-        cardCheckRate: cardCheck?.rate ?? null,
+        cardCheckRate: effectiveRate,
       };
       
       if (!cardCheck) {
         comparisonReport.noCardCheck.push(entry);
-      } else if (cardCheck.rate === null) {
+      } else if (effectiveRate === null) {
         comparisonReport.cardCheckMissingRate.push(entry);
-      } else if (Math.abs(cardCheck.rate - allocated.amount) < 0.01) {
+      } else if (Math.abs(effectiveRate - allocated.amount) < 0.01) {
         comparisonReport.matchingRate.push(entry);
       } else {
         comparisonReport.mismatchingRate.push(entry);
@@ -542,13 +563,17 @@ export class BtuDuesAllocationWizard extends FeedWizard {
     
     for (const cardCheck of signedCardchecks) {
       if (!allocatedWorkers.has(cardCheck.workerId)) {
+        let effectiveCardRate: number | null = cardCheck.rate;
+        if (effectiveCardRate === null && cardCheck.bargainingUnitId) {
+          effectiveCardRate = buRateMap.get(cardCheck.bargainingUnitId) ?? null;
+        }
         comparisonReport.cardCheckNoAllocation.push({
           workerId: cardCheck.workerId,
           workerSiriusId: cardCheck.workerSiriusId,
           workerName: cardCheck.workerName,
           bargainingUnitName: cardCheck.bargainingUnitName,
           employerNames: cardCheck.employerNames,
-          cardCheckRate: cardCheck.rate,
+          cardCheckRate: effectiveCardRate,
         });
       }
     }
