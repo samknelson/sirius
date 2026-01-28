@@ -779,6 +779,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/reports/cardchecks">
+        <ProtectedRoute permission="staff" component="cardcheck">
+          <AuthenticatedLayout>
+            <CardcheckReportPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/reports/:reportType">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
@@ -1055,14 +1063,6 @@ function Router() {
         <ProtectedRoute tabId="dispatch" entityType="employer">
           <AuthenticatedLayout>
             <EmployerDispatchPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/reports/cardchecks">
-        <ProtectedRoute permission="staff" component="cardcheck">
-          <AuthenticatedLayout>
-            <CardcheckReportPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

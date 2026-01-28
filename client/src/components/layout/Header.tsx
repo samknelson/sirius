@@ -399,18 +399,6 @@ export default function Header() {
                         </Button>
                       </Link>
                     )}
-                    {hasComponent("cardcheck") && hasPermission("staff") && (
-                      <Link href="/reports/cardchecks" onClick={() => setMobileMenuOpen(false)}>
-                        <Button
-                          variant={location === "/reports/cardchecks" ? "default" : "ghost"}
-                          className="w-full justify-start pl-8"
-                          data-testid="mobile-nav-cardcheck-report"
-                        >
-                          <FileCheck className="h-4 w-4 mr-2" />
-                          Card Check Report
-                        </Button>
-                      </Link>
-                    )}
                     {hasComponent("edls") && (
                       <Link href="/edls/sheets" onClick={() => setMobileMenuOpen(false)}>
                         <Button
@@ -558,17 +546,31 @@ export default function Header() {
                   </>
                 )}
 
-                {hasPermission("admin") && (
-                  <Link href="/reports" onClick={() => setMobileMenuOpen(false)}>
-                    <Button
-                      variant={location === "/reports" ? "default" : "ghost"}
-                      className="w-full justify-start"
-                      data-testid="mobile-nav-reports"
-                    >
-                      <FileText className="h-4 w-4 mr-2" />
-                      Reports
-                    </Button>
-                  </Link>
+                {(hasPermission("admin") || (hasComponent("cardcheck") && hasPermission("staff"))) && (
+                  <>
+                    <Link href="/reports" onClick={() => setMobileMenuOpen(false)}>
+                      <Button
+                        variant={location === "/reports" ? "default" : "ghost"}
+                        className="w-full justify-start"
+                        data-testid="mobile-nav-reports"
+                      >
+                        <FileText className="h-4 w-4 mr-2" />
+                        Reports
+                      </Button>
+                    </Link>
+                    {hasComponent("cardcheck") && hasPermission("staff") && (
+                      <Link href="/reports/cardchecks" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location === "/reports/cardchecks" ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-cardcheck-report"
+                        >
+                          <FileCheck className="h-4 w-4 mr-2" />
+                          Card Check Report
+                        </Button>
+                      </Link>
+                    )}
+                  </>
                 )}
 
                 {hasPermission("admin") && (
@@ -879,16 +881,6 @@ export default function Header() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {hasComponent("cardcheck") && hasPermission("staff") && (
-                    <DropdownMenuItem asChild>
-                      <Link href="/reports/cardchecks" className="w-full">
-                        <div className="flex items-center cursor-pointer" data-testid="menu-cardcheck-report">
-                          <FileCheck className="h-4 w-4 mr-2" />
-                          Card Check Report
-                        </div>
-                      </Link>
-                    </DropdownMenuItem>
-                  )}
                   {hasComponent("edls") && (
                     <DropdownMenuItem asChild>
                       <Link href="/edls/sheets" className="w-full">
@@ -1042,17 +1034,42 @@ export default function Header() {
               </DropdownMenu>
             )}
 
-            {hasPermission("admin") && (
-              <Link href="/reports">
-                <Button
-                  variant={location === "/reports" ? "default" : "ghost"}
-                  size="sm"
-                  data-testid="nav-reports"
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  Reports
-                </Button>
-              </Link>
+            {(hasPermission("admin") || (hasComponent("cardcheck") && hasPermission("staff"))) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={location.startsWith("/reports") ? "default" : "ghost"}
+                    size="sm"
+                    data-testid="nav-reports"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Reports
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {hasPermission("admin") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/reports" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-reports-all">
+                          <FileText className="h-4 w-4 mr-2" />
+                          All Reports
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasComponent("cardcheck") && hasPermission("staff") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/reports/cardchecks" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-cardcheck-report">
+                          <FileCheck className="h-4 w-4 mr-2" />
+                          Card Check Report
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
 
             {hasPermission("admin") && (
