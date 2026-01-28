@@ -190,7 +190,7 @@ export function registerCardchecksRoutes(
   // GET /api/reports/cardchecks - Get cardcheck report with filters
   app.get("/api/reports/cardchecks", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
     try {
-      const { signedDateFrom, signedDateTo, hasPreviousCardcheck, status, bargainingUnitId } = req.query;
+      const { signedDateFrom, signedDateTo, hasPreviousCardcheck, status, bargainingUnitId, definitionId } = req.query;
       
       const filters: any = {};
       
@@ -212,6 +212,10 @@ export function registerCardchecksRoutes(
       
       if (bargainingUnitId && typeof bargainingUnitId === 'string') {
         filters.bargainingUnitId = bargainingUnitId;
+      }
+      
+      if (definitionId && typeof definitionId === 'string') {
+        filters.definitionId = definitionId;
       }
       
       const report = await storage.cardchecks.getCardcheckReport(filters);

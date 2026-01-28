@@ -70,6 +70,7 @@ export interface CardcheckReportFilters {
   hasPreviousCardcheck?: boolean;
   status?: 'pending' | 'signed' | 'revoked';
   bargainingUnitId?: string;
+  definitionId?: string;
 }
 
 export interface CardcheckReportItem {
@@ -279,6 +280,10 @@ export function createCardcheckStorage(): CardcheckStorage {
       
       if (filters.status) {
         conditions.push(eq(cardchecks.status, filters.status));
+      }
+      
+      if (filters.definitionId) {
+        conditions.push(eq(cardchecks.cardcheckDefinitionId, filters.definitionId));
       }
       
       if (filters.signedDateFrom) {

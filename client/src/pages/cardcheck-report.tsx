@@ -46,12 +46,18 @@ interface BargainingUnit {
   name: string;
 }
 
+interface CardcheckDefinition {
+  id: string;
+  name: string;
+}
+
 export default function CardcheckReport() {
   const [signedDateFrom, setSignedDateFrom] = useState<string>("");
   const [signedDateTo, setSignedDateTo] = useState<string>("");
   const [hasPreviousFilter, setHasPreviousFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [bargainingUnitFilter, setBargainingUnitFilter] = useState<string>("all");
+  const [definitionFilter, setDefinitionFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [sortField, setSortField] = useState<string>("workerName");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
@@ -63,8 +69,9 @@ export default function CardcheckReport() {
     if (hasPreviousFilter !== "all") params.append("hasPreviousCardcheck", hasPreviousFilter);
     if (statusFilter !== "all") params.append("status", statusFilter);
     if (bargainingUnitFilter !== "all") params.append("bargainingUnitId", bargainingUnitFilter);
+    if (definitionFilter !== "all") params.append("definitionId", definitionFilter);
     return params.toString();
-  }, [signedDateFrom, signedDateTo, hasPreviousFilter, statusFilter, bargainingUnitFilter]);
+  }, [signedDateFrom, signedDateTo, hasPreviousFilter, statusFilter, bargainingUnitFilter, definitionFilter]);
 
   const { data: reportData, isLoading: reportLoading } = useQuery<CardcheckReportItem[]>({
     queryKey: ["/api/reports/cardchecks", queryParams],
@@ -77,6 +84,10 @@ export default function CardcheckReport() {
 
   const { data: bargainingUnits, isLoading: buLoading } = useQuery<BargainingUnit[]>({
     queryKey: ["/api/bargaining-units"],
+  });
+
+  const { data: definitions, isLoading: defsLoading } = useQuery<CardcheckDefinition[]>({
+    queryKey: ["/api/cardcheck/definitions"],
   });
 
   const filteredAndSortedData = useMemo(() => {
@@ -134,10 +145,11 @@ export default function CardcheckReport() {
     setHasPreviousFilter("all");
     setStatusFilter("all");
     setBargainingUnitFilter("all");
+    setDefinitionFilter("all");
     setSearchTerm("");
   };
 
-  const hasActiveFilters = signedDateFrom || signedDateTo || hasPreviousFilter !== "all" || statusFilter !== "all" || bargainingUnitFilter !== "all";
+  const hasActiveFilters = signedDateFrom || signedDateTo || hasPreviousFilter !== "all" || statusFilter !== "all" || bargainingUnitFilter !== "all" || definitionFilter !== "all";
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -180,7 +192,7 @@ export default function CardcheckReport() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
             <div className="space-y-2">
               <Label htmlFor="signedDateFrom">Signed Date From</Label>
               <Input
@@ -242,6 +254,21 @@ export default function CardcheckReport() {
                   <SelectItem value="all">All Units</SelectItem>
                   {bargainingUnits?.map((bu) => (
                     <SelectItem key={bu.id} value={bu.id}>{bu.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="definition">Card Check Definition</Label>
+              <Select value={definitionFilter} onValueChange={setDefinitionFilter}>
+                <SelectTrigger id="definition" data-testid="select-definition">
+                  <SelectValue placeholder="All Definitions" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Definitions</SelectItem>
+                  {definitions?.map((def) => (
+                    <SelectItem key={def.id} value={def.id}>{def.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
