@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import { createServer } from "http";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { initializePermissions } from "@shared/permissions";
@@ -67,6 +68,51 @@ function redactSensitiveData(data: any): any {
 }
 
 const app = express();
+
+// Health check endpoint - must be registered BEFORE any heavy initialization
+// This allows deployment health checks to pass while the app is still starting
+let appReady = false;
+app.get('/health', (_req, res) => {
+  res.status(200).json({ status: appReady ? 'ready' : 'starting' });
+});
+
+// Root path handler for health checks during startup
+// Once app is ready, this falls through to the SPA handler
+app.get('/', (req, res, next) => {
+  if (appReady) {
+    // App is ready, let normal SPA handler serve the page
+    return next();
+  }
+  
+  // During startup, respond based on Accept header
+  const acceptHeader = req.headers.accept || '';
+  if (acceptHeader.includes('text/html')) {
+    // Browser request during startup - serve a loading page
+    res.status(200).set({ 'Content-Type': 'text/html' }).send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Starting...</title>
+          <meta http-equiv="refresh" content="2">
+          <style>
+            body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5; }
+            .loader { text-align: center; color: #666; }
+          </style>
+        </head>
+        <body>
+          <div class="loader">
+            <p>Application is starting...</p>
+            <p><small>This page will refresh automatically.</small></p>
+          </div>
+        </body>
+      </html>
+    `);
+  } else {
+    // Health check probe - return JSON status
+    res.status(200).json({ status: 'starting' });
+  }
+});
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: false, limit: '50mb' }));
 
@@ -123,6 +169,19 @@ app.use((req, res, next) => {
   });
 
   next();
+});
+
+// Create HTTP server early for health checks
+const server = createServer(app);
+
+// Start listening IMMEDIATELY so health checks pass during initialization
+const port = parseInt(process.env.PORT || '5000', 10);
+server.listen({
+  port,
+  host: "0.0.0.0",
+  reusePort: true,
+}, () => {
+  log(`Server listening on port ${port}, starting initialization...`);
 });
 
 (async () => {
@@ -243,7 +302,7 @@ app.use((req, res, next) => {
   registerEntityAccessModule(app, storage);
   logger.info("Entity access module registered", { source: "startup" });
 
-  const server = await registerRoutes(app);
+  await registerRoutes(app, server);
 
   // Initialize WebSocket server for real-time notifications
   const sessionMiddleware = getSession();
@@ -287,16 +346,7 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-  });
+  // Mark app as ready after all initialization is complete
+  appReady = true;
+  logger.info("Application fully initialized and ready", { source: "startup" });
 })();

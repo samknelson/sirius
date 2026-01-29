@@ -120,7 +120,7 @@ const requirePermission = (permissionKey: string) => {
   };
 };
 
-export async function registerRoutes(app: Express): Promise<Server> {
+export async function registerRoutes(app: Express, existingServer?: Server): Promise<Server> {
   // Unauthorized route for failed logins
   app.get("/unauthorized", (req, res) => {
     res.status(401).send(`
@@ -1345,6 +1345,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register Web Service admin routes (for managing bundles, clients, credentials)
   registerWebServiceAdminRoutes(app, requireAuth, requirePermission);
 
-  const httpServer = createServer(app);
+  // Use existing server if provided, otherwise create new one
+  const httpServer = existingServer || createServer(app);
   return httpServer;
 }
