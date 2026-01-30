@@ -56,6 +56,7 @@ All database access **MUST** go through a centralized storage layer (`server/sto
 -   **Trust Eligibility Plugin System**: Registry-based architecture for worker eligibility determination and benefits eligibility scans.
 -   **Events Management**: Full CRUD for events, occurrences, and scheduling.
 -   **Database Quickstarts**: Admin-only feature for database snapshot export/import.
+-   **Data Cleanup Tool**: Admin-only feature (`/admin/data-cleanup`) for selectively deleting non-configuration data from the database. Supports categories: Workers, Employers, Ledger, Events, Dispatch, EDLS, Communications, and Wizards. Uses TRUNCATE CASCADE for FK-safe deletion within transactions. Requires preview before execution and preserves all configuration data (options tables, roles, permissions, etc.).
 -   **System Mode**: Application-wide environment mode setting (dev/test/live).
 -   **Staff Alert Configuration & Sending System**: Reusable system for configuring and dispatching multi-media alerts.
 -   **Terminology Framework**: Site-specific terminology customization.
