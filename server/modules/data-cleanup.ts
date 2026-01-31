@@ -182,6 +182,35 @@ async function getCategoryCounts(categories: CleanupCategory[]): Promise<Categor
   return results;
 }
 
+async function exportCategoryData(categories: CleanupCategory[]): Promise<Record<string, any[]>> {
+  const exportedData: Record<string, any[]> = {};
+  const exportedTables = new Set<string>();
+
+  for (const category of categories) {
+    const tables = categoryTables[category];
+    
+    for (const table of tables) {
+      if (exportedTables.has(table)) continue;
+      exportedTables.add(table);
+      
+      const exists = await tableExists(table);
+      if (!exists) continue;
+      
+      const db = getClient();
+      try {
+        const result = await db.execute(sql.raw(`SELECT * FROM "${table}"`));
+        if (result.rows.length > 0) {
+          exportedData[table] = result.rows as any[];
+        }
+      } catch (error) {
+        console.error(`Error exporting table ${table}:`, error);
+      }
+    }
+  }
+
+  return exportedData;
+}
+
 async function performCleanup(categories: CleanupCategory[]): Promise<{ category: CleanupCategory; deletedRecords: number }[]> {
   const tablesToDelete = new Set<string>();
   const tableToCategory = new Map<string, CleanupCategory>();
@@ -280,6 +309,36 @@ export function registerDataCleanupRoutes(app: Express) {
           res.status(400).json({ message: "Invalid request data", errors: error.errors });
         } else {
           res.status(500).json({ message: error.message || "Failed to preview cleanup" });
+        }
+      }
+    }
+  );
+
+  app.post(
+    "/api/admin/data-cleanup/export",
+    isAuthenticated,
+    requireAccess('admin'),
+    async (req, res) => {
+      try {
+        const { categories } = z.object({ categories: z.array(cleanupCategorySchema).min(1) }).parse(req.body);
+        const exportData = await exportCategoryData(categories);
+        
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `data-export-${timestamp}.json`;
+        
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.json({
+          exportedAt: new Date().toISOString(),
+          categories,
+          data: exportData,
+        });
+      } catch (error: any) {
+        console.error("Error exporting data:", error);
+        if (error.name === 'ZodError') {
+          res.status(400).json({ message: "Invalid request data", errors: error.errors });
+        } else {
+          res.status(500).json({ message: error.message || "Failed to export data" });
         }
       }
     }

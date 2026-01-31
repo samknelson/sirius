@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Trash2, AlertTriangle, Eye, Loader2 } from "lucide-react";
+import { Trash2, AlertTriangle, Eye, Loader2, Download } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -55,6 +55,7 @@ export default function AdminDataCleanup() {
   const [showPreview, setShowPreview] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [previewData, setPreviewData] = useState<CategoryPreview[] | null>(null);
+  const [exportBeforeDelete, setExportBeforeDelete] = useState(true);
 
   const { data: categories = [], isLoading } = useQuery<CleanupCategory[]>({
     queryKey: ["/api/admin/data-cleanup/categories"],
@@ -72,6 +73,44 @@ export default function AdminDataCleanup() {
       toast({
         title: "Preview Failed",
         description: error.message || "Failed to preview cleanup",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const exportMutation = useMutation({
+    mutationFn: async (cats: string[]) => {
+      const response = await fetch("/api/admin/data-cleanup/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ categories: cats }),
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to export data");
+      }
+      return response.blob();
+    },
+    onSuccess: (blob) => {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `data-export-${timestamp}.json`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: "Export Complete",
+        description: "Data has been exported successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Export Failed",
+        description: error.message || "Failed to export data",
         variant: "destructive",
       });
     },
@@ -127,8 +166,30 @@ export default function AdminDataCleanup() {
     previewMutation.mutate(Array.from(selectedCategories));
   };
 
-  const handleExecute = () => {
-    executeMutation.mutate(Array.from(selectedCategories));
+  const handleExecute = async () => {
+    const cats = Array.from(selectedCategories);
+    
+    if (exportBeforeDelete) {
+      try {
+        await exportMutation.mutateAsync(cats);
+      } catch {
+        return;
+      }
+    }
+    
+    executeMutation.mutate(cats);
+  };
+
+  const handleExportOnly = () => {
+    if (selectedCategories.size === 0) {
+      toast({
+        title: "No Categories Selected",
+        description: "Please select at least one category to export.",
+        variant: "destructive",
+      });
+      return;
+    }
+    exportMutation.mutate(Array.from(selectedCategories));
   };
 
   const getTotalRecordsToDelete = () => {
@@ -198,7 +259,7 @@ export default function AdminDataCleanup() {
               ))}
             </div>
 
-            <div className="mt-6 flex gap-3">
+            <div className="mt-6 flex flex-wrap gap-3">
               <Button
                 onClick={handlePreview}
                 disabled={selectedCategories.size === 0 || previewMutation.isPending}
@@ -211,6 +272,19 @@ export default function AdminDataCleanup() {
                   <Eye className="h-4 w-4 mr-2" />
                 )}
                 Preview
+              </Button>
+              <Button
+                onClick={handleExportOnly}
+                disabled={selectedCategories.size === 0 || exportMutation.isPending}
+                variant="outline"
+                data-testid="button-export"
+              >
+                {exportMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                Export Data
               </Button>
               <Button
                 onClick={() => setShowConfirmDialog(true)}
@@ -290,34 +364,47 @@ export default function AdminDataCleanup() {
               <AlertTriangle className="h-5 w-5" />
               Confirm Data Deletion
             </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-2">
-              <p>
-                You are about to permanently delete{" "}
-                <strong>{getTotalRecordsToDelete().toLocaleString()}</strong> records from the
-                following categories:
-              </p>
-              <ul className="list-disc list-inside mt-2">
-                {Array.from(selectedCategories).map((cat) => (
-                  <li key={cat} className="capitalize">{cat}</li>
-                ))}
-              </ul>
-              <p className="text-destructive font-semibold mt-4">
-                This action cannot be undone!
-              </p>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  You are about to permanently delete{" "}
+                  <strong>{getTotalRecordsToDelete().toLocaleString()}</strong> records from the
+                  following categories:
+                </p>
+                <ul className="list-disc list-inside mt-2">
+                  {Array.from(selectedCategories).map((cat) => (
+                    <li key={cat} className="capitalize">{cat}</li>
+                  ))}
+                </ul>
+                <div className="flex items-center space-x-2 mt-4 p-3 rounded-lg bg-muted">
+                  <Checkbox
+                    id="export-before-delete"
+                    checked={exportBeforeDelete}
+                    onCheckedChange={(checked) => setExportBeforeDelete(checked === true)}
+                    data-testid="checkbox-export-before-delete"
+                  />
+                  <label htmlFor="export-before-delete" className="text-sm font-medium cursor-pointer">
+                    Export data as JSON backup before deleting
+                  </label>
+                </div>
+                <p className="text-destructive font-semibold mt-4">
+                  This action cannot be undone!
+                </p>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleExecute}
-              disabled={executeMutation.isPending}
+              disabled={executeMutation.isPending || exportMutation.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               data-testid="button-confirm-delete"
             >
-              {executeMutation.isPending ? (
+              {(executeMutation.isPending || exportMutation.isPending) ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : null}
-              Yes, Delete All Data
+              {exportBeforeDelete ? "Export & Delete All Data" : "Yes, Delete All Data"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
