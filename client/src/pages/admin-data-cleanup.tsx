@@ -62,8 +62,7 @@ export default function AdminDataCleanup() {
 
   const previewMutation = useMutation({
     mutationFn: async (cats: string[]) => {
-      const response = await apiRequest("POST", "/api/admin/data-cleanup/preview", { categories: cats });
-      return response.json();
+      return await apiRequest("POST", "/api/admin/data-cleanup/preview", { categories: cats });
     },
     onSuccess: (data: CategoryPreview[]) => {
       setPreviewData(data);
@@ -80,11 +79,10 @@ export default function AdminDataCleanup() {
 
   const executeMutation = useMutation({
     mutationFn: async (cats: string[]) => {
-      const response = await apiRequest("POST", "/api/admin/data-cleanup/execute", {
+      return await apiRequest("POST", "/api/admin/data-cleanup/execute", {
         categories: cats,
         confirmed: true,
       });
-      return response.json();
     },
     onSuccess: (data: { success: boolean; results: CleanupResult[]; message: string }) => {
       setShowConfirmDialog(false);
