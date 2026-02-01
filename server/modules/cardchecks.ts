@@ -239,7 +239,9 @@ export function registerCardchecksRoutes(
           et.data->>'icon' as "typeIcon",
           sa.school_type_ids as "schoolTypeIds",
           sa.region_id as "regionId",
-          r.name as "regionName"
+          r.name as "regionName",
+          sa.grade_start as "gradeStart",
+          sa.grade_end as "gradeEnd"
         FROM employers e
         LEFT JOIN options_employer_type et ON e.type_id = et.id
         LEFT JOIN sitespecific_btu_school_attributes sa ON sa.employer_id = e.id
@@ -380,6 +382,8 @@ export function registerCardchecksRoutes(
           schoolTypes: schoolTypes,
           regionId: emp.regionId || null,
           regionName: emp.regionName || null,
+          gradeStart: emp.gradeStart || null,
+          gradeEnd: emp.gradeEnd || null,
           totalWorkers: 0,
           signedWorkers: 0,
           bargainingUnits: [],

@@ -72,6 +72,8 @@ interface OrganizingEmployer {
   schoolTypes: SchoolTypeInfo[];
   regionId: string | null;
   regionName: string | null;
+  gradeStart: string | null;
+  gradeEnd: string | null;
   totalWorkers: number;
   signedWorkers: number;
   bargainingUnits: BargainingUnitStats[];
@@ -418,6 +420,10 @@ function EmployerCard({ employer, term }: { employer: OrganizingEmployer; term: 
 
   const hasSchoolTypes = employer.schoolTypes && employer.schoolTypes.length > 0;
   const hasRegion = employer.regionName;
+  const hasGrades = employer.gradeStart || employer.gradeEnd;
+  const gradeLabel = employer.gradeStart && employer.gradeEnd
+    ? `${employer.gradeStart}-${employer.gradeEnd}`
+    : employer.gradeStart || employer.gradeEnd || "";
 
   return (
     <Card className="hover-elevate flex flex-col h-full" data-testid={`card-employer-${employer.id}`}>
@@ -440,7 +446,7 @@ function EmployerCard({ employer, term }: { employer: OrganizingEmployer; term: 
           </Badge>
         </div>
         
-        {(hasSchoolTypes || hasRegion) && (
+        {(hasSchoolTypes || hasRegion || hasGrades) && (
           <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground" data-testid={`info-row-${employer.id}`}>
             {hasSchoolTypes && (
               <div className="flex items-center gap-1" data-testid={`school-types-${employer.id}`}>
@@ -448,6 +454,9 @@ function EmployerCard({ employer, term }: { employer: OrganizingEmployer; term: 
                   <SchoolTypeIcon key={st.id} icon={st.icon} name={st.name} />
                 ))}
               </div>
+            )}
+            {hasGrades && (
+              <span data-testid={`grades-${employer.id}`}>Grades {gradeLabel}</span>
             )}
             {hasRegion && (
               <div className="flex items-center gap-1" data-testid={`region-${employer.id}`}>
