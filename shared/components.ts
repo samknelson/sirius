@@ -136,9 +136,15 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "site-specific",
     managesSchema: true,
     schemaManifest: {
-      version: 1,
+      version: 2,
       schemaPath: "./shared/schema/sitespecific/btu/schema.ts",
-      tables: ["sitespecific_btu_csg", "sitespecific_btu_employer_map"]
+      tables: [
+        "sitespecific_btu_csg",
+        "sitespecific_btu_employer_map",
+        "sitespecific_btu_school_types",
+        "sitespecific_btu_regions",
+        "sitespecific_btu_school_attributes"
+      ]
     }
   },
   {

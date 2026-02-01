@@ -103,6 +103,7 @@ const EmployerDispatchPage = lazy(() => import("@/pages/employers/dispatch"));
 const WizardView = lazy(() => import("@/pages/wizard-view"));
 const StripeCustomerPage = lazy(() => import("@/pages/employers/stripe-customer"));
 const StripePaymentMethodsPage = lazy(() => import("@/pages/employers/stripe-payment-methods"));
+const EmployerSchoolAttributesPage = lazy(() => import("@/pages/employers/school-attributes"));
 const EmployerLedgerAccountsWrapper = lazy(() => import("@/pages/employer-ledger-accounts-wrapper"));
 const EAView = lazy(() => import("@/pages/ea-view"));
 const EAInvoices = lazy(() => import("@/pages/ea-invoices"));
@@ -255,6 +256,8 @@ const BtuCsgEditPage = lazy(() => import("@/pages/sitespecific/btu/csg-edit"));
 const BtuCsgNewPage = lazy(() => import("@/pages/sitespecific/btu/csg-new"));
 const BtuEmployerMapListPage = lazy(() => import("@/pages/sitespecific/btu/employer-map-list"));
 const BtuTerritoriesListPage = lazy(() => import("@/pages/sitespecific/btu/territories-list"));
+const BtuSchoolTypesListPage = lazy(() => import("@/pages/sitespecific/btu/school-types-list"));
+const BtuRegionsListPage = lazy(() => import("@/pages/sitespecific/btu/regions-list"));
 const BtuWorkerImportPage = lazy(() => import("@/pages/sitespecific/btu/worker-import"));
 const BtuDuesAllocationPage = lazy(() => import("@/pages/sitespecific/btu/dues-allocation"));
 const EdlsSheetsPage = lazy(() => import("@/pages/edls/sheets"));
@@ -1069,6 +1072,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/employers/:id/school-attributes">
+        <ProtectedRoute tabId="school-attributes" entityType="employer">
+          <AuthenticatedLayout>
+            <EmployerSchoolAttributesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/employers/organizing">
         <ProtectedRoute permission="staff" component="cardcheck">
           <AuthenticatedLayout>
@@ -1220,6 +1231,22 @@ function Router() {
         <ProtectedRoute permission="admin" component="sitespecific.btu">
           <AuthenticatedLayout>
             <BtuTerritoriesListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/btu/school-types">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuSchoolTypesListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/btu/regions">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuRegionsListPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

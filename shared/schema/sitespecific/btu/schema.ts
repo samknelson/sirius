@@ -2,7 +2,7 @@ import { pgTable, text, timestamp, varchar, jsonb, unique } from "drizzle-orm/pg
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { workers, contacts, bargainingUnits, optionsEmploymentStatus } from "../../../schema";
+import { workers, contacts, bargainingUnits, optionsEmploymentStatus, employers } from "../../../schema";
 
 export const sitespecificBtuCsg = pgTable("sitespecific_btu_csg", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -99,3 +99,65 @@ export const insertBtuTerritoryWorkerSchema = createInsertSchema(btuTerritoryWor
 
 export type BtuTerritoryWorker = typeof btuTerritoryWorkers.$inferSelect;
 export type InsertBtuTerritoryWorker = z.infer<typeof insertBtuTerritoryWorkerSchema>;
+
+// BTU School Types - reference table for school type options
+export const sitespecificBtuSchoolTypes = pgTable("sitespecific_btu_school_types", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  siriusId: varchar("sirius_id").unique().notNull(),
+  name: text("name").notNull(),
+});
+
+export const insertBtuSchoolTypeSchema = createInsertSchema(sitespecificBtuSchoolTypes).omit({
+  id: true,
+});
+
+export type BtuSchoolType = typeof sitespecificBtuSchoolTypes.$inferSelect;
+export type InsertBtuSchoolType = z.infer<typeof insertBtuSchoolTypeSchema>;
+
+// BTU Regions - reference table with SS/AS/OL contact references
+export const sitespecificBtuRegions = pgTable("sitespecific_btu_regions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  siriusId: varchar("sirius_id").unique().notNull(),
+  name: text("name").notNull(),
+  ssContactId: varchar("ss_contact_id").references(() => contacts.id, { onDelete: 'set null' }),
+  asContactId: varchar("as_contact_id").references(() => contacts.id, { onDelete: 'set null' }),
+  olContactId: varchar("ol_contact_id").references(() => contacts.id, { onDelete: 'set null' }),
+});
+
+export const insertBtuRegionSchema = createInsertSchema(sitespecificBtuRegions).omit({
+  id: true,
+});
+
+export type BtuRegion = typeof sitespecificBtuRegions.$inferSelect;
+export type InsertBtuRegion = z.infer<typeof insertBtuRegionSchema>;
+
+// BTU School Attributes - main table linking employer to school types, schedules, and region
+// schedules is a JSON array of { label: string, startTime: string, endTime: string }
+export const sitespecificBtuSchoolAttributes = pgTable("sitespecific_btu_school_attributes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  siriusId: varchar("sirius_id").unique().notNull(),
+  employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
+  schoolTypeIds: text("school_type_ids").array(),
+  schedules: jsonb("schedules"),
+  regionId: varchar("region_id").references(() => sitespecificBtuRegions.id, { onDelete: 'set null' }),
+});
+
+// Zod schema for schedule items
+export const btuScheduleItemSchema = z.object({
+  label: z.string(),
+  startTime: z.string(),
+  endTime: z.string(),
+});
+
+export type BtuScheduleItem = z.infer<typeof btuScheduleItemSchema>;
+
+export const insertBtuSchoolAttributesSchema = createInsertSchema(sitespecificBtuSchoolAttributes).omit({
+  id: true,
+}).extend({
+  schoolTypeIds: z.array(z.string()).nullable().optional(),
+  schedules: z.array(btuScheduleItemSchema).nullable().optional(),
+  regionId: z.string().nullable().optional(),
+});
+
+export type BtuSchoolAttributes = typeof sitespecificBtuSchoolAttributes.$inferSelect;
+export type InsertBtuSchoolAttributes = z.infer<typeof insertBtuSchoolAttributesSchema>;

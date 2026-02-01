@@ -189,6 +189,7 @@ export const employerTabTree: HierarchicalTab[] = [
     ]
   },
   { id: 'dispatch', label: 'Dispatch', hrefTemplate: '/employers/{id}/dispatch', permission: 'staff', component: 'dispatch' },
+  { id: 'school-attributes', label: 'School Attributes', hrefTemplate: '/employers/{id}/school-attributes', permission: 'staff', component: 'sitespecific.btu' },
 ];
 
 /**
