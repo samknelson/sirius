@@ -1,8 +1,8 @@
-import { pgTable, text, timestamp, varchar, jsonb, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, varchar, jsonb, unique, date } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { workers, contacts, bargainingUnits, optionsEmploymentStatus } from "../../../schema";
+import { workers, bargainingUnits, optionsEmploymentStatus } from "../../../schema";
 
 export const sitespecificBtuCsg = pgTable("sitespecific_btu_csg", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -58,13 +58,15 @@ export type InsertBtuEmployerMap = z.infer<typeof insertBtuEmployerMapSchema>;
 
 export const btuTerritories = pgTable("btu_territories", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  siriusId: varchar("sirius_id").unique().notNull(),
   name: text("name").notNull(),
+  code: varchar("code"),
   data: jsonb("data"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const insertBtuTerritorySchema = createInsertSchema(btuTerritories).omit({
   id: true,
+  createdAt: true,
 });
 
 export type BtuTerritory = typeof btuTerritories.$inferSelect;
@@ -73,14 +75,18 @@ export type InsertBtuTerritory = z.infer<typeof insertBtuTerritorySchema>;
 export const btuTerritoryReps = pgTable("btu_territory_reps", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   territoryId: varchar("territory_id").notNull().references(() => btuTerritories.id, { onDelete: 'cascade' }),
-  contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
+  workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
+  startDate: date("start_date"),
+  endDate: date("end_date"),
   data: jsonb("data"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
-  unique("btu_territory_reps_territory_contact_unique").on(table.territoryId, table.contactId),
+  unique("btu_territory_reps_territory_worker_unique").on(table.territoryId, table.workerId),
 ]);
 
 export const insertBtuTerritoryRepSchema = createInsertSchema(btuTerritoryReps).omit({
   id: true,
+  createdAt: true,
 });
 
 export type BtuTerritoryRep = typeof btuTerritoryReps.$inferSelect;
@@ -89,11 +95,14 @@ export type InsertBtuTerritoryRep = z.infer<typeof insertBtuTerritoryRepSchema>;
 export const btuTerritoryWorkers = pgTable("btu_territory_workers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   territoryId: varchar("territory_id").notNull().references(() => btuTerritories.id, { onDelete: 'cascade' }),
-  workerId: varchar("worker_id").notNull().unique().references(() => workers.id, { onDelete: 'cascade' }),
+  workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
+  data: jsonb("data"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const insertBtuTerritoryWorkerSchema = createInsertSchema(btuTerritoryWorkers).omit({
   id: true,
+  createdAt: true,
 });
 
 export type BtuTerritoryWorker = typeof btuTerritoryWorkers.$inferSelect;
