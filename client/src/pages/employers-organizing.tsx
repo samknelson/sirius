@@ -1,4 +1,4 @@
-import { Building2, Users, Award, Loader2, UserX, Download } from "lucide-react";
+import { Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital, Users, Award, Loader2, UserX, Download } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -208,15 +208,25 @@ function generateAggregatePdf(
   pdfMake.createPdf(docDefinition as any).download(fileName);
 }
 
+const iconMap: Record<string, typeof Building2> = {
+  Building,
+  Building2,
+  Factory,
+  Store,
+  Warehouse,
+  Home,
+  Landmark,
+  Hospital,
+};
+
 function EmployerTypeIcon({ icon, typeName }: { icon: string | null; typeName: string | null }) {
-  if (!icon) {
+  const IconComponent = icon ? iconMap[icon] : null;
+  
+  if (!IconComponent) {
     return <Building2 className="h-5 w-5 text-muted-foreground" />;
   }
-  return (
-    <span className="text-lg" title={typeName || undefined}>
-      {icon}
-    </span>
-  );
+  
+  return <IconComponent className="h-5 w-5 text-primary" />;
 }
 
 function CardCheckProgress({ signed, total }: { signed: number; total: number }) {

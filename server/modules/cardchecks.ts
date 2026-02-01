@@ -235,7 +235,8 @@ export function registerCardchecksRoutes(
           e.id,
           e.name,
           e.type_id as "typeId",
-          et.name as "typeName"
+          et.name as "typeName",
+          et.data->>'icon' as "typeIcon"
         FROM employers e
         LEFT JOIN options_employer_type et ON e.type_id = et.id
         WHERE e.is_active = true
@@ -319,7 +320,7 @@ export function registerCardchecksRoutes(
           name: emp.name,
           typeId: emp.typeId,
           typeName: emp.typeName,
-          typeIcon: null,
+          typeIcon: emp.typeIcon || null,
           totalWorkers: 0,
           signedWorkers: 0,
           bargainingUnits: [],
