@@ -35,27 +35,6 @@ export const insertBtuCsgSchema = createInsertSchema(sitespecificBtuCsg).omit({
 export type BtuCsgRecord = typeof sitespecificBtuCsg.$inferSelect;
 export type InsertBtuCsgRecord = z.infer<typeof insertBtuCsgSchema>;
 
-export const sitespecificBtuEmployerMap = pgTable("sitespecific_btu_employer_map", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  departmentId: varchar("department_id"),
-  departmentTitle: varchar("department_title"),
-  locationId: varchar("location_id"),
-  locationTitle: varchar("location_title"),
-  jobCode: varchar("job_code"),
-  jobTitle: varchar("job_title"),
-  employerName: varchar("employer_name"),
-  secondaryEmployerName: varchar("secondary_employer_name"),
-  bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),
-  employmentStatusId: varchar("employment_status_id").references(() => optionsEmploymentStatus.id, { onDelete: 'set null' }),
-});
-
-export const insertBtuEmployerMapSchema = createInsertSchema(sitespecificBtuEmployerMap).omit({
-  id: true,
-});
-
-export type BtuEmployerMap = typeof sitespecificBtuEmployerMap.$inferSelect;
-export type InsertBtuEmployerMap = z.infer<typeof insertBtuEmployerMapSchema>;
-
 export const btuTerritories = pgTable("btu_territories", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   siriusId: varchar("sirius_id").unique().notNull(),
@@ -69,6 +48,28 @@ export const insertBtuTerritorySchema = createInsertSchema(btuTerritories).omit(
 
 export type BtuTerritory = typeof btuTerritories.$inferSelect;
 export type InsertBtuTerritory = z.infer<typeof insertBtuTerritorySchema>;
+
+export const sitespecificBtuEmployerMap = pgTable("sitespecific_btu_employer_map", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  departmentId: varchar("department_id"),
+  departmentTitle: varchar("department_title"),
+  locationId: varchar("location_id"),
+  locationTitle: varchar("location_title"),
+  jobCode: varchar("job_code"),
+  jobTitle: varchar("job_title"),
+  employerName: varchar("employer_name"),
+  secondaryEmployerName: varchar("secondary_employer_name"),
+  bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),
+  employmentStatusId: varchar("employment_status_id").references(() => optionsEmploymentStatus.id, { onDelete: 'set null' }),
+  territoryId: varchar("territory_id").references(() => btuTerritories.id, { onDelete: 'set null' }),
+});
+
+export const insertBtuEmployerMapSchema = createInsertSchema(sitespecificBtuEmployerMap).omit({
+  id: true,
+});
+
+export type BtuEmployerMap = typeof sitespecificBtuEmployerMap.$inferSelect;
+export type InsertBtuEmployerMap = z.infer<typeof insertBtuEmployerMapSchema>;
 
 export const btuTerritoryReps = pgTable("btu_territory_reps", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
