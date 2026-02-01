@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { useState, useMemo } from "react";
 import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
+import { useTerm } from "@/contexts/TerminologyContext";
 
 pdfMake.vfs = (pdfFonts as any).pdfMake?.vfs || pdfFonts.vfs;
 
@@ -95,10 +96,13 @@ async function fetchAllMissingCardchecks(employers: OrganizingEmployer[]): Promi
   return results;
 }
 
+type TermFn = (key: string, options?: { plural?: boolean; count?: number; capitalize?: boolean; lowercase?: boolean }) => string;
+
 function generateAggregatePdf(
   employers: OrganizingEmployer[],
   missingData: Map<string, FetchResult>,
-  totalStats: { totalWorkers: number; signedWorkers: number; employerCount: number }
+  totalStats: { totalWorkers: number; signedWorkers: number; employerCount: number },
+  term: TermFn
 ) {
   const content: any[] = [];
   const overallPercentage = totalStats.totalWorkers > 0 
@@ -109,13 +113,13 @@ function generateAggregatePdf(
   // Summary page
   content.push(
     { text: 'Missing Card Checks Report', style: 'title', margin: [0, 0, 0, 5] as [number, number, number, number] },
-    { text: 'All Schools Summary', style: 'subtitle', margin: [0, 0, 0, 30] as [number, number, number, number] },
+    { text: `All ${term('employer', { plural: true })} Summary`, style: 'subtitle', margin: [0, 0, 0, 30] as [number, number, number, number] },
     {
       table: {
         widths: ['*', 'auto'],
         body: [
-          [{ text: 'Total Schools', style: 'summaryLabel' }, { text: `${totalStats.employerCount}`, style: 'summaryValue', alignment: 'right' as const }],
-          [{ text: 'Total Workers', style: 'summaryLabel' }, { text: `${totalStats.totalWorkers}`, style: 'summaryValue', alignment: 'right' as const }],
+          [{ text: `Total ${term('employer', { plural: true })}`, style: 'summaryLabel' }, { text: `${totalStats.employerCount}`, style: 'summaryValue', alignment: 'right' as const }],
+          [{ text: `Total ${term('worker', { plural: true })}`, style: 'summaryLabel' }, { text: `${totalStats.totalWorkers}`, style: 'summaryValue', alignment: 'right' as const }],
           [{ text: 'Signed Card Checks', style: 'summaryLabel' }, { text: `${totalStats.signedWorkers} (${overallPercentage}%)`, style: 'summaryValue', alignment: 'right' as const }],
           [{ text: 'Missing Card Checks', style: 'summaryLabel' }, { text: `${totalMissing}`, style: 'summaryValue', alignment: 'right' as const }],
         ],
@@ -153,7 +157,7 @@ function generateAggregatePdf(
     content.push(
       {
         columns: [
-          { text: `Workers: ${employer.totalWorkers}`, style: 'stat' },
+          { text: `${term('worker', { plural: true })}: ${employer.totalWorkers}`, style: 'stat' },
           { text: `Signed: ${employer.signedWorkers} (${percentage}%)`, style: 'stat' },
           { text: `Missing: ${missingCount}`, style: 'stat' },
         ],
@@ -164,7 +168,7 @@ function generateAggregatePdf(
     // Bargaining unit breakdown
     if (employer.bargainingUnits.length > 0) {
       content.push(
-        { text: 'Bargaining Units', style: 'sectionHeader', margin: [0, 0, 0, 5] as [number, number, number, number] }
+        { text: term('bargainingUnit', { plural: true }), style: 'sectionHeader', margin: [0, 0, 0, 5] as [number, number, number, number] }
       );
       employer.bargainingUnits.forEach((unit) => {
         const unitPct = unit.totalWorkers > 0 ? Math.round((unit.signedWorkers / unit.totalWorkers) * 100) : 0;
@@ -178,7 +182,7 @@ function generateAggregatePdf(
     // Stewards section
     if (employer.stewards.length > 0) {
       content.push(
-        { text: 'Stewards', style: 'sectionHeader', margin: [0, 0, 0, 5] as [number, number, number, number] }
+        { text: term('steward', { plural: true }), style: 'sectionHeader', margin: [0, 0, 0, 5] as [number, number, number, number] }
       );
       employer.stewards.forEach((steward) => {
         const contactParts = [steward.displayName];
@@ -325,7 +329,7 @@ function CardCheckProgress({ signed, total }: { signed: number; total: number })
   );
 }
 
-function EmployerCard({ employer }: { employer: OrganizingEmployer }) {
+function EmployerCard({ employer, term }: { employer: OrganizingEmployer; term: TermFn }) {
   const percentage = employer.totalWorkers > 0 
     ? Math.round((employer.signedWorkers / employer.totalWorkers) * 100) 
     : 0;
@@ -357,7 +361,7 @@ function EmployerCard({ employer }: { employer: OrganizingEmployer }) {
         
         {employer.bargainingUnits.length > 0 && (
           <div className="space-y-2">
-            <div className="text-sm font-medium text-muted-foreground">By Bargaining Unit</div>
+            <div className="text-sm font-medium text-muted-foreground">By {term('bargainingUnit')}</div>
             <div className="space-y-2">
               {employer.bargainingUnits.map((unit) => {
                 const unitPercentage = unit.totalWorkers > 0 
@@ -380,7 +384,7 @@ function EmployerCard({ employer }: { employer: OrganizingEmployer }) {
           <div className="space-y-2">
             <div className="flex items-center gap-1 text-sm font-medium text-muted-foreground">
               <Award className="h-4 w-4" />
-              <span>Stewards</span>
+              <span>{term('steward', { plural: true })}</span>
             </div>
             <div className="flex flex-wrap gap-1">
               {employer.stewards.map((steward) => (
@@ -465,6 +469,7 @@ function LoadingSkeleton() {
 export default function EmployersOrganizing() {
   const [search, setSearch] = useState("");
   const [isExporting, setIsExporting] = useState(false);
+  const term = useTerm();
 
   const { data: employers = [], isLoading, error } = useQuery<OrganizingEmployer[]>({
     queryKey: ["/api/employers/organizing"],
@@ -501,7 +506,7 @@ export default function EmployersOrganizing() {
     setIsExporting(true);
     try {
       const missingData = await fetchAllMissingCardchecks(employers);
-      generateAggregatePdf(employers, missingData, totalStats);
+      generateAggregatePdf(employers, missingData, totalStats, term);
     } catch (err) {
       console.error("Failed to generate PDF:", err);
     } finally {
@@ -517,7 +522,7 @@ export default function EmployersOrganizing() {
         actions={
           <div className="flex items-center gap-4">
             <span className="text-sm text-muted-foreground" data-testid="text-overall-stats">
-              {totalStats.signedWorkers}/{totalStats.totalWorkers} workers ({overallPercentage}%) across {totalStats.employerCount} employers
+              {totalStats.signedWorkers}/{totalStats.totalWorkers} {term('worker', { plural: true, lowercase: true })} ({overallPercentage}%) across {totalStats.employerCount} {term('employer', { plural: true, lowercase: true })}
             </span>
             {employers.length > 0 && (
               <Button 
@@ -547,7 +552,7 @@ export default function EmployersOrganizing() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">
           <Input
-            placeholder="Search employers, types, or stewards..."
+            placeholder={`Search ${term('employer', { plural: true, lowercase: true })}, types, or ${term('steward', { plural: true, lowercase: true })}...`}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="max-w-md"
@@ -567,13 +572,13 @@ export default function EmployersOrganizing() {
           <div className="text-center py-12">
             <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <p className="text-muted-foreground" data-testid="text-empty">
-              {search ? "No employers match your search" : "No employers with active workers found"}
+              {search ? `No ${term('employer', { plural: true, lowercase: true })} match your search` : `No ${term('employer', { plural: true, lowercase: true })} with active ${term('worker', { plural: true, lowercase: true })} found`}
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredEmployers.map((employer) => (
-              <EmployerCard key={employer.id} employer={employer} />
+              <EmployerCard key={employer.id} employer={employer} term={term} />
             ))}
           </div>
         )}
