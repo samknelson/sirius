@@ -26,12 +26,15 @@ interface Steward {
   displayName: string;
   bargainingUnitId: string;
   bargainingUnitName: string;
+  email: string | null;
+  phone: string | null;
 }
 
 interface Principal {
   contactId: string;
   displayName: string;
   email: string | null;
+  phone: string | null;
 }
 
 interface MissingCardcheckWorker {
@@ -134,16 +137,78 @@ function generateAggregatePdf(
 
     content.push({ text: '', pageBreak: 'before' });
 
+    // School header with type
     content.push(
-      { text: employer.name, style: 'employerHeader', margin: [0, 0, 0, 5] as [number, number, number, number] },
+      { text: employer.name, style: 'employerHeader', margin: [0, 0, 0, 3] as [number, number, number, number] },
+    );
+    
+    if (employer.typeName) {
+      content.push(
+        { text: employer.typeName, style: 'employerType', margin: [0, 0, 0, 8] as [number, number, number, number] }
+      );
+    }
+
+    // Stats row
+    content.push(
       {
         columns: [
           { text: `Workers: ${employer.totalWorkers}`, style: 'stat' },
           { text: `Signed: ${employer.signedWorkers} (${percentage}%)`, style: 'stat' },
           { text: `Missing: ${missingCount}`, style: 'stat' },
         ],
-        margin: [0, 0, 0, 15] as [number, number, number, number],
+        margin: [0, 0, 0, 10] as [number, number, number, number],
       }
+    );
+
+    // Bargaining unit breakdown
+    if (employer.bargainingUnits.length > 0) {
+      content.push(
+        { text: 'Bargaining Units', style: 'sectionHeader', margin: [0, 0, 0, 5] as [number, number, number, number] }
+      );
+      employer.bargainingUnits.forEach((unit) => {
+        const unitPct = unit.totalWorkers > 0 ? Math.round((unit.signedWorkers / unit.totalWorkers) * 100) : 0;
+        content.push(
+          { text: `${unit.name}: ${unit.signedWorkers}/${unit.totalWorkers} (${unitPct}%)`, style: 'unitInfo', margin: [10, 0, 0, 2] as [number, number, number, number] }
+        );
+      });
+      content.push({ text: '', margin: [0, 0, 0, 8] as [number, number, number, number] });
+    }
+
+    // Stewards section
+    if (employer.stewards.length > 0) {
+      content.push(
+        { text: 'Stewards', style: 'sectionHeader', margin: [0, 0, 0, 5] as [number, number, number, number] }
+      );
+      employer.stewards.forEach((steward) => {
+        const contactParts = [steward.displayName];
+        if (steward.phone) contactParts.push(steward.phone);
+        if (steward.email) contactParts.push(steward.email);
+        content.push(
+          { text: contactParts.join(' | '), style: 'contactInfo', margin: [10, 0, 0, 2] as [number, number, number, number] }
+        );
+      });
+      content.push({ text: '', margin: [0, 0, 0, 8] as [number, number, number, number] });
+    }
+
+    // Principals section
+    if (employer.principals.length > 0) {
+      content.push(
+        { text: 'Principals', style: 'sectionHeader', margin: [0, 0, 0, 5] as [number, number, number, number] }
+      );
+      employer.principals.forEach((principal) => {
+        const contactParts = [principal.displayName];
+        if (principal.phone) contactParts.push(principal.phone);
+        if (principal.email) contactParts.push(principal.email);
+        content.push(
+          { text: contactParts.join(' | '), style: 'contactInfo', margin: [10, 0, 0, 2] as [number, number, number, number] }
+        );
+      });
+      content.push({ text: '', margin: [0, 0, 0, 8] as [number, number, number, number] });
+    }
+
+    // Missing card checks section
+    content.push(
+      { text: 'Missing Card Checks', style: 'sectionHeader', margin: [0, 0, 0, 5] as [number, number, number, number] }
     );
 
     const tableBody = [
@@ -203,7 +268,11 @@ function generateAggregatePdf(
       summaryValue: { fontSize: 12, bold: true, color: '#111827' },
       date: { fontSize: 10, color: '#6b7280' },
       employerHeader: { fontSize: 14, bold: true },
+      employerType: { fontSize: 10, color: '#6b7280', italics: true },
       stat: { fontSize: 10, color: '#374151' },
+      sectionHeader: { fontSize: 10, bold: true, color: '#374151' },
+      unitInfo: { fontSize: 9, color: '#4b5563' },
+      contactInfo: { fontSize: 9, color: '#374151' },
       tableHeader: { bold: true, fontSize: 9, color: '#374151' },
       emptyMessage: { fontSize: 9, color: '#6b7280', italics: true, alignment: 'center' },
       errorMessage: { fontSize: 9, color: '#dc2626', italics: true, alignment: 'center' },

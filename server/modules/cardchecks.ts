@@ -298,7 +298,15 @@ export function registerCardchecksRoutes(
             wsa.worker_id as "workerId",
             wsa.bargaining_unit_id as "bargainingUnitId",
             c.display_name as "displayName",
-            bu.name as "bargainingUnitName"
+            c.email,
+            bu.name as "bargainingUnitName",
+            (
+              SELECT cp.phone_number 
+              FROM contact_phone cp 
+              WHERE cp.contact_id = c.id AND cp.is_active = true
+              ORDER BY cp.is_primary DESC NULLS LAST
+              LIMIT 1
+            ) as "phone"
           FROM worker_steward_assignments wsa
           INNER JOIN workers w ON w.id = wsa.worker_id
           INNER JOIN contacts c ON c.id = w.contact_id
@@ -317,7 +325,14 @@ export function registerCardchecksRoutes(
           ec.employer_id as "employerId",
           c.id as "contactId",
           c.display_name as "displayName",
-          c.email
+          c.email,
+          (
+            SELECT cp.phone_number 
+            FROM contact_phone cp 
+            WHERE cp.contact_id = c.id AND cp.is_active = true
+            ORDER BY cp.is_primary DESC NULLS LAST
+            LIMIT 1
+          ) as "phone"
         FROM employer_contacts ec
         INNER JOIN contacts c ON c.id = ec.contact_id
         INNER JOIN options_employer_contact_type ect ON ec.contact_type_id = ect.id
@@ -369,7 +384,9 @@ export function registerCardchecksRoutes(
             workerId: steward.workerId,
             displayName: steward.displayName,
             bargainingUnitId: steward.bargainingUnitId,
-            bargainingUnitName: steward.bargainingUnitName
+            bargainingUnitName: steward.bargainingUnitName,
+            email: steward.email || null,
+            phone: steward.phone || null
           });
         }
       }
@@ -381,7 +398,8 @@ export function registerCardchecksRoutes(
           emp.principals.push({
             contactId: principal.contactId,
             displayName: principal.displayName,
-            email: principal.email
+            email: principal.email || null,
+            phone: principal.phone || null
           });
         }
       }
