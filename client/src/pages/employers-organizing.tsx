@@ -87,6 +87,7 @@ interface EmployerType {
 interface SchoolType {
   id: string;
   name: string;
+  data?: { icon?: string };
 }
 
 interface Region {
@@ -763,21 +764,6 @@ export default function EmployersOrganizing() {
               </SelectContent>
             </Select>
 
-            {hasBtuComponent && schoolTypes.length > 0 && (
-              <Select value={schoolTypeFilter} onValueChange={setSchoolTypeFilter}>
-                <SelectTrigger className="w-48" data-testid="select-school-type">
-                  <SelectValue placeholder="School Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {schoolTypes.map((type) => (
-                    <SelectItem key={type.id} value={type.id}>
-                      {type.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-
             {hasBtuComponent && regions.length > 0 && (
               <Select value={regionFilter} onValueChange={setRegionFilter}>
                 <SelectTrigger className="w-40" data-testid="select-region">
@@ -806,6 +792,32 @@ export default function EmployersOrganizing() {
               </Button>
             )}
           </div>
+          
+          {hasBtuComponent && schoolTypes.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2" data-testid="school-type-legend">
+              <span className="text-sm text-muted-foreground mr-1">School Types:</span>
+              {schoolTypes.map((type) => {
+                const iconName = type.data?.icon;
+                const IconComponent = iconName ? iconMap[iconName] : HelpCircle;
+                const isActive = schoolTypeFilter === type.id;
+                return (
+                  <button
+                    key={type.id}
+                    onClick={() => setSchoolTypeFilter(isActive ? "" : type.id)}
+                    className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-sm transition-colors ${
+                      isActive 
+                        ? "bg-primary text-primary-foreground" 
+                        : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                    }`}
+                    data-testid={`legend-school-type-${type.id}`}
+                  >
+                    {IconComponent && <IconComponent className="h-4 w-4" />}
+                    <span>{type.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           
           {(hasActiveFilters || search) && (
             <div className="text-sm text-muted-foreground" data-testid="text-filter-results">
