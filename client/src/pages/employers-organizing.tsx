@@ -402,7 +402,7 @@ function CardCheckProgress({ signed, total }: { signed: number; total: number })
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-sm">
-        <span className="text-muted-foreground">Card Checks</span>
+        <span className="text-muted-foreground">Educators (with card checks)</span>
         <span className="font-medium">
           {signed}/{total} ({percentage}%)
         </span>
