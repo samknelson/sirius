@@ -254,6 +254,7 @@ const BtuCsgViewPage = lazy(() => import("@/pages/sitespecific/btu/csg-view"));
 const BtuCsgEditPage = lazy(() => import("@/pages/sitespecific/btu/csg-edit"));
 const BtuCsgNewPage = lazy(() => import("@/pages/sitespecific/btu/csg-new"));
 const BtuEmployerMapListPage = lazy(() => import("@/pages/sitespecific/btu/employer-map-list"));
+const BtuTerritoriesListPage = lazy(() => import("@/pages/sitespecific/btu/territories-list"));
 const BtuWorkerImportPage = lazy(() => import("@/pages/sitespecific/btu/worker-import"));
 const BtuDuesAllocationPage = lazy(() => import("@/pages/sitespecific/btu/dues-allocation"));
 const EdlsSheetsPage = lazy(() => import("@/pages/edls/sheets"));
@@ -1211,6 +1212,14 @@ function Router() {
         <ProtectedRoute permission="admin" component="sitespecific.btu">
           <AuthenticatedLayout>
             <BtuEmployerMapListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/btu/territories">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuTerritoriesListPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
