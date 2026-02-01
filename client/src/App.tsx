@@ -1081,7 +1081,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/organizing">
-        <ProtectedRoute permission="staff" component="cardcheck">
+        <ProtectedRoute permission="staff" componentAny={["sitespecific.btu", "cardcheck"]}>
           <AuthenticatedLayout>
             <EmployersOrganizing />
           </AuthenticatedLayout>
@@ -1089,7 +1089,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/:employerId/missing-cardchecks">
-        <ProtectedRoute permission="staff" component="cardcheck">
+        <ProtectedRoute permission="staff" componentAny={["sitespecific.btu", "cardcheck"]}>
           <AuthenticatedLayout>
             <EmployerMissingCardchecks />
           </AuthenticatedLayout>

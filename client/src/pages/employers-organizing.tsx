@@ -12,6 +12,7 @@ import { useState, useMemo } from "react";
 import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
 import { useTerm } from "@/contexts/TerminologyContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 pdfMake.vfs = (pdfFonts as any).pdfMake?.vfs || pdfFonts.vfs;
 
@@ -500,9 +501,14 @@ export default function EmployersOrganizing() {
   const [search, setSearch] = useState("");
   const [isExporting, setIsExporting] = useState(false);
   const term = useTerm();
+  const { hasComponent } = useAuth();
+
+  // This page is accessible when either sitespecific.btu OR cardcheck component is enabled
+  const hasAccess = hasComponent("sitespecific.btu") || hasComponent("cardcheck");
 
   const { data: employers = [], isLoading, error } = useQuery<OrganizingEmployer[]>({
     queryKey: ["/api/employers/organizing"],
+    enabled: hasAccess,
   });
 
   const filteredEmployers = useMemo(() => {
@@ -529,6 +535,20 @@ export default function EmployersOrganizing() {
   const overallPercentage = totalStats.totalWorkers > 0 
     ? Math.round((totalStats.signedWorkers / totalStats.totalWorkers) * 100) 
     : 0;
+  
+  // Show access denied message if neither component is enabled
+  if (!hasAccess) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="text-center max-w-md p-6">
+          <h1 className="text-2xl font-bold mb-2">Feature Not Available</h1>
+          <p className="text-muted-foreground">
+            This feature requires either the BTU or cardcheck component to be enabled.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const handleExportAll = async () => {
     if (employers.length === 0) return;

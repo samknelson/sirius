@@ -12,6 +12,7 @@ interface ProtectedRouteProps {
   permission?: string;
   policy?: string;
   component?: string;
+  componentAny?: string[];  // Allow access if ANY of these components are enabled
   entityId?: string;
   tabId?: string;
   entityType?: TabEntityType;
@@ -46,7 +47,7 @@ class PolicyCheckError extends Error {
   }
 }
 
-export default function ProtectedRoute({ children, permission, policy, component, entityId, tabId, entityType }: ProtectedRouteProps) {
+export default function ProtectedRoute({ children, permission, policy, component, componentAny, entityId, tabId, entityType }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading, authReady, hasPermission, hasComponent } = useAuth();
   const [location] = useLocation();
 
@@ -67,6 +68,7 @@ export default function ProtectedRoute({ children, permission, policy, component
   const effectivePermission = tabAccess?.permission ?? permission;
   const effectivePolicy = tabAccess?.policyId ?? policy;
   const effectiveComponent = tabAccess?.component ?? component;
+  const effectiveComponentAny = componentAny; // componentAny is passed directly (not from tab registry)
 
   // Use explicit entityId prop if provided, otherwise extract from URL based on entity patterns
   // This handles nested routes like /workers/:id/contacts by finding the ID after known prefixes
@@ -213,7 +215,7 @@ export default function ProtectedRoute({ children, permission, policy, component
     );
   }
 
-  // Check if required component is enabled
+  // Check if required component is enabled (single component)
   if (effectiveComponent && !hasComponent(effectiveComponent)) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -228,6 +230,26 @@ export default function ProtectedRoute({ children, permission, policy, component
         </div>
       </div>
     );
+  }
+
+  // Check if any of the required components is enabled (componentAny - OR logic)
+  if (effectiveComponentAny && effectiveComponentAny.length > 0) {
+    const hasAnyComponent = effectiveComponentAny.some(comp => hasComponent(comp));
+    if (!hasAnyComponent) {
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
+          <div className="text-center max-w-md p-6">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Feature Not Available</h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              This feature is not currently enabled for this application.
+            </p>
+            <p className="text-sm text-muted-foreground mt-2">
+              Requires one of: {effectiveComponentAny.join(' or ')}
+            </p>
+          </div>
+        </div>
+      );
+    }
   }
 
   // Show loading while checking policy

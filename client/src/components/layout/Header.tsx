@@ -331,14 +331,14 @@ export default function Header() {
 
                 {staffPolicy?.access?.granted && (
                   <>
-                    <Link href="/employers" onClick={() => setMobileMenuOpen(false)}>
+                    <Link href={hasComponent("sitespecific.btu") ? "/employers/organizing" : "/employers"} onClick={() => setMobileMenuOpen(false)}>
                       <Button
                         variant={location.startsWith("/employers") ? "default" : "ghost"}
                         className="w-full justify-start"
                         data-testid="mobile-nav-employers"
                       >
                         <Building2 className="h-4 w-4 mr-2" />
-                        Employers
+                        {hasComponent("sitespecific.btu") ? "Organizing Employer List" : "Employers"}
                       </Button>
                     </Link>
 
@@ -387,7 +387,7 @@ export default function Header() {
                         </Button>
                       </Link>
                     )}
-                    {hasComponent("cardcheck") && hasPermission("staff") && (
+                    {hasComponent("cardcheck") && hasPermission("staff") && !hasComponent("sitespecific.btu") && (
                       <Link href="/employers/organizing" onClick={() => setMobileMenuOpen(false)}>
                         <Button
                           variant={location === "/employers/organizing" ? "default" : "ghost"}
@@ -828,10 +828,10 @@ export default function Header() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
                   <DropdownMenuItem asChild>
-                    <Link href="/employers" className="w-full">
+                    <Link href={hasComponent("sitespecific.btu") ? "/employers/organizing" : "/employers"} className="w-full">
                       <div className="flex items-center cursor-pointer" data-testid="menu-employers-list">
                         <Building2 className="h-4 w-4 mr-2" />
-                        Employers
+                        {hasComponent("sitespecific.btu") ? "Organizing Employer List" : "Employers"}
                       </div>
                     </Link>
                   </DropdownMenuItem>
@@ -871,7 +871,7 @@ export default function Header() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {hasComponent("cardcheck") && hasPermission("staff") && (
+                  {hasComponent("cardcheck") && hasPermission("staff") && !hasComponent("sitespecific.btu") && (
                     <DropdownMenuItem asChild>
                       <Link href="/employers/organizing" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-employers-organizing">
