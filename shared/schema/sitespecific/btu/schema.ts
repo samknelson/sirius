@@ -105,6 +105,7 @@ export const sitespecificBtuSchoolTypes = pgTable("sitespecific_btu_school_types
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   siriusId: varchar("sirius_id").unique().notNull(),
   name: text("name").notNull(),
+  data: jsonb("data"),
 });
 
 export const insertBtuSchoolTypeSchema = createInsertSchema(sitespecificBtuSchoolTypes).omit({
@@ -122,6 +123,7 @@ export const sitespecificBtuRegions = pgTable("sitespecific_btu_regions", {
   ssContactId: varchar("ss_contact_id").references(() => contacts.id, { onDelete: 'set null' }),
   asContactId: varchar("as_contact_id").references(() => contacts.id, { onDelete: 'set null' }),
   olContactId: varchar("ol_contact_id").references(() => contacts.id, { onDelete: 'set null' }),
+  data: jsonb("data"),
 });
 
 export const insertBtuRegionSchema = createInsertSchema(sitespecificBtuRegions).omit({
