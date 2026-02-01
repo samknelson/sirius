@@ -1,4 +1,4 @@
-import { Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital, Users, Award, Loader2, UserX, Download, Briefcase, X, MapPin, School, GraduationCap, Baby, Backpack, BookOpen, Library, Sparkles, HelpCircle, Church } from "lucide-react";
+import { Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital, Users, Award, Loader2, UserX, Download, Briefcase, X, MapPin, School, GraduationCap, Baby, Backpack, BookOpen, Library, Sparkles, HelpCircle, Church, Flag, Star } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -321,6 +321,7 @@ function generateAggregatePdf(
 }
 
 const iconMap: Record<string, typeof Building2> = {
+  // Employer type icons (PascalCase)
   Building,
   Building2,
   Factory,
@@ -329,14 +330,20 @@ const iconMap: Record<string, typeof Building2> = {
   Home,
   Landmark,
   Hospital,
-  School,
-  GraduationCap,
-  Baby,
-  Backpack,
-  BookOpen,
-  Library,
-  Sparkles,
-  Church,
+  // School type icons (kebab-case as stored in database)
+  "graduation-cap": GraduationCap,
+  "book-open": BookOpen,
+  "flag": Flag,
+  "landmark": Landmark,
+  "star": Star,
+  "users": Users,
+  "home": Home,
+  "school": School,
+  "baby": Baby,
+  "backpack": Backpack,
+  "library": Library,
+  "sparkles": Sparkles,
+  "church": Church,
 };
 
 // Calculate allowed building reps: 1 per 25 workers per bargaining unit, rounded up
