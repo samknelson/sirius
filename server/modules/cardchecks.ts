@@ -229,16 +229,21 @@ export function registerCardchecksRoutes(
   // GET /api/employers/organizing - Get organizing employer list with card check stats
   app.get("/api/employers/organizing", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
     try {
-      // Get all active employers with their type info
+      // Get all active employers with their type info, school types, and region
       const employersResult = await db.execute(sql`
         SELECT 
           e.id,
           e.name,
           e.type_id as "typeId",
           et.name as "typeName",
-          et.data->>'icon' as "typeIcon"
+          et.data->>'icon' as "typeIcon",
+          sa.school_type_ids as "schoolTypeIds",
+          sa.region_id as "regionId",
+          r.name as "regionName"
         FROM employers e
         LEFT JOIN options_employer_type et ON e.type_id = et.id
+        LEFT JOIN sitespecific_btu_school_attributes sa ON sa.employer_id = e.id
+        LEFT JOIN sitespecific_btu_regions r ON r.id = sa.region_id
         WHERE e.is_active = true
         ORDER BY e.name
       `);
@@ -351,6 +356,9 @@ export function registerCardchecksRoutes(
           typeId: emp.typeId,
           typeName: emp.typeName,
           typeIcon: emp.typeIcon || null,
+          schoolTypeIds: emp.schoolTypeIds || [],
+          regionId: emp.regionId || null,
+          regionName: emp.regionName || null,
           totalWorkers: 0,
           signedWorkers: 0,
           bargainingUnits: [],

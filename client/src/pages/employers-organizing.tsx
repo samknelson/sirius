@@ -1,4 +1,4 @@
-import { Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital, Users, Award, Loader2, UserX, Download, Briefcase } from "lucide-react";
+import { Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital, Users, Award, Loader2, UserX, Download, Briefcase, X } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useMemo } from "react";
 import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
@@ -60,11 +61,29 @@ interface OrganizingEmployer {
   typeId: string | null;
   typeName: string | null;
   typeIcon: string | null;
+  schoolTypeIds: string[];
+  regionId: string | null;
+  regionName: string | null;
   totalWorkers: number;
   signedWorkers: number;
   bargainingUnits: BargainingUnitStats[];
   stewards: Steward[];
   principals: Principal[];
+}
+
+interface EmployerType {
+  id: string;
+  name: string;
+}
+
+interface SchoolType {
+  id: string;
+  name: string;
+}
+
+interface Region {
+  id: string;
+  name: string;
 }
 
 interface FetchResult {
@@ -499,27 +518,76 @@ function LoadingSkeleton() {
 
 export default function EmployersOrganizing() {
   const [search, setSearch] = useState("");
+  const [employerTypeFilter, setEmployerTypeFilter] = useState<string>("");
+  const [schoolTypeFilter, setSchoolTypeFilter] = useState<string>("");
+  const [regionFilter, setRegionFilter] = useState<string>("");
   const [isExporting, setIsExporting] = useState(false);
   const term = useTerm();
   const { hasComponent } = useAuth();
 
   // This page is accessible when either sitespecific.btu OR cardcheck component is enabled
   const hasAccess = hasComponent("sitespecific.btu") || hasComponent("cardcheck");
+  const hasBtuComponent = hasComponent("sitespecific.btu");
 
   const { data: employers = [], isLoading, error } = useQuery<OrganizingEmployer[]>({
     queryKey: ["/api/employers/organizing"],
     enabled: hasAccess,
   });
 
+  // Fetch filter options
+  const { data: employerTypes = [] } = useQuery<EmployerType[]>({
+    queryKey: ["/api/options/employer-type"],
+    enabled: hasAccess,
+  });
+
+  const { data: schoolTypes = [] } = useQuery<SchoolType[]>({
+    queryKey: ["/api/sitespecific/btu/school-types"],
+    enabled: hasBtuComponent,
+  });
+
+  const { data: regions = [] } = useQuery<Region[]>({
+    queryKey: ["/api/sitespecific/btu/regions"],
+    enabled: hasBtuComponent,
+  });
+
   const filteredEmployers = useMemo(() => {
-    if (!search.trim()) return employers;
-    const searchLower = search.toLowerCase();
-    return employers.filter((emp) => 
-      emp.name.toLowerCase().includes(searchLower) ||
-      emp.typeName?.toLowerCase().includes(searchLower) ||
-      emp.stewards.some(s => s.displayName.toLowerCase().includes(searchLower))
-    );
-  }, [employers, search]);
+    let result = employers;
+    
+    // Text search
+    if (search.trim()) {
+      const searchLower = search.toLowerCase();
+      result = result.filter((emp) => 
+        emp.name.toLowerCase().includes(searchLower) ||
+        emp.typeName?.toLowerCase().includes(searchLower) ||
+        emp.stewards.some(s => s.displayName.toLowerCase().includes(searchLower))
+      );
+    }
+    
+    // Employer type filter
+    if (employerTypeFilter) {
+      result = result.filter((emp) => emp.typeId === employerTypeFilter);
+    }
+    
+    // School type filter
+    if (schoolTypeFilter) {
+      result = result.filter((emp) => emp.schoolTypeIds?.includes(schoolTypeFilter));
+    }
+    
+    // Region filter
+    if (regionFilter) {
+      result = result.filter((emp) => emp.regionId === regionFilter);
+    }
+    
+    return result;
+  }, [employers, search, employerTypeFilter, schoolTypeFilter, regionFilter]);
+
+  const hasActiveFilters = employerTypeFilter || schoolTypeFilter || regionFilter;
+
+  const clearAllFilters = () => {
+    setEmployerTypeFilter("");
+    setSchoolTypeFilter("");
+    setRegionFilter("");
+  };
 
   const totalStats = useMemo(() => {
     return employers.reduce(
@@ -600,14 +668,78 @@ export default function EmployersOrganizing() {
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6">
-          <Input
-            placeholder={`Search ${term('employer', { plural: true, lowercase: true })}, types, or ${term('steward', { plural: true, lowercase: true })}...`}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="max-w-md"
-            data-testid="input-search"
-          />
+        <div className="mb-6 space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Input
+              placeholder={`Search ${term('employer', { plural: true, lowercase: true })}, types, or ${term('steward', { plural: true, lowercase: true })}...`}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-64"
+              data-testid="input-search"
+            />
+            
+            <Select value={employerTypeFilter} onValueChange={setEmployerTypeFilter}>
+              <SelectTrigger className="w-48" data-testid="select-employer-type">
+                <SelectValue placeholder="Employer Type" />
+              </SelectTrigger>
+              <SelectContent>
+                {employerTypes.map((type) => (
+                  <SelectItem key={type.id} value={type.id}>
+                    {type.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {hasBtuComponent && schoolTypes.length > 0 && (
+              <Select value={schoolTypeFilter} onValueChange={setSchoolTypeFilter}>
+                <SelectTrigger className="w-48" data-testid="select-school-type">
+                  <SelectValue placeholder="School Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {schoolTypes.map((type) => (
+                    <SelectItem key={type.id} value={type.id}>
+                      {type.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            {hasBtuComponent && regions.length > 0 && (
+              <Select value={regionFilter} onValueChange={setRegionFilter}>
+                <SelectTrigger className="w-40" data-testid="select-region">
+                  <SelectValue placeholder="Region" />
+                </SelectTrigger>
+                <SelectContent>
+                  {regions.map((region) => (
+                    <SelectItem key={region.id} value={region.id}>
+                      {region.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearAllFilters}
+                className="text-muted-foreground"
+                data-testid="button-clear-filters"
+              >
+                <X className="h-4 w-4 mr-1" />
+                Clear filters
+              </Button>
+            )}
+          </div>
+          
+          {(hasActiveFilters || search) && (
+            <div className="text-sm text-muted-foreground" data-testid="text-filter-results">
+              Showing {filteredEmployers.length} of {employers.length} {term('employer', { plural: true, lowercase: true })}
+            </div>
+          )}
         </div>
 
         {isLoading ? (
@@ -622,8 +754,20 @@ export default function EmployersOrganizing() {
           <div className="text-center py-12">
             <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <p className="text-muted-foreground" data-testid="text-empty">
-              {search ? `No ${term('employer', { plural: true, lowercase: true })} match your search` : `No ${term('employer', { plural: true, lowercase: true })} with active ${term('worker', { plural: true, lowercase: true })} found`}
+              {(search || hasActiveFilters) 
+                ? `No ${term('employer', { plural: true, lowercase: true })} match your search or filters` 
+                : `No ${term('employer', { plural: true, lowercase: true })} with active ${term('worker', { plural: true, lowercase: true })} found`}
             </p>
+            {hasActiveFilters && (
+              <Button
+                variant="link"
+                onClick={clearAllFilters}
+                className="mt-2"
+                data-testid="button-clear-filters-empty"
+              >
+                Clear all filters
+              </Button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
