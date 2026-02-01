@@ -311,6 +311,21 @@ export function registerCardchecksRoutes(
         console.log("Steward assignments table not available, skipping steward data");
       }
 
+      // Get principal contacts for each employer
+      const principalsResult = await db.execute(sql`
+        SELECT 
+          ec.employer_id as "employerId",
+          c.id as "contactId",
+          c.display_name as "displayName",
+          c.email
+        FROM employer_contacts ec
+        INNER JOIN contacts c ON c.id = ec.contact_id
+        INNER JOIN options_employer_contact_type ect ON ec.contact_type_id = ect.id
+        WHERE ect.name = 'Principal'
+        ORDER BY c.display_name
+      `);
+      const principals = principalsResult.rows as any[];
+
       // Build response with aggregated data
       const employerMap = new Map<string, any>();
 
@@ -324,7 +339,8 @@ export function registerCardchecksRoutes(
           totalWorkers: 0,
           signedWorkers: 0,
           bargainingUnits: [],
-          stewards: []
+          stewards: [],
+          principals: []
         });
       }
 
@@ -354,6 +370,18 @@ export function registerCardchecksRoutes(
             displayName: steward.displayName,
             bargainingUnitId: steward.bargainingUnitId,
             bargainingUnitName: steward.bargainingUnitName
+          });
+        }
+      }
+
+      // Add principals to employers
+      for (const principal of principals) {
+        const emp = employerMap.get(principal.employerId);
+        if (emp) {
+          emp.principals.push({
+            contactId: principal.contactId,
+            displayName: principal.displayName,
+            email: principal.email
           });
         }
       }

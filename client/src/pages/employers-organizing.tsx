@@ -1,4 +1,4 @@
-import { Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital, Users, Award, Loader2, UserX, Download } from "lucide-react";
+import { Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital, Users, Award, Loader2, UserX, Download, Briefcase } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -28,6 +28,12 @@ interface Steward {
   bargainingUnitName: string;
 }
 
+interface Principal {
+  contactId: string;
+  displayName: string;
+  email: string | null;
+}
+
 interface MissingCardcheckWorker {
   workerId: string;
   displayName: string;
@@ -52,6 +58,7 @@ interface OrganizingEmployer {
   signedWorkers: number;
   bargainingUnits: BargainingUnitStats[];
   stewards: Steward[];
+  principals: Principal[];
 }
 
 interface FetchResult {
@@ -313,6 +320,26 @@ function EmployerCard({ employer }: { employer: OrganizingEmployer }) {
                     {steward.displayName}
                   </Badge>
                 </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {employer.principals.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-1 text-sm font-medium text-muted-foreground">
+              <Briefcase className="h-4 w-4" />
+              <span>Principal</span>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {employer.principals.map((principal) => (
+                <Badge 
+                  key={principal.contactId}
+                  variant="secondary" 
+                  data-testid={`principal-${principal.contactId}`}
+                >
+                  {principal.displayName}
+                </Badge>
               ))}
             </div>
           </div>
