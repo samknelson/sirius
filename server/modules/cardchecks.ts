@@ -250,6 +250,20 @@ export function registerCardchecksRoutes(
 
       const employers = employersResult.rows as any[];
 
+      // Get all school types for mapping IDs to names/icons
+      let schoolTypesMap = new Map<string, { id: string; name: string; icon: string | null }>();
+      try {
+        const schoolTypesResult = await db.execute(sql`
+          SELECT id, name, data->>'icon' as icon
+          FROM sitespecific_btu_school_types
+        `);
+        for (const st of schoolTypesResult.rows as any[]) {
+          schoolTypesMap.set(st.id, { id: st.id, name: st.name, icon: st.icon || null });
+        }
+      } catch {
+        // Table may not exist in non-BTU installations
+      }
+
       // Get worker counts and card check stats per employer/bargaining unit
       // Workers are "active" if their most recent employment record has status "Active" or "Active - Secondary"
       const statsResult = await db.execute(sql`
@@ -350,13 +364,20 @@ export function registerCardchecksRoutes(
       const employerMap = new Map<string, any>();
 
       for (const emp of employers) {
+        // Map school type IDs to full objects with name and icon
+        const schoolTypeIds = emp.schoolTypeIds || [];
+        const schoolTypes = schoolTypeIds
+          .map((id: string) => schoolTypesMap.get(id))
+          .filter((st: any) => st !== undefined);
+
         employerMap.set(emp.id, {
           id: emp.id,
           name: emp.name,
           typeId: emp.typeId,
           typeName: emp.typeName,
           typeIcon: emp.typeIcon || null,
-          schoolTypeIds: emp.schoolTypeIds || [],
+          schoolTypeIds: schoolTypeIds,
+          schoolTypes: schoolTypes,
           regionId: emp.regionId || null,
           regionName: emp.regionName || null,
           totalWorkers: 0,

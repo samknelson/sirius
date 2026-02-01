@@ -1,4 +1,4 @@
-import { Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital, Users, Award, Loader2, UserX, Download, Briefcase, X } from "lucide-react";
+import { Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital, Users, Award, Loader2, UserX, Download, Briefcase, X, MapPin, School, GraduationCap, Baby, Backpack, BookOpen, Library, Sparkles, HelpCircle, Church } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState, useMemo } from "react";
 import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
@@ -55,6 +56,12 @@ interface MissingCardchecksResponse {
   totalCount: number;
 }
 
+interface SchoolTypeInfo {
+  id: string;
+  name: string;
+  icon: string | null;
+}
+
 interface OrganizingEmployer {
   id: string;
   name: string;
@@ -62,6 +69,7 @@ interface OrganizingEmployer {
   typeName: string | null;
   typeIcon: string | null;
   schoolTypeIds: string[];
+  schoolTypes: SchoolTypeInfo[];
   regionId: string | null;
   regionName: string | null;
   totalWorkers: number;
@@ -321,6 +329,14 @@ const iconMap: Record<string, typeof Building2> = {
   Home,
   Landmark,
   Hospital,
+  School,
+  GraduationCap,
+  Baby,
+  Backpack,
+  BookOpen,
+  Library,
+  Sparkles,
+  Church,
 };
 
 // Calculate allowed building reps: 1 per 25 workers per bargaining unit, rounded up
@@ -340,6 +356,34 @@ function EmployerTypeIcon({ icon, typeName }: { icon: string | null; typeName: s
   }
   
   return <IconComponent className="h-5 w-5 text-primary" />;
+}
+
+function SchoolTypeIcon({ icon, name }: { icon: string | null; name: string }) {
+  const IconComponent = icon ? iconMap[icon] : null;
+  
+  if (!IconComponent) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span>
+            <HelpCircle className="h-4 w-4 text-muted-foreground" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{name}</TooltipContent>
+      </Tooltip>
+    );
+  }
+  
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span>
+          <IconComponent className="h-4 w-4 text-muted-foreground" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{name}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 function CardCheckProgress({ signed, total }: { signed: number; total: number }) {
@@ -364,6 +408,9 @@ function EmployerCard({ employer, term }: { employer: OrganizingEmployer; term: 
     : 0;
   const missingCount = employer.totalWorkers - employer.signedWorkers;
 
+  const hasSchoolTypes = employer.schoolTypes && employer.schoolTypes.length > 0;
+  const hasRegion = employer.regionName;
+
   return (
     <Card className="hover-elevate flex flex-col h-full" data-testid={`card-employer-${employer.id}`}>
       <CardHeader className="pb-3">
@@ -384,6 +431,24 @@ function EmployerCard({ employer, term }: { employer: OrganizingEmployer; term: 
             {percentage}%
           </Badge>
         </div>
+        
+        {(hasSchoolTypes || hasRegion) && (
+          <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground" data-testid={`info-row-${employer.id}`}>
+            {hasSchoolTypes && (
+              <div className="flex items-center gap-1" data-testid={`school-types-${employer.id}`}>
+                {employer.schoolTypes.map((st) => (
+                  <SchoolTypeIcon key={st.id} icon={st.icon} name={st.name} />
+                ))}
+              </div>
+            )}
+            {hasRegion && (
+              <div className="flex items-center gap-1" data-testid={`region-${employer.id}`}>
+                <MapPin className="h-4 w-4" />
+                <span>Region {employer.regionName}</span>
+              </div>
+            )}
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-4 flex-1">
         <CardCheckProgress signed={employer.signedWorkers} total={employer.totalWorkers} />
