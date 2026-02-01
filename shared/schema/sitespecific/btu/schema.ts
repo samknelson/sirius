@@ -150,6 +150,7 @@ export const btuScheduleItemSchema = z.object({
   label: z.string(),
   startTime: z.string(),
   endTime: z.string(),
+  note: z.string().nullable().optional(),
 });
 
 export type BtuScheduleItem = z.infer<typeof btuScheduleItemSchema>;

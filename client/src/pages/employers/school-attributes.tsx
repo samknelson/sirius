@@ -298,12 +298,17 @@ function SchoolAttributesContent() {
                 <div className="mt-2 space-y-2" data-testid="schedules-list">
                   {schoolAttributes.schedules && (schoolAttributes.schedules as BtuScheduleItem[]).length > 0 ? (
                     (schoolAttributes.schedules as BtuScheduleItem[]).map((schedule, index) => (
-                      <div key={index} className="flex items-center gap-4 p-3 bg-muted/50 rounded-md" data-testid={`schedule-${index}`}>
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">{schedule.label}</span>
-                        <span className="text-muted-foreground">
-                          {schedule.startTime} - {schedule.endTime}
-                        </span>
+                      <div key={index} className="flex flex-col gap-1 p-3 bg-muted/50 rounded-md" data-testid={`schedule-${index}`}>
+                        <div className="flex items-center gap-4">
+                          <Clock className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-medium">{schedule.label}</span>
+                          <span className="text-muted-foreground">
+                            {schedule.startTime} - {schedule.endTime}
+                          </span>
+                        </div>
+                        {schedule.note && (
+                          <p className="text-sm text-muted-foreground ml-8">{schedule.note}</p>
+                        )}
                       </div>
                     ))
                   ) : (
@@ -432,7 +437,7 @@ function SchoolAttributesContent() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => append({ label: "", startTime: "", endTime: "" })}
+                    onClick={() => append({ label: "", startTime: "", endTime: "", note: "" })}
                     data-testid="button-add-schedule"
                   >
                     <Plus className="h-4 w-4 mr-2" />
@@ -441,55 +446,73 @@ function SchoolAttributesContent() {
                 </div>
                 <div className="space-y-3">
                   {fields.map((field, index) => (
-                    <div key={field.id} className="flex items-end gap-3 p-3 border rounded-md">
+                    <div key={field.id} className="border rounded-md">
+                      <div className="flex items-end gap-3 p-3">
+                        <FormField
+                          control={form.control}
+                          name={`schedules.${index}.label`}
+                          rules={{ required: "Label is required" }}
+                          render={({ field }) => (
+                            <FormItem className="flex-1">
+                              <FormLabel className="text-xs">Label</FormLabel>
+                              <FormControl>
+                                <Input {...field} placeholder="e.g., Morning" data-testid={`input-schedule-label-${index}`} />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name={`schedules.${index}.startTime`}
+                          rules={{ required: "Start time is required" }}
+                          render={({ field }) => (
+                            <FormItem className="flex-1">
+                              <FormLabel className="text-xs">Start Time</FormLabel>
+                              <FormControl>
+                                <Input {...field} type="time" data-testid={`input-schedule-start-${index}`} />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name={`schedules.${index}.endTime`}
+                          rules={{ required: "End time is required" }}
+                          render={({ field }) => (
+                            <FormItem className="flex-1">
+                              <FormLabel className="text-xs">End Time</FormLabel>
+                              <FormControl>
+                                <Input {...field} type="time" data-testid={`input-schedule-end-${index}`} />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => remove(index)}
+                          data-testid={`button-remove-schedule-${index}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                       <FormField
                         control={form.control}
-                        name={`schedules.${index}.label`}
-                        rules={{ required: "Label is required" }}
+                        name={`schedules.${index}.note`}
                         render={({ field }) => (
-                          <FormItem className="flex-1">
-                            <FormLabel className="text-xs">Label</FormLabel>
+                          <FormItem className="px-3 pb-3">
                             <FormControl>
-                              <Input {...field} placeholder="e.g., Morning" data-testid={`input-schedule-label-${index}`} />
+                              <Input 
+                                {...field} 
+                                value={field.value || ""} 
+                                placeholder="Note (optional)" 
+                                data-testid={`input-schedule-note-${index}`} 
+                              />
                             </FormControl>
                           </FormItem>
                         )}
                       />
-                      <FormField
-                        control={form.control}
-                        name={`schedules.${index}.startTime`}
-                        rules={{ required: "Start time is required" }}
-                        render={({ field }) => (
-                          <FormItem className="flex-1">
-                            <FormLabel className="text-xs">Start Time</FormLabel>
-                            <FormControl>
-                              <Input {...field} type="time" data-testid={`input-schedule-start-${index}`} />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`schedules.${index}.endTime`}
-                        rules={{ required: "End time is required" }}
-                        render={({ field }) => (
-                          <FormItem className="flex-1">
-                            <FormLabel className="text-xs">End Time</FormLabel>
-                            <FormControl>
-                              <Input {...field} type="time" data-testid={`input-schedule-end-${index}`} />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => remove(index)}
-                        data-testid={`button-remove-schedule-${index}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
                     </div>
                   ))}
                   {fields.length === 0 && (
