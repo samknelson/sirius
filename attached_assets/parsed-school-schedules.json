@@ -1,0 +1,4824 @@
+[
+  {
+    "region": "1",
+    "schoolName": "Adams Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "2:10 PM",
+        "note": "Early Dismissal: 11:40am"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:15",
+        "endTime": "2:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:25",
+        "endTime": "2:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:15",
+        "endTime": "2:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:15",
+        "endTime": "2:25",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:15",
+        "endTime": "2:25",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "1",
+    "schoolName": "Alighieri Dante Montessori School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "2:10 PM",
+        "note": "Early Dismissal: 11:40am"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:20",
+        "endTime": "2:20",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:20",
+        "endTime": "2:10",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:20",
+        "endTime": "2:20",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:30",
+        "endTime": "4:30",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:20",
+        "endTime": "2:20",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "1",
+    "schoolName": "Bradley Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": "Early Dismissal: 1:40pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:25",
+        "endTime": "4:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:00",
+        "endTime": "4:10",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:30",
+        "endTime": "4:30",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:00",
+        "endTime": "4:10",
+        "note": null
+      }
+    ],
+    "originalNotes": "CLICK HERE for times specific to each staff member"
+  },
+  {
+    "region": "1",
+    "schoolName": "Charlestown High School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "1:50 PM",
+        "note": "Early Dismissal: 11:20am"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:20",
+        "endTime": "2:00",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:20",
+        "endTime": "2:00",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:20",
+        "endTime": "2:00",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:15",
+        "endTime": "3:15",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:20",
+        "endTime": "2:00",
+        "note": null
+      }
+    ],
+    "originalNotes": "Classroom paraprofessionals have a 7-hour/day contract and split days across the group of paras to support transportation at start or end of day"
+  },
+  {
+    "region": "1",
+    "schoolName": "East Boston Early Education Center",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "4:30 PM",
+        "note": "Early Dismissal: 12:00pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:20",
+        "endTime": "2:40",
+        "note": null
+      },
+      {
+        "label": "Para 1",
+        "startTime": "7:20",
+        "endTime": "1:30",
+        "note": null
+      },
+      {
+        "label": "Para 2",
+        "startTime": "10:30",
+        "endTime": "4:40",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:00",
+        "endTime": "3:00",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00",
+        "endTime": "4:00",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:20",
+        "endTime": "2:40",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "1",
+    "schoolName": "East Boston High School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "1:50 PM",
+        "note": "Early Dismissal: 11:20am"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:20",
+        "endTime": "1:50",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:20",
+        "endTime": "1:50",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:20",
+        "endTime": "1:50",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:20",
+        "endTime": "1:50",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:20",
+        "endTime": "1:50",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "1",
+    "schoolName": "Eliot K-8 Innovation School - Intermediate",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": "Early Dismissal: 12:40pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:15",
+        "endTime": "3:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:30",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15",
+        "endTime": "3:30",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "1",
+    "schoolName": "Eliot K-8 Innovation School - Lower",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": "Early Dismissal: 12:40pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:15",
+        "endTime": "3:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:30",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15",
+        "endTime": "3:30",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "1",
+    "schoolName": "Eliot K-8 Innovation School - Upper",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": "Early Dismissal: 12:40pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:15",
+        "endTime": "3:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00",
+        "endTime": "4:00",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15",
+        "endTime": "3:30",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "1",
+    "schoolName": "Guild Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:20",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Para 1",
+        "startTime": "8:20",
+        "endTime": "3:10",
+        "note": null
+      },
+      {
+        "label": "Para 2",
+        "startTime": "8:30",
+        "endTime": "3:20",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:20",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00 AM",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:20",
+        "endTime": "3:30",
+        "note": null
+      }
+    ],
+    "originalNotes": "Paras are emailed their specific hours prior to 8/30 & teacher hours are in our handbook emailed the third week of August."
+  },
+  {
+    "region": "1",
+    "schoolName": "Harvard-Kent Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:20",
+        "endTime": "4:10",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "9:00",
+        "endTime": "5:00",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "1",
+    "schoolName": "Kennedy Patrick J Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:15",
+        "endTime": "3:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "1",
+    "schoolName": "Mario Umana Academy",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:20 AM",
+        "endTime": "2:00 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:10",
+        "endTime": "2:10",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:10",
+        "endTime": "2:00",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:10",
+        "endTime": "2:10",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:10",
+        "endTime": "3:00",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:10",
+        "endTime": "2:10",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "1",
+    "schoolName": "McKay K-8 School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:20",
+        "endTime": "3:20",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:20",
+        "endTime": "3:10",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:20",
+        "endTime": "3:20",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:20",
+        "endTime": "3:10",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:20",
+        "endTime": "3:20",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "1",
+    "schoolName": "O'Donnell Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": "Early Dismissal: 1:40pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:10",
+        "endTime": "4:20",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:20",
+        "endTime": "4:10",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:10",
+        "endTime": "4:20",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:30",
+        "endTime": "4:30",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:10",
+        "endTime": "4:20",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "1",
+    "schoolName": "Otis Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:20 AM",
+        "endTime": "3:00 PM",
+        "note": "Early dismissal 12:20pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:55",
+        "endTime": "3:05",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:10",
+        "endTime": "3:00",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:55",
+        "endTime": "3:05",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:30",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:55",
+        "endTime": "3:05",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "1",
+    "schoolName": "Warren-Prescott K-8 School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:20",
+        "endTime": "3:10",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:30",
+        "endTime": "4:30",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "2",
+    "schoolName": "Blackstone Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": "Early Dismissal: 12:40pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:25",
+        "endTime": "3:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:30",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "2",
+    "schoolName": "Condon K-8 School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": "Early Dismissal: 12:40pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15",
+        "endTime": "3:20",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:25",
+        "endTime": "3:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15",
+        "endTime": "3:20",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:30",
+        "endTime": "3:20",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15",
+        "endTime": "3:20",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "2",
+    "schoolName": "Dever Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "2:30 PM",
+        "note": "Wed 12:35pm; Early Dismissal: 12:00pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:10",
+        "endTime": "3:10",
+        "note": ".        Wed: 7:10 - 3:50"
+      },
+      {
+        "label": "Para",
+        "startTime": "7:10",
+        "endTime": "3:10",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:10",
+        "endTime": "3:10",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:10",
+        "endTime": "3:10",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:10",
+        "endTime": "3:10",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "2",
+    "schoolName": "Everett Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:10 AM",
+        "endTime": "4:25 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:15 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:10 AM",
+        "endTime": "4:25 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "9:00 AM",
+        "endTime": "5:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:10 AM",
+        "endTime": "4:25 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "2",
+    "schoolName": "Holmes Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": "12:30pm Thr"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:20 AM",
+        "endTime": "4:20 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:10 AM",
+        "endTime": "4:25 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:20 AM",
+        "endTime": "4:20 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "9:10 AM",
+        "endTime": "5:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:20 AM",
+        "endTime": "4:20 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "2",
+    "schoolName": "Hurley K-8 School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": "Doors open at 8:15am for students."
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:00 AM",
+        "endTime": "3:20 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:15 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:00 AM",
+        "endTime": "3:20 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00 AM",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:00 AM",
+        "endTime": "3:20 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": "Hub Coordinator: 9:00am - 5:00pm\nCFC: 8:00am - 4:00pm"
+  },
+  {
+    "region": "2",
+    "schoolName": "Mather Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:10 AM",
+        "endTime": "4:20 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:30 AM",
+        "endTime": "4:20 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:10 AM",
+        "endTime": "4:20 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "9:00 AM",
+        "endTime": "5:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:10 AM",
+        "endTime": "4:20 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "2",
+    "schoolName": "Perkins Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:10",
+        "endTime": "3:20",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:15",
+        "endTime": "3:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:10",
+        "endTime": "3:20",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00 AM",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:10",
+        "endTime": "3:20",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "2",
+    "schoolName": "Perry Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:20",
+        "endTime": "4:10",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:10",
+        "endTime": "4:20",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "9:00",
+        "endTime": "5:00",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "2",
+    "schoolName": "Quincy Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": "Early Dismissal 1:40pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:25",
+        "endTime": "4:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:45",
+        "endTime": "4:45",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "2",
+    "schoolName": "Russell Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15 AM",
+        "endTime": "3:25 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:30 AM",
+        "endTime": "3:20 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15 AM",
+        "endTime": "3:25 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00 AM",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15 AM",
+        "endTime": "3:25 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "2",
+    "schoolName": "Tynan Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15 AM",
+        "endTime": "3:25 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:15 AM",
+        "endTime": "3:05 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15 AM",
+        "endTime": "3:25 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00 AM",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15 AM",
+        "endTime": "3:25 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "3",
+    "schoolName": "Carter School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "3:30 PM",
+        "note": "Early Dismissal: 1:00pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:15",
+        "endTime": "3:45",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:15",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:15",
+        "endTime": "3:45",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "9:15",
+        "endTime": "3:45",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:15",
+        "endTime": "3:45",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "3",
+    "schoolName": "Clap Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": "Early Dismissal: 1:40pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:10",
+        "endTime": "4:20",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:20",
+        "endTime": "4:10",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:10",
+        "endTime": "4:20",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:30",
+        "endTime": "4:30",
+        "note": "(vary by days)"
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:10",
+        "endTime": "4:20",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "3",
+    "schoolName": "Dudley Street Neighborhood School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "4:00 PM",
+        "note": "Early Dismissal: 1:30pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:30 AM",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:00 AM",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:45",
+        "endTime": "4:00",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00",
+        "endTime": "4:00",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:45",
+        "endTime": "4:15",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "3",
+    "schoolName": "Ellis Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": "Early Dismissal: 1:40pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:15 AM",
+        "endTime": "4:25 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:15 AM",
+        "endTime": "4:25 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:30 AM",
+        "endTime": "4:30 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:15 AM",
+        "endTime": "4:25",
+        "note": "p"
+      }
+    ],
+    "originalNotes": "CFC: 9:00am-5:00pm"
+  },
+  {
+    "region": "3",
+    "schoolName": "Greenwood Sarah K-8 School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:20",
+        "endTime": "3:30 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:20",
+        "endTime": "3:20 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:20",
+        "endTime": "3:30 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:20",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:20",
+        "endTime": "3:30 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "3",
+    "schoolName": "Hale Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15",
+        "endTime": "3:25 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:30",
+        "endTime": "3:10",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15",
+        "endTime": "3:25 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15",
+        "endTime": "3:25 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "3",
+    "schoolName": "Haynes Early Education Center",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "4:30 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:05 AM",
+        "endTime": "2:35 PM",
+        "note": null
+      },
+      {
+        "label": "Para 1",
+        "startTime": "10:50 AM",
+        "endTime": "5:00 PM",
+        "note": null
+      },
+      {
+        "label": "Para 2",
+        "startTime": "9:00 AM",
+        "endTime": "5:00 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:05 AM",
+        "endTime": "3:35 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00 AM",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:05 AM",
+        "endTime": "2:35 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "3",
+    "schoolName": "King Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15",
+        "endTime": "3:25 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:20",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15",
+        "endTime": "3:25 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15",
+        "endTime": "3:25 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "3",
+    "schoolName": "Mason Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "2:30 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:10",
+        "endTime": "2:45",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:30",
+        "endTime": "2:40",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:10",
+        "endTime": "2:40",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00",
+        "endTime": "4:00",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:10",
+        "endTime": "2:40",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "3",
+    "schoolName": "Murphy K-8 School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:20",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:25",
+        "endTime": "3:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:20",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:20",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:20",
+        "endTime": "3:30",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "3",
+    "schoolName": "Orchard Gardens K-8 School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:20 AM",
+        "endTime": "2:25 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:10",
+        "endTime": "2:40",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:10",
+        "endTime": "2:10",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:10",
+        "endTime": "2:40",
+        "note": "/ 7:25-2:55"
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:10",
+        "endTime": "3:10",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:10",
+        "endTime": "2:40",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "3",
+    "schoolName": "Trotter Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "2:10 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "3",
+    "schoolName": "Winthrop Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:00 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15 AM",
+        "endTime": "3:15 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:25 AM",
+        "endTime": "3:15 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15 AM",
+        "endTime": "3:15 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:15 AM",
+        "endTime": "3:15 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15 AM",
+        "endTime": "3:15 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "4",
+    "schoolName": "Baldwin Early Learning Pilot Academy",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:15 AM",
+        "endTime": "4:30 PM",
+        "note": "11:30am Wed; Early Dismissal: 12:00pm"
+      },
+      {
+        "label": "Teacher 1",
+        "startTime": "7:00",
+        "endTime": "1:30",
+        "note": null
+      },
+      {
+        "label": "Teacher 2",
+        "startTime": "8:00",
+        "endTime": "2:30",
+        "note": null
+      },
+      {
+        "label": "Para 1",
+        "startTime": "7:15",
+        "endTime": "3:15",
+        "note": null
+      },
+      {
+        "label": "Para 2",
+        "startTime": "9:00",
+        "endTime": "5:00",
+        "note": null
+      },
+      {
+        "label": "Para 3",
+        "startTime": "11:45",
+        "endTime": "5:00",
+        "note": null
+      },
+      {
+        "label": "Nurse 1",
+        "startTime": "8:00",
+        "endTime": "4:00",
+        "note": "Mon; Tue; Thur; Fri"
+      },
+      {
+        "label": "Nurse 2",
+        "startTime": "8:00",
+        "endTime": "11:00",
+        "note": "Wed; Tue; Thur; Fri"
+      },
+      {
+        "label": "Specialist 1",
+        "startTime": "7:15",
+        "endTime": "1:30",
+        "note": "9:- 3:30"
+      },
+      {
+        "label": "Specialist 2",
+        "startTime": "7:30",
+        "endTime": "2:00",
+        "note": "9:- 3:30"
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "4",
+    "schoolName": "Curley K-8 School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": "Early Dismissal: 12:40pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:20",
+        "endTime": "3:10",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00",
+        "endTime": "4:00",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "4",
+    "schoolName": "Edison K-8 School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": "Early Dismissal: 12:40pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:20",
+        "endTime": "3:20",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:25",
+        "endTime": "3:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:20",
+        "endTime": "3:20",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:30",
+        "endTime": "3:30",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "4",
+    "schoolName": "Gardner Pilot Academy",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "2:30 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15",
+        "endTime": "2:45",
+        "note": null
+      },
+      {
+        "label": "Para 1",
+        "startTime": "7:30",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Para 2",
+        "startTime": "8:15",
+        "endTime": "4:15",
+        "note": null
+      },
+      {
+        "label": "Para 3",
+        "startTime": "10:00",
+        "endTime": "6:00",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15",
+        "endTime": "2:45",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:15",
+        "endTime": "2:45",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15",
+        "endTime": "2:45",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "4",
+    "schoolName": "Hennigan Elementary School",
+    "schedules": [
+      {
+        "label": "Teacher",
+        "startTime": "7:15",
+        "endTime": "2:25",
+        "note": null
+      },
+      {
+        "label": "Para 1",
+        "startTime": "7:00",
+        "endTime": "1:50",
+        "note": null
+      },
+      {
+        "label": "Para 2",
+        "startTime": "7:25",
+        "endTime": "2:15",
+        "note": null
+      },
+      {
+        "label": "Para 3",
+        "startTime": "8:40",
+        "endTime": "4:40",
+        "note": null
+      },
+      {
+        "label": "Para 4",
+        "startTime": "9:50",
+        "endTime": "4:40",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:20",
+        "endTime": "2:20",
+        "note": null
+      },
+      {
+        "label": "Family Liaison 1",
+        "startTime": "6:45",
+        "endTime": "2:45",
+        "note": null
+      },
+      {
+        "label": "Family Liaison 2",
+        "startTime": "8:50",
+        "endTime": "4:50",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "4",
+    "schoolName": "Hernandez K-8 School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:10",
+        "endTime": "3:20",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:10",
+        "endTime": "3:20",
+        "note": "(hour lunch)"
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:10",
+        "endTime": "3:20",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:00",
+        "endTime": "3:00",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:10",
+        "endTime": "3:20",
+        "note": null
+      }
+    ],
+    "originalNotes": "Lunch Monitors 10:30 - 1:30"
+  },
+  {
+    "region": "4",
+    "schoolName": "Higginson Inclusion K0-2 School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:20",
+        "endTime": "4:10",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "4",
+    "schoolName": "Higginson-Lewis 3-8 School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:20",
+        "endTime": "4:20",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:30",
+        "endTime": "4:05",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:20",
+        "endTime": "4:20",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:20",
+        "endTime": "4:20",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "4",
+    "schoolName": "Horace Mann School for the Deaf",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:20 AM",
+        "endTime": "2:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:10",
+        "endTime": "2:20",
+        "note": null
+      },
+      {
+        "label": "Para 1",
+        "startTime": "7:10",
+        "endTime": "2:10",
+        "note": null
+      },
+      {
+        "label": "Para 2",
+        "startTime": "7:20",
+        "endTime": "2:20",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:10",
+        "endTime": "2:20",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:10",
+        "endTime": "2:20",
+        "note": null
+      }
+    ],
+    "originalNotes": "Our doors open at 7:10"
+  },
+  {
+    "region": "4",
+    "schoolName": "Kennedy John F Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:10",
+        "endTime": "3:10",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:30",
+        "endTime": "3:20",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:10",
+        "endTime": "3:10",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:10",
+        "endTime": "4:10",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:10",
+        "endTime": "3:10",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "4",
+    "schoolName": "Mendell Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:20",
+        "endTime": "4:10",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "9:00",
+        "endTime": "5:00",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "4",
+    "schoolName": "Tobin K-8 School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "9:00",
+        "endTime": "5:00",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "4",
+    "schoolName": "Winship Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:20",
+        "endTime": "4:10",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:30",
+        "endTime": "4:30",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "5",
+    "schoolName": "Bates Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": "Early Dismissal: 1:40pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "9:00",
+        "endTime": "5:00",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "5",
+    "schoolName": "Beethoven Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": "Early Dismissal: 12:40pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:20 AM",
+        "endTime": "3:20 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:20 AM",
+        "endTime": "3:20 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00 AM",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:20 AM",
+        "endTime": "3:20 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": "Lunch Monitors 10:15 AM - 1:15 PM"
+  },
+  {
+    "region": "5",
+    "schoolName": "Channing Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": "Early Dismissal: 12:40pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:25",
+        "endTime": "3:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00",
+        "endTime": "4:00",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "5",
+    "schoolName": "Conley Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": "Early Dismissal: 12:40pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:25",
+        "endTime": "3:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00",
+        "endTime": "4:00",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:40",
+        "endTime": "3:10",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "5",
+    "schoolName": "Haley Pilot School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "2:30 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15 AM",
+        "endTime": "2:45 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:20 AM",
+        "endTime": "2:30 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15 AM",
+        "endTime": "2:45 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00 AM",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15 AM",
+        "endTime": "2:45 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": "Lunch monitors:  10:30-1:30"
+  },
+  {
+    "region": "5",
+    "schoolName": "Kilmer K-8 School (4-8)",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": "11:20 - 2:10"
+  },
+  {
+    "region": "5",
+    "schoolName": "Kilmer K-8 School (K-3)",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:20",
+        "endTime": "4:20",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:20",
+        "endTime": "4:10",
+        "note": null
+      }
+    ],
+    "originalNotes": "11:20 - 2:10"
+  },
+  {
+    "region": "5",
+    "schoolName": "Lyndon K-8 School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "3:30 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:15",
+        "endTime": "3:45",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:15",
+        "endTime": "3:30",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "5",
+    "schoolName": "Manning Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:25",
+        "endTime": "4:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "9:00",
+        "endTime": "5:00",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      }
+    ],
+    "originalNotes": "11:20 - 2:10 Lunch Monitors"
+  },
+  {
+    "region": "5",
+    "schoolName": "Ohrenberger School (3-8)",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": "Early Dismissal: 12:40pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:20 AM",
+        "endTime": "3:20 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:20 AM",
+        "endTime": "3:20 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00 AM",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:20 AM",
+        "endTime": "3:20 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": "Lunch Monitors 10:15 AM - 1:15 PM"
+  },
+  {
+    "region": "5",
+    "schoolName": "Sarah Roberts",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:15 AM",
+        "endTime": "4:25 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:25 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:15 AM",
+        "endTime": "4:25 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:45",
+        "endTime": "4:45 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:15 AM",
+        "endTime": "4:25 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "5",
+    "schoolName": "Young Achievers K-8 School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:15 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:10 AM",
+        "endTime": "4:30 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:15 AM",
+        "endTime": "4:30 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:10 AM",
+        "endTime": "4:30 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "9:15 AM",
+        "endTime": "5:15 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:10 AM",
+        "endTime": "4:30 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": "Lunch Monitors 10:30AM - 1:30PM\nMain Office Staggered - 8:45AM -4:45PM & 9:10AM - 5:10PM"
+  },
+  {
+    "region": "6",
+    "schoolName": "Boston Teachers Union K-8 Pilot School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:00 PM",
+        "note": "Early Dismissal: 12:30pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:10 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:20 AM",
+        "endTime": "3:00 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:10 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00 AM",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:10 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "6",
+    "schoolName": "Chittick Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": "Early Dismissal: 12:40pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:15",
+        "endTime": "3:20",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:15",
+        "endTime": "4:15",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      }
+    ],
+    "originalNotes": "Secretary 8:00-3:55"
+  },
+  {
+    "region": "6",
+    "schoolName": "Ellison-Parks Early Education School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "4:30 PM",
+        "note": "Early Dismissal: 12:00"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15",
+        "endTime": "2:45",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15",
+        "endTime": "2:45",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:15",
+        "endTime": "3:15",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15",
+        "endTime": "2:45",
+        "note": null
+      }
+    ],
+    "originalNotes": "7:15-3:15"
+  },
+  {
+    "region": "6",
+    "schoolName": "Grew Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:00 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:10",
+        "endTime": "3:20",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:15",
+        "endTime": "3:05",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:10",
+        "endTime": "3:20",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:30",
+        "endTime": "4:30",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:10",
+        "endTime": "3:20",
+        "note": null
+      }
+    ],
+    "originalNotes": "Lunch monitors: 11-2"
+  },
+  {
+    "region": "6",
+    "schoolName": "Kenny Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:20",
+        "endTime": "4:10",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "9:20",
+        "endTime": "4:10",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      }
+    ],
+    "originalNotes": "Lunch monitors Staggered: 11:14-2:14, 11:30-2:30"
+  },
+  {
+    "region": "6",
+    "schoolName": "Lee Academy",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "3:30 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:05",
+        "endTime": "3:35",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:05",
+        "endTime": "3:35",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:05",
+        "endTime": "3:35",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:30",
+        "endTime": "4:30",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:05",
+        "endTime": "3:35",
+        "note": null
+      }
+    ],
+    "originalNotes": "Secretary 8:45- 4:45"
+  },
+  {
+    "region": "6",
+    "schoolName": "Lee K-8 School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "2:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:15",
+        "endTime": "2:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:20",
+        "endTime": "2:20",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:15",
+        "endTime": "2:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:15",
+        "endTime": "3:15",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:15",
+        "endTime": "2:25",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "6",
+    "schoolName": "Mattahunt Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "2:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:10",
+        "endTime": "2:20",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:30",
+        "endTime": "2:20",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:10",
+        "endTime": "2:20",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:30",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:10",
+        "endTime": "2:20",
+        "note": null
+      }
+    ],
+    "originalNotes": "Lunch Monitors - 9:30 AM - 12:30 PM"
+  },
+  {
+    "region": "6",
+    "schoolName": "Mildred Avenue K-8 School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "2:00 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:10",
+        "endTime": "2:10",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:20",
+        "endTime": "2:00",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:10",
+        "endTime": "2:10",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:10",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:10",
+        "endTime": "2:10",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "6",
+    "schoolName": "Mozart Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:15",
+        "endTime": "4:25 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:25",
+        "endTime": "4:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:15",
+        "endTime": "4:25 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:45",
+        "endTime": "4:45",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:15",
+        "endTime": "4:25 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": "Lunch Monitors 11:30 - 2:30"
+  },
+  {
+    "region": "6",
+    "schoolName": "Roosevelt K-8 School (2-8)",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:15",
+        "endTime": "3:05",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      }
+    ],
+    "originalNotes": "Lunch Monitors 10:50-11:50"
+  },
+  {
+    "region": "6",
+    "schoolName": "Roosevelt K-8 School (K1-1)",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:15",
+        "endTime": "3:05",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:15",
+        "endTime": "3:25",
+        "note": null
+      }
+    ],
+    "originalNotes": "Lunch Monitors 10:50-11:50"
+  },
+  {
+    "region": "6",
+    "schoolName": "Shaw-Taylor Elementary School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:25",
+        "endTime": "4:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "9:00",
+        "endTime": "5:00",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:15",
+        "endTime": "4:25",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "7",
+    "schoolName": "Boston Adult Tech Academy",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:00 AM",
+        "endTime": "3:20 PM",
+        "note": "Early Dismissal: 1:50pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:50",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:50",
+        "endTime": "3:31",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:50",
+        "endTime": "3:32",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:50",
+        "endTime": "3:33",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:50",
+        "endTime": "3:34",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "7",
+    "schoolName": "Boston Green Academy",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:00 AM",
+        "endTime": "3:00 PM",
+        "note": "Wed 12:00pm; Early Dismissal: 12:30pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:50",
+        "endTime": "3:10",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:15",
+        "endTime": "3:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:50",
+        "endTime": "3:10",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:50",
+        "endTime": "3:10",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:50",
+        "endTime": "3:10",
+        "note": null
+      }
+    ],
+    "originalNotes": "Staff PD every Wednesday 12:30-3; all staff receive Schedule A pay"
+  },
+  {
+    "region": "7",
+    "schoolName": "ABCD University High",
+    "schedules": [],
+    "originalNotes": ""
+  },
+  {
+    "region": "7",
+    "schoolName": "Boston Collaborative High School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "2:00 PM",
+        "note": "wed 12:30pm; Early Dismissal: 12:00pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:00 AM",
+        "endTime": "2:30 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:00 AM",
+        "endTime": "2:30 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:00 AM",
+        "endTime": "2:30 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:00 AM",
+        "endTime": "3:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:00 AM",
+        "endTime": "2:30 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": "Teacher PD every Wednesday 12:30-2:30"
+  },
+  {
+    "region": "7",
+    "schoolName": "Brighton High School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "2:25 PM",
+        "note": "Early Dismissal: 11:55am; Ea"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:25",
+        "endTime": "2:40",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:15",
+        "endTime": "2:25",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:25",
+        "endTime": "2:40",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:00",
+        "endTime": "3:00",
+        "note": null
+      }
+    ],
+    "originalNotes": "Teacher PD every Wednesday 2:40-4:30"
+  },
+  {
+    "region": "7",
+    "schoolName": "Fenway High School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:45 AM",
+        "endTime": "3:35 PM",
+        "note": "M; T; W; Th; 1:35pm F"
+      },
+      {
+        "label": "Teacher 1",
+        "startTime": "8:35",
+        "endTime": "3:45",
+        "note": "M-T"
+      },
+      {
+        "label": "Teacher 2",
+        "startTime": "8:35",
+        "endTime": "3:30",
+        "note": "F"
+      },
+      {
+        "label": "Nurse 1",
+        "startTime": "8:35",
+        "endTime": "3:45",
+        "note": "M-T"
+      },
+      {
+        "label": "Nurse 2",
+        "startTime": "8:35",
+        "endTime": "3:30",
+        "note": "F"
+      }
+    ],
+    "originalNotes": "Teacher Pilot School EWA hours"
+  },
+  {
+    "region": "7",
+    "schoolName": "Kennedy Academy for Health Careers (12)",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:00 AM",
+        "endTime": "3:00 PM",
+        "note": "1:30pm Mon"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:45 AM",
+        "endTime": "3:15 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:45 AM",
+        "endTime": "3:15 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:45 AM",
+        "endTime": "3:15 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:45 AM",
+        "endTime": "3:15 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:45 AM",
+        "endTime": "3:15 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": "Teacher PD is every Monday from 1:45pm - 3:45pm"
+  },
+  {
+    "region": "7",
+    "schoolName": "Kennedy Academy for Health Careers (9-11)",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:00 AM",
+        "endTime": "3:00 PM",
+        "note": "1:30pm Mon"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:45 AM",
+        "endTime": "3:15 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:45 AM",
+        "endTime": "3:15 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:45 AM",
+        "endTime": "3:15 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:45 AM",
+        "endTime": "3:15 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:45 AM",
+        "endTime": "3:15 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": "Teacher PD is every Monday from 1:45pm - 3:45pm"
+  },
+  {
+    "region": "7",
+    "schoolName": "Lyon High School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:30 PM",
+        "note": "Early Dismissal: 12:00pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:20 AM",
+        "endTime": "3:40 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:20 AM",
+        "endTime": "3:40 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:20 AM",
+        "endTime": "3:40 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00 AM",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:20 AM",
+        "endTime": "3:40 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": "Teacher PD is every Wednesday from 12:30 - 3:30"
+  },
+  {
+    "region": "7",
+    "schoolName": "Lyon K-8 School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "4:10 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "9:15 AM",
+        "endTime": "4:25 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "9:15 AM",
+        "endTime": "4:00",
+        "note": ":O5 PM"
+      },
+      {
+        "label": "Nurse",
+        "startTime": "9:15 AM",
+        "endTime": "4:25 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:30",
+        "endTime": "4:30",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "9:15 AM",
+        "endTime": "4:25 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "7",
+    "schoolName": "Melvin H King - Elementary",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:30 AM",
+        "endTime": "3:30 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:00 AM",
+        "endTime": "3:00 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": "BTU Teachers receive an annual ELT stipend for four hours of before school PD per week; Paras work 7.25 hours; Para hours are communicated to paras from the elementary administrator"
+  },
+  {
+    "region": "7",
+    "schoolName": "Melvin H. King - Prep High School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:20 AM",
+        "endTime": "1:40 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:10 AM",
+        "endTime": "2:50 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:00 AM",
+        "endTime": "3:00 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": "BTU Teachers receive an annual ELT stipend for four hours of after school PD per week; Paras work 7.25 hours"
+  },
+  {
+    "region": "7",
+    "schoolName": "Mel H King South End Academy (MS & HS)",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:20 AM",
+        "endTime": "1:40 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:10 AM",
+        "endTime": "2:50 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:00 AM",
+        "endTime": "3:00 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": "BTU Teachers receive an annual ELT stipend for four hours of after school PD per week; Paras work 7.25 hours"
+  },
+  {
+    "region": "7",
+    "schoolName": "O'Bryant School of Math & Science",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:20 AM",
+        "endTime": "1:45 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:15 AM",
+        "endTime": "1:55 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:15 AM",
+        "endTime": "1:55 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:15 AM",
+        "endTime": "1:55 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:15 AM",
+        "endTime": "1:55 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "7",
+    "schoolName": "Quincy Upper School",
+    "schedules": [],
+    "originalNotes": ""
+  },
+  {
+    "region": "7",
+    "schoolName": "Snowden International High School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:40 AM",
+        "endTime": "2:15 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:35",
+        "endTime": "2:20",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:35",
+        "endTime": "2:15 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:35",
+        "endTime": "2:20",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:35",
+        "endTime": "2:20",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "8",
+    "schoolName": "Another Course to College",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:00 AM",
+        "endTime": "2:30 PM",
+        "note": "Early Dismissal: 12:00pm"
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "8",
+    "schoolName": "Boston Arts Academy",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:00 AM",
+        "endTime": "3:55 PM",
+        "note": "12:40pm Fri; Early Dismissal: 1:25pm"
+      },
+      {
+        "label": "Teacher 1",
+        "startTime": "8:00",
+        "endTime": "3:00",
+        "note": null
+      },
+      {
+        "label": "Teacher 2",
+        "startTime": "9:00",
+        "endTime": "4:00",
+        "note": null
+      },
+      {
+        "label": "Para 1",
+        "startTime": "7:30",
+        "endTime": "3:00",
+        "note": null
+      },
+      {
+        "label": "Para 2",
+        "startTime": "8:00",
+        "endTime": "4:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:00",
+        "endTime": "3:00",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:30",
+        "endTime": "4:30",
+        "note": null
+      },
+      {
+        "label": "Specialist 1",
+        "startTime": "8:00",
+        "endTime": "3:00",
+        "note": null
+      },
+      {
+        "label": "Specialist 2",
+        "startTime": "9:00",
+        "endTime": "4:00",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "8",
+    "schoolName": "Boston Collaborative High School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "2:00 PM",
+        "note": "wed 12:00pm; Early Dismissal: 11:30am"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:00 AM",
+        "endTime": "2:30 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "8",
+    "schoolName": "Boston International High School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:00 AM",
+        "endTime": "2:30 PM",
+        "note": "Fr 1:20pm; Early Dismissal: 12:00pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:50",
+        "endTime": "2:30",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:00",
+        "endTime": "2:30",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:50",
+        "endTime": "2:30",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:40",
+        "endTime": "3:40",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:50",
+        "endTime": "2:30",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "8",
+    "schoolName": "Greater Egleston High School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:40 AM",
+        "endTime": "3:00 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:00 AM",
+        "endTime": "3:15 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:00 AM",
+        "endTime": "3:15 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:00 AM",
+        "endTime": "12:30 PM",
+        "note": "(.5 PE teacher)"
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "8",
+    "schoolName": "Henderson K-12 Inclusion School Lower",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "2:55 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:20 AM",
+        "endTime": "3:00 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:20 AM",
+        "endTime": "3:00 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:20 AM",
+        "endTime": "3:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:20 AM",
+        "endTime": "3:00 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "8",
+    "schoolName": "Henderson K-12 Inclusion School Upper",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "2:55 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:20 AM",
+        "endTime": "3:00 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:20 AM",
+        "endTime": "3:00 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:20 AM",
+        "endTime": "3:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:20 AM",
+        "endTime": "3:00 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": "CFCs work 8 hours at the Henderson, 7:30 - 3:30 and 8:00 to 4:00"
+  },
+  {
+    "region": "8",
+    "schoolName": "Margarita Muniz Academy",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:30 AM",
+        "endTime": "3:30 PM",
+        "note": "12:30pm Fri"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:20 AM",
+        "endTime": "3:40 PM",
+        "note": "3:00pm Fri"
+      },
+      {
+        "label": "Para",
+        "startTime": "8:30 AM",
+        "endTime": "3:30 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:30 AM",
+        "endTime": "3:30 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00 AM",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:20 AM",
+        "endTime": "3:40 PM",
+        "note": "3:00pm Fri"
+      }
+    ],
+    "originalNotes": "More info is avaiable in our Election to Work Agreement which all staff receive and sign"
+  },
+  {
+    "region": "8",
+    "schoolName": "New Mission High School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:45 AM",
+        "endTime": "2:30 PM",
+        "note": "Early Dismissal: 12:00"
+      },
+      {
+        "label": "Teacher 1",
+        "startTime": "7:45",
+        "endTime": "2:30",
+        "note": "M+F"
+      },
+      {
+        "label": "Teacher 2",
+        "startTime": "7:45",
+        "endTime": "3:30",
+        "note": "T W Th"
+      },
+      {
+        "label": "Para 1",
+        "startTime": "7:00",
+        "endTime": "3:00",
+        "note": "CFCs; ABA"
+      },
+      {
+        "label": "Para 2",
+        "startTime": "7:45",
+        "endTime": "2:30",
+        "note": "classroom paras; ABA"
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:45",
+        "endTime": "2:30",
+        "note": null
+      },
+      {
+        "label": "Family Liaison 1",
+        "startTime": "7:00",
+        "endTime": "3:00",
+        "note": "M; F"
+      },
+      {
+        "label": "Family Liaison 2",
+        "startTime": "7:30",
+        "endTime": "3:30",
+        "note": "T W Th; F"
+      },
+      {
+        "label": "Specialist 1",
+        "startTime": "7:45",
+        "endTime": "2:30",
+        "note": "M+F"
+      },
+      {
+        "label": "Specialist 2",
+        "startTime": "7:45",
+        "endTime": "3:30",
+        "note": "T W Th"
+      }
+    ],
+    "originalNotes": "More info is avaiable in our Election to Work Agreement which all staff receive and sign"
+  },
+  {
+    "region": "8",
+    "schoolName": "Newcomers Academy",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "8:00 AM",
+        "endTime": "2:30 PM",
+        "note": "1:55pm Fri"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:50",
+        "endTime": "2:23",
+        "note": "0"
+      },
+      {
+        "label": "Para",
+        "startTime": "8:00",
+        "endTime": "2:30",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:50",
+        "endTime": "2:30",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:50",
+        "endTime": "3:50",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:50",
+        "endTime": "2:30",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "8",
+    "schoolName": "Ruth Batson Academy (BCLA-McCormack)",
+    "schedules": [
+      {
+        "label": "Teacher",
+        "startTime": "7:50",
+        "endTime": "2:30",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:00 AM",
+        "endTime": "3:00 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:50",
+        "endTime": "2:30",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:50",
+        "endTime": "2:30",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:50",
+        "endTime": "2:30",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "9",
+    "schoolName": "Albert Holland School of Technology (Burke HS)",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:15 AM",
+        "endTime": "3:15 PM",
+        "note": "12:45pm Wed; Early Dismissal: 12:29pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:45 AM",
+        "endTime": "2:45 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:45 AM",
+        "endTime": "2:45 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:45 AM",
+        "endTime": "2:45 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:15 AM",
+        "endTime": "3:15 AM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:45 AM",
+        "endTime": "2:45 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "9",
+    "schoolName": "Boston Day-Evening Academy",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "9:00 AM",
+        "endTime": "3:10 PM",
+        "note": "Early Dismissal: 12:25pm"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:20",
+        "endTime": "3:20",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "8:00 AM",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "8:20",
+        "endTime": "3:20",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "8:00 AM",
+        "endTime": "4:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "8:20",
+        "endTime": "3:20",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "9",
+    "schoolName": "Boston Latin Academy",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:20 AM",
+        "endTime": "1:40 PM",
+        "note": "Early Dismissal: 11:10am"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:10",
+        "endTime": "1:50",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:10",
+        "endTime": "1:50",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:10",
+        "endTime": "1:50",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:10",
+        "endTime": "3:10",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:10",
+        "endTime": "1:50",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "9",
+    "schoolName": "Boston Latin School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:45 AM",
+        "endTime": "2:15 PM",
+        "note": "Early Dismissal: 11:45am"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:35",
+        "endTime": "2:15",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:45",
+        "endTime": "2:15",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:35",
+        "endTime": "2:15",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:30",
+        "endTime": "3:30",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:35",
+        "endTime": "2:15",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "9",
+    "schoolName": "Community Academy",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "2:10 PM",
+        "note": "Wed 1:10pm; Early Dismissal: 11:40am"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:35 AM",
+        "endTime": "2:10 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:35 AM",
+        "endTime": "2:10 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:35 AM",
+        "endTime": "2:10 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:35 AM",
+        "endTime": "2:10 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:35 AM",
+        "endTime": "2:10 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": "CA has early release days for students  on Wednesdays(7:30am-1:10 pm)"
+  },
+  {
+    "region": "9",
+    "schoolName": "Community Academy of Science and Health",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "1:50 PM",
+        "note": "Early Dismissal: 11:20am"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:20 AM",
+        "endTime": "2:00 PM",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:20 AM",
+        "endTime": "2:00 PM",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:20 AM",
+        "endTime": "2:00 PM",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:20 AM",
+        "endTime": "2:00 PM",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:20 AM",
+        "endTime": "2:00 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "9",
+    "schoolName": "Dearborn 6-12 STEM Academy",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "2:00 PM",
+        "note": "Early Dismissal: 11:30am"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:20",
+        "endTime": "2:10",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:20",
+        "endTime": "2:10",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:20",
+        "endTime": "2:10",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:20",
+        "endTime": "2:10",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:20",
+        "endTime": "2:10",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "9",
+    "schoolName": "English High School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:20 AM",
+        "endTime": "2:20 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:10",
+        "endTime": "2:30",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:10",
+        "endTime": "2:30",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:10",
+        "endTime": "2:30",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:10",
+        "endTime": "2:30",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:10",
+        "endTime": "2:30",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "9",
+    "schoolName": "Madison Park Technical Vocational High School",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "2:35 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:20",
+        "endTime": "2:35",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:30",
+        "endTime": "2:25",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:20",
+        "endTime": "2:35",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:20",
+        "endTime": "3:35",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:20",
+        "endTime": "2:35",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "9",
+    "schoolName": "TechBoston Academy",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "2:30 PM",
+        "note": "11:00am Fri"
+      },
+      {
+        "label": "Teacher",
+        "startTime": "7:10",
+        "endTime": "2:30",
+        "note": null
+      },
+      {
+        "label": "Para",
+        "startTime": "7:18",
+        "endTime": "2:30",
+        "note": null
+      },
+      {
+        "label": "Nurse",
+        "startTime": "7:10",
+        "endTime": "2:30",
+        "note": null
+      },
+      {
+        "label": "Family Liaison",
+        "startTime": "7:00",
+        "endTime": "3:00",
+        "note": null
+      },
+      {
+        "label": "Specialist",
+        "startTime": "7:10",
+        "endTime": "2:30",
+        "note": null
+      }
+    ],
+    "originalNotes": "Pilot School. WEA."
+  },
+  {
+    "region": "UP",
+    "schoolName": "UP Academy Dorchester",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:15 AM",
+        "endTime": "2:10 PM",
+        "note": "Mon-Fri"
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "UP",
+    "schoolName": "UP Academy Holland",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:45 AM",
+        "endTime": "3:10 PM",
+        "note": "12:30pm Wed"
+      }
+    ],
+    "originalNotes": ""
+  },
+  {
+    "region": "",
+    "schoolName": "Succeed Boston",
+    "schedules": [
+      {
+        "label": "School Hours",
+        "startTime": "7:30 AM",
+        "endTime": "3:30 PM",
+        "note": null
+      },
+      {
+        "label": "Teacher",
+        "startTime": "8:00 AM",
+        "endTime": "2:40 PM",
+        "note": null
+      }
+    ],
+    "originalNotes": ""
+  }
+]
