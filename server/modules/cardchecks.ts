@@ -432,27 +432,95 @@ export function registerCardchecksRoutes(
 
       const employer = employerResult.rows[0] as any;
 
-      // Get active workers at this employer who don't have a signed cardcheck
+      // Get workers at this employer who are missing valid cardchecks
+      // A cardcheck is invalid if:
+      // 1. No signed cardcheck at all (Missing)
+      // 2. BU Mismatch: signed cardcheck is for a different BU than worker's current BU
+      // 3. Termination Expired: worker was terminated for 30+ days and returned to active,
+      //    but their latest signed cardcheck was signed before the termination
       const workersResult = await db.execute(sql`
         WITH latest_employment AS (
-          SELECT DISTINCT ON (wh.worker_id, wh.employer_id)
+          -- Get the most recent employment status for each worker at this employer
+          SELECT DISTINCT ON (wh.worker_id)
             wh.worker_id,
-            wh.employer_id,
-            es.name as status_name
+            es.name as status_name,
+            make_date(wh.year, wh.month, wh.day) as status_date
           FROM worker_hours wh
           LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
           WHERE wh.employer_id = ${employerId}
-          ORDER BY wh.worker_id, wh.employer_id, wh.year DESC, wh.month DESC, wh.day DESC
+          ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
         ),
+        -- Workers who are currently active at this employer
         active_workers AS (
-          SELECT le.worker_id
+          SELECT le.worker_id, le.status_date as current_active_date
           FROM latest_employment le
           WHERE le.status_name IN ('Active', 'Active - Secondary')
         ),
-        workers_with_signed_cardcheck AS (
-          SELECT DISTINCT cc.worker_id
+        -- Get the latest signed cardcheck for each worker (if any)
+        latest_signed_cardcheck AS (
+          SELECT DISTINCT ON (cc.worker_id)
+            cc.worker_id,
+            cc.bargaining_unit_id,
+            cc.signed_date
           FROM cardchecks cc
           WHERE cc.status = 'signed'
+          ORDER BY cc.worker_id, cc.signed_date DESC NULLS LAST
+        ),
+        -- Use window functions to identify termination periods
+        -- For each status record, use LEAD() to find when they returned to active
+        -- A termination period requiring new cardcheck is when:
+        -- 1. Status is 'Terminated'
+        -- 2. Next status is 'Active' or 'Active - Secondary'
+        -- 3. Gap between termination date and next active date >= 30 days
+        status_with_next AS (
+          SELECT 
+            wh.worker_id,
+            es.name as status_name,
+            make_date(wh.year, wh.month, wh.day) as status_date,
+            LEAD(es.name) OVER (PARTITION BY wh.worker_id ORDER BY wh.year, wh.month, wh.day) as next_status,
+            LEAD(make_date(wh.year, wh.month, wh.day)) OVER (PARTITION BY wh.worker_id ORDER BY wh.year, wh.month, wh.day) as next_date
+          FROM worker_hours wh
+          LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
+          WHERE wh.employer_id = ${employerId}
+        ),
+        -- Find termination periods where worker was terminated for 30+ days before returning to active
+        -- Only consider the termination immediately preceding the current active period
+        termination_requiring_new_cardcheck AS (
+          SELECT DISTINCT ON (aw.worker_id)
+            aw.worker_id,
+            swn.status_date as termination_date,
+            swn.next_date as return_active_date
+          FROM active_workers aw
+          INNER JOIN status_with_next swn ON swn.worker_id = aw.worker_id
+          WHERE swn.status_name = 'Terminated'
+            AND swn.next_status IN ('Active', 'Active - Secondary')
+            AND swn.next_date = aw.current_active_date
+            AND (swn.next_date - swn.status_date) >= 30
+          ORDER BY aw.worker_id, swn.status_date DESC
+        ),
+        -- Determine invalid reason for each active worker (prioritized, one per worker)
+        worker_invalid_reasons AS (
+          SELECT DISTINCT ON (aw.worker_id)
+            aw.worker_id,
+            CASE
+              -- Priority 1: No signed cardcheck at all
+              WHEN lsc.worker_id IS NULL THEN 'Missing'
+              -- Priority 2: Termination expired (had 30+ day gap, cardcheck signed before termination)
+              WHEN trn.worker_id IS NOT NULL 
+                   AND (lsc.signed_date IS NULL OR lsc.signed_date < trn.termination_date) 
+              THEN 'Termination Expired'
+              -- Priority 3: BU Mismatch
+              WHEN w.bargaining_unit_id IS NOT NULL 
+                   AND lsc.bargaining_unit_id IS NOT NULL
+                   AND w.bargaining_unit_id != lsc.bargaining_unit_id 
+              THEN 'BU Mismatch'
+              ELSE NULL
+            END as invalid_reason
+          FROM active_workers aw
+          INNER JOIN workers w ON w.id = aw.worker_id
+          LEFT JOIN latest_signed_cardcheck lsc ON lsc.worker_id = aw.worker_id
+          LEFT JOIN termination_requiring_new_cardcheck trn ON trn.worker_id = aw.worker_id
+          ORDER BY aw.worker_id
         )
         SELECT 
           w.id as "workerId",
@@ -460,18 +528,26 @@ export function registerCardchecksRoutes(
           c.email,
           bu.id as "bargainingUnitId",
           bu.name as "bargainingUnitName",
+          wir.invalid_reason as "invalidReason",
           (
             SELECT cp.phone_number 
             FROM contact_phone cp 
-            WHERE cp.contact_id = c.id AND cp.is_primary = true 
+            WHERE cp.contact_id = c.id AND cp.is_active = true
+            ORDER BY cp.is_primary DESC NULLS LAST
             LIMIT 1
           ) as phone
-        FROM active_workers aw
-        INNER JOIN workers w ON w.id = aw.worker_id
+        FROM worker_invalid_reasons wir
+        INNER JOIN workers w ON w.id = wir.worker_id
         INNER JOIN contacts c ON c.id = w.contact_id
         LEFT JOIN bargaining_units bu ON bu.id = w.bargaining_unit_id
-        WHERE aw.worker_id NOT IN (SELECT worker_id FROM workers_with_signed_cardcheck)
-        ORDER BY c.display_name
+        WHERE wir.invalid_reason IS NOT NULL
+        ORDER BY 
+          CASE wir.invalid_reason 
+            WHEN 'Missing' THEN 1 
+            WHEN 'Termination Expired' THEN 2
+            WHEN 'BU Mismatch' THEN 3 
+          END,
+          c.display_name
       `);
 
       const workers = workersResult.rows.map((row: any) => ({
@@ -480,7 +556,8 @@ export function registerCardchecksRoutes(
         email: row.email || null,
         phone: row.phone || null,
         bargainingUnitId: row.bargainingUnitId,
-        bargainingUnitName: row.bargainingUnitName || 'Unknown'
+        bargainingUnitName: row.bargainingUnitName || 'Unknown',
+        invalidReason: row.invalidReason || null
       }));
 
       res.json({

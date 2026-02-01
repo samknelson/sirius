@@ -43,6 +43,7 @@ interface MissingCardcheckWorker {
   email: string | null;
   phone: string | null;
   bargainingUnitName: string;
+  invalidReason: 'Missing' | 'BU Mismatch' | 'Termination Expired' | null;
 }
 
 interface MissingCardchecksResponse {
@@ -214,6 +215,7 @@ function generateAggregatePdf(
     const tableBody = [
       [
         { text: 'Name', style: 'tableHeader' },
+        { text: 'Reason', style: 'tableHeader' },
         { text: 'Email', style: 'tableHeader' },
         { text: 'Phone', style: 'tableHeader' },
         { text: 'Bargaining Unit', style: 'tableHeader' },
@@ -222,13 +224,14 @@ function generateAggregatePdf(
 
     if (hasError) {
       tableBody.push([
-        { text: 'Data unavailable - failed to fetch worker list', colSpan: 4, style: 'errorMessage' } as any,
-        {}, {}, {}
+        { text: 'Data unavailable - failed to fetch worker list', colSpan: 5, style: 'errorMessage' } as any,
+        {}, {}, {}, {}
       ]);
     } else if (workers.length > 0) {
       workers.forEach((worker) => {
         tableBody.push([
           { text: worker.displayName, style: undefined as any },
+          { text: worker.invalidReason || 'Missing', style: 'reasonCell' as any },
           { text: worker.email || '-', style: undefined as any },
           { text: worker.phone || '-', style: undefined as any },
           { text: worker.bargainingUnitName, style: undefined as any },
@@ -236,15 +239,15 @@ function generateAggregatePdf(
       });
     } else {
       tableBody.push([
-        { text: 'All active workers have signed card checks', colSpan: 4, style: 'emptyMessage' } as any,
-        {}, {}, {}
+        { text: 'All active workers have valid signed card checks', colSpan: 5, style: 'emptyMessage' } as any,
+        {}, {}, {}, {}
       ]);
     }
 
     content.push({
       table: {
         headerRows: 1,
-        widths: ['*', '*', 'auto', 'auto'],
+        widths: ['*', 'auto', '*', 'auto', 'auto'],
         body: tableBody,
       },
       layout: {
@@ -274,6 +277,7 @@ function generateAggregatePdf(
       unitInfo: { fontSize: 9, color: '#4b5563' },
       contactInfo: { fontSize: 9, color: '#374151' },
       tableHeader: { bold: true, fontSize: 9, color: '#374151' },
+      reasonCell: { fontSize: 8, color: '#dc2626', italics: true },
       emptyMessage: { fontSize: 9, color: '#6b7280', italics: true, alignment: 'center' },
       errorMessage: { fontSize: 9, color: '#dc2626', italics: true, alignment: 'center' },
     },

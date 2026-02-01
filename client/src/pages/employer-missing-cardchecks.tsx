@@ -28,6 +28,7 @@ interface MissingCardcheckWorker {
   phone: string | null;
   bargainingUnitId: string | null;
   bargainingUnitName: string;
+  invalidReason: 'Missing' | 'BU Mismatch' | 'Termination Expired' | null;
 }
 
 interface MissingCardchecksResponse {
@@ -43,6 +44,7 @@ function generatePdf(employer: { name: string }, workers: MissingCardcheckWorker
   const tableBody = [
     [
       { text: 'Name', style: 'tableHeader' },
+      { text: 'Reason', style: 'tableHeader' },
       { text: 'Email', style: 'tableHeader' },
       { text: 'Phone', style: 'tableHeader' },
       { text: 'Bargaining Unit', style: 'tableHeader' },
@@ -53,6 +55,7 @@ function generatePdf(employer: { name: string }, workers: MissingCardcheckWorker
     workers.forEach((worker) => {
       tableBody.push([
         { text: worker.displayName, style: undefined as any },
+        { text: worker.invalidReason || 'Missing', style: 'reasonCell' as any },
         { text: worker.email || '-', style: undefined as any },
         { text: worker.phone || '-', style: undefined as any },
         { text: worker.bargainingUnitName, style: undefined as any },
@@ -60,8 +63,8 @@ function generatePdf(employer: { name: string }, workers: MissingCardcheckWorker
     });
   } else {
     tableBody.push([
-      { text: 'All active workers have signed card checks', colSpan: 4, style: 'emptyMessage' } as any,
-      {}, {}, {}
+      { text: 'All active workers have valid signed card checks', colSpan: 5, style: 'emptyMessage' } as any,
+      {}, {}, {}, {}
     ]);
   }
 
@@ -89,7 +92,7 @@ function generatePdf(employer: { name: string }, workers: MissingCardcheckWorker
       {
         table: {
           headerRows: 1,
-          widths: ['*', '*', 'auto', 'auto'],
+          widths: ['*', 'auto', '*', 'auto', 'auto'],
           body: tableBody,
         },
         layout: {
@@ -119,6 +122,11 @@ function generatePdf(employer: { name: string }, workers: MissingCardcheckWorker
         bold: true,
         fontSize: 10,
         color: '#374151',
+      },
+      reasonCell: {
+        fontSize: 9,
+        color: '#dc2626',
+        italics: true,
       },
       emptyMessage: {
         fontSize: 10,
@@ -218,10 +226,10 @@ export default function EmployerMissingCardchecks() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold" data-testid="text-count">
-                  {filteredWorkers.length} Workers Missing Card Checks
+                  {filteredWorkers.length} Workers Missing Valid Card Checks
                 </h2>
                 <p className="text-sm text-muted-foreground" data-testid="text-description">
-                  Active workers at this employer who have not signed a card check
+                  Active workers who need to sign a card check (missing, bargaining unit mismatch, or expired due to termination)
                 </p>
               </div>
               <Input
@@ -240,7 +248,7 @@ export default function EmployerMissingCardchecks() {
                   <p className="text-muted-foreground" data-testid="text-empty">
                     {search
                       ? "No workers match your search"
-                      : "All active workers have signed card checks!"}
+                      : "All active workers have valid signed card checks!"}
                   </p>
                 </CardContent>
               </Card>
@@ -251,6 +259,7 @@ export default function EmployerMissingCardchecks() {
                     <TableHeader>
                       <TableRow>
                         <TableHead data-testid="header-name">Name</TableHead>
+                        <TableHead data-testid="header-reason">Reason</TableHead>
                         <TableHead data-testid="header-email">Email</TableHead>
                         <TableHead data-testid="header-phone">Phone</TableHead>
                         <TableHead data-testid="header-bargaining-unit">Bargaining Unit</TableHead>
@@ -265,6 +274,14 @@ export default function EmployerMissingCardchecks() {
                                 {worker.displayName}
                               </span>
                             </Link>
+                          </TableCell>
+                          <TableCell>
+                            <Badge 
+                              variant={worker.invalidReason === 'Missing' ? 'secondary' : 'destructive'}
+                              data-testid={`reason-${worker.workerId}`}
+                            >
+                              {worker.invalidReason || 'Missing'}
+                            </Badge>
                           </TableCell>
                           <TableCell>
                             {worker.email ? (
