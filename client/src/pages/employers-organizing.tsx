@@ -303,6 +303,15 @@ const iconMap: Record<string, typeof Building2> = {
   Hospital,
 };
 
+// Calculate allowed building reps: 1 per 25 workers per bargaining unit, rounded up
+// Only count BUs that have workers; BUs with 0 workers don't contribute to allowed count
+function calculateAllowedReps(bargainingUnits: OrganizingEmployer['bargainingUnits']): number {
+  return bargainingUnits.reduce((total, unit) => {
+    if (unit.totalWorkers === 0) return total;
+    return total + Math.ceil(unit.totalWorkers / 25);
+  }, 0);
+}
+
 function EmployerTypeIcon({ icon, typeName }: { icon: string | null; typeName: string | null }) {
   const IconComponent = icon ? iconMap[icon] : null;
   
@@ -380,27 +389,48 @@ function EmployerCard({ employer, term }: { employer: OrganizingEmployer; term: 
           </div>
         )}
 
-        {employer.stewards.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-1 text-sm font-medium text-muted-foreground">
-              <Award className="h-4 w-4" />
-              <span>{term('steward', { plural: true })}</span>
+        {(() => {
+          const allowedReps = calculateAllowedReps(employer.bargainingUnits);
+          const currentReps = employer.stewards.length;
+          
+          // Don't show steward section if no workers (no allowed reps) and no stewards assigned
+          if (allowedReps === 0 && currentReps === 0) return null;
+          
+          const hasOpportunity = currentReps < allowedReps;
+          const isOverAllocated = currentReps > allowedReps;
+          
+          return (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1 text-sm font-medium text-muted-foreground">
+                  <Award className="h-4 w-4" />
+                  <span>{term('steward', { plural: true })}</span>
+                </div>
+                <Badge 
+                  variant={isOverAllocated ? "destructive" : hasOpportunity ? "secondary" : "default"}
+                  data-testid={`badge-steward-quota-${employer.id}`}
+                >
+                  {currentReps}/{allowedReps}
+                </Badge>
+              </div>
+              {employer.stewards.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {employer.stewards.map((steward) => (
+                    <Link key={steward.workerId} href={`/workers/${steward.workerId}`}>
+                      <Badge 
+                        variant="outline" 
+                        className="cursor-pointer"
+                        data-testid={`steward-${steward.workerId}`}
+                      >
+                        {steward.displayName}
+                      </Badge>
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="flex flex-wrap gap-1">
-              {employer.stewards.map((steward) => (
-                <Link key={steward.workerId} href={`/workers/${steward.workerId}`}>
-                  <Badge 
-                    variant="outline" 
-                    className="cursor-pointer"
-                    data-testid={`steward-${steward.workerId}`}
-                  >
-                    {steward.displayName}
-                  </Badge>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {employer.principals.length > 0 && (
           <div className="space-y-2">
