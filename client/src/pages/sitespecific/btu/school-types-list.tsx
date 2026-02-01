@@ -5,22 +5,51 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Loader2, Search, X, Building2, Pencil } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Plus, Trash2, Loader2, Search, X, Building2, Pencil, School, GraduationCap, BookOpen, Users, Building, Home, Landmark, Library, Microscope, Music, Palette, Trophy, Heart, Star, Flag, Circle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useForm } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 
+const AVAILABLE_ICONS = [
+  { name: "school", label: "School", icon: School },
+  { name: "graduation-cap", label: "Graduation Cap", icon: GraduationCap },
+  { name: "book-open", label: "Book", icon: BookOpen },
+  { name: "users", label: "Users", icon: Users },
+  { name: "building", label: "Building", icon: Building },
+  { name: "building2", label: "Building 2", icon: Building2 },
+  { name: "home", label: "Home", icon: Home },
+  { name: "landmark", label: "Landmark", icon: Landmark },
+  { name: "library", label: "Library", icon: Library },
+  { name: "microscope", label: "Microscope", icon: Microscope },
+  { name: "music", label: "Music", icon: Music },
+  { name: "palette", label: "Palette", icon: Palette },
+  { name: "trophy", label: "Trophy", icon: Trophy },
+  { name: "heart", label: "Heart", icon: Heart },
+  { name: "star", label: "Star", icon: Star },
+  { name: "flag", label: "Flag", icon: Flag },
+] as const;
+
+type IconName = typeof AVAILABLE_ICONS[number]["name"];
+
+function getIconComponent(iconName: string | undefined) {
+  const iconDef = AVAILABLE_ICONS.find(i => i.name === iconName);
+  return iconDef?.icon || Circle;
+}
+
 interface BtuSchoolType {
   id: string;
   siriusId: string;
   name: string;
+  data?: { icon?: string } | null;
 }
 
 interface FormValues {
   siriusId: string;
   name: string;
+  icon: string;
 }
 
 export default function BtuSchoolTypesListPage() {
@@ -38,11 +67,12 @@ export default function BtuSchoolTypesListPage() {
     defaultValues: {
       siriusId: "",
       name: "",
+      icon: "",
     },
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: FormValues) => {
+    mutationFn: async (data: { siriusId: string; name: string; data?: { icon?: string } }) => {
       return apiRequest("POST", "/api/sitespecific/btu/school-types", data);
     },
     onSuccess: () => {
@@ -64,7 +94,7 @@ export default function BtuSchoolTypesListPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: FormValues }) => {
+    mutationFn: async ({ id, data }: { id: string; data: { siriusId: string; name: string; data?: { icon?: string } } }) => {
       return apiRequest("PATCH", `/api/sitespecific/btu/school-types/${id}`, data);
     },
     onSuccess: () => {
@@ -121,20 +151,22 @@ export default function BtuSchoolTypesListPage() {
     form.reset({
       siriusId: record.siriusId,
       name: record.name,
+      icon: record.data?.icon || "",
     });
     setEditRecord(record);
   };
 
-  const onSubmit = (data: FormValues) => {
-    const cleanedData = {
-      siriusId: data.siriusId.trim(),
-      name: data.name.trim(),
+  const onSubmit = (formData: FormValues) => {
+    const payload = {
+      siriusId: formData.siriusId.trim(),
+      name: formData.name.trim(),
+      data: formData.icon ? { icon: formData.icon } : undefined,
     };
     
     if (editRecord) {
-      updateMutation.mutate({ id: editRecord.id, data: cleanedData });
+      updateMutation.mutate({ id: editRecord.id, data: payload });
     } else {
-      createMutation.mutate(cleanedData);
+      createMutation.mutate(payload);
     }
   };
 
@@ -224,42 +256,49 @@ export default function BtuSchoolTypesListPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-16">Icon</TableHead>
                   <TableHead>Sirius ID</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredRecords.map((record) => (
-                  <TableRow key={record.id} data-testid={`row-school-type-${record.id}`}>
-                    <TableCell data-testid={`text-sirius-id-${record.id}`}>
-                      {record.siriusId}
-                    </TableCell>
-                    <TableCell data-testid={`text-name-${record.id}`}>
-                      {record.name}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => openEditDialog(record)}
-                          data-testid={`button-edit-${record.id}`}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setDeleteId(record.id)}
-                          data-testid={`button-delete-${record.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {filteredRecords.map((record) => {
+                  const IconComponent = getIconComponent(record.data?.icon);
+                  return (
+                    <TableRow key={record.id} data-testid={`row-school-type-${record.id}`}>
+                      <TableCell>
+                        <IconComponent className="h-5 w-5 text-muted-foreground" />
+                      </TableCell>
+                      <TableCell data-testid={`text-sirius-id-${record.id}`}>
+                        {record.siriusId}
+                      </TableCell>
+                      <TableCell data-testid={`text-name-${record.id}`}>
+                        {record.name}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openEditDialog(record)}
+                            data-testid={`button-edit-${record.id}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setDeleteId(record.id)}
+                            data-testid={`button-delete-${record.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
@@ -331,6 +370,46 @@ export default function BtuSchoolTypesListPage() {
                     <FormControl>
                       <Input {...field} placeholder="School type name" data-testid="input-name" />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="icon"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Icon</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-icon">
+                          <SelectValue placeholder="Select an icon (optional)">
+                            {field.value && (
+                              <div className="flex items-center gap-2">
+                                {(() => {
+                                  const IconComp = getIconComponent(field.value);
+                                  return <IconComp className="h-4 w-4" />;
+                                })()}
+                                <span>{AVAILABLE_ICONS.find(i => i.name === field.value)?.label}</span>
+                              </div>
+                            )}
+                          </SelectValue>
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {AVAILABLE_ICONS.map((iconDef) => {
+                          const IconComp = iconDef.icon;
+                          return (
+                            <SelectItem key={iconDef.name} value={iconDef.name}>
+                              <div className="flex items-center gap-2">
+                                <IconComp className="h-4 w-4" />
+                                <span>{iconDef.label}</span>
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
