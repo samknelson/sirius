@@ -155,7 +155,8 @@ export function createBtuEmployerMapStorage(): BtuEmployerMapStorage {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
-      const results = await db
+      const client = getClient();
+      const results = await client
         .delete(sitespecificBtuEmployerMap)
         .returning({ id: sitespecificBtuEmployerMap.id });
       return results.length;

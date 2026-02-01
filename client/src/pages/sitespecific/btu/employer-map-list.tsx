@@ -29,6 +29,13 @@ interface BtuEmployerMap {
   secondaryEmployerName: string | null;
   bargainingUnitId: string | null;
   employmentStatusId: string | null;
+  territoryId: string | null;
+}
+
+interface BtuTerritory {
+  id: string;
+  siriusId: string;
+  name: string;
 }
 
 interface EmploymentStatus {
@@ -61,6 +68,7 @@ interface FormValues {
   secondaryEmployerName: string;
   bargainingUnitId: string;
   employmentStatusId: string;
+  territoryId: string;
 }
 
 interface ImportResult {
@@ -88,6 +96,7 @@ interface BulkEditValues {
   secondaryEmployerName: string;
   bargainingUnitId: string;
   employmentStatusId: string;
+  territoryId: string;
 }
 
 export default function BtuEmployerMapListPage() {
@@ -122,6 +131,10 @@ export default function BtuEmployerMapListPage() {
 
   const { data: employmentStatuses = [] } = useQuery<EmploymentStatus[]>({
     queryKey: ["/api/employment-statuses"],
+  });
+
+  const { data: territories = [] } = useQuery<BtuTerritory[]>({
+    queryKey: ["/api/sitespecific/btu/territories"],
   });
 
   const { data: systemEmployersData, isSuccess: systemEmployersLoaded } = useQuery<{ employerNames: string[] }>({
@@ -236,6 +249,7 @@ export default function BtuEmployerMapListPage() {
       secondaryEmployerName: "",
       bargainingUnitId: "",
       employmentStatusId: "",
+      territoryId: "",
     },
   });
 
@@ -440,6 +454,7 @@ export default function BtuEmployerMapListPage() {
       secondaryEmployerName: "",
       bargainingUnitId: "",
       employmentStatusId: "",
+      territoryId: "",
     },
   });
 
@@ -481,6 +496,9 @@ export default function BtuEmployerMapListPage() {
     if (data.employmentStatusId && data.employmentStatusId !== "__unchanged__") {
       updates.employmentStatusId = data.employmentStatusId === "__clear__" ? "" : data.employmentStatusId;
     }
+    if (data.territoryId && data.territoryId !== "__unchanged__") {
+      updates.territoryId = data.territoryId === "__clear__" ? "" : data.territoryId;
+    }
 
     if (Object.keys(updates).length === 0) {
       toast({
@@ -500,6 +518,7 @@ export default function BtuEmployerMapListPage() {
       secondaryEmployerName: "__unchanged__",
       bargainingUnitId: "__unchanged__",
       employmentStatusId: "__unchanged__",
+      territoryId: "__unchanged__",
     });
     setIsBulkEditDialogOpen(true);
   };
@@ -611,6 +630,7 @@ export default function BtuEmployerMapListPage() {
       "Employer Name",
       "Secondary Employer Name",
       "Bargaining Unit",
+      "Territory",
     ];
 
     const rows = filteredRecords.map((record) => [
@@ -624,6 +644,7 @@ export default function BtuEmployerMapListPage() {
       escapeCSV(record.employerName),
       escapeCSV(record.secondaryEmployerName),
       escapeCSV(bargainingUnits.find(bu => bu.id === record.bargainingUnitId)?.siriusId),
+      escapeCSV(territories.find(t => t.id === record.territoryId)?.siriusId),
     ]);
 
     const csv = [headers.join(","), ...rows.map(row => row.join(","))].join("\n");
@@ -692,6 +713,7 @@ export default function BtuEmployerMapListPage() {
       secondaryEmployerName: record.secondaryEmployerName || "",
       bargainingUnitId: record.bargainingUnitId || "",
       employmentStatusId: record.employmentStatusId || "",
+      territoryId: record.territoryId || "",
     });
     setEditRecord(record);
   };
@@ -711,6 +733,7 @@ export default function BtuEmployerMapListPage() {
       secondaryEmployerName: record.secondaryEmployerName || null,
       bargainingUnitId: record.bargainingUnitId || null,
       employmentStatusId: record.employmentStatusId || null,
+      territoryId: record.territoryId || null,
     };
     
     updateMutation.mutate({ 
@@ -741,6 +764,7 @@ export default function BtuEmployerMapListPage() {
       secondaryEmployerName: suggestedEmployer,
       bargainingUnitId: record.bargainingUnitId || null,
       employmentStatusId: record.employmentStatusId || null,
+      territoryId: record.territoryId || null,
     };
     
     updateMutation.mutate({ 
@@ -768,6 +792,7 @@ export default function BtuEmployerMapListPage() {
       secondaryEmployerName: data.secondaryEmployerName?.trim() || null,
       bargainingUnitId: data.bargainingUnitId || null,
       employmentStatusId: data.employmentStatusId || null,
+      territoryId: data.territoryId || null,
     };
     
     if (editRecord) {
@@ -959,6 +984,7 @@ export default function BtuEmployerMapListPage() {
                 <TableHead>Secondary Employer</TableHead>
                 <TableHead>Bargaining Unit</TableHead>
                 <TableHead>Employment Status</TableHead>
+                <TableHead>Territory</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -1102,6 +1128,9 @@ export default function BtuEmployerMapListPage() {
                   </TableCell>
                   <TableCell data-testid={`text-employment-status-${record.id}`}>
                     {employmentStatuses.find(es => es.id === record.employmentStatusId)?.code || "-"}
+                  </TableCell>
+                  <TableCell data-testid={`text-territory-${record.id}`}>
+                    {territories.find(t => t.id === record.territoryId)?.name || "-"}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
@@ -1372,6 +1401,34 @@ export default function BtuEmployerMapListPage() {
                     </FormItem>
                   )}
                 />
+                <FormField
+                  control={form.control}
+                  name="territoryId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Territory</FormLabel>
+                      <Select 
+                        onValueChange={(val) => field.onChange(val === "__none__" ? "" : val)} 
+                        value={field.value || "__none__"}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-territory">
+                            <SelectValue placeholder="Select a territory" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="__none__">None</SelectItem>
+                          {territories.map((territory) => (
+                            <SelectItem key={territory.id} value={territory.id}>
+                              {territory.siriusId} - {territory.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => {
@@ -1580,6 +1637,32 @@ export default function BtuEmployerMapListPage() {
                         {employmentStatuses.map((status) => (
                           <SelectItem key={status.id} value={status.id}>
                             {status.code} - {status.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={bulkEditForm.control}
+                name="territoryId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Territory</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="bulk-select-territory">
+                          <SelectValue placeholder="Select an option" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="__unchanged__">— Keep unchanged —</SelectItem>
+                        <SelectItem value="__clear__">— Clear value —</SelectItem>
+                        {territories.map((territory) => (
+                          <SelectItem key={territory.id} value={territory.id}>
+                            {territory.siriusId} - {territory.name}
                           </SelectItem>
                         ))}
                       </SelectContent>

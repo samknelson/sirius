@@ -67,6 +67,7 @@ import { type DispatchStorage, createDispatchStorage, dispatchLoggingConfig } fr
 import { type WorkerStewardAssignmentStorage, createWorkerStewardAssignmentStorage, workerStewardAssignmentLoggingConfig } from "./worker-steward-assignments";
 import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./sitespecific-btu-csg";
 import { type BtuEmployerMapStorage, createBtuEmployerMapStorage, btuEmployerMapLoggingConfig } from "./sitespecific-btu-employer-map";
+import { type BtuTerritoriesStorage, createBtuTerritoriesStorage } from "./btu-territories";
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./worker-dispatch-dnc";
 import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./worker-skills";
@@ -126,6 +127,7 @@ export interface IStorage {
   workerStewardAssignments: WorkerStewardAssignmentStorage;
   btuCsg: BtuCsgStorage;
   btuEmployerMap: BtuEmployerMapStorage;
+  btuTerritories: BtuTerritoriesStorage;
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
   workerSkills: WorkerSkillStorage;
@@ -185,6 +187,7 @@ export class DatabaseStorage implements IStorage {
   workerStewardAssignments: WorkerStewardAssignmentStorage;
   btuCsg: BtuCsgStorage;
   btuEmployerMap: BtuEmployerMapStorage;
+  btuTerritories: BtuTerritoriesStorage;
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
   workerSkills: WorkerSkillStorage;
@@ -340,6 +343,7 @@ export class DatabaseStorage implements IStorage {
     this.workerStewardAssignments = withStorageLogging(createWorkerStewardAssignmentStorage(), workerStewardAssignmentLoggingConfig);
     this.btuCsg = withStorageLogging(createBtuCsgStorage(), btuCsgLoggingConfig);
     this.btuEmployerMap = withStorageLogging(createBtuEmployerMapStorage(), btuEmployerMapLoggingConfig);
+    this.btuTerritories = createBtuTerritoriesStorage();
     this.workerBans = withStorageLogging(createWorkerBanStorage(), workerBanLoggingConfig);
     this.workerDispatchDnc = withStorageLogging(createWorkerDispatchDncStorage(), workerDispatchDncLoggingConfig);
     this.workerSkills = withStorageLogging(createWorkerSkillStorage(), workerSkillLoggingConfig);
