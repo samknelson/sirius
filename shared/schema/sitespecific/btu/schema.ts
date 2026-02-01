@@ -105,6 +105,7 @@ export const sitespecificBtuSchoolTypes = pgTable("sitespecific_btu_school_types
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   siriusId: varchar("sirius_id").unique().notNull(),
   name: text("name").notNull(),
+  description: text("description"),
   data: jsonb("data"),
 });
 

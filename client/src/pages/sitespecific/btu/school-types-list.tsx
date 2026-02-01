@@ -43,12 +43,14 @@ interface BtuSchoolType {
   id: string;
   siriusId: string;
   name: string;
+  description?: string | null;
   data?: { icon?: string } | null;
 }
 
 interface FormValues {
   siriusId: string;
   name: string;
+  description: string;
   icon: string;
 }
 
@@ -67,12 +69,13 @@ export default function BtuSchoolTypesListPage() {
     defaultValues: {
       siriusId: "",
       name: "",
+      description: "",
       icon: "",
     },
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: { siriusId: string; name: string; data?: { icon?: string } }) => {
+    mutationFn: async (data: { siriusId: string; name: string; description?: string; data?: { icon?: string } }) => {
       return apiRequest("POST", "/api/sitespecific/btu/school-types", data);
     },
     onSuccess: () => {
@@ -94,7 +97,7 @@ export default function BtuSchoolTypesListPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: { siriusId: string; name: string; data?: { icon?: string } } }) => {
+    mutationFn: async ({ id, data }: { id: string; data: { siriusId: string; name: string; description?: string; data?: { icon?: string } } }) => {
       return apiRequest("PATCH", `/api/sitespecific/btu/school-types/${id}`, data);
     },
     onSuccess: () => {
@@ -151,6 +154,7 @@ export default function BtuSchoolTypesListPage() {
     form.reset({
       siriusId: record.siriusId,
       name: record.name,
+      description: record.description || "",
       icon: record.data?.icon || "",
     });
     setEditRecord(record);
@@ -160,6 +164,7 @@ export default function BtuSchoolTypesListPage() {
     const payload = {
       siriusId: formData.siriusId.trim(),
       name: formData.name.trim(),
+      description: formData.description.trim() || undefined,
       data: formData.icon ? { icon: formData.icon } : undefined,
     };
     
@@ -259,6 +264,7 @@ export default function BtuSchoolTypesListPage() {
                   <TableHead className="w-16">Icon</TableHead>
                   <TableHead>Sirius ID</TableHead>
                   <TableHead>Name</TableHead>
+                  <TableHead>Description</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -275,6 +281,9 @@ export default function BtuSchoolTypesListPage() {
                       </TableCell>
                       <TableCell data-testid={`text-name-${record.id}`}>
                         {record.name}
+                      </TableCell>
+                      <TableCell data-testid={`text-description-${record.id}`} className="text-muted-foreground">
+                        {record.description || "-"}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -369,6 +378,19 @@ export default function BtuSchoolTypesListPage() {
                     <FormLabel>Name</FormLabel>
                     <FormControl>
                       <Input {...field} placeholder="School type name" data-testid="input-name" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Description</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="Optional description" data-testid="input-description" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
