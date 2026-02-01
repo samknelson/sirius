@@ -143,6 +143,8 @@ export const sitespecificBtuSchoolAttributes = pgTable("sitespecific_btu_school_
   schoolTypeIds: text("school_type_ids").array(),
   schedules: jsonb("schedules"),
   regionId: varchar("region_id").references(() => sitespecificBtuRegions.id, { onDelete: 'set null' }),
+  gradeStart: varchar("grade_start", { length: 10 }),
+  gradeEnd: varchar("grade_end", { length: 10 }),
 });
 
 // Zod schema for schedule items
@@ -161,6 +163,8 @@ export const insertBtuSchoolAttributesSchema = createInsertSchema(sitespecificBt
   schoolTypeIds: z.array(z.string()).nullable().optional(),
   schedules: z.array(btuScheduleItemSchema).nullable().optional(),
   regionId: z.string().nullable().optional(),
+  gradeStart: z.string().nullable().optional(),
+  gradeEnd: z.string().nullable().optional(),
 });
 
 export type BtuSchoolAttributes = typeof sitespecificBtuSchoolAttributes.$inferSelect;

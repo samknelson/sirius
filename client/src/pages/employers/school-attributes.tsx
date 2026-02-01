@@ -18,11 +18,15 @@ import { z } from "zod";
 import type { BtuSchoolAttributes, BtuScheduleItem, BtuSchoolType, BtuRegion } from "@shared/schema/sitespecific/btu/schema";
 import { btuScheduleItemSchema } from "@shared/schema/sitespecific/btu/schema";
 
+const GRADE_OPTIONS = ["K", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"];
+
 const formSchema = z.object({
   siriusId: z.string().min(1, "Sirius ID is required"),
   schoolTypeIds: z.array(z.string()),
   schedules: z.array(btuScheduleItemSchema),
   regionId: z.string().nullable(),
+  gradeStart: z.string().nullable(),
+  gradeEnd: z.string().nullable(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -63,6 +67,8 @@ function SchoolAttributesContent() {
       schoolTypeIds: [],
       schedules: [],
       regionId: null,
+      gradeStart: null,
+      gradeEnd: null,
     },
   });
 
@@ -79,6 +85,8 @@ function SchoolAttributesContent() {
         schedules: data.schedules.length > 0 ? data.schedules : null,
         regionId: data.regionId || null,
         schoolTypeIds: data.schoolTypeIds.length > 0 ? data.schoolTypeIds : null,
+        gradeStart: data.gradeStart || null,
+        gradeEnd: data.gradeEnd || null,
       });
     },
     onSuccess: () => {
@@ -106,6 +114,8 @@ function SchoolAttributesContent() {
         schedules: data.schedules.length > 0 ? data.schedules : null,
         regionId: data.regionId || null,
         schoolTypeIds: data.schoolTypeIds.length > 0 ? data.schoolTypeIds : null,
+        gradeStart: data.gradeStart || null,
+        gradeEnd: data.gradeEnd || null,
       });
     },
     onSuccess: () => {
@@ -154,6 +164,8 @@ function SchoolAttributesContent() {
         schoolTypeIds: schoolAttributes.schoolTypeIds || [],
         schedules: schedules,
         regionId: schoolAttributes.regionId || null,
+        gradeStart: schoolAttributes.gradeStart || null,
+        gradeEnd: schoolAttributes.gradeEnd || null,
       });
       setIsEditing(true);
     }
@@ -165,6 +177,8 @@ function SchoolAttributesContent() {
       schoolTypeIds: [],
       schedules: [],
       regionId: null,
+      gradeStart: null,
+      gradeEnd: null,
     });
     setIsCreating(true);
   };
@@ -275,6 +289,15 @@ function SchoolAttributesContent() {
                       {getRegionName(schoolAttributes.regionId)}
                     </p>
                   </div>
+                </div>
+
+                <div>
+                  <Label className="text-muted-foreground text-sm">Grade Levels</Label>
+                  <p className="font-medium" data-testid="text-grade-levels">
+                    {schoolAttributes.gradeStart && schoolAttributes.gradeEnd
+                      ? `${schoolAttributes.gradeStart} - ${schoolAttributes.gradeEnd}`
+                      : schoolAttributes.gradeStart || schoolAttributes.gradeEnd || "Not specified"}
+                  </p>
                 </div>
               </div>
 
@@ -405,6 +428,66 @@ function SchoolAttributesContent() {
                   </FormItem>
                 )}
               />
+
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="gradeStart"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Grade Start</FormLabel>
+                      <Select
+                        value={field.value || "none"}
+                        onValueChange={(value) => field.onChange(value === "none" ? null : value)}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-grade-start">
+                            <SelectValue placeholder="Select starting grade" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          {GRADE_OPTIONS.map((grade) => (
+                            <SelectItem key={grade} value={grade}>
+                              {grade}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="gradeEnd"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Grade End</FormLabel>
+                      <Select
+                        value={field.value || "none"}
+                        onValueChange={(value) => field.onChange(value === "none" ? null : value)}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-grade-end">
+                            <SelectValue placeholder="Select ending grade" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          {GRADE_OPTIONS.map((grade) => (
+                            <SelectItem key={grade} value={grade}>
+                              {grade}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
               <div>
                 <Label className="mb-2 block">School Types</Label>
