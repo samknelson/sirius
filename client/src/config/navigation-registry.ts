@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, 
   CreditCard, Activity, Wallet, Settings, Shield, Key, FileText, 
-  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, Trash2, type LucideIcon
+  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, Trash2, School, type LucideIcon
 } from "lucide-react";
 
 export interface NavItem {
@@ -144,6 +144,8 @@ export const configSections: NavSection[] = [
       { path: "/sitespecific/btu/csgs", label: "CSG Management", icon: Users, testId: "nav-btu-csgs", permission: "admin", requiresComponent: "sitespecific.btu" },
       { path: "/sitespecific/btu/employer-map", label: "Employer Map", icon: Building2, testId: "nav-btu-employer-map", permission: "admin", requiresComponent: "sitespecific.btu" },
       { path: "/sitespecific/btu/territories", label: "Territories", icon: MapPin, testId: "nav-btu-territories", permission: "admin", requiresComponent: "sitespecific.btu" },
+      { path: "/sitespecific/btu/school-types", label: "School Types", icon: School, testId: "nav-btu-school-types", permission: "admin", requiresComponent: "sitespecific.btu" },
+      { path: "/sitespecific/btu/regions", label: "Regions", icon: MapPin, testId: "nav-btu-regions", permission: "admin", requiresComponent: "sitespecific.btu" },
     ],
   },
   {
