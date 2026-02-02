@@ -7,6 +7,7 @@ import { sql } from "drizzle-orm";
 
 const cleanupCategorySchema = z.enum([
   "workers",
+  "contacts",
   "employers", 
   "ledger",
   "events",
@@ -80,6 +81,11 @@ const categoryTables: Record<CleanupCategory, string[]> = {
     "bookmarks",
     "workers",
   ],
+  contacts: [
+    "contact_phone",
+    "contact_postal",
+    "contacts",
+  ],
   employers: [
     "cardchecks",
     "employer_policy_history",
@@ -132,6 +138,7 @@ const categoryTables: Record<CleanupCategory, string[]> = {
 
 const categoryLabels: Record<CleanupCategory, string> = {
   workers: "Workers (includes hours, benefits, skills, certifications, bans, history)",
+  contacts: "Contacts (includes phone numbers, addresses)",
   employers: "Employers (includes contacts, policies, card checks)",
   ledger: "Ledger (accounts, payments, transactions)",
   events: "Events (events, occurrences, participants)",
@@ -143,6 +150,7 @@ const categoryLabels: Record<CleanupCategory, string> = {
 
 const categoryDependencies: Record<CleanupCategory, CleanupCategory[]> = {
   workers: [],
+  contacts: ["workers"],
   employers: [],
   ledger: [],
   events: [],
