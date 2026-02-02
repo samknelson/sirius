@@ -437,9 +437,8 @@ export function registerCardchecksRoutes(
         }
       }
 
-      // Filter to only employers with workers and sort by name
+      // Sort by name (show all employers regardless of worker count)
       const result = Array.from(employerMap.values())
-        .filter(emp => emp.totalWorkers > 0)
         .sort((a, b) => a.name.localeCompare(b.name));
 
       res.json(result);
