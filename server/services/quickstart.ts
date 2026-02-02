@@ -80,35 +80,38 @@ const QUICKSTARTS_DIR = path.join(process.cwd(), 'database', 'quickstarts');
 
 /**
  * Convert ISO date strings back to Date objects for Drizzle timestamp columns
- * Recursively processes objects and arrays
+ * Uses iterative approach to avoid stack overflow on large datasets
  */
-function reviveDates(obj: any): any {
-  if (obj === null || obj === undefined) {
-    return obj;
-  }
+function reviveDates(rows: any[]): any[] {
+  const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?$/;
   
-  if (typeof obj === 'string') {
-    // Check if string matches ISO 8601 date format
-    const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?$/;
-    if (isoDateRegex.test(obj)) {
-      return new Date(obj);
+  const result: any[] = [];
+  
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (row === null || row === undefined) {
+      result.push(row);
+      continue;
     }
-    return obj;
-  }
-  
-  if (Array.isArray(obj)) {
-    return obj.map(item => reviveDates(item));
-  }
-  
-  if (typeof obj === 'object') {
-    const result: any = {};
-    for (const [key, value] of Object.entries(obj)) {
-      result[key] = reviveDates(value);
+    
+    if (typeof row !== 'object' || Array.isArray(row)) {
+      result.push(row);
+      continue;
     }
-    return result;
+    
+    const processedRow: any = {};
+    for (const key of Object.keys(row)) {
+      const value = row[key];
+      if (typeof value === 'string' && isoDateRegex.test(value)) {
+        processedRow[key] = new Date(value);
+      } else {
+        processedRow[key] = value;
+      }
+    }
+    result.push(processedRow);
   }
   
-  return obj;
+  return result;
 }
 
 /**
