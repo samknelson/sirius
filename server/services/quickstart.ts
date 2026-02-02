@@ -2,8 +2,12 @@ import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import * as schema from "@shared/schema";
+import * as btuSchema from "@shared/schema/sitespecific/btu/schema";
 import fs from "fs/promises";
 import path from "path";
+
+// Merge BTU schema into main schema for quickstart operations
+const fullSchema = { ...schema, ...btuSchema };
 
 export interface QuickstartMetadata {
   name: string;
@@ -71,6 +75,13 @@ const TABLE_ORDER = [
   'workerWsh',
   'trustWmb',
   'ledger',
+  
+  // BTU sitespecific tables
+  'sitespecificBtuEmployerMap',
+  'sitespecificBtuCsg',
+  'sitespecificBtuSchoolTypes',
+  'sitespecificBtuRegions',
+  'sitespecificBtuSchoolAttributes',
 ] as const;
 
 // Tables to exclude from export/import (runtime/audit data, or stored in object storage)
@@ -180,7 +191,7 @@ export async function exportQuickstart(name: string): Promise<QuickstartMetadata
 
   // Export each table in order
   for (const tableName of TABLE_ORDER) {
-    const table = (schema as any)[tableName];
+    const table = (fullSchema as any)[tableName];
     if (!table) {
       console.warn(`Table ${tableName} not found in schema, skipping`);
       continue;
@@ -238,7 +249,7 @@ export async function importQuickstart(name: string): Promise<QuickstartMetadata
     // Use proper identifier quoting to prevent SQL injection
     for (let i = TABLE_ORDER.length - 1; i >= 0; i--) {
       const tableVarName = TABLE_ORDER[i];
-      const table = (schema as any)[tableVarName];
+      const table = (fullSchema as any)[tableVarName];
       if (!table) {
         console.warn(`Table ${tableVarName} not found in schema, skipping truncate`);
         continue;
@@ -253,7 +264,7 @@ export async function importQuickstart(name: string): Promise<QuickstartMetadata
 
     // Insert data in forward order
     for (const tableVarName of TABLE_ORDER) {
-      const table = (schema as any)[tableVarName];
+      const table = (fullSchema as any)[tableVarName];
       if (!table) {
         console.warn(`Table ${tableVarName} not found in schema, skipping insert`);
         continue;
