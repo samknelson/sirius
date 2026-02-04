@@ -345,6 +345,16 @@ export function registerEmployerContactRoutes(
       const currentRoles = await storage.users.getUserRoles(user.id);
       const currentRoleIds = currentRoles.map(r => r.id);
       
+      // Automatically assign the "employer" role if it exists
+      const employerRole = await storage.users.getRoleByName('employer');
+      if (employerRole && !currentRoleIds.includes(employerRole.id)) {
+        await storage.users.assignRoleToUser({
+          userId: user.id,
+          roleId: employerRole.id,
+        });
+        currentRoleIds.push(employerRole.id);
+      }
+      
       // Assign all required roles (idempotent)
       for (const roleId of requiredRoleIds) {
         if (!currentRoleIds.includes(roleId)) {

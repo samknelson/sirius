@@ -44,6 +44,7 @@ export interface UserStorage {
   // Role operations
   getAllRoles(): Promise<Role[]>;
   getRole(id: string): Promise<Role | undefined>;
+  getRoleByName(name: string): Promise<Role | undefined>;
   createRole(role: InsertRole): Promise<Role>;
   updateRole(id: string, role: Partial<InsertRole>): Promise<Role | undefined>;
   deleteRole(id: string): Promise<boolean>;
@@ -238,6 +239,12 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     async getRole(id: string): Promise<Role | undefined> {
       const client = getClient();
       const [role] = await client.select().from(roles).where(eq(roles.id, id));
+      return role || undefined;
+    },
+
+    async getRoleByName(name: string): Promise<Role | undefined> {
+      const client = getClient();
+      const [role] = await client.select().from(roles).where(eq(roles.name, name));
       return role || undefined;
     },
 

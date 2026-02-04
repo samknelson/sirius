@@ -186,6 +186,16 @@ export function registerWorkerUsersRoutes(
       const currentRoles = await storage.users.getUserRoles(user.id);
       const currentRoleIds = currentRoles.map(r => r.id);
       
+      // Automatically assign the "worker" role if it exists
+      const workerRole = await storage.users.getRoleByName('worker');
+      if (workerRole && !currentRoleIds.includes(workerRole.id)) {
+        await storage.users.assignRoleToUser({
+          userId: user.id,
+          roleId: workerRole.id,
+        });
+        currentRoleIds.push(workerRole.id);
+      }
+      
       // Assign all required roles (idempotent)
       for (const roleId of requiredRoleIds) {
         if (!currentRoleIds.includes(roleId)) {
