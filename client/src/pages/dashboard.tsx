@@ -1,13 +1,15 @@
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Home } from "lucide-react";
+import { Home, AlertCircle, User, Building2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { Role } from "@shared/schema";
 import { getAllPlugins } from "@/plugins/registry";
 import { PluginConfig } from "@/plugins/types";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function Dashboard() {
-  const { user, permissions, components } = useAuth();
+  const { user, permissions, components, staffPolicyGranted } = useAuth();
   
   const { data: userRoles = [], isLoading: rolesLoading } = useQuery<Role[]>({
     queryKey: [`/api/users/${user?.id}/roles`],
@@ -17,6 +19,20 @@ export default function Dashboard() {
   const { data: pluginConfigs = [], isLoading: configsLoading } = useQuery<PluginConfig[]>({
     queryKey: ["/api/dashboard-plugins/config"],
   });
+  
+  // Check for linked employers (for employer role users without staff access)
+  const { data: myEmployers = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/my-employers"],
+    enabled: !!user && permissions.includes("employer") && !staffPolicyGranted,
+  });
+
+  // Determine if user has roles but no linked records (and is not staff)
+  const hasWorkerRole = permissions.includes("worker");
+  const hasEmployerRole = permissions.includes("employer");
+  const hasLinkedWorker = !!user?.workerId;
+  const hasLinkedEmployer = myEmployers.length > 0;
+  const showWorkerLinkageMessage = hasWorkerRole && !hasLinkedWorker && !staffPolicyGranted;
+  const showEmployerLinkageMessage = hasEmployerRole && !hasLinkedEmployer && !staffPolicyGranted;
 
   // Get all registered plugins
   const allPlugins = getAllPlugins();
@@ -49,6 +65,55 @@ export default function Dashboard() {
           </div>
         ) : (
           <>
+            {/* Show informational messages for users with roles but no linked records */}
+            {(showWorkerLinkageMessage || showEmployerLinkageMessage) && (
+              <div className="mb-6 space-y-4">
+                {showWorkerLinkageMessage && (
+                  <Card data-testid="card-worker-linkage-info">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <User className="h-5 w-5" />
+                        Worker Account Setup
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Alert>
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertTitle>Account Not Linked</AlertTitle>
+                        <AlertDescription>
+                          Your user account has worker access, but is not yet linked to a worker record. 
+                          Please contact an administrator to link your account to your worker profile 
+                          so you can view your dispatch history and worker information.
+                        </AlertDescription>
+                      </Alert>
+                    </CardContent>
+                  </Card>
+                )}
+                
+                {showEmployerLinkageMessage && (
+                  <Card data-testid="card-employer-linkage-info">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <Building2 className="h-5 w-5" />
+                        Employer Account Setup
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Alert>
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertTitle>Account Not Linked</AlertTitle>
+                        <AlertDescription>
+                          Your user account has employer access, but is not yet linked to any employer records.
+                          Please contact an administrator to link your account to your employer 
+                          so you can access employer features and dispatch management.
+                        </AlertDescription>
+                      </Alert>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
+            
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {enabledPlugins.map(plugin => {
                 const PluginComponent = plugin.component;
@@ -63,7 +128,7 @@ export default function Dashboard() {
                 );
               })}
             </div>
-            {enabledPlugins.length === 0 && (
+            {enabledPlugins.length === 0 && !showWorkerLinkageMessage && !showEmployerLinkageMessage && (
               <div className="text-center text-muted-foreground">
                 <p>No plugins are currently enabled for your dashboard.</p>
               </div>

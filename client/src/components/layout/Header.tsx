@@ -226,6 +226,34 @@ export default function Header() {
                   </>
                 )}
 
+                {/* Employer Dispatch access - for employers with dispatch permission */}
+                {hasPermission("employer.dispatch") && hasComponent("dispatch") && !staffPolicy?.access?.granted && (
+                  <Link href="/dispatch/jobs" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location.startsWith("/dispatch") ? "default" : "ghost"}
+                      className="w-full justify-start"
+                      data-testid="mobile-nav-employer-dispatch"
+                    >
+                      <Briefcase className="h-4 w-4 mr-2" />
+                      Dispatch Jobs
+                    </Button>
+                  </Link>
+                )}
+
+                {/* Worker dispatch history - for workers */}
+                {hasPermission("worker") && hasComponent("dispatch") && user?.workerId && !staffPolicy?.access?.granted && (
+                  <Link href={`/workers/${user.workerId}/dispatch`} onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location.includes("/dispatch") ? "default" : "ghost"}
+                      className="w-full justify-start"
+                      data-testid="mobile-nav-my-dispatches"
+                    >
+                      <Briefcase className="h-4 w-4 mr-2" />
+                      My Dispatches
+                    </Button>
+                  </Link>
+                )}
+
                 {staffPolicy?.access?.granted && (
                   <>
                     <div className="text-sm font-medium text-muted-foreground px-4 py-2">Workers</div>
@@ -559,7 +587,7 @@ export default function Header() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {(hasPermission("bookmark") || hasPermission("admin")) && (
+                {(hasPermission("bookmark") || hasPermission("admin") || hasPermission("employer") || hasPermission("worker")) && (
                   <>
                     <DropdownMenuItem asChild>
                       <Link href="/bookmarks" className="w-full">
@@ -647,6 +675,34 @@ export default function Header() {
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+            )}
+
+            {/* Employer Dispatch access - for employers with dispatch permission */}
+            {hasPermission("employer.dispatch") && hasComponent("dispatch") && !staffPolicy?.access?.granted && (
+              <Link href="/dispatch/jobs">
+                <Button
+                  variant={location.startsWith("/dispatch") ? "default" : "ghost"}
+                  size="sm"
+                  data-testid="nav-employer-dispatch"
+                >
+                  <Briefcase className="h-4 w-4 mr-2" />
+                  Dispatch Jobs
+                </Button>
+              </Link>
+            )}
+
+            {/* Worker dispatch history - for workers */}
+            {hasPermission("worker") && hasComponent("dispatch") && user?.workerId && !staffPolicy?.access?.granted && (
+              <Link href={`/workers/${user.workerId}/dispatch`}>
+                <Button
+                  variant={location.includes("/dispatch") ? "default" : "ghost"}
+                  size="sm"
+                  data-testid="nav-my-dispatches"
+                >
+                  <Briefcase className="h-4 w-4 mr-2" />
+                  My Dispatches
+                </Button>
+              </Link>
             )}
 
             {staffPolicy?.access?.granted && (
