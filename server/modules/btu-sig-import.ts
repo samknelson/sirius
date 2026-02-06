@@ -369,7 +369,7 @@ export function registerBtuSigImportRoutes(
               type: 'upload',
               docRender: '',
               docHash: '',
-              esig: { sourceFile: matchedFile.filename, bpsId: matchedFile.bpsId },
+              esig: { type: 'upload', value: pdfFileRecord.id, fileName: matchedFile.filename, bpsId: matchedFile.bpsId },
               docType: 'cardcheck',
               docFileId: pdfFileRecord.id,
             });
