@@ -30,7 +30,7 @@ export function ConfigureStep({ wizardId, wizardType, data, onDataChange }: Conf
   const [isSaving, setIsSaving] = useState(false);
 
   const { data: definitions, isLoading: loadingDefinitions } = useQuery<CardcheckDefinition[]>({
-    queryKey: ['/api/cardcheck-definitions'],
+    queryKey: ['/api/cardcheck/definitions'],
   });
 
   useEffect(() => {
