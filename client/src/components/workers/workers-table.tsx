@@ -333,6 +333,41 @@ export function WorkersTable({
     return Array.from(defsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [cardcheckStatusSummary, cardcheckDefinitions]);
 
+  // Fetch worker ID types configured to show on lists
+  const { data: showOnListsIdTypes = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/worker-id-types/show-on-lists"],
+  });
+
+  // Fetch worker IDs for show-on-lists types
+  const workerIdsList = useMemo(() => workers.map((w: any) => w.id), [workers]);
+  const { data: workerIdsForList = [] } = useQuery<{ workerId: string; typeId: string; value: string }[]>({
+    queryKey: ["/api/worker-ids/for-list", workerIdsList],
+    queryFn: async () => {
+      if (workerIdsList.length === 0 || showOnListsIdTypes.length === 0) return [];
+      const res = await fetch("/api/worker-ids/for-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workerIds: workerIdsList }),
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: workerIdsList.length > 0 && showOnListsIdTypes.length > 0,
+  });
+
+  // Create map: workerId -> { typeId -> value }
+  const workerIdValueMap = useMemo(() => {
+    const map = new Map<string, Map<string, string>>();
+    for (const item of workerIdsForList) {
+      if (!map.has(item.workerId)) {
+        map.set(item.workerId, new Map());
+      }
+      map.get(item.workerId)!.set(item.typeId, item.value);
+    }
+    return map;
+  }, [workerIdsForList]);
+
   // Create map for worker employers
   const employerMap = new Map(workerEmployers.map(we => [we.workerId, we.employers]));
 
@@ -951,6 +986,11 @@ export function WorkersTable({
                     <span>Card Checks</span>
                   </th>
                 )}
+                {showOnListsIdTypes.map((idType) => (
+                  <th key={idType.id} className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <span>{idType.name}</span>
+                  </th>
+                ))}
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Employment</span>
                 </th>
@@ -1189,6 +1229,15 @@ export function WorkersTable({
                       </TooltipProvider>
                     </td>
                   )}
+                  {showOnListsIdTypes.map((idType) => {
+                    const typeMap = workerIdValueMap.get(worker.id);
+                    const value = typeMap?.get(idType.id);
+                    return (
+                      <td key={idType.id} className="px-6 py-4 whitespace-nowrap text-sm" data-testid={`worker-id-${idType.id}-${worker.id}`}>
+                        {value || <span className="text-muted-foreground italic">-</span>}
+                      </td>
+                    );
+                  })}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <TooltipProvider>
                       <div className="flex items-center gap-1" data-testid={`employment-indicators-${worker.id}`}>

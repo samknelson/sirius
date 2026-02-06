@@ -193,4 +193,34 @@ export function registerWorkerIdsRoutes(
       res.status(500).json({ message: "Failed to delete worker ID" });
     }
   });
+
+  app.get("/api/worker-id-types/show-on-lists", requireAuth, requirePermission("staff"), async (_req, res) => {
+    try {
+      const types = await storage.workerIds.getShowOnListsIdTypes();
+      res.json(types);
+    } catch (error) {
+      console.error("Error fetching show-on-lists ID types:", error);
+      res.status(500).json({ message: "Failed to fetch ID types" });
+    }
+  });
+
+  app.post("/api/worker-ids/for-list", requireAuth, requirePermission("staff"), async (req, res) => {
+    try {
+      const { workerIds: workerIdsList } = req.body;
+      if (!Array.isArray(workerIdsList)) {
+        res.status(400).json({ message: "workerIds must be an array" });
+        return;
+      }
+      const sanitized = workerIdsList.filter((id: any) => typeof id === 'string' && id.length > 0);
+      if (sanitized.length === 0) {
+        res.json([]);
+        return;
+      }
+      const results = await storage.workerIds.getWorkerIdsForListByWorkerIds(sanitized);
+      res.json(results);
+    } catch (error) {
+      console.error("Error fetching worker IDs for list:", error);
+      res.status(500).json({ message: "Failed to fetch worker IDs" });
+    }
+  });
 }

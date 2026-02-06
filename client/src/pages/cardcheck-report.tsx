@@ -90,6 +90,42 @@ export default function CardcheckReport() {
     queryKey: ["/api/cardcheck/definitions"],
   });
 
+  const { data: showOnListsIdTypes = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/worker-id-types/show-on-lists"],
+  });
+
+  const reportWorkerIds = useMemo(() => {
+    if (!reportData) return [];
+    return Array.from(new Set(reportData.map(item => item.workerId)));
+  }, [reportData]);
+
+  const { data: workerIdsForList = [] } = useQuery<{ workerId: string; typeId: string; value: string }[]>({
+    queryKey: ["/api/worker-ids/for-list", reportWorkerIds],
+    queryFn: async () => {
+      if (reportWorkerIds.length === 0 || showOnListsIdTypes.length === 0) return [];
+      const res = await fetch("/api/worker-ids/for-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workerIds: reportWorkerIds }),
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: reportWorkerIds.length > 0 && showOnListsIdTypes.length > 0,
+  });
+
+  const workerIdValueMap = useMemo(() => {
+    const map = new Map<string, Map<string, string>>();
+    for (const item of workerIdsForList) {
+      if (!map.has(item.workerId)) {
+        map.set(item.workerId, new Map());
+      }
+      map.get(item.workerId)!.set(item.typeId, item.value);
+    }
+    return map;
+  }, [workerIdsForList]);
+
   const filteredAndSortedData = useMemo(() => {
     if (!reportData) return [];
     
@@ -335,6 +371,9 @@ export default function CardcheckReport() {
                 <TableHeader>
                   <TableRow>
                     <SortHeader field="workerName">Worker</SortHeader>
+                    {showOnListsIdTypes.map((idType) => (
+                      <TableHead key={idType.id}>{idType.name}</TableHead>
+                    ))}
                     <SortHeader field="bargainingUnitName">Bargaining Unit</SortHeader>
                     <SortHeader field="status">Status</SortHeader>
                     <SortHeader field="signedDate">Signed Date</SortHeader>
@@ -355,6 +394,15 @@ export default function CardcheckReport() {
                           ID: {item.workerSiriusId}
                         </div>
                       </TableCell>
+                      {showOnListsIdTypes.map((idType) => {
+                        const typeMap = workerIdValueMap.get(item.workerId);
+                        const value = typeMap?.get(idType.id);
+                        return (
+                          <TableCell key={idType.id} data-testid={`worker-id-${idType.id}-${item.workerId}`}>
+                            {value || <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                        );
+                      })}
                       <TableCell>
                         {item.bargainingUnitName || <span className="text-muted-foreground">—</span>}
                       </TableCell>
