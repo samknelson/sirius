@@ -366,7 +366,7 @@ export function registerBtuSigImportRoutes(
               userId,
               status: 'signed',
               signedDate: new Date(),
-              type: 'offline',
+              type: 'upload',
               docRender: '',
               docHash: '',
               esig: { sourceFile: matchedFile.filename, bpsId: matchedFile.bpsId },
