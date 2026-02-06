@@ -233,6 +233,18 @@ export default function Header() {
                     </Button>
                   </Link>
                 )}
+                {hasComponent("sitespecific.btu") && hasPermission("admin") && (
+                  <Link href="/sitespecific/btu/cardcheck-import" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location.startsWith("/sitespecific/btu/cardcheck-import") ? "default" : "ghost"}
+                      className="w-full justify-start pl-8"
+                      data-testid="mobile-nav-btu-cardcheck-import"
+                    >
+                      <FileCheck className="h-4 w-4 mr-2" />
+                      Card Check Import
+                    </Button>
+                  </Link>
+                )}
 
                 {hasSingleEmployer && (
                   <Link href={`/employers/${myEmployers[0].id}`} onClick={() => setMobileMenuOpen(false)}>
@@ -731,7 +743,7 @@ export default function Header() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    variant={location === "/workers" || location.startsWith("/cardcheck") || location.startsWith("/bargaining-units") || location === "/stewards" || location.startsWith("/sitespecific/btu/csg") ? "default" : "ghost"}
+                    variant={location === "/workers" || location.startsWith("/cardcheck") || location.startsWith("/bargaining-units") || location === "/stewards" || location.startsWith("/sitespecific/btu/csg") || location.startsWith("/sitespecific/btu/cardcheck-import") ? "default" : "ghost"}
                     size="sm"
                     data-testid="nav-workers"
                   >
@@ -805,6 +817,16 @@ export default function Header() {
                         <div className="flex items-center cursor-pointer" data-testid="menu-btu-dues-allocation">
                           <Droplets className="h-4 w-4 mr-2" />
                           Dues Allocation
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasComponent("sitespecific.btu") && hasPermission("admin") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/sitespecific/btu/cardcheck-import" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-btu-cardcheck-import">
+                          <FileCheck className="h-4 w-4 mr-2" />
+                          Card Check Import
                         </div>
                       </Link>
                     </DropdownMenuItem>

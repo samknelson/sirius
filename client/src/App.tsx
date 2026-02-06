@@ -260,6 +260,7 @@ const BtuSchoolTypesListPage = lazy(() => import("@/pages/sitespecific/btu/schoo
 const BtuRegionsListPage = lazy(() => import("@/pages/sitespecific/btu/regions-list"));
 const BtuWorkerImportPage = lazy(() => import("@/pages/sitespecific/btu/worker-import"));
 const BtuDuesAllocationPage = lazy(() => import("@/pages/sitespecific/btu/dues-allocation"));
+const BtuCardcheckImportPage = lazy(() => import("@/pages/sitespecific/btu/cardcheck-import"));
 const EdlsSheetsPage = lazy(() => import("@/pages/edls/sheets"));
 const EdlsSheetDetailsPage = lazy(() => import("@/pages/edls/sheet-details"));
 const EdlsSheetAssignmentsPage = lazy(() => import("@/pages/edls/sheet-assignments"));
@@ -1263,6 +1264,14 @@ function Router() {
         <ProtectedRoute permission="admin" component="sitespecific.btu">
           <AuthenticatedLayout>
             <BtuDuesAllocationPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/btu/cardcheck-import">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuCardcheckImportPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
