@@ -15,6 +15,9 @@ import { ProcessStep as BTUProcessStep } from './btu-worker-import/ProcessStep';
 import { ResultsStep as BTUResultsStep } from './btu-worker-import/ResultsStep';
 import { ProcessStep as BTUDuesProcessStep } from './btu-dues-allocation/ProcessStep';
 import { ResultsStep as BTUDuesResultsStep } from './btu-dues-allocation/ResultsStep';
+import { ConfigureStep as BTUCardcheckConfigureStep } from './btu-cardcheck-import/ConfigureStep';
+import { ProcessStep as BTUCardcheckProcessStep } from './btu-cardcheck-import/ProcessStep';
+import { ResultsStep as BTUCardcheckResultsStep } from './btu-cardcheck-import/ResultsStep';
 
 export interface WizardStepComponent {
   (props: { wizardId: string; wizardType: string; data?: any; onDataChange?: (data: any) => void }): JSX.Element;
@@ -95,6 +98,16 @@ const evaluateConfigureComplete: StepCompletionEvaluator = ({ wizard }) => {
   return !!wizard?.data?.asOfDate;
 };
 
+const evaluateCardcheckConfigureComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.cardcheckDefinitionId;
+};
+
+const evaluateValidateCompleteSkipInvalid: StepCompletionEvaluator = ({ wizard }) => {
+  const validationResults = wizard?.data?.validationResults;
+  if (!validationResults) return false;
+  return validationResults.validRows > 0;
+};
+
 export const stepControllerRegistry: StepControllerRegistry = {
   'gbhet_legal_workers_monthly': {
     'upload': { Component: UploadStep, evaluateCompletion: evaluateUploadComplete },
@@ -161,6 +174,14 @@ export const stepControllerRegistry: StepControllerRegistry = {
     'validate': { Component: ValidateStep, evaluateCompletion: evaluateValidateComplete },
     'process': { Component: BTUDuesProcessStep, evaluateCompletion: alwaysComplete },
     'results': { Component: BTUDuesResultsStep, evaluateCompletion: alwaysComplete },
+  },
+  'btu_cardcheck_import': {
+    'upload': { Component: UploadStep, evaluateCompletion: evaluateUploadComplete },
+    'map': { Component: MapStep, evaluateCompletion: evaluateMapComplete },
+    'configure': { Component: BTUCardcheckConfigureStep, evaluateCompletion: evaluateCardcheckConfigureComplete },
+    'validate': { Component: ValidateStep, evaluateCompletion: evaluateValidateCompleteSkipInvalid },
+    'process': { Component: BTUCardcheckProcessStep, evaluateCompletion: alwaysComplete },
+    'results': { Component: BTUCardcheckResultsStep, evaluateCompletion: alwaysComplete },
   },
 };
 
@@ -230,6 +251,14 @@ export const stepComponentRegistry: StepComponentRegistry = {
     'validate': ValidateStep,
     'process': BTUDuesProcessStep,
     'results': BTUDuesResultsStep,
+  },
+  'btu_cardcheck_import': {
+    'upload': UploadStep,
+    'map': MapStep,
+    'configure': BTUCardcheckConfigureStep,
+    'validate': ValidateStep,
+    'process': BTUCardcheckProcessStep,
+    'results': BTUCardcheckResultsStep,
   },
 };
 
