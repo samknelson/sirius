@@ -57,7 +57,10 @@ export function registerBtuSigImportRoutes(
           return res.status(401).json({ message: "Authentication required" });
         }
 
-        const userId = (req.user as any).id;
+        const userId = (req.user as any).dbUser?.id;
+        if (!userId) {
+          return res.status(401).json({ message: "User not resolved" });
+        }
         const wizardId = req.body.wizardId;
 
         if (!wizardId) {
@@ -262,7 +265,10 @@ export function registerBtuSigImportRoutes(
           return res.status(401).json({ message: "Authentication required" });
         }
 
-        const userId = (req.user as any).id;
+        const userId = (req.user as any).dbUser?.id;
+        if (!userId) {
+          return res.status(401).json({ message: "User not resolved" });
+        }
 
         const wizard = await storage.wizards.getById(wizardId);
         if (!wizard) {
