@@ -104,7 +104,7 @@ export function UploadStep({ wizardId, wizardType, data, onDataChange }: UploadS
                   Click to select a ZIP file
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Maximum file size: 100MB
+                  Maximum file size: 500MB
                 </p>
                 <input
                   ref={fileInputRef}
