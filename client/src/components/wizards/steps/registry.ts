@@ -18,6 +18,11 @@ import { ResultsStep as BTUDuesResultsStep } from './btu-dues-allocation/Results
 import { ConfigureStep as BTUCardcheckConfigureStep } from './btu-cardcheck-import/ConfigureStep';
 import { ProcessStep as BTUCardcheckProcessStep } from './btu-cardcheck-import/ProcessStep';
 import { ResultsStep as BTUCardcheckResultsStep } from './btu-cardcheck-import/ResultsStep';
+import { UploadStep as BTUSigUploadStep } from './btu-cardcheck-sig-import/UploadStep';
+import { ConfigureStep as BTUSigConfigureStep } from './btu-cardcheck-sig-import/ConfigureStep';
+import { PreviewStep as BTUSigPreviewStep } from './btu-cardcheck-sig-import/PreviewStep';
+import { ProcessStep as BTUSigProcessStep } from './btu-cardcheck-sig-import/ProcessStep';
+import { ResultsStep as BTUSigResultsStep } from './btu-cardcheck-sig-import/ResultsStep';
 
 export interface WizardStepComponent {
   (props: { wizardId: string; wizardType: string; data?: any; onDataChange?: (data: any) => void }): JSX.Element;
@@ -108,6 +113,22 @@ const evaluateValidateCompleteSkipInvalid: StepCompletionEvaluator = ({ wizard }
   return validationResults.validRows > 0;
 };
 
+const evaluateSigUploadComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.uploadedFileId && (wizard?.data?.totalFiles || 0) > 0;
+};
+
+const evaluateSigConfigureComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.cardcheckDefinitionId;
+};
+
+const evaluateSigPreviewComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.previewData;
+};
+
+const evaluateSigProcessComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.processResults;
+};
+
 export const stepControllerRegistry: StepControllerRegistry = {
   'gbhet_legal_workers_monthly': {
     'upload': { Component: UploadStep, evaluateCompletion: evaluateUploadComplete },
@@ -182,6 +203,13 @@ export const stepControllerRegistry: StepControllerRegistry = {
     'validate': { Component: ValidateStep, evaluateCompletion: evaluateValidateCompleteSkipInvalid },
     'process': { Component: BTUCardcheckProcessStep, evaluateCompletion: alwaysComplete },
     'results': { Component: BTUCardcheckResultsStep, evaluateCompletion: alwaysComplete },
+  },
+  'btu_cardcheck_sig_import': {
+    'upload': { Component: BTUSigUploadStep, evaluateCompletion: evaluateSigUploadComplete },
+    'configure': { Component: BTUSigConfigureStep, evaluateCompletion: evaluateSigConfigureComplete },
+    'preview': { Component: BTUSigPreviewStep, evaluateCompletion: evaluateSigPreviewComplete },
+    'process': { Component: BTUSigProcessStep, evaluateCompletion: evaluateSigProcessComplete },
+    'results': { Component: BTUSigResultsStep, evaluateCompletion: alwaysComplete },
   },
 };
 
@@ -259,6 +287,13 @@ export const stepComponentRegistry: StepComponentRegistry = {
     'validate': ValidateStep,
     'process': BTUCardcheckProcessStep,
     'results': BTUCardcheckResultsStep,
+  },
+  'btu_cardcheck_sig_import': {
+    'upload': BTUSigUploadStep,
+    'configure': BTUSigConfigureStep,
+    'preview': BTUSigPreviewStep,
+    'process': BTUSigProcessStep,
+    'results': BTUSigResultsStep,
   },
 };
 

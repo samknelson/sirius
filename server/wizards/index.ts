@@ -11,6 +11,7 @@ import { ReportBTUWorkersInvalidCardcheck } from './types/report_btu_workers_inv
 import { btuWorkerImport } from './types/btu_worker_import.js';
 import { btuDuesAllocation } from './types/btu_dues_allocation.js';
 import { btuCardcheckImport } from './types/btu_cardcheck_import.js';
+import { btuCardcheckSigImport } from './types/btu_cardcheck_sig_import.js';
 
 wizardRegistry.register(gbhetLegalWorkersMonthly);
 wizardRegistry.register(gbhetLegalWorkersCorrections);
@@ -24,6 +25,7 @@ wizardRegistry.register(new ReportBTUWorkersInvalidCardcheck());
 wizardRegistry.register(btuWorkerImport);
 wizardRegistry.register(btuDuesAllocation);
 wizardRegistry.register(btuCardcheckImport);
+wizardRegistry.register(btuCardcheckSigImport);
 
 export { wizardRegistry, getWizardType, getAllWizardTypes, registerWizardType } from './registry.js';
 export { BaseWizard, type WizardTypeDefinition, type WizardStep, type WizardStatus } from './base.js';
