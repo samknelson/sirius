@@ -41,7 +41,7 @@ function filterEmptyColumns(rows: any[][]): any[][] {
 
 function parseDate(value: any): Date | null {
   if (!value) return null;
-  const str = String(value).trim();
+  let str = String(value).trim();
   if (!str) return null;
 
   if (/^\d{5}$/.test(str)) {
@@ -50,6 +50,9 @@ function parseDate(value: any): Date | null {
     const result = new Date(excelEpoch.getTime() + days * 86400000);
     if (!isNaN(result.getTime())) return result;
   }
+
+  str = str.replace(/\s*[-–]\s*\d{1,2}:\d{2}(:\d{2})?\s*$/, '').trim();
+  str = str.replace(/\s+\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?\s*$/i, '').trim();
 
   const mmddyyyy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (mmddyyyy) {
