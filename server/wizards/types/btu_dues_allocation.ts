@@ -312,6 +312,7 @@ export class BtuDuesAllocationWizard extends FeedWizard {
     let createdCount = 0;
     let updatedCount = 0;
     let failureCount = 0;
+    let skippedDuplicateCount = 0;
     let workerNotFoundCount = 0;
     const allErrors: ProcessError[] = [];
     const rowResults: RowResult[] = [];
@@ -411,6 +412,8 @@ export class BtuDuesAllocationWizard extends FeedWizard {
 
           const result = await executeChargePlugins(duesContext);
 
+          const skippedDuplicate = result.executed.find(e => e.success && e.skippedDuplicate);
+
           if (result.totalTransactions.length > 0) {
             createdCount++;
             rowResults.push({
@@ -447,6 +450,13 @@ export class BtuDuesAllocationWizard extends FeedWizard {
               const existing = allocatedWorkers.get(worker.id)!;
               existing.amount += amount;
             }
+          } else if (skippedDuplicate) {
+            skippedDuplicateCount++;
+            rowResults.push({
+              rowIndex,
+              status: 'success',
+              message: skippedDuplicate.message || `Skipped: duplicate entry for ${workerName} on this date`
+            });
           } else {
             const pluginError = result.executed.find(e => !e.success)?.error;
             if (pluginError) {
@@ -604,6 +614,7 @@ export class BtuDuesAllocationWizard extends FeedWizard {
       data: {
         ...wizardData,
         processResults: results,
+        skippedDuplicateCount,
         cardCheckComparisonReport: comparisonReport,
       },
       status: failureCount === 0 ? 'completed' : 'completed_with_errors'

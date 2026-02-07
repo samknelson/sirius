@@ -83,6 +83,40 @@ class BtuDuesAllocationPlugin extends ChargePlugin {
       const description = `Dues Deduction: ${duesContext.workerName}`;
 
       const existingEntry = await storage.ledger.entries.getByChargePluginKey(this.metadata.id, chargePluginKey);
+
+      const duplicateEntry = await storage.ledger.entries.findByAccountEntityDatePlugin(
+        duesContext.accountId,
+        duesContext.workerId,
+        duesContext.transactionDate,
+        this.metadata.id,
+        config.id
+      );
+
+      const isDuplicateFromDifferentSource = duplicateEntry && (!existingEntry || duplicateEntry.id !== existingEntry?.id);
+
+      if (isDuplicateFromDifferentSource) {
+        logger.info("Skipping duplicate dues entry - transaction already exists for this account, worker, config, and day", {
+          service: "charge-plugin-btu-dues-allocation",
+          wizardId: duesContext.wizardId,
+          workerId: duesContext.workerId,
+          accountId: duesContext.accountId,
+          configId: config.id,
+          transactionDate: duesContext.transactionDate,
+          existingEntryId: duplicateEntry.id,
+          existingAmount: duplicateEntry.amount,
+        });
+        return {
+          success: true,
+          skippedDuplicate: true,
+          transactions: [],
+          notifications: [{
+            type: "skipped" as any,
+            amount: allocatedAmount.toFixed(2),
+            description: `Skipped: entry already exists for ${duesContext.workerName} on this date ($${duplicateEntry.amount})`,
+          }],
+          message: `Skipped duplicate: transaction already exists for ${duesContext.workerName} on ${duesContext.transactionDate.toISOString().split('T')[0]}`,
+        };
+      }
       
       const notifications: LedgerNotification[] = [];
       if (existingEntry) {

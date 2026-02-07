@@ -11,6 +11,7 @@ import { storage } from "../storage";
 export interface PluginExecutionSummary {
   pluginId: string;
   success: boolean;
+  skippedDuplicate?: boolean;
   transactionCount: number;
   notificationCount: number;
   message?: string;
@@ -90,6 +91,7 @@ export async function executeChargePlugins(
         executed.push({
           pluginId: plugin.metadata.id,
           success: result.success,
+          skippedDuplicate: result.skippedDuplicate,
           transactionCount: result.transactions.length,
           notificationCount: result.notifications?.length || 0,
           message: result.message,

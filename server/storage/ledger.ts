@@ -15,7 +15,7 @@ import type {
   Ledger,
   InsertLedger
 } from "@shared/schema";
-import { eq, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray } from "drizzle-orm";
+import { eq, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray, gte, lte } from "drizzle-orm";
 import { alias as pgAlias } from "drizzle-orm/pg-core";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { formatAmount, getCurrency } from "@shared/currency";
@@ -93,6 +93,7 @@ export interface LedgerEntryStorage {
   delete(id: string): Promise<boolean>;
   deleteByReference(referenceType: string, referenceId: string): Promise<number>;
   deleteByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<boolean>;
+  findByAccountEntityDatePlugin(accountId: string, entityId: string, date: Date, chargePlugin: string, chargePluginConfigId?: string): Promise<Ledger | undefined>;
 }
 
 export interface LedgerEntryWithDetails extends Ledger {
@@ -1150,6 +1151,28 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
           eq(ledger.chargePluginKey, chargePluginKey)
         ));
       return result.rowCount ? result.rowCount > 0 : false;
+    },
+
+    async findByAccountEntityDatePlugin(accountId: string, entityId: string, date: Date, chargePluginId: string, chargePluginConfigId?: string): Promise<Ledger | undefined> {
+      const client = getClient();
+      const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+      const dayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+      const conditions = [
+        eq(ledgerEa.accountId, accountId),
+        eq(ledgerEa.entityId, entityId),
+        eq(ledger.chargePlugin, chargePluginId),
+        gte(ledger.date, dayStart),
+        lte(ledger.date, dayEnd),
+      ];
+      if (chargePluginConfigId) {
+        conditions.push(eq(ledger.chargePluginConfigId, chargePluginConfigId));
+      }
+      const [entry] = await client.select({ entry: ledger })
+        .from(ledger)
+        .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+        .where(and(...conditions))
+        .limit(1);
+      return entry?.entry || undefined;
     }
   };
 }

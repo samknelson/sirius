@@ -209,6 +209,14 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
                     <div className="text-sm text-muted-foreground">Successful</div>
                   </CardContent>
                 </Card>
+                {(data?.skippedDuplicateCount || 0) > 0 && (
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-2xl font-bold text-amber-600">{(data?.skippedDuplicateCount || 0).toLocaleString()}</div>
+                      <div className="text-sm text-muted-foreground">Skipped (Duplicates)</div>
+                    </CardContent>
+                  </Card>
+                )}
                 {results.failureCount > 0 && (
                   <Card>
                     <CardContent className="pt-6">

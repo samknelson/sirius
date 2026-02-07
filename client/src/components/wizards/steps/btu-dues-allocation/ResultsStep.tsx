@@ -149,6 +149,7 @@ function WorkerNotFoundTable({ entries }: { entries: WorkerNotFoundEntry[] }) {
 export function ResultsStep({ wizardId, wizardType, data, onDataChange }: ResultsStepProps) {
   const results: ProcessResults | null = data?.processResults || null;
   const comparisonReport: CardCheckComparisonReport | null = data?.cardCheckComparisonReport || null;
+  const skippedDuplicateCount: number = data?.skippedDuplicateCount || 0;
 
   const { data: accounts = [] } = useQuery<any[]>({
     queryKey: ["/api/ledger/accounts"],
@@ -186,7 +187,9 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
           </CardTitle>
           <CardDescription>
             {isSuccess
-              ? "All dues allocations were processed successfully"
+              ? skippedDuplicateCount > 0
+                ? `Processed successfully — ${skippedDuplicateCount} duplicate(s) skipped`
+                : "All dues allocations were processed successfully"
               : `Completed with ${results.failureCount} error(s)`}
           </CardDescription>
         </CardHeader>
@@ -210,6 +213,14 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                 <div className="text-sm text-muted-foreground">Successful</div>
               </CardContent>
             </Card>
+            {skippedDuplicateCount > 0 && (
+              <Card>
+                <CardContent className="pt-6 text-center">
+                  <div className="text-3xl font-bold text-amber-600" data-testid="text-skipped-count">{skippedDuplicateCount.toLocaleString()}</div>
+                  <div className="text-sm text-muted-foreground">Skipped (Duplicates)</div>
+                </CardContent>
+              </Card>
+            )}
             {results.failureCount > 0 && (
               <Card>
                 <CardContent className="pt-6 text-center">

@@ -107,6 +107,7 @@ export interface LedgerNotification {
 
 export interface PluginExecutionResult {
   success: boolean;
+  skippedDuplicate?: boolean;
   transactions: LedgerTransaction[];
   notifications?: LedgerNotification[];
   message?: string;
