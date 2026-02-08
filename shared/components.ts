@@ -185,13 +185,6 @@ export const componentRegistry: ComponentDefinition[] = [
     ]
   },
   {
-    id: "worker",
-    name: "Worker Features",
-    description: "Parent component for worker-related features",
-    enabledByDefault: true,
-    category: "core"
-  },
-  {
     id: "worker.steward",
     name: "Shop Stewards",
     description: "Ability to designate workers as shop stewards",
