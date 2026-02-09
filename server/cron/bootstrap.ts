@@ -53,6 +53,12 @@ const DEFAULT_CRON_JOBS: DefaultCronJob[] = [
     isEnabled: true,
   },
   {
+    name: 'dispatch-eba-cleanup',
+    description: 'Deletes worker EBA (availability) records that are more than 30 days in the past',
+    schedule: '0 4 * * *', // Daily at 4 AM
+    isEnabled: true,
+  },
+  {
     name: 'log-cleanup',
     description: 'Purges log entries based on configurable retention policies per module/operation combination',
     schedule: '0 3 * * *', // Daily at 3 AM
