@@ -62,6 +62,7 @@ import { registerDispatchesRoutes } from "./modules/dispatches";
 import { registerWorkerDispatchStatusRoutes } from "./modules/worker-dispatch-status";
 import { registerWorkerDispatchDncRoutes } from "./modules/worker-dispatch-dnc";
 import { registerWorkerDispatchHfeRoutes } from "./modules/worker-dispatch-hfe";
+import { registerWorkerDispatchEbaRoutes } from "./modules/worker-dispatch-eba";
 import { registerWorkerBansRoutes } from "./modules/worker-bans";
 import { registerWorkerSkillsRoutes } from "./modules/worker-skills";
 import { registerWorkerCertificationsRoutes } from "./modules/worker-certifications";
@@ -1113,6 +1114,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register worker dispatch HFE routes (handles all access control internally)
   registerWorkerDispatchHfeRoutes(app, requireAuth, requireAccess);
+
+  // Register worker dispatch EBA routes (handles all access control internally)
+  registerWorkerDispatchEbaRoutes(app, requireAuth, requireAccess);
 
   // Register worker bans routes (handles all access control internally)
   registerWorkerBansRoutes(app, requireAuth, requireAccess);
