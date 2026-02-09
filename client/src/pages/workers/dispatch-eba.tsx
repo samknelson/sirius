@@ -1,13 +1,12 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useState, useMemo, useCallback } from "react";
-import { CalendarDays, Save, ChevronLeft, ChevronRight } from "lucide-react";
-import { format, addDays, startOfDay, isSameDay } from "date-fns";
+import { useRef, useMemo, useCallback } from "react";
+import { CalendarDays, Loader2 } from "lucide-react";
+import { addDays, startOfDay, isSameDay } from "date-fns";
 import type { WorkerDispatchEba } from "@shared/schema";
 
 function formatYmd(date: Date): string {
@@ -17,9 +16,73 @@ function formatYmd(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+interface MonthGrid {
+  year: number;
+  month: number;
+  label: string;
+  weeks: (Date | null)[][];
+}
+
+function buildMonthGrids(days: Date[]): MonthGrid[] {
+  const grouped = new Map<string, Date[]>();
+  for (const day of days) {
+    const key = `${day.getFullYear()}-${day.getMonth()}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(day);
+  }
+
+  const grids: MonthGrid[] = [];
+  const entries = Array.from(grouped.entries());
+  for (const [, monthDays] of entries) {
+    const year = monthDays[0].getFullYear();
+    const month = monthDays[0].getMonth();
+    const label = `${MONTH_NAMES[month]} ${year}`;
+
+    const firstOfMonth = new Date(year, month, 1);
+    const startDow = firstOfMonth.getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const daySet = new Set(monthDays.map((d: Date) => d.getDate()));
+
+    const weeks: (Date | null)[][] = [];
+    let currentWeek: (Date | null)[] = [];
+
+    for (let i = 0; i < startDow; i++) {
+      currentWeek.push(null);
+    }
+
+    for (let dayNum = 1; dayNum <= daysInMonth; dayNum++) {
+      if (currentWeek.length === 7) {
+        weeks.push(currentWeek);
+        currentWeek = [];
+      }
+      if (daySet.has(dayNum)) {
+        currentWeek.push(new Date(year, month, dayNum));
+      } else {
+        currentWeek.push(null);
+      }
+    }
+
+    while (currentWeek.length < 7) {
+      currentWeek.push(null);
+    }
+    weeks.push(currentWeek);
+
+    grids.push({ year, month, label, weeks });
+  }
+
+  return grids;
+}
+
 function DispatchEbaContent() {
   const { worker } = useWorkerLayout();
   const { toast } = useToast();
+  const pendingDateRef = useRef<string | null>(null);
 
   const { data: entries = [], isLoading } = useQuery<WorkerDispatchEba[]>({
     queryKey: ["/api/worker-dispatch-eba/worker", worker.id],
@@ -27,49 +90,33 @@ function DispatchEbaContent() {
 
   const savedDates = useMemo(() => new Set(entries.map(e => e.date)), [entries]);
 
-  const [selectedDates, setSelectedDates] = useState<Set<string> | null>(null);
-
-  const effectiveDates = selectedDates ?? savedDates;
-
-  const hasChanges = useMemo(() => {
-    if (!selectedDates) return false;
-    if (selectedDates.size !== savedDates.size) return true;
-    let changed = false;
-    selectedDates.forEach(d => {
-      if (!savedDates.has(d)) changed = true;
-    });
-    return changed;
-  }, [selectedDates, savedDates]);
-
   const syncMutation = useMutation({
     mutationFn: async (dates: string[]) => {
       return await apiRequest("PUT", `/api/worker-dispatch-eba/worker/${worker.id}/sync`, { dates });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/worker-dispatch-eba/worker", worker.id] });
-      setSelectedDates(null);
-      toast({ title: "Availability saved", description: "Your available dates have been updated." });
+      pendingDateRef.current = null;
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to save availability dates.", variant: "destructive" });
+      pendingDateRef.current = null;
+      toast({ title: "Error", description: "Failed to update availability.", variant: "destructive" });
     },
   });
 
-  const handleSave = useCallback(() => {
-    syncMutation.mutate(Array.from(effectiveDates));
-  }, [effectiveDates, syncMutation]);
-
   const toggleDate = useCallback((dateStr: string) => {
-    setSelectedDates(prev => {
-      const current = new Set(prev ?? savedDates);
-      if (current.has(dateStr)) {
-        current.delete(dateStr);
-      } else {
-        current.add(dateStr);
-      }
-      return current;
-    });
-  }, [savedDates]);
+    if (syncMutation.isPending) return;
+    pendingDateRef.current = dateStr;
+    const updated = new Set(savedDates);
+    if (updated.has(dateStr)) {
+      updated.delete(dateStr);
+    } else {
+      updated.add(dateStr);
+    }
+    const arr: string[] = [];
+    updated.forEach(d => arr.push(d));
+    syncMutation.mutate(arr);
+  }, [savedDates, syncMutation]);
 
   const today = startOfDay(new Date());
   const next30Days = useMemo(() => {
@@ -80,33 +127,8 @@ function DispatchEbaContent() {
     return days;
   }, [today]);
 
-  const weeks = useMemo(() => {
-    const result: (Date | null)[][] = [];
-    let currentWeek: (Date | null)[] = [];
-
-    const firstDay = next30Days[0];
-    const startDow = firstDay.getDay();
-    for (let i = 0; i < startDow; i++) {
-      currentWeek.push(null);
-    }
-
-    for (const day of next30Days) {
-      if (currentWeek.length === 7) {
-        result.push(currentWeek);
-        currentWeek = [];
-      }
-      currentWeek.push(day);
-    }
-
-    while (currentWeek.length < 7) {
-      currentWeek.push(null);
-    }
-    result.push(currentWeek);
-
-    return result;
-  }, [next30Days]);
-
-  const selectedCount = effectiveDates.size;
+  const monthGrids = useMemo(() => buildMonthGrids(next30Days), [next30Days]);
+  const selectedCount = savedDates.size;
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   if (isLoading) {
@@ -127,64 +149,74 @@ function DispatchEbaContent() {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-          <div>
+        <CardHeader className="space-y-0 pb-2">
+          <div className="flex items-center gap-2">
             <CardTitle className="flex items-center gap-2" data-testid="text-eba-title">
               <CalendarDays className="h-5 w-5" />
               Availability Dates
             </CardTitle>
-            <CardDescription data-testid="text-eba-description">
-              Select the days you are available for dispatch in the next 30 days.
-              {selectedCount > 0 && (
-                <span className="ml-1 font-medium text-foreground">{selectedCount} day{selectedCount !== 1 ? 's' : ''} selected.</span>
-              )}
-            </CardDescription>
-          </div>
-          <Button
-            onClick={handleSave}
-            disabled={!hasChanges || syncMutation.isPending}
-            data-testid="button-save-eba"
-          >
-            <Save className="h-4 w-4 mr-1" />
-            {syncMutation.isPending ? "Saving..." : "Save"}
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-7 gap-1" data-testid="grid-eba-calendar">
-            {dayNames.map(name => (
-              <div key={name} className="text-center text-xs font-medium text-muted-foreground py-1">
-                {name}
-              </div>
-            ))}
-            {weeks.flatMap((week, wi) =>
-              week.map((day, di) => {
-                if (!day) {
-                  return <div key={`empty-${wi}-${di}`} className="aspect-square" />;
-                }
-                const dateStr = formatYmd(day);
-                const isSelected = effectiveDates.has(dateStr);
-                const isToday = isSameDay(day, today);
-                return (
-                  <button
-                    key={dateStr}
-                    type="button"
-                    onClick={() => toggleDate(dateStr)}
-                    data-testid={`button-date-${dateStr}`}
-                    className={[
-                      "aspect-square rounded-md flex flex-col items-center justify-center text-sm transition-colors",
-                      isSelected
-                        ? "bg-primary text-primary-foreground"
-                        : "hover-elevate",
-                      isToday && !isSelected ? "ring-1 ring-primary" : "",
-                    ].filter(Boolean).join(" ")}
-                  >
-                    <span className="font-medium">{day.getDate()}</span>
-                    <span className="text-[10px] leading-none opacity-70">{format(day, "MMM")}</span>
-                  </button>
-                );
-              })
+            {syncMutation.isPending && (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             )}
           </div>
+          <CardDescription data-testid="text-eba-description">
+            Tap a date to mark yourself available or unavailable. Changes save automatically.
+            {selectedCount > 0 && (
+              <span className="ml-1 font-medium text-foreground">{selectedCount} day{selectedCount !== 1 ? 's' : ''} selected.</span>
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {monthGrids.map((grid) => (
+            <div key={`${grid.year}-${grid.month}`} data-testid={`section-month-${grid.year}-${grid.month}`}>
+              <h3 className="text-sm font-semibold mb-2" data-testid={`text-month-label-${grid.year}-${grid.month}`}>
+                {grid.label}
+              </h3>
+              <div className="grid grid-cols-7 gap-1">
+                {dayNames.map(name => (
+                  <div key={name} className="text-center text-xs font-medium text-muted-foreground py-1">
+                    {name}
+                  </div>
+                ))}
+                {grid.weeks.flatMap((week, wi) =>
+                  week.map((day, di) => {
+                    if (!day) {
+                      return <div key={`empty-${grid.year}-${grid.month}-${wi}-${di}`} className="aspect-square" />;
+                    }
+                    const dateStr = formatYmd(day);
+                    const isSelected = savedDates.has(dateStr);
+                    const isToday = isSameDay(day, today);
+                    const isPending = syncMutation.isPending && pendingDateRef.current === dateStr;
+                    return (
+                      <button
+                        key={dateStr}
+                        type="button"
+                        onClick={() => toggleDate(dateStr)}
+                        disabled={syncMutation.isPending}
+                        data-testid={`button-date-${dateStr}`}
+                        className={[
+                          "aspect-square rounded-md flex flex-col items-center justify-center text-sm transition-colors",
+                          isSelected
+                            ? "bg-primary text-primary-foreground"
+                            : "hover-elevate",
+                          isToday && !isSelected ? "ring-1 ring-primary" : "",
+                          syncMutation.isPending && !isPending ? "opacity-70" : "",
+                        ].filter(Boolean).join(" ")}
+                      >
+                        {isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <span className="font-medium">{day.getDate()}</span>
+                          </>
+                        )}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          ))}
         </CardContent>
       </Card>
     </div>
