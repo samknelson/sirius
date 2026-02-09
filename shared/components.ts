@@ -388,6 +388,13 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "dispatch"
   },
   {
+    id: "dispatch.eba",
+    name: "Employed but Available",
+    description: "Tracks workers who are employed but available for dispatch",
+    enabledByDefault: false,
+    category: "dispatch"
+  },
+  {
     id: "debug",
     name: "Debug",
     description: "Debug tools and developer utilities",
