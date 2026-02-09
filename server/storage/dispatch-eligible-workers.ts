@@ -10,7 +10,7 @@ import {
   type EligibilityQueryContext 
 } from "../services/dispatch-elig-plugin-registry";
 import { createDispatchJobStorage } from "./dispatch-jobs";
-import { createUnifiedOptionsStorage } from "./unified-options";
+import { createUnifiedOptionsStorage, type OptionsTypeName } from "./unified-options";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -517,6 +517,50 @@ export function createDispatchEligibleWorkersStorage(): DispatchEligibleWorkersS
           explanation: checkResult.explanation,
           condition,
         });
+      }
+
+      const categoryOptionsTypeMap: Record<string, OptionsTypeName> = {
+        skill: "skill",
+      };
+
+      const idsToResolve: string[] = [];
+      for (const result of pluginResults) {
+        if (!result.passed && result.condition) {
+          const optionsType = categoryOptionsTypeMap[result.condition.category];
+          if (optionsType) {
+            const allValues = result.condition.values || (result.condition.value ? [result.condition.value] : []);
+            for (const v of allValues) {
+              if (v && v.match(/^[0-9a-f-]{36}$/i) && idsToResolve.indexOf(v) === -1) {
+                idsToResolve.push(v);
+              }
+            }
+          }
+        }
+      }
+
+      if (idsToResolve.length > 0) {
+        const idToName: Record<string, string> = {};
+        for (const optionsType of Object.values(categoryOptionsTypeMap)) {
+          for (const id of idsToResolve) {
+            try {
+              const option = await unifiedOptionsStorage.get(optionsType, id);
+              if (option?.name) {
+                idToName[id] = option.name;
+              }
+            } catch {
+            }
+          }
+        }
+
+        if (Object.keys(idToName).length > 0) {
+          for (const result of pluginResults) {
+            let explanation = result.explanation;
+            for (const id of Object.keys(idToName)) {
+              explanation = explanation.split(id).join(idToName[id]);
+            }
+            result.explanation = explanation;
+          }
+        }
       }
 
       const isEligible = pluginResults.every(r => r.passed);
