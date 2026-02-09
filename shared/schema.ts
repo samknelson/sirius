@@ -49,6 +49,13 @@ export {
 } from "./schema/dispatch/hfe-schema";
 
 export {
+  workerDispatchEba,
+  insertWorkerDispatchEbaSchema,
+  type InsertWorkerDispatchEba,
+  type WorkerDispatchEba,
+} from "./schema/dispatch/eba-schema";
+
+export {
   eligibilityPluginConfigSchema,
   jobTypeEligibilitySchema,
   type EligibilityPluginConfig,
