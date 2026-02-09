@@ -54,8 +54,9 @@ function EligibleWorkersCheckContent() {
   });
 
   const { data: eligibilityResult, isLoading: isCheckingEligibility } = useQuery<WorkerEligibilityCheckResult>({
-    queryKey: [`/api/dispatch-jobs/${job.id}/check-eligibility/${selectedWorkerId}`],
+    queryKey: ['/api/dispatch-jobs', job.id, 'check-eligibility', selectedWorkerId],
     enabled: !!selectedWorkerId,
+    staleTime: 0,
   });
 
   const handleWorkerSelect = (workerId: string) => {
