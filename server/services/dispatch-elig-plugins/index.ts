@@ -2,6 +2,7 @@ import { logger } from "../../logger";
 import { dispatchEligPluginRegistry } from "../dispatch-elig-plugin-registry";
 import { dispatchBanPlugin, backfillDispatchBanEligibility } from "./ban";
 import { dispatchDncPlugin } from "./dnc";
+import { dispatchEbaPlugin, backfillDispatchEbaEligibility } from "./eba";
 import { dispatchHfePlugin } from "./hfe";
 import { dispatchSkillPlugin, backfillDispatchSkillEligibility } from "./skill";
 import { dispatchStatusPlugin } from "./status";
@@ -15,6 +16,7 @@ import { dispatchWsPlugin, backfillDispatchWsEligibility } from "./ws";
 export function registerDispatchEligPlugins(): void {
   dispatchEligPluginRegistry.register(dispatchBanPlugin);
   dispatchEligPluginRegistry.register(dispatchDncPlugin);
+  dispatchEligPluginRegistry.register(dispatchEbaPlugin);
   dispatchEligPluginRegistry.register(dispatchHfePlugin);
   dispatchEligPluginRegistry.register(dispatchSkillPlugin);
   dispatchEligPluginRegistry.register(dispatchStatusPlugin);
@@ -83,6 +85,23 @@ export async function initializeDispatchEligSystem(): Promise<void> {
     }
   } catch (error) {
     logger.error("Failed to backfill work status eligibility during startup", {
+      service: "dispatch-elig-plugins",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  // Backfill eligibility data for existing EBA (Employed but Available) entries
+  try {
+    const result = await backfillDispatchEbaEligibility();
+    if (result.workersProcessed > 0) {
+      logger.info("EBA eligibility backfill completed during startup", {
+        service: "dispatch-elig-plugins",
+        workersProcessed: result.workersProcessed,
+        entriesCreated: result.entriesCreated,
+      });
+    }
+  } catch (error) {
+    logger.error("Failed to backfill EBA eligibility during startup", {
       service: "dispatch-elig-plugins",
       error: error instanceof Error ? error.message : String(error),
     });

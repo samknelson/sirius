@@ -12,6 +12,7 @@ export enum EventType {
   WORKER_BAN_SAVED = "worker.ban.saved",
   WORKER_SKILL_SAVED = "worker.skill.saved",
   WORKER_WS_CHANGED = "worker.ws.changed",
+  DISPATCH_EBA_SAVED = "dispatch.eba.saved",
   CRON = "cron",
   LOG = "log",
 }
@@ -115,6 +116,10 @@ export interface WorkerWsChangedPayload {
   previousWsId: string | null;
 }
 
+export interface DispatchEbaSavedPayload {
+  workerId: string;
+}
+
 export interface CronPayload {
   jobId: string;
   mode: "live" | "test";
@@ -149,6 +154,7 @@ export interface EventPayloadMap {
   [EventType.WORKER_BAN_SAVED]: WorkerBanSavedPayload;
   [EventType.WORKER_SKILL_SAVED]: WorkerSkillSavedPayload;
   [EventType.WORKER_WS_CHANGED]: WorkerWsChangedPayload;
+  [EventType.DISPATCH_EBA_SAVED]: DispatchEbaSavedPayload;
   [EventType.CRON]: CronPayload;
   [EventType.LOG]: LogPayload;
 }

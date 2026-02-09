@@ -9,6 +9,7 @@ import {
 } from "@shared/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
+import { eventBus, EventType } from "../services/event-bus";
 
 export const validate = createNoopValidator();
 
@@ -127,10 +128,14 @@ export function createWorkerDispatchEbaStorage(): WorkerDispatchEbaStorage {
           .values(toAdd.map(date => ({ workerId, date })));
       }
       
-      return await client
+      const result = await client
         .select()
         .from(workerDispatchEba)
         .where(eq(workerDispatchEba.workerId, workerId));
+      
+      eventBus.emit(EventType.DISPATCH_EBA_SAVED, { workerId });
+      
+      return result;
     },
 
     async delete(id: string) {
