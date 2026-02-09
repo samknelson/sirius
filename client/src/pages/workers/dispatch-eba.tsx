@@ -43,8 +43,7 @@ function DispatchEbaContent() {
 
   const syncMutation = useMutation({
     mutationFn: async (dates: string[]) => {
-      const res = await apiRequest("PUT", `/api/worker-dispatch-eba/worker/${worker.id}/sync`, { dates });
-      return res.json();
+      return await apiRequest("PUT", `/api/worker-dispatch-eba/worker/${worker.id}/sync`, { dates });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/worker-dispatch-eba/worker", worker.id] });
