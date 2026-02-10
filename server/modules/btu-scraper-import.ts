@@ -109,7 +109,7 @@ export function registerBtuScraperImportRoutes(
     async (req: Request, res: Response) => {
       let browser: puppeteer.Browser | null = null;
       try {
-        const { wizardId } = req.body;
+        const { wizardId, singleBpsId } = req.body;
         if (!wizardId) {
           return res.status(400).json({ message: "wizardId is required" });
         }
@@ -131,11 +131,20 @@ export function registerBtuScraperImportRoutes(
 
         const allRows: ScrapedRow[] = [];
         let pageNum = 0;
+        const searchBpsId = singleBpsId ? singleBpsId.trim() : null;
 
         while (true) {
           const pageRows = await scrapeReportPage(page);
           allRows.push(...pageRows);
           logger.info(`Scraped page ${pageNum}, found ${pageRows.length} rows (total: ${allRows.length})`);
+
+          if (searchBpsId) {
+            const found = allRows.some(r => r.bpsId.trim() === searchBpsId);
+            if (found) {
+              logger.info(`Found target BPS ID ${searchBpsId}, stopping pagination`);
+              break;
+            }
+          }
 
           const nextUrl = await getNextPageUrl(page);
           if (!nextUrl) break;
@@ -153,7 +162,11 @@ export function registerBtuScraperImportRoutes(
           }
         }
 
-        const withBpsId = deduplicated.filter(r => r.bpsId && r.bpsId.trim() !== '');
+        let withBpsId = deduplicated.filter(r => r.bpsId && r.bpsId.trim() !== '');
+
+        if (searchBpsId) {
+          withBpsId = withBpsId.filter(r => r.bpsId.trim() === searchBpsId);
+        }
 
         const wizardData = wizard.data as any;
         await storage.wizards.update(wizardId, {

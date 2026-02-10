@@ -2,11 +2,12 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Globe, Loader2, CheckCircle2, Info } from "lucide-react";
+import { Globe, Loader2, CheckCircle2, Info, Search } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -37,10 +38,15 @@ export function ScrapeStep({ wizardId, wizardType, data, onDataChange }: ScrapeS
   const { toast } = useToast();
   const scrapedData = data?.scrapedData;
   const scrapeStats = data?.scrapeStats;
+  const [singleBpsId, setSingleBpsId] = useState("");
 
   const scrapeMutation = useMutation({
-    mutationFn: async () => {
-      return await apiRequest("POST", "/api/btu-scraper-import/scrape", { wizardId });
+    mutationFn: async (bpsId?: string) => {
+      const body: any = { wizardId };
+      if (bpsId && bpsId.trim()) {
+        body.singleBpsId = bpsId.trim();
+      }
+      return await apiRequest("POST", "/api/btu-scraper-import/scrape", body);
     },
     onSuccess: (result: ScrapeResult) => {
       queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
@@ -72,20 +78,66 @@ export function ScrapeStep({ wizardId, wizardType, data, onDataChange }: ScrapeS
         </CardHeader>
         <CardContent className="space-y-4">
           {!scrapedData && !scrapeMutation.isPending && (
-            <div className="flex flex-col items-center justify-center p-12 space-y-4">
-              <Globe className="h-12 w-12 text-muted-foreground" />
-              <p className="text-muted-foreground" data-testid="text-scrape-prompt">
-                Click below to scrape signed card checks from the external site
-              </p>
-              <Button
-                onClick={() => scrapeMutation.mutate()}
-                size="lg"
-                className="gap-2"
-                data-testid="button-start-scrape"
-              >
-                <Globe className="h-4 w-4" />
-                Start Scraping
-              </Button>
+            <div className="space-y-6">
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertTitle>Scraping Options</AlertTitle>
+                <AlertDescription>
+                  You can scrape all signed card checks, or search for a single worker by BPS Employee ID for testing purposes.
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="singleBpsId">Single BPS Employee ID (optional)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="singleBpsId"
+                      placeholder="e.g. 12345"
+                      value={singleBpsId}
+                      onChange={(e) => setSingleBpsId(e.target.value)}
+                      data-testid="input-single-bps-id"
+                    />
+                    <Button
+                      onClick={() => scrapeMutation.mutate(singleBpsId)}
+                      disabled={!singleBpsId.trim()}
+                      className="gap-2 shrink-0"
+                      data-testid="button-scrape-single"
+                    >
+                      <Search className="h-4 w-4" />
+                      Search Single
+                    </Button>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Enter a BPS ID to search for just that one worker. The scraper will stop as soon as it finds a match.
+                  </p>
+                </div>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">or</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-center justify-center p-8 space-y-4">
+                  <Globe className="h-12 w-12 text-muted-foreground" />
+                  <p className="text-muted-foreground" data-testid="text-scrape-prompt">
+                    Scrape all signed card checks from the external site
+                  </p>
+                  <Button
+                    onClick={() => scrapeMutation.mutate(undefined)}
+                    size="lg"
+                    className="gap-2"
+                    data-testid="button-start-scrape"
+                  >
+                    <Globe className="h-4 w-4" />
+                    Scrape All
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -163,7 +215,7 @@ export function ScrapeStep({ wizardId, wizardType, data, onDataChange }: ScrapeS
               <div className="flex justify-end">
                 <Button
                   variant="outline"
-                  onClick={() => scrapeMutation.mutate()}
+                  onClick={() => scrapeMutation.mutate(undefined)}
                   disabled={scrapeMutation.isPending}
                   data-testid="button-rescrape"
                 >
