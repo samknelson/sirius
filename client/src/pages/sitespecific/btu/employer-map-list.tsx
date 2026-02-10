@@ -967,7 +967,7 @@ export default function BtuEmployerMapListPage() {
               </Button>
             </div>
           )}
-          <Table>
+          <Table className="text-xs">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-10">
@@ -977,15 +977,15 @@ export default function BtuEmployerMapListPage() {
                     data-testid="checkbox-select-all"
                   />
                 </TableHead>
-                <TableHead>Department</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Job Title</TableHead>
-                <TableHead>Employer</TableHead>
-                <TableHead>Secondary Employer</TableHead>
-                <TableHead>Bargaining Unit</TableHead>
-                <TableHead>Employment Status</TableHead>
-                <TableHead>Territory</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="text-xs">Department</TableHead>
+                <TableHead className="text-xs">Location</TableHead>
+                <TableHead className="text-xs">Job Title</TableHead>
+                <TableHead className="text-xs">Employer</TableHead>
+                <TableHead className="text-xs">Secondary Employer</TableHead>
+                <TableHead className="text-xs">Bargaining Unit</TableHead>
+                <TableHead className="text-xs">Employment Status</TableHead>
+                <TableHead className="text-xs">Territory</TableHead>
+                <TableHead className="text-xs text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
