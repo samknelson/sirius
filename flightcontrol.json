@@ -60,7 +60,8 @@
       "name": "PR Preview",
       "region": "us-east-1",
       "source": {
-        "pr": true
+        "pr": true,
+        "branch": "main"
       },
       "services": [
         {

@@ -58,8 +58,17 @@ export default function LoginPage() {
     [authProviders.providers.replit, authProviders.providers.cognito, authProviders.providers.saml]
       .filter(Boolean).length > 1;
 
+  const isPreview = window.location.hostname.includes('preview') || 
+    window.location.hostname.includes('pr-') ||
+    new URLSearchParams(window.location.search).has('preview');
+
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
+      {isPreview && (
+        <div className="fixed top-0 left-0 right-0 bg-amber-500 text-black text-center py-2 px-4 font-semibold text-sm z-50">
+          PREVIEW ENVIRONMENT - This is a test deployment from a pull request
+        </div>
+      )}
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-2">

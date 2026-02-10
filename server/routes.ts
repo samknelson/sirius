@@ -113,6 +113,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
         environment: process.env.NODE_ENV || "development",
+        branch: process.env.FC_GIT_BRANCH || "unknown",
+        commit: process.env.FC_GIT_COMMIT_SHA?.slice(0, 7) || "unknown",
+        pr: process.env.FC_GIT_PR_NUMBER || null,
       };
       res.status(200).json(healthCheck);
     } catch (error) {
