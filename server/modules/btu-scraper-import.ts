@@ -179,6 +179,16 @@ export function registerBtuScraperImportRoutes(
 
         await page.goto(REPORT_URL, { waitUntil: 'networkidle2', timeout: 60000 });
 
+        const reportPageTitle = await page.title();
+        if (reportPageTitle.toLowerCase().includes('access denied')) {
+          throw new Error('Access Denied: The scraper account does not have permission to view the card check report. Please verify the BTU_SCRAPER_USERNAME credentials have the correct Drupal role/permissions.');
+        }
+        if (reportPageTitle.toLowerCase().includes('log in') || reportPageTitle.toLowerCase().includes('user login')) {
+          throw new Error('Session expired: The scraper was redirected to the login page when accessing the report. The login may not have completed successfully.');
+        }
+
+        logger.info('Report page loaded', { title: reportPageTitle, url: page.url() });
+
         const allRows: ScrapedRow[] = [];
         let pageNum = 0;
         const searchBpsId = singleBpsId ? singleBpsId.trim() : null;
