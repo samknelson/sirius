@@ -55,6 +55,7 @@ The frontend utilizes React 18 with TypeScript, Vite, Shadcn/ui (built on Radix 
 -   **EDLS (Employer Day Labor Scheduler)**: Manages day labor scheduling, including sheets, crews, task assignment, supervisor tracking, and audit logging. Incorporates specialized worker queries for EDLS context and advanced filtering with rating statistics.
 -   **Web Services Framework**: Server-side API framework for exposing services to external clients, supporting bundle-based organization, client credential authentication, and optional IP allowlisting.
 -   **Card Check Signature Import**: Wizard-based tool for importing offline signatures from ZIP files, matching workers, and creating electronic signature records.
+-   **Card Check Scraper Import**: Automated wizard that scrapes signed card checks from an external Drupal site (sirius-btu.activistcentral.net), generates/combines PDFs using puppeteer-core and pdf-lib, matches workers by BPS Employee ID, and creates card check + e-signature records. Skips workers who already have upload-type e-signatures.
 -   **Worker ID Show on Lists**: Configurable worker ID types can be displayed as dynamic columns on worker lists and reports.
 -   **BTU Territories**: Manages geographical territory assignments for BTU-specific features, linking territories to employers and workers.
 
