@@ -14,9 +14,15 @@ const CHROMIUM_PATH = '/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.
 const LOGIN_URL = 'https://sirius-btu.activistcentral.net/user/login';
 const REPORT_BASE_URL = 'https://sirius-btu.activistcentral.net/sirius/staff/cardchecks?field_sirius_type_value=signed&created=-500days';
 
-function getReportPageUrl(pageNum: number): string {
-  if (pageNum === 0) return REPORT_BASE_URL;
-  return `${REPORT_BASE_URL}&page=${pageNum}`;
+function getReportPageUrl(pageNum: number, singleBpsId?: string | null): string {
+  let url = REPORT_BASE_URL;
+  if (singleBpsId) {
+    url = `https://sirius-btu.activistcentral.net/sirius/staff/cardchecks?field_sirius_type_value=signed&created=&field_sirius_id_value=${encodeURIComponent(singleBpsId)}`;
+  }
+  if (pageNum > 0) {
+    url += `&page=${pageNum}`;
+  }
+  return url;
 }
 
 interface ScrapedRow {
@@ -93,7 +99,7 @@ async function scrapeReportPage(page: puppeteer.Page): Promise<ScrapedRow[]> {
   });
   logger.info('Page debug info', { debugInfo });
 
-  return page.evaluate(() => {
+  const result = await page.evaluate(() => {
     const rows: Array<{
       handler: string;
       nid: string;
@@ -115,28 +121,60 @@ async function scrapeReportPage(page: puppeteer.Page): Promise<ScrapedRow[]> {
       }
     }
 
-    if (!table) return rows;
+    if (!table) return { rows, headers: [] as string[], columnMap: {} as Record<string, number> };
 
     const trs = table.querySelectorAll('tbody tr');
     const fallbackTrs = trs.length > 0 ? trs : table.querySelectorAll('tr');
 
-    fallbackTrs.forEach((tr, index) => {
+    const headerRow = table.querySelector('thead tr');
+    const headerCells = headerRow ? Array.from(headerRow.querySelectorAll('th')).map(th => (th.textContent || '').trim().toLowerCase()) : [];
+
+    let idxHandler = 0, idxNid = 1, idxTitle = 2, idxBpsId = 3, idxBargaining = 4, idxPostDate = 5, idxName = 6;
+
+    if (headerCells.length > 0) {
+      for (let i = 0; i < headerCells.length; i++) {
+        const h = headerCells[i];
+        if (h === 'handler') idxHandler = i;
+        else if (h === 'nid') idxNid = i;
+        else if (h === 'title') idxTitle = i;
+        else if (h === 'id') idxBpsId = i;
+        else if (h.includes('bargaining')) idxBargaining = i;
+        else if (h.includes('post')) idxPostDate = i;
+        else if (h === 'name') idxName = i;
+      }
+    }
+
+    const columnMap = { handler: idxHandler, nid: idxNid, title: idxTitle, bpsId: idxBpsId, bargaining: idxBargaining, postDate: idxPostDate, name: idxName };
+
+    fallbackTrs.forEach((tr) => {
       const tds = tr.querySelectorAll('td');
-      if (tds.length >= 7) {
+      if (tds.length >= 5) {
         rows.push({
-          handler: (tds[0].textContent || '').trim(),
-          nid: (tds[1].textContent || '').trim(),
-          title: (tds[2].textContent || '').trim(),
-          bpsId: (tds[3].textContent || '').trim(),
-          bargainingUnit: (tds[4].textContent || '').trim(),
-          postDate: (tds[5].textContent || '').trim(),
-          name: (tds[6].textContent || '').trim(),
+          handler: (tds[idxHandler]?.textContent || '').trim(),
+          nid: (tds[idxNid]?.textContent || '').trim(),
+          title: (tds[idxTitle]?.textContent || '').trim(),
+          bpsId: (tds[idxBpsId]?.textContent || '').trim(),
+          bargainingUnit: (tds[idxBargaining]?.textContent || '').trim(),
+          postDate: (tds[idxPostDate]?.textContent || '').trim(),
+          name: (tds[idxName]?.textContent || '').trim(),
         });
       }
     });
 
-    return rows;
+    return { rows, headers: headerCells, columnMap };
   });
+
+  if (result.headers.length > 0) {
+    logger.info('Table headers detected', { headers: result.headers, columnMap: result.columnMap });
+  }
+
+  if (result.rows.length > 0) {
+    logger.info('Sample first row data', {
+      firstRow: result.rows[0],
+    });
+  }
+
+  return result.rows;
 }
 
 function delay(ms: number): Promise<void> {
@@ -167,12 +205,16 @@ export function registerBtuScraperImportRoutes(
           return res.status(400).json({ message: "Invalid wizard type" });
         }
 
+        const searchBpsId = singleBpsId ? singleBpsId.trim() : null;
+
         browser = await launchBrowser();
         const page = await browser.newPage();
 
         await loginToSite(page);
 
-        await page.goto(getReportPageUrl(0), { waitUntil: 'networkidle2', timeout: 60000 });
+        const startUrl = getReportPageUrl(0, searchBpsId);
+        logger.info('Navigating to report', { url: startUrl, singleBpsId: searchBpsId });
+        await page.goto(startUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
         const reportPageTitle = await page.title();
         if (reportPageTitle.toLowerCase().includes('access denied')) {
@@ -186,7 +228,6 @@ export function registerBtuScraperImportRoutes(
 
         const allRows: ScrapedRow[] = [];
         let pageNum = 0;
-        const searchBpsId = singleBpsId ? singleBpsId.trim() : null;
         let consecutiveEmptyPages = 0;
 
         while (true) {
@@ -224,7 +265,7 @@ export function registerBtuScraperImportRoutes(
 
           pageNum++;
           await delay(500);
-          await page.goto(getReportPageUrl(pageNum), { waitUntil: 'networkidle2', timeout: 60000 });
+          await page.goto(getReportPageUrl(pageNum, searchBpsId), { waitUntil: 'networkidle2', timeout: 60000 });
         }
 
         const seen = new Set<string>();
