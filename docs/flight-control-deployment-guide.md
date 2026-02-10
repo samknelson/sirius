@@ -498,6 +498,20 @@ if (!NEON_API_KEY) {
 }
 ```
 
+### Problem: flightcontrol.json PR source format
+
+Flight Control expects `"pr": true` (a boolean), not an object. Using an object like `{ "commentEnabled": true, "labels": [] }` will cause a config parsing error. If you need to filter which PRs trigger previews, use a separate `filter` block:
+
+```json
+"source": {
+  "pr": true,
+  "filter": {
+    "toBranches": ["main"],
+    "labels": ["deploy-preview"]
+  }
+}
+```
+
 ### Cleanup: GitHub Action
 
 When a PR is closed, a GitHub Action deletes the Neon branch:

@@ -60,10 +60,7 @@
       "name": "PR Preview",
       "region": "us-east-1",
       "source": {
-        "pr": {
-          "commentEnabled": true,
-          "labels": []
-        }
+        "pr": true
       },
       "services": [
         {
