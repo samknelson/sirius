@@ -23,6 +23,11 @@ import { ConfigureStep as BTUSigConfigureStep } from './btu-cardcheck-sig-import
 import { PreviewStep as BTUSigPreviewStep } from './btu-cardcheck-sig-import/PreviewStep';
 import { ProcessStep as BTUSigProcessStep } from './btu-cardcheck-sig-import/ProcessStep';
 import { ResultsStep as BTUSigResultsStep } from './btu-cardcheck-sig-import/ResultsStep';
+import { ConfigureStep as BTUScrapeConfigureStep } from './btu-cardcheck-scrape-import/ConfigureStep';
+import { ScrapeStep as BTUScrapeScrapeStep } from './btu-cardcheck-scrape-import/ScrapeStep';
+import { PreviewStep as BTUScrapePreviewStep } from './btu-cardcheck-scrape-import/PreviewStep';
+import { ProcessStep as BTUScrapeProcessStep } from './btu-cardcheck-scrape-import/ProcessStep';
+import { ResultsStep as BTUScrapeResultsStep } from './btu-cardcheck-scrape-import/ResultsStep';
 
 export interface WizardStepComponent {
   (props: { wizardId: string; wizardType: string; data?: any; onDataChange?: (data: any) => void }): JSX.Element;
@@ -129,6 +134,22 @@ const evaluateSigProcessComplete: StepCompletionEvaluator = ({ wizard }) => {
   return !!wizard?.data?.processResults;
 };
 
+const evaluateScrapeConfigureComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.cardcheckDefinitionId;
+};
+
+const evaluateScrapeDataComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.scrapedData;
+};
+
+const evaluateScrapePreviewComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.previewData;
+};
+
+const evaluateScrapeProcessComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.processResults;
+};
+
 export const stepControllerRegistry: StepControllerRegistry = {
   'gbhet_legal_workers_monthly': {
     'upload': { Component: UploadStep, evaluateCompletion: evaluateUploadComplete },
@@ -210,6 +231,13 @@ export const stepControllerRegistry: StepControllerRegistry = {
     'preview': { Component: BTUSigPreviewStep, evaluateCompletion: evaluateSigPreviewComplete },
     'process': { Component: BTUSigProcessStep, evaluateCompletion: evaluateSigProcessComplete },
     'results': { Component: BTUSigResultsStep, evaluateCompletion: alwaysComplete },
+  },
+  'btu_cardcheck_scrape_import': {
+    'configure': { Component: BTUScrapeConfigureStep, evaluateCompletion: evaluateScrapeConfigureComplete },
+    'scrape': { Component: BTUScrapeScrapeStep, evaluateCompletion: evaluateScrapeDataComplete },
+    'preview': { Component: BTUScrapePreviewStep, evaluateCompletion: evaluateScrapePreviewComplete },
+    'process': { Component: BTUScrapeProcessStep, evaluateCompletion: evaluateScrapeProcessComplete },
+    'results': { Component: BTUScrapeResultsStep, evaluateCompletion: alwaysComplete },
   },
 };
 
@@ -294,6 +322,13 @@ export const stepComponentRegistry: StepComponentRegistry = {
     'preview': BTUSigPreviewStep,
     'process': BTUSigProcessStep,
     'results': BTUSigResultsStep,
+  },
+  'btu_cardcheck_scrape_import': {
+    'configure': BTUScrapeConfigureStep,
+    'scrape': BTUScrapeScrapeStep,
+    'preview': BTUScrapePreviewStep,
+    'process': BTUScrapeProcessStep,
+    'results': BTUScrapeResultsStep,
   },
 };
 

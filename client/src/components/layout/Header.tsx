@@ -257,6 +257,18 @@ export default function Header() {
                     </Button>
                   </Link>
                 )}
+                {hasComponent("sitespecific.btu") && hasPermission("admin") && (
+                  <Link href="/sitespecific/btu/cardcheck-scrape-import" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location.startsWith("/sitespecific/btu/cardcheck-scrape-import") ? "default" : "ghost"}
+                      className="w-full justify-start pl-8"
+                      data-testid="mobile-nav-btu-scrape-import"
+                    >
+                      <FileCheck className="h-4 w-4 mr-2" />
+                      Scraper Import
+                    </Button>
+                  </Link>
+                )}
 
                 {hasSingleEmployer && (
                   <Link href={`/employers/${myEmployers[0].id}`} onClick={() => setMobileMenuOpen(false)}>
@@ -849,6 +861,16 @@ export default function Header() {
                         <div className="flex items-center cursor-pointer" data-testid="menu-btu-sig-import">
                           <FileCheck className="h-4 w-4 mr-2" />
                           Signature Import
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasComponent("sitespecific.btu") && hasPermission("admin") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/sitespecific/btu/cardcheck-scrape-import" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-btu-scrape-import">
+                          <FileCheck className="h-4 w-4 mr-2" />
+                          Scraper Import
                         </div>
                       </Link>
                     </DropdownMenuItem>
