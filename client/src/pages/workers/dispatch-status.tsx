@@ -12,12 +12,17 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { format } from "date-fns";
 import { Calendar, Truck, Edit, Save, X } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import type { WorkerDispatchStatus } from "@shared/schema";
 
 function DispatchStatusContent() {
   const { worker } = useWorkerLayout();
   const { toast } = useToast();
-  const [isEditing, setIsEditing] = useState(false);
+  const { hasPermission } = useAuth();
+  const isStaff = hasPermission("staff");
+
+  const [isEditingStatus, setIsEditingStatus] = useState(false);
+  const [isEditingSeniority, setIsEditingSeniority] = useState(false);
   const [editStatus, setEditStatus] = useState<string>("available");
   const [editSeniorityDate, setEditSeniorityDate] = useState<string>("");
 
@@ -35,42 +40,54 @@ function DispatchStatusContent() {
     },
   });
 
-  const upsertMutation = useMutation({
-    mutationFn: async (data: { status: string; seniorityDate: string | null }) => {
-      return apiRequest("PUT", `/api/worker-dispatch-status/worker/${worker.id}`, data);
+  const statusMutation = useMutation({
+    mutationFn: async (status: string) => {
+      return apiRequest("PUT", `/api/worker-dispatch-status/worker/${worker.id}/status`, { status });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/worker-dispatch-status/worker", worker.id] });
-      toast({
-        title: "Dispatch status updated",
-        description: "The worker's dispatch status has been saved.",
-      });
-      setIsEditing(false);
+      toast({ title: "Status updated", description: "Dispatch status has been saved." });
+      setIsEditingStatus(false);
     },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: "Failed to update dispatch status.",
-        variant: "destructive",
-      });
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update dispatch status.", variant: "destructive" });
     },
   });
 
-  const handleEdit = () => {
+  const seniorityMutation = useMutation({
+    mutationFn: async (seniorityDate: string | null) => {
+      return apiRequest("PUT", `/api/worker-dispatch-status/worker/${worker.id}/seniority-date`, { seniorityDate });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/worker-dispatch-status/worker", worker.id] });
+      toast({ title: "Seniority date updated", description: "The seniority date has been saved." });
+      setIsEditingSeniority(false);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update seniority date.", variant: "destructive" });
+    },
+  });
+
+  const handleEditStatus = () => {
     setEditStatus(dispatchStatus?.status || "available");
-    setEditSeniorityDate(dispatchStatus?.seniorityDate ? format(new Date(dispatchStatus.seniorityDate), "yyyy-MM-dd") : "");
-    setIsEditing(true);
+    setIsEditingStatus(true);
   };
 
-  const handleSave = () => {
-    upsertMutation.mutate({
-      status: editStatus,
-      seniorityDate: editSeniorityDate || null,
-    });
+  const handleSaveStatus = () => {
+    statusMutation.mutate(editStatus);
   };
 
-  const handleCancel = () => {
-    setIsEditing(false);
+  const handleEditSeniority = () => {
+    setEditSeniorityDate(
+      dispatchStatus?.seniorityDate
+        ? format(new Date(dispatchStatus.seniorityDate), "yyyy-MM-dd")
+        : ""
+    );
+    setIsEditingSeniority(true);
+  };
+
+  const handleSaveSeniority = () => {
+    seniorityMutation.mutate(editSeniorityDate || null);
   };
 
   if (isLoading) {
@@ -93,29 +110,29 @@ function DispatchStatusContent() {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <Truck className="h-5 w-5" />
-            <CardTitle>Dispatch Status</CardTitle>
-          </div>
-          {!isEditing && (
-            <Button variant="outline" size="sm" onClick={handleEdit} data-testid="button-edit-dispatch-status">
-              <Edit className="h-4 w-4 mr-2" />
-              Edit
-            </Button>
-          )}
+        <div className="flex items-center gap-2">
+          <Truck className="h-5 w-5" />
+          <CardTitle>Dispatch Status</CardTitle>
         </div>
         <CardDescription>
-          Manage this worker's availability for dispatch jobs and seniority date.
+          Manage dispatch availability and seniority date.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {isEditing ? (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <Label className="text-muted-foreground text-sm">Status</Label>
+            {!isEditingStatus && (
+              <Button variant="outline" size="sm" onClick={handleEditStatus} data-testid="button-edit-status">
+                <Edit className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
+            )}
+          </div>
+          {isEditingStatus ? (
+            <div className="space-y-3">
               <Select value={editStatus} onValueChange={setEditStatus}>
-                <SelectTrigger id="status" data-testid="select-dispatch-status">
+                <SelectTrigger data-testid="select-dispatch-status">
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -123,55 +140,70 @@ function DispatchStatusContent() {
                   <SelectItem value="not_available">Not Available</SelectItem>
                 </SelectContent>
               </Select>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleSaveStatus} disabled={statusMutation.isPending} data-testid="button-save-status">
+                  <Save className="h-4 w-4 mr-2" />
+                  {statusMutation.isPending ? "Saving..." : "Save"}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setIsEditingStatus(false)} disabled={statusMutation.isPending} data-testid="button-cancel-status">
+                  <X className="h-4 w-4 mr-2" />
+                  Cancel
+                </Button>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="seniority-date">Seniority Date</Label>
+          ) : (
+            <div>
+              {dispatchStatus ? (
+                <Badge variant={statusBadgeVariant} data-testid="badge-dispatch-status">
+                  {dispatchStatus.status === "available" ? "Available" : "Not Available"}
+                </Badge>
+              ) : (
+                <span className="text-muted-foreground" data-testid="text-no-status">Not set</span>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <Label className="text-muted-foreground text-sm">Seniority Date</Label>
+            {!isEditingSeniority && isStaff && (
+              <Button variant="outline" size="sm" onClick={handleEditSeniority} data-testid="button-edit-seniority">
+                <Edit className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
+            )}
+          </div>
+          {isEditingSeniority ? (
+            <div className="space-y-3">
               <Input
-                id="seniority-date"
                 type="date"
                 value={editSeniorityDate}
                 onChange={(e) => setEditSeniorityDate(e.target.value)}
                 data-testid="input-seniority-date"
               />
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={handleSave} disabled={upsertMutation.isPending} data-testid="button-save-dispatch-status">
-                <Save className="h-4 w-4 mr-2" />
-                {upsertMutation.isPending ? "Saving..." : "Save"}
-              </Button>
-              <Button variant="outline" onClick={handleCancel} disabled={upsertMutation.isPending} data-testid="button-cancel-dispatch-status">
-                <X className="h-4 w-4 mr-2" />
-                Cancel
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label className="text-muted-foreground text-sm">Status</Label>
-              <div>
-                {dispatchStatus ? (
-                  <Badge variant={statusBadgeVariant} data-testid="badge-dispatch-status">
-                    {dispatchStatus.status === "available" ? "Available" : "Not Available"}
-                  </Badge>
-                ) : (
-                  <span className="text-muted-foreground" data-testid="text-no-status">Not set</span>
-                )}
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleSaveSeniority} disabled={seniorityMutation.isPending} data-testid="button-save-seniority">
+                  <Save className="h-4 w-4 mr-2" />
+                  {seniorityMutation.isPending ? "Saving..." : "Save"}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setIsEditingSeniority(false)} disabled={seniorityMutation.isPending} data-testid="button-cancel-seniority">
+                  <X className="h-4 w-4 mr-2" />
+                  Cancel
+                </Button>
               </div>
             </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground text-sm">Seniority Date</Label>
-              <div className="flex items-center gap-2" data-testid="text-seniority-date">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                {dispatchStatus?.seniorityDate ? (
-                  <span>{format(new Date(dispatchStatus.seniorityDate), "MMMM d, yyyy")}</span>
-                ) : (
-                  <span className="text-muted-foreground">Not set</span>
-                )}
-              </div>
+          ) : (
+            <div className="flex items-center gap-2" data-testid="text-seniority-date">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              {dispatchStatus?.seniorityDate ? (
+                <span>{format(new Date(dispatchStatus.seniorityDate), "MMMM d, yyyy")}</span>
+              ) : (
+                <span className="text-muted-foreground">Not set</span>
+              )}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </CardContent>
     </Card>
   );
