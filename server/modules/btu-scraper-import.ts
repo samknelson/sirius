@@ -268,12 +268,20 @@ export function registerBtuScraperImportRoutes(
           await page.goto(getReportPageUrl(pageNum, searchBpsId), { waitUntil: 'networkidle2', timeout: 60000 });
         }
 
-        const seen = new Set<string>();
+        const seenMap = new Map<string, number>();
         const deduplicated: ScrapedRow[] = [];
         for (const row of allRows) {
-          if (!seen.has(row.nid)) {
-            seen.add(row.nid);
+          const existingIdx = seenMap.get(row.nid);
+          if (existingIdx === undefined) {
+            seenMap.set(row.nid, deduplicated.length);
             deduplicated.push(row);
+          } else {
+            const existing = deduplicated[existingIdx];
+            const existingHasBps = existing.bpsId && existing.bpsId.trim() !== '';
+            const newHasBps = row.bpsId && row.bpsId.trim() !== '';
+            if (!existingHasBps && newHasBps) {
+              deduplicated[existingIdx] = row;
+            }
           }
         }
 
