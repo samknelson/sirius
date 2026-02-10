@@ -12,7 +12,12 @@ type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Respo
 
 const CHROMIUM_PATH = '/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium';
 const LOGIN_URL = 'https://sirius-btu.activistcentral.net/user/login';
-const REPORT_URL = 'https://sirius-btu.activistcentral.net/admin/cardcheck/reports/signed?field_date_value_1[value][date]=&field_date_value[value][date]=-500+days';
+const REPORT_BASE_URL = 'https://sirius-btu.activistcentral.net/sirius/staff/cardchecks?field_sirius_type_value=signed&created=-500days';
+
+function getReportPageUrl(pageNum: number): string {
+  if (pageNum === 0) return REPORT_BASE_URL;
+  return `${REPORT_BASE_URL}&page=${pageNum}`;
+}
 
 interface ScrapedRow {
   handler: string;
@@ -134,16 +139,6 @@ async function scrapeReportPage(page: puppeteer.Page): Promise<ScrapedRow[]> {
   });
 }
 
-async function getNextPageUrl(page: puppeteer.Page): Promise<string | null> {
-  return page.evaluate(() => {
-    const nextLink = document.querySelector('li.pager-next a, .pager-next a, a[title="Go to next page"]');
-    if (nextLink) {
-      return (nextLink as HTMLAnchorElement).href;
-    }
-    return null;
-  });
-}
-
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -177,7 +172,7 @@ export function registerBtuScraperImportRoutes(
 
         await loginToSite(page);
 
-        await page.goto(REPORT_URL, { waitUntil: 'networkidle2', timeout: 60000 });
+        await page.goto(getReportPageUrl(0), { waitUntil: 'networkidle2', timeout: 60000 });
 
         const reportPageTitle = await page.title();
         if (reportPageTitle.toLowerCase().includes('access denied')) {
@@ -192,11 +187,22 @@ export function registerBtuScraperImportRoutes(
         const allRows: ScrapedRow[] = [];
         let pageNum = 0;
         const searchBpsId = singleBpsId ? singleBpsId.trim() : null;
+        let consecutiveEmptyPages = 0;
 
         while (true) {
           const pageRows = await scrapeReportPage(page);
           allRows.push(...pageRows);
           logger.info(`Scraped page ${pageNum}, found ${pageRows.length} rows (total: ${allRows.length})`);
+
+          if (pageRows.length === 0) {
+            consecutiveEmptyPages++;
+            if (consecutiveEmptyPages >= 2) {
+              logger.info('Two consecutive empty pages, stopping pagination');
+              break;
+            }
+          } else {
+            consecutiveEmptyPages = 0;
+          }
 
           if (searchBpsId) {
             const found = allRows.some(r => r.bpsId.trim() === searchBpsId);
@@ -206,11 +212,19 @@ export function registerBtuScraperImportRoutes(
             }
           }
 
-          const nextUrl = await getNextPageUrl(page);
-          if (!nextUrl) break;
+          const hasNextPage = await page.evaluate(() => {
+            const nextLink = document.querySelector('li.pager-next a, .pager-next a, a[title="Go to next page"]');
+            return !!nextLink;
+          });
 
-          await page.goto(nextUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+          if (!hasNextPage) {
+            logger.info('No next page link found, stopping pagination');
+            break;
+          }
+
           pageNum++;
+          await delay(500);
+          await page.goto(getReportPageUrl(pageNum), { waitUntil: 'networkidle2', timeout: 60000 });
         }
 
         const seen = new Set<string>();
