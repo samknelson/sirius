@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,11 +34,26 @@ interface ScrapeResult {
   pagesScraped: number;
 }
 
+interface ScrapeProgress {
+  status: string;
+  pagesScraped: number;
+  rowsFound: number;
+  currentActivity: string;
+}
+
 export function ScrapeStep({ wizardId, wizardType, data, onDataChange }: ScrapeStepProps) {
   const { toast } = useToast();
   const scrapedData = data?.scrapedData;
   const scrapeStats = data?.scrapeStats;
   const [singleBpsId, setSingleBpsId] = useState("");
+  const [isScraping, setIsScraping] = useState(false);
+
+  const { data: wizardData } = useQuery<{ data: { scrapeProgress?: ScrapeProgress } }>({
+    queryKey: [`/api/wizards/${wizardId}`],
+    refetchInterval: isScraping ? 4000 : false,
+  });
+
+  const progress = wizardData?.data?.scrapeProgress;
 
   const scrapeMutation = useMutation({
     mutationFn: async (bpsId?: string) => {
@@ -48,7 +63,11 @@ export function ScrapeStep({ wizardId, wizardType, data, onDataChange }: ScrapeS
       }
       return await apiRequest("POST", "/api/btu-scraper-import/scrape", body);
     },
+    onMutate: () => {
+      setIsScraping(true);
+    },
     onSuccess: (result: ScrapeResult) => {
+      setIsScraping(false);
       queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
       toast({
         title: "Scraping Complete",
@@ -56,6 +75,7 @@ export function ScrapeStep({ wizardId, wizardType, data, onDataChange }: ScrapeS
       });
     },
     onError: (error: Error) => {
+      setIsScraping(false);
       toast({
         title: "Scraping Failed",
         description: error.message,
@@ -144,11 +164,25 @@ export function ScrapeStep({ wizardId, wizardType, data, onDataChange }: ScrapeS
           {scrapeMutation.isPending && (
             <div className="flex flex-col items-center justify-center p-12 space-y-4">
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
-              <p className="text-muted-foreground" data-testid="text-scraping-progress">
-                Scraping the external site... This may take several minutes.
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Logging in, navigating pages, and extracting data.
+              {progress ? (
+                <div className="text-center space-y-2">
+                  <p className="font-medium" data-testid="text-scraping-progress">
+                    {progress.currentActivity}
+                  </p>
+                  <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
+                    <span data-testid="text-progress-pages">{progress.pagesScraped} pages scanned</span>
+                    <span data-testid="text-progress-rows">{progress.rowsFound.toLocaleString()} rows found</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center space-y-2">
+                  <p className="text-muted-foreground" data-testid="text-scraping-starting">
+                    Starting scrape... Logging in to external site.
+                  </p>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Progress updates every few seconds
               </p>
             </div>
           )}

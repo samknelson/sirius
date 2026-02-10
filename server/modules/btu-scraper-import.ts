@@ -191,8 +191,8 @@ export function registerBtuScraperImportRoutes(
     requirePermission("admin"),
     async (req: Request, res: Response) => {
       let browser: puppeteer.Browser | null = null;
+      const { wizardId, singleBpsId } = req.body;
       try {
-        const { wizardId, singleBpsId } = req.body;
         if (!wizardId) {
           return res.status(400).json({ message: "wizardId is required" });
         }
@@ -229,11 +229,35 @@ export function registerBtuScraperImportRoutes(
         const allRows: ScrapedRow[] = [];
         let pageNum = 0;
         let consecutiveEmptyPages = 0;
+        let lastProgressUpdate = 0;
 
         while (true) {
           const pageRows = await scrapeReportPage(page);
           allRows.push(...pageRows);
           logger.info(`Scraped page ${pageNum}, found ${pageRows.length} rows (total: ${allRows.length})`);
+
+          const now = Date.now();
+          if (now - lastProgressUpdate > 3000) {
+            lastProgressUpdate = now;
+            try {
+              const currentWizard = await storage.wizards.getById(wizardId);
+              if (currentWizard) {
+                await storage.wizards.update(wizardId, {
+                  data: {
+                    ...(currentWizard.data as any),
+                    scrapeProgress: {
+                      status: 'scraping',
+                      pagesScraped: pageNum + 1,
+                      rowsFound: allRows.length,
+                      currentActivity: `Scanning page ${pageNum + 1}...`,
+                    },
+                  },
+                });
+              }
+            } catch (progressErr) {
+              logger.warn('Failed to update scrape progress', { error: progressErr });
+            }
+          }
 
           if (pageRows.length === 0) {
             consecutiveEmptyPages++;
@@ -291,10 +315,11 @@ export function registerBtuScraperImportRoutes(
           withBpsId = withBpsId.filter(r => r.bpsId.trim() === searchBpsId);
         }
 
-        const wizardData = wizard.data as any;
+        const finalWizard = await storage.wizards.getById(wizardId);
+        const finalWizardData = (finalWizard?.data as any) || wizardData;
         await storage.wizards.update(wizardId, {
           data: {
-            ...wizardData,
+            ...finalWizardData,
             scrapedData: withBpsId,
             scrapeStats: {
               totalScraped: allRows.length,
@@ -302,6 +327,7 @@ export function registerBtuScraperImportRoutes(
               withBpsId: withBpsId.length,
               pagesScraped: pageNum + 1,
             },
+            scrapeProgress: null,
           },
         });
 
@@ -314,6 +340,16 @@ export function registerBtuScraperImportRoutes(
         });
       } catch (error) {
         logger.error('Scrape error', { error });
+        try {
+          const errWizard = await storage.wizards.getById(wizardId);
+          if (errWizard) {
+            await storage.wizards.update(wizardId, {
+              data: { ...(errWizard.data as any), scrapeProgress: null },
+            });
+          }
+        } catch (clearErr) {
+          logger.warn('Failed to clear scrape progress on error', { error: clearErr });
+        }
         const message = error instanceof Error ? error.message : 'Failed to scrape external site';
         res.status(500).json({ message });
       } finally {
@@ -465,8 +501,8 @@ export function registerBtuScraperImportRoutes(
     requirePermission("admin"),
     async (req: Request, res: Response) => {
       let browser: puppeteer.Browser | null = null;
+      const { wizardId } = req.body;
       try {
-        const { wizardId } = req.body;
         if (!wizardId) {
           return res.status(400).json({ message: "wizardId is required" });
         }
@@ -526,7 +562,37 @@ export function registerBtuScraperImportRoutes(
           }>,
         };
 
-        for (const matchedRow of matchedRows) {
+        let processLastProgressUpdate = 0;
+
+        for (let rowIndex = 0; rowIndex < matchedRows.length; rowIndex++) {
+          const matchedRow = matchedRows[rowIndex];
+
+          const now = Date.now();
+          if (now - processLastProgressUpdate > 3000) {
+            processLastProgressUpdate = now;
+            try {
+              const currentWizard = await storage.wizards.getById(wizardId);
+              if (currentWizard) {
+                await storage.wizards.update(wizardId, {
+                  data: {
+                    ...(currentWizard.data as any),
+                    processProgress: {
+                      status: 'processing',
+                      current: rowIndex + 1,
+                      total: matchedRows.length,
+                      created: results.created,
+                      linked: results.linked,
+                      errors: results.errors.length,
+                      currentActivity: `Processing ${rowIndex + 1} of ${matchedRows.length}: generating PDF for BPS ID ${matchedRow.bpsId}...`,
+                    },
+                  },
+                });
+              }
+            } catch (progressErr) {
+              logger.warn('Failed to update process progress', { error: progressErr });
+            }
+          }
+
           try {
             const cardcheckPageUrl = `https://sirius-btu.activistcentral.net/node/${matchedRow.nid}/sirius_log_cardcheck`;
 
@@ -716,10 +782,13 @@ export function registerBtuScraperImportRoutes(
         }
 
         const hasErrors = results.errors.length > 0;
+        const latestWizard = await storage.wizards.getById(wizardId);
+        const latestWizardData = (latestWizard?.data as any) || wizardData;
         await storage.wizards.update(wizardId, {
           data: {
-            ...wizardData,
+            ...latestWizardData,
             processResults: results,
+            processProgress: null,
           },
           status: hasErrors ? 'completed_with_errors' : 'completed',
         });
@@ -727,6 +796,16 @@ export function registerBtuScraperImportRoutes(
         res.json(results);
       } catch (error) {
         logger.error('Process error', { error });
+        try {
+          const errWizard = await storage.wizards.getById(wizardId);
+          if (errWizard) {
+            await storage.wizards.update(wizardId, {
+              data: { ...(errWizard.data as any), processProgress: null },
+            });
+          }
+        } catch (clearErr) {
+          logger.warn('Failed to clear process progress on error', { error: clearErr });
+        }
         const message = error instanceof Error ? error.message : 'Failed to process import';
         res.status(500).json({ message });
       } finally {
