@@ -94,6 +94,8 @@ export interface CardcheckStorage {
   getCardcheckByEsigId(esigId: string): Promise<Cardcheck | undefined>;
   getCardchecksByWorkerId(workerId: string): Promise<Cardcheck[]>;
   getCardchecksByDefinitionId(definitionId: string): Promise<Cardcheck[]>;
+  getCardcheckBySourceNid(sourceNid: string): Promise<Cardcheck | undefined>;
+  getCardchecksBySourceNids(sourceNids: string[]): Promise<Cardcheck[]>;
   getCardcheckStatusSummary(): Promise<CardcheckStatusSummary[]>;
   getAllSignedCardchecksWithDetails(): Promise<SignedCardcheckWithDetails[]>;
   getCardcheckReport(filters: CardcheckReportFilters): Promise<CardcheckReportItem[]>;
@@ -141,6 +143,24 @@ export function createCardcheckStorage(): CardcheckStorage {
         .select()
         .from(cardchecks)
         .where(eq(cardchecks.cardcheckDefinitionId, definitionId));
+    },
+
+    async getCardcheckBySourceNid(sourceNid: string): Promise<Cardcheck | undefined> {
+      const client = getClient();
+      const [cardcheck] = await client
+        .select()
+        .from(cardchecks)
+        .where(eq(cardchecks.sourceNid, sourceNid));
+      return cardcheck || undefined;
+    },
+
+    async getCardchecksBySourceNids(sourceNids: string[]): Promise<Cardcheck[]> {
+      if (sourceNids.length === 0) return [];
+      const client = getClient();
+      return await client
+        .select()
+        .from(cardchecks)
+        .where(inArray(cardchecks.sourceNid, sourceNids));
     },
 
     async getCardcheckStatusSummary(): Promise<CardcheckStatusSummary[]> {

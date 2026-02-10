@@ -316,7 +316,7 @@ export function registerBtuScraperImportRoutes(
         }
 
         const finalWizard = await storage.wizards.getById(wizardId);
-        const finalWizardData = (finalWizard?.data as any) || wizardData;
+        const finalWizardData = (finalWizard?.data as any) || {};
         await storage.wizards.update(wizardId, {
           data: {
             ...finalWizardData,
@@ -392,6 +392,10 @@ export function registerBtuScraperImportRoutes(
 
         const btuStorage = createBtuWorkerImportStorage();
 
+        const allNids = scrapedData.map(r => r.nid).filter(Boolean);
+        const existingByNid = await storage.cardchecks.getCardchecksBySourceNids(allNids);
+        const importedNidSet = new Set(existingByNid.map(cc => cc.sourceNid));
+
         const matched: Array<{
           nid: string;
           bpsId: string;
@@ -413,12 +417,21 @@ export function registerBtuScraperImportRoutes(
         const skipped: Array<{
           nid: string;
           bpsId: string;
-          workerId: string;
-          workerName: string;
+          workerId?: string;
+          workerName?: string;
           reason: string;
         }> = [];
 
         for (const row of scrapedData) {
+          if (importedNidSet.has(row.nid)) {
+            skipped.push({
+              nid: row.nid,
+              bpsId: row.bpsId,
+              reason: 'Already imported (NID exists in system)',
+            });
+            continue;
+          }
+
           const worker = await btuStorage.findWorkerByBpsEmployeeId(row.bpsId);
           if (!worker) {
             unmatched.push({
@@ -537,6 +550,25 @@ export function registerBtuScraperImportRoutes(
           return res.status(400).json({ message: "No matched rows to process" });
         }
 
+        const allMatchedNids = matchedRows.map((r: any) => r.nid).filter(Boolean);
+        const alreadyImported = await storage.cardchecks.getCardchecksBySourceNids(allMatchedNids);
+        const alreadyImportedNidSet = new Set(alreadyImported.map(cc => cc.sourceNid));
+
+        const rowsToProcess = matchedRows.filter((r: any) => !alreadyImportedNidSet.has(r.nid));
+
+        if (rowsToProcess.length === 0) {
+          return res.json({
+            processed: 0,
+            total: matchedRows.length,
+            created: 0,
+            linked: 0,
+            skipped: matchedRows.length,
+            errors: [],
+            processedRows: [],
+            message: 'All matched rows have already been imported (by NID).',
+          });
+        }
+
         browser = await launchBrowser();
         const page = await browser.newPage();
 
@@ -546,10 +578,10 @@ export function registerBtuScraperImportRoutes(
 
         const results = {
           processed: 0,
-          total: matchedRows.length,
+          total: rowsToProcess.length,
           created: 0,
           linked: 0,
-          skipped: 0,
+          skipped: matchedRows.length - rowsToProcess.length,
           errors: [] as Array<{ nid: string; bpsId: string; error: string }>,
           processedRows: [] as Array<{
             nid: string;
@@ -564,8 +596,8 @@ export function registerBtuScraperImportRoutes(
 
         let processLastProgressUpdate = 0;
 
-        for (let rowIndex = 0; rowIndex < matchedRows.length; rowIndex++) {
-          const matchedRow = matchedRows[rowIndex];
+        for (let rowIndex = 0; rowIndex < rowsToProcess.length; rowIndex++) {
+          const matchedRow = rowsToProcess[rowIndex];
 
           const now = Date.now();
           if (now - processLastProgressUpdate > 3000) {
@@ -579,11 +611,12 @@ export function registerBtuScraperImportRoutes(
                     processProgress: {
                       status: 'processing',
                       current: rowIndex + 1,
-                      total: matchedRows.length,
+                      total: rowsToProcess.length,
                       created: results.created,
                       linked: results.linked,
+                      skipped: results.skipped,
                       errors: results.errors.length,
-                      currentActivity: `Processing ${rowIndex + 1} of ${matchedRows.length}: generating PDF for BPS ID ${matchedRow.bpsId}...`,
+                      currentActivity: `Processing ${rowIndex + 1} of ${rowsToProcess.length}: generating PDF for BPS ID ${matchedRow.bpsId}...`,
                     },
                   },
                 });
@@ -725,6 +758,7 @@ export function registerBtuScraperImportRoutes(
                 esigId: esig.id,
                 status: 'signed',
                 signedDate,
+                sourceNid: matchedRow.nid,
               });
               cardcheckId = matchingCardcheck.id;
               action = 'linked';
@@ -740,6 +774,7 @@ export function registerBtuScraperImportRoutes(
                 status: 'signed',
                 signedDate,
                 esigId: esig.id,
+                sourceNid: matchedRow.nid,
               });
               cardcheckId = newCardcheck.id;
               action = 'created';
@@ -767,15 +802,27 @@ export function registerBtuScraperImportRoutes(
           results.processed++;
 
           if (results.processed % 5 === 0) {
-            await storage.wizards.update(wizardId, {
-              data: {
-                ...wizardData,
-                processProgress: {
-                  processed: results.processed,
-                  total: results.total,
-                },
-              },
-            });
+            try {
+              const progressWizard = await storage.wizards.getById(wizardId);
+              if (progressWizard) {
+                await storage.wizards.update(wizardId, {
+                  data: {
+                    ...(progressWizard.data as any),
+                    processProgress: {
+                      status: 'processing',
+                      current: results.processed,
+                      total: results.total,
+                      created: results.created,
+                      linked: results.linked,
+                      skipped: results.skipped,
+                      errors: results.errors.length,
+                    },
+                  },
+                });
+              }
+            } catch (progressErr) {
+              logger.warn('Failed to update batch progress', { error: progressErr });
+            }
           }
 
           await delay(500);
@@ -783,7 +830,7 @@ export function registerBtuScraperImportRoutes(
 
         const hasErrors = results.errors.length > 0;
         const latestWizard = await storage.wizards.getById(wizardId);
-        const latestWizardData = (latestWizard?.data as any) || wizardData;
+        const latestWizardData = (latestWizard?.data as any) || {};
         await storage.wizards.update(wizardId, {
           data: {
             ...latestWizardData,
