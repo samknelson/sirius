@@ -41,15 +41,53 @@ async function loginToSite(page: puppeteer.Page) {
   }
 
   await page.goto(LOGIN_URL, { waitUntil: 'networkidle2', timeout: 60000 });
+
+  const hasLoginForm = await page.evaluate(() => !!document.querySelector('#edit-name'));
+  if (!hasLoginForm) {
+    const pageTitle = await page.title();
+    logger.info('Login page loaded but no form found', { pageTitle, url: page.url() });
+    throw new Error(`Login form not found on page. Page title: ${pageTitle}`);
+  }
+
   await page.type('#edit-name', username);
   await page.type('#edit-pass', password);
   await Promise.all([
     page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }),
     page.click('#edit-submit'),
   ]);
+
+  const postLoginUrl = page.url();
+  const postLoginTitle = await page.title();
+  logger.info('Post-login state', { url: postLoginUrl, title: postLoginTitle });
+
+  const hasLoginError = await page.evaluate(() => {
+    const errorMsg = document.querySelector('.messages.error, .error-message');
+    return errorMsg ? errorMsg.textContent?.trim() : null;
+  });
+
+  if (hasLoginError) {
+    throw new Error(`Login failed: ${hasLoginError}`);
+  }
 }
 
 async function scrapeReportPage(page: puppeteer.Page): Promise<ScrapedRow[]> {
+  const debugInfo = await page.evaluate(() => {
+    const tables = document.querySelectorAll('table');
+    const tableInfo = Array.from(tables).map((t, i) => ({
+      index: i,
+      id: t.id,
+      className: t.className,
+      rowCount: t.querySelectorAll('tr').length,
+    }));
+    return {
+      tableCount: tables.length,
+      tables: tableInfo,
+      url: window.location.href,
+      title: document.title,
+    };
+  });
+  logger.info('Page debug info', { debugInfo });
+
   return page.evaluate(() => {
     const rows: Array<{
       handler: string;
@@ -61,11 +99,23 @@ async function scrapeReportPage(page: puppeteer.Page): Promise<ScrapedRow[]> {
       name: string;
     }> = [];
 
-    const table = document.querySelector('table');
+    const tables = document.querySelectorAll('table');
+    let table: Element | null = null;
+
+    for (const t of Array.from(tables)) {
+      const trs = t.querySelectorAll('tbody tr, tr');
+      if (trs.length > 1) {
+        table = t;
+        break;
+      }
+    }
+
     if (!table) return rows;
 
     const trs = table.querySelectorAll('tbody tr');
-    trs.forEach((tr) => {
+    const fallbackTrs = trs.length > 0 ? trs : table.querySelectorAll('tr');
+
+    fallbackTrs.forEach((tr, index) => {
       const tds = tr.querySelectorAll('td');
       if (tds.length >= 7) {
         rows.push({

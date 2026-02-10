@@ -139,7 +139,7 @@ const evaluateScrapeConfigureComplete: StepCompletionEvaluator = ({ wizard }) =>
 };
 
 const evaluateScrapeDataComplete: StepCompletionEvaluator = ({ wizard }) => {
-  return !!wizard?.data?.scrapedData;
+  return Array.isArray(wizard?.data?.scrapedData) && wizard.data.scrapedData.length > 0;
 };
 
 const evaluateScrapePreviewComplete: StepCompletionEvaluator = ({ wizard }) => {
