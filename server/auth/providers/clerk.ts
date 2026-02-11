@@ -202,13 +202,8 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
         dateOfBirth: z.string().min(1, "Date of birth is required"),
       });
 
-      app.post("/api/auth/verify-worker", async (req, res) => {
+      app.post("/api/auth/pre-verify-worker", async (req, res) => {
         try {
-          const auth = getAuth(req);
-          if (!auth?.userId) {
-            return res.status(401).json({ message: "Not authenticated with Clerk" });
-          }
-
           if (req.isAuthenticated?.() && req.user) {
             return res.status(400).json({ message: "Already provisioned" });
           }
@@ -232,9 +227,7 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
 
           const worker = await storage.workers.getWorkerBySSN(normalizedSSN);
           if (!worker) {
-            logger.info("Worker verification failed: no worker found for SSN", {
-              clerkUserId: auth.userId,
-            });
+            logger.info("Worker pre-verification failed: no worker found for SSN");
             return res.status(404).json({
               message: "We could not verify your identity. Please check your information and try again, or contact your administrator.",
             });
@@ -242,7 +235,7 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
 
           const contact = await storage.contacts.getContact(worker.contactId);
           if (!contact) {
-            logger.warn("Worker verification failed: contact not found", {
+            logger.warn("Worker pre-verification failed: contact not found", {
               workerId: worker.id,
               contactId: worker.contactId,
             });
@@ -256,8 +249,7 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
           const dobMatch = contact.birthDate === dateOfBirth;
 
           if (!fnMatch || !lnMatch || !dobMatch) {
-            logger.info("Worker verification failed: field mismatch", {
-              clerkUserId: auth.userId,
+            logger.info("Worker pre-verification failed: field mismatch", {
               workerId: worker.id,
               fnMatch,
               lnMatch,
@@ -266,6 +258,70 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
             return res.status(404).json({
               message: "We could not verify your identity. Please check your information and try again, or contact your administrator.",
             });
+          }
+
+          (req.session as any).verifiedWorker = {
+            workerId: worker.id,
+            contactId: worker.contactId,
+            verifiedAt: Date.now(),
+          };
+
+          await new Promise<void>((resolve, reject) => {
+            req.session.save((err) => {
+              if (err) reject(err);
+              else resolve();
+            });
+          });
+
+          logger.info("Worker pre-verification successful", {
+            workerId: worker.id,
+          });
+
+          res.json({
+            success: true,
+            verified: true,
+            workerName: `${contact.given || ""} ${contact.family || ""}`.trim(),
+          });
+        } catch (error) {
+          logger.error("Worker pre-verification error", { error });
+          res.status(500).json({ message: "An unexpected error occurred. Please try again." });
+        }
+      });
+
+      app.post("/api/auth/complete-registration", async (req, res) => {
+        try {
+          const auth = getAuth(req);
+          if (!auth?.userId) {
+            return res.status(401).json({ message: "Please sign up with Clerk first" });
+          }
+
+          const verifiedWorker = (req.session as any).verifiedWorker;
+          if (!verifiedWorker || !verifiedWorker.workerId) {
+            return res.status(400).json({
+              message: "No verified identity found. Please complete identity verification first.",
+            });
+          }
+
+          const elapsed = Date.now() - (verifiedWorker.verifiedAt || 0);
+          if (elapsed > 30 * 60 * 1000) {
+            delete (req.session as any).verifiedWorker;
+            return res.status(400).json({
+              message: "Your verification has expired. Please verify your identity again.",
+            });
+          }
+
+          if (req.isAuthenticated?.() && req.user) {
+            return res.status(400).json({ message: "Already provisioned" });
+          }
+
+          const worker = await storage.workers.getWorker(verifiedWorker.workerId);
+          if (!worker) {
+            return res.status(404).json({ message: "Worker record not found." });
+          }
+
+          const contact = await storage.contacts.getContact(worker.contactId);
+          if (!contact) {
+            return res.status(404).json({ message: "Contact record not found." });
           }
 
           const client = createClerkClient({
@@ -287,8 +343,8 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
           if (!user) {
             user = await storage.users.createUser({
               email: primaryEmail || contact.email || "",
-              firstName: contact.given || firstName,
-              lastName: contact.family || lastName,
+              firstName: contact.given || clerkUser.firstName || "",
+              lastName: contact.family || clerkUser.lastName || "",
               isActive: true,
               accountStatus: "active",
             });
@@ -333,13 +389,15 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
 
           const linkedUser = await storage.users.updateUser(user.id, {
             email: primaryEmail || contact.email || undefined,
-            firstName: contact.given || firstName,
-            lastName: contact.family || lastName,
+            firstName: contact.given || clerkUser.firstName || "",
+            lastName: contact.family || clerkUser.lastName || "",
             profileImageUrl: clerkUser.imageUrl || undefined,
             accountStatus: "linked",
           });
 
           await storage.users.updateUserLastLogin(user.id);
+
+          delete (req.session as any).verifiedWorker;
 
           const sessionUser: AuthenticatedUser = {
             claims: {
@@ -362,7 +420,7 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
 
           logLoginEvent(linkedUser, auth.userId, true);
 
-          logger.info("Worker self-verification successful", {
+          logger.info("Worker registration completed", {
             workerId: worker.id,
             userId: user.id,
             clerkUserId: auth.userId,
@@ -378,7 +436,7 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
             },
           });
         } catch (error) {
-          logger.error("Worker verification error", { error });
+          logger.error("Worker registration completion error", { error });
           res.status(500).json({ message: "An unexpected error occurred. Please try again." });
         }
       });
