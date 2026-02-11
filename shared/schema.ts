@@ -120,6 +120,7 @@ export const authProviderTypeEnum = pgEnum("auth_provider_type", [
   "saml",
   "oauth",
   "local",
+  "clerk",
 ]);
 
 export const authIdentities = pgTable(
