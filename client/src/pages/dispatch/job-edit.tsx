@@ -28,7 +28,6 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Save, X } from "lucide-react";
-import { format } from "date-fns";
 import { Link } from "wouter";
 import { type Employer, type DispatchJobType, type JobTypeData, type OptionsSkill, dispatchJobStatusEnum, type DispatchJobStatus } from "@shared/schema";
 import { DispatchJobLayout, useDispatchJobLayout } from "@/components/layouts/DispatchJobLayout";
@@ -44,7 +43,7 @@ type FormData = {
   description?: string;
   employerId: string;
   jobTypeId: string;
-  startDate: string;
+  startYmd: string;
   workerCount: string;
   status: DispatchJobStatus;
 };
@@ -88,7 +87,7 @@ function DispatchJobEditContent() {
       description: job.description || "",
       employerId: job.employerId,
       jobTypeId: job.jobTypeId || "",
-      startDate: format(new Date(job.startDate), "yyyy-MM-dd"),
+      startYmd: job.startYmd,
       workerCount: job.workerCount?.toString() || "",
       status: job.status as DispatchJobStatus,
     },
@@ -122,7 +121,6 @@ function DispatchJobEditContent() {
       return apiRequest("PUT", `/api/dispatch-jobs/${job.id}`, {
         ...data,
         jobTypeId: data.jobTypeId || null,
-        startDate: new Date(data.startDate).toISOString(),
         workerCount: workerCountNum,
         status: data.status,
         data: hasData ? updatedJobData : undefined,
@@ -159,7 +157,7 @@ function DispatchJobEditContent() {
       toast({ title: "Error", description: "Job type is required", variant: "destructive" });
       return;
     }
-    if (!data.startDate) {
+    if (!data.startYmd) {
       toast({ title: "Error", description: "Start date is required", variant: "destructive" });
       return;
     }
@@ -280,7 +278,7 @@ function DispatchJobEditContent() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="startDate"
+                name="startYmd"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Start Date *</FormLabel>

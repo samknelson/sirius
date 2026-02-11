@@ -27,7 +27,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { format } from "date-fns";
+import { formatYmd } from "@shared/utils/date";
 import { dispatchJobStatusEnum, type Employer, type DispatchJobType } from "@shared/schema";
 import type { PaginatedDispatchJobs } from "../../../../server/storage/dispatch-jobs";
 
@@ -75,8 +75,8 @@ export function DispatchJobsList({
     }
     if (statusFilter && statusFilter !== "all") f.status = statusFilter;
     if (jobTypeFilter && jobTypeFilter !== "all") f.jobTypeId = jobTypeFilter;
-    if (startDateFrom) f.startDateFrom = startDateFrom;
-    if (startDateTo) f.startDateTo = startDateTo;
+    if (startDateFrom) f.startYmdFrom = startDateFrom;
+    if (startDateTo) f.startYmdTo = startDateTo;
     if (runningOnly) f.running = "true";
     return f;
   }, [employerId, employerFilter, statusFilter, jobTypeFilter, startDateFrom, startDateTo, runningOnly]);
@@ -330,7 +330,7 @@ export function DispatchJobsList({
                         )}
                       </TableCell>
                       <TableCell data-testid={`text-date-${job.id}`}>
-                        {format(new Date(job.startDate), "MMM d, yyyy")}
+                        {formatYmd(job.startYmd, 'short')}
                       </TableCell>
                       <TableCell className="text-right">
                         <Link href={`/dispatch/job/${job.id}`}>

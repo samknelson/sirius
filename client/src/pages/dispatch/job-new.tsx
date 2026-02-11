@@ -28,9 +28,9 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Save, ArrowLeft, X } from "lucide-react";
-import { format } from "date-fns";
 import { Link } from "wouter";
 import { dispatchJobStatusEnum, type Employer, type DispatchJobType, type OptionsSkill } from "@shared/schema";
+import { getTodayYmd } from "@shared/utils/date";
 import { renderIcon } from "@/components/ui/icon-picker";
 
 interface ComponentConfig {
@@ -44,7 +44,7 @@ const formSchema = z.object({
   employerId: z.string().min(1, "Employer is required"),
   jobTypeId: z.string().min(1, "Job type is required"),
   status: z.enum(dispatchJobStatusEnum),
-  startDate: z.string().min(1, "Start date is required"),
+  startYmd: z.string().min(1, "Start date is required"),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -83,7 +83,7 @@ export default function DispatchJobNewPage() {
       employerId: "",
       jobTypeId: "",
       status: "draft",
-      startDate: format(new Date(), "yyyy-MM-dd"),
+      startYmd: getTodayYmd(),
     },
   });
 
@@ -92,7 +92,6 @@ export default function DispatchJobNewPage() {
       return apiRequest("POST", "/api/dispatch-jobs", {
         ...data,
         jobTypeId: data.jobTypeId || null,
-        startDate: new Date(data.startDate).toISOString(),
         data: selectedSkills.length > 0 ? { requiredSkills: selectedSkills } : undefined,
       });
     },
@@ -248,7 +247,7 @@ export default function DispatchJobNewPage() {
 
                 <FormField
                   control={form.control}
-                  name="startDate"
+                  name="startYmd"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Start Date *</FormLabel>

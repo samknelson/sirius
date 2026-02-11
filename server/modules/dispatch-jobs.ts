@@ -24,8 +24,8 @@ export function registerDispatchJobsRoutes(
         employerId, 
         status, 
         jobTypeId, 
-        startDateFrom, 
-        startDateTo,
+        startYmdFrom, 
+        startYmdTo,
         running,
         page: pageParam,
         limit: limitParam 
@@ -45,11 +45,11 @@ export function registerDispatchJobsRoutes(
       if (jobTypeId && typeof jobTypeId === 'string') {
         filters.jobTypeId = jobTypeId;
       }
-      if (startDateFrom && typeof startDateFrom === 'string') {
-        filters.startDateFrom = new Date(startDateFrom);
+      if (startYmdFrom && typeof startYmdFrom === 'string') {
+        filters.startYmdFrom = startYmdFrom;
       }
-      if (startDateTo && typeof startDateTo === 'string') {
-        filters.startDateTo = new Date(startDateTo);
+      if (startYmdTo && typeof startYmdTo === 'string') {
+        filters.startYmdTo = startYmdTo;
       }
       if (running === 'true') {
         filters.running = true;
@@ -118,7 +118,7 @@ export function registerDispatchJobsRoutes(
         return;
       }
       
-      const { employerId, jobTypeId, title, description, status, startDate, workerCount, data } = req.body;
+      const { employerId, jobTypeId, title, description, status, startYmd, workerCount, data } = req.body;
       const updates: any = {};
       
       if (employerId !== undefined) {
@@ -163,8 +163,8 @@ export function registerDispatchJobsRoutes(
         updates.status = status;
       }
       
-      if (startDate !== undefined) {
-        updates.startDate = new Date(startDate);
+      if (startYmd !== undefined) {
+        updates.startYmd = startYmd;
       }
       
       if (workerCount !== undefined) {

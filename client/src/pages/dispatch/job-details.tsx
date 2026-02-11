@@ -1,5 +1,5 @@
-import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
+import { formatYmd } from "@shared/utils/date";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DispatchJobLayout, useDispatchJobLayout } from "@/components/layouts/DispatchJobLayout";
@@ -112,13 +112,13 @@ function DispatchJobDetailsContent() {
           <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-1">Start Date</h3>
             <p className="text-foreground" data-testid="text-startdate">
-              {format(new Date(job.startDate), "PPP")}
+              {formatYmd(job.startYmd, 'long')}
             </p>
           </div>
           <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-1">Created</h3>
             <p className="text-foreground" data-testid="text-created">
-              {format(new Date(job.createdAt), "PPP")}
+              {new Date(job.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
             </p>
           </div>
         </div>

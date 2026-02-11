@@ -9,13 +9,6 @@ import { isComponentEnabledSync, isCacheInitialized } from "../component-cache";
 const SINGLESHIFT_CATEGORY = "singleshift";
 const COMPONENT_ID = "dispatch.singleshift";
 
-function formatDateYmd(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 export const dispatchSingleshiftPlugin: DispatchEligPlugin = {
   id: "dispatch_singleshift",
   name: "Single Shift Dispatch",
@@ -41,12 +34,10 @@ export const dispatchSingleshiftPlugin: DispatchEligPlugin = {
       return null;
     }
 
-    const startDateYmd = formatDateYmd(new Date(job.startDate));
-
     return {
       category: SINGLESHIFT_CATEGORY,
       type: "not_exists",
-      value: startDateYmd,
+      value: job.startYmd,
     };
   },
 
@@ -86,11 +77,10 @@ export const dispatchSingleshiftPlugin: DispatchEligPlugin = {
     for (const dispatch of acceptedDispatches) {
       const job = await jobStorage.getWithRelations(dispatch.jobId);
       if (job) {
-        const startDateYmd = formatDateYmd(new Date(job.startDate));
         eligEntries.push({
           workerId,
           category: SINGLESHIFT_CATEGORY,
-          value: startDateYmd,
+          value: job.startYmd,
         });
       }
     }

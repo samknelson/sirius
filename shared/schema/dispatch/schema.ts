@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, varchar, jsonb, index, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, varchar, jsonb, index, integer, boolean, date } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -22,7 +22,7 @@ export const dispatchJobs = pgTable("dispatch_jobs", {
   description: text("description"),
   status: varchar("status").notNull().default("draft"),
   running: boolean("running").notNull().default(false),
-  startDate: timestamp("start_date").notNull(),
+  startYmd: date("start_ymd").notNull(),
   workerCount: integer("worker_count"),
   data: jsonb("data"),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
@@ -36,7 +36,7 @@ export const insertDispatchJobSchema = createInsertSchema(dispatchJobs).omit({
   id: true,
   createdAt: true,
 }).extend({
-  startDate: z.coerce.date(),
+  startYmd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD format"),
 });
 
 export type InsertDispatchJobType = z.infer<typeof insertDispatchJobTypeSchema>;

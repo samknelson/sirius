@@ -9,13 +9,6 @@ import { isComponentEnabledSync, isCacheInitialized } from "../component-cache";
 const EBA_CATEGORY = "eba";
 const COMPONENT_ID = "dispatch.eba";
 
-function formatDateYmd(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 export const dispatchEbaPlugin: DispatchEligPlugin = {
   id: "dispatch_eba",
   name: "Employed but Available",
@@ -41,12 +34,10 @@ export const dispatchEbaPlugin: DispatchEligPlugin = {
       return null;
     }
 
-    const startDateYmd = formatDateYmd(new Date(job.startDate));
-
     return {
       category: EBA_CATEGORY,
       type: "exists",
-      value: startDateYmd,
+      value: job.startYmd,
     };
   },
 
