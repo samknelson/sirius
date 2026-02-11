@@ -162,6 +162,38 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
             return next();
           }
 
+          const identity = await storage.authIdentities.getByProviderAndExternalId("clerk", auth.userId);
+
+          if (identity) {
+            const user = await storage.users.getUser(identity.userId);
+            if (user && user.isActive) {
+              await storage.authIdentities.updateLastUsed(identity.id);
+              await storage.users.updateUserLastLogin(user.id);
+
+              const sessionUser: AuthenticatedUser = {
+                claims: {
+                  sub: auth.userId,
+                  email: user.email || undefined,
+                  first_name: user.firstName || undefined,
+                  last_name: user.lastName || undefined,
+                  profile_image_url: user.profileImageUrl || undefined,
+                },
+                providerType: "clerk",
+                dbUser: user,
+              };
+
+              await new Promise<void>((resolve, reject) => {
+                req.login(sessionUser, (err) => {
+                  if (err) reject(err);
+                  else resolve();
+                });
+              });
+
+              unlinkedUserCache.delete(auth.userId);
+              return next();
+            }
+          }
+
           const client = createClerkClient({ secretKey: config.secretKey, publishableKey: config.publishableKey });
           const clerkUser = await client.users.getUser(auth.userId);
 
@@ -201,10 +233,18 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
             unlinkedUserCache.set(auth.userId, Date.now());
           }
         } catch (error) {
+          try {
+            const auth = getAuth(req);
+            if (auth?.userId) {
+              unlinkedUserCache.set(auth.userId, Date.now());
+            }
+          } catch {}
           logger.error("Clerk middleware user resolution error", { error });
         }
 
-        return next();
+        if (!_res.headersSent) {
+          return next();
+        }
       });
 
       const verifyWorkerSchema = z.object({
@@ -358,7 +398,53 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
             }
           }
 
-          const verifiedWorker = (req.session as any).verifiedWorker;
+          let verifiedWorker = (req.session as any).verifiedWorker;
+
+          if (!verifiedWorker || !verifiedWorker.workerId) {
+            const { firstName: vfn, lastName: vln, ssn: vssn, dateOfBirth: vdob } = req.body || {};
+            if (vfn && vln && vssn && vdob) {
+              logger.info("Session lost during registration, re-verifying inline", {
+                clerkUserId: auth.userId,
+              });
+
+              let normalizedSSN: string;
+              try {
+                normalizedSSN = parseSSN(vssn);
+              } catch {
+                return res.status(400).json({ message: "Invalid SSN format" });
+              }
+
+              const worker = await storage.workers.getWorkerBySSN(normalizedSSN);
+              if (worker) {
+                const contact = await storage.contacts.getContact(worker.contactId);
+                if (contact) {
+                  const fnMatch = (contact.given || "").toLowerCase().trim() === vfn.toLowerCase().trim();
+                  const lnMatch = (contact.family || "").toLowerCase().trim() === vln.toLowerCase().trim();
+                  const dobMatch = contact.birthDate === vdob;
+
+                  if (fnMatch && lnMatch && dobMatch) {
+                    verifiedWorker = {
+                      workerId: worker.id,
+                      contactId: worker.contactId,
+                      verifiedAt: Date.now(),
+                    };
+                    logger.info("Inline re-verification successful", {
+                      workerId: worker.id,
+                      clerkUserId: auth.userId,
+                    });
+                  } else {
+                    logger.warn("Inline re-verification failed: field mismatch", {
+                      clerkUserId: auth.userId,
+                      fnMatch,
+                      lnMatch,
+                      dobMatch,
+                    });
+                  }
+                }
+              }
+            }
+          }
+
           if (!verifiedWorker || !verifiedWorker.workerId) {
             return res.status(400).json({
               message: "No verified identity found. Please complete identity verification first.",
