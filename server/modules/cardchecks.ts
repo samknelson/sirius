@@ -169,7 +169,7 @@ export function registerCardchecksRoutes(
       // Extract fileId from esigData if signing with uploaded document
       const fileId = signatureType === "upload" && esigData?.value ? esigData.value : undefined;
 
-      const result = await storage.esigs.signCardcheck({
+      const result = await storage.cardchecks.signCardcheck({
         cardcheckId,
         userId: dbUser.id,
         docRender,

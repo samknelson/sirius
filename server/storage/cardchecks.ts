@@ -1,11 +1,12 @@
 import { getClient } from './transaction-context';
-import { cardchecks, cardcheckDefinitions, workers, contacts, bargainingUnits, employers, type Cardcheck, type InsertCardcheck } from "@shared/schema";
+import { cardchecks, cardcheckDefinitions, workers, contacts, bargainingUnits, employers, esigs, type Cardcheck, type InsertCardcheck, type Esig, type InsertEsig, type File } from "@shared/schema";
 import { eq, and, gte, lte, sql, isNull, isNotNull, inArray, count } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 import { 
   type ValidationError,
   createAsyncStorageValidator
 } from "./utils/validation";
+import crypto from "crypto";
 
 export const cardcheckValidate = createAsyncStorageValidator<InsertCardcheck, Cardcheck, {}>(
   async (data, existing) => {
@@ -88,6 +89,28 @@ export interface CardcheckReportItem {
   definitionName: string;
 }
 
+export interface SignCardcheckParams {
+  cardcheckId: string;
+  userId: string;
+  docRender: string;
+  docType: string;
+  esigData: any;
+  signatureType: string;
+  fileId?: string;
+  rate?: number;
+}
+
+export interface SignCardcheckResult {
+  esig: Esig;
+  cardcheck: Cardcheck;
+}
+
+export interface CardcheckStorageDependencies {
+  getFileById: (id: string) => Promise<File | undefined>;
+  updateFile: (id: string, updates: Partial<{ entityType: string; entityId: string }>) => Promise<File | undefined>;
+  createEsig: (data: InsertEsig) => Promise<Esig>;
+}
+
 export interface CardcheckStorage {
   getAllCardchecks(): Promise<Cardcheck[]>;
   getCardcheckById(id: string): Promise<Cardcheck | undefined>;
@@ -102,6 +125,13 @@ export interface CardcheckStorage {
   createCardcheck(data: InsertCardcheck): Promise<Cardcheck>;
   updateCardcheck(id: string, data: Partial<InsertCardcheck>): Promise<Cardcheck | undefined>;
   deleteCardcheck(id: string): Promise<boolean>;
+  signCardcheck(params: SignCardcheckParams): Promise<SignCardcheckResult>;
+}
+
+let storedDeps: CardcheckStorageDependencies | null = null;
+
+export function setCardcheckStorageDeps(deps: CardcheckStorageDependencies) {
+  storedDeps = deps;
 }
 
 export function createCardcheckStorage(): CardcheckStorage {
@@ -456,6 +486,57 @@ export function createCardcheckStorage(): CardcheckStorage {
         .returning();
       return result.length > 0;
     },
+
+    async signCardcheck(params: SignCardcheckParams): Promise<SignCardcheckResult> {
+      if (!storedDeps) {
+        throw new Error("Cardcheck storage dependencies not initialized. Call setCardcheckStorageDeps first.");
+      }
+      const deps = storedDeps;
+      const client = getClient();
+      const { cardcheckId, userId, docRender, docType, esigData, signatureType, fileId, rate } = params;
+      const docHash = crypto.createHash("sha256").update(docRender).digest("hex");
+
+      if (fileId && signatureType === "upload") {
+        const file = await deps.getFileById(fileId);
+        if (!file) {
+          throw new Error("Referenced file not found");
+        }
+        if (file.uploadedBy !== userId) {
+          throw new Error("You are not authorized to sign with this file");
+        }
+      }
+
+      const newEsig = await deps.createEsig({
+        userId,
+        status: "signed",
+        signedDate: new Date(),
+        type: signatureType === "upload" ? "upload" : "online",
+        docRender,
+        docHash,
+        esig: esigData,
+        docType,
+      });
+
+      if (fileId && signatureType === "upload") {
+        await deps.updateFile(fileId, {
+          entityType: "esig",
+          entityId: newEsig.id,
+        });
+      }
+
+      const updatedCardcheck = await storage.updateCardcheck(cardcheckId, {
+        status: "signed",
+        signedDate: new Date(),
+        esigId: newEsig.id,
+        rate: rate,
+      });
+
+      if (!updatedCardcheck) {
+        throw new Error("Failed to update cardcheck");
+      }
+
+      return { esig: newEsig, cardcheck: updatedCardcheck };
+    },
   };
 
   return storage;
@@ -579,6 +660,38 @@ export const cardcheckLoggingConfig: StorageLoggingConfig<CardcheckStorage> = {
             workerId: beforeState?.cardcheck?.workerId,
             cardcheckDefinitionId: beforeState?.cardcheck?.cardcheckDefinitionId,
             status: beforeState?.cardcheck?.status,
+          }
+        };
+      }
+    },
+    signCardcheck: {
+      enabled: true,
+      getEntityId: (args, result) => result?.cardcheck?.id || args[0]?.cardcheckId,
+      getHostEntityId: async (args, result) => {
+        if (result?.cardcheck?.workerId) {
+          return result.cardcheck.workerId;
+        }
+        return undefined;
+      },
+      getDescription: async (args, result) => {
+        const workerId = result?.cardcheck?.workerId;
+        const definitionId = result?.cardcheck?.cardcheckDefinitionId;
+        if (!workerId || !definitionId) return 'Signed Cardcheck';
+        const workerName = await getWorkerName(workerId);
+        const definitionName = await getDefinitionName(definitionId);
+        return `Signed Cardcheck for ${workerName} - ${definitionName}`;
+      },
+      after: async (args, result) => {
+        return {
+          cardcheck: result?.cardcheck,
+          esig: result?.esig,
+          metadata: {
+            cardcheckId: result?.cardcheck?.id,
+            esigId: result?.esig?.id,
+            workerId: result?.cardcheck?.workerId,
+            cardcheckDefinitionId: result?.cardcheck?.cardcheckDefinitionId,
+            status: result?.cardcheck?.status,
+            rate: result?.cardcheck?.rate,
           }
         };
       }

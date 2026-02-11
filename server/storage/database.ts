@@ -57,7 +57,7 @@ import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnit
 import { type EmployerPolicyHistoryStorage, createEmployerPolicyHistoryStorage, employerPolicyHistoryLoggingConfig } from "./employer-policy-history";
 import { type WmbScanQueueStorage, createWmbScanQueueStorage } from "./wmb-scan-queue";
 import { type CardcheckDefinitionStorage, createCardcheckDefinitionStorage, cardcheckDefinitionLoggingConfig } from "./cardcheck-definitions";
-import { type CardcheckStorage, createCardcheckStorage, cardcheckLoggingConfig } from "./cardchecks";
+import { type CardcheckStorage, createCardcheckStorage, cardcheckLoggingConfig, setCardcheckStorageDeps } from "./cardchecks";
 import { type EsigStorage, createEsigStorage, esigLoggingConfig } from "./esigs";
 import { type SessionStorage, createSessionStorage, sessionLoggingConfig } from "./sessions";
 import { type FloodStorage, createFloodStorage } from "./flood";
@@ -331,14 +331,14 @@ export class DatabaseStorage implements IStorage {
       cardcheckLoggingConfig,
     );
     this.esigs = withStorageLogging(
-      createEsigStorage({
-        getFileById: this.files.getById.bind(this.files),
-        updateFile: this.files.update.bind(this.files),
-        updateCardcheck: this.cardchecks.updateCardcheck.bind(this.cardchecks),
-        getCardcheckById: this.cardchecks.getCardcheckById.bind(this.cardchecks),
-      }),
+      createEsigStorage(),
       esigLoggingConfig,
     );
+    setCardcheckStorageDeps({
+      getFileById: this.files.getById.bind(this.files),
+      updateFile: this.files.update.bind(this.files),
+      createEsig: this.esigs.createEsig.bind(this.esigs),
+    });
     this.sessions = withStorageLogging(
       createSessionStorage(),
       sessionLoggingConfig,
