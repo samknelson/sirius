@@ -132,6 +132,11 @@ function EligibleWorkersCheckContent() {
                   </span>
                 )}
               </div>
+              <Link href={`/workers/${selectedWorkerId}`}>
+                <Button variant="outline" size="sm" data-testid="button-view-worker">
+                  View Worker
+                </Button>
+              </Link>
               <Button variant="ghost" size="sm" onClick={handleClearSelection} data-testid="button-clear-selection">
                 Clear
               </Button>
