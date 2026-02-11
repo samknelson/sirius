@@ -77,7 +77,9 @@ export interface DispatchEligPlugin {
   id: string;
   name: string;
   description: string;
-  componentId: string;
+  componentId?: string;
+  /** If true, this plugin is hidden from the job type configuration UI. Useful for infrastructure plugins that maintain denorm data but don't contribute conditions. */
+  hidden?: boolean;
   /** Optional event handlers this plugin wants to subscribe to */
   eventHandlers?: PluginEventHandler[];
   /** Optional configuration fields that can be set per job type */
@@ -129,7 +131,7 @@ class DispatchEligPluginRegistry {
           return;
         }
 
-        if (!isComponentEnabledSync(plugin.componentId)) {
+        if (plugin.componentId && !isComponentEnabledSync(plugin.componentId)) {
           logger.debug(`${plugin.componentId} component not enabled, skipping recompute`, {
             service: "dispatch-elig-registry",
             pluginId: plugin.id,
@@ -210,7 +212,7 @@ class DispatchEligPluginRegistry {
     const enabledPlugins: DispatchEligPlugin[] = [];
     const allPlugins = Array.from(this.plugins.values());
     for (const plugin of allPlugins) {
-      const enabled = isComponentEnabledSync(plugin.componentId);
+      const enabled = !plugin.componentId || isComponentEnabledSync(plugin.componentId);
       if (enabled) {
         enabledPlugins.push(plugin);
       }
@@ -239,14 +241,16 @@ class DispatchEligPluginRegistry {
   }
 
   getAllPluginsMetadata(): EligibilityPluginMetadata[] {
-    return Array.from(this.plugins.values()).map(plugin => ({
-      id: plugin.id,
-      name: plugin.name,
-      description: plugin.description,
-      componentId: plugin.componentId,
-      componentEnabled: isComponentEnabledSync(plugin.componentId),
-      configFields: plugin.configFields,
-    }));
+    return Array.from(this.plugins.values())
+      .filter(plugin => !plugin.hidden)
+      .map(plugin => ({
+        id: plugin.id,
+        name: plugin.name,
+        description: plugin.description,
+        componentId: plugin.componentId ?? "",
+        componentEnabled: !plugin.componentId || isComponentEnabledSync(plugin.componentId),
+        configFields: plugin.configFields,
+      }));
   }
 }
 

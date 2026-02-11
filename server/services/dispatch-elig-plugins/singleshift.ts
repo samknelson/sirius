@@ -55,7 +55,6 @@ export const dispatchSingleshiftPlugin: DispatchEligPlugin = {
     });
 
     await eligStorage.deleteByWorkerAndCategory(workerId, SINGLESHIFT_CATEGORY);
-    await eligStorage.deleteByWorkerAndCategory(workerId, ACCEPTED_CATEGORY);
 
     if (!isCacheInitialized() || !isComponentEnabledSync(COMPONENT_ID)) {
       logger.debug(`dispatch.singleshift component disabled, cleared entries for worker ${workerId}`, {
@@ -76,35 +75,27 @@ export const dispatchSingleshiftPlugin: DispatchEligPlugin = {
       return;
     }
 
-    const singleshiftEntries: { workerId: string; category: string; value: string }[] = [];
-    const acceptedEntries: { workerId: string; category: string; value: string }[] = [];
+    const entries: { workerId: string; category: string; value: string }[] = [];
 
     for (const dispatch of acceptedDispatches) {
       const job = await jobStorage.getWithRelations(dispatch.jobId);
       if (job) {
-        singleshiftEntries.push({
+        entries.push({
           workerId,
           category: SINGLESHIFT_CATEGORY,
           value: job.startYmd,
         });
-        acceptedEntries.push({
-          workerId,
-          category: ACCEPTED_CATEGORY,
-          value: job.id,
-        });
       }
     }
 
-    const allEntries = [...singleshiftEntries, ...acceptedEntries];
-    if (allEntries.length > 0) {
-      await eligStorage.createMany(allEntries);
+    if (entries.length > 0) {
+      await eligStorage.createMany(entries);
     }
 
-    logger.debug(`Created ${singleshiftEntries.length} singleshift + ${acceptedEntries.length} accepted eligibility entries for worker ${workerId}`, {
+    logger.debug(`Created ${entries.length} singleshift eligibility entries for worker ${workerId}`, {
       service: "dispatch-elig-singleshift",
       workerId,
-      singleshiftCount: singleshiftEntries.length,
-      acceptedCount: acceptedEntries.length,
+      count: entries.length,
     });
   },
 };
@@ -147,7 +138,7 @@ export async function backfillDispatchSingleshiftEligibility(): Promise<{ worker
   for (const workerId of uniqueWorkerIds) {
     await dispatchSingleshiftPlugin.recomputeWorker(workerId);
     const workerDispatches = acceptedDispatches.filter(d => d.workerId === workerId);
-    entriesCreated += workerDispatches.length * 2;
+    entriesCreated += workerDispatches.length;
   }
 
   logger.info(`Completed singleshift eligibility backfill`, {
