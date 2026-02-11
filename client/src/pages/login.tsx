@@ -1,29 +1,55 @@
 import { useEffect } from 'react';
-import { useLocation } from 'wouter';
+import { useLocation, Link } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, LogIn } from 'lucide-react';
-import { SignInButton, SignedIn, SignedOut, UserButton, useClerk } from '@clerk/clerk-react';
+import { Loader2, LogIn, ShieldCheck } from 'lucide-react';
+import { SignInButton, SignedIn, SignedOut, useClerk } from '@clerk/clerk-react';
 
 const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 function ClerkNotProvisionedMessage() {
   const { signOut } = useClerk();
+  const [, setLocation] = useLocation();
 
   return (
     <div className="space-y-4">
-      <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+      <div className="p-4 bg-muted border rounded-lg">
         <p className="text-sm text-foreground text-center">
-          You are signed in but your account has not been provisioned yet.
-          Please contact your system administrator to set up your account.
+          You are signed in, but we need to verify your identity before you can access the system.
         </p>
       </div>
+
+      <Button
+        className="w-full"
+        size="lg"
+        onClick={() => setLocation('/verify-worker')}
+        data-testid="button-verify-worker"
+      >
+        <ShieldCheck className="mr-2 h-5 w-5" />
+        I'm a Worker — Verify My Identity
+      </Button>
+
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-card px-2 text-muted-foreground">or</span>
+        </div>
+      </div>
+
+      <div className="p-4 bg-muted rounded-lg">
+        <p className="text-sm text-muted-foreground text-center">
+          If you are staff or an employer contact, your administrator needs to set up your account first.
+          Once they do, sign in again and you'll be connected automatically.
+        </p>
+      </div>
+
       <Button
         onClick={() => signOut({ redirectUrl: '/' })}
         variant="outline"
         className="w-full"
-        size="lg"
         data-testid="button-clerk-signout"
       >
         Sign out and try a different account

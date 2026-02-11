@@ -19,6 +19,7 @@ import "@/plugins/charge-plugins";
 import LoginPage from "@/pages/login";
 import UnauthorizedPage from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
+import VerifyWorkerPage from "@/pages/verify-worker";
 
 // Lazy-loaded pages
 const Bootstrap = lazy(() => import("@/pages/bootstrap"));
@@ -327,6 +328,7 @@ function Router() {
         {/* Public routes */}
         <Route path="/bootstrap" component={Bootstrap} />
         <Route path="/login" component={LoginPage} />
+        <Route path="/verify-worker" component={VerifyWorkerPage} />
         <Route path="/unauthorized" component={UnauthorizedPage} />
         <Route path="/sms/optin/:token" component={SmsOptinPage} />
 
