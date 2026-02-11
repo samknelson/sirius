@@ -157,7 +157,7 @@ function parseProviderFromEnv(type: AuthProviderType): ProviderConfig | null {
     }
 
     case "clerk": {
-      const publishableKey = process.env.CLERK_PUBLISHABLE_KEY;
+      const publishableKey = process.env.CLERK_PUBLISHABLE_KEY || process.env.VITE_CLERK_PUBLISHABLE_KEY;
       const secretKey = process.env.CLERK_SECRET_KEY;
       if (!publishableKey || !secretKey) {
         return null;
