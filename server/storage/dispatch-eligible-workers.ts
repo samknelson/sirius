@@ -239,6 +239,29 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
           return exists(subquery);
         });
       }
+
+      case "not_exists_unless_exists": {
+        const blockingSubquery = client
+          .select({ one: sql`1` })
+          .from(workerDispatchEligDenorm)
+          .where(and(
+            eq(workerDispatchEligDenorm.workerId, workers.id),
+            eq(workerDispatchEligDenorm.category, condition.category),
+            eq(workerDispatchEligDenorm.value, condition.value)
+          ));
+        const unlessSubquery = client
+          .select({ one: sql`1` })
+          .from(workerDispatchEligDenorm)
+          .where(and(
+            eq(workerDispatchEligDenorm.workerId, workers.id),
+            eq(workerDispatchEligDenorm.category, condition.unlessCategory!),
+            eq(workerDispatchEligDenorm.value, condition.unlessValue!)
+          ));
+        return [or(
+          notExists(blockingSubquery),
+          exists(unlessSubquery)
+        )];
+      }
       
       default:
         logger.warn(`Unknown condition type: ${(condition as EligibilityCondition).type}`, {
@@ -361,6 +384,28 @@ async function checkConditionForWorker(
       return { 
         passed: false, 
         explanation: `Missing ${condition.category} entries: ${missingValues.join(", ")}` 
+      };
+    }
+
+    case "not_exists_unless_exists": {
+      const hasBlocking = entryValues.includes(condition.value);
+      if (!hasBlocking) {
+        return { passed: true, explanation: `No blocking ${condition.category} entry found` };
+      }
+      const unlessEntries = await client
+        .select()
+        .from(workerDispatchEligDenorm)
+        .where(and(
+          eq(workerDispatchEligDenorm.workerId, workerId),
+          eq(workerDispatchEligDenorm.category, condition.unlessCategory!),
+          eq(workerDispatchEligDenorm.value, condition.unlessValue!)
+        ));
+      if (unlessEntries.length > 0) {
+        return { passed: true, explanation: `Has blocking ${condition.category} entry but exempted by ${condition.unlessCategory} override` };
+      }
+      return {
+        passed: false,
+        explanation: `Has blocking ${condition.category} entry: ${condition.value}`,
       };
     }
     

@@ -17,12 +17,19 @@ export interface EligibilityCondition {
    * - "exists_or_none": Worker must either have no rows with this category, OR have one matching the value
    * - "not_exists_category": Worker must NOT have ANY row with this category (value is ignored in query but used for documentation)
    * - "exists_all": Worker must have rows with this category for ALL values in the array
+   * - "not_exists_unless_exists": Worker must NOT have a row with this category+value, UNLESS they have a row with unlessCategory+unlessValue.
+   *   This allows a blocking condition to be overridden by a separate "exemption" entry.
+   *   Example: singleshift blocks workers with an accepted dispatch on the same date, but exempts the worker if they already accepted THIS specific job.
    */
-  type: "exists" | "not_exists" | "exists_or_none" | "not_exists_category" | "exists_all";
+  type: "exists" | "not_exists" | "exists_or_none" | "not_exists_category" | "exists_all" | "not_exists_unless_exists";
   /** The value to check. Can be a static value or derived from job context. For not_exists_category, this is informational only. For exists_all, this is a comma-separated list of values. */
   value: string;
   /** For exists_all: array of values that must all exist. */
   values?: string[];
+  /** For not_exists_unless_exists: the category that provides the exemption override */
+  unlessCategory?: string;
+  /** For not_exists_unless_exists: the value in the unless category that grants exemption */
+  unlessValue?: string;
 }
 
 /**

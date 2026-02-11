@@ -7,6 +7,7 @@ import { EventType } from "../event-bus";
 import { isComponentEnabledSync, isCacheInitialized } from "../component-cache";
 
 const SINGLESHIFT_CATEGORY = "singleshift";
+const ACCEPTED_CATEGORY = "accepted";
 const COMPONENT_ID = "dispatch.singleshift";
 
 export const dispatchSingleshiftPlugin: DispatchEligPlugin = {
@@ -36,8 +37,10 @@ export const dispatchSingleshiftPlugin: DispatchEligPlugin = {
 
     return {
       category: SINGLESHIFT_CATEGORY,
-      type: "not_exists",
+      type: "not_exists_unless_exists",
       value: job.startYmd,
+      unlessCategory: ACCEPTED_CATEGORY,
+      unlessValue: job.id,
     };
   },
 
@@ -52,6 +55,7 @@ export const dispatchSingleshiftPlugin: DispatchEligPlugin = {
     });
 
     await eligStorage.deleteByWorkerAndCategory(workerId, SINGLESHIFT_CATEGORY);
+    await eligStorage.deleteByWorkerAndCategory(workerId, ACCEPTED_CATEGORY);
 
     if (!isCacheInitialized() || !isComponentEnabledSync(COMPONENT_ID)) {
       logger.debug(`dispatch.singleshift component disabled, cleared entries for worker ${workerId}`, {
@@ -72,27 +76,35 @@ export const dispatchSingleshiftPlugin: DispatchEligPlugin = {
       return;
     }
 
-    const eligEntries: { workerId: string; category: string; value: string }[] = [];
+    const singleshiftEntries: { workerId: string; category: string; value: string }[] = [];
+    const acceptedEntries: { workerId: string; category: string; value: string }[] = [];
 
     for (const dispatch of acceptedDispatches) {
       const job = await jobStorage.getWithRelations(dispatch.jobId);
       if (job) {
-        eligEntries.push({
+        singleshiftEntries.push({
           workerId,
           category: SINGLESHIFT_CATEGORY,
           value: job.startYmd,
         });
+        acceptedEntries.push({
+          workerId,
+          category: ACCEPTED_CATEGORY,
+          value: job.id,
+        });
       }
     }
 
-    if (eligEntries.length > 0) {
-      await eligStorage.createMany(eligEntries);
+    const allEntries = [...singleshiftEntries, ...acceptedEntries];
+    if (allEntries.length > 0) {
+      await eligStorage.createMany(allEntries);
     }
 
-    logger.debug(`Created ${eligEntries.length} singleshift eligibility entries for worker ${workerId}`, {
+    logger.debug(`Created ${singleshiftEntries.length} singleshift + ${acceptedEntries.length} accepted eligibility entries for worker ${workerId}`, {
       service: "dispatch-elig-singleshift",
       workerId,
-      count: eligEntries.length,
+      singleshiftCount: singleshiftEntries.length,
+      acceptedCount: acceptedEntries.length,
     });
   },
 };
@@ -135,7 +147,7 @@ export async function backfillDispatchSingleshiftEligibility(): Promise<{ worker
   for (const workerId of uniqueWorkerIds) {
     await dispatchSingleshiftPlugin.recomputeWorker(workerId);
     const workerDispatches = acceptedDispatches.filter(d => d.workerId === workerId);
-    entriesCreated += workerDispatches.length;
+    entriesCreated += workerDispatches.length * 2;
   }
 
   logger.info(`Completed singleshift eligibility backfill`, {
