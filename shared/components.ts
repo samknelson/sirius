@@ -401,6 +401,13 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "dispatch.singleshift",
+    name: "Single Shift Dispatch",
+    description: "Manages single-shift dispatch assignments for workers",
+    enabledByDefault: false,
+    category: "dispatch",
+  },
+  {
     id: "debug",
     name: "Debug",
     description: "Debug tools and developer utilities",
