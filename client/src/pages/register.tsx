@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, ShieldCheck, AlertCircle, ArrowLeft, UserPlus, CheckCircle2 } from "lucide-react";
+import { Loader2, ShieldCheck, AlertCircle, ArrowLeft, UserPlus, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { SignUp, useUser } from "@clerk/clerk-react";
 
 type Step = "verify" | "signup" | "completing";
@@ -25,6 +25,7 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [verifiedName, setVerifiedName] = useState("");
+  const [showSSN, setShowSSN] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -33,7 +34,7 @@ export default function RegisterPage() {
   }, [isAuthenticated, setLocation]);
 
   useEffect(() => {
-    if (step === "signup" && isSignedIn) {
+    if (isSignedIn && (step === "signup" || step === "verify")) {
       completeRegistration();
     }
   }, [isSignedIn, step]);
@@ -89,6 +90,16 @@ export default function RegisterPage() {
       const data = await response.json();
 
       if (!response.ok) {
+        if (response.status === 400 && data.message?.includes("No verified identity")) {
+          setError("Your verification session has expired. Please verify your identity again.");
+          setStep("verify");
+          return;
+        }
+        if (response.status === 400 && data.message?.includes("Already provisioned")) {
+          await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+          setLocation("/dashboard");
+          return;
+        }
         setError(data.message || "Registration failed. Please try again.");
         setStep("signup");
         return;
@@ -154,17 +165,31 @@ export default function RegisterPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="ssn">Social Security Number</Label>
-                <Input
-                  id="ssn"
-                  type="password"
-                  value={ssn}
-                  onChange={(e) => setSsn(formatSSNInput(e.target.value))}
-                  placeholder="XXX-XX-XXXX"
-                  required
-                  disabled={isSubmitting}
-                  autoComplete="off"
-                  data-testid="input-register-ssn"
-                />
+                <div className="relative">
+                  <Input
+                    id="ssn"
+                    type={showSSN ? "text" : "password"}
+                    value={ssn}
+                    onChange={(e) => setSsn(formatSSNInput(e.target.value))}
+                    placeholder="XXX-XX-XXXX"
+                    required
+                    disabled={isSubmitting}
+                    autoComplete="off"
+                    className="pr-10"
+                    data-testid="input-register-ssn"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full"
+                    onClick={() => setShowSSN(!showSSN)}
+                    tabIndex={-1}
+                    data-testid="button-toggle-ssn"
+                  >
+                    {showSSN ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -256,7 +281,7 @@ export default function RegisterPage() {
             <div className="flex justify-center">
               <SignUp
                 routing="virtual"
-                afterSignUpUrl="/register"
+                fallbackRedirectUrl="/register"
                 signInUrl="/login"
                 appearance={{
                   elements: {

@@ -260,6 +260,21 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
             });
           }
 
+          const existingIdentities = contact.email
+            ? await storage.users.getUserByEmail(contact.email)
+            : null;
+          if (existingIdentities) {
+            const identities = await storage.authIdentities.getByUserId(existingIdentities.id);
+            if (identities.some((i) => i.providerType === "clerk")) {
+              logger.info("Worker pre-verification blocked: already registered", {
+                workerId: worker.id,
+              });
+              return res.status(409).json({
+                message: "This worker already has an account. Please use the Sign In button instead.",
+              });
+            }
+          }
+
           (req.session as any).verifiedWorker = {
             workerId: worker.id,
             contactId: worker.contactId,
@@ -295,6 +310,42 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
             return res.status(401).json({ message: "Please sign up with Clerk first" });
           }
 
+          const existingIdentity = await storage.authIdentities.getByProviderAndExternalId("clerk", auth.userId);
+          if (existingIdentity) {
+            const existingUser = await storage.users.getUser(existingIdentity.userId);
+            if (existingUser && existingUser.isActive) {
+              if (!req.isAuthenticated?.() || !req.user) {
+                const sessionUser: AuthenticatedUser = {
+                  claims: {
+                    sub: auth.userId,
+                    email: existingUser.email || undefined,
+                    first_name: existingUser.firstName || undefined,
+                    last_name: existingUser.lastName || undefined,
+                    profile_image_url: existingUser.profileImageUrl || undefined,
+                  },
+                  providerType: "clerk",
+                  dbUser: existingUser,
+                };
+                await new Promise<void>((resolve, reject) => {
+                  req.login(sessionUser, (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                  });
+                });
+              }
+              delete (req.session as any).verifiedWorker;
+              return res.json({
+                success: true,
+                user: {
+                  id: existingUser.id,
+                  email: existingUser.email,
+                  firstName: existingUser.firstName,
+                  lastName: existingUser.lastName,
+                },
+              });
+            }
+          }
+
           const verifiedWorker = (req.session as any).verifiedWorker;
           if (!verifiedWorker || !verifiedWorker.workerId) {
             return res.status(400).json({
@@ -308,10 +359,6 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
             return res.status(400).json({
               message: "Your verification has expired. Please verify your identity again.",
             });
-          }
-
-          if (req.isAuthenticated?.() && req.user) {
-            return res.status(400).json({ message: "Already provisioned" });
           }
 
           const worker = await storage.workers.getWorker(verifiedWorker.workerId);
@@ -333,6 +380,11 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
             clerkUser.emailAddresses?.find(
               (e: any) => e.id === clerkUser.primaryEmailAddressId
             )?.emailAddress || contact.email;
+
+          const primaryPhone =
+            clerkUser.phoneNumbers?.find(
+              (p: any) => p.id === clerkUser.primaryPhoneNumberId
+            )?.phoneNumber;
 
           let user = await storage.users.getUserByEmail(primaryEmail || "");
 
@@ -394,6 +446,42 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
             profileImageUrl: clerkUser.imageUrl || undefined,
             accountStatus: "linked",
           });
+
+          if (primaryEmail && !contact.email) {
+            try {
+              await storage.contacts.updateEmail(worker.contactId, primaryEmail);
+              logger.info("Synced Clerk email to worker contact", {
+                workerId: worker.id,
+                contactId: worker.contactId,
+              });
+            } catch (emailErr) {
+              logger.warn("Failed to sync email to worker contact", { error: emailErr });
+            }
+          }
+
+          if (primaryPhone) {
+            try {
+              const existingPhones = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(worker.contactId);
+              const alreadyExists = existingPhones.some(
+                (p) => p.phoneNumber.replace(/\D/g, "") === primaryPhone.replace(/\D/g, "")
+              );
+              if (!alreadyExists) {
+                await storage.contacts.phoneNumbers.createPhoneNumber({
+                  contactId: worker.contactId,
+                  phoneNumber: primaryPhone,
+                  friendlyName: "Mobile",
+                  isPrimary: existingPhones.length === 0,
+                  isActive: true,
+                });
+                logger.info("Synced Clerk phone to worker contact", {
+                  workerId: worker.id,
+                  contactId: worker.contactId,
+                });
+              }
+            } catch (phoneErr) {
+              logger.warn("Failed to sync phone to worker contact", { error: phoneErr });
+            }
+          }
 
           await storage.users.updateUserLastLogin(user.id);
 
