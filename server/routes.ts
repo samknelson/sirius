@@ -42,7 +42,6 @@ import { registerWorkerWshRoutes } from "./modules/worker-wsh";
 import { registerWorkerMshRoutes } from "./modules/worker-msh";
 import { registerWorkerHoursRoutes } from "./modules/worker-hours";
 import { registerQuickstartRoutes } from "./modules/quickstart";
-import { registerDataCleanupRoutes } from "./modules/data-cleanup";
 import { registerCronJobRoutes } from "./modules/cron_jobs";
 import { registerChargePluginRoutes } from "./modules/charge-plugins";
 import { registerEligibilityPluginRoutes } from "./modules/eligibility-plugins";
@@ -321,8 +320,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerWorkerHoursRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerHours, storage.ledger);
   registerQuickstartRoutes(app);
   
-  // Register data cleanup routes (admin only)
-  registerDataCleanupRoutes(app);
 
   // Register cron job management routes
   registerCronJobRoutes(app, requireAuth, requirePermission);

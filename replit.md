@@ -44,7 +44,6 @@ The frontend utilizes React 18 with TypeScript, Vite, Shadcn/ui (built on Radix 
 -   **Trust Eligibility Plugin System**: Registry-based architecture for worker eligibility determination and benefits scans.
 -   **Events Management**: Full CRUD operations for events, occurrences, and scheduling.
 -   **Database Quickstarts**: Admin-only feature for database snapshot export/import.
--   **Data Cleanup Tool**: Admin-only feature for selective deletion of non-configuration data, ensuring data integrity and configuration preservation.
 -   **System Mode**: Application-wide environment mode setting (dev/test/live).
 -   **Staff Alert Configuration & Sending System**: Reusable system for configuring and dispatching multi-media alerts.
 -   **Terminology Framework**: Provides site-specific terminology customization.

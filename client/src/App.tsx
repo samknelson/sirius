@@ -152,7 +152,6 @@ const AdminPermissionsPage = lazy(() => import("@/pages/admin/permissions"));
 const WmbScanQueue = lazy(() => import("@/pages/admin/wmb-scan-queue"));
 const WmbScanDetail = lazy(() => import("@/pages/admin/wmb-scan-detail"));
 const AdminQuickstarts = lazy(() => import("@/pages/admin-quickstarts"));
-const AdminDataCleanup = lazy(() => import("@/pages/admin-data-cleanup"));
 const CronJobs = lazy(() => import("@/pages/cron-jobs"));
 const CronJobView = lazy(() => import("@/pages/cron-job-view"));
 const CronJobSettings = lazy(() => import("@/pages/cron-job-settings"));
@@ -2435,13 +2434,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/admin/data-cleanup">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <AdminDataCleanup />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
       <Route path="/admin/wmb-scan-queue">
         <ProtectedRoute permission="admin" component="trust.benefits.scan">
