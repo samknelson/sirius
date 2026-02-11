@@ -52,7 +52,7 @@ export const workerDispatchEbaLoggingConfig: StorageLoggingConfig<WorkerDispatch
         return `Synced ${dateCount} availability date(s) for ${workerName}`;
       },
       after: async (args, result) => {
-        return { dates: result?.map((r: any) => r.date) };
+        return { dates: result?.map((r: any) => r.ymd) };
       }
     },
     delete: {
@@ -64,7 +64,7 @@ export const workerDispatchEbaLoggingConfig: StorageLoggingConfig<WorkerDispatch
       getDescription: async (args, result, beforeState) => {
         if (beforeState?.entry) {
           const workerName = await getWorkerName(beforeState.entry.workerId);
-          return `Deleted availability date ${beforeState.entry.date} for ${workerName}`;
+          return `Deleted availability date ${beforeState.entry.ymd} for ${workerName}`;
         }
         return 'Deleted availability date entry';
       },
@@ -108,11 +108,11 @@ export function createWorkerDispatchEbaStorage(): WorkerDispatchEbaStorage {
         .from(workerDispatchEba)
         .where(eq(workerDispatchEba.workerId, workerId));
       
-      const existingDates = new Set(existing.map(e => e.date));
+      const existingDates = new Set(existing.map(e => e.ymd));
       const desiredDates = new Set(dates);
       
       const toAdd = dates.filter(d => !existingDates.has(d));
-      const toRemove = existing.filter(e => !desiredDates.has(e.date));
+      const toRemove = existing.filter(e => !desiredDates.has(e.ymd));
       
       if (toRemove.length > 0) {
         await client
@@ -126,7 +126,7 @@ export function createWorkerDispatchEbaStorage(): WorkerDispatchEbaStorage {
       if (toAdd.length > 0) {
         await client
           .insert(workerDispatchEba)
-          .values(toAdd.map(date => ({ workerId, date })));
+          .values(toAdd.map(ymd => ({ workerId, ymd })));
       }
       
       const result = await client
@@ -143,11 +143,11 @@ export function createWorkerDispatchEbaStorage(): WorkerDispatchEbaStorage {
       const client = getClient();
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - daysAgo);
-      const cutoffStr = cutoffDate.toISOString().split('T')[0];
+      const cutoffYmd = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, '0')}-${String(cutoffDate.getDate()).padStart(2, '0')}`;
       return await client
         .select()
         .from(workerDispatchEba)
-        .where(lt(workerDispatchEba.date, cutoffStr));
+        .where(lt(workerDispatchEba.ymd, cutoffYmd));
     },
 
     async delete(id: string) {

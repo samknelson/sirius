@@ -7,10 +7,10 @@ import { workers } from "../../schema";
 export const workerDispatchEba = pgTable("worker_dispatch_eba", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
-  date: date("date").notNull(),
+  ymd: date("ymd").notNull(),
   data: jsonb("data"),
 }, (table) => [
-  unique("worker_dispatch_eba_worker_date_unique").on(table.workerId, table.date),
+  unique("worker_dispatch_eba_worker_ymd_unique").on(table.workerId, table.ymd),
 ]);
 
 export const insertWorkerDispatchEbaSchema = createInsertSchema(workerDispatchEba).omit({

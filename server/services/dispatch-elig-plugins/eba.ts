@@ -73,7 +73,7 @@ export const dispatchEbaPlugin: DispatchEligPlugin = {
     const eligEntries = ebaEntries.map(entry => ({
       workerId,
       category: EBA_CATEGORY,
-      value: entry.date,
+      value: entry.ymd,
     }));
 
     await eligStorage.createMany(eligEntries);

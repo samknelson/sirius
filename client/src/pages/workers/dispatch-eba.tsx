@@ -88,7 +88,7 @@ function DispatchEbaContent() {
     queryKey: ["/api/worker-dispatch-eba/worker", worker.id],
   });
 
-  const savedDates = useMemo(() => new Set(entries.map(e => e.date)), [entries]);
+  const savedDates = useMemo(() => new Set(entries.map(e => e.ymd)), [entries]);
 
   const syncMutation = useMutation({
     mutationFn: async (dates: string[]) => {
