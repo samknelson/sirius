@@ -77,6 +77,7 @@ export interface BtuWorkerImportStorage {
     asOfDate: string;
     bargainingUnitId?: string;
     employmentStatusId?: string;
+    jobTitle?: string;
   }): Promise<WorkerHours>;
   getActiveEmploymentsForBargainingUnit(bargainingUnitId: string, asOfDate: Date): Promise<Array<{
     workerId: string;
@@ -329,6 +330,7 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
       asOfDate: string;
       bargainingUnitId?: string;
       employmentStatusId?: string;
+      jobTitle?: string;
     }): Promise<WorkerHours> {
       let statusId = data.employmentStatusId;
       
@@ -361,6 +363,7 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
         month,
         hours: null,
         home: data.isPrimary,
+        jobTitle: data.jobTitle || null,
       });
       
       return result.data;

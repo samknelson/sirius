@@ -393,6 +393,8 @@ export class BtuWorkerImportWizard extends FeedWizard {
 
             // Only create employment records if we have an employer mapping
             if (mappingResult) {
+              const jobTitle = row.jobTitle?.toString().trim() || undefined;
+
               // Create primary employment record
               await btuStorage.upsertEmploymentRecord(existingWorker.id, {
                 employerId: mappingResult.primaryEmployer.employerId,
@@ -400,6 +402,7 @@ export class BtuWorkerImportWizard extends FeedWizard {
                 asOfDate,
                 bargainingUnitId: mappingResult.bargainingUnitId || undefined,
                 employmentStatusId: mappingResult.employmentStatusId || undefined,
+                jobTitle,
               });
 
               // Create secondary employment record if secondary employer exists
@@ -410,6 +413,7 @@ export class BtuWorkerImportWizard extends FeedWizard {
                   asOfDate,
                   bargainingUnitId: mappingResult.bargainingUnitId || undefined,
                   employmentStatusId: mappingResult.employmentStatusId || undefined,
+                  jobTitle,
                 });
               }
             }
@@ -457,6 +461,8 @@ export class BtuWorkerImportWizard extends FeedWizard {
 
             // Only create employment records if we have an employer mapping
             if (mappingResult) {
+              const jobTitle = row.jobTitle?.toString().trim() || undefined;
+
               // Create primary employment record
               await btuStorage.upsertEmploymentRecord(newWorker.id, {
                 employerId: mappingResult.primaryEmployer.employerId,
@@ -464,6 +470,7 @@ export class BtuWorkerImportWizard extends FeedWizard {
                 asOfDate,
                 bargainingUnitId: mappingResult.bargainingUnitId || undefined,
                 employmentStatusId: mappingResult.employmentStatusId || undefined,
+                jobTitle,
               });
 
               // Create secondary employment record if secondary employer exists
@@ -474,6 +481,7 @@ export class BtuWorkerImportWizard extends FeedWizard {
                   asOfDate,
                   bargainingUnitId: mappingResult.bargainingUnitId || undefined,
                   employmentStatusId: mappingResult.employmentStatusId || undefined,
+                  jobTitle,
                 });
               }
             }

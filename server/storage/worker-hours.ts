@@ -47,7 +47,7 @@ export interface WorkerHoursStorage {
   createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult>;
   updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult | undefined>;
   deleteWorkerHours(id: string): Promise<WorkerHoursDeleteResult>;
-  upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult>;
+  upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult>;
 }
 
 export function createWorkerHoursStorage(
@@ -559,8 +559,15 @@ export function createWorkerHoursStorage(
       return { success: result.length > 0, notifications };
     },
 
-    async upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult> {
+    async upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult> {
       const client = getClient();
+      const updateSet: any = {
+        employmentStatusId: data.employmentStatusId,
+        hours: data.hours,
+      };
+      if (data.jobTitle !== undefined) {
+        updateSet.jobTitle = data.jobTitle;
+      }
       const [savedHours] = await client
         .insert(workerHours)
         .values({
@@ -569,10 +576,7 @@ export function createWorkerHoursStorage(
         })
         .onConflictDoUpdate({
           target: [workerHours.workerId, workerHours.employerId, workerHours.year, workerHours.month, workerHours.day],
-          set: {
-            employmentStatusId: data.employmentStatusId,
-            hours: data.hours,
-          },
+          set: updateSet,
         })
         .returning();
 
