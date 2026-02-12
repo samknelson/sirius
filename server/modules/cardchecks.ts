@@ -267,14 +267,15 @@ export function registerCardchecksRoutes(
       }
 
       // Get worker counts and card check stats per employer/bargaining unit
-      // Workers are "active" if their most recent employment record has status "Active" or "Active - Secondary"
+      // Workers are "active" if their most recent employment record has employed=true
       const statsResult = await db.execute(sql`
         WITH latest_employment AS (
           SELECT DISTINCT ON (wh.worker_id, wh.employer_id)
             wh.worker_id,
             wh.employer_id,
             wh.employment_status_id,
-            es.name as status_name
+            es.name as status_name,
+            es.employed as is_employed
           FROM worker_hours wh
           LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
           ORDER BY wh.worker_id, wh.employer_id, wh.year DESC, wh.month DESC, wh.day DESC
@@ -286,7 +287,7 @@ export function registerCardchecksRoutes(
             w.bargaining_unit_id
           FROM latest_employment le
           INNER JOIN workers w ON w.id = le.worker_id
-          WHERE le.status_name IN ('Active', 'Active - Secondary')
+          WHERE le.is_employed = true
         ),
         worker_cardchecks AS (
           SELECT 
@@ -476,17 +477,18 @@ export function registerCardchecksRoutes(
           SELECT DISTINCT ON (wh.worker_id)
             wh.worker_id,
             es.name as status_name,
+            es.employed as is_employed,
             make_date(wh.year, wh.month, wh.day) as status_date
           FROM worker_hours wh
           LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
           WHERE wh.employer_id = ${employerId}
           ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
         ),
-        -- Workers who are currently active at this employer
+        -- Workers who are currently employed at this employer
         active_workers AS (
-          SELECT le.worker_id, le.status_date as current_active_date
+          SELECT le.worker_id, le.status_date as current_active_date, le.status_name
           FROM latest_employment le
-          WHERE le.status_name IN ('Active', 'Active - Secondary')
+          WHERE le.is_employed = true
         ),
         -- Get the latest signed cardcheck for each worker (if any)
         latest_signed_cardcheck AS (
@@ -508,15 +510,16 @@ export function registerCardchecksRoutes(
           SELECT 
             wh.worker_id,
             es.name as status_name,
+            es.employed as is_employed,
             make_date(wh.year, wh.month, wh.day) as status_date,
-            LEAD(es.name) OVER (PARTITION BY wh.worker_id ORDER BY wh.year, wh.month, wh.day) as next_status,
+            LEAD(es.employed) OVER (PARTITION BY wh.worker_id ORDER BY wh.year, wh.month, wh.day) as next_employed,
             LEAD(make_date(wh.year, wh.month, wh.day)) OVER (PARTITION BY wh.worker_id ORDER BY wh.year, wh.month, wh.day) as next_date
           FROM worker_hours wh
           LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
           WHERE wh.employer_id = ${employerId}
         ),
-        -- Find termination periods where worker was terminated for 30+ days before returning to active
-        -- Only consider the termination immediately preceding the current active period
+        -- Find termination periods where worker was not employed for 30+ days before returning to employed
+        -- Only consider the period immediately preceding the current employed period
         termination_requiring_new_cardcheck AS (
           SELECT DISTINCT ON (aw.worker_id)
             aw.worker_id,
@@ -524,8 +527,8 @@ export function registerCardchecksRoutes(
             swn.next_date as return_active_date
           FROM active_workers aw
           INNER JOIN status_with_next swn ON swn.worker_id = aw.worker_id
-          WHERE swn.status_name = 'Terminated'
-            AND swn.next_status IN ('Active', 'Active - Secondary')
+          WHERE swn.is_employed = false
+            AND swn.next_employed = true
             AND swn.next_date = aw.current_active_date
             AND (swn.next_date - swn.status_date) >= 30
           ORDER BY aw.worker_id, swn.status_date DESC
@@ -561,6 +564,7 @@ export function registerCardchecksRoutes(
           bu.id as "bargainingUnitId",
           bu.name as "bargainingUnitName",
           wir.invalid_reason as "invalidReason",
+          aw.status_name as "employmentStatus",
           (
             SELECT cp.phone_number 
             FROM contact_phone cp 
@@ -571,6 +575,7 @@ export function registerCardchecksRoutes(
         FROM worker_invalid_reasons wir
         INNER JOIN workers w ON w.id = wir.worker_id
         INNER JOIN contacts c ON c.id = w.contact_id
+        INNER JOIN active_workers aw ON aw.worker_id = w.id
         LEFT JOIN bargaining_units bu ON bu.id = w.bargaining_unit_id
         WHERE wir.invalid_reason IS NOT NULL
         ORDER BY 
@@ -589,7 +594,8 @@ export function registerCardchecksRoutes(
         phone: row.phone || null,
         bargainingUnitId: row.bargainingUnitId,
         bargainingUnitName: row.bargainingUnitName || 'Unknown',
-        invalidReason: row.invalidReason || null
+        invalidReason: row.invalidReason || null,
+        employmentStatus: row.employmentStatus || null
       }));
 
       res.json({

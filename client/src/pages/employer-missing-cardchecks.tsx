@@ -29,6 +29,7 @@ interface MissingCardcheckWorker {
   bargainingUnitId: string | null;
   bargainingUnitName: string;
   invalidReason: 'Missing' | 'BU Mismatch' | 'Termination Expired' | null;
+  employmentStatus: string | null;
 }
 
 interface MissingCardchecksResponse {
@@ -45,6 +46,7 @@ function generatePdf(employer: { name: string }, workers: MissingCardcheckWorker
     [
       { text: 'Name', style: 'tableHeader' },
       { text: 'Reason', style: 'tableHeader' },
+      { text: 'Status', style: 'tableHeader' },
       { text: 'Email', style: 'tableHeader' },
       { text: 'Phone', style: 'tableHeader' },
       { text: 'Bargaining Unit', style: 'tableHeader' },
@@ -56,6 +58,7 @@ function generatePdf(employer: { name: string }, workers: MissingCardcheckWorker
       tableBody.push([
         { text: worker.displayName, style: undefined as any },
         { text: worker.invalidReason || 'Missing', style: 'reasonCell' as any },
+        { text: worker.employmentStatus || '-', style: undefined as any },
         { text: worker.email || '-', style: undefined as any },
         { text: worker.phone || '-', style: undefined as any },
         { text: worker.bargainingUnitName, style: undefined as any },
@@ -63,8 +66,8 @@ function generatePdf(employer: { name: string }, workers: MissingCardcheckWorker
     });
   } else {
     tableBody.push([
-      { text: 'All active workers have valid signed card checks', colSpan: 5, style: 'emptyMessage' } as any,
-      {}, {}, {}, {}
+      { text: 'All active workers have valid signed card checks', colSpan: 6, style: 'emptyMessage' } as any,
+      {}, {}, {}, {}, {}
     ]);
   }
 
@@ -92,7 +95,7 @@ function generatePdf(employer: { name: string }, workers: MissingCardcheckWorker
       {
         table: {
           headerRows: 1,
-          widths: ['*', 'auto', '*', 'auto', 'auto'],
+          widths: ['*', 'auto', 'auto', '*', 'auto', 'auto'],
           body: tableBody,
         },
         layout: {
@@ -260,6 +263,7 @@ export default function EmployerMissingCardchecks() {
                       <TableRow>
                         <TableHead data-testid="header-name">Name</TableHead>
                         <TableHead data-testid="header-reason">Reason</TableHead>
+                        <TableHead data-testid="header-status">Status</TableHead>
                         <TableHead data-testid="header-email">Email</TableHead>
                         <TableHead data-testid="header-phone">Phone</TableHead>
                         <TableHead data-testid="header-bargaining-unit">Bargaining Unit</TableHead>
@@ -282,6 +286,9 @@ export default function EmployerMissingCardchecks() {
                             >
                               {worker.invalidReason || 'Missing'}
                             </Badge>
+                          </TableCell>
+                          <TableCell data-testid={`status-${worker.workerId}`}>
+                            {worker.employmentStatus || '-'}
                           </TableCell>
                           <TableCell>
                             {worker.email ? (
