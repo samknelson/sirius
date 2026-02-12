@@ -43,6 +43,35 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
 
   const validationResults = data?.validationResults;
 
+  const checkWizardCompletion = async (): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/wizards/${wizardId}`, { credentials: 'include' });
+      if (!res.ok) return false;
+      const wizardData = await res.json();
+      const processResults = wizardData?.data?.processResults;
+      const wizStatus = wizardData?.status;
+      if (processResults && (wizStatus === 'completed' || wizStatus === 'needs_review')) {
+        setResults(processResults);
+        setIsProcessing(false);
+        queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
+  const pollForCompletion = async () => {
+    for (let attempt = 0; attempt < 60; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      const done = await checkWizardCompletion();
+      if (done) return;
+    }
+    setError('Processing is taking longer than expected. Please refresh the page to check the results.');
+    setIsProcessing(false);
+  };
+
   const startProcessing = async () => {
     setIsProcessing(true);
     setError(null);
@@ -78,9 +107,8 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
       };
 
       eventSource.onerror = () => {
-        setError('Connection to processing server lost');
-        setIsProcessing(false);
         eventSource.close();
+        pollForCompletion();
       };
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Processing failed');

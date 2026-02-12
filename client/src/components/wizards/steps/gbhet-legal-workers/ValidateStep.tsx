@@ -43,6 +43,34 @@ export function ValidateStep({ wizardId, wizardType, data, onDataChange }: Valid
     queryKey: [`/api/wizards/${wizardId}`],
   });
 
+  const checkValidationCompletion = async (): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/wizards/${wizardId}`, { credentials: 'include' });
+      if (!res.ok) return false;
+      const wizardData = await res.json();
+      const validationResults = wizardData?.data?.validationResults;
+      if (validationResults) {
+        setResults(validationResults);
+        setIsValidating(false);
+        queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
+  const pollForValidationCompletion = async () => {
+    for (let attempt = 0; attempt < 60; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      const done = await checkValidationCompletion();
+      if (done) return;
+    }
+    setError('Validation is taking longer than expected. Please refresh the page to check the results.');
+    setIsValidating(false);
+  };
+
   const startValidation = async () => {
     setIsValidating(true);
     setError(null);
@@ -67,7 +95,6 @@ export function ValidateStep({ wizardId, wizardType, data, onDataChange }: Valid
           setResults(data.results);
           setIsValidating(false);
           eventSource.close();
-          // Invalidate wizard query to refresh step completion status
           queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
         } else if (data.type === 'error') {
           setError(data.message);
@@ -77,9 +104,8 @@ export function ValidateStep({ wizardId, wizardType, data, onDataChange }: Valid
       };
 
       eventSource.onerror = () => {
-        setError('Connection to validation server lost');
-        setIsValidating(false);
         eventSource.close();
+        pollForValidationCompletion();
       };
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Validation failed');

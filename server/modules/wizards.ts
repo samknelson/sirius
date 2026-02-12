@@ -1125,6 +1125,11 @@ export function registerWizardRoutes(
         // Send initial event
         res.write(`data: ${JSON.stringify({ type: 'start', message: 'Starting validation...' })}\n\n`);
 
+        // Start heartbeat to keep connection alive through proxies
+        const heartbeatInterval = setInterval(() => {
+          try { res.write(`: heartbeat\n\n`); } catch (_e) { /* connection closed */ }
+        }, 15000);
+
         // Run validation with progress callback
         try {
           const results = await wizardType.validateFeedData(
@@ -1139,6 +1144,8 @@ export function registerWizardRoutes(
             }
           );
 
+          clearInterval(heartbeatInterval);
+
           // Send completion event
           res.write(`data: ${JSON.stringify({ 
             type: 'complete', 
@@ -1146,6 +1153,7 @@ export function registerWizardRoutes(
           })}\n\n`);
           res.end();
         } catch (validationError) {
+          clearInterval(heartbeatInterval);
           // Send error event
           res.write(`data: ${JSON.stringify({ 
             type: 'error', 
@@ -1191,6 +1199,11 @@ export function registerWizardRoutes(
         // Send initial event
         res.write(`data: ${JSON.stringify({ type: 'start', message: 'Starting processing...' })}\n\n`);
 
+        // Start heartbeat to keep connection alive through proxies
+        const heartbeatInterval = setInterval(() => {
+          try { res.write(`: heartbeat\n\n`); } catch (_e) { /* connection closed */ }
+        }, 15000);
+
         // Run processing with progress callback
         try {
           const results = await wizardType.processFeedData(
@@ -1210,6 +1223,8 @@ export function registerWizardRoutes(
               })}\n\n`);
             }
           );
+
+          clearInterval(heartbeatInterval);
 
           // Update wizard status based on results
           const finalStatus = results.failureCount > 0 ? 'needs_review' : 'completed';
@@ -1242,6 +1257,7 @@ export function registerWizardRoutes(
           })}\n\n`);
           res.end();
         } catch (processingError) {
+          clearInterval(heartbeatInterval);
           // Send error event
           res.write(`data: ${JSON.stringify({ 
             type: 'error', 
