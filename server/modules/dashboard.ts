@@ -495,7 +495,7 @@ export function registerDashboardRoutes(
             signedWorkerCount: sql<number>`count(distinct case when ${cardchecks.id} is not null then ${workers.id} end)`.as('signed_worker_count'),
           })
           .from(bargainingUnits)
-          .leftJoin(workers, eq(workers.bargainingUnitId, bargainingUnits.id))
+          .leftJoin(workers, sql`${workers.bargainingUnitId} = ${bargainingUnits.id} AND ${workers.denormHomeEmployerId} is not null`)
           .leftJoin(
             cardchecks,
             sql`${cardchecks.workerId} = ${workers.id} AND ${cardchecks.status} = 'signed'`
@@ -513,7 +513,7 @@ export function registerDashboardRoutes(
             cardchecks,
             sql`${cardchecks.workerId} = ${workers.id} AND ${cardchecks.status} = 'signed'`
           )
-          .where(sql`${workers.bargainingUnitId} is null`);
+          .where(sql`${workers.bargainingUnitId} is null AND ${workers.denormHomeEmployerId} is not null`);
 
         return { buResults, unassignedResults };
       });
