@@ -14,6 +14,11 @@ interface BuSummaryUnit {
 
 interface BuSummaryData {
   units: BuSummaryUnit[];
+  unassigned: {
+    workerCount: number;
+    signedCount: number;
+    percentage: number;
+  } | null;
   totals: {
     workerCount: number;
     signedCount: number;
@@ -45,7 +50,7 @@ export function BtuBuSummaryPlugin({ userPermissions, enabledComponents }: Dashb
   if (isLoading) return null;
   if (!data || data.units.length === 0) return null;
 
-  const { units, totals } = data;
+  const { units, unassigned, totals } = data;
 
   return (
     <Card data-testid="card-btu-bu-summary">
@@ -81,6 +86,23 @@ export function BtuBuSummaryPlugin({ userPermissions, enabledComponents }: Dashb
               <PercentageBar percentage={unit.percentage} />
             </div>
           ))}
+
+          {unassigned && (
+            <div className="space-y-1 pt-1 border-t" data-testid="row-bu-unassigned">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm truncate text-muted-foreground italic" data-testid="text-bu-name-unassigned">No Bargaining Unit</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs text-muted-foreground tabular-nums" data-testid="text-bu-ratio-unassigned">
+                    {unassigned.signedCount}/{unassigned.workerCount}
+                  </span>
+                  <span className="text-xs font-medium tabular-nums w-12 text-right" data-testid="text-bu-percentage-unassigned">
+                    {unassigned.percentage}%
+                  </span>
+                </div>
+              </div>
+              <PercentageBar percentage={unassigned.percentage} />
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

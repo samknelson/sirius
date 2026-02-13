@@ -486,8 +486,8 @@ export function registerDashboardRoutes(
 
   app.get("/api/dashboard-plugins/btu-bu-summary/data", requireAuth, requireComponent('sitespecific.btu'), async (req, res) => {
     try {
-      const results = await storage.readOnly.query(async (client) => {
-        return client
+      const { buResults, unassignedResults } = await storage.readOnly.query(async (client) => {
+        const buResults = await client
           .select({
             bargainingUnitId: bargainingUnits.id,
             bargainingUnitName: bargainingUnits.name,
@@ -502,13 +502,32 @@ export function registerDashboardRoutes(
           )
           .groupBy(bargainingUnits.id, bargainingUnits.name)
           .orderBy(bargainingUnits.name);
+
+        const [unassignedResults] = await client
+          .select({
+            workerCount: countDistinct(workers.id).as('worker_count'),
+            signedWorkerCount: sql<number>`count(distinct case when ${cardchecks.id} is not null then ${workers.id} end)`.as('signed_worker_count'),
+          })
+          .from(workers)
+          .leftJoin(
+            cardchecks,
+            sql`${cardchecks.workerId} = ${workers.id} AND ${cardchecks.status} = 'signed'`
+          )
+          .where(sql`${workers.bargainingUnitId} is null`);
+
+        return { buResults, unassignedResults };
       });
 
-      const totalWorkers = results.reduce((sum, r) => sum + Number(r.workerCount), 0);
-      const totalSigned = results.reduce((sum, r) => sum + Number(r.signedWorkerCount), 0);
+      const unassignedWorkerCount = Number(unassignedResults?.workerCount ?? 0);
+      const unassignedSignedCount = Number(unassignedResults?.signedWorkerCount ?? 0);
+
+      const buWorkers = buResults.reduce((sum, r) => sum + Number(r.workerCount), 0);
+      const buSigned = buResults.reduce((sum, r) => sum + Number(r.signedWorkerCount), 0);
+      const totalWorkers = buWorkers + unassignedWorkerCount;
+      const totalSigned = buSigned + unassignedSignedCount;
 
       res.json({
-        units: results.map(r => ({
+        units: buResults.map(r => ({
           id: r.bargainingUnitId,
           name: r.bargainingUnitName,
           workerCount: Number(r.workerCount),
@@ -517,6 +536,13 @@ export function registerDashboardRoutes(
             ? Math.round((Number(r.signedWorkerCount) / Number(r.workerCount)) * 1000) / 10
             : 0,
         })),
+        unassigned: unassignedWorkerCount > 0 ? {
+          workerCount: unassignedWorkerCount,
+          signedCount: unassignedSignedCount,
+          percentage: unassignedWorkerCount > 0
+            ? Math.round((unassignedSignedCount / unassignedWorkerCount) * 1000) / 10
+            : 0,
+        } : null,
         totals: {
           workerCount: totalWorkers,
           signedCount: totalSigned,
