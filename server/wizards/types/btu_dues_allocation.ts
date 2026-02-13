@@ -5,6 +5,7 @@ import { createBtuWorkerImportStorage } from '../../storage/btu-worker-import.js
 import { createCardcheckStorage, SignedCardcheckWithDetails } from '../../storage/cardchecks.js';
 import { createBargainingUnitStorage, type BargainingUnitData } from '../../storage/bargaining-units.js';
 import { executeChargePlugins, TriggerType, DuesImportSavedContext } from '../../charge-plugins/index.js';
+import { sql } from 'drizzle-orm';
 import { parse as parseCSV } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
 import { objectStorageService } from '../../services/objectStorage.js';
@@ -579,8 +580,22 @@ export class BtuDuesAllocationWizard extends FeedWizard {
       }
     }
     
+    const employedWorkerIds = await storage.readOnly.query(async (client) => {
+      const rows = await client.execute(sql`
+        SELECT latest.worker_id
+        FROM (
+          SELECT DISTINCT ON (wh.worker_id) wh.worker_id, wh.employment_status_id
+          FROM worker_hours wh
+          ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
+        ) latest
+        JOIN options_employment_status es ON es.id = latest.employment_status_id
+        WHERE es.employed = true
+      `);
+      return new Set((rows.rows as Array<{ worker_id: string }>).map(r => r.worker_id));
+    });
+
     for (const cardCheck of signedCardchecks) {
-      if (!allocatedWorkers.has(cardCheck.workerId)) {
+      if (!allocatedWorkers.has(cardCheck.workerId) && employedWorkerIds.has(cardCheck.workerId)) {
         let effectiveCardRate: number | null = cardCheck.rate;
         if (effectiveCardRate === null && cardCheck.bargainingUnitId) {
           const buRates = buRateMap.get(cardCheck.bargainingUnitId);
