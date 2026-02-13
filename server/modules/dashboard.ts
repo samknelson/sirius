@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
-import { employerMonthlyPluginConfigSchema, workers, bargainingUnits } from "@shared/schema";
+import { employerMonthlyPluginConfigSchema, workers, bargainingUnits, workerHours, optionsEmploymentStatus } from "@shared/schema";
 import { cardchecks } from "@shared/schema/cardcheck/schema";
 import { getPluginMetadata } from "@shared/pluginMetadata";
 import { getEffectiveUser } from "./masquerade";
@@ -486,6 +486,14 @@ export function registerDashboardRoutes(
 
   app.get("/api/dashboard-plugins/btu-bu-summary/data", requireAuth, requireComponent('sitespecific.btu'), async (req, res) => {
     try {
+      const employedWorkerFilter = sql`${workers.id} IN (
+            SELECT DISTINCT ON (wh.worker_id) wh.worker_id
+            FROM ${workerHours} wh
+            JOIN ${optionsEmploymentStatus} es ON es.id = wh.employment_status_id
+            WHERE es.employed = true
+            ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
+          )`;
+
       const { buResults, unassignedResults } = await storage.readOnly.query(async (client) => {
         const buResults = await client
           .select({
@@ -495,7 +503,7 @@ export function registerDashboardRoutes(
             signedWorkerCount: sql<number>`count(distinct case when ${cardchecks.id} is not null then ${workers.id} end)`.as('signed_worker_count'),
           })
           .from(bargainingUnits)
-          .leftJoin(workers, sql`${workers.bargainingUnitId} = ${bargainingUnits.id} AND ${workers.denormHomeEmployerId} is not null`)
+          .leftJoin(workers, sql`${workers.bargainingUnitId} = ${bargainingUnits.id} AND ${employedWorkerFilter}`)
           .leftJoin(
             cardchecks,
             sql`${cardchecks.workerId} = ${workers.id} AND ${cardchecks.status} = 'signed'`
@@ -513,7 +521,7 @@ export function registerDashboardRoutes(
             cardchecks,
             sql`${cardchecks.workerId} = ${workers.id} AND ${cardchecks.status} = 'signed'`
           )
-          .where(sql`${workers.bargainingUnitId} is null AND ${workers.denormHomeEmployerId} is not null`);
+          .where(sql`${workers.bargainingUnitId} is null AND ${employedWorkerFilter}`);
 
         return { buResults, unassignedResults };
       });
