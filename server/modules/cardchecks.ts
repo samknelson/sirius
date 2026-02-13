@@ -438,11 +438,39 @@ export function registerCardchecksRoutes(
         }
       }
 
+      // Compute distinct worker totals across all employers
+      const distinctResult = await db.execute(sql`
+        WITH latest_employment AS (
+          SELECT DISTINCT ON (wh.worker_id, wh.employer_id)
+            wh.worker_id,
+            wh.employer_id,
+            es.employed as is_employed
+          FROM worker_hours wh
+          LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
+          ORDER BY wh.worker_id, wh.employer_id, wh.year DESC, wh.month DESC, wh.day DESC
+        ),
+        active_workers AS (
+          SELECT DISTINCT le.worker_id
+          FROM latest_employment le
+          WHERE le.is_employed = true
+        )
+        SELECT 
+          COUNT(DISTINCT aw.worker_id) as "totalDistinctWorkers",
+          COUNT(DISTINCT CASE WHEN cc.status = 'signed' THEN aw.worker_id END) as "signedDistinctWorkers"
+        FROM active_workers aw
+        LEFT JOIN cardchecks cc ON cc.worker_id = aw.worker_id AND cc.status = 'signed'
+      `);
+      const distinctStats = distinctResult.rows[0] as any;
+
       // Sort by name (show all employers regardless of worker count)
       const result = Array.from(employerMap.values())
         .sort((a, b) => a.name.localeCompare(b.name));
 
-      res.json(result);
+      res.json({
+        employers: result,
+        distinctTotalWorkers: Number(distinctStats?.totalDistinctWorkers) || 0,
+        distinctSignedWorkers: Number(distinctStats?.signedDistinctWorkers) || 0,
+      });
     } catch (error: any) {
       console.error("Failed to fetch organizing employer list:", error);
       res.status(500).json({ message: "Failed to fetch organizing employer list" });

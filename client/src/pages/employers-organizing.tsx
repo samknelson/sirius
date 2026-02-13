@@ -611,10 +611,18 @@ export default function EmployersOrganizing() {
   const hasAccess = hasComponent("sitespecific.btu") || hasComponent("cardcheck");
   const hasBtuComponent = hasComponent("sitespecific.btu");
 
-  const { data: employers = [], isLoading, error } = useQuery<OrganizingEmployer[]>({
+  interface OrganizingResponse {
+    employers: OrganizingEmployer[];
+    distinctTotalWorkers: number;
+    distinctSignedWorkers: number;
+  }
+
+  const { data: organizingData, isLoading, error } = useQuery<OrganizingResponse>({
     queryKey: ["/api/employers/organizing"],
     enabled: hasAccess,
   });
+
+  const employers = organizingData?.employers || [];
 
   // Fetch filter options
   const { data: employerTypes = [] } = useQuery<EmployerType[]>({
@@ -672,15 +680,12 @@ export default function EmployersOrganizing() {
   };
 
   const totalStats = useMemo(() => {
-    return employers.reduce(
-      (acc, emp) => ({
-        totalWorkers: acc.totalWorkers + emp.totalWorkers,
-        signedWorkers: acc.signedWorkers + emp.signedWorkers,
-        employerCount: acc.employerCount + 1,
-      }),
-      { totalWorkers: 0, signedWorkers: 0, employerCount: 0 }
-    );
-  }, [employers]);
+    return {
+      totalWorkers: organizingData?.distinctTotalWorkers || 0,
+      signedWorkers: organizingData?.distinctSignedWorkers || 0,
+      employerCount: employers.length,
+    };
+  }, [organizingData, employers]);
 
   const overallPercentage = totalStats.totalWorkers > 0 
     ? Math.round((totalStats.signedWorkers / totalStats.totalWorkers) * 100) 
