@@ -10,6 +10,7 @@ import { Link } from "wouter";
 import { stringify } from "csv-stringify/browser/esm/sync";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
 
 interface ResultsStepProps {
   wizardId: string;
@@ -85,9 +86,7 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
           eventSource.close();
           setIsReprocessing(false);
           setReprocessProgress(null);
-          if (onDataChange && eventData.results) {
-            onDataChange({ ...data, processResults: eventData.results });
-          }
+          queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
           toast({
             title: "Reprocessing Complete",
             description: `${eventData.results?.successCount || 0} workers reprocessed successfully.`,
