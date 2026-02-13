@@ -426,4 +426,60 @@ export function registerDashboardRoutes(
     }
   });
 
+  app.get("/api/dashboard-plugins/btu-dues-status/summary", requireAuth, requireComponent('sitespecific.btu'), async (req, res) => {
+    try {
+      const wizards = await storage.wizards.list({ type: 'btu_dues_allocation' });
+      
+      if (wizards.length === 0) {
+        res.json({ hasData: false });
+        return;
+      }
+
+      const latest = wizards[0];
+      const data = latest.data as Record<string, any> | null;
+      const processResults = data?.processResults as {
+        totalRows?: number;
+        createdCount?: number;
+        successCount?: number;
+        failureCount?: number;
+        completedAt?: string;
+      } | null;
+      const skippedDuplicateCount = data?.skippedDuplicateCount as number | undefined;
+      const comparisonReport = data?.cardCheckComparisonReport as {
+        matchingRate?: any[];
+        mismatchingRate?: any[];
+        noCardCheck?: any[];
+        cardCheckMissingRate?: any[];
+        cardCheckNoAllocation?: any[];
+        workerNotFound?: any[];
+      } | null;
+
+      res.json({
+        hasData: true,
+        wizardId: latest.id,
+        wizardName: (data?.wizardName as string) || latest.type,
+        status: latest.status,
+        date: latest.date,
+        processResults: processResults ? {
+          totalRows: processResults.totalRows ?? 0,
+          successCount: processResults.successCount ?? 0,
+          failureCount: processResults.failureCount ?? 0,
+          completedAt: processResults.completedAt ?? null,
+        } : null,
+        skippedDuplicateCount: skippedDuplicateCount ?? 0,
+        comparisonReport: comparisonReport ? {
+          matchingRate: comparisonReport.matchingRate?.length ?? 0,
+          mismatchingRate: comparisonReport.mismatchingRate?.length ?? 0,
+          noCardCheck: comparisonReport.noCardCheck?.length ?? 0,
+          cardCheckMissingRate: comparisonReport.cardCheckMissingRate?.length ?? 0,
+          cardCheckNoAllocation: comparisonReport.cardCheckNoAllocation?.length ?? 0,
+          workerNotFound: comparisonReport.workerNotFound?.length ?? 0,
+        } : null,
+      });
+    } catch (error) {
+      console.error("Error fetching BTU dues status summary:", error);
+      res.status(500).json({ message: "Failed to fetch BTU dues status summary" });
+    }
+  });
+
 }

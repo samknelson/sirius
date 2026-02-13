@@ -9,6 +9,7 @@ import { ReportsSettings } from "./reports/ReportsSettings";
 import { WmbScanStatusPlugin } from "./wmbScanStatus/WmbScanStatusPlugin";
 import { ActiveSessionsPlugin } from "./activeSessions/ActiveSessionsPlugin";
 import { MyStewardPlugin } from "./mySteward/MyStewardPlugin";
+import { BtuDuesStatusPlugin } from "./btuDuesStatus/BtuDuesStatusPlugin";
 
 export const pluginRegistry: DashboardPlugin[] = [
   {
@@ -73,6 +74,15 @@ export const pluginRegistry: DashboardPlugin[] = [
     description: "Display stewards assigned to your home employer and bargaining unit",
     order: 7,
     component: MyStewardPlugin,
+    enabledByDefault: true,
+  },
+  {
+    id: "btu-dues-status",
+    name: "BTU Dues Status",
+    description: "Display summary of most recent BTU dues allocation import with card check comparison",
+    order: 8,
+    component: BtuDuesStatusPlugin,
+    requiredPermissions: ["admin"],
     enabledByDefault: true,
   },
 ];
