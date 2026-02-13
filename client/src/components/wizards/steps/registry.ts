@@ -24,8 +24,6 @@ import { PreviewStep as BTUSigPreviewStep } from './btu-cardcheck-sig-import/Pre
 import { ProcessStep as BTUSigProcessStep } from './btu-cardcheck-sig-import/ProcessStep';
 import { ResultsStep as BTUSigResultsStep } from './btu-cardcheck-sig-import/ResultsStep';
 import { ConfigureStep as BTUScrapeConfigureStep } from './btu-cardcheck-scrape-import/ConfigureStep';
-import { ScrapeStep as BTUScrapeScrapeStep } from './btu-cardcheck-scrape-import/ScrapeStep';
-import { PreviewStep as BTUScrapePreviewStep } from './btu-cardcheck-scrape-import/PreviewStep';
 import { ProcessStep as BTUScrapeProcessStep } from './btu-cardcheck-scrape-import/ProcessStep';
 import { ResultsStep as BTUScrapeResultsStep } from './btu-cardcheck-scrape-import/ResultsStep';
 
@@ -138,14 +136,6 @@ const evaluateScrapeConfigureComplete: StepCompletionEvaluator = ({ wizard }) =>
   return !!wizard?.data?.cardcheckDefinitionId;
 };
 
-const evaluateScrapeDataComplete: StepCompletionEvaluator = ({ wizard }) => {
-  return Array.isArray(wizard?.data?.scrapedData) && wizard.data.scrapedData.length > 0;
-};
-
-const evaluateScrapePreviewComplete: StepCompletionEvaluator = ({ wizard }) => {
-  return !!wizard?.data?.previewData;
-};
-
 const evaluateScrapeProcessComplete: StepCompletionEvaluator = ({ wizard }) => {
   return !!wizard?.data?.processResults;
 };
@@ -234,8 +224,6 @@ export const stepControllerRegistry: StepControllerRegistry = {
   },
   'btu_cardcheck_scrape_import': {
     'configure': { Component: BTUScrapeConfigureStep, evaluateCompletion: evaluateScrapeConfigureComplete },
-    'scrape': { Component: BTUScrapeScrapeStep, evaluateCompletion: evaluateScrapeDataComplete },
-    'preview': { Component: BTUScrapePreviewStep, evaluateCompletion: evaluateScrapePreviewComplete },
     'process': { Component: BTUScrapeProcessStep, evaluateCompletion: evaluateScrapeProcessComplete },
     'results': { Component: BTUScrapeResultsStep, evaluateCompletion: alwaysComplete },
   },
@@ -325,8 +313,6 @@ export const stepComponentRegistry: StepComponentRegistry = {
   },
   'btu_cardcheck_scrape_import': {
     'configure': BTUScrapeConfigureStep,
-    'scrape': BTUScrapeScrapeStep,
-    'preview': BTUScrapePreviewStep,
     'process': BTUScrapeProcessStep,
     'results': BTUScrapeResultsStep,
   },

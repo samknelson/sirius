@@ -70,7 +70,7 @@ export default function BtuCardcheckScrapeImportPage() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-2xl font-bold" data-testid="page-title">Card Check Scraper Import</h1>
-          <p className="text-muted-foreground">Automatically scrape and import signed card checks from the external BTU site</p>
+          <p className="text-muted-foreground">Fetch PDF signatures from the external BTU site for card checks missing signatures</p>
         </div>
         <Button
           onClick={() => createWizardMutation.mutate()}
@@ -110,7 +110,6 @@ export default function BtuCardcheckScrapeImportPage() {
               {wizards.map(wizard => {
                 const data = wizard.data as any;
                 const processResults = data?.processResults;
-                const scrapeStats = data?.scrapeStats;
                 return (
                   <div
                     key={wizard.id}
@@ -127,14 +126,9 @@ export default function BtuCardcheckScrapeImportPage() {
                       </div>
                       {processResults && (
                         <div className="text-sm text-muted-foreground">
-                          Created: {processResults.created || 0} |
-                          Linked: {processResults.linked || 0} |
+                          Linked: {processResults.created || 0} |
+                          Skipped: {processResults.skipped || 0} |
                           Errors: {processResults.errors?.length || 0}
-                        </div>
-                      )}
-                      {scrapeStats && !processResults && (
-                        <div className="text-sm text-muted-foreground">
-                          {scrapeStats.withBpsId} rows with BPS ID (from {scrapeStats.pagesScraped} pages)
                         </div>
                       )}
                     </div>

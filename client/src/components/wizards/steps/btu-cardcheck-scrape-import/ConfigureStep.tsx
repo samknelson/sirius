@@ -134,8 +134,8 @@ export function ConfigureStep({ wizardId, wizardType, data, onDataChange }: Conf
             <Info className="h-4 w-4" />
             <AlertTitle>How the scraper import works</AlertTitle>
             <AlertDescription>
-              The scraper will log in to the external BTU site, scrape signed card check records,
-              match them to workers by BPS Employee ID, generate PDFs, and create card check records.
+              This tool finds card checks that have a NID (from a prior import) but are missing a signature PDF.
+              It fetches the PDF from the external BTU site by NID and creates an e-signature record for each.
             </AlertDescription>
           </Alert>
 

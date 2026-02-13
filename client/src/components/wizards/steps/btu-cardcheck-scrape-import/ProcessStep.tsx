@@ -1,11 +1,11 @@
-import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CheckCircle2, XCircle, AlertCircle, Play, Loader2, Globe } from "lucide-react";
+import { CheckCircle2, XCircle, AlertCircle, Play, Loader2, Globe, Info } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -16,165 +16,171 @@ interface ProcessStepProps {
   onDataChange?: (data: any) => void;
 }
 
-interface ProcessResults {
-  processed: number;
-  total: number;
-  created: number;
-  linked: number;
-  skipped: number;
-  errors: Array<{ nid: string; bpsId: string; error: string }>;
-  processedRows: Array<{
-    nid: string;
-    bpsId: string;
-    workerId: string;
-    workerName: string;
-    action: string;
-    esigId?: string;
-    cardcheckId?: string;
-  }>;
-}
-
 interface ProcessProgress {
   status: string;
   current: number;
   total: number;
   created: number;
-  linked: number;
+  skipped: number;
   errors: number;
   currentActivity: string;
 }
 
 export function ProcessStep({ wizardId, wizardType, data, onDataChange }: ProcessStepProps) {
   const { toast } = useToast();
-  const [results, setResults] = useState<ProcessResults | null>(data?.processResults || null);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const previewData = data?.previewData;
-  const matchedCount = previewData?.matchedCount || 0;
+  const processResults = data?.processResults || null;
+  const processProgress: ProcessProgress | null = data?.processProgress || null;
+  const isProcessing = processProgress?.status === 'processing';
 
-  const { data: wizardData } = useQuery<{ data: { processProgress?: ProcessProgress } }>({
+  const { data: wizard } = useQuery<any>({
     queryKey: [`/api/wizards/${wizardId}`],
-    refetchInterval: isProcessing ? 4000 : false,
+    refetchInterval: isProcessing || isStarting ? 5000 : false,
   });
 
-  const progress = wizardData?.data?.processProgress;
-  const progressPercent = progress ? Math.round((progress.current / progress.total) * 100) : 0;
+  const { data: pendingData } = useQuery<{ count: number }>({
+    queryKey: ['/api/btu-scraper-import/pending-count', { cardcheckDefinitionId: data?.cardcheckDefinitionId }],
+    enabled: !!data?.cardcheckDefinitionId && !isProcessing && !processResults,
+  });
 
-  const processMutation = useMutation({
-    mutationFn: async () => {
-      return await apiRequest("POST", "/api/btu-scraper-import/process", { wizardId });
-    },
-    onMutate: () => {
-      setIsProcessing(true);
-    },
-    onSuccess: (result: ProcessResults) => {
-      setIsProcessing(false);
-      setResults(result);
+  useEffect(() => {
+    if (wizard?.data?.processResults && !processResults) {
       queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
-      toast({
-        title: "Processing Complete",
-        description: `Created ${result.created}, linked ${result.linked}, ${result.errors.length} errors.`,
-      });
-    },
-    onError: (error: Error) => {
-      setIsProcessing(false);
-      toast({
-        title: "Processing Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
+    }
+  }, [wizard?.data?.processResults]);
+
+  const liveProgress = wizard?.data?.processProgress || processProgress;
+  const liveIsProcessing = liveProgress?.status === 'processing';
+  const progressPercent = liveProgress ? Math.round((liveProgress.current / liveProgress.total) * 100) : 0;
+
+  const startProcessing = async () => {
+    setIsStarting(true);
+    setError(null);
+    try {
+      await apiRequest("POST", "/api/btu-scraper-import/process", { wizardId });
+      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start processing');
+      setIsStarting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isStarting && liveIsProcessing) {
+      setIsStarting(false);
+    }
+  }, [isStarting, liveIsProcessing]);
+
+  const pendingCount = pendingData?.count || 0;
+  const hasCompleted = !!processResults || wizard?.status === 'completed' || wizard?.status === 'completed_with_errors';
+  const liveResults = wizard?.data?.processResults || processResults;
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Process Scraper Import</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-5 w-5" />
+            Fetch Signature PDFs
+          </CardTitle>
           <CardDescription>
-            Generate PDFs from card check pages, create e-signature records, and link to card checks
+            Fetch PDF signatures from the external BTU site for card checks that have a NID but are missing a signature
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!processMutation.isPending && !results && (
+          {!liveIsProcessing && !isStarting && !hasCompleted && (
             <div className="flex flex-col items-center justify-center p-12 space-y-4">
               <Globe className="h-12 w-12 text-muted-foreground" />
               <div className="text-center space-y-2">
-                <p className="text-muted-foreground" data-testid="text-process-prompt">
-                  Ready to process {matchedCount} matched rows
+                <p className="text-lg font-medium" data-testid="text-pending-count">
+                  {pendingCount} card check{pendingCount !== 1 ? 's' : ''} need{pendingCount === 1 ? 's' : ''} signature PDFs
                 </p>
-                {previewData && previewData.unmatchedCount > 0 && (
-                  <p className="text-sm text-amber-600" data-testid="text-unmatched-note">
-                    Note: {previewData.unmatchedCount} unmatched rows will be skipped
-                  </p>
-                )}
-                {previewData && previewData.skippedCount > 0 && (
-                  <p className="text-sm text-amber-600" data-testid="text-skipped-note">
-                    Note: {previewData.skippedCount} rows already have uploaded e-signatures and will be skipped
-                  </p>
-                )}
+                <p className="text-sm text-muted-foreground">
+                  These are card checks with a NID from the import but no attached signature PDF yet.
+                </p>
               </div>
+
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Error</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertTitle>Background Processing</AlertTitle>
+                <AlertDescription>
+                  Processing runs in the background. You can safely leave this page and you'll receive
+                  a notification when it's done.
+                </AlertDescription>
+              </Alert>
+
               <Button
-                onClick={() => processMutation.mutate()}
+                onClick={startProcessing}
                 size="lg"
                 className="gap-2"
+                disabled={pendingCount === 0}
                 data-testid="button-start-processing"
               >
                 <Play className="h-4 w-4" />
-                Start Processing
+                Start Fetching PDFs
               </Button>
             </div>
           )}
 
-          {processMutation.isPending && (
+          {(liveIsProcessing || isStarting) && (
             <div className="space-y-4 p-4">
               <div className="flex items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
-              {progress ? (
+              {liveProgress && liveProgress.total > 0 ? (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium" data-testid="text-process-activity">{progress.currentActivity}</span>
+                    <span className="font-medium" data-testid="text-process-activity">{liveProgress.currentActivity}</span>
                     <span className="text-muted-foreground" data-testid="text-process-percent">{progressPercent}%</span>
                   </div>
                   <Progress value={progressPercent} className="h-2" />
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center text-sm">
                     <div className="p-2 border rounded-md">
-                      <div className="font-semibold" data-testid="text-progress-current">{progress.current} / {progress.total}</div>
+                      <div className="font-semibold" data-testid="text-progress-current">{liveProgress.current} / {liveProgress.total}</div>
                       <div className="text-xs text-muted-foreground">Processed</div>
                     </div>
                     <div className="p-2 border rounded-md">
-                      <div className="font-semibold text-green-600" data-testid="text-progress-created">{progress.created}</div>
-                      <div className="text-xs text-muted-foreground">Created</div>
+                      <div className="font-semibold text-green-600" data-testid="text-progress-created">{liveProgress.created}</div>
+                      <div className="text-xs text-muted-foreground">PDFs Fetched</div>
                     </div>
                     <div className="p-2 border rounded-md">
-                      <div className="font-semibold text-blue-600" data-testid="text-progress-linked">{progress.linked}</div>
-                      <div className="text-xs text-muted-foreground">Linked</div>
+                      <div className="font-semibold text-amber-600" data-testid="text-progress-skipped">{liveProgress.skipped}</div>
+                      <div className="text-xs text-muted-foreground">Skipped</div>
                     </div>
                     <div className="p-2 border rounded-md">
-                      <div className="font-semibold text-red-600" data-testid="text-progress-errors">{progress.errors}</div>
+                      <div className="font-semibold text-red-600" data-testid="text-progress-errors">{liveProgress.errors}</div>
                       <div className="text-xs text-muted-foreground">Errors</div>
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground text-center">
-                    Progress updates every few seconds
+                    Processing in background. You can safely leave this page.
                   </p>
                 </div>
               ) : (
                 <div className="space-y-2">
                   <Progress value={0} className="h-2" />
                   <p className="text-center text-sm text-muted-foreground" data-testid="text-processing-starting">
-                    Starting processing... Logging in to external site.
+                    Starting... Logging in to the external site.
                   </p>
                 </div>
               )}
             </div>
           )}
 
-          {results && (
+          {hasCompleted && liveResults && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
-                {results.errors.length === 0 ? (
+                {liveResults.errors?.length === 0 ? (
                   <CheckCircle2 className="h-6 w-6 text-green-600" />
                 ) : (
                   <AlertCircle className="h-6 w-6 text-amber-600" />
@@ -184,35 +190,35 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="p-4 border rounded-lg text-center">
-                  <div className="text-2xl font-bold" data-testid="text-result-total">{results.total}</div>
+                  <div className="text-2xl font-bold" data-testid="text-result-total">{liveResults.total}</div>
                   <div className="text-sm text-muted-foreground">Total</div>
                 </div>
                 <div className="p-4 border rounded-lg text-center">
-                  <div className="text-2xl font-bold text-green-600" data-testid="text-result-created">{results.created}</div>
-                  <div className="text-sm text-muted-foreground">Card Checks Created</div>
+                  <div className="text-2xl font-bold text-green-600" data-testid="text-result-created">{liveResults.created}</div>
+                  <div className="text-sm text-muted-foreground">PDFs Fetched</div>
                 </div>
                 <div className="p-4 border rounded-lg text-center">
-                  <div className="text-2xl font-bold text-blue-600" data-testid="text-result-linked">{results.linked}</div>
-                  <div className="text-sm text-muted-foreground">E-Sigs Linked</div>
+                  <div className="text-2xl font-bold text-amber-600" data-testid="text-result-skipped">{liveResults.skipped}</div>
+                  <div className="text-sm text-muted-foreground">Skipped</div>
                 </div>
                 <div className="p-4 border rounded-lg text-center">
-                  <div className="text-2xl font-bold text-red-600" data-testid="text-result-errors">{results.errors.length}</div>
+                  <div className="text-2xl font-bold text-red-600" data-testid="text-result-errors">{liveResults.errors?.length || 0}</div>
                   <div className="text-sm text-muted-foreground">Errors</div>
                 </div>
               </div>
 
-              {results.errors.length > 0 && (
+              {liveResults.errors?.length > 0 && (
                 <div className="border rounded-lg">
                   <div className="p-4 border-b">
                     <div className="text-sm font-medium">Processing Errors</div>
                   </div>
                   <ScrollArea className="h-48">
                     <div className="p-4 space-y-2">
-                      {results.errors.map((error, idx) => (
+                      {liveResults.errors.map((error: any, idx: number) => (
                         <div key={idx} className="flex items-start gap-2 text-sm" data-testid={`error-item-${idx}`}>
                           <XCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
                           <div>
-                            <span className="font-medium font-mono">{error.bpsId} (NID: {error.nid}):</span>{' '}
+                            <span className="font-medium font-mono">NID {error.sourceNid || error.cardcheckId}:</span>{' '}
                             <span className="text-muted-foreground">{error.error}</span>
                           </div>
                         </div>
@@ -222,6 +228,14 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
                 </div>
               )}
             </div>
+          )}
+
+          {hasCompleted && data?.processError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Processing Failed</AlertTitle>
+              <AlertDescription>{data.processError}</AlertDescription>
+            </Alert>
           )}
         </CardContent>
       </Card>

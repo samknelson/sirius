@@ -12,6 +12,8 @@ export interface CardcheckImportWorkerInfo {
   workerName: string;
   signedDate: string;
   bargainingUnitName?: string;
+  status?: string;
+  sourceNid?: string;
 }
 
 export interface BtuCardcheckImportResults extends ProcessResults {
@@ -74,6 +76,14 @@ function parseDate(value: any): Date | null {
   return null;
 }
 
+function normalizeCardcheckStatus(value: any): 'signed' | 'revoked' | null {
+  if (!value) return null;
+  const str = String(value).toLowerCase().trim();
+  if (str === 'signed' || str === 'sign' || str === 's') return 'signed';
+  if (str === 'revoked' || str === 'revoke' || str === 'r' || str === 'rev') return 'revoked';
+  return null;
+}
+
 export class BtuCardcheckImportWizard extends FeedWizard {
   name = 'btu_cardcheck_import';
   displayName = 'BTU Card Check Import';
@@ -116,9 +126,25 @@ export class BtuCardcheckImportWizard extends FeedWizard {
         name: 'Signature Date',
         type: 'date',
         required: true,
-        description: 'Date the card check was signed',
+        description: 'Date the card check was signed or revoked',
         format: 'date',
         displayOrder: 2,
+      },
+      {
+        id: 'status',
+        name: 'Status',
+        type: 'string',
+        required: false,
+        description: 'Card check status: signed or revoked (defaults to signed if not mapped)',
+        displayOrder: 3,
+      },
+      {
+        id: 'nid',
+        name: 'S1 NID',
+        type: 'string',
+        required: false,
+        description: 'External system node ID (S1 NID) for linking with the scraper',
+        displayOrder: 4,
       },
       {
         id: 'bargainingUnit',
@@ -126,7 +152,7 @@ export class BtuCardcheckImportWizard extends FeedWizard {
         type: 'string',
         required: false,
         description: 'Bargaining unit name (optional, overrides worker default)',
-        displayOrder: 3,
+        displayOrder: 5,
       },
     ];
   }
@@ -153,6 +179,18 @@ export class BtuCardcheckImportWizard extends FeedWizard {
           field: 'signatureDate',
           message: 'Invalid date format for Signature Date',
           value: signatureDate,
+        });
+      }
+    }
+
+    if (row.status) {
+      const normalized = normalizeCardcheckStatus(row.status);
+      if (!normalized) {
+        errors.push({
+          rowIndex,
+          field: 'status',
+          message: 'Status must be "signed" or "revoked"',
+          value: row.status,
         });
       }
     }
@@ -285,6 +323,10 @@ export class BtuCardcheckImportWizard extends FeedWizard {
             throw new Error(`Invalid signature date: ${row.signatureDate}`);
           }
 
+          const cardcheckStatus = normalizeCardcheckStatus(row.status) || 'signed';
+
+          const sourceNid = row.nid ? String(row.nid).trim() : undefined;
+
           let bargainingUnitId = worker.bargainingUnitId;
           if (row.bargainingUnit) {
             const buName = String(row.bargainingUnit).toLowerCase().trim();
@@ -307,15 +349,32 @@ export class BtuCardcheckImportWizard extends FeedWizard {
             workerName,
             signedDate: signedDate.toISOString().split('T')[0],
             bargainingUnitName: buMatch?.name,
+            status: cardcheckStatus,
+            sourceNid,
           };
+
+          if (sourceNid) {
+            const existingByNid = await storage.cardchecks.getCardcheckBySourceNid(sourceNid);
+            if (existingByNid) {
+              skippedDuplicate.push(workerInfo);
+              updatedCount++;
+              rowResults.push({
+                rowIndex,
+                status: 'success',
+                message: `Skipped duplicate card check (NID ${sourceNid} already exists) for ${workerName} (BPS ID: ${bpsEmployeeId})`,
+              });
+              continue;
+            }
+          }
 
           try {
             await storage.cardchecks.createCardcheck({
               workerId: worker.id,
               cardcheckDefinitionId,
-              status: 'signed',
+              status: cardcheckStatus,
               signedDate,
               bargainingUnitId,
+              sourceNid: sourceNid || undefined,
             });
 
             createdCount++;
@@ -323,7 +382,7 @@ export class BtuCardcheckImportWizard extends FeedWizard {
             rowResults.push({
               rowIndex,
               status: 'success',
-              message: `Created card check for ${workerName} (BPS ID: ${bpsEmployeeId})`,
+              message: `Created ${cardcheckStatus} card check for ${workerName} (BPS ID: ${bpsEmployeeId})`,
             });
           } catch (createErr: any) {
             if (createErr?.message?.includes('DUPLICATE_SIGNED')) {

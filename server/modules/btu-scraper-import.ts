@@ -1,9 +1,10 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { objectStorageService } from "../services/objectStorage";
-import { createBtuWorkerImportStorage } from "../storage/btu-worker-import";
 import { insertFileSchema } from "@shared/schema";
 import { logger } from "../logger";
+import { sendInapp } from "../services/inapp-sender";
+import { sendEmail } from "../services/email-sender";
 import puppeteer from "puppeteer-core";
 import { PDFDocument } from "pdf-lib";
 
@@ -12,27 +13,9 @@ type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Respo
 
 const CHROMIUM_PATH = '/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium';
 const LOGIN_URL = 'https://sirius-btu.activistcentral.net/user/login';
-const REPORT_BASE_URL = 'https://sirius-btu.activistcentral.net/sirius/staff/cardchecks?field_sirius_type_value=signed&created=-500days';
 
-function getReportPageUrl(pageNum: number, singleBpsId?: string | null): string {
-  let url = REPORT_BASE_URL;
-  if (singleBpsId) {
-    url = `https://sirius-btu.activistcentral.net/sirius/staff/cardchecks?field_sirius_type_value=signed&created=&field_sirius_id_value=${encodeURIComponent(singleBpsId)}`;
-  }
-  if (pageNum > 0) {
-    url += `&page=${pageNum}`;
-  }
-  return url;
-}
-
-interface ScrapedRow {
-  handler: string;
-  nid: string;
-  title: string;
-  bpsId: string;
-  bargainingUnit: string;
-  postDate: string;
-  name: string;
+function getCardcheckPageUrl(nid: string): string {
+  return `https://sirius-btu.activistcentral.net/node/${nid}/sirius_log_cardcheck`;
 }
 
 async function launchBrowser() {
@@ -81,102 +64,6 @@ async function loginToSite(page: puppeteer.Page) {
   }
 }
 
-async function scrapeReportPage(page: puppeteer.Page): Promise<ScrapedRow[]> {
-  const debugInfo = await page.evaluate(() => {
-    const tables = document.querySelectorAll('table');
-    const tableInfo = Array.from(tables).map((t, i) => ({
-      index: i,
-      id: t.id,
-      className: t.className,
-      rowCount: t.querySelectorAll('tr').length,
-    }));
-    return {
-      tableCount: tables.length,
-      tables: tableInfo,
-      url: window.location.href,
-      title: document.title,
-    };
-  });
-  logger.info('Page debug info', { debugInfo });
-
-  const result = await page.evaluate(() => {
-    const rows: Array<{
-      handler: string;
-      nid: string;
-      title: string;
-      bpsId: string;
-      bargainingUnit: string;
-      postDate: string;
-      name: string;
-    }> = [];
-
-    const tables = document.querySelectorAll('table');
-    let table: Element | null = null;
-
-    for (const t of Array.from(tables)) {
-      const trs = t.querySelectorAll('tbody tr, tr');
-      if (trs.length > 1) {
-        table = t;
-        break;
-      }
-    }
-
-    if (!table) return { rows, headers: [] as string[], columnMap: {} as Record<string, number> };
-
-    const trs = table.querySelectorAll('tbody tr');
-    const fallbackTrs = trs.length > 0 ? trs : table.querySelectorAll('tr');
-
-    const headerRow = table.querySelector('thead tr');
-    const headerCells = headerRow ? Array.from(headerRow.querySelectorAll('th')).map(th => (th.textContent || '').trim().toLowerCase()) : [];
-
-    let idxHandler = 0, idxNid = 1, idxTitle = 2, idxBpsId = 3, idxBargaining = 4, idxPostDate = 5, idxName = 6;
-
-    if (headerCells.length > 0) {
-      for (let i = 0; i < headerCells.length; i++) {
-        const h = headerCells[i];
-        if (h === 'handler') idxHandler = i;
-        else if (h === 'nid') idxNid = i;
-        else if (h === 'title') idxTitle = i;
-        else if (h === 'id') idxBpsId = i;
-        else if (h.includes('bargaining')) idxBargaining = i;
-        else if (h.includes('post')) idxPostDate = i;
-        else if (h === 'name') idxName = i;
-      }
-    }
-
-    const columnMap = { handler: idxHandler, nid: idxNid, title: idxTitle, bpsId: idxBpsId, bargaining: idxBargaining, postDate: idxPostDate, name: idxName };
-
-    fallbackTrs.forEach((tr) => {
-      const tds = tr.querySelectorAll('td');
-      if (tds.length >= 5) {
-        rows.push({
-          handler: (tds[idxHandler]?.textContent || '').trim(),
-          nid: (tds[idxNid]?.textContent || '').trim(),
-          title: (tds[idxTitle]?.textContent || '').trim(),
-          bpsId: (tds[idxBpsId]?.textContent || '').trim(),
-          bargainingUnit: (tds[idxBargaining]?.textContent || '').trim(),
-          postDate: (tds[idxPostDate]?.textContent || '').trim(),
-          name: (tds[idxName]?.textContent || '').trim(),
-        });
-      }
-    });
-
-    return { rows, headers: headerCells, columnMap };
-  });
-
-  if (result.headers.length > 0) {
-    logger.info('Table headers detected', { headers: result.headers, columnMap: result.columnMap });
-  }
-
-  if (result.rows.length > 0) {
-    logger.info('Sample first row data', {
-      firstRow: result.rows[0],
-    });
-  }
-
-  return result.rows;
-}
-
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -186,325 +73,26 @@ export function registerBtuScraperImportRoutes(
   requireAuth: AuthMiddleware,
   requirePermission: PermissionMiddleware
 ) {
-  app.post("/api/btu-scraper-import/scrape",
+  app.get("/api/btu-scraper-import/pending-count",
     requireAuth,
     requirePermission("admin"),
     async (req: Request, res: Response) => {
-      let browser: puppeteer.Browser | null = null;
-      const { wizardId, singleBpsId } = req.body;
       try {
-        if (!wizardId) {
-          return res.status(400).json({ message: "wizardId is required" });
-        }
-
-        const wizard = await storage.wizards.getById(wizardId);
-        if (!wizard) {
-          return res.status(404).json({ message: "Wizard not found" });
-        }
-        if ((wizard as any).type !== 'btu_cardcheck_scrape_import') {
-          return res.status(400).json({ message: "Invalid wizard type" });
-        }
-
-        const searchBpsId = singleBpsId ? singleBpsId.trim() : null;
-
-        browser = await launchBrowser();
-        const page = await browser.newPage();
-
-        await loginToSite(page);
-
-        const startUrl = getReportPageUrl(0, searchBpsId);
-        logger.info('Navigating to report', { url: startUrl, singleBpsId: searchBpsId });
-        await page.goto(startUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-
-        const reportPageTitle = await page.title();
-        if (reportPageTitle.toLowerCase().includes('access denied')) {
-          throw new Error('Access Denied: The scraper account does not have permission to view the card check report. Please verify the BTU_SCRAPER_USERNAME credentials have the correct Drupal role/permissions.');
-        }
-        if (reportPageTitle.toLowerCase().includes('log in') || reportPageTitle.toLowerCase().includes('user login')) {
-          throw new Error('Session expired: The scraper was redirected to the login page when accessing the report. The login may not have completed successfully.');
-        }
-
-        logger.info('Report page loaded', { title: reportPageTitle, url: page.url() });
-
-        const allRows: ScrapedRow[] = [];
-        let pageNum = 0;
-        let consecutiveEmptyPages = 0;
-        let lastProgressUpdate = 0;
-
-        while (true) {
-          const pageRows = await scrapeReportPage(page);
-          allRows.push(...pageRows);
-          logger.info(`Scraped page ${pageNum}, found ${pageRows.length} rows (total: ${allRows.length})`);
-
-          const now = Date.now();
-          if (now - lastProgressUpdate > 3000) {
-            lastProgressUpdate = now;
-            try {
-              const currentWizard = await storage.wizards.getById(wizardId);
-              if (currentWizard) {
-                await storage.wizards.update(wizardId, {
-                  data: {
-                    ...(currentWizard.data as any),
-                    scrapeProgress: {
-                      status: 'scraping',
-                      pagesScraped: pageNum + 1,
-                      rowsFound: allRows.length,
-                      currentActivity: `Scanning page ${pageNum + 1}...`,
-                    },
-                  },
-                });
-              }
-            } catch (progressErr) {
-              logger.warn('Failed to update scrape progress', { error: progressErr });
-            }
-          }
-
-          if (pageRows.length === 0) {
-            consecutiveEmptyPages++;
-            if (consecutiveEmptyPages >= 2) {
-              logger.info('Two consecutive empty pages, stopping pagination');
-              break;
-            }
-          } else {
-            consecutiveEmptyPages = 0;
-          }
-
-          if (searchBpsId) {
-            const found = allRows.some(r => r.bpsId.trim() === searchBpsId);
-            if (found) {
-              logger.info(`Found target BPS ID ${searchBpsId}, stopping pagination`);
-              break;
-            }
-          }
-
-          const hasNextPage = await page.evaluate(() => {
-            const nextLink = document.querySelector('li.pager-next a, .pager-next a, a[title="Go to next page"]');
-            return !!nextLink;
-          });
-
-          if (!hasNextPage) {
-            logger.info('No next page link found, stopping pagination');
-            break;
-          }
-
-          pageNum++;
-          await delay(500);
-          await page.goto(getReportPageUrl(pageNum, searchBpsId), { waitUntil: 'networkidle2', timeout: 60000 });
-        }
-
-        const seenMap = new Map<string, number>();
-        const deduplicated: ScrapedRow[] = [];
-        for (const row of allRows) {
-          const existingIdx = seenMap.get(row.nid);
-          if (existingIdx === undefined) {
-            seenMap.set(row.nid, deduplicated.length);
-            deduplicated.push(row);
-          } else {
-            const existing = deduplicated[existingIdx];
-            const existingHasBps = existing.bpsId && existing.bpsId.trim() !== '';
-            const newHasBps = row.bpsId && row.bpsId.trim() !== '';
-            if (!existingHasBps && newHasBps) {
-              deduplicated[existingIdx] = row;
-            }
-          }
-        }
-
-        let withBpsId = deduplicated.filter(r => r.bpsId && r.bpsId.trim() !== '');
-
-        if (searchBpsId) {
-          withBpsId = withBpsId.filter(r => r.bpsId.trim() === searchBpsId);
-        }
-
-        const finalWizard = await storage.wizards.getById(wizardId);
-        const finalWizardData = (finalWizard?.data as any) || {};
-        await storage.wizards.update(wizardId, {
-          data: {
-            ...finalWizardData,
-            scrapedData: withBpsId,
-            scrapeStats: {
-              totalScraped: allRows.length,
-              afterDedup: deduplicated.length,
-              withBpsId: withBpsId.length,
-              pagesScraped: pageNum + 1,
-            },
-            scrapeProgress: null,
-          },
-        });
-
+        const cardcheckDefinitionId = req.query.cardcheckDefinitionId as string | undefined;
+        const pending = await storage.cardchecks.getCardchecksWithSourceNidMissingEsig(cardcheckDefinitionId);
         res.json({
-          rows: withBpsId,
-          totalScraped: allRows.length,
-          afterDedup: deduplicated.length,
-          withBpsId: withBpsId.length,
-          pagesScraped: pageNum + 1,
+          count: pending.length,
+          cardchecks: pending.map(cc => ({
+            id: cc.id,
+            workerId: cc.workerId,
+            sourceNid: cc.sourceNid,
+            status: cc.status,
+            cardcheckDefinitionId: cc.cardcheckDefinitionId,
+          })),
         });
       } catch (error) {
-        logger.error('Scrape error', { error });
-        try {
-          const errWizard = await storage.wizards.getById(wizardId);
-          if (errWizard) {
-            await storage.wizards.update(wizardId, {
-              data: { ...(errWizard.data as any), scrapeProgress: null },
-            });
-          }
-        } catch (clearErr) {
-          logger.warn('Failed to clear scrape progress on error', { error: clearErr });
-        }
-        const message = error instanceof Error ? error.message : 'Failed to scrape external site';
-        res.status(500).json({ message });
-      } finally {
-        if (browser) {
-          await browser.close().catch(() => {});
-        }
-      }
-    }
-  );
-
-  app.post("/api/btu-scraper-import/preview",
-    requireAuth,
-    requirePermission("admin"),
-    async (req: Request, res: Response) => {
-      try {
-        const { wizardId } = req.body;
-        if (!wizardId) {
-          return res.status(400).json({ message: "wizardId is required" });
-        }
-
-        const wizard = await storage.wizards.getById(wizardId);
-        if (!wizard) {
-          return res.status(404).json({ message: "Wizard not found" });
-        }
-        if ((wizard as any).type !== 'btu_cardcheck_scrape_import') {
-          return res.status(400).json({ message: "Invalid wizard type" });
-        }
-
-        const wizardData = wizard.data as any;
-        const scrapedData: ScrapedRow[] = wizardData?.scrapedData || [];
-        const cardcheckDefinitionId = wizardData?.cardcheckDefinitionId;
-
-        if (!cardcheckDefinitionId) {
-          return res.status(400).json({ message: "Card check definition not selected" });
-        }
-
-        if (scrapedData.length === 0) {
-          return res.status(400).json({ message: "No scraped data. Run the scrape step first." });
-        }
-
-        const btuStorage = createBtuWorkerImportStorage();
-
-        const allNids = scrapedData.map(r => r.nid).filter(Boolean);
-        const existingByNid = await storage.cardchecks.getCardchecksBySourceNids(allNids);
-        const importedNidSet = new Set(existingByNid.map(cc => cc.sourceNid));
-
-        const matched: Array<{
-          nid: string;
-          bpsId: string;
-          workerId: string;
-          workerName: string;
-          postDate: string;
-          name: string;
-          hasExistingCardcheck: boolean;
-          existingHasUploadEsig: boolean;
-        }> = [];
-
-        const unmatched: Array<{
-          nid: string;
-          bpsId: string;
-          name: string;
-          reason: string;
-        }> = [];
-
-        const skipped: Array<{
-          nid: string;
-          bpsId: string;
-          workerId?: string;
-          workerName?: string;
-          reason: string;
-        }> = [];
-
-        for (const row of scrapedData) {
-          if (importedNidSet.has(row.nid)) {
-            skipped.push({
-              nid: row.nid,
-              bpsId: row.bpsId,
-              reason: 'Already imported (NID exists in system)',
-            });
-            continue;
-          }
-
-          const worker = await btuStorage.findWorkerByBpsEmployeeId(row.bpsId);
-          if (!worker) {
-            unmatched.push({
-              nid: row.nid,
-              bpsId: row.bpsId,
-              name: row.name,
-              reason: 'No worker found with this BPS Employee ID',
-            });
-            continue;
-          }
-
-          const workerContact = await storage.contacts.getContact(worker.contactId);
-          const workerName = workerContact
-            ? `${workerContact.family || ''}, ${workerContact.given || ''}`.trim().replace(/^,\s*|,\s*$/g, '') || workerContact.displayName || `Worker #${worker.siriusId}`
-            : `Worker #${worker.siriusId}`;
-
-          const existingCardchecks = await storage.cardchecks.getCardchecksByWorkerId(worker.id);
-          const matchingCardcheck = existingCardchecks.find(
-            cc => cc.cardcheckDefinitionId === cardcheckDefinitionId
-          );
-
-          let existingHasUploadEsig = false;
-          if (matchingCardcheck?.esigId) {
-            const esig = await storage.esigs.getEsigById(matchingCardcheck.esigId);
-            if (esig && esig.type === 'upload') {
-              existingHasUploadEsig = true;
-            }
-          }
-
-          if (existingHasUploadEsig) {
-            skipped.push({
-              nid: row.nid,
-              bpsId: row.bpsId,
-              workerId: worker.id,
-              workerName,
-              reason: 'Already has a card check with an uploaded e-signature',
-            });
-            continue;
-          }
-
-          matched.push({
-            nid: row.nid,
-            bpsId: row.bpsId,
-            workerId: worker.id,
-            workerName,
-            postDate: row.postDate,
-            name: row.name,
-            hasExistingCardcheck: !!matchingCardcheck,
-            existingHasUploadEsig: false,
-          });
-        }
-
-        const previewData = {
-          matched,
-          unmatched,
-          skipped,
-          totalRows: scrapedData.length,
-          matchedCount: matched.length,
-          unmatchedCount: unmatched.length,
-          skippedCount: skipped.length,
-        };
-
-        await storage.wizards.update(wizardId, {
-          data: {
-            ...wizardData,
-            previewData,
-          },
-        });
-
-        res.json(previewData);
-      } catch (error) {
-        logger.error('Preview error', { error });
-        res.status(500).json({ message: "Failed to generate preview" });
+        logger.error('Error fetching pending scraper count', { error });
+        res.status(500).json({ message: 'Failed to fetch pending card checks' });
       }
     }
   );
@@ -513,7 +101,6 @@ export function registerBtuScraperImportRoutes(
     requireAuth,
     requirePermission("admin"),
     async (req: Request, res: Response) => {
-      let browser: puppeteer.Browser | null = null;
       const { wizardId } = req.body;
       try {
         if (!wizardId) {
@@ -539,326 +126,315 @@ export function registerBtuScraperImportRoutes(
 
         const wizardData = wizard.data as any;
         const cardcheckDefinitionId = wizardData?.cardcheckDefinitionId;
-        const previewData = wizardData?.previewData;
 
-        if (!cardcheckDefinitionId || !previewData) {
-          return res.status(400).json({ message: "Missing required data. Complete configure, scrape, and preview steps first." });
+        if (!cardcheckDefinitionId) {
+          return res.status(400).json({ message: "No card check definition selected. Complete the configure step first." });
         }
 
-        const matchedRows = previewData.matched || [];
-        if (matchedRows.length === 0) {
-          return res.status(400).json({ message: "No matched rows to process" });
+        if (wizardData?.processProgress?.status === 'processing') {
+          return res.status(409).json({ message: "This wizard is already being processed" });
         }
 
-        const allMatchedNids = matchedRows.map((r: any) => r.nid).filter(Boolean);
-        const alreadyImported = await storage.cardchecks.getCardchecksBySourceNids(allMatchedNids);
-        const alreadyImportedNidSet = new Set(alreadyImported.map(cc => cc.sourceNid));
+        const pendingCardchecks = await storage.cardchecks.getCardchecksWithSourceNidMissingEsig(cardcheckDefinitionId);
 
-        const rowsToProcess = matchedRows.filter((r: any) => !alreadyImportedNidSet.has(r.nid));
-
-        if (rowsToProcess.length === 0) {
+        if (pendingCardchecks.length === 0) {
           return res.json({
+            message: 'No card checks need signature PDFs. All card checks with NIDs already have signatures.',
             processed: 0,
-            total: matchedRows.length,
-            created: 0,
-            linked: 0,
-            skipped: matchedRows.length,
-            errors: [],
-            processedRows: [],
-            message: 'All matched rows have already been imported (by NID).',
+            total: 0,
           });
         }
 
-        browser = await launchBrowser();
-        const page = await browser.newPage();
+        await storage.wizards.update(wizardId, {
+          status: 'processing' as any,
+          data: {
+            ...wizardData,
+            processProgress: {
+              status: 'processing',
+              current: 0,
+              total: pendingCardchecks.length,
+              created: 0,
+              errors: 0,
+              currentActivity: 'Starting...',
+            },
+          },
+        });
 
-        await loginToSite(page);
+        res.json({
+          message: "Processing started in background",
+          status: "processing",
+          total: pendingCardchecks.length,
+        });
 
-        const btuStorage = createBtuWorkerImportStorage();
-
-        const results = {
-          processed: 0,
-          total: rowsToProcess.length,
-          created: 0,
-          linked: 0,
-          skipped: matchedRows.length - rowsToProcess.length,
-          errors: [] as Array<{ nid: string; bpsId: string; error: string }>,
-          processedRows: [] as Array<{
-            nid: string;
-            bpsId: string;
-            workerId: string;
-            workerName: string;
-            action: string;
-            esigId?: string;
-            cardcheckId?: string;
-          }>,
-        };
-
-        let processLastProgressUpdate = 0;
-
-        for (let rowIndex = 0; rowIndex < rowsToProcess.length; rowIndex++) {
-          const matchedRow = rowsToProcess[rowIndex];
-
-          const now = Date.now();
-          if (now - processLastProgressUpdate > 3000) {
-            processLastProgressUpdate = now;
-            try {
-              const currentWizard = await storage.wizards.getById(wizardId);
-              if (currentWizard) {
-                await storage.wizards.update(wizardId, {
-                  data: {
-                    ...(currentWizard.data as any),
-                    processProgress: {
-                      status: 'processing',
-                      current: rowIndex + 1,
-                      total: rowsToProcess.length,
-                      created: results.created,
-                      linked: results.linked,
-                      skipped: results.skipped,
-                      errors: results.errors.length,
-                      currentActivity: `Processing ${rowIndex + 1} of ${rowsToProcess.length}: generating PDF for BPS ID ${matchedRow.bpsId}...`,
-                    },
-                  },
-                });
-              }
-            } catch (progressErr) {
-              logger.warn('Failed to update process progress', { error: progressErr });
-            }
-          }
-
+        setImmediate(async () => {
+          let browser: puppeteer.Browser | null = null;
           try {
-            const cardcheckPageUrl = `https://sirius-btu.activistcentral.net/node/${matchedRow.nid}/sirius_log_cardcheck`;
+            browser = await launchBrowser();
+            const page = await browser.newPage();
+            await loginToSite(page);
 
-            await page.goto(cardcheckPageUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-            await delay(500);
+            const results = {
+              processed: 0,
+              total: pendingCardchecks.length,
+              created: 0,
+              skipped: 0,
+              errors: [] as Array<{ cardcheckId: string; sourceNid: string; error: string }>,
+              processedRows: [] as Array<{
+                cardcheckId: string;
+                sourceNid: string;
+                workerId: string;
+                action: string;
+                esigId?: string;
+              }>,
+            };
 
-            const pagePdfBuffer = await page.pdf({ format: 'Letter', printBackground: true });
+            for (let i = 0; i < pendingCardchecks.length; i++) {
+              const cardcheck = pendingCardchecks[i];
+              const nid = cardcheck.sourceNid!;
 
-            const attachedPdfUrls: string[] = await page.evaluate(() => {
-              const links = Array.from(document.querySelectorAll('a[href]'));
-              return links
-                .map(a => (a as HTMLAnchorElement).href)
-                .filter(href => href.toLowerCase().endsWith('.pdf'));
-            });
-
-            let combinedPdfBytes: Uint8Array;
-
-            try {
-              const combinedDoc = await PDFDocument.create();
-
-              const pageDoc = await PDFDocument.load(pagePdfBuffer);
-              const pagePages = await combinedDoc.copyPages(pageDoc, pageDoc.getPageIndices());
-              for (const p of pagePages) {
-                combinedDoc.addPage(p);
-              }
-
-              for (const pdfUrl of attachedPdfUrls) {
+              if (i % 3 === 0) {
                 try {
-                  const pdfResponse = await page.goto(pdfUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-                  if (pdfResponse) {
-                    const pdfBuffer = await pdfResponse.buffer();
-                    const attachedDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
-                    const attachedPages = await combinedDoc.copyPages(attachedDoc, attachedDoc.getPageIndices());
-                    for (const ap of attachedPages) {
-                      combinedDoc.addPage(ap);
-                    }
+                  const currentWizard = await storage.wizards.getById(wizardId);
+                  if (currentWizard) {
+                    await storage.wizards.update(wizardId, {
+                      data: {
+                        ...(currentWizard.data as any),
+                        processProgress: {
+                          status: 'processing',
+                          current: i + 1,
+                          total: pendingCardchecks.length,
+                          created: results.created,
+                          skipped: results.skipped,
+                          errors: results.errors.length,
+                          currentActivity: `Fetching PDF for NID ${nid} (${i + 1} of ${pendingCardchecks.length})...`,
+                        },
+                      },
+                    });
                   }
-                } catch (attachErr) {
-                  logger.warn(`Failed to download/parse attached PDF: ${pdfUrl}`, { error: attachErr });
+                } catch (progressErr) {
+                  logger.warn('Failed to update scraper progress', { error: progressErr });
                 }
               }
 
-              combinedPdfBytes = await combinedDoc.save();
-            } catch (combineErr) {
-              logger.warn('Failed to combine PDFs, using page PDF only', { error: combineErr });
-              combinedPdfBytes = new Uint8Array(pagePdfBuffer);
-            }
+              try {
+                const freshCardcheck = await storage.cardchecks.getCardcheckById(cardcheck.id);
+                if (!freshCardcheck || freshCardcheck.esigId) {
+                  results.skipped++;
+                  results.processed++;
+                  continue;
+                }
 
-            const fileName = `cardcheck_scrape_${matchedRow.bpsId}_${matchedRow.nid}.pdf`;
+                const cardcheckPageUrl = getCardcheckPageUrl(nid);
+                await page.goto(cardcheckPageUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+                await delay(500);
 
-            const uploadResult = await objectStorageService.uploadFile({
-              fileName,
-              fileContent: Buffer.from(combinedPdfBytes),
-              mimeType: 'application/pdf',
-              accessLevel: 'private',
-            });
+                const pageTitle = await page.title();
+                if (pageTitle.toLowerCase().includes('access denied')) {
+                  throw new Error(`Access denied for NID ${nid}`);
+                }
+                if (pageTitle.toLowerCase().includes('not found') || pageTitle.toLowerCase().includes('page not found')) {
+                  throw new Error(`Page not found for NID ${nid}`);
+                }
 
-            const pdfFileData = insertFileSchema.parse({
-              fileName,
-              storagePath: uploadResult.storagePath,
-              mimeType: 'application/pdf',
-              size: uploadResult.size,
-              uploadedBy: userId,
-              entityType: 'esig',
-              entityId: null,
-              accessLevel: 'private',
-              metadata: {
-                bpsId: matchedRow.bpsId,
-                nid: matchedRow.nid,
-                wizardId,
-                importType: 'btu_cardcheck_scrape_import',
-              },
-            });
-            const pdfFileRecord = await storage.files.create(pdfFileData);
+                const pagePdfBuffer = await page.pdf({ format: 'Letter', printBackground: true });
 
-            let signedDate: Date = new Date();
-            if (matchedRow.postDate) {
-              const parsed = new Date(matchedRow.postDate);
-              if (!isNaN(parsed.getTime())) {
-                signedDate = parsed;
-              }
-            }
+                const attachedPdfUrls: string[] = await page.evaluate(() => {
+                  const links = Array.from(document.querySelectorAll('a[href]'));
+                  return links
+                    .map(a => (a as HTMLAnchorElement).href)
+                    .filter(href => href.toLowerCase().endsWith('.pdf'));
+                });
 
-            const esig = await storage.esigs.createEsig({
-              userId,
-              status: 'signed',
-              signedDate,
-              type: 'upload',
-              docRender: '',
-              docHash: '',
-              esig: {
-                type: 'upload',
-                value: pdfFileRecord.id,
-                fileName,
-                bpsId: matchedRow.bpsId,
-                nid: matchedRow.nid,
-                source: 'scraper',
-              },
-              docType: 'cardcheck',
-              docFileId: pdfFileRecord.id,
-            });
+                let combinedPdfBytes: Uint8Array;
 
-            if (pdfFileRecord.id) {
-              await storage.files.update(pdfFileRecord.id, {
-                entityId: esig.id,
-              });
-            }
+                try {
+                  const combinedDoc = await PDFDocument.create();
 
-            const worker = await btuStorage.findWorkerByBpsEmployeeId(matchedRow.bpsId);
-            if (!worker) {
-              results.errors.push({
-                nid: matchedRow.nid,
-                bpsId: matchedRow.bpsId,
-                error: 'Worker no longer found during processing',
-              });
-              results.processed++;
-              continue;
-            }
+                  const pageDoc = await PDFDocument.load(pagePdfBuffer);
+                  const pagePages = await combinedDoc.copyPages(pageDoc, pageDoc.getPageIndices());
+                  for (const p of pagePages) {
+                    combinedDoc.addPage(p);
+                  }
 
-            const existingCardchecks = await storage.cardchecks.getCardchecksByWorkerId(worker.id);
-            const matchingCardcheck = existingCardchecks.find(
-              cc => cc.cardcheckDefinitionId === cardcheckDefinitionId
-            );
+                  for (const pdfUrl of attachedPdfUrls) {
+                    try {
+                      const pdfResponse = await page.goto(pdfUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+                      if (pdfResponse) {
+                        const pdfBuffer = await pdfResponse.buffer();
+                        const attachedDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
+                        const attachedPages = await combinedDoc.copyPages(attachedDoc, attachedDoc.getPageIndices());
+                        for (const ap of attachedPages) {
+                          combinedDoc.addPage(ap);
+                        }
+                      }
+                    } catch (attachErr) {
+                      logger.warn(`Failed to download/parse attached PDF: ${pdfUrl}`, { error: attachErr });
+                    }
+                  }
 
-            let cardcheckId: string;
-            let action: string;
+                  combinedPdfBytes = await combinedDoc.save();
+                } catch (combineErr) {
+                  logger.warn('Failed to combine PDFs, using page PDF only', { error: combineErr });
+                  combinedPdfBytes = new Uint8Array(pagePdfBuffer);
+                }
 
-            if (matchingCardcheck && !matchingCardcheck.esigId) {
-              await storage.cardchecks.updateCardcheck(matchingCardcheck.id, {
-                esigId: esig.id,
-                status: 'signed',
-                signedDate,
-                sourceNid: matchedRow.nid,
-              });
-              cardcheckId = matchingCardcheck.id;
-              action = 'linked';
-              results.linked++;
-            } else if (matchingCardcheck && matchingCardcheck.esigId) {
-              action = 'skipped_has_esig';
-              cardcheckId = matchingCardcheck.id;
-              results.skipped++;
-            } else {
-              const newCardcheck = await storage.cardchecks.createCardcheck({
-                workerId: worker.id,
-                cardcheckDefinitionId,
-                status: 'signed',
-                signedDate,
-                esigId: esig.id,
-                sourceNid: matchedRow.nid,
-              });
-              cardcheckId = newCardcheck.id;
-              action = 'created';
-              results.created++;
-            }
+                const fileName = `cardcheck_scrape_${nid}.pdf`;
 
-            results.processedRows.push({
-              nid: matchedRow.nid,
-              bpsId: matchedRow.bpsId,
-              workerId: matchedRow.workerId,
-              workerName: matchedRow.workerName,
-              action,
-              esigId: esig.id,
-              cardcheckId,
-            });
-          } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-            results.errors.push({
-              nid: matchedRow.nid,
-              bpsId: matchedRow.bpsId,
-              error: errorMessage,
-            });
-          }
+                const uploadResult = await objectStorageService.uploadFile({
+                  fileName,
+                  fileContent: Buffer.from(combinedPdfBytes),
+                  mimeType: 'application/pdf',
+                  accessLevel: 'private',
+                });
 
-          results.processed++;
-
-          if (results.processed % 5 === 0) {
-            try {
-              const progressWizard = await storage.wizards.getById(wizardId);
-              if (progressWizard) {
-                await storage.wizards.update(wizardId, {
-                  data: {
-                    ...(progressWizard.data as any),
-                    processProgress: {
-                      status: 'processing',
-                      current: results.processed,
-                      total: results.total,
-                      created: results.created,
-                      linked: results.linked,
-                      skipped: results.skipped,
-                      errors: results.errors.length,
-                    },
+                const pdfFileData = insertFileSchema.parse({
+                  fileName,
+                  storagePath: uploadResult.storagePath,
+                  mimeType: 'application/pdf',
+                  size: uploadResult.size,
+                  uploadedBy: userId,
+                  entityType: 'esig',
+                  entityId: null,
+                  accessLevel: 'private',
+                  metadata: {
+                    nid,
+                    cardcheckId: cardcheck.id,
+                    wizardId,
+                    importType: 'btu_cardcheck_scrape_import',
                   },
                 });
+                const pdfFileRecord = await storage.files.create(pdfFileData);
+
+                const signedDate = cardcheck.signedDate || new Date();
+
+                const esig = await storage.esigs.createEsig({
+                  userId,
+                  status: 'signed',
+                  signedDate,
+                  type: 'upload',
+                  docRender: '',
+                  docHash: '',
+                  esig: {
+                    type: 'upload',
+                    value: pdfFileRecord.id,
+                    fileName,
+                    nid,
+                    source: 'scraper',
+                  },
+                  docType: 'cardcheck',
+                  docFileId: pdfFileRecord.id,
+                });
+
+                if (pdfFileRecord.id) {
+                  await storage.files.update(pdfFileRecord.id, {
+                    entityId: esig.id,
+                  });
+                }
+
+                await storage.cardchecks.updateCardcheck(cardcheck.id, {
+                  esigId: esig.id,
+                });
+
+                results.created++;
+                results.processedRows.push({
+                  cardcheckId: cardcheck.id,
+                  sourceNid: nid,
+                  workerId: cardcheck.workerId,
+                  action: 'linked',
+                  esigId: esig.id,
+                });
+              } catch (err) {
+                const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+                logger.error(`Scraper error for NID ${nid}`, { error: err, cardcheckId: cardcheck.id });
+                results.errors.push({
+                  cardcheckId: cardcheck.id,
+                  sourceNid: nid,
+                  error: errorMessage,
+                });
               }
-            } catch (progressErr) {
-              logger.warn('Failed to update batch progress', { error: progressErr });
+
+              results.processed++;
+              await delay(500);
+            }
+
+            const hasErrors = results.errors.length > 0;
+            const latestWizard = await storage.wizards.getById(wizardId);
+            const latestWizardData = (latestWizard?.data as any) || {};
+            await storage.wizards.update(wizardId, {
+              data: {
+                ...latestWizardData,
+                processResults: results,
+                processProgress: null,
+              },
+              status: hasErrors ? 'completed_with_errors' : 'completed',
+              currentStep: 'results',
+            });
+
+            logger.info('Scraper import completed', {
+              wizardId,
+              total: results.total,
+              created: results.created,
+              skipped: results.skipped,
+              errors: results.errors.length,
+            });
+
+            try {
+              const user = await storage.users.getUser(userId);
+              if (user?.email) {
+                const contact = await storage.contacts.getContactByEmail(user.email);
+                if (contact) {
+                  const title = `Card Check Scraper Import ${hasErrors ? 'Completed with Errors' : 'Complete'}`;
+                  const body = `Processed ${results.total} card checks: ${results.created} PDFs fetched, ${results.skipped} skipped, ${results.errors.length} errors.`;
+                  const linkUrl = `/wizards/${wizardId}`;
+                  await sendInapp({
+                    contactId: contact.id,
+                    userId: user.id,
+                    title,
+                    body,
+                    linkUrl,
+                    linkLabel: 'View Results',
+                    initiatedBy: 'system',
+                  });
+                  await sendEmail({
+                    contactId: contact.id,
+                    toEmail: user.email,
+                    toName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || undefined,
+                    subject: title,
+                    bodyText: body,
+                  });
+                }
+              }
+            } catch (notifErr) {
+              logger.warn('Failed to send scraper completion notification', { error: notifErr });
+            }
+          } catch (error) {
+            logger.error('Scraper background processing error', { error, wizardId });
+            try {
+              const errWizard = await storage.wizards.getById(wizardId);
+              if (errWizard) {
+                await storage.wizards.update(wizardId, {
+                  data: {
+                    ...(errWizard.data as any),
+                    processProgress: null,
+                    processError: error instanceof Error ? error.message : 'Unknown error',
+                  },
+                  status: 'error' as any,
+                  currentStep: 'results',
+                });
+              }
+            } catch (clearErr) {
+              logger.warn('Failed to update wizard error state', { error: clearErr });
+            }
+          } finally {
+            if (browser) {
+              await browser.close().catch(() => {});
             }
           }
-
-          await delay(500);
-        }
-
-        const hasErrors = results.errors.length > 0;
-        const latestWizard = await storage.wizards.getById(wizardId);
-        const latestWizardData = (latestWizard?.data as any) || {};
-        await storage.wizards.update(wizardId, {
-          data: {
-            ...latestWizardData,
-            processResults: results,
-            processProgress: null,
-          },
-          status: hasErrors ? 'completed_with_errors' : 'completed',
         });
-
-        res.json(results);
       } catch (error) {
-        logger.error('Process error', { error });
-        try {
-          const errWizard = await storage.wizards.getById(wizardId);
-          if (errWizard) {
-            await storage.wizards.update(wizardId, {
-              data: { ...(errWizard.data as any), processProgress: null },
-            });
-          }
-        } catch (clearErr) {
-          logger.warn('Failed to clear process progress on error', { error: clearErr });
-        }
-        const message = error instanceof Error ? error.message : 'Failed to process import';
+        logger.error('Scraper process endpoint error', { error });
+        const message = error instanceof Error ? error.message : 'Failed to start processing';
         res.status(500).json({ message });
-      } finally {
-        if (browser) {
-          await browser.close().catch(() => {});
-        }
       }
     }
   );

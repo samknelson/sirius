@@ -119,6 +119,7 @@ export interface CardcheckStorage {
   getCardchecksByDefinitionId(definitionId: string): Promise<Cardcheck[]>;
   getCardcheckBySourceNid(sourceNid: string): Promise<Cardcheck | undefined>;
   getCardchecksBySourceNids(sourceNids: string[]): Promise<Cardcheck[]>;
+  getCardchecksWithSourceNidMissingEsig(cardcheckDefinitionId?: string): Promise<Cardcheck[]>;
   getCardcheckStatusSummary(): Promise<CardcheckStatusSummary[]>;
   getAllSignedCardchecksWithDetails(): Promise<SignedCardcheckWithDetails[]>;
   getCardcheckReport(filters: CardcheckReportFilters): Promise<CardcheckReportItem[]>;
@@ -191,6 +192,21 @@ export function createCardcheckStorage(): CardcheckStorage {
         .select()
         .from(cardchecks)
         .where(inArray(cardchecks.sourceNid, sourceNids));
+    },
+
+    async getCardchecksWithSourceNidMissingEsig(cardcheckDefinitionId?: string): Promise<Cardcheck[]> {
+      const client = getClient();
+      const conditions = [
+        isNotNull(cardchecks.sourceNid),
+        isNull(cardchecks.esigId),
+      ];
+      if (cardcheckDefinitionId) {
+        conditions.push(eq(cardchecks.cardcheckDefinitionId, cardcheckDefinitionId));
+      }
+      return await client
+        .select()
+        .from(cardchecks)
+        .where(and(...conditions));
     },
 
     async getCardcheckStatusSummary(): Promise<CardcheckStatusSummary[]> {
