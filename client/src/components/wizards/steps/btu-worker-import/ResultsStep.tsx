@@ -4,10 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { CheckCircle2, Download, Users, AlertTriangle, XCircle, Building, UserMinus, UserPlus, UserCheck, FileDown } from "lucide-react";
+import { CheckCircle2, Download, Users, AlertTriangle, XCircle, Building, UserMinus, UserPlus, UserCheck, FileDown, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { Link } from "wouter";
 import { stringify } from "csv-stringify/browser/esm/sync";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 interface ResultsStepProps {
   wizardId: string;
@@ -60,6 +62,62 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
   const processResults: ProcessResults | null = data?.processResults || null;
   const asOfDate = data?.asOfDate;
   const terminateByAbsence = data?.terminateByAbsence;
+  const [isReprocessing, setIsReprocessing] = useState(false);
+  const [reprocessProgress, setReprocessProgress] = useState<{ processed: number; total: number } | null>(null);
+  const { toast } = useToast();
+
+  const startReprocess = () => {
+    setIsReprocessing(true);
+    setReprocessProgress(null);
+
+    const eventSource = new EventSource(`/api/wizards/${wizardId}/reprocess-unmatched`);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const eventData = JSON.parse(event.data);
+
+        if (eventData.type === 'progress') {
+          setReprocessProgress({
+            processed: eventData.processed,
+            total: eventData.total,
+          });
+        } else if (eventData.type === 'complete') {
+          eventSource.close();
+          setIsReprocessing(false);
+          setReprocessProgress(null);
+          if (onDataChange && eventData.results) {
+            onDataChange({ ...data, processResults: eventData.results });
+          }
+          toast({
+            title: "Reprocessing Complete",
+            description: `${eventData.results?.successCount || 0} workers reprocessed successfully.`,
+          });
+        } else if (eventData.type === 'error') {
+          eventSource.close();
+          setIsReprocessing(false);
+          setReprocessProgress(null);
+          toast({
+            title: "Reprocessing Failed",
+            description: eventData.message,
+            variant: "destructive",
+          });
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    eventSource.onerror = () => {
+      eventSource.close();
+      setIsReprocessing(false);
+      setReprocessProgress(null);
+      toast({
+        title: "Connection Lost",
+        description: "Lost connection during reprocessing. Please try again.",
+        variant: "destructive",
+      });
+    };
+  };
 
   const downloadResultsFile = async () => {
     if (processResults?.resultsFileId) {
@@ -412,13 +470,29 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                     <div className="flex-1 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-md border border-amber-200 dark:border-amber-900">
                       <p className="text-sm text-amber-800 dark:text-amber-200">
                         These workers were imported but no employer mapping was found for their department/location/job code combination. 
-                        They need employer assignments added manually or via the Employer Mapping tool.
+                        Fill in the mappings via the Employer Mapping tool, then click "Reprocess" to assign employers to these workers.
                       </p>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={exportWithoutEmployerMatch} data-testid="button-export-without-employer">
-                      <FileDown className="h-4 w-4 mr-1" />
-                      Export
-                    </Button>
+                    <div className="flex gap-2 flex-shrink-0">
+                      <Button 
+                        variant="default" 
+                        size="sm" 
+                        onClick={startReprocess} 
+                        disabled={isReprocessing}
+                        data-testid="button-reprocess-unmatched"
+                      >
+                        <RefreshCw className={`h-4 w-4 mr-1 ${isReprocessing ? 'animate-spin' : ''}`} />
+                        {isReprocessing 
+                          ? reprocessProgress 
+                            ? `${reprocessProgress.processed}/${reprocessProgress.total}` 
+                            : 'Starting...'
+                          : 'Reprocess'}
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={exportWithoutEmployerMatch} data-testid="button-export-without-employer">
+                        <FileDown className="h-4 w-4 mr-1" />
+                        Export
+                      </Button>
+                    </div>
                   </div>
                   <ScrollArea className="h-64">
                     <Table>

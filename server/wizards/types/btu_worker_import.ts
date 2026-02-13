@@ -16,6 +16,15 @@ export interface ImportedWorkerInfo {
   jobTitle?: string;
 }
 
+export interface CreatedMappingInfo {
+  departmentId: string;
+  departmentTitle?: string;
+  locationId: string;
+  locationTitle?: string;
+  jobCode: string;
+  jobTitle?: string;
+}
+
 export interface BtuWorkerImportResults extends ProcessResults {
   withEmployerMatch: {
     created: ImportedWorkerInfo[];
@@ -26,6 +35,8 @@ export interface BtuWorkerImportResults extends ProcessResults {
     updated: ImportedWorkerInfo[];
   };
   terminatedByAbsence: TerminatedWorkerInfo[];
+  createdMappingsCount?: number;
+  createdMappings?: CreatedMappingInfo[];
 }
 
 function filterEmptyColumns(rows: any[][]): any[][] {
@@ -342,6 +353,8 @@ export class BtuWorkerImportWizard extends FeedWizard {
       updated: []
     };
 
+    const unmappedCombos = new Map<string, CreatedMappingInfo>();
+
     for (let i = 0; i < totalRows; i += batchSize) {
       const batch = mappedRows.slice(i, Math.min(i + batchSize, totalRows));
       
@@ -370,6 +383,18 @@ export class BtuWorkerImportWizard extends FeedWizard {
             processedEmployerIds.add(mappingResult.primaryEmployer.employerId);
             if (mappingResult.secondaryEmployer) {
               processedEmployerIds.add(mappingResult.secondaryEmployer.employerId);
+            }
+          } else if (deptId || locationId || jobCode) {
+            const comboKey = `${deptId}||${locationId}||${jobCode}`;
+            if (!unmappedCombos.has(comboKey)) {
+              unmappedCombos.set(comboKey, {
+                departmentId: deptId,
+                departmentTitle: row.deptTitle?.toString().trim() || undefined,
+                locationId: locationId,
+                locationTitle: row.locationTitle?.toString().trim() || undefined,
+                jobCode: jobCode,
+                jobTitle: row.jobTitle?.toString().trim() || undefined,
+              });
             }
           }
 
@@ -544,6 +569,17 @@ export class BtuWorkerImportWizard extends FeedWizard {
       }
     }
 
+    // Create missing employer mappings for unmapped combos
+    let mappingsResult = { createdCount: 0, skippedCount: 0 };
+    const unmappedCombosList = Array.from(unmappedCombos.values());
+    if (unmappedCombosList.length > 0) {
+      try {
+        mappingsResult = await btuStorage.createMissingEmployerMappings(unmappedCombosList);
+      } catch (err) {
+        console.error('Error creating missing employer mappings:', err);
+      }
+    }
+
     // Handle termination by absence (only for employers we have mappings for)
     let terminationResult = { count: 0, terminatedWorkers: [] as TerminatedWorkerInfo[] };
     if (terminateByAbsence && processedEmployerIds.size > 0) {
@@ -570,11 +606,270 @@ export class BtuWorkerImportWizard extends FeedWizard {
       withEmployerMatch,
       withoutEmployerMatch,
       terminatedByAbsence: terminationResult.terminatedWorkers,
+      createdMappingsCount: mappingsResult.createdCount,
+      createdMappings: unmappedCombosList,
     };
 
     if (terminationResult.count > 0) {
       (results as any).terminatedCount = terminationResult.count;
     }
+
+    await storage.wizards.update(wizardId, {
+      data: {
+        ...wizardData,
+        processResults: results
+      },
+      status: failureCount === 0 ? 'completed' : 'completed_with_errors'
+    });
+
+    return results;
+  }
+
+  async reprocessUnmatched(
+    wizardId: string,
+    onProgress?: (progress: {
+      processed: number;
+      total: number;
+      createdCount: number;
+      updatedCount: number;
+      successCount: number;
+      failureCount: number;
+    }) => void
+  ): Promise<BtuWorkerImportResults> {
+    const btuStorage = createBtuWorkerImportStorage();
+    
+    const wizard = await storage.wizards.getById(wizardId);
+    if (!wizard) throw new Error('Wizard not found');
+    
+    const wizardData = wizard.data as any;
+    const previousResults = wizardData?.processResults as BtuWorkerImportResults;
+    if (!previousResults) throw new Error('No previous processing results found');
+    
+    const unmatchedBpsIds = new Set<string>();
+    const allUnmatched = [
+      ...(previousResults.withoutEmployerMatch?.created || []),
+      ...(previousResults.withoutEmployerMatch?.updated || []),
+    ];
+    for (const w of allUnmatched) {
+      unmatchedBpsIds.add(w.bpsEmployeeId);
+    }
+    
+    if (unmatchedBpsIds.size === 0) {
+      throw new Error('No unmatched workers to reprocess');
+    }
+
+    const asOfDate = wizardData.asOfDate;
+    if (!asOfDate) throw new Error('As-of date not found in wizard data');
+
+    await btuStorage.ensureBpsEmployeeIdType();
+
+    const fileId = wizardData.uploadedFileId;
+    if (!fileId) throw new Error('No uploaded file found in wizard data');
+
+    const fileRecord = await storage.files.getById(fileId);
+    if (!fileRecord) throw new Error('File record not found');
+
+    let fileBuffer: Buffer;
+    try {
+      fileBuffer = await objectStorageService.downloadFile(fileRecord.storagePath);
+    } catch {
+      throw new Error('Could not download the uploaded file');
+    }
+
+    let rawRows: any[][] = [];
+    const ext = (fileRecord.fileName || '').toLowerCase();
+    if (ext.endsWith('.csv') || ext.endsWith('.txt')) {
+      const text = fileBuffer.toString('utf-8');
+      rawRows = parseCSV(text, { relax_column_count: true });
+    } else {
+      const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      rawRows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 }) as any[][];
+    }
+
+    rawRows = filterEmptyColumns(rawRows);
+    const hasHeaders = wizardData.hasHeaders ?? true;
+    const dataRows = hasHeaders ? rawRows.slice(1) : rawRows;
+    const columnMapping: Record<string, string> = wizardData.columnMapping || {};
+
+    const mappedRows = dataRows.map((row: any[]) => {
+      const mapped: Record<string, any> = {};
+      Object.entries(columnMapping).forEach(([sourceCol, fieldId]) => {
+        if (fieldId && fieldId !== '_unmapped') {
+          const colIndex = parseInt(sourceCol.replace('col_', ''));
+          mapped[fieldId as string] = row[colIndex];
+        }
+      });
+      return mapped;
+    });
+
+    const totalRows = mappedRows.length;
+    let createdCount = 0;
+    let updatedCount = 0;
+    let failureCount = 0;
+    const allErrors: ProcessError[] = [];
+    const rowResults: RowResult[] = [];
+    const processedEmployerIds = new Set<string>();
+
+    const withEmployerMatch: { created: ImportedWorkerInfo[]; updated: ImportedWorkerInfo[] } = {
+      created: [...(previousResults.withEmployerMatch?.created || [])],
+      updated: [...(previousResults.withEmployerMatch?.updated || [])]
+    };
+    const withoutEmployerMatch: { created: ImportedWorkerInfo[]; updated: ImportedWorkerInfo[] } = {
+      created: [],
+      updated: []
+    };
+
+    const unmappedCombos = new Map<string, CreatedMappingInfo>();
+    let processedCount = 0;
+    const unmatchedTotal = unmatchedBpsIds.size;
+
+    const batchSize = 100;
+    for (let i = 0; i < totalRows; i += batchSize) {
+      const batch = mappedRows.slice(i, Math.min(i + batchSize, totalRows));
+      
+      for (let j = 0; j < batch.length; j++) {
+        const row = batch[j];
+        const bpsEmployeeId = row.bpsEmployeeId?.toString().trim();
+        if (!bpsEmployeeId || !unmatchedBpsIds.has(bpsEmployeeId)) continue;
+
+        processedCount++;
+
+        try {
+          const deptId = row.deptId?.toString().trim() || '';
+          const locationId = row.locationId?.toString().trim() || '';
+          const jobCode = row.jobCode?.toString().trim() || '';
+
+          const mappingResult = await btuStorage.findEmployerMapping(deptId, locationId, jobCode);
+          const hasEmployerMatch = mappingResult !== null;
+
+          if (mappingResult) {
+            processedEmployerIds.add(mappingResult.primaryEmployer.employerId);
+            if (mappingResult.secondaryEmployer) {
+              processedEmployerIds.add(mappingResult.secondaryEmployer.employerId);
+            }
+          } else if (deptId || locationId || jobCode) {
+            const comboKey = `${deptId}||${locationId}||${jobCode}`;
+            if (!unmappedCombos.has(comboKey)) {
+              unmappedCombos.set(comboKey, {
+                departmentId: deptId,
+                departmentTitle: row.deptTitle?.toString().trim() || undefined,
+                locationId,
+                locationTitle: row.locationTitle?.toString().trim() || undefined,
+                jobCode,
+                jobTitle: row.jobTitle?.toString().trim() || undefined,
+              });
+            }
+          }
+
+          const existingWorker = await btuStorage.findWorkerByBpsEmployeeId(bpsEmployeeId);
+          const firstName = row.firstName?.toString().trim() || '';
+          const lastName = row.lastName?.toString().trim() || '';
+          const middleName = row.middleName?.toString().trim();
+          const workerName = middleName
+            ? `${lastName}, ${firstName} ${middleName}`
+            : `${lastName}, ${firstName}`;
+
+          if (existingWorker) {
+            await btuStorage.updateWorkerContact(existingWorker.id, {
+              firstName,
+              lastName,
+              middleName,
+              email: row.email?.toString().trim(),
+              phone: row.phone?.toString().trim(),
+              address1: row.address1?.toString().trim(),
+              address2: row.address2?.toString().trim(),
+              city: row.city?.toString().trim(),
+              state: row.state?.toString().trim(),
+              zip: row.zip?.toString().trim(),
+            });
+
+            if (mappingResult) {
+              const jobTitle = row.jobTitle?.toString().trim() || undefined;
+              await btuStorage.upsertEmploymentRecord(existingWorker.id, {
+                employerId: mappingResult.primaryEmployer.employerId,
+                isPrimary: true,
+                asOfDate,
+                bargainingUnitId: mappingResult.bargainingUnitId || undefined,
+                employmentStatusId: mappingResult.employmentStatusId || undefined,
+                jobTitle,
+              });
+              if (mappingResult.secondaryEmployer) {
+                await btuStorage.upsertEmploymentRecord(existingWorker.id, {
+                  employerId: mappingResult.secondaryEmployer.employerId,
+                  isPrimary: false,
+                  asOfDate,
+                  bargainingUnitId: mappingResult.bargainingUnitId || undefined,
+                  employmentStatusId: mappingResult.employmentStatusId || undefined,
+                  jobTitle,
+                });
+              }
+            }
+
+            updatedCount++;
+            const workerInfo: ImportedWorkerInfo = {
+              workerId: existingWorker.id,
+              bpsEmployeeId,
+              workerName,
+              isNew: false,
+              deptTitle: row.deptTitle?.toString().trim() || undefined,
+              locationTitle: row.locationTitle?.toString().trim() || undefined,
+              jobTitle: row.jobTitle?.toString().trim() || undefined,
+            };
+            if (hasEmployerMatch) {
+              withEmployerMatch.updated.push(workerInfo);
+            } else {
+              withoutEmployerMatch.updated.push(workerInfo);
+            }
+          }
+
+          rowResults.push({ rowIndex: i + j, status: 'success', message: `Reprocessed ${bpsEmployeeId}` });
+        } catch (err) {
+          failureCount++;
+          allErrors.push({ rowIndex: i + j, message: err instanceof Error ? err.message : 'Unknown error', data: row });
+          rowResults.push({ rowIndex: i + j, status: 'error', message: err instanceof Error ? err.message : 'Unknown error' });
+        }
+      }
+
+      if (onProgress) {
+        onProgress({
+          processed: processedCount,
+          total: unmatchedTotal,
+          createdCount,
+          updatedCount,
+          successCount: createdCount + updatedCount,
+          failureCount,
+        });
+      }
+    }
+
+    // Create any new missing mappings
+    const unmappedCombosList = Array.from(unmappedCombos.values());
+    let mappingsCreatedCount = 0;
+    if (unmappedCombosList.length > 0) {
+      try {
+        const result = await btuStorage.createMissingEmployerMappings(unmappedCombosList);
+        mappingsCreatedCount = result.createdCount;
+      } catch (err) {
+        console.error('Error creating missing employer mappings during reprocess:', err);
+      }
+    }
+
+    const results: BtuWorkerImportResults = {
+      totalRows: unmatchedTotal,
+      createdCount,
+      updatedCount,
+      successCount: createdCount + updatedCount,
+      failureCount,
+      errors: allErrors,
+      rowResults,
+      completedAt: new Date(),
+      withEmployerMatch,
+      withoutEmployerMatch,
+      terminatedByAbsence: previousResults.terminatedByAbsence || [],
+      createdMappingsCount: mappingsCreatedCount,
+      createdMappings: unmappedCombosList.length > 0 ? unmappedCombosList : undefined,
+    };
 
     await storage.wizards.update(wizardId, {
       data: {

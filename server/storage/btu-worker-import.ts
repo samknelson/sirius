@@ -98,6 +98,14 @@ export interface BtuWorkerImportStorage {
   terminateWorkersNotInList(bpsEmployeeIds: string[], asOfDate: string, employerIds: string[]): Promise<TerminationResult>;
   getEmploymentStatusByCode(code: string): Promise<{ id: string; name: string; code: string } | undefined>;
   getEmployerByName(name: string): Promise<{ id: string; name: string } | undefined>;
+  createMissingEmployerMappings(combos: Array<{
+    departmentId: string;
+    departmentTitle?: string;
+    locationId: string;
+    locationTitle?: string;
+    jobCode: string;
+    jobTitle?: string;
+  }>): Promise<{ createdCount: number; skippedCount: number }>;
 }
 
 export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
@@ -556,6 +564,47 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
       }
       
       return { count: terminatedWorkers.length, terminatedWorkers };
+    },
+
+    async createMissingEmployerMappings(combos: Array<{
+      departmentId: string;
+      departmentTitle?: string;
+      locationId: string;
+      locationTitle?: string;
+      jobCode: string;
+      jobTitle?: string;
+    }>): Promise<{ createdCount: number; skippedCount: number }> {
+      if (combos.length === 0) return { createdCount: 0, skippedCount: 0 };
+
+      let createdCount = 0;
+      let skippedCount = 0;
+
+      for (const combo of combos) {
+        const existing = await db.execute(sql`
+          SELECT id FROM sitespecific_btu_employer_map
+          WHERE department_id = ${combo.departmentId}
+            AND location_id = ${combo.locationId}
+            AND job_code = ${combo.jobCode}
+          LIMIT 1
+        `);
+
+        if (existing.rows && existing.rows.length > 0) {
+          skippedCount++;
+          continue;
+        }
+
+        await db.insert(sitespecificBtuEmployerMap).values({
+          departmentId: combo.departmentId,
+          departmentTitle: combo.departmentTitle || null,
+          locationId: combo.locationId,
+          locationTitle: combo.locationTitle || null,
+          jobCode: combo.jobCode,
+          jobTitle: combo.jobTitle || null,
+        });
+        createdCount++;
+      }
+
+      return { createdCount, skippedCount };
     },
   };
 }

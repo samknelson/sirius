@@ -5,6 +5,7 @@ import { insertWizardSchema, wizardDataSchema, type WizardData } from "@shared/s
 import { requireAccess, buildContext, checkAccess } from "../services/access-policy-evaluator";
 import { wizardRegistry } from "../wizards/index.js";
 import { FeedWizard } from "../wizards/feed.js";
+import { BtuWorkerImportWizard } from "../wizards/types/btu_worker_import.js";
 import { objectStorageService } from "../services/objectStorage.js";
 import { hashHeaderRow } from "../utils/hash.js";
 import { getEffectiveUser } from "./masquerade";
@@ -1273,6 +1274,97 @@ export function registerWizardRoutes(
           res.write(`data: ${JSON.stringify({ 
             type: 'error', 
             message: error instanceof Error ? error.message : 'Processing failed' 
+          })}\n\n`);
+          res.end();
+        }
+      }
+    }
+  );
+
+  // Reprocess unmatched workers for BTU Worker Import wizard
+  app.get("/api/wizards/:id/reprocess-unmatched",
+    checkWizardAccess,
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const wizard = (req as any).wizard;
+
+        const wizardType = wizardRegistry.get(wizard.type);
+        if (!wizardType || !(wizardType instanceof BtuWorkerImportWizard)) {
+          return res.status(400).json({ message: "This wizard type does not support reprocessing" });
+        }
+
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders();
+
+        res.write(`data: ${JSON.stringify({ type: 'start', message: 'Starting reprocessing of unmatched workers...' })}\n\n`);
+
+        const heartbeatInterval = setInterval(() => {
+          try { res.write(`: heartbeat\n\n`); } catch (_e) { /* connection closed */ }
+        }, 15000);
+
+        try {
+          const results = await wizardType.reprocessUnmatched(
+            id,
+            (progress) => {
+              res.write(`data: ${JSON.stringify({ 
+                type: 'progress',
+                processed: progress.processed,
+                total: progress.total,
+                createdCount: progress.createdCount,
+                updatedCount: progress.updatedCount,
+                successCount: progress.successCount,
+                failureCount: progress.failureCount,
+              })}\n\n`);
+            }
+          );
+
+          clearInterval(heartbeatInterval);
+
+          const finalStatus = results.failureCount > 0 ? 'needs_review' : 'completed';
+          
+          const updatedWizard = await storage.wizards.getById(id);
+          const latestData = updatedWizard?.data || wizard.data;
+          
+          await storage.wizards.update(id, {
+            status: finalStatus,
+            data: {
+              ...latestData,
+              processResults: results,
+              progress: {
+                ...(latestData as any)?.progress,
+                process: {
+                  status: 'completed',
+                  completedAt: new Date().toISOString()
+                }
+              }
+            }
+          });
+
+          res.write(`data: ${JSON.stringify({ 
+            type: 'complete', 
+            results,
+            wizardStatus: finalStatus
+          })}\n\n`);
+          res.end();
+        } catch (processingError) {
+          clearInterval(heartbeatInterval);
+          res.write(`data: ${JSON.stringify({ 
+            type: 'error', 
+            message: processingError instanceof Error ? processingError.message : 'Reprocessing failed' 
+          })}\n\n`);
+          res.end();
+        }
+      } catch (error) {
+        console.error("Reprocessing error:", error);
+        if (!res.headersSent) {
+          res.status(500).json({ message: error instanceof Error ? error.message : "Failed to start reprocessing" });
+        } else {
+          res.write(`data: ${JSON.stringify({ 
+            type: 'error', 
+            message: error instanceof Error ? error.message : 'Reprocessing failed' 
           })}\n\n`);
           res.end();
         }
