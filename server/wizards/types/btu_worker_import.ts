@@ -389,6 +389,11 @@ export class BtuWorkerImportWizard extends FeedWizard {
               middleName,
               email: row.email?.toString().trim(),
               phone: row.phone?.toString().trim(),
+              address1: row.address1?.toString().trim(),
+              address2: row.address2?.toString().trim(),
+              city: row.city?.toString().trim(),
+              state: row.state?.toString().trim(),
+              zip: row.zip?.toString().trim(),
             });
 
             // Only create employment records if we have an employer mapping

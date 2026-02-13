@@ -70,6 +70,11 @@ export interface BtuWorkerImportStorage {
     middleName?: string;
     email?: string;
     phone?: string;
+    address1?: string;
+    address2?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
   }): Promise<void>;
   upsertEmploymentRecord(workerId: string, data: {
     employerId: string;
@@ -275,6 +280,11 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
       middleName?: string;
       email?: string;
       phone?: string;
+      address1?: string;
+      address2?: string;
+      city?: string;
+      state?: string;
+      zip?: string;
     }): Promise<void> {
       const [worker] = await db
         .select()
@@ -303,6 +313,32 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
           .update(contacts)
           .set(updateData)
           .where(eq(contacts.id, worker.contactId));
+      }
+
+      if (data.address1 && data.city && data.state && data.zip) {
+        const street = data.address2 ? `${data.address1}, ${data.address2}` : data.address1;
+        const existingAddresses = await storage.contacts.addresses.getContactPostalByContact(worker.contactId);
+        const primaryAddress = existingAddresses.find(a => a.isPrimary);
+        
+        if (primaryAddress) {
+          await storage.contacts.addresses.updateContactPostal(primaryAddress.id, {
+            street,
+            city: data.city,
+            state: data.state,
+            postalCode: data.zip,
+            country: 'US',
+          });
+        } else {
+          await storage.contacts.addresses.createContactPostal({
+            contactId: worker.contactId,
+            street,
+            city: data.city,
+            state: data.state,
+            postalCode: data.zip,
+            country: 'US',
+            isPrimary: true,
+          });
+        }
       }
     },
 
