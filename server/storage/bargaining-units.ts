@@ -4,13 +4,31 @@ import { bargainingUnits, type BargainingUnit, type InsertBargainingUnit } from 
 import { eq } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 
+export interface NamedRate {
+  name: string;
+  rate: number;
+}
+
 export interface AccountRates {
-  [accountId: string]: number;
+  [accountId: string]: NamedRate[];
 }
 
 export interface BargainingUnitData {
   accountRates?: AccountRates;
   [key: string]: unknown;
+}
+
+function normalizeAccountRates(raw: Record<string, unknown> | undefined): AccountRates {
+  if (!raw) return {};
+  const result: AccountRates = {};
+  for (const [accountId, value] of Object.entries(raw)) {
+    if (typeof value === 'number') {
+      result[accountId] = [{ name: 'Default', rate: value }];
+    } else if (Array.isArray(value)) {
+      result[accountId] = value as NamedRate[];
+    }
+  }
+  return result;
 }
 
 /**
@@ -25,8 +43,9 @@ export interface BargainingUnitStorage {
   createBargainingUnit(data: InsertBargainingUnit): Promise<BargainingUnit>;
   updateBargainingUnit(id: string, data: Partial<InsertBargainingUnit>): Promise<BargainingUnit | undefined>;
   deleteBargainingUnit(id: string): Promise<boolean>;
-  setAccountRate(id: string, accountId: string, rate: number): Promise<BargainingUnit | undefined>;
-  getAccountRate(id: string, accountId: string): Promise<number | undefined>;
+  setAccountRate(id: string, accountId: string, name: string, rate: number): Promise<BargainingUnit | undefined>;
+  updateAccountRate(id: string, accountId: string, rateIndex: number, name: string, rate: number): Promise<BargainingUnit | undefined>;
+  removeAccountRateEntry(id: string, accountId: string, rateIndex: number): Promise<BargainingUnit | undefined>;
   getAccountRates(id: string): Promise<AccountRates | undefined>;
   removeAccountRate(id: string, accountId: string): Promise<BargainingUnit | undefined>;
 }
@@ -86,30 +105,71 @@ export function createBargainingUnitStorage(): BargainingUnitStorage {
       return result.length > 0;
     },
 
-    async setAccountRate(id: string, accountId: string, rate: number): Promise<BargainingUnit | undefined> {
+    async setAccountRate(id: string, accountId: string, name: string, rate: number): Promise<BargainingUnit | undefined> {
       const unit = await storage.getBargainingUnitById(id);
       if (!unit) return undefined;
 
       const existingData = (unit.data as BargainingUnitData) || {};
-      const accountRates = existingData.accountRates || {};
+      const accountRates = normalizeAccountRates(existingData.accountRates as Record<string, unknown>);
+      const existing = accountRates[accountId] || [];
       
       const newData: BargainingUnitData = {
         ...existingData,
         accountRates: {
           ...accountRates,
-          [accountId]: rate,
+          [accountId]: [...existing, { name, rate }],
         },
       };
 
       return storage.updateBargainingUnit(id, { data: newData });
     },
 
-    async getAccountRate(id: string, accountId: string): Promise<number | undefined> {
+    async updateAccountRate(id: string, accountId: string, rateIndex: number, name: string, rate: number): Promise<BargainingUnit | undefined> {
       const unit = await storage.getBargainingUnitById(id);
       if (!unit) return undefined;
 
-      const data = unit.data as BargainingUnitData | null;
-      return data?.accountRates?.[accountId];
+      const existingData = (unit.data as BargainingUnitData) || {};
+      const accountRates = normalizeAccountRates(existingData.accountRates as Record<string, unknown>);
+      const existing = accountRates[accountId] || [];
+      if (rateIndex < 0 || rateIndex >= existing.length) return undefined;
+
+      const updated = [...existing];
+      updated[rateIndex] = { name, rate };
+
+      const newData: BargainingUnitData = {
+        ...existingData,
+        accountRates: {
+          ...accountRates,
+          [accountId]: updated,
+        },
+      };
+
+      return storage.updateBargainingUnit(id, { data: newData });
+    },
+
+    async removeAccountRateEntry(id: string, accountId: string, rateIndex: number): Promise<BargainingUnit | undefined> {
+      const unit = await storage.getBargainingUnitById(id);
+      if (!unit) return undefined;
+
+      const existingData = (unit.data as BargainingUnitData) || {};
+      const accountRates = normalizeAccountRates(existingData.accountRates as Record<string, unknown>);
+      const existing = accountRates[accountId] || [];
+      if (rateIndex < 0 || rateIndex >= existing.length) return undefined;
+
+      const updated = existing.filter((_, i) => i !== rateIndex);
+      const newRates = { ...accountRates };
+      if (updated.length === 0) {
+        delete newRates[accountId];
+      } else {
+        newRates[accountId] = updated;
+      }
+
+      const newData: BargainingUnitData = {
+        ...existingData,
+        accountRates: newRates,
+      };
+
+      return storage.updateBargainingUnit(id, { data: newData });
     },
 
     async getAccountRates(id: string): Promise<AccountRates | undefined> {
@@ -117,7 +177,7 @@ export function createBargainingUnitStorage(): BargainingUnitStorage {
       if (!unit) return undefined;
 
       const data = unit.data as BargainingUnitData | null;
-      return data?.accountRates || {};
+      return normalizeAccountRates(data?.accountRates as Record<string, unknown>);
     },
 
     async removeAccountRate(id: string, accountId: string): Promise<BargainingUnit | undefined> {
@@ -125,7 +185,7 @@ export function createBargainingUnitStorage(): BargainingUnitStorage {
       if (!unit) return undefined;
 
       const existingData = (unit.data as BargainingUnitData) || {};
-      const accountRates = { ...(existingData.accountRates || {}) };
+      const accountRates = normalizeAccountRates(existingData.accountRates as Record<string, unknown>);
       delete accountRates[accountId];
       
       const newData: BargainingUnitData = {
@@ -172,21 +232,25 @@ export const bargainingUnitLoggingConfig: StorageLoggingConfig<BargainingUnitSto
         
         const oldData = beforeState?.bargainingUnit?.data as BargainingUnitData | null;
         const newData = result?.data as BargainingUnitData | null;
-        const oldRates = oldData?.accountRates || {};
-        const newRates = newData?.accountRates || {};
+        const oldRates = normalizeAccountRates(oldData?.accountRates as Record<string, unknown>);
+        const newRates = normalizeAccountRates(newData?.accountRates as Record<string, unknown>);
         
         const rateChanges: string[] = [];
         const allAccountIds = Array.from(new Set([...Object.keys(oldRates), ...Object.keys(newRates)]));
         for (const accountId of allAccountIds) {
-          const oldRate = oldRates[accountId];
-          const newRate = newRates[accountId];
-          if (oldRate !== newRate) {
-            if (oldRate === undefined) {
-              rateChanges.push(`added rate $${newRate} for account ${accountId}`);
-            } else if (newRate === undefined) {
-              rateChanges.push(`removed rate for account ${accountId}`);
+          const oldEntries = oldRates[accountId] || [];
+          const newEntries = newRates[accountId] || [];
+          const oldStr = JSON.stringify(oldEntries);
+          const newStr = JSON.stringify(newEntries);
+          if (oldStr !== newStr) {
+            if (oldEntries.length === 0) {
+              const desc = newEntries.map(e => `${e.name}: $${e.rate}`).join(', ');
+              rateChanges.push(`added rates [${desc}] for account ${accountId}`);
+            } else if (newEntries.length === 0) {
+              rateChanges.push(`removed all rates for account ${accountId}`);
             } else {
-              rateChanges.push(`changed rate from $${oldRate} to $${newRate} for account ${accountId}`);
+              const desc = newEntries.map(e => `${e.name}: $${e.rate}`).join(', ');
+              rateChanges.push(`updated rates to [${desc}] for account ${accountId}`);
             }
           }
         }

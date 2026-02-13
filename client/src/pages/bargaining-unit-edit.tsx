@@ -17,45 +17,67 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Pencil, Check, X } from "lucide-react";
 
+interface NamedRate {
+  name: string;
+  rate: number;
+}
+
+type AccountRatesMap = Record<string, NamedRate[]>;
+
 function AccountRatesSection({ bargainingUnitId }: { bargainingUnitId: string }) {
   const { toast } = useToast();
   const [newAccountId, setNewAccountId] = useState<string>("");
+  const [newRateName, setNewRateName] = useState<string>("");
   const [newRate, setNewRate] = useState<string>("");
-  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState<string>("");
   const [editingRate, setEditingRate] = useState<string>("");
 
-  const { data: rates = {}, isLoading: isLoadingRates } = useQuery<Record<string, number>>({
-    queryKey: ["/api/bargaining-units", bargainingUnitId, "rates"],
-    queryFn: async () => {
-      const response = await fetch(`/api/bargaining-units/${bargainingUnitId}/rates`);
-      if (!response.ok) throw new Error("Failed to fetch rates");
-      return response.json();
-    },
+  const { data: rates = {}, isLoading: isLoadingRates } = useQuery<AccountRatesMap>({
+    queryKey: [`/api/bargaining-units/${bargainingUnitId}/rates`],
   });
 
   const { data: accounts = [], isLoading: isLoadingAccounts } = useQuery<LedgerAccountBase[]>({
     queryKey: ["/api/ledger/accounts"],
   });
 
-  const setRateMutation = useMutation({
-    mutationFn: async ({ accountId, rate }: { accountId: string; rate: number }) => {
-      return apiRequest("PUT", `/api/bargaining-units/${bargainingUnitId}/rates/${accountId}`, { rate });
+  const addRateMutation = useMutation({
+    mutationFn: async ({ accountId, name, rate }: { accountId: string; name: string; rate: number }) => {
+      return apiRequest("POST", `/api/bargaining-units/${bargainingUnitId}/rates/${accountId}`, { name, rate });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bargaining-units", bargainingUnitId, "rates"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bargaining-units", bargainingUnitId] });
-      toast({ title: "Success", description: "Rate saved successfully." });
+      toast({ title: "Success", description: "Rate added successfully." });
       setNewAccountId("");
+      setNewRateName("");
       setNewRate("");
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: error.message || "Failed to save rate.", variant: "destructive" });
+      toast({ title: "Error", description: error.message || "Failed to add rate.", variant: "destructive" });
+    },
+  });
+
+  const updateRateMutation = useMutation({
+    mutationFn: async ({ accountId, rateIndex, name, rate }: { accountId: string; rateIndex: number; name: string; rate: number }) => {
+      return apiRequest("PUT", `/api/bargaining-units/${bargainingUnitId}/rates/${accountId}/${rateIndex}`, { name, rate });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bargaining-units", bargainingUnitId, "rates"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bargaining-units", bargainingUnitId] });
+      toast({ title: "Success", description: "Rate updated successfully." });
+      setEditingKey(null);
+      setEditingName("");
+      setEditingRate("");
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update rate.", variant: "destructive" });
     },
   });
 
   const removeRateMutation = useMutation({
-    mutationFn: async (accountId: string) => {
-      return apiRequest("DELETE", `/api/bargaining-units/${bargainingUnitId}/rates/${accountId}`);
+    mutationFn: async ({ accountId, rateIndex }: { accountId: string; rateIndex: number }) => {
+      return apiRequest("DELETE", `/api/bargaining-units/${bargainingUnitId}/rates/${accountId}/${rateIndex}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bargaining-units", bargainingUnitId, "rates"] });
@@ -72,42 +94,52 @@ function AccountRatesSection({ bargainingUnitId }: { bargainingUnitId: string })
       toast({ title: "Validation Error", description: "Please select an account.", variant: "destructive" });
       return;
     }
+    const rateName = newRateName.trim() || "Default";
     const rateValue = parseFloat(newRate);
     if (isNaN(rateValue) || rateValue < 0) {
       toast({ title: "Validation Error", description: "Please enter a valid rate (0 or greater).", variant: "destructive" });
       return;
     }
-    setRateMutation.mutate({ accountId: newAccountId, rate: rateValue });
+    addRateMutation.mutate({ accountId: newAccountId, name: rateName, rate: rateValue });
   };
 
-  const startEditing = (accountId: string, currentRate: number) => {
-    setEditingAccountId(accountId);
-    setEditingRate(currentRate.toString());
+  const startEditing = (accountId: string, rateIndex: number, entry: NamedRate) => {
+    setEditingKey(`${accountId}:${rateIndex}`);
+    setEditingName(entry.name);
+    setEditingRate(entry.rate.toString());
   };
 
   const cancelEditing = () => {
-    setEditingAccountId(null);
+    setEditingKey(null);
+    setEditingName("");
     setEditingRate("");
   };
 
-  const saveEditedRate = (accountId: string) => {
+  const saveEdited = (accountId: string, rateIndex: number) => {
     const rateValue = parseFloat(editingRate);
+    const name = editingName.trim();
+    if (!name) {
+      toast({ title: "Validation Error", description: "Rate name is required.", variant: "destructive" });
+      return;
+    }
     if (isNaN(rateValue) || rateValue < 0) {
       toast({ title: "Validation Error", description: "Please enter a valid rate (0 or greater).", variant: "destructive" });
       return;
     }
-    setRateMutation.mutate({ accountId, rate: rateValue }, {
-      onSuccess: () => {
-        setEditingAccountId(null);
-        setEditingRate("");
-      }
-    });
+    updateRateMutation.mutate({ accountId, rateIndex, name, rate: rateValue });
   };
 
   const accountsById = accounts.reduce((acc, a) => ({ ...acc, [a.id]: a }), {} as Record<string, LedgerAccountBase>);
+
+  const flatEntries: Array<{ accountId: string; rateIndex: number; entry: NamedRate }> = [];
+  for (const [accountId, entries] of Object.entries(rates)) {
+    entries.forEach((entry, rateIndex) => {
+      flatEntries.push({ accountId, rateIndex, entry });
+    });
+  }
+
   const usedAccountIds = new Set(Object.keys(rates));
-  const availableAccounts = accounts.filter(a => !usedAccountIds.has(a.id) && a.isActive);
-  const rateEntries = Object.entries(rates);
+  const availableAccounts = accounts.filter(a => a.isActive);
 
   if (isLoadingRates || isLoadingAccounts) {
     return (
@@ -128,22 +160,38 @@ function AccountRatesSection({ bargainingUnitId }: { bargainingUnitId: string })
         <CardTitle className="text-base">Account Dues Rates</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {rateEntries.length > 0 ? (
+        {flatEntries.length > 0 ? (
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Account</TableHead>
+                <TableHead>Rate Name</TableHead>
                 <TableHead className="text-right">Rate</TableHead>
                 <TableHead className="w-[80px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rateEntries.map(([accountId, rate]) => {
+              {flatEntries.map(({ accountId, rateIndex, entry }) => {
                 const account = accountsById[accountId];
-                const isEditing = editingAccountId === accountId;
+                const key = `${accountId}:${rateIndex}`;
+                const isEditing = editingKey === key;
                 return (
-                  <TableRow key={accountId} data-testid={`row-rate-${accountId}`}>
-                    <TableCell data-testid={`text-account-name-${accountId}`}>{account?.name || accountId}</TableCell>
+                  <TableRow key={key} data-testid={`row-rate-${accountId}-${rateIndex}`}>
+                    <TableCell data-testid={`text-account-name-${accountId}-${rateIndex}`}>{account?.name || accountId}</TableCell>
+                    <TableCell>
+                      {isEditing ? (
+                        <Input
+                          type="text"
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          className="w-32"
+                          autoFocus
+                          data-testid={`input-edit-rate-name-${accountId}-${rateIndex}`}
+                        />
+                      ) : (
+                        <span data-testid={`text-rate-name-${accountId}-${rateIndex}`}>{entry.name}</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
                       {isEditing ? (
                         <Input
@@ -153,11 +201,10 @@ function AccountRatesSection({ bargainingUnitId }: { bargainingUnitId: string })
                           value={editingRate}
                           onChange={(e) => setEditingRate(e.target.value)}
                           className="w-24 text-right ml-auto"
-                          autoFocus
-                          data-testid={`input-edit-rate-${accountId}`}
+                          data-testid={`input-edit-rate-${accountId}-${rateIndex}`}
                         />
                       ) : (
-                        <span data-testid={`text-rate-${accountId}`}>${rate.toFixed(2)}</span>
+                        <span data-testid={`text-rate-${accountId}-${rateIndex}`}>${entry.rate.toFixed(2)}</span>
                       )}
                     </TableCell>
                     <TableCell>
@@ -167,9 +214,9 @@ function AccountRatesSection({ bargainingUnitId }: { bargainingUnitId: string })
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => saveEditedRate(accountId)}
-                              disabled={setRateMutation.isPending}
-                              data-testid={`button-save-rate-${accountId}`}
+                              onClick={() => saveEdited(accountId, rateIndex)}
+                              disabled={updateRateMutation.isPending}
+                              data-testid={`button-save-rate-${accountId}-${rateIndex}`}
                             >
                               <Check className="h-4 w-4 text-green-600" />
                             </Button>
@@ -177,8 +224,8 @@ function AccountRatesSection({ bargainingUnitId }: { bargainingUnitId: string })
                               variant="ghost"
                               size="icon"
                               onClick={cancelEditing}
-                              disabled={setRateMutation.isPending}
-                              data-testid={`button-cancel-edit-rate-${accountId}`}
+                              disabled={updateRateMutation.isPending}
+                              data-testid={`button-cancel-edit-rate-${accountId}-${rateIndex}`}
                             >
                               <X className="h-4 w-4" />
                             </Button>
@@ -188,8 +235,8 @@ function AccountRatesSection({ bargainingUnitId }: { bargainingUnitId: string })
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => startEditing(accountId, rate)}
-                              data-testid={`button-edit-rate-${accountId}`}
+                              onClick={() => startEditing(accountId, rateIndex, entry)}
+                              data-testid={`button-edit-rate-${accountId}-${rateIndex}`}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
@@ -199,7 +246,7 @@ function AccountRatesSection({ bargainingUnitId }: { bargainingUnitId: string })
                                   variant="ghost"
                                   size="icon"
                                   disabled={removeRateMutation.isPending}
-                                  data-testid={`button-remove-rate-${accountId}`}
+                                  data-testid={`button-remove-rate-${accountId}-${rateIndex}`}
                                 >
                                   <Trash2 className="h-4 w-4 text-destructive" />
                                 </Button>
@@ -208,13 +255,13 @@ function AccountRatesSection({ bargainingUnitId }: { bargainingUnitId: string })
                                 <AlertDialogHeader>
                                   <AlertDialogTitle>Remove Rate</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    Are you sure you want to remove the rate for "{account?.name || accountId}"?
+                                    Are you sure you want to remove the "{entry.name}" rate (${entry.rate.toFixed(2)}) for "{account?.name || accountId}"?
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                   <AlertDialogCancel data-testid="button-cancel-remove-rate">Cancel</AlertDialogCancel>
                                   <AlertDialogAction
-                                    onClick={() => removeRateMutation.mutate(accountId)}
+                                    onClick={() => removeRateMutation.mutate({ accountId, rateIndex })}
                                     data-testid="button-confirm-remove-rate"
                                   >
                                     Remove
@@ -252,6 +299,17 @@ function AccountRatesSection({ bargainingUnitId }: { bargainingUnitId: string })
                 </SelectContent>
               </Select>
             </div>
+            <div className="w-[140px] space-y-1">
+              <Label htmlFor="new-rate-name" className="text-sm">Rate Name</Label>
+              <Input
+                id="new-rate-name"
+                type="text"
+                placeholder="e.g. Biweekly"
+                value={newRateName}
+                onChange={(e) => setNewRateName(e.target.value)}
+                data-testid="input-new-rate-name"
+              />
+            </div>
             <div className="w-[120px] space-y-1">
               <Label htmlFor="new-rate" className="text-sm">Rate ($)</Label>
               <Input
@@ -267,16 +325,16 @@ function AccountRatesSection({ bargainingUnitId }: { bargainingUnitId: string })
             </div>
             <Button
               onClick={handleAddRate}
-              disabled={setRateMutation.isPending}
+              disabled={addRateMutation.isPending}
               data-testid="button-add-rate"
             >
-              {setRateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
+              {addRateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
               Add
             </Button>
           </div>
         )}
 
-        {availableAccounts.length === 0 && rateEntries.length > 0 && (
+        {availableAccounts.length === 0 && flatEntries.length > 0 && (
           <p className="text-sm text-muted-foreground pt-2 border-t">All available accounts have rates configured.</p>
         )}
       </CardContent>
@@ -338,7 +396,6 @@ function BargainingUnitEditContent() {
       return;
     }
 
-    // Merge with existing data to preserve other fields, only update icon
     const existingData = (bargainingUnit.data as Record<string, unknown>) || {};
     const newData = editIcon 
       ? { ...existingData, icon: editIcon } 
