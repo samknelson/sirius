@@ -392,11 +392,19 @@ export function registerBtuScraperImportRoutes(
             const hasErrors = results.errors.length > 0;
             const latestWizard = await storage.wizards.getById(wizardId);
             const latestWizardData = (latestWizard?.data as any) || {};
+            const latestProgress = latestWizardData.progress || {};
             await storage.wizards.update(wizardId, {
               data: {
                 ...latestWizardData,
                 processResults: results,
                 processProgress: null,
+                progress: {
+                  ...latestProgress,
+                  process: {
+                    status: 'completed',
+                    completedAt: new Date().toISOString(),
+                  },
+                },
               },
               status: hasErrors ? 'completed_with_errors' : 'completed',
               currentStep: 'results',
@@ -445,11 +453,20 @@ export function registerBtuScraperImportRoutes(
               const errWizard = await storage.wizards.getById(wizardId);
               if (errWizard) {
                 const errData = (errWizard.data as any) || {};
+                const errProgress = errData.progress || {};
                 await storage.wizards.update(wizardId, {
                   data: {
                     ...errData,
                     processProgress: null,
                     processError: error instanceof Error ? error.message : 'Unknown error',
+                    progress: {
+                      ...errProgress,
+                      process: {
+                        status: 'error',
+                        error: error instanceof Error ? error.message : 'Processing failed',
+                        completedAt: new Date().toISOString(),
+                      },
+                    },
                     processResults: errData.processResults || {
                       processed: 0,
                       total: 0,
