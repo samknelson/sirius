@@ -323,6 +323,25 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
           .where(eq(contacts.id, worker.contactId));
       }
 
+      if (data.phone) {
+        const existingPhones = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(worker.contactId);
+        const primaryPhone = existingPhones.find(p => p.isPrimary);
+
+        if (primaryPhone) {
+          if (primaryPhone.phoneNumber !== data.phone) {
+            await storage.contacts.phoneNumbers.updatePhoneNumber(primaryPhone.id, {
+              phoneNumber: data.phone,
+            });
+          }
+        } else {
+          await storage.contacts.phoneNumbers.createPhoneNumber({
+            contactId: worker.contactId,
+            phoneNumber: data.phone,
+            isPrimary: true,
+          });
+        }
+      }
+
       if (data.address1 && data.city && data.state && data.zip) {
         const street = data.address2 ? `${data.address1}, ${data.address2}` : data.address1;
         const existingAddresses = await storage.contacts.addresses.getContactPostalByContact(worker.contactId);
