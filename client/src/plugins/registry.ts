@@ -10,6 +10,7 @@ import { WmbScanStatusPlugin } from "./wmbScanStatus/WmbScanStatusPlugin";
 import { ActiveSessionsPlugin } from "./activeSessions/ActiveSessionsPlugin";
 import { MyStewardPlugin } from "./mySteward/MyStewardPlugin";
 import { BtuDuesStatusPlugin } from "./btuDuesStatus/BtuDuesStatusPlugin";
+import { BtuBuSummaryPlugin } from "./btuBuSummary/BtuBuSummaryPlugin";
 
 export const pluginRegistry: DashboardPlugin[] = [
   {
@@ -82,6 +83,15 @@ export const pluginRegistry: DashboardPlugin[] = [
     description: "Display summary of most recent BTU dues allocation import with card check comparison",
     order: 8,
     component: BtuDuesStatusPlugin,
+    requiredPermissions: ["admin"],
+    enabledByDefault: true,
+  },
+  {
+    id: "btu-bu-summary",
+    name: "BTU Bargaining Unit Summary",
+    description: "Display workers per bargaining unit with signed card check percentages",
+    order: 9,
+    component: BtuBuSummaryPlugin,
     requiredPermissions: ["admin"],
     enabledByDefault: true,
   },

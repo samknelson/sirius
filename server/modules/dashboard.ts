@@ -2,9 +2,11 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
-import { employerMonthlyPluginConfigSchema } from "@shared/schema";
+import { employerMonthlyPluginConfigSchema, workers, bargainingUnits } from "@shared/schema";
+import { cardchecks } from "@shared/schema/cardcheck/schema";
 import { getPluginMetadata } from "@shared/pluginMetadata";
 import { getEffectiveUser } from "./masquerade";
+import { eq, sql, countDistinct } from "drizzle-orm";
 
 // Content resolver context passed to each plugin's content resolver
 interface ContentResolverContext {
@@ -479,6 +481,53 @@ export function registerDashboardRoutes(
     } catch (error) {
       console.error("Error fetching BTU dues status summary:", error);
       res.status(500).json({ message: "Failed to fetch BTU dues status summary" });
+    }
+  });
+
+  app.get("/api/dashboard-plugins/btu-bu-summary/data", requireAuth, requireComponent('sitespecific.btu'), async (req, res) => {
+    try {
+      const results = await storage.readOnly.query(async (client) => {
+        return client
+          .select({
+            bargainingUnitId: bargainingUnits.id,
+            bargainingUnitName: bargainingUnits.name,
+            workerCount: countDistinct(workers.id).as('worker_count'),
+            signedWorkerCount: sql<number>`count(distinct case when ${cardchecks.id} is not null then ${workers.id} end)`.as('signed_worker_count'),
+          })
+          .from(bargainingUnits)
+          .leftJoin(workers, eq(workers.bargainingUnitId, bargainingUnits.id))
+          .leftJoin(
+            cardchecks,
+            sql`${cardchecks.workerId} = ${workers.id} AND ${cardchecks.status} = 'signed'`
+          )
+          .groupBy(bargainingUnits.id, bargainingUnits.name)
+          .orderBy(bargainingUnits.name);
+      });
+
+      const totalWorkers = results.reduce((sum, r) => sum + Number(r.workerCount), 0);
+      const totalSigned = results.reduce((sum, r) => sum + Number(r.signedWorkerCount), 0);
+
+      res.json({
+        units: results.map(r => ({
+          id: r.bargainingUnitId,
+          name: r.bargainingUnitName,
+          workerCount: Number(r.workerCount),
+          signedCount: Number(r.signedWorkerCount),
+          percentage: Number(r.workerCount) > 0
+            ? Math.round((Number(r.signedWorkerCount) / Number(r.workerCount)) * 1000) / 10
+            : 0,
+        })),
+        totals: {
+          workerCount: totalWorkers,
+          signedCount: totalSigned,
+          percentage: totalWorkers > 0
+            ? Math.round((totalSigned / totalWorkers) * 1000) / 10
+            : 0,
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching BTU BU summary:", error);
+      res.status(500).json({ message: "Failed to fetch bargaining unit summary" });
     }
   });
 
