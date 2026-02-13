@@ -1,9 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -37,105 +36,56 @@ interface ProcessResults {
 }
 
 export function ProcessStep({ wizardId, wizardType, data, onDataChange }: ProcessStepProps) {
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [progress, setProgress] = useState({ 
-    processed: 0, 
-    total: 0, 
-    createdCount: 0, 
-    updatedCount: 0, 
-    successCount: 0, 
-    failureCount: 0,
-    terminatedCount: 0,
-  });
-  const [results, setResults] = useState<ProcessResults | null>(data?.processResults || null);
+  const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [wizardStatus, setWizardStatus] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { data: wizard } = useQuery<any>({
     queryKey: [`/api/wizards/${wizardId}`],
+    refetchInterval: data?.progress?.process?.status === 'processing' ? 5000 : false,
   });
+
+  const processResults: ProcessResults | null = data?.processResults || null;
+  const processProgress = data?.progress?.process;
+  const isProcessing = processProgress?.status === 'processing';
+  const isComplete = processResults !== null;
+  const hasError = processProgress?.status === 'error';
 
   const validationResults = data?.validationResults;
   const asOfDate = data?.asOfDate;
   const terminateByAbsence = data?.terminateByAbsence ?? true;
 
-  const checkWizardCompletion = async (): Promise<boolean> => {
-    try {
-      const res = await fetch(`/api/wizards/${wizardId}`, { credentials: 'include' });
-      if (!res.ok) return false;
-      const wizardData = await res.json();
-      const processResults = wizardData?.data?.processResults;
-      const wizStatus = wizardData?.status;
-      if (processResults && (wizStatus === 'completed' || wizStatus === 'needs_review')) {
-        setResults(processResults);
-        setWizardStatus(wizStatus);
-        setIsProcessing(false);
+  useEffect(() => {
+    if (isProcessing && !pollRef.current) {
+      pollRef.current = setInterval(() => {
         queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
-        return true;
+      }, 5000);
+    }
+    if (!isProcessing && pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
       }
-      return false;
-    } catch {
-      return false;
-    }
-  };
-
-  const pollForCompletion = async () => {
-    for (let attempt = 0; attempt < 60; attempt++) {
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      const done = await checkWizardCompletion();
-      if (done) return;
-    }
-    setError('Processing is taking longer than expected. Please refresh the page to check the results.');
-    setIsProcessing(false);
-  };
+    };
+  }, [isProcessing, wizardId]);
 
   const startProcessing = async () => {
-    setIsProcessing(true);
+    setIsStarting(true);
     setError(null);
-    setProgress({ processed: 0, total: 0, createdCount: 0, updatedCount: 0, successCount: 0, failureCount: 0, terminatedCount: 0 });
 
     try {
-      const eventSource = new EventSource(`/api/wizards/${wizardId}/process`, {
-        withCredentials: true,
-      });
-
-      eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'progress') {
-          setProgress((prev) => ({
-            processed: data.processed !== undefined ? data.processed : prev.processed,
-            total: data.total !== undefined ? data.total : prev.total,
-            createdCount: data.createdCount !== undefined ? data.createdCount : prev.createdCount,
-            updatedCount: data.updatedCount !== undefined ? data.updatedCount : prev.updatedCount,
-            successCount: data.successCount !== undefined ? data.successCount : prev.successCount,
-            failureCount: data.failureCount !== undefined ? data.failureCount : prev.failureCount,
-            terminatedCount: data.terminatedCount !== undefined ? data.terminatedCount : prev.terminatedCount,
-          }));
-        } else if (data.type === 'complete') {
-          setResults(data.results);
-          setWizardStatus(data.wizardStatus);
-          setIsProcessing(false);
-          eventSource.close();
-          queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
-        } else if (data.type === 'error') {
-          setError(data.message);
-          setIsProcessing(false);
-          eventSource.close();
-        }
-      };
-
-      eventSource.onerror = () => {
-        eventSource.close();
-        pollForCompletion();
-      };
+      await apiRequest("POST", `/api/wizards/${wizardId}/process`);
+      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Processing failed');
-      setIsProcessing(false);
+      setError(err instanceof Error ? err.message : 'Failed to start processing');
+    } finally {
+      setIsStarting(false);
     }
   };
-
-  const progressPercentage = progress.total > 0 ? (progress.processed / progress.total) * 100 : 0;
 
   return (
     <div className="space-y-6">
@@ -147,7 +97,7 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!isProcessing && !results && (
+          {!isProcessing && !isComplete && !hasError && (
             <div className="flex flex-col items-center justify-center p-12 space-y-4">
               <Users className="h-12 w-12 text-muted-foreground" />
               <div className="text-center space-y-2">
@@ -174,39 +124,50 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
                 onClick={startProcessing} 
                 size="lg"
                 className="gap-2"
+                disabled={isStarting}
                 data-testid="button-start-processing"
               >
-                <Play className="h-4 w-4" />
-                Start Processing
+                {isStarting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+                {isStarting ? 'Starting...' : 'Start Processing'}
               </Button>
             </div>
           )}
 
           {isProcessing && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-center p-8">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-              <Progress value={progressPercentage} className="h-2" />
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                <div>
-                  <div className="text-2xl font-bold">{progress.processed}</div>
-                  <div className="text-sm text-muted-foreground">of {progress.total} Processed</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-green-600">{progress.createdCount}</div>
-                  <div className="text-sm text-muted-foreground">Created</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-blue-600">{progress.updatedCount}</div>
-                  <div className="text-sm text-muted-foreground">Updated</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-red-600">{progress.failureCount}</div>
-                  <div className="text-sm text-muted-foreground">Errors</div>
-                </div>
+            <div className="flex flex-col items-center justify-center p-12 space-y-4">
+              <Loader2 className="h-12 w-12 animate-spin text-primary" />
+              <div className="text-center space-y-2">
+                <p className="text-lg font-medium">Processing in background...</p>
+                <p className="text-sm text-muted-foreground">
+                  You can safely leave this page. You'll receive a notification when processing is complete.
+                </p>
+                {processProgress?.startedAt && (
+                  <p className="text-xs text-muted-foreground">
+                    Started {format(new Date(processProgress.startedAt), 'h:mm a')}
+                  </p>
+                )}
               </div>
             </div>
+          )}
+
+          {hasError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Processing Error</AlertTitle>
+              <AlertDescription>
+                {processProgress?.error || 'An error occurred during processing.'}
+                <div className="mt-2">
+                  <Button variant="outline" size="sm" onClick={startProcessing} disabled={isStarting} data-testid="button-retry-processing">
+                    {isStarting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Play className="h-4 w-4 mr-1" />}
+                    Retry
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
           )}
 
           {error && (
@@ -217,10 +178,10 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
             </Alert>
           )}
 
-          {results && (
+          {isComplete && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
-                {results.failureCount === 0 ? (
+                {processResults.failureCount === 0 ? (
                   <CheckCircle2 className="h-6 w-6 text-green-600" />
                 ) : (
                   <AlertCircle className="h-6 w-6 text-amber-600" />
@@ -233,41 +194,41 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Card>
                   <CardContent className="pt-6">
-                    <div className="text-2xl font-bold">{results.totalRows.toLocaleString()}</div>
+                    <div className="text-2xl font-bold">{processResults.totalRows.toLocaleString()}</div>
                     <div className="text-sm text-muted-foreground">Total Rows</div>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-6">
-                    <div className="text-2xl font-bold text-green-600">{results.createdCount.toLocaleString()}</div>
+                    <div className="text-2xl font-bold text-green-600">{processResults.createdCount.toLocaleString()}</div>
                     <div className="text-sm text-muted-foreground">Workers Created</div>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-6">
-                    <div className="text-2xl font-bold text-blue-600">{results.updatedCount.toLocaleString()}</div>
+                    <div className="text-2xl font-bold text-blue-600">{processResults.updatedCount.toLocaleString()}</div>
                     <div className="text-sm text-muted-foreground">Workers Updated</div>
                   </CardContent>
                 </Card>
-                {results.terminatedCount !== undefined && results.terminatedCount > 0 && (
+                {processResults.terminatedCount !== undefined && processResults.terminatedCount > 0 && (
                   <Card>
                     <CardContent className="pt-6">
-                      <div className="text-2xl font-bold text-orange-600">{results.terminatedCount.toLocaleString()}</div>
+                      <div className="text-2xl font-bold text-orange-600">{processResults.terminatedCount.toLocaleString()}</div>
                       <div className="text-sm text-muted-foreground">Terminated</div>
                     </CardContent>
                   </Card>
                 )}
-                {results.failureCount > 0 && (
+                {processResults.failureCount > 0 && (
                   <Card>
                     <CardContent className="pt-6">
-                      <div className="text-2xl font-bold text-red-600">{results.failureCount.toLocaleString()}</div>
+                      <div className="text-2xl font-bold text-red-600">{processResults.failureCount.toLocaleString()}</div>
                       <div className="text-sm text-muted-foreground">Errors</div>
                     </CardContent>
                   </Card>
                 )}
               </div>
 
-              {results.errors && results.errors.length > 0 && (
+              {processResults.errors && processResults.errors.length > 0 && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-sm">Processing Errors</CardTitle>
@@ -275,7 +236,7 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
                   <CardContent>
                     <ScrollArea className="h-48">
                       <div className="space-y-2">
-                        {results.errors.map((error, idx) => (
+                        {processResults.errors.map((error, idx) => (
                           <div key={idx} className="flex items-start gap-2 text-sm">
                             <XCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
                             <div>

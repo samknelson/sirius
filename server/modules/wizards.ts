@@ -9,6 +9,9 @@ import { BtuWorkerImportWizard } from "../wizards/types/btu_worker_import.js";
 import { objectStorageService } from "../services/objectStorage.js";
 import { hashHeaderRow } from "../utils/hash.js";
 import { getEffectiveUser } from "./masquerade";
+import { sendInapp } from "../services/inapp-sender.js";
+import { sendEmail } from "../services/email-sender.js";
+import { logger } from "../logger.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -1177,112 +1180,184 @@ export function registerWizardRoutes(
     }
   );
 
-  // Process wizard data with SSE for progress tracking
-  app.get("/api/wizards/:id/process",
+  async function sendWizardCompletionNotifications(
+    wizardId: string,
+    userId: string,
+    wizardDisplayName: string,
+    results: { successCount: number; failureCount: number; createdCount: number; updatedCount: number },
+    isReprocess: boolean = false,
+  ) {
+    try {
+      const user = await storage.users.getUser(userId);
+      if (!user) {
+        logger.warn('Cannot send wizard notification: user not found', { service: 'wizard-notifications', userId, wizardId });
+        return;
+      }
+
+      const actionLabel = isReprocess ? 'Reprocessing' : 'Processing';
+      const statusLabel = results.failureCount > 0 ? 'completed with errors' : 'completed successfully';
+      const title = `${wizardDisplayName} ${actionLabel} Complete`;
+      const body = `${actionLabel} ${statusLabel}. ${results.createdCount} created, ${results.updatedCount} updated${results.failureCount > 0 ? `, ${results.failureCount} errors` : ''}.`;
+      const linkUrl = `/wizards/${wizardId}`;
+      const linkLabel = 'View Results';
+
+      if (user.email) {
+        const contact = await storage.contacts.getContactByEmail(user.email);
+        if (contact) {
+          const inappResult = await sendInapp({
+            contactId: contact.id,
+            userId: user.id,
+            title,
+            body,
+            linkUrl,
+            linkLabel,
+            initiatedBy: 'system',
+          });
+          if (!inappResult.success) {
+            logger.warn('Failed to send in-app wizard notification', { service: 'wizard-notifications', wizardId, error: inappResult.error });
+          }
+
+          const emailResult = await sendEmail({
+            contactId: contact.id,
+            toEmail: user.email,
+            toName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || undefined,
+            subject: title,
+            bodyText: `${body}\n\nView results: ${linkUrl}`,
+            bodyHtml: `<p>${body}</p><p><a href="${linkUrl}">View Results</a></p>`,
+            userId: user.id,
+          });
+          if (!emailResult.success && emailResult.errorCode !== 'NOT_OPTED_IN' && emailResult.errorCode !== 'NOT_ALLOWLISTED' && emailResult.errorCode !== 'EMAIL_NOT_SUPPORTED') {
+            logger.warn('Failed to send email wizard notification', { service: 'wizard-notifications', wizardId, error: emailResult.error });
+          }
+        }
+      }
+    } catch (err) {
+      logger.error('Error sending wizard completion notifications', { service: 'wizard-notifications', wizardId, error: err instanceof Error ? err.message : 'Unknown' });
+    }
+  }
+
+  // Start background wizard processing
+  app.post("/api/wizards/:id/process",
     checkWizardAccess,
     async (req, res) => {
       try {
         const { id } = req.params;
         const wizard = (req as any).wizard;
 
-        // Get wizard type instance
         const wizardType = wizardRegistry.get(wizard.type);
         if (!wizardType || !(wizardType instanceof FeedWizard)) {
           return res.status(400).json({ message: "This wizard type does not support processing" });
         }
 
-        // Set up SSE headers
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
-        res.flushHeaders();
+        if (wizard.status === 'processing') {
+          return res.status(409).json({ message: "This wizard is already being processed" });
+        }
 
-        // Send initial event
-        res.write(`data: ${JSON.stringify({ type: 'start', message: 'Starting processing...' })}\n\n`);
+        const { dbUser } = await getEffectiveUser(req.session, (req as any).user);
+        const initiatingUserId = dbUser?.id;
 
-        // Start heartbeat to keep connection alive through proxies
-        const heartbeatInterval = setInterval(() => {
-          try { res.write(`: heartbeat\n\n`); } catch (_e) { /* connection closed */ }
-        }, 15000);
+        const allTypes = wizardRegistry.getAll();
+        const typeConfig = allTypes.find(t => t.name === wizard.type);
+        const wizardDisplayName = typeConfig?.displayName || wizard.type;
 
-        // Run processing with progress callback
-        try {
-          const results = await wizardType.processFeedData(
-            id,
-            100, // batch size
-            (progress) => {
-              // Send progress event with explicit fields
-              res.write(`data: ${JSON.stringify({ 
-                type: 'progress',
-                processed: progress.processed,
-                total: progress.total,
-                createdCount: progress.createdCount,
-                updatedCount: progress.updatedCount,
-                successCount: progress.successCount,
-                failureCount: progress.failureCount,
-                currentRow: progress.currentRow
-              })}\n\n`);
-            }
-          );
-
-          clearInterval(heartbeatInterval);
-
-          // Update wizard status based on results
-          const finalStatus = results.failureCount > 0 ? 'needs_review' : 'completed';
-          
-          // Re-fetch wizard to get the latest data (including cardCheckComparisonReport saved by processFeedData)
-          const updatedWizard = await storage.wizards.getById(id);
-          const latestData = updatedWizard?.data || wizard.data;
-          
-          // Update wizard with final status (preserve all data including comparison report)
-          await storage.wizards.update(id, {
-            status: finalStatus,
-            data: {
-              ...latestData,
-              processResults: results, // Preserve the complete results including resultsFileId
-              progress: {
-                ...(latestData as any)?.progress,
-                process: {
-                  status: 'completed',
-                  completedAt: new Date().toISOString()
-                }
+        await storage.wizards.update(id, {
+          status: 'processing',
+          data: {
+            ...wizard.data,
+            progress: {
+              ...(wizard.data as any)?.progress,
+              process: {
+                status: 'processing',
+                startedAt: new Date().toISOString()
               }
             }
-          });
+          }
+        });
 
-          // Send completion event
-          res.write(`data: ${JSON.stringify({ 
-            type: 'complete', 
-            results,
-            wizardStatus: finalStatus
-          })}\n\n`);
-          res.end();
-        } catch (processingError) {
-          clearInterval(heartbeatInterval);
-          // Send error event
-          res.write(`data: ${JSON.stringify({ 
-            type: 'error', 
-            message: processingError instanceof Error ? processingError.message : 'Processing failed' 
-          })}\n\n`);
-          res.end();
-        }
+        res.json({ message: "Processing started", status: "processing" });
+
+        setImmediate(async () => {
+          try {
+            const results = await wizardType.processFeedData(id, 100);
+
+            const finalStatus = results.failureCount > 0 ? 'needs_review' : 'completed';
+            const updatedWizard = await storage.wizards.getById(id);
+            const latestData = updatedWizard?.data || wizard.data;
+
+            await storage.wizards.update(id, {
+              status: finalStatus,
+              data: {
+                ...latestData,
+                processResults: results,
+                progress: {
+                  ...(latestData as any)?.progress,
+                  process: {
+                    status: 'completed',
+                    completedAt: new Date().toISOString()
+                  }
+                }
+              }
+            });
+
+            if (initiatingUserId) {
+              await sendWizardCompletionNotifications(id, initiatingUserId, wizardDisplayName, results);
+            }
+          } catch (processingError) {
+            logger.error('Background wizard processing failed', {
+              service: 'wizard-process',
+              wizardId: id,
+              error: processingError instanceof Error ? processingError.message : 'Unknown error',
+            });
+
+            try {
+              const failedWizard = await storage.wizards.getById(id);
+              const failedData = failedWizard?.data || wizard.data;
+              await storage.wizards.update(id, {
+                status: 'error',
+                data: {
+                  ...failedData,
+                  progress: {
+                    ...(failedData as any)?.progress,
+                    process: {
+                      status: 'error',
+                      error: processingError instanceof Error ? processingError.message : 'Processing failed',
+                      completedAt: new Date().toISOString()
+                    }
+                  }
+                }
+              });
+            } catch { /* best effort status update */ }
+
+            if (initiatingUserId) {
+              try {
+                const user = await storage.users.getUser(initiatingUserId);
+                if (user?.email) {
+                  const contact = await storage.contacts.getContactByEmail(user.email);
+                  if (contact) {
+                    await sendInapp({
+                      contactId: contact.id,
+                      userId: initiatingUserId,
+                      title: `${wizardDisplayName} Processing Failed`,
+                      body: processingError instanceof Error ? processingError.message : 'Processing encountered an error.',
+                      linkUrl: `/wizards/${id}`,
+                      linkLabel: 'View Wizard',
+                      initiatedBy: 'system',
+                    });
+                  }
+                }
+              } catch { /* best effort notification */ }
+            }
+          }
+        });
       } catch (error) {
         console.error("Processing error:", error);
-        if (!res.headersSent) {
-          res.status(500).json({ message: error instanceof Error ? error.message : "Failed to start processing" });
-        } else {
-          res.write(`data: ${JSON.stringify({ 
-            type: 'error', 
-            message: error instanceof Error ? error.message : 'Processing failed' 
-          })}\n\n`);
-          res.end();
-        }
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to start processing" });
       }
     }
   );
 
-  // Reprocess unmatched workers for BTU Worker Import wizard
-  app.get("/api/wizards/:id/reprocess-unmatched",
+  // Start background reprocessing of unmatched workers
+  app.post("/api/wizards/:id/reprocess-unmatched",
     checkWizardAccess,
     async (req, res) => {
       try {
@@ -1294,80 +1369,109 @@ export function registerWizardRoutes(
           return res.status(400).json({ message: "This wizard type does not support reprocessing" });
         }
 
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
-        res.flushHeaders();
+        if (wizard.status === 'processing') {
+          return res.status(409).json({ message: "This wizard is already being processed" });
+        }
 
-        res.write(`data: ${JSON.stringify({ type: 'start', message: 'Starting reprocessing of unmatched workers...' })}\n\n`);
+        const { dbUser } = await getEffectiveUser(req.session, (req as any).user);
+        const initiatingUserId = dbUser?.id;
 
-        const heartbeatInterval = setInterval(() => {
-          try { res.write(`: heartbeat\n\n`); } catch (_e) { /* connection closed */ }
-        }, 15000);
+        const allTypes = wizardRegistry.getAll();
+        const typeConfig = allTypes.find(t => t.name === wizard.type);
+        const wizardDisplayName = typeConfig?.displayName || wizard.type;
 
-        try {
-          const results = await wizardType.reprocessUnmatched(
-            id,
-            (progress) => {
-              res.write(`data: ${JSON.stringify({ 
-                type: 'progress',
-                processed: progress.processed,
-                total: progress.total,
-                createdCount: progress.createdCount,
-                updatedCount: progress.updatedCount,
-                successCount: progress.successCount,
-                failureCount: progress.failureCount,
-              })}\n\n`);
-            }
-          );
-
-          clearInterval(heartbeatInterval);
-
-          const finalStatus = results.failureCount > 0 ? 'needs_review' : 'completed';
-          
-          const updatedWizard = await storage.wizards.getById(id);
-          const latestData = updatedWizard?.data || wizard.data;
-          
-          await storage.wizards.update(id, {
-            status: finalStatus,
-            data: {
-              ...latestData,
-              processResults: results,
-              progress: {
-                ...(latestData as any)?.progress,
-                process: {
-                  status: 'completed',
-                  completedAt: new Date().toISOString()
-                }
+        await storage.wizards.update(id, {
+          status: 'processing',
+          data: {
+            ...wizard.data,
+            progress: {
+              ...(wizard.data as any)?.progress,
+              process: {
+                status: 'reprocessing',
+                startedAt: new Date().toISOString()
               }
             }
-          });
+          }
+        });
 
-          res.write(`data: ${JSON.stringify({ 
-            type: 'complete', 
-            results,
-            wizardStatus: finalStatus
-          })}\n\n`);
-          res.end();
-        } catch (processingError) {
-          clearInterval(heartbeatInterval);
-          res.write(`data: ${JSON.stringify({ 
-            type: 'error', 
-            message: processingError instanceof Error ? processingError.message : 'Reprocessing failed' 
-          })}\n\n`);
-          res.end();
-        }
+        res.json({ message: "Reprocessing started", status: "processing" });
+
+        setImmediate(async () => {
+          try {
+            const results = await wizardType.reprocessUnmatched(id);
+
+            const finalStatus = results.failureCount > 0 ? 'needs_review' : 'completed';
+            const updatedWizard = await storage.wizards.getById(id);
+            const latestData = updatedWizard?.data || wizard.data;
+
+            await storage.wizards.update(id, {
+              status: finalStatus,
+              data: {
+                ...latestData,
+                processResults: results,
+                progress: {
+                  ...(latestData as any)?.progress,
+                  process: {
+                    status: 'completed',
+                    completedAt: new Date().toISOString()
+                  }
+                }
+              }
+            });
+
+            if (initiatingUserId) {
+              await sendWizardCompletionNotifications(id, initiatingUserId, wizardDisplayName, results, true);
+            }
+          } catch (processingError) {
+            logger.error('Background wizard reprocessing failed', {
+              service: 'wizard-reprocess',
+              wizardId: id,
+              error: processingError instanceof Error ? processingError.message : 'Unknown error',
+            });
+
+            try {
+              const failedWizard = await storage.wizards.getById(id);
+              const failedData = failedWizard?.data || wizard.data;
+              await storage.wizards.update(id, {
+                status: 'error',
+                data: {
+                  ...failedData,
+                  progress: {
+                    ...(failedData as any)?.progress,
+                    process: {
+                      status: 'error',
+                      error: processingError instanceof Error ? processingError.message : 'Reprocessing failed',
+                      completedAt: new Date().toISOString()
+                    }
+                  }
+                }
+              });
+            } catch { /* best effort status update */ }
+
+            if (initiatingUserId) {
+              try {
+                const user = await storage.users.getUser(initiatingUserId);
+                if (user?.email) {
+                  const contact = await storage.contacts.getContactByEmail(user.email);
+                  if (contact) {
+                    await sendInapp({
+                      contactId: contact.id,
+                      userId: initiatingUserId,
+                      title: `${wizardDisplayName} Reprocessing Failed`,
+                      body: processingError instanceof Error ? processingError.message : 'Reprocessing encountered an error.',
+                      linkUrl: `/wizards/${id}`,
+                      linkLabel: 'View Wizard',
+                      initiatedBy: 'system',
+                    });
+                  }
+                }
+              } catch { /* best effort notification */ }
+            }
+          }
+        });
       } catch (error) {
         console.error("Reprocessing error:", error);
-        if (!res.headersSent) {
-          res.status(500).json({ message: error instanceof Error ? error.message : "Failed to start reprocessing" });
-        } else {
-          res.write(`data: ${JSON.stringify({ 
-            type: 'error', 
-            message: error instanceof Error ? error.message : 'Reprocessing failed' 
-          })}\n\n`);
-          res.end();
-        }
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to start reprocessing" });
       }
     }
   );

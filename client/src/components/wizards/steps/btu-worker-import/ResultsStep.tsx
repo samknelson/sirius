@@ -10,7 +10,7 @@ import { Link } from "wouter";
 import { stringify } from "csv-stringify/browser/esm/sync";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 
 interface ResultsStepProps {
   wizardId: string;
@@ -64,58 +64,28 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
   const asOfDate = data?.asOfDate;
   const terminateByAbsence = data?.terminateByAbsence;
   const [isReprocessing, setIsReprocessing] = useState(false);
-  const [reprocessProgress, setReprocessProgress] = useState<{ processed: number; total: number } | null>(null);
   const { toast } = useToast();
 
-  const startReprocess = () => {
+  const isCurrentlyProcessing = data?.progress?.process?.status === 'processing' || data?.progress?.process?.status === 'reprocessing';
+
+  const startReprocess = async () => {
     setIsReprocessing(true);
-    setReprocessProgress(null);
-
-    const eventSource = new EventSource(`/api/wizards/${wizardId}/reprocess-unmatched`);
-
-    eventSource.onmessage = (event) => {
-      try {
-        const eventData = JSON.parse(event.data);
-
-        if (eventData.type === 'progress') {
-          setReprocessProgress({
-            processed: eventData.processed,
-            total: eventData.total,
-          });
-        } else if (eventData.type === 'complete') {
-          eventSource.close();
-          setIsReprocessing(false);
-          setReprocessProgress(null);
-          queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
-          toast({
-            title: "Reprocessing Complete",
-            description: `${eventData.results?.successCount || 0} workers reprocessed successfully.`,
-          });
-        } else if (eventData.type === 'error') {
-          eventSource.close();
-          setIsReprocessing(false);
-          setReprocessProgress(null);
-          toast({
-            title: "Reprocessing Failed",
-            description: eventData.message,
-            variant: "destructive",
-          });
-        }
-      } catch {
-        // ignore parse errors
-      }
-    };
-
-    eventSource.onerror = () => {
-      eventSource.close();
-      setIsReprocessing(false);
-      setReprocessProgress(null);
+    try {
+      await apiRequest("POST", `/api/wizards/${wizardId}/reprocess-unmatched`);
+      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
       toast({
-        title: "Connection Lost",
-        description: "Lost connection during reprocessing. Please try again.",
+        title: "Reprocessing Started",
+        description: "You'll receive a notification when reprocessing is complete. You can safely leave this page.",
+      });
+    } catch (err) {
+      toast({
+        title: "Reprocessing Failed",
+        description: err instanceof Error ? err.message : 'Failed to start reprocessing',
         variant: "destructive",
       });
-    };
+    } finally {
+      setIsReprocessing(false);
+    }
   };
 
   const downloadResultsFile = async () => {
@@ -477,15 +447,11 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                         variant="default" 
                         size="sm" 
                         onClick={startReprocess} 
-                        disabled={isReprocessing}
+                        disabled={isReprocessing || isCurrentlyProcessing}
                         data-testid="button-reprocess-unmatched"
                       >
-                        <RefreshCw className={`h-4 w-4 mr-1 ${isReprocessing ? 'animate-spin' : ''}`} />
-                        {isReprocessing 
-                          ? reprocessProgress 
-                            ? `${reprocessProgress.processed}/${reprocessProgress.total}` 
-                            : 'Starting...'
-                          : 'Reprocess'}
+                        <RefreshCw className={`h-4 w-4 mr-1 ${isReprocessing || isCurrentlyProcessing ? 'animate-spin' : ''}`} />
+                        {isCurrentlyProcessing ? 'Processing...' : isReprocessing ? 'Starting...' : 'Reprocess'}
                       </Button>
                       <Button variant="ghost" size="sm" onClick={exportWithoutEmployerMatch} data-testid="button-export-without-employer">
                         <FileDown className="h-4 w-4 mr-1" />
