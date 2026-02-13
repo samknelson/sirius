@@ -55,6 +55,10 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
   const liveIsProcessing = liveProgress?.status === 'processing';
   const progressPercent = liveProgress ? Math.round((liveProgress.current / liveProgress.total) * 100) : 0;
 
+  const pendingCount = pendingData?.count || 0;
+  const hasCompleted = !!processResults || wizard?.status === 'completed' || wizard?.status === 'completed_with_errors' || wizard?.status === 'error';
+  const liveResults = wizard?.data?.processResults || processResults;
+
   const startProcessing = async () => {
     setIsStarting(true);
     setError(null);
@@ -68,14 +72,10 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
   };
 
   useEffect(() => {
-    if (isStarting && liveIsProcessing) {
+    if (isStarting && (liveIsProcessing || hasCompleted)) {
       setIsStarting(false);
     }
-  }, [isStarting, liveIsProcessing]);
-
-  const pendingCount = pendingData?.count || 0;
-  const hasCompleted = !!processResults || wizard?.status === 'completed' || wizard?.status === 'completed_with_errors';
-  const liveResults = wizard?.data?.processResults || processResults;
+  }, [isStarting, liveIsProcessing, hasCompleted]);
 
   return (
     <div className="space-y-6">

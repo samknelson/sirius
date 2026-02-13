@@ -5,7 +5,7 @@ import { insertFileSchema } from "@shared/schema";
 import { logger } from "../logger";
 import { sendInapp } from "../services/inapp-sender";
 import { sendEmail } from "../services/email-sender";
-import puppeteer from "puppeteer-core";
+import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { PDFDocument } from "pdf-lib";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -26,7 +26,7 @@ async function launchBrowser() {
   });
 }
 
-async function loginToSite(page: puppeteer.Page) {
+async function loginToSite(page: Page) {
   const username = process.env.BTU_SCRAPER_USERNAME;
   const password = process.env.BTU_SCRAPER_PASSWORD;
 
@@ -138,6 +138,23 @@ export function registerBtuScraperImportRoutes(
         const pendingCardchecks = await storage.cardchecks.getCardchecksWithSourceNidMissingEsig(cardcheckDefinitionId);
 
         if (pendingCardchecks.length === 0) {
+          const emptyResults = {
+            processed: 0,
+            total: 0,
+            created: 0,
+            skipped: 0,
+            errors: [],
+            processedRows: [],
+          };
+          await storage.wizards.update(wizardId, {
+            data: {
+              ...wizardData,
+              processResults: emptyResults,
+              processProgress: null,
+            },
+            status: 'completed',
+            currentStep: 'results',
+          });
           return res.json({
             message: 'No card checks need signature PDFs. All card checks with NIDs already have signatures.',
             processed: 0,
@@ -167,7 +184,7 @@ export function registerBtuScraperImportRoutes(
         });
 
         setImmediate(async () => {
-          let browser: puppeteer.Browser | null = null;
+          let browser: Browser | null = null;
           try {
             browser = await launchBrowser();
             const page = await browser.newPage();
@@ -412,11 +429,20 @@ export function registerBtuScraperImportRoutes(
             try {
               const errWizard = await storage.wizards.getById(wizardId);
               if (errWizard) {
+                const errData = (errWizard.data as any) || {};
                 await storage.wizards.update(wizardId, {
                   data: {
-                    ...(errWizard.data as any),
+                    ...errData,
                     processProgress: null,
                     processError: error instanceof Error ? error.message : 'Unknown error',
+                    processResults: errData.processResults || {
+                      processed: 0,
+                      total: 0,
+                      created: 0,
+                      skipped: 0,
+                      errors: [{ cardcheckId: '', sourceNid: '', error: error instanceof Error ? error.message : 'Unknown error' }],
+                      processedRows: [],
+                    },
                   },
                   status: 'error' as any,
                   currentStep: 'results',
