@@ -93,7 +93,7 @@ export interface LedgerEntryStorage {
   delete(id: string): Promise<boolean>;
   deleteByReference(referenceType: string, referenceId: string): Promise<number>;
   deleteByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<boolean>;
-  findByAccountEntityDatePlugin(accountId: string, entityId: string, date: Date, chargePlugin: string, chargePluginConfigId?: string): Promise<Ledger | undefined>;
+  findByAccountEntityDatePlugin(accountId: string, entityId: string, date: Date, chargePlugin: string, chargePluginConfigId?: string, amount?: string): Promise<Ledger | undefined>;
 }
 
 export interface LedgerEntryWithDetails extends Ledger {
@@ -1153,7 +1153,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       return result.rowCount ? result.rowCount > 0 : false;
     },
 
-    async findByAccountEntityDatePlugin(accountId: string, entityId: string, date: Date, chargePluginId: string, chargePluginConfigId?: string): Promise<Ledger | undefined> {
+    async findByAccountEntityDatePlugin(accountId: string, entityId: string, date: Date, chargePluginId: string, chargePluginConfigId?: string, amount?: string): Promise<Ledger | undefined> {
       const client = getClient();
       const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
       const dayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
@@ -1166,6 +1166,9 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       ];
       if (chargePluginConfigId) {
         conditions.push(eq(ledger.chargePluginConfigId, chargePluginConfigId));
+      }
+      if (amount) {
+        conditions.push(eq(ledger.amount, amount));
       }
       const [entry] = await client.select({ entry: ledger })
         .from(ledger)

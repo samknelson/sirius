@@ -89,7 +89,8 @@ class BtuDuesAllocationPlugin extends ChargePlugin {
         duesContext.workerId,
         duesContext.transactionDate,
         this.metadata.id,
-        config.id
+        config.id,
+        allocatedAmount.toFixed(2)
       );
 
       const isDuplicateFromDifferentSource = duplicateEntry && (!existingEntry || duplicateEntry.id !== existingEntry?.id);
