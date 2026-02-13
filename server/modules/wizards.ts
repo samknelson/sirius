@@ -1249,7 +1249,8 @@ export function registerWizardRoutes(
           return res.status(400).json({ message: "This wizard type does not support processing" });
         }
 
-        if (wizard.status === 'processing') {
+        if (wizard.status === 'processing' || 
+            wizard.data?.progress?.process?.status === 'in_progress') {
           return res.status(409).json({ message: "This wizard is already being processed" });
         }
 
@@ -1369,7 +1370,8 @@ export function registerWizardRoutes(
           return res.status(400).json({ message: "This wizard type does not support reprocessing" });
         }
 
-        if (wizard.status === 'processing') {
+        if (wizard.status === 'processing' || 
+            wizard.data?.progress?.process?.status === 'in_progress') {
           return res.status(409).json({ message: "This wizard is already being processed" });
         }
 

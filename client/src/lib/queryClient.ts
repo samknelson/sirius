@@ -60,7 +60,15 @@ export async function apiRequest(
     return await res.json();
   }
   
-  return await res.json();
+  if (contentType && contentType.includes('text/html')) {
+    throw new ApiError(502, 'Server returned an unexpected response. Please try again.');
+  }
+
+  try {
+    return await res.json();
+  } catch {
+    return undefined;
+  }
 }
 
 export function serializeQueryKey(queryKey: readonly unknown[]): string {
@@ -103,6 +111,10 @@ export const getQueryFn: <T>(options: {
     }
 
     await throwIfResNotOk(res);
+    const contentType = res.headers.get('content-type');
+    if (contentType && contentType.includes('text/html')) {
+      throw new ApiError(502, 'Server returned an unexpected response. Please try again.');
+    }
     return await res.json();
   };
 
