@@ -1250,7 +1250,7 @@ export function registerWizardRoutes(
         }
 
         if (wizard.status === 'processing' || 
-            wizard.data?.progress?.process?.status === 'in_progress') {
+            wizard.data?.progress?.process?.status === 'processing') {
           return res.status(409).json({ message: "This wizard is already being processed" });
         }
 
@@ -1371,7 +1371,7 @@ export function registerWizardRoutes(
         }
 
         if (wizard.status === 'processing' || 
-            wizard.data?.progress?.process?.status === 'in_progress') {
+            wizard.data?.progress?.process?.status === 'processing') {
           return res.status(409).json({ message: "This wizard is already being processed" });
         }
 
