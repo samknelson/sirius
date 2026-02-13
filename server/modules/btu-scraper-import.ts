@@ -262,6 +262,9 @@ export function registerBtuScraperImportRoutes(
                     .filter(href => href.toLowerCase().endsWith('.pdf'));
                 });
 
+                const cookies = await page.cookies();
+                const cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+
                 let combinedPdfBytes: Uint8Array;
 
                 try {
@@ -275,15 +278,27 @@ export function registerBtuScraperImportRoutes(
 
                   for (const pdfUrl of attachedPdfUrls) {
                     try {
-                      const pdfResponse = await page.goto(pdfUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-                      if (pdfResponse) {
-                        const pdfBuffer = await pdfResponse.buffer();
-                        const attachedDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
-                        const attachedPages = await combinedDoc.copyPages(attachedDoc, attachedDoc.getPageIndices());
-                        for (const ap of attachedPages) {
-                          combinedDoc.addPage(ap);
-                        }
+                      logger.info(`Downloading attached PDF: ${pdfUrl}`, { nid, cardcheckId: cardcheck.id });
+                      const pdfFetchResponse = await fetch(pdfUrl, {
+                        headers: { 'Cookie': cookieString },
+                        redirect: 'follow',
+                      });
+                      if (!pdfFetchResponse.ok) {
+                        logger.warn(`Failed to download PDF (HTTP ${pdfFetchResponse.status}): ${pdfUrl}`);
+                        continue;
                       }
+                      const pdfArrayBuffer = await pdfFetchResponse.arrayBuffer();
+                      const pdfBuffer = Buffer.from(pdfArrayBuffer);
+                      if (pdfBuffer.length < 100) {
+                        logger.warn(`Downloaded PDF too small (${pdfBuffer.length} bytes), skipping: ${pdfUrl}`);
+                        continue;
+                      }
+                      const attachedDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
+                      const attachedPages = await combinedDoc.copyPages(attachedDoc, attachedDoc.getPageIndices());
+                      for (const ap of attachedPages) {
+                        combinedDoc.addPage(ap);
+                      }
+                      logger.info(`Successfully attached PDF (${pdfBuffer.length} bytes) from: ${pdfUrl}`, { nid });
                     } catch (attachErr) {
                       logger.warn(`Failed to download/parse attached PDF: ${pdfUrl}`, { error: attachErr });
                     }
