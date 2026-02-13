@@ -38,7 +38,6 @@ export interface WorkerFilters {
   bargainingUnitId: string;
   benefitId: string;
   contactStatus: string;
-  cardcheckFilters?: Record<string, string>;
   hasMultipleEmployers?: boolean;
 }
 
@@ -177,7 +176,6 @@ export function WorkersTable({
     bargainingUnitId: "all",
     benefitId: "all",
     contactStatus: "all",
-    cardcheckFilters: {},
   });
   
   const sortOrder = externalSortOrder ?? internalSortOrder;
@@ -194,15 +192,10 @@ export function WorkersTable({
   const contactStatusFilter = filters.contactStatus;
   const selectedEmployerTypeId = filters.employerTypeId;
   const selectedBargainingUnitId = filters.bargainingUnitId;
-  const cardcheckFilters = filters.cardcheckFilters ?? {};
   
   // Helper to update a single filter
   const updateFilter = (key: keyof WorkerFilters, value: string) => {
     setFilters({ ...filters, [key]: value });
-  };
-  
-  const setCardcheckFilters = (newFilters: Record<string, string>) => {
-    setFilters({ ...filters, cardcheckFilters: newFilters });
   };
 
   // Fetch component configs to check if trust benefits is enabled
@@ -554,23 +547,8 @@ export function WorkersTable({
       }
     }
     
-    // Cardcheck filtering is always done client-side since it's not yet supported on the server
-    if (cardcheckEnabled) {
-      const activeFilters = Object.entries(cardcheckFilters).filter(([_, value]) => value !== "all");
-      if (activeFilters.length > 0) {
-        filtered = filtered.filter(worker => {
-          const workerCardchecks = cardcheckMap.get(worker.id) || [];
-          return activeFilters.every(([definitionId, filterValue]) => {
-            const cardcheck = workerCardchecks.find(cc => cc.definitionId === definitionId);
-            const status = cardcheck?.status || 'none';
-            return status === filterValue;
-          });
-        });
-      }
-    }
-    
     return filtered;
-  }, [workersWithNames, searchQuery, selectedEmployerId, selectedEmployerTypeId, selectedBargainingUnitId, selectedBenefitId, contactStatusFilter, trustBenefitsEnabled, cardcheckEnabled, cardcheckFilters, cardcheckMap, isPaginated]);
+  }, [workersWithNames, searchQuery, selectedEmployerId, selectedEmployerTypeId, selectedBargainingUnitId, selectedBenefitId, contactStatusFilter, trustBenefitsEnabled, isPaginated]);
 
   const sortedWorkers = [...filteredWorkers].sort((a, b) => {
     const familyA = a.family || '';
@@ -905,49 +883,6 @@ export function WorkersTable({
               </label>
             </div>
             
-            {/* Card Check Status Filters - one per definition with icon */}
-            {cardcheckEnabled && cardcheckDefinitionsWithIcons.map((def) => (
-              <div key={def.id} className="w-48">
-                <Select
-                  value={cardcheckFilters[def.id] || "all"}
-                  onValueChange={(value) => setCardcheckFilters({ ...cardcheckFilters, [def.id]: value })}
-                >
-                  <SelectTrigger data-testid={`select-cardcheck-filter-${def.id}`}>
-                    <div className="flex items-center gap-2">
-                      {renderIcon(def.icon, "h-4 w-4 text-muted-foreground")}
-                      <SelectValue placeholder={`All ${def.name}`} />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All {def.name}</SelectItem>
-                    <SelectItem value="signed">
-                      <div className="flex items-center gap-2">
-                        {renderIcon(def.icon, "h-3.5 w-3.5 text-green-600")}
-                        <span>Signed</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="pending">
-                      <div className="flex items-center gap-2">
-                        {renderIcon(def.icon, "h-3.5 w-3.5 text-yellow-500")}
-                        <span>Pending signature</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="none">
-                      <div className="flex items-center gap-2">
-                        {renderIcon(def.icon, "h-3.5 w-3.5 text-yellow-500")}
-                        <span>None on file</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="revoked">
-                      <div className="flex items-center gap-2">
-                        {renderIcon(def.icon, "h-3.5 w-3.5 text-red-600")}
-                        <span>Revoked</span>
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            ))}
           </div>
         </div>
 
