@@ -62,6 +62,7 @@ export {
   type JobTypeEligibility,
   type EligibilityPluginMetadata,
   type JobTypeData,
+  type DispatchJobData,
   type PluginConfigField,
   type NotificationMedia,
 } from "./schema/dispatch/eligibility-config";

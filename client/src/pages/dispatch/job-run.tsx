@@ -115,7 +115,7 @@ function DispatchJobRunContent() {
 
 export default function DispatchJobRunPage() {
   return (
-    <DispatchJobLayout activeTab="run">
+    <DispatchJobLayout activeTab="run-control">
       <DispatchJobRunContent />
     </DispatchJobLayout>
   );

@@ -43,3 +43,8 @@ export interface JobTypeData {
   offerRatio?: number;
   offerTimeout?: number;
 }
+
+export interface DispatchJobData {
+  offerRatio?: number;
+  offerTimeout?: number;
+}
