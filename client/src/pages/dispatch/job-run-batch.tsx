@@ -119,8 +119,7 @@ function RunBatchContent() {
 
   const pollMutation = useMutation({
     mutationFn: async (mode: "test" | "live") => {
-      const res = await apiRequest("POST", `/api/dispatch-jobs/${job.id}/poll`, { mode });
-      return res.json() as Promise<PollResult>;
+      return await apiRequest("POST", `/api/dispatch-jobs/${job.id}/poll`, { mode }) as PollResult;
     },
     onSuccess: (data) => {
       setPollResult(data);
