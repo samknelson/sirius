@@ -40,4 +40,6 @@ export interface JobTypeData {
   minWorkers?: number;
   maxWorkers?: number;
   notificationMedia?: NotificationMedia[];
+  offerRatio?: number;
+  offerTimeout?: number;
 }

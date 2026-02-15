@@ -177,6 +177,7 @@ const DispatchJobTypeEditPage = lazy(() => import("@/pages/config/dispatch-job-t
 const DispatchJobTypeDeletePage = lazy(() => import("@/pages/config/dispatch-job-type-delete"));
 const DispatchJobTypePluginsPage = lazy(() => import("@/pages/config/dispatch-job-type-plugins"));
 const DispatchJobTypeNotificationsPage = lazy(() => import("@/pages/config/dispatch-job-type-notifications"));
+const DispatchJobTypeRunSettingsPage = lazy(() => import("@/pages/config/dispatch-job-type-run-settings"));
 const DispatchDncConfigPage = lazy(() => import("@/pages/config/dispatch-dnc"));
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
@@ -1643,6 +1644,14 @@ function Router() {
         <ProtectedRoute tabId="notifications" entityType="dispatch_job_type">
           <AuthenticatedLayout>
             <DispatchJobTypeNotificationsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/dispatch-job-type/:id/run-settings">
+        <ProtectedRoute tabId="run-settings" entityType="dispatch_job_type">
+          <AuthenticatedLayout>
+            <DispatchJobTypeRunSettingsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
