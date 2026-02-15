@@ -271,6 +271,7 @@ export const dispatchJobTabTree: HierarchicalTab[] = [
     component: 'dispatch',
     children: [
       { id: 'run-control', label: 'Run', hrefTemplate: '/dispatch/job/{id}/run/control', permission: 'staff', component: 'dispatch' },
+      { id: 'run-batch', label: 'Batch', hrefTemplate: '/dispatch/job/{id}/run/batch', permission: 'staff', component: 'dispatch' },
       { id: 'run-settings', label: 'Settings', hrefTemplate: '/dispatch/job/{id}/run/settings', permission: 'staff', component: 'dispatch' },
     ]
   },
