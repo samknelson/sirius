@@ -65,10 +65,12 @@ export const dispatches = pgTable("dispatches", {
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   commIds: varchar("comm_ids").array(),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const insertDispatchSchema = createInsertSchema(dispatches).omit({
   id: true,
+  createdAt: true,
 }).extend({
   startDate: z.coerce.date().optional().nullable(),
   endDate: z.coerce.date().optional().nullable(),

@@ -144,11 +144,116 @@ async function phaseFinalize(ctx: PollContext): Promise<void> {
 }
 
 async function phaseExpire(ctx: PollContext): Promise<void> {
-  ctx.phases.push({
-    phase: "expire",
-    status: "stub",
-    message: "Expire phase not yet implemented",
-  });
+  const job = await storage.dispatchJobs.getWithRelations(ctx.jobId);
+  if (!job) {
+    ctx.phases.push({
+      phase: "expire",
+      status: "failed",
+      message: "Job not found",
+    });
+    ctx.exitedAtPhase = "expire";
+    ctx.shouldExit = true;
+    return;
+  }
+
+  const jobData = job.data as DispatchJobData | undefined;
+  const jobTypeData = job.jobType?.data as import("@shared/schema").JobTypeData | undefined;
+  const offerTimeout = jobData?.offerTimeout ?? jobTypeData?.offerTimeout;
+
+  if (offerTimeout == null) {
+    ctx.phases.push({
+      phase: "expire",
+      status: "passed",
+      message: "No offer timeout configured, nothing to expire",
+    });
+    return;
+  }
+
+  const allDispatches = await storage.dispatches.getByJob(ctx.jobId);
+  const expirable = allDispatches.filter(
+    (d) => d.status === "pending" || d.status === "notified"
+  );
+
+  if (expirable.length === 0) {
+    ctx.phases.push({
+      phase: "expire",
+      status: "passed",
+      message: "No pending or notified dispatches to expire",
+    });
+    return;
+  }
+
+  const now = Date.now();
+  const timeoutMs = offerTimeout * 60 * 1000;
+
+  const expired: { id: string; workerName: string; status: string }[] = [];
+  const notExpired: { id: string; workerName: string; ageMinutes: number }[] = [];
+  const errors: { id: string; workerName: string; error: string }[] = [];
+
+  for (const dispatch of expirable) {
+    const createdAt = new Date(dispatch.createdAt).getTime();
+    const ageMs = now - createdAt;
+    const ageMinutes = Math.round(ageMs / 60000);
+    const workerName = getDispatchWorkerName(dispatch);
+
+    if (ageMs >= timeoutMs) {
+      if (ctx.mode === "live") {
+        const result = await storage.dispatches.setStatus(dispatch.id, "declined");
+        if (result.success) {
+          expired.push({ id: dispatch.id, workerName, status: dispatch.status });
+          logger.info("Poll expired dispatch", {
+            service: SERVICE_NAME,
+            dispatchId: dispatch.id,
+            workerName,
+            previousStatus: dispatch.status,
+            ageMinutes,
+            offerTimeout,
+          });
+        } else {
+          errors.push({ id: dispatch.id, workerName, error: result.error ?? "Unknown error" });
+        }
+      } else {
+        expired.push({ id: dispatch.id, workerName, status: dispatch.status });
+      }
+    } else {
+      notExpired.push({ id: dispatch.id, workerName, ageMinutes });
+    }
+  }
+
+  const expiredNames = expired.map((e) => e.workerName);
+  const actionWord = ctx.mode === "live" ? "Declined" : "Would decline";
+
+  if (expired.length > 0) {
+    ctx.phases.push({
+      phase: "expire",
+      status: "passed",
+      message: `${actionWord} ${expired.length} dispatch(es): ${expiredNames.join(", ")}`,
+      details: {
+        offerTimeout,
+        expired,
+        notExpired: notExpired.length,
+        errors: errors.length > 0 ? errors : undefined,
+      },
+    });
+  } else {
+    ctx.phases.push({
+      phase: "expire",
+      status: "passed",
+      message: `No dispatches exceeded the ${offerTimeout}-minute timeout (${notExpired.length} still within window)`,
+      details: {
+        offerTimeout,
+        notExpired,
+      },
+    });
+  }
+}
+
+function getDispatchWorkerName(dispatch: { worker?: { contact?: { given: string | null; family: string | null; displayName: string | null } | null } | null }): string {
+  const contact = dispatch.worker?.contact;
+  if (!contact) return "Unknown Worker";
+  if (contact.displayName) return contact.displayName;
+  const name = `${contact.given || ""} ${contact.family || ""}`.trim();
+  return name || "Unknown Worker";
 }
 
 async function phaseCreate(ctx: PollContext): Promise<void> {
