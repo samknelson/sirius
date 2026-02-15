@@ -1,12 +1,17 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { DispatchJobLayout, useDispatchJobLayout } from "@/components/layouts/DispatchJobLayout";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Users, CheckCircle, XCircle, Bell, Clock, Pause, LogOut, Percent, Timer,
+  Play, FlaskConical, Loader2, AlertTriangle, MinusCircle,
   type LucideIcon
 } from "lucide-react";
-import type { JobTypeData, DispatchJobData } from "@shared/schema";
+import type { JobTypeData, DispatchJobData, PollResult, PollPhaseResult, PollPhaseStatus } from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface DispatchStatusCounts {
   pending: number;
@@ -26,12 +31,77 @@ const statusConfig: Record<keyof DispatchStatusCounts, { label: string; icon: Lu
   resigned: { label: "Resigned", icon: LogOut, color: "text-muted-foreground" },
 };
 
+const phaseStatusConfig: Record<PollPhaseStatus, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: LucideIcon }> = {
+  passed: { label: "Passed", variant: "default", icon: CheckCircle },
+  failed: { label: "Failed", variant: "destructive", icon: XCircle },
+  skipped: { label: "Skipped", variant: "secondary", icon: MinusCircle },
+  stub: { label: "Stub", variant: "outline", icon: AlertTriangle },
+};
+
 interface EligibleWorkersResponse {
   total: number;
 }
 
+function PollResultDisplay({ result }: { result: PollResult }) {
+  const timestamp = new Date(result.timestamp);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Badge variant={result.mode === "live" ? "default" : "secondary"} data-testid="badge-poll-mode">
+            {result.mode === "live" ? "Live" : "Test"}
+          </Badge>
+          {result.exitedAtPhase && (
+            <span className="text-sm text-muted-foreground" data-testid="text-poll-exit">
+              Exited at: {result.exitedAtPhase}
+            </span>
+          )}
+        </div>
+        <span className="text-xs text-muted-foreground" data-testid="text-poll-timestamp">
+          {timestamp.toLocaleString()}
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {result.phases.map((phase, idx) => (
+          <PhaseResultRow key={idx} phase={phase} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PhaseResultRow({ phase }: { phase: PollPhaseResult }) {
+  const config = phaseStatusConfig[phase.status];
+  const Icon = config.icon;
+
+  return (
+    <div
+      className="flex items-start gap-3 p-2 rounded-md bg-muted/50"
+      data-testid={`poll-phase-${phase.phase}`}
+    >
+      <Icon className={`h-4 w-4 mt-0.5 shrink-0 ${
+        phase.status === "passed" ? "text-green-600 dark:text-green-400" :
+        phase.status === "failed" ? "text-red-600 dark:text-red-400" :
+        "text-muted-foreground"
+      }`} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium capitalize">{phase.phase}</span>
+          <Badge variant={config.variant} className="text-xs">
+            {config.label}
+          </Badge>
+        </div>
+        <p className="text-sm text-muted-foreground mt-0.5">{phase.message}</p>
+      </div>
+    </div>
+  );
+}
+
 function RunBatchContent() {
   const { job } = useDispatchJobLayout();
+  const [pollResult, setPollResult] = useState<PollResult | null>(null);
 
   const jobData = job.data as DispatchJobData | undefined;
   const jobTypeData = job.jobType?.data as JobTypeData | undefined;
@@ -46,6 +116,22 @@ function RunBatchContent() {
   const { data: eligibleData, isLoading: eligLoading } = useQuery<EligibleWorkersResponse>({
     queryKey: [`/api/dispatch-jobs/${job.id}/eligible-workers?limit=1&offset=0`],
   });
+
+  const pollMutation = useMutation({
+    mutationFn: async (mode: "test" | "live") => {
+      const res = await apiRequest("POST", `/api/dispatch-jobs/${job.id}/poll`, { mode });
+      return res.json() as Promise<PollResult>;
+    },
+    onSuccess: (data) => {
+      setPollResult(data);
+      if (data.mode === "live") {
+        queryClient.invalidateQueries({ queryKey: ['/api/dispatch-jobs', job.id] });
+      }
+    },
+  });
+
+  const lastStoredPoll = jobData?.lastPollResult;
+  const displayResult = pollResult || lastStoredPoll;
 
   return (
     <div className="space-y-4">
@@ -164,6 +250,55 @@ function RunBatchContent() {
               </p>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+          <CardTitle data-testid="title-poll">Poll</CardTitle>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => pollMutation.mutate("test")}
+              disabled={pollMutation.isPending}
+              data-testid="button-poll-test"
+            >
+              {pollMutation.isPending && pollMutation.variables === "test" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FlaskConical className="h-4 w-4" />
+              )}
+              <span className="ml-1">Test</span>
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => pollMutation.mutate("live")}
+              disabled={pollMutation.isPending}
+              data-testid="button-poll-live"
+            >
+              {pollMutation.isPending && pollMutation.variables === "live" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4" />
+              )}
+              <span className="ml-1">Live</span>
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {pollMutation.isError && (
+            <div className="text-sm text-red-600 dark:text-red-400 mb-3" data-testid="text-poll-error">
+              Failed to run poll. Please try again.
+            </div>
+          )}
+          {displayResult ? (
+            <PollResultDisplay result={displayResult} />
+          ) : (
+            <p className="text-sm text-muted-foreground" data-testid="text-poll-empty">
+              No poll results yet. Run a test or live poll to see results.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

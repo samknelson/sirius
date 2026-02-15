@@ -44,7 +44,24 @@ export interface JobTypeData {
   offerTimeout?: number;
 }
 
+export type PollPhaseStatus = 'passed' | 'failed' | 'skipped' | 'stub';
+
+export interface PollPhaseResult {
+  phase: string;
+  status: PollPhaseStatus;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+export interface PollResult {
+  mode: 'test' | 'live';
+  timestamp: string;
+  phases: PollPhaseResult[];
+  exitedAtPhase?: string;
+}
+
 export interface DispatchJobData {
   offerRatio?: number;
   offerTimeout?: number;
+  lastPollResult?: PollResult;
 }

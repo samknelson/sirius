@@ -8,6 +8,7 @@ import type { DispatchJobFilters } from "../storage/dispatch-jobs";
 import { dispatchEligPluginRegistry } from "../services/dispatch-elig-plugin-registry";
 import { createDispatchEligibleWorkersStorage } from "../storage/dispatch-eligible-workers";
 import { isComponentEnabledSync } from "../services/component-cache";
+import { runPoll } from "../services/dispatch-poll";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
@@ -322,6 +323,30 @@ export function registerDispatchJobsRoutes(
     } catch (error) {
       console.error("Failed to check worker eligibility:", error);
       res.status(500).json({ message: "Failed to check worker eligibility" });
+    }
+  });
+
+  app.post("/api/dispatch-jobs/:id/poll", dispatchComponent, requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { mode } = req.body;
+
+      if (mode !== "test" && mode !== "live") {
+        res.status(400).json({ message: "Mode must be 'test' or 'live'" });
+        return;
+      }
+
+      const job = await storage.dispatchJobs.get(id);
+      if (!job) {
+        res.status(404).json({ message: "Dispatch job not found" });
+        return;
+      }
+
+      const result = await runPoll(id, mode);
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to run poll:", error);
+      res.status(500).json({ message: "Failed to run poll" });
     }
   });
 }

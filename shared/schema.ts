@@ -65,6 +65,9 @@ export {
   type DispatchJobData,
   type PluginConfigField,
   type NotificationMedia,
+  type PollPhaseStatus,
+  type PollPhaseResult,
+  type PollResult,
 } from "./schema/dispatch/eligibility-config";
 
 export {
