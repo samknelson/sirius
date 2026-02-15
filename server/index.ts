@@ -42,6 +42,7 @@ import { initWorkerBanNotifications } from "./services/worker-ban-notifications"
 
 // Import dispatch notifications
 import { initDispatchNotifications } from "./services/dispatch-notifications";
+import { initDispatchSeniorityReset } from "./services/dispatch-seniority-reset";
 
 // Import modular access policies (triggers registration via loader)
 import "@shared/access-policies/loader";
@@ -199,6 +200,10 @@ app.use((req, res, next) => {
   // Initialize dispatch notifications
   initDispatchNotifications();
   logger.info("Dispatch notifications initialized", { source: "startup" });
+
+  // Initialize dispatch seniority reset
+  initDispatchSeniorityReset();
+  logger.info("Dispatch seniority reset initialized", { source: "startup" });
 
   // Register charge plugin event listeners
   // Note: Charge plugins are currently called directly from storage for backwards compatibility.
