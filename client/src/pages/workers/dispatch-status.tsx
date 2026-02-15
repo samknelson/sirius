@@ -80,14 +80,19 @@ function DispatchStatusContent() {
   const handleEditSeniority = () => {
     setEditSeniorityDate(
       dispatchStatus?.seniorityDate
-        ? format(new Date(dispatchStatus.seniorityDate), "yyyy-MM-dd")
+        ? format(new Date(dispatchStatus.seniorityDate), "yyyy-MM-dd'T'HH:mm:ss")
         : ""
     );
     setIsEditingSeniority(true);
   };
 
   const handleSaveSeniority = () => {
-    seniorityMutation.mutate(editSeniorityDate || null);
+    if (!editSeniorityDate) {
+      seniorityMutation.mutate(null);
+      return;
+    }
+    const isoString = new Date(editSeniorityDate).toISOString();
+    seniorityMutation.mutate(isoString);
   };
 
   if (isLoading) {
@@ -177,7 +182,8 @@ function DispatchStatusContent() {
           {isEditingSeniority ? (
             <div className="space-y-3">
               <Input
-                type="date"
+                type="datetime-local"
+                step="1"
                 value={editSeniorityDate}
                 onChange={(e) => setEditSeniorityDate(e.target.value)}
                 data-testid="input-seniority-date"
@@ -197,7 +203,7 @@ function DispatchStatusContent() {
             <div className="flex items-center gap-2" data-testid="text-seniority-date">
               <Calendar className="h-4 w-4 text-muted-foreground" />
               {dispatchStatus?.seniorityDate ? (
-                <span>{format(new Date(dispatchStatus.seniorityDate), "MMMM d, yyyy")}</span>
+                <span>{format(new Date(dispatchStatus.seniorityDate), "MMMM d, yyyy h:mm:ss a")}</span>
               ) : (
                 <span className="text-muted-foreground">Not set</span>
               )}

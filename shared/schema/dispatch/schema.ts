@@ -85,7 +85,7 @@ export const workerDispatchStatus = pgTable("worker_dispatch_status", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   workerId: varchar("worker_id").notNull().unique().references(() => workers.id, { onDelete: 'cascade' }),
   status: varchar("status").notNull().default("available"),
-  seniorityDate: timestamp("seniority_date"),
+  seniorityDate: timestamp("seniority_date", { withTimezone: true }),
 });
 
 export const insertWorkerDispatchStatusSchema = createInsertSchema(workerDispatchStatus).omit({

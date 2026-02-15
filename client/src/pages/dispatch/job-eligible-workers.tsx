@@ -327,7 +327,7 @@ function EligibleWorkersContent() {
                     {worker.displayName || "Unnamed Worker"}
                   </TableCell>
                   <TableCell className="text-muted-foreground" data-testid={`text-worker-seniority-${worker.id}`}>
-                    {worker.seniorityDate ? new Date(worker.seniorityDate).toLocaleDateString() : "\u2014"}
+                    {worker.seniorityDate ? new Date(worker.seniorityDate).toLocaleString() : "\u2014"}
                   </TableCell>
                   <TableCell className="text-right">
                     <Link href={`/workers/${worker.id}`}>
