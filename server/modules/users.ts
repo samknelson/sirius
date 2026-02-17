@@ -7,7 +7,7 @@ import {
   assignPermissionSchema
 } from "@shared/schema";
 import { requireAccess, clearAccessCache } from "../services/access-policy-evaluator";
-import { provisionClerkAccount } from "../services/clerk-provisioning";
+import { checkClerkConflict, provisionClerkAccount } from "../services/clerk-provisioning";
 
 // Type for middleware functions that we'll accept from the main routes
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -119,6 +119,13 @@ export function registerUserRoutes(
         return res.status(409).json({ message: "User with this email already exists" });
       }
 
+      const clerkCheck = await checkClerkConflict(userData.email);
+      if (clerkCheck.conflict) {
+        return res.status(409).json({ 
+          message: "This email is already associated with a Clerk account linked to another user." 
+        });
+      }
+
       const user = await storage.users.createUser(userData);
 
       const clerkResult = await provisionClerkAccount({
@@ -126,6 +133,7 @@ export function registerUserRoutes(
         email: userData.email,
         firstName: userData.firstName,
         lastName: userData.lastName,
+        existingClerkUserId: clerkCheck.existingClerkUserId,
       });
 
       const updatedUser = await storage.users.getUser(user.id);

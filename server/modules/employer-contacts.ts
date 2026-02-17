@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { insertContactSchema, type InsertContact } from "@shared/schema";
 import { requireAccess } from "../services/access-policy-evaluator";
-import { provisionClerkAccount } from "../services/clerk-provisioning";
+import { checkClerkConflict, provisionClerkAccount } from "../services/clerk-provisioning";
 import { z } from "zod";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -317,10 +317,17 @@ export function registerEmployerContactRoutes(
         });
       }
       
-      // Check if user exists
       let user = await storage.users.getUserByEmail(email);
+      let clerkWarning: string | undefined;
       
       if (!user) {
+        const clerkCheck = await checkClerkConflict(email);
+        if (clerkCheck.conflict) {
+          return res.status(409).json({ 
+            message: "This email is already associated with a Clerk account linked to another user." 
+          });
+        }
+
         user = await storage.users.createUser({
           email,
           firstName: firstName || null,
@@ -334,10 +341,13 @@ export function registerEmployerContactRoutes(
           email,
           firstName: firstName || null,
           lastName: lastName || null,
+          existingClerkUserId: clerkCheck.existingClerkUserId,
         });
 
         if (clerkResult.success) {
           user = await storage.users.getUser(user.id) || user;
+        } else if (clerkResult.warning) {
+          clerkWarning = clerkResult.warning;
         }
       } else {
         // Update existing user
@@ -406,7 +416,7 @@ export function registerEmployerContactRoutes(
       const updatedRoles = await storage.users.getUserRoles(user.id);
       const updatedRoleIds = updatedRoles.map(r => r.id);
       
-      res.json({
+      const responseData: any = {
         user: {
           id: user.id,
           email: user.email,
@@ -416,7 +426,11 @@ export function registerEmployerContactRoutes(
           accountStatus: user.accountStatus,
         },
         userRoleIds: updatedRoleIds,
-      });
+      };
+      if (clerkWarning) {
+        responseData.clerkWarning = clerkWarning;
+      }
+      res.json(responseData);
     } catch (error) {
       console.error("Error creating/updating employer contact user:", error);
       res.status(500).json({ message: "Failed to create or update user" });

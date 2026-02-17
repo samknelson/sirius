@@ -2,34 +2,29 @@ import { createClerkClient } from "@clerk/express";
 import { storage } from "../storage";
 import { logger } from "../logger";
 
+export interface ClerkConflictCheckResult {
+  configured: boolean;
+  conflict: boolean;
+  conflictUserId?: string;
+  existingClerkUserId?: string;
+}
+
 export interface ClerkProvisioningResult {
   success: boolean;
   clerkUserId?: string;
   warning?: string;
-  conflictUserId?: string;
 }
 
-export async function provisionClerkAccount(params: {
-  userId: string;
-  email: string;
-  firstName?: string | null;
-  lastName?: string | null;
-}): Promise<ClerkProvisioningResult> {
-  const { userId, email, firstName, lastName } = params;
-
+function getClerkClient() {
   const clerkSecretKey = process.env.CLERK_SECRET_KEY;
   const clerkPublishableKey = process.env.CLERK_PUBLISHABLE_KEY || process.env.VITE_CLERK_PUBLISHABLE_KEY;
+  if (!clerkSecretKey || !clerkPublishableKey) return null;
+  return createClerkClient({ secretKey: clerkSecretKey, publishableKey: clerkPublishableKey });
+}
 
-  if (!clerkSecretKey || !clerkPublishableKey) {
-    return {
-      success: false,
-      warning: "Clerk is not configured. User will need to sign up manually.",
-    };
-  }
-
-  const clerk = createClerkClient({ secretKey: clerkSecretKey, publishableKey: clerkPublishableKey });
-
-  let clerkUserId: string | undefined;
+export async function checkClerkConflict(email: string): Promise<ClerkConflictCheckResult> {
+  const clerk = getClerkClient();
+  if (!clerk) return { configured: false, conflict: false };
 
   try {
     const existingClerkUsers = await clerk.users.getUserList({
@@ -40,34 +35,24 @@ export async function provisionClerkAccount(params: {
       const existingClerkUser = existingClerkUsers.data[0];
       const existingIdentity = await storage.authIdentities.getByProviderAndExternalId("clerk", existingClerkUser.id);
 
-      if (existingIdentity && existingIdentity.userId !== userId) {
+      if (existingIdentity) {
         logger.warn("Clerk account already linked to another user", {
           email,
           clerkUserId: existingClerkUser.id,
           existingUserId: existingIdentity.userId,
-          requestedUserId: userId,
         });
         return {
-          success: false,
-          warning: "This email is already associated with a Clerk account linked to another user.",
+          configured: true,
+          conflict: true,
           conflictUserId: existingIdentity.userId,
         };
       }
 
-      if (existingIdentity && existingIdentity.userId === userId) {
-        logger.info("Clerk account already linked to this user", {
-          userId,
-          clerkUserId: existingClerkUser.id,
-        });
-        return { success: true, clerkUserId: existingClerkUser.id };
-      }
-
-      clerkUserId = existingClerkUser.id;
-      logger.info("Found existing unlinked Clerk account", {
-        userId,
-        clerkUserId: existingClerkUser.id,
-        email,
-      });
+      return {
+        configured: true,
+        conflict: false,
+        existingClerkUserId: existingClerkUser.id,
+      };
     }
   } catch (lookupErr) {
     logger.warn("Failed to look up existing Clerk user, proceeding with creation", {
@@ -75,6 +60,28 @@ export async function provisionClerkAccount(params: {
       error: lookupErr,
     });
   }
+
+  return { configured: true, conflict: false };
+}
+
+export async function provisionClerkAccount(params: {
+  userId: string;
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  existingClerkUserId?: string;
+}): Promise<ClerkProvisioningResult> {
+  const { userId, email, firstName, lastName, existingClerkUserId } = params;
+
+  const clerk = getClerkClient();
+  if (!clerk) {
+    return {
+      success: false,
+      warning: "Clerk is not configured. User will need to sign up manually.",
+    };
+  }
+
+  let clerkUserId = existingClerkUserId;
 
   try {
     if (!clerkUserId) {
