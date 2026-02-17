@@ -7,7 +7,7 @@ import {
   type WorkerDispatchEba, 
   type InsertWorkerDispatchEba
 } from "@shared/schema";
-import { eq, and, inArray, lt } from "drizzle-orm";
+import { eq, and, inArray, lt, or, gt } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { eventBus, EventType } from "../services/event-bus";
 
@@ -19,6 +19,7 @@ export interface WorkerDispatchEbaStorage {
   getByWorker(workerId: string): Promise<WorkerDispatchEba[]>;
   syncDatesForWorker(workerId: string, dates: string[]): Promise<WorkerDispatchEba[]>;
   findExpired(daysAgo: number): Promise<WorkerDispatchEba[]>;
+  trimToDateRange(minYmd: string, maxYmd: string): Promise<string[]>;
   delete(id: string): Promise<boolean>;
 }
 
