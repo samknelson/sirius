@@ -52,15 +52,9 @@ export function registerWorkerDispatchEbaRoutes(
       const uniqueDates = Array.from(new Set(validated.dates));
       
       const { min, max } = await getValidDateRange();
-      const invalidDates = uniqueDates.filter(d => d < min || d > max);
-      if (invalidDates.length > 0) {
-        return res.status(400).json({ 
-          error: "Invalid dates", 
-          details: `Dates must be between ${min} and ${max}. Invalid: ${invalidDates.join(', ')}` 
-        });
-      }
+      const validDates = uniqueDates.filter(d => d >= min && d <= max);
       
-      const result = await storage.syncDatesForWorker(req.params.workerId, uniqueDates);
+      const result = await storage.syncDatesForWorker(req.params.workerId, validDates);
       res.json(result);
     } catch (error) {
       if (error instanceof z.ZodError) {
