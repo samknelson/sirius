@@ -120,43 +120,55 @@ export function registerUserRoutes(
         return res.status(409).json({ message: "User with this email already exists" });
       }
 
-      const user = await storage.users.createUser(userData);
-
+      let clerkWarning: string | undefined;
+      let clerkUserId: string | undefined;
       const clerkSecretKey = process.env.CLERK_SECRET_KEY;
       const clerkPublishableKey = process.env.CLERK_PUBLISHABLE_KEY || process.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+      if (clerkSecretKey && clerkPublishableKey) {
+        const clerk = createClerkClient({ secretKey: clerkSecretKey, publishableKey: clerkPublishableKey });
+
+        try {
+          const existingClerkUsers = await clerk.users.getUserList({
+            emailAddress: [userData.email],
+          });
+          if (existingClerkUsers.data.length > 0) {
+            const existingClerkUser = existingClerkUsers.data[0];
+            const existingIdentity = await storage.authIdentities.getByProviderAndExternalId("clerk", existingClerkUser.id);
+            if (existingIdentity) {
+              return res.status(409).json({ 
+                message: "This email is already associated with an existing Clerk account linked to another user." 
+              });
+            }
+            clerkUserId = existingClerkUser.id;
+            logger.info("Found existing unlinked Clerk account for provisioned user", {
+              clerkUserId: existingClerkUser.id,
+              email: userData.email,
+            });
+          }
+        } catch (lookupErr) {
+          logger.warn("Failed to look up existing Clerk user, proceeding with creation", { error: lookupErr });
+        }
+      }
+
+      const user = await storage.users.createUser(userData);
 
       if (clerkSecretKey && clerkPublishableKey) {
         try {
           const clerk = createClerkClient({ secretKey: clerkSecretKey, publishableKey: clerkPublishableKey });
 
-          let clerkUser;
-          try {
-            const existingClerkUsers = await clerk.users.getUserList({
-              emailAddress: [userData.email],
-            });
-            if (existingClerkUsers.data.length > 0) {
-              clerkUser = existingClerkUsers.data[0];
-              logger.info("Found existing Clerk account for provisioned user", {
-                userId: user.id,
-                clerkUserId: clerkUser.id,
-                email: userData.email,
-              });
-            }
-          } catch (lookupErr) {
-            logger.warn("Failed to look up existing Clerk user", { error: lookupErr });
-          }
-
-          if (!clerkUser) {
-            clerkUser = await clerk.users.createUser({
+          if (!clerkUserId) {
+            const newClerkUser = await clerk.users.createUser({
               emailAddress: [userData.email],
               firstName: userData.firstName || undefined,
               lastName: userData.lastName || undefined,
               skipPasswordChecks: true,
               skipPasswordRequirement: true,
             });
+            clerkUserId = newClerkUser.id;
             logger.info("Created Clerk account for provisioned user", {
               userId: user.id,
-              clerkUserId: clerkUser.id,
+              clerkUserId: newClerkUser.id,
               email: userData.email,
             });
           }
@@ -164,7 +176,7 @@ export function registerUserRoutes(
           await storage.authIdentities.create({
             userId: user.id,
             providerType: "clerk",
-            externalId: clerkUser.id,
+            externalId: clerkUserId,
             email: userData.email,
             displayName: `${userData.firstName || ""} ${userData.lastName || ""}`.trim() || undefined,
           });
@@ -175,20 +187,21 @@ export function registerUserRoutes(
 
           logger.info("Auth identity linked for provisioned user", {
             userId: user.id,
-            clerkUserId: clerkUser.id,
+            clerkUserId,
           });
         } catch (clerkErr: any) {
-          logger.error("Failed to create Clerk account for provisioned user", {
+          logger.error("Failed to create/link Clerk account for provisioned user", {
             userId: user.id,
             email: userData.email,
             error: clerkErr?.message || clerkErr,
           });
+          clerkWarning = "Clerk account could not be created automatically. User will need to sign up manually.";
         }
       }
 
       const updatedUser = await storage.users.getUser(user.id);
 
-      res.status(201).json({ 
+      const responseData: any = { 
         id: updatedUser?.id || user.id, 
         email: updatedUser?.email || user.email,
         firstName: updatedUser?.firstName || user.firstName,
@@ -196,7 +209,11 @@ export function registerUserRoutes(
         accountStatus: updatedUser?.accountStatus || user.accountStatus,
         isActive: updatedUser?.isActive ?? user.isActive, 
         createdAt: updatedUser?.createdAt || user.createdAt 
-      });
+      };
+      if (clerkWarning) {
+        responseData.clerkWarning = clerkWarning;
+      }
+      res.status(201).json(responseData);
     } catch (error) {
       if (error instanceof Error && error.name === "ZodError") {
         res.status(400).json({ message: "Invalid user data" });
