@@ -89,7 +89,7 @@ export default function DispatchJobNewPage() {
       employerId: "",
       jobTypeId: "",
       status: "draft",
-      startDate: format(new Date(), "yyyy-MM-dd"),
+      startDate: getTodayYmd(),
       workerCount: "",
     },
   });
@@ -279,7 +279,7 @@ export default function DispatchJobNewPage() {
 
                 <FormField
                   control={form.control}
-                  name="startYmd"
+                  name="startDate"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Start Date *</FormLabel>
