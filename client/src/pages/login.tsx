@@ -3,13 +3,14 @@ import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, LogIn, UserPlus } from 'lucide-react';
-import { SignInButton, SignedIn, SignedOut } from '@clerk/clerk-react';
+import { Loader2, LogIn, LogOut, UserPlus } from 'lucide-react';
+import { SignInButton, SignedIn, SignedOut, useClerk } from '@clerk/clerk-react';
 
 const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 function ClerkNotProvisionedMessage() {
   const [, setLocation] = useLocation();
+  const { signOut } = useClerk();
 
   return (
     <div className="space-y-4">
@@ -27,6 +28,16 @@ function ClerkNotProvisionedMessage() {
         data-testid="button-clerk-retry"
       >
         Refresh
+      </Button>
+
+      <Button
+        variant="outline"
+        className="w-full"
+        onClick={() => signOut({ redirectUrl: "/login" })}
+        data-testid="button-clerk-signout"
+      >
+        <LogOut className="mr-2 h-4 w-4" />
+        Sign Out
       </Button>
     </div>
   );

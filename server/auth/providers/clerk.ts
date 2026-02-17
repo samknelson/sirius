@@ -182,7 +182,17 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
 
       app.use(async (req, _res, next) => {
         if (req.isAuthenticated?.() && req.user) {
-          return next();
+          const existingUser = req.user as AuthenticatedUser;
+          if (!existingUser.expires_at || Math.floor(Date.now() / 1000) <= existingUser.expires_at) {
+            return next();
+          }
+          logger.debug("Clearing expired session before Clerk re-auth", {
+            providerType: existingUser.providerType,
+          });
+          req.logout(() => {});
+          if (req.session) {
+            (req as any).user = undefined;
+          }
         }
 
         try {
