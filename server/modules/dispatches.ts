@@ -23,7 +23,8 @@ export function registerDispatchesRoutes(
       
       const dispatches = await storage.dispatches.getByJob(jobId);
       res.json(dispatches);
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Failed to fetch dispatches by job:", error?.message || error);
       res.status(500).json({ message: "Failed to fetch dispatches" });
     }
   });
@@ -84,7 +85,8 @@ export function registerDispatchesRoutes(
       
       const dispatch = await storage.dispatches.create(parsed.data);
       res.status(201).json(dispatch);
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Failed to create dispatch:", error?.message || error);
       res.status(500).json({ message: "Failed to create dispatch" });
     }
   });
