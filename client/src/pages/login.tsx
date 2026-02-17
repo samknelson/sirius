@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, LogIn, UserPlus } from 'lucide-react';
-import { SignInButton, SignUpButton, SignedIn, SignedOut } from '@clerk/clerk-react';
+import { SignInButton, SignedIn, SignedOut } from '@clerk/clerk-react';
 
 const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 

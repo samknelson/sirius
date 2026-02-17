@@ -1,4 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import { createClerkClient } from "@clerk/express";
 import { storage } from "../storage";
 import { 
   createUserSchema,
@@ -7,6 +8,7 @@ import {
   assignPermissionSchema
 } from "@shared/schema";
 import { requireAccess, clearAccessCache } from "../services/access-policy-evaluator";
+import { logger } from "../logger";
 
 // Type for middleware functions that we'll accept from the main routes
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -108,12 +110,11 @@ export function registerUserRoutes(
   });
 
   // POST /api/admin/users - Create user (admin only, email-based provisioning)
-  // MIGRATED to new access control system
+  // Automatically creates a Clerk account and links auth identity
   app.post("/api/admin/users", requireAccess('admin'), async (req, res) => {
     try {
       const userData = createUserSchema.parse(req.body);
       
-      // Check if user with this email already exists
       const existingUser = await storage.users.getUserByEmail(userData.email);
       if (existingUser) {
         return res.status(409).json({ message: "User with this email already exists" });
@@ -121,14 +122,80 @@ export function registerUserRoutes(
 
       const user = await storage.users.createUser(userData);
 
+      const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+      const clerkPublishableKey = process.env.CLERK_PUBLISHABLE_KEY || process.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+      if (clerkSecretKey && clerkPublishableKey) {
+        try {
+          const clerk = createClerkClient({ secretKey: clerkSecretKey, publishableKey: clerkPublishableKey });
+
+          let clerkUser;
+          try {
+            const existingClerkUsers = await clerk.users.getUserList({
+              emailAddress: [userData.email],
+            });
+            if (existingClerkUsers.data.length > 0) {
+              clerkUser = existingClerkUsers.data[0];
+              logger.info("Found existing Clerk account for provisioned user", {
+                userId: user.id,
+                clerkUserId: clerkUser.id,
+                email: userData.email,
+              });
+            }
+          } catch (lookupErr) {
+            logger.warn("Failed to look up existing Clerk user", { error: lookupErr });
+          }
+
+          if (!clerkUser) {
+            clerkUser = await clerk.users.createUser({
+              emailAddress: [userData.email],
+              firstName: userData.firstName || undefined,
+              lastName: userData.lastName || undefined,
+              skipPasswordChecks: true,
+              skipPasswordRequirement: true,
+            });
+            logger.info("Created Clerk account for provisioned user", {
+              userId: user.id,
+              clerkUserId: clerkUser.id,
+              email: userData.email,
+            });
+          }
+
+          await storage.authIdentities.create({
+            userId: user.id,
+            providerType: "clerk",
+            externalId: clerkUser.id,
+            email: userData.email,
+            displayName: `${userData.firstName || ""} ${userData.lastName || ""}`.trim() || undefined,
+          });
+
+          await storage.users.updateUser(user.id, {
+            accountStatus: "linked",
+          });
+
+          logger.info("Auth identity linked for provisioned user", {
+            userId: user.id,
+            clerkUserId: clerkUser.id,
+          });
+        } catch (clerkErr: any) {
+          logger.error("Failed to create Clerk account for provisioned user", {
+            userId: user.id,
+            email: userData.email,
+            error: clerkErr?.message || clerkErr,
+          });
+        }
+      }
+
+      const updatedUser = await storage.users.getUser(user.id);
+
       res.status(201).json({ 
-        id: user.id, 
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        accountStatus: user.accountStatus,
-        isActive: user.isActive, 
-        createdAt: user.createdAt 
+        id: updatedUser?.id || user.id, 
+        email: updatedUser?.email || user.email,
+        firstName: updatedUser?.firstName || user.firstName,
+        lastName: updatedUser?.lastName || user.lastName,
+        accountStatus: updatedUser?.accountStatus || user.accountStatus,
+        isActive: updatedUser?.isActive ?? user.isActive, 
+        createdAt: updatedUser?.createdAt || user.createdAt 
       });
     } catch (error) {
       if (error instanceof Error && error.name === "ZodError") {
