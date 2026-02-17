@@ -1,5 +1,4 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { createClerkClient } from "@clerk/express";
 import { storage } from "../storage";
 import { 
   createUserSchema,
@@ -8,7 +7,7 @@ import {
   assignPermissionSchema
 } from "@shared/schema";
 import { requireAccess, clearAccessCache } from "../services/access-policy-evaluator";
-import { logger } from "../logger";
+import { provisionClerkAccount } from "../services/clerk-provisioning";
 
 // Type for middleware functions that we'll accept from the main routes
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -120,84 +119,14 @@ export function registerUserRoutes(
         return res.status(409).json({ message: "User with this email already exists" });
       }
 
-      let clerkWarning: string | undefined;
-      let clerkUserId: string | undefined;
-      const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-      const clerkPublishableKey = process.env.CLERK_PUBLISHABLE_KEY || process.env.VITE_CLERK_PUBLISHABLE_KEY;
-
-      if (clerkSecretKey && clerkPublishableKey) {
-        const clerk = createClerkClient({ secretKey: clerkSecretKey, publishableKey: clerkPublishableKey });
-
-        try {
-          const existingClerkUsers = await clerk.users.getUserList({
-            emailAddress: [userData.email],
-          });
-          if (existingClerkUsers.data.length > 0) {
-            const existingClerkUser = existingClerkUsers.data[0];
-            const existingIdentity = await storage.authIdentities.getByProviderAndExternalId("clerk", existingClerkUser.id);
-            if (existingIdentity) {
-              return res.status(409).json({ 
-                message: "This email is already associated with an existing Clerk account linked to another user." 
-              });
-            }
-            clerkUserId = existingClerkUser.id;
-            logger.info("Found existing unlinked Clerk account for provisioned user", {
-              clerkUserId: existingClerkUser.id,
-              email: userData.email,
-            });
-          }
-        } catch (lookupErr) {
-          logger.warn("Failed to look up existing Clerk user, proceeding with creation", { error: lookupErr });
-        }
-      }
-
       const user = await storage.users.createUser(userData);
 
-      if (clerkSecretKey && clerkPublishableKey) {
-        try {
-          const clerk = createClerkClient({ secretKey: clerkSecretKey, publishableKey: clerkPublishableKey });
-
-          if (!clerkUserId) {
-            const newClerkUser = await clerk.users.createUser({
-              emailAddress: [userData.email],
-              firstName: userData.firstName || undefined,
-              lastName: userData.lastName || undefined,
-              skipPasswordChecks: true,
-              skipPasswordRequirement: true,
-            });
-            clerkUserId = newClerkUser.id;
-            logger.info("Created Clerk account for provisioned user", {
-              userId: user.id,
-              clerkUserId: newClerkUser.id,
-              email: userData.email,
-            });
-          }
-
-          await storage.authIdentities.create({
-            userId: user.id,
-            providerType: "clerk",
-            externalId: clerkUserId,
-            email: userData.email,
-            displayName: `${userData.firstName || ""} ${userData.lastName || ""}`.trim() || undefined,
-          });
-
-          await storage.users.updateUser(user.id, {
-            accountStatus: "linked",
-          });
-
-          logger.info("Auth identity linked for provisioned user", {
-            userId: user.id,
-            clerkUserId,
-          });
-        } catch (clerkErr: any) {
-          logger.error("Failed to create/link Clerk account for provisioned user", {
-            userId: user.id,
-            email: userData.email,
-            error: clerkErr?.message || clerkErr,
-          });
-          clerkWarning = "Clerk account could not be created automatically. User will need to sign up manually.";
-        }
-      }
+      const clerkResult = await provisionClerkAccount({
+        userId: user.id,
+        email: userData.email,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+      });
 
       const updatedUser = await storage.users.getUser(user.id);
 
@@ -210,8 +139,8 @@ export function registerUserRoutes(
         isActive: updatedUser?.isActive ?? user.isActive, 
         createdAt: updatedUser?.createdAt || user.createdAt 
       };
-      if (clerkWarning) {
-        responseData.clerkWarning = clerkWarning;
+      if (clerkResult.warning) {
+        responseData.clerkWarning = clerkResult.warning;
       }
       res.status(201).json(responseData);
     } catch (error) {

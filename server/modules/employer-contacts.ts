@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { insertContactSchema, type InsertContact } from "@shared/schema";
 import { requireAccess } from "../services/access-policy-evaluator";
+import { provisionClerkAccount } from "../services/clerk-provisioning";
 import { z } from "zod";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -320,7 +321,6 @@ export function registerEmployerContactRoutes(
       let user = await storage.users.getUserByEmail(email);
       
       if (!user) {
-        // Create new user
         user = await storage.users.createUser({
           email,
           firstName: firstName || null,
@@ -328,6 +328,17 @@ export function registerEmployerContactRoutes(
           isActive: isActive !== undefined ? isActive : true,
           accountStatus: 'active',
         });
+
+        const clerkResult = await provisionClerkAccount({
+          userId: user.id,
+          email,
+          firstName: firstName || null,
+          lastName: lastName || null,
+        });
+
+        if (clerkResult.success) {
+          user = await storage.users.getUser(user.id) || user;
+        }
       } else {
         // Update existing user
         user = await storage.users.updateUser(user.id, {
