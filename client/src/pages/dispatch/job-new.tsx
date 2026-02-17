@@ -49,7 +49,7 @@ const formSchema = z.object({
   employerId: z.string().min(1, "Employer is required"),
   jobTypeId: z.string().min(1, "Job type is required"),
   status: z.enum(dispatchJobStatusEnum),
-  startDate: z.string().min(1, "Start date is required"),
+  startYmd: z.string().min(1, "Start date is required"),
   workerCount: z.string().optional(),
 });
 
@@ -89,7 +89,7 @@ export default function DispatchJobNewPage() {
       employerId: "",
       jobTypeId: "",
       status: "draft",
-      startDate: getTodayYmd(),
+      startYmd: getTodayYmd(),
       workerCount: "",
     },
   });
@@ -106,7 +106,7 @@ export default function DispatchJobNewPage() {
         employerId: data.employerId,
         jobTypeId: data.jobTypeId || null,
         status: data.status,
-        startDate: new Date(data.startDate).toISOString(),
+        startYmd: data.startYmd,
         workerCount: workerCountNum,
         data:
           selectedSkills.length > 0
@@ -279,7 +279,7 @@ export default function DispatchJobNewPage() {
 
                 <FormField
                   control={form.control}
-                  name="startDate"
+                  name="startYmd"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Start Date *</FormLabel>
