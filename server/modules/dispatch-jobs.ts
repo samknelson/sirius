@@ -229,17 +229,15 @@ export function registerDispatchJobsRoutes(
           }
           updates.status = status;
         }
-        if (startDate !== undefined) {
-          // Parse date string as local date to avoid timezone shift
-          // If it's a YYYY-MM-DD string, parse it as local noon to avoid boundary issues
+        if (startYmd !== undefined) {
           if (
-            typeof startDate === "string" &&
-            /^\d{4}-\d{2}-\d{2}$/.test(startDate)
+            typeof startYmd === "string" &&
+            /^\d{4}-\d{2}-\d{2}$/.test(startYmd)
           ) {
-            const [year, month, day] = startDate.split("-").map(Number);
-            updates.startDate = new Date(year, month - 1, day, 12, 0, 0);
+            const [year, month, day] = startYmd.split("-").map(Number);
+            updates.startYmd = new Date(year, month - 1, day, 12, 0, 0);
           } else {
-            updates.startDate = new Date(startDate);
+            updates.startYmd = new Date(startYmd);
           }
         }
 
@@ -258,7 +256,8 @@ export function registerDispatchJobsRoutes(
 
         const job = await storage.dispatchJobs.update(id, updates);
         res.json(job);
-      } catch (error) {
+      } catch (error: any) {
+        logger.error("Failed to update dispatch job", { error: error?.message, stack: error?.stack });
         res.status(500).json({ message: "Failed to update dispatch job" });
       }
     },
