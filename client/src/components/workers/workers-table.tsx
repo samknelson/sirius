@@ -51,8 +51,12 @@ interface WorkersTableProps {
   onPageChange?: (page: number) => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
+  onApplySearch?: () => void;
+  appliedSearch?: string;
   sortOrder?: "asc" | "desc";
   onSortOrderChange?: (order: "asc" | "desc") => void;
+  sortBy?: "lastName" | "firstName" | "employer";
+  onSortByChange?: (sortBy: "lastName" | "firstName" | "employer") => void;
   filters?: WorkerFilters;
   onFiltersChange?: (filters: WorkerFilters) => void;
 }
@@ -162,13 +166,18 @@ export function WorkersTable({
   onPageChange,
   searchQuery: externalSearchQuery,
   onSearchChange,
+  onApplySearch,
+  appliedSearch: externalAppliedSearch,
   sortOrder: externalSortOrder,
   onSortOrderChange,
+  sortBy: externalSortBy,
+  onSortByChange,
   filters: externalFilters,
   onFiltersChange,
 }: WorkersTableProps) {
   const isPaginated = onPageChange !== undefined;
   const [internalSortOrder, setInternalSortOrder] = useState<"asc" | "desc">("asc");
+  const [internalSortBy, setInternalSortBy] = useState<"lastName" | "firstName" | "employer">("lastName");
   const [internalSearchQuery, setInternalSearchQuery] = useState("");
   const [internalFilters, setInternalFilters] = useState<WorkerFilters>({
     employerId: "all",
@@ -180,6 +189,8 @@ export function WorkersTable({
   
   const sortOrder = externalSortOrder ?? internalSortOrder;
   const setSortOrder = onSortOrderChange ?? setInternalSortOrder;
+  const sortBy = externalSortBy ?? internalSortBy;
+  const setSortBy = onSortByChange ?? setInternalSortBy;
   const searchQuery = externalSearchQuery ?? internalSearchQuery;
   const setSearchQuery = onSearchChange ?? setInternalSearchQuery;
   
@@ -555,17 +566,24 @@ export function WorkersTable({
     const familyB = b.family || '';
     const givenA = a.given || '';
     const givenB = b.given || '';
+    const dir = sortOrder === "asc" ? 1 : -1;
     
-    if (sortOrder === "asc") {
-      // Sort by family name first, then by given name
-      const familyCompare = familyA.localeCompare(familyB);
+    if (sortBy === 'firstName') {
+      const givenCompare = givenA.localeCompare(givenB) * dir;
+      if (givenCompare !== 0) return givenCompare;
+      return familyA.localeCompare(familyB) * dir;
+    } else if (sortBy === 'employer') {
+      const empA = a.employers?.[0]?.name || '';
+      const empB = b.employers?.[0]?.name || '';
+      const empCompare = empA.localeCompare(empB) * dir;
+      if (empCompare !== 0) return empCompare;
+      const familyCompare = familyA.localeCompare(familyB) * dir;
       if (familyCompare !== 0) return familyCompare;
-      return givenA.localeCompare(givenB);
+      return givenA.localeCompare(givenB) * dir;
     } else {
-      // Sort by family name first (descending), then by given name (descending)
-      const familyCompare = familyB.localeCompare(familyA);
+      const familyCompare = familyA.localeCompare(familyB) * dir;
       if (familyCompare !== 0) return familyCompare;
-      return givenB.localeCompare(givenA);
+      return givenA.localeCompare(givenB) * dir;
     }
   });
 
@@ -575,9 +593,10 @@ export function WorkersTable({
 
   // CSV Export function - calls server endpoint to get all matching workers
   const handleExportCSV = () => {
-    // Build URL with current filter parameters
+    // Build URL with current filter parameters - use applied search when available
     const params = new URLSearchParams();
-    if (searchQuery) params.set('search', searchQuery);
+    const exportSearch = externalAppliedSearch ?? searchQuery;
+    if (exportSearch) params.set('search', exportSearch);
     params.set('sortOrder', sortOrder);
     if (selectedEmployerId !== 'all') params.set('employerId', selectedEmployerId);
     if (selectedEmployerTypeId !== 'all') params.set('employerTypeId', selectedEmployerTypeId);
@@ -616,12 +635,32 @@ export function WorkersTable({
     <>
       <Card className="shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-border bg-muted/30">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
             <h2 className="text-lg font-semibold text-foreground">Workers Database</h2>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center space-x-2">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
                 <ArrowUpDown className="text-muted-foreground" size={16} />
-                <span className="text-sm text-muted-foreground">Sort by Name</span>
+                <Select
+                  value={sortBy}
+                  onValueChange={(value) => setSortBy(value as "lastName" | "firstName" | "employer")}
+                >
+                  <SelectTrigger className="w-36" data-testid="select-sort-by">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="lastName">Last Name</SelectItem>
+                    <SelectItem value="firstName">First Name</SelectItem>
+                    <SelectItem value="employer">Employer</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={toggleSort}
+                  data-testid="button-toggle-sort"
+                >
+                  {sortOrder === "asc" ? "A-Z" : "Z-A"}
+                </Button>
               </div>
               <span className="text-sm font-medium text-primary" data-testid="text-total-workers">
                 {filteredWorkers.length} of {workers.length}
@@ -639,17 +678,30 @@ export function WorkersTable({
             </div>
           </div>
           
-          {/* Search Input - own row */}
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={16} />
-            <Input
-              type="text"
-              placeholder="Search by name, email, phone, or SSN..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-              data-testid="input-search-workers"
-            />
+          {/* Search Input with Apply button */}
+          <div className="flex gap-2 mb-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={16} />
+              <Input
+                type="text"
+                placeholder="Search by name, email, phone, SSN, or worker ID..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && onApplySearch) {
+                    onApplySearch();
+                  }
+                }}
+                className="pl-10"
+                data-testid="input-search-workers"
+              />
+            </div>
+            <Button
+              onClick={() => onApplySearch?.()}
+              data-testid="button-apply-search"
+            >
+              Search
+            </Button>
           </div>
           
           {/* Filters */}

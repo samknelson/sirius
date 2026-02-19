@@ -415,6 +415,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const search = typeof req.query.search === 'string' ? req.query.search : undefined;
       const sortOrderParam = req.query.sortOrder as string;
       const sortOrder = sortOrderParam === 'desc' ? 'desc' : 'asc';
+      const sortByParam = req.query.sortBy as string;
+      const validSortByValues = ['lastName', 'firstName', 'employer'];
+      const sortBy = validSortByValues.includes(sortByParam) ? sortByParam as 'lastName' | 'firstName' | 'employer' : 'lastName';
       
       // Filter parameters
       const employerId = typeof req.query.employerId === 'string' && req.query.employerId !== 'all' ? req.query.employerId : undefined;
@@ -431,6 +434,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         pageSize,
         search,
         sortOrder,
+        sortBy,
         employerId,
         employerTypeId,
         bargainingUnitId,

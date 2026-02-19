@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Users } from "lucide-react";
 import { WorkersTable, WorkerFilters } from "@/components/workers/workers-table";
 import { Link, useLocation } from "wouter";
@@ -19,8 +19,9 @@ export default function Workers() {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
   const [searchInput, setSearchInput] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [sortBy, setSortBy] = useState<"lastName" | "firstName" | "employer">("lastName");
   const [filters, setFilters] = useState<WorkerFilters>({
     employerId: "all",
     employerTypeId: "all",
@@ -29,25 +30,23 @@ export default function Workers() {
     contactStatus: "all",
   });
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchInput);
-      setPage(1);
-    }, 300);
-    return () => clearTimeout(timer);
+  const handleApplySearch = useCallback(() => {
+    setAppliedSearch(searchInput);
+    setPage(1);
   }, [searchInput]);
 
   const handleFiltersChange = useCallback((newFilters: WorkerFilters) => {
     setFilters(newFilters);
-    setPage(1); // Reset to first page when filters change
+    setPage(1);
   }, []);
 
   const { data: paginatedData, isLoading } = useQuery<PaginatedWorkersResponse>({
     queryKey: ["/api/workers/with-details/paginated", { 
       page, 
       pageSize, 
-      search: debouncedSearch, 
+      search: appliedSearch, 
       sortOrder,
+      sortBy,
       employerId: filters.employerId,
       employerTypeId: filters.employerTypeId,
       bargainingUnitId: filters.bargainingUnitId,
@@ -108,8 +107,12 @@ export default function Workers() {
           onPageChange={setPage}
           searchQuery={searchInput}
           onSearchChange={setSearchInput}
+          onApplySearch={handleApplySearch}
+          appliedSearch={appliedSearch}
           sortOrder={sortOrder}
           onSortOrderChange={setSortOrder}
+          sortBy={sortBy}
+          onSortByChange={setSortBy}
           filters={filters}
           onFiltersChange={handleFiltersChange}
         />

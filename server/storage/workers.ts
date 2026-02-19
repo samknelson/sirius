@@ -141,6 +141,7 @@ export interface WorkersPaginationParams {
   pageSize?: number;
   search?: string;
   sortField?: 'name' | 'email';
+  sortBy?: 'lastName' | 'firstName' | 'employer';
   sortOrder?: 'asc' | 'desc';
   // Filters
   employerId?: string;
@@ -208,6 +209,7 @@ export interface WorkerStorage {
 interface InternalSearchParams {
   search?: string;
   sortOrder?: 'asc' | 'desc';
+  sortBy?: 'lastName' | 'firstName' | 'employer';
   employerId?: string;
   employerTypeId?: string;
   bargainingUnitId?: string;
@@ -257,6 +259,7 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
   const client = getClient();
   const search = params.search?.trim() ?? '';
   const sortOrder = params.sortOrder ?? 'asc';
+  const sortBy = params.sortBy ?? 'lastName';
   const { employerId, employerTypeId, bargainingUnitId, benefitId, contactStatus, hasMultipleEmployers } = params;
 
   const now = new Date();
@@ -272,6 +275,13 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
         OR LOWER(c.email) LIKE ${`%${search.toLowerCase()}%`}
         OR LOWER(c.given) LIKE ${`%${search.toLowerCase()}%`}
         OR LOWER(c.family) LIKE ${`%${search.toLowerCase()}%`}
+        OR EXISTS (
+          SELECT 1 FROM worker_ids wid
+          INNER JOIN options_worker_id_type widt ON wid.type_id = widt.id
+          WHERE wid.worker_id = w.id
+            AND (widt.data->>'showOnLists')::boolean = true
+            AND LOWER(wid.value) LIKE ${`%${search.toLowerCase()}%`}
+        )
       )`
     : sql``;
 
@@ -323,6 +333,17 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
   }
 
   const orderDirection = sortOrder === 'desc' ? sql`DESC` : sql`ASC`;
+
+  let orderByClause;
+  if (sortBy === 'firstName') {
+    orderByClause = sql`ORDER BY c.given ${orderDirection}, c.family ${orderDirection}`;
+  } else if (sortBy === 'employer') {
+    orderByClause = sql`ORDER BY (
+      SELECT MIN(e.name) FROM employers e WHERE e.id = ANY(w.denorm_employer_ids)
+    ) ${orderDirection} NULLS LAST, c.family ${orderDirection}, c.given ${orderDirection}`;
+  } else {
+    orderByClause = sql`ORDER BY c.family ${orderDirection}, c.given ${orderDirection}`;
+  }
 
   const bargainingUnitColumns = bargainingUnitsEnabled
     ? sql`bu.sirius_id as bargaining_unit_code, bu.name as bargaining_unit_name,`
@@ -434,7 +455,7 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
       LIMIT 1
     ) a ON true
     WHERE 1=1 ${allConditions}
-    ORDER BY c.family ${orderDirection}, c.given ${orderDirection}
+    ${orderByClause}
     ${paginationClause}
   `);
 
@@ -512,6 +533,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       const { rows, total } = await _searchWorkers({
         search: params.search,
         sortOrder: params.sortOrder,
+        sortBy: params.sortBy,
         employerId: params.employerId,
         employerTypeId: params.employerTypeId,
         bargainingUnitId: params.bargainingUnitId,
