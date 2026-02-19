@@ -354,10 +354,10 @@ async function phaseCreate(ctx: PollContext): Promise<void> {
           status: "pending",
         });
 
-        const statusResult = await storage.dispatches.setStatus(dispatch.id, "pending");
+        const statusResult = await storage.dispatches.setStatus(dispatch.id, "notified");
         if (statusResult.success) {
           created.push({ workerId: worker.id, workerName: worker.displayName, dispatchId: dispatch.id });
-          logger.info("Poll created dispatch", {
+          logger.info("Poll created and notified dispatch", {
             service: SERVICE_NAME,
             jobId: ctx.jobId,
             dispatchId: dispatch.id,
@@ -365,7 +365,7 @@ async function phaseCreate(ctx: PollContext): Promise<void> {
             workerName: worker.displayName,
           });
         } else {
-          errors.push({ workerId: worker.id, workerName: worker.displayName, error: statusResult.error ?? "Failed to set status" });
+          errors.push({ workerId: worker.id, workerName: worker.displayName, error: statusResult.error ?? "Failed to set status to notified" });
         }
       } catch (err) {
         errors.push({
