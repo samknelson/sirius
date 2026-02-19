@@ -117,8 +117,9 @@ async function sendDispatchNotifications(
   dispatchId: string,
   workerInfo: WorkerContactInfo,
   jobConfig: { employerName: string; notificationMedia: NotificationMedia[]; dispatchUrl: string }
-): Promise<string[]> {
+): Promise<{ commIds: string[]; anySent: boolean }> {
   const commIds: string[] = [];
+  let anySent = false;
   const messages = buildNotificationMessage(jobConfig.employerName, jobConfig.dispatchUrl);
 
   for (const medium of jobConfig.notificationMedia) {
@@ -136,6 +137,7 @@ async function sendDispatchNotifications(
             if (result.comm) {
               commIds.push(result.comm.id);
             }
+            if (result.success) anySent = true;
             logger.info(`SMS notification ${result.success ? 'sent' : 'failed'} for dispatch`, {
               service: SERVICE_NAME,
               dispatchId,
@@ -164,6 +166,7 @@ async function sendDispatchNotifications(
             if (result.comm) {
               commIds.push(result.comm.id);
             }
+            if (result.success) anySent = true;
             logger.info(`Email notification ${result.success ? 'sent' : 'failed'} for dispatch`, {
               service: SERVICE_NAME,
               dispatchId,
@@ -193,6 +196,7 @@ async function sendDispatchNotifications(
             if (result.comm) {
               commIds.push(result.comm.id);
             }
+            if (result.success) anySent = true;
             logger.info(`In-app notification ${result.success ? 'sent' : 'failed'} for dispatch`, {
               service: SERVICE_NAME,
               dispatchId,
@@ -226,7 +230,7 @@ async function sendDispatchNotifications(
     }
   }
 
-  return commIds;
+  return { commIds, anySent };
 }
 
 async function handleDispatchSaved(payload: DispatchSavedPayload): Promise<void> {
@@ -244,15 +248,11 @@ async function handleDispatchSaved(payload: DispatchSavedPayload): Promise<void>
     return;
   }
 
-  if (payload.status !== 'notified') {
+  if (payload.status !== 'pending') {
     return;
   }
 
-  if (payload.previousStatus === 'notified') {
-    logger.debug(`Dispatch already in notified status, skipping notification`, {
-      service: SERVICE_NAME,
-      dispatchId: payload.dispatchId,
-    });
+  if (payload.previousStatus === 'pending') {
     return;
   }
 
@@ -294,16 +294,34 @@ async function handleDispatchSaved(payload: DispatchSavedPayload): Promise<void>
       return;
     }
 
-    const commIds = await sendDispatchNotifications(payload.dispatchId, workerInfo, jobConfig);
+    const { commIds, anySent } = await sendDispatchNotifications(payload.dispatchId, workerInfo, jobConfig);
+
+    const dispatchStorage = createDispatchStorage();
 
     if (commIds.length > 0) {
-      const dispatchStorage = createDispatchStorage();
       await dispatchStorage.update(payload.dispatchId, { commIds });
-      
-      logger.info(`Updated dispatch with comm IDs`, {
+    }
+
+    if (anySent) {
+      const statusResult = await dispatchStorage.setStatus(payload.dispatchId, "notified");
+      if (statusResult.success) {
+        logger.info(`Dispatch set to notified after successful notification`, {
+          service: SERVICE_NAME,
+          dispatchId: payload.dispatchId,
+          commIds,
+        });
+      } else {
+        logger.warn(`Failed to set dispatch to notified after notification`, {
+          service: SERVICE_NAME,
+          dispatchId: payload.dispatchId,
+          error: statusResult.error,
+        });
+      }
+    } else {
+      logger.warn(`All notifications failed for dispatch, leaving as pending`, {
         service: SERVICE_NAME,
         dispatchId: payload.dispatchId,
-        commIds,
+        workerId: payload.workerId,
       });
     }
 

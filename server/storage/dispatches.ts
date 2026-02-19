@@ -368,6 +368,17 @@ export function createDispatchStorage(): DispatchStorage {
       validate.validateOrThrow(insertDispatch);
       const client = getClient();
       const [dispatch] = await client.insert(dispatches).values(insertDispatch).returning();
+
+      eventBus.emit(EventType.DISPATCH_SAVED, {
+        dispatchId: dispatch.id,
+        workerId: dispatch.workerId,
+        jobId: dispatch.jobId,
+        status: dispatch.status,
+        previousStatus: undefined,
+      }).catch(err => {
+        console.error("Failed to emit DISPATCH_SAVED event from create:", err);
+      });
+
       return dispatch;
     },
 
