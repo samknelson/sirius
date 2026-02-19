@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -5,8 +6,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, AlertCircle, Download, DollarSign, FileCheck, FileWarning, FileX, FileMinus, FileQuestion } from "lucide-react";
+import { CheckCircle2, XCircle, AlertCircle, Download, DollarSign, FileCheck, FileWarning, FileX, FileMinus, FileQuestion, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface ResultsStepProps {
   wizardId: string;
@@ -36,6 +39,7 @@ interface CardCheckComparisonEntry {
   workerId: string;
   workerSiriusId: number;
   workerName: string;
+  bpsEmployeeId?: string | null;
   bargainingUnitName: string | null;
   employerNames: string[];
   allocatedAmount?: number;
@@ -76,6 +80,7 @@ function ComparisonTable({ entries, showAmount = true, showCardRate = true }: {
           <TableRow>
             <TableHead>Worker Name</TableHead>
             <TableHead>Worker ID</TableHead>
+            <TableHead>BPS ID</TableHead>
             <TableHead>Bargaining Unit</TableHead>
             <TableHead>Employers</TableHead>
             {showAmount && <TableHead className="text-right">Allocated</TableHead>}
@@ -87,6 +92,7 @@ function ComparisonTable({ entries, showAmount = true, showCardRate = true }: {
             <TableRow key={entry.workerId + '-' + idx} data-testid={`row-comparison-${entry.workerId}`}>
               <TableCell data-testid={`text-worker-name-${entry.workerId}`}>{entry.workerName}</TableCell>
               <TableCell data-testid={`text-worker-id-${entry.workerId}`}>{entry.workerSiriusId}</TableCell>
+              <TableCell data-testid={`text-bps-id-${entry.workerId}`}>{entry.bpsEmployeeId || '—'}</TableCell>
               <TableCell data-testid={`text-bu-${entry.workerId}`}>{entry.bargainingUnitName || '—'}</TableCell>
               <TableCell data-testid={`text-employers-${entry.workerId}`}>
                 {entry.employerNames.length > 0 ? entry.employerNames.join(', ') : '—'}
@@ -150,6 +156,30 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
   const results: ProcessResults | null = data?.processResults || null;
   const comparisonReport: CardCheckComparisonReport | null = data?.cardCheckComparisonReport || null;
   const skippedDuplicateCount: number = data?.skippedDuplicateCount || 0;
+  const lastRescanAt: string | null = data?.lastRescanAt || null;
+  const hasAllocatedWorkers: boolean = !!(data?.allocatedWorkers && data.allocatedWorkers.length > 0);
+  const [isRescanning, setIsRescanning] = useState(false);
+  const { toast } = useToast();
+
+  const startRescan = async () => {
+    setIsRescanning(true);
+    try {
+      await apiRequest("POST", `/api/wizards/${wizardId}/rescan-comparison`);
+      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
+      toast({
+        title: "Rescan Complete",
+        description: "The card check comparison has been updated with the latest data.",
+      });
+    } catch (err) {
+      toast({
+        title: "Rescan Failed",
+        description: err instanceof Error ? err.message : 'Failed to rescan comparison',
+        variant: "destructive",
+      });
+    } finally {
+      setIsRescanning(false);
+    }
+  };
 
   const { data: accounts = [] } = useQuery<any[]>({
     queryKey: ["/api/ledger/accounts"],
@@ -287,20 +317,39 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                 <FileCheck className="h-5 w-5" />
                 Card Check Comparison Report
               </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  window.open(`/api/wizards/${wizardId}/export-comparison-report`, '_blank');
-                }}
-                data-testid="button-export-comparison-report"
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Export Report
-              </Button>
+              <div className="flex items-center gap-2 flex-wrap">
+                {hasAllocatedWorkers && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={startRescan}
+                    disabled={isRescanning}
+                    data-testid="button-rescan-comparison"
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${isRescanning ? 'animate-spin' : ''}`} />
+                    {isRescanning ? 'Rescanning...' : 'Rescan'}
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    window.open(`/api/wizards/${wizardId}/export-comparison-report`, '_blank');
+                  }}
+                  data-testid="button-export-comparison-report"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Export Report
+                </Button>
+              </div>
             </div>
             <CardDescription>
               Compare dues allocations with signed card checks on file
+              {lastRescanAt && (
+                <span className="ml-2 text-xs text-muted-foreground">
+                  (Last rescanned: {format(new Date(lastRescanAt), 'PPpp')})
+                </span>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>

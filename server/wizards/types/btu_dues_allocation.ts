@@ -15,10 +15,22 @@ export interface CardCheckComparisonEntry {
   workerId: string;
   workerSiriusId: number;
   workerName: string;
+  bpsEmployeeId?: string | null;
   bargainingUnitName: string | null;
   employerNames: string[];
   allocatedAmount?: number;
   cardCheckRate?: number | null;
+}
+
+export interface AllocatedWorkerEntry {
+  workerId: string;
+  workerSiriusId: number;
+  workerName: string;
+  bpsEmployeeId: string;
+  bargainingUnitId: string | null;
+  bargainingUnitName: string | null;
+  employerNames: string[];
+  amount: number;
 }
 
 export interface WorkerNotFoundEntry {
@@ -318,15 +330,7 @@ export class BtuDuesAllocationWizard extends FeedWizard {
     const allErrors: ProcessError[] = [];
     const rowResults: RowResult[] = [];
     
-    const allocatedWorkers: Map<string, {
-      workerId: string;
-      workerSiriusId: number;
-      workerName: string;
-      bargainingUnitId: string | null;
-      bargainingUnitName: string | null;
-      employerNames: string[];
-      amount: number;
-    }> = new Map();
+    const allocatedWorkers: Map<string, AllocatedWorkerEntry> = new Map();
     
     const workersNotFound: WorkerNotFoundEntry[] = [];
 
@@ -442,6 +446,7 @@ export class BtuDuesAllocationWizard extends FeedWizard {
                 workerId: worker.id,
                 workerSiriusId: worker.siriusId,
                 workerName,
+                bpsEmployeeId,
                 bargainingUnitId: worker.bargainingUnitId,
                 bargainingUnitName,
                 employerNames,
@@ -510,118 +515,13 @@ export class BtuDuesAllocationWizard extends FeedWizard {
       }
     }
 
-    const cardcheckStorage = createCardcheckStorage();
-    const signedCardchecks = await cardcheckStorage.getAllSignedCardchecksWithDetails();
-    
-    const cardCheckByWorkerId = new Map<string, SignedCardcheckWithDetails>();
-    for (const cc of signedCardchecks) {
-      cardCheckByWorkerId.set(cc.workerId, cc);
-    }
-    
-    const bargainingUnitStorage = createBargainingUnitStorage();
-    const allBargainingUnits = await bargainingUnitStorage.getAllBargainingUnits();
-    const buRateMap = new Map<string, number[]>();
-    for (const bu of allBargainingUnits) {
-      const data = bu.data as BargainingUnitData | null;
-      const rawRates = data?.accountRates?.[accountId];
-      if (rawRates !== undefined) {
-        if (typeof rawRates === 'number') {
-          buRateMap.set(bu.id, [rawRates]);
-        } else if (Array.isArray(rawRates)) {
-          const rates = (rawRates as Array<{ name: string; rate: number }>).map(r => r.rate);
-          if (rates.length > 0) {
-            buRateMap.set(bu.id, rates);
-          }
-        }
-      }
-    }
-    
-    const comparisonReport: CardCheckComparisonReport = {
-      matchingRate: [],
-      mismatchingRate: [],
-      noCardCheck: [],
-      cardCheckMissingRate: [],
-      cardCheckNoAllocation: [],
-      workerNotFound: workersNotFound,
-    };
-    
-    const allocatedEntries = Array.from(allocatedWorkers.entries());
-    for (const [workerId, allocated] of allocatedEntries) {
-      const cardCheck = cardCheckByWorkerId.get(workerId);
-      
-      let effectiveRates: number[] | null = null;
-      if (cardCheck) {
-        if (cardCheck.rate !== null) {
-          effectiveRates = [cardCheck.rate];
-        } else if (cardCheck.bargainingUnitId) {
-          effectiveRates = buRateMap.get(cardCheck.bargainingUnitId) ?? null;
-        }
-      }
-      
-      const displayRate = effectiveRates && effectiveRates.length > 0 ? effectiveRates[0] : null;
-      const entry: CardCheckComparisonEntry = {
-        workerId: allocated.workerId,
-        workerSiriusId: allocated.workerSiriusId,
-        workerName: allocated.workerName,
-        bargainingUnitName: allocated.bargainingUnitName,
-        employerNames: allocated.employerNames,
-        allocatedAmount: allocated.amount,
-        cardCheckRate: displayRate,
-      };
-      
-      if (!cardCheck) {
-        comparisonReport.noCardCheck.push(entry);
-      } else if (!effectiveRates || effectiveRates.length === 0) {
-        comparisonReport.cardCheckMissingRate.push(entry);
-      } else if (effectiveRates.some(r => Math.abs(r - allocated.amount) < 0.01)) {
-        comparisonReport.matchingRate.push(entry);
-      } else {
-        comparisonReport.mismatchingRate.push(entry);
-      }
-    }
-    
-    const employedWorkerIds = await storage.readOnly.query(async (client) => {
-      const rows = await client.execute(sql`
-        SELECT latest.worker_id
-        FROM (
-          SELECT DISTINCT ON (wh.worker_id) wh.worker_id, wh.employment_status_id
-          FROM worker_hours wh
-          ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
-        ) latest
-        JOIN options_employment_status es ON es.id = latest.employment_status_id
-        WHERE es.employed = true
-      `);
-      return new Set((rows.rows as Array<{ worker_id: string }>).map(r => r.worker_id));
-    });
-
-    for (const cardCheck of signedCardchecks) {
-      if (!allocatedWorkers.has(cardCheck.workerId) && employedWorkerIds.has(cardCheck.workerId)) {
-        let effectiveCardRate: number | null = cardCheck.rate;
-        if (effectiveCardRate === null && cardCheck.bargainingUnitId) {
-          const buRates = buRateMap.get(cardCheck.bargainingUnitId);
-          effectiveCardRate = buRates && buRates.length > 0 ? buRates[0] : null;
-        }
-        comparisonReport.cardCheckNoAllocation.push({
-          workerId: cardCheck.workerId,
-          workerSiriusId: cardCheck.workerSiriusId,
-          workerName: cardCheck.workerName,
-          bargainingUnitName: cardCheck.bargainingUnitName,
-          employerNames: cardCheck.employerNames,
-          cardCheckRate: effectiveCardRate,
-        });
-      }
-    }
-    
-    logger.info("Card check comparison report generated", {
-      service: "btu-dues-allocation-wizard",
+    const allocatedWorkersList = Array.from(allocatedWorkers.values());
+    const comparisonReport = await BtuDuesAllocationWizard.generateComparisonReport(
+      allocatedWorkersList,
+      workersNotFound,
+      accountId,
       wizardId,
-      matchingRate: comparisonReport.matchingRate.length,
-      mismatchingRate: comparisonReport.mismatchingRate.length,
-      noCardCheck: comparisonReport.noCardCheck.length,
-      cardCheckMissingRate: comparisonReport.cardCheckMissingRate.length,
-      cardCheckNoAllocation: comparisonReport.cardCheckNoAllocation.length,
-      workerNotFound: comparisonReport.workerNotFound.length,
-    });
+    );
 
     const results: ProcessResults = {
       totalRows,
@@ -640,11 +540,184 @@ export class BtuDuesAllocationWizard extends FeedWizard {
         processResults: results,
         skippedDuplicateCount,
         cardCheckComparisonReport: comparisonReport,
+        allocatedWorkers: allocatedWorkersList,
       },
       status: failureCount === 0 ? 'completed' : 'completed_with_errors'
     });
 
     return results;
+  }
+
+  static async generateComparisonReport(
+    allocatedWorkersList: AllocatedWorkerEntry[],
+    workersNotFound: WorkerNotFoundEntry[],
+    accountId: string,
+    wizardId: string,
+  ): Promise<CardCheckComparisonReport> {
+    const cardcheckStorage = createCardcheckStorage();
+    const signedCardchecks = await cardcheckStorage.getAllSignedCardchecksWithDetails();
+
+    const cardCheckByWorkerId = new Map<string, SignedCardcheckWithDetails>();
+    for (const cc of signedCardchecks) {
+      cardCheckByWorkerId.set(cc.workerId, cc);
+    }
+
+    const bargainingUnitStorage = createBargainingUnitStorage();
+    const allBargainingUnits = await bargainingUnitStorage.getAllBargainingUnits();
+    const buRateMap = new Map<string, number[]>();
+    for (const bu of allBargainingUnits) {
+      const data = bu.data as BargainingUnitData | null;
+      const rawRates = data?.accountRates?.[accountId];
+      if (rawRates !== undefined) {
+        if (typeof rawRates === 'number') {
+          buRateMap.set(bu.id, [rawRates]);
+        } else if (Array.isArray(rawRates)) {
+          const rates = (rawRates as Array<{ name: string; rate: number }>).map(r => r.rate);
+          if (rates.length > 0) {
+            buRateMap.set(bu.id, rates);
+          }
+        }
+      }
+    }
+
+    const btuStorage = createBtuWorkerImportStorage();
+    const bpsIdType = await btuStorage.ensureBpsEmployeeIdType();
+
+    const workerIdRows = await storage.readOnly.query(async (client) => {
+      const rows = await client.execute(sql`
+        SELECT worker_id, value FROM worker_ids WHERE type_id = ${bpsIdType.id}
+      `);
+      return rows.rows as Array<{ worker_id: string; value: string }>;
+    });
+    const bpsIdByWorkerId = new Map<string, string>();
+    for (const row of workerIdRows) {
+      bpsIdByWorkerId.set(row.worker_id, row.value);
+    }
+
+    const allocatedWorkerIds = new Set<string>();
+    const comparisonReport: CardCheckComparisonReport = {
+      matchingRate: [],
+      mismatchingRate: [],
+      noCardCheck: [],
+      cardCheckMissingRate: [],
+      cardCheckNoAllocation: [],
+      workerNotFound: workersNotFound,
+    };
+
+    for (const allocated of allocatedWorkersList) {
+      allocatedWorkerIds.add(allocated.workerId);
+      const cardCheck = cardCheckByWorkerId.get(allocated.workerId);
+
+      let effectiveRates: number[] | null = null;
+      if (cardCheck) {
+        if (cardCheck.rate !== null) {
+          effectiveRates = [cardCheck.rate];
+        } else if (cardCheck.bargainingUnitId) {
+          effectiveRates = buRateMap.get(cardCheck.bargainingUnitId) ?? null;
+        }
+      }
+
+      const displayRate = effectiveRates && effectiveRates.length > 0 ? effectiveRates[0] : null;
+      const entry: CardCheckComparisonEntry = {
+        workerId: allocated.workerId,
+        workerSiriusId: allocated.workerSiriusId,
+        workerName: allocated.workerName,
+        bpsEmployeeId: allocated.bpsEmployeeId || bpsIdByWorkerId.get(allocated.workerId) || null,
+        bargainingUnitName: allocated.bargainingUnitName,
+        employerNames: allocated.employerNames,
+        allocatedAmount: allocated.amount,
+        cardCheckRate: displayRate,
+      };
+
+      if (!cardCheck) {
+        comparisonReport.noCardCheck.push(entry);
+      } else if (!effectiveRates || effectiveRates.length === 0) {
+        comparisonReport.cardCheckMissingRate.push(entry);
+      } else if (effectiveRates.some(r => Math.abs(r - allocated.amount) < 0.01)) {
+        comparisonReport.matchingRate.push(entry);
+      } else {
+        comparisonReport.mismatchingRate.push(entry);
+      }
+    }
+
+    const employedWorkerIds = await storage.readOnly.query(async (client) => {
+      const rows = await client.execute(sql`
+        SELECT latest.worker_id
+        FROM (
+          SELECT DISTINCT ON (wh.worker_id) wh.worker_id, wh.employment_status_id
+          FROM worker_hours wh
+          ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
+        ) latest
+        JOIN options_employment_status es ON es.id = latest.employment_status_id
+        WHERE es.employed = true
+      `);
+      return new Set((rows.rows as Array<{ worker_id: string }>).map(r => r.worker_id));
+    });
+
+    for (const cardCheck of signedCardchecks) {
+      if (!allocatedWorkerIds.has(cardCheck.workerId) && employedWorkerIds.has(cardCheck.workerId)) {
+        let effectiveCardRate: number | null = cardCheck.rate;
+        if (effectiveCardRate === null && cardCheck.bargainingUnitId) {
+          const buRates = buRateMap.get(cardCheck.bargainingUnitId);
+          effectiveCardRate = buRates && buRates.length > 0 ? buRates[0] : null;
+        }
+        comparisonReport.cardCheckNoAllocation.push({
+          workerId: cardCheck.workerId,
+          workerSiriusId: cardCheck.workerSiriusId,
+          workerName: cardCheck.workerName,
+          bpsEmployeeId: bpsIdByWorkerId.get(cardCheck.workerId) || null,
+          bargainingUnitName: cardCheck.bargainingUnitName,
+          employerNames: cardCheck.employerNames,
+          cardCheckRate: effectiveCardRate,
+        });
+      }
+    }
+
+    logger.info("Card check comparison report generated", {
+      service: "btu-dues-allocation-wizard",
+      wizardId,
+      matchingRate: comparisonReport.matchingRate.length,
+      mismatchingRate: comparisonReport.mismatchingRate.length,
+      noCardCheck: comparisonReport.noCardCheck.length,
+      cardCheckMissingRate: comparisonReport.cardCheckMissingRate.length,
+      cardCheckNoAllocation: comparisonReport.cardCheckNoAllocation.length,
+      workerNotFound: comparisonReport.workerNotFound.length,
+    });
+
+    return comparisonReport;
+  }
+
+  async rescanComparison(wizardId: string): Promise<CardCheckComparisonReport> {
+    const wizard = await storage.wizards.getById(wizardId);
+    if (!wizard) throw new Error('Wizard not found');
+
+    const wizardData = wizard.data as any;
+    const allocatedWorkersList: AllocatedWorkerEntry[] = wizardData?.allocatedWorkers;
+    if (!allocatedWorkersList || allocatedWorkersList.length === 0) {
+      throw new Error('No allocated worker data available for rescan. This wizard may have been processed before this feature was available.');
+    }
+
+    const accountId = wizardData?.accountId;
+    if (!accountId) throw new Error('No account ID found in wizard data');
+
+    const workersNotFound: WorkerNotFoundEntry[] = wizardData?.cardCheckComparisonReport?.workerNotFound || [];
+
+    const comparisonReport = await BtuDuesAllocationWizard.generateComparisonReport(
+      allocatedWorkersList,
+      workersNotFound,
+      accountId,
+      wizardId,
+    );
+
+    await storage.wizards.update(wizardId, {
+      data: {
+        ...wizardData,
+        cardCheckComparisonReport: comparisonReport,
+        lastRescanAt: new Date().toISOString(),
+      },
+    });
+
+    return comparisonReport;
   }
 }
 

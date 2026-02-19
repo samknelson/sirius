@@ -6,6 +6,7 @@ import { requireAccess, buildContext, checkAccess } from "../services/access-pol
 import { wizardRegistry } from "../wizards/index.js";
 import { FeedWizard } from "../wizards/feed.js";
 import { BtuWorkerImportWizard } from "../wizards/types/btu_worker_import.js";
+import { BtuDuesAllocationWizard } from "../wizards/types/btu_dues_allocation.js";
 import { objectStorageService } from "../services/objectStorage.js";
 import { hashHeaderRow } from "../utils/hash.js";
 import { getEffectiveUser } from "./masquerade";
@@ -1478,6 +1479,35 @@ export function registerWizardRoutes(
     }
   );
 
+  app.post("/api/wizards/:id/rescan-comparison",
+    checkWizardAccess,
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const wizard = (req as any).wizard;
+
+        const wizardType = wizardRegistry.get(wizard.type);
+        if (!wizardType || !(wizardType instanceof BtuDuesAllocationWizard)) {
+          return res.status(400).json({ message: "This wizard type does not support comparison rescan" });
+        }
+
+        if (!['completed', 'completed_with_errors', 'needs_review'].includes(wizard.status)) {
+          return res.status(400).json({ message: "Wizard must be in a completed state to rescan" });
+        }
+
+        const comparisonReport = await wizardType.rescanComparison(id);
+        res.json({ message: "Comparison rescan completed", comparisonReport });
+      } catch (error) {
+        logger.error("Comparison rescan error:", {
+          service: 'wizard-rescan',
+          wizardId: req.params.id,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to rescan comparison" });
+      }
+    }
+  );
+
   // Delete a file from a wizard
   app.delete("/api/wizards/:id/files/:fileId",
     checkWizardAccess,
@@ -1568,9 +1598,8 @@ export function registerWizardRoutes(
         summarySheet['!cols'] = [{ wch: 30 }, { wch: 40 }];
         XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
 
-        // Helper to create data sheets
         const createComparisonSheet = (entries: any[], includeAmount: boolean, includeCardRate: boolean) => {
-          const headers = ['Worker Name', 'Worker ID', 'Bargaining Unit', 'Employers'];
+          const headers = ['Worker Name', 'Worker ID', 'BPS Employee ID', 'Bargaining Unit', 'Employers'];
           if (includeAmount) headers.push('Allocated Amount');
           if (includeCardRate) headers.push('Card Check Rate');
 
@@ -1578,6 +1607,7 @@ export function registerWizardRoutes(
             const row: any[] = [
               entry.workerName || '',
               entry.workerSiriusId || '',
+              entry.bpsEmployeeId || '',
               entry.bargainingUnitName || '',
               (entry.employerNames || []).join(', '),
             ];
@@ -1587,7 +1617,7 @@ export function registerWizardRoutes(
           });
 
           const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-          sheet['!cols'] = [{ wch: 35 }, { wch: 12 }, { wch: 25 }, { wch: 40 }, { wch: 15 }, { wch: 15 }];
+          sheet['!cols'] = [{ wch: 35 }, { wch: 12 }, { wch: 18 }, { wch: 25 }, { wch: 40 }, { wch: 15 }, { wch: 15 }];
           return sheet;
         };
 
