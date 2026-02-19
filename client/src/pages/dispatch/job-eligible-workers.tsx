@@ -310,7 +310,7 @@ function EligibleWorkersContent() {
                 <TableHead className="w-16">#</TableHead>
                 <TableHead className="w-32">ID</TableHead>
                 <TableHead>Name</TableHead>
-                <TableHead className="w-40">Seniority Date</TableHead>
+                <TableHead className="w-40">Last Offer Date</TableHead>
                 <TableHead className="w-24 text-right">View</TableHead>
               </TableRow>
             </TableHeader>

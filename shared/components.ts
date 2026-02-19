@@ -371,8 +371,8 @@ export const componentRegistry: ComponentDefinition[] = [
   },
   {
     id: "dispatch.hfe",
-    name: "Dispatch Hold for Employer",
-    description: "Hold for Employer management for dispatch",
+    name: "Dispatch Employer Priority",
+    description: "Employer Priority management for dispatch",
     enabledByDefault: false,
     category: "dispatch",
     managesSchema: true,

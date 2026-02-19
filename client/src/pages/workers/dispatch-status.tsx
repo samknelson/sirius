@@ -171,7 +171,7 @@ function DispatchStatusContent() {
 
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-4 flex-wrap">
-            <Label className="text-muted-foreground text-sm">Seniority Date</Label>
+            <Label className="text-muted-foreground text-sm">Last Offer Date</Label>
             {!isEditingSeniority && isStaff && (
               <Button variant="outline" size="sm" onClick={handleEditSeniority} data-testid="button-edit-seniority">
                 <Edit className="h-4 w-4 mr-2" />

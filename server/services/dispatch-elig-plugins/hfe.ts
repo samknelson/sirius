@@ -8,7 +8,7 @@ const HFE_CATEGORY = "hfe";
 
 export const dispatchHfePlugin: DispatchEligPlugin = {
   id: "dispatch_hfe",
-  name: "Hold for Employer",
+  name: "Employer Priority",
   description: "Only includes workers who are being held for a specific employer",
   componentId: "dispatch.hfe",
 
