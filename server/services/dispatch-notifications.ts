@@ -334,6 +334,67 @@ async function handleDispatchSaved(payload: DispatchSavedPayload): Promise<void>
   }
 }
 
+const COMM_FAILURE_STATUSES = new Set(['failed', 'undelivered', 'bounced']);
+const COMM_SUCCESS_STATUSES = new Set(['sent', 'delivered']);
+const COMM_PENDING_STATUSES = new Set(['queued', 'sending']);
+
+export async function handleCommStatusForDispatches(
+  commId: string,
+  newCommStatus: string,
+): Promise<void> {
+  if (!COMM_FAILURE_STATUSES.has(newCommStatus)) {
+    return;
+  }
+
+  try {
+    const dispatchStorage = createDispatchStorage();
+    const dispatch = await dispatchStorage.findByCommId(commId);
+
+    if (!dispatch) {
+      return;
+    }
+
+    const commIds = dispatch.commIds || [];
+    if (commIds.length === 0) {
+      return;
+    }
+
+    const commStorage = (await import('../storage/comm')).createCommStorage();
+    const allComms = await commStorage.getByIds(commIds);
+
+    const hasAnySuccessOrPending = allComms.some(c => {
+      if (c.id === commId) {
+        return COMM_SUCCESS_STATUSES.has(newCommStatus) || COMM_PENDING_STATUSES.has(newCommStatus);
+      }
+      return COMM_SUCCESS_STATUSES.has(c.status) || COMM_PENDING_STATUSES.has(c.status);
+    });
+
+    if (!hasAnySuccessOrPending) {
+      const statusResult = await dispatchStorage.setStatus(dispatch.id, 'pending');
+      if (statusResult.success) {
+        logger.info(`Dispatch reverted to pending after all notifications failed`, {
+          service: SERVICE_NAME,
+          dispatchId: dispatch.id,
+          commId,
+          commStatus: newCommStatus,
+        });
+      } else {
+        logger.warn(`Failed to revert dispatch to pending`, {
+          service: SERVICE_NAME,
+          dispatchId: dispatch.id,
+          error: statusResult.error,
+        });
+      }
+    }
+  } catch (error: any) {
+    logger.error(`Error handling comm status for dispatches`, {
+      service: SERVICE_NAME,
+      commId,
+      error: error?.message || String(error),
+    });
+  }
+}
+
 let handlerId: string | null = null;
 
 export function initDispatchNotifications(): void {

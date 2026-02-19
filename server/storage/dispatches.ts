@@ -12,7 +12,7 @@ import {
   type DispatchStatus,
   type Comm
 } from "@shared/schema";
-import { eq, desc, and, inArray, ne } from "drizzle-orm";
+import { eq, desc, and, inArray, ne, arrayContains } from "drizzle-orm";
 import { eventBus, EventType } from "../services/event-bus";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
@@ -67,6 +67,7 @@ export interface DispatchStorage {
   delete(id: string): Promise<boolean>;
   setStatusPossible(dispatchId: string, newStatus: DispatchStatus): Promise<SetStatusResult>;
   setStatus(dispatchId: string, newStatus: DispatchStatus): Promise<{ success: boolean; dispatch?: Dispatch; error?: string }>;
+  findByCommId(commId: string): Promise<Dispatch | undefined>;
 }
 
 async function getWorkerName(workerId: string): Promise<string> {
@@ -362,6 +363,19 @@ export function createDispatchStorage(): DispatchStorage {
 
     async getByWorker(workerId: string): Promise<DispatchWithRelations[]> {
       return searchDispatches({ workerId });
+    },
+
+    async findByCommId(commId: string): Promise<Dispatch | undefined> {
+      const client = getClient();
+      const [dispatch] = await client
+        .select()
+        .from(dispatches)
+        .where(and(
+          arrayContains(dispatches.commIds, [commId]),
+          eq(dispatches.status, "notified")
+        ))
+        .limit(1);
+      return dispatch || undefined;
     },
 
     async create(insertDispatch: InsertDispatch): Promise<Dispatch> {
