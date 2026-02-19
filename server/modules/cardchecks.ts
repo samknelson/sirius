@@ -3,7 +3,7 @@ import { storage } from "../storage";
 import { insertCardcheckSchema } from "@shared/schema";
 import { requireComponent } from "./components";
 import { db } from "../db";
-import { sql } from "drizzle-orm";
+import { sql, SQL } from "drizzle-orm";
 
 export function registerCardchecksRoutes(
   app: Express,
@@ -236,6 +236,10 @@ export function registerCardchecksRoutes(
     isPrimary: boolean;
   }
 
+  function sqlInList(ids: string[]): SQL {
+    return sql.join(ids.map(id => sql`${id}`), sql`, `);
+  }
+
   async function getOrganizingStatusGroups(): Promise<StatusGroup[]> {
     const variable = await storage.variables.getByName(ORGANIZING_STATUS_GROUPS_VAR);
     if (variable && Array.isArray(variable.value)) {
@@ -363,7 +367,7 @@ export function registerCardchecksRoutes(
           FROM latest_employment le
           INNER JOIN workers w ON w.id = le.worker_id
           WHERE ${hasPrimaryFilter
-            ? sql`le.employment_status_id = ANY(${primaryStatusIds})`
+            ? sql`le.employment_status_id IN (${sqlInList(primaryStatusIds)})`
             : sql`le.is_employed = true`}
         ),
         worker_cardchecks AS (
@@ -415,7 +419,7 @@ export function registerCardchecksRoutes(
           INNER JOIN workers w ON w.id = le.worker_id
           INNER JOIN contacts c ON c.id = w.contact_id
           INNER JOIN employers e ON e.id = le.employer_id
-          WHERE le.employment_status_id = ANY(${group.statusIds})
+          WHERE le.employment_status_id IN (${sqlInList(group.statusIds)})
             AND e.is_active = true
           ORDER BY e.name, c.display_name
         `);
@@ -574,7 +578,7 @@ export function registerCardchecksRoutes(
           SELECT DISTINCT le.worker_id
           FROM latest_employment le
           WHERE ${hasPrimaryFilter
-            ? sql`le.employment_status_id = ANY(${primaryStatusIds})`
+            ? sql`le.employment_status_id IN (${sqlInList(primaryStatusIds)})`
             : sql`le.is_employed = true`}
         )
         SELECT 
@@ -639,7 +643,7 @@ export function registerCardchecksRoutes(
           SELECT le.worker_id, le.status_date as current_active_date, le.status_name
           FROM latest_employment le
           WHERE ${hasPrimaryFilter
-            ? sql`le.employment_status_id = ANY(${primaryStatusIds})`
+            ? sql`le.employment_status_id IN (${sqlInList(primaryStatusIds)})`
             : sql`le.is_employed = true`}
         ),
         -- Get the latest signed cardcheck for each worker (if any)
