@@ -226,9 +226,78 @@ export function registerCardchecksRoutes(
     }
   });
 
+  // ==================== Organizing Status Groups Configuration ====================
+  const ORGANIZING_STATUS_GROUPS_VAR = "organizing_status_groups";
+
+  interface StatusGroup {
+    id: string;
+    name: string;
+    statusIds: string[];
+    isPrimary: boolean;
+  }
+
+  async function getOrganizingStatusGroups(): Promise<StatusGroup[]> {
+    const variable = await storage.variables.getByName(ORGANIZING_STATUS_GROUPS_VAR);
+    if (variable && Array.isArray(variable.value)) {
+      return variable.value as StatusGroup[];
+    }
+    return [];
+  }
+
+  app.get("/api/organizing/status-groups", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
+    try {
+      const groups = await getOrganizingStatusGroups();
+      res.json(groups);
+    } catch (error) {
+      console.error("Failed to fetch organizing status groups:", error);
+      res.status(500).json({ message: "Failed to fetch organizing status groups" });
+    }
+  });
+
+  app.put("/api/organizing/status-groups", requireAuth, cardcheckComponent, requireAccess('admin'), async (req, res) => {
+    try {
+      const groups = req.body.groups as StatusGroup[];
+      if (!Array.isArray(groups)) {
+        return res.status(400).json({ message: "Groups must be an array" });
+      }
+      const primaryCount = groups.filter(g => g.isPrimary).length;
+      if (primaryCount > 1) {
+        return res.status(400).json({ message: "Only one group can be marked as primary" });
+      }
+      for (const group of groups) {
+        if (!group.id || !group.name || !Array.isArray(group.statusIds)) {
+          return res.status(400).json({ message: "Each group must have id, name, and statusIds" });
+        }
+      }
+
+      const existing = await storage.variables.getByName(ORGANIZING_STATUS_GROUPS_VAR);
+      if (existing) {
+        await storage.variables.update(existing.id, {
+          name: ORGANIZING_STATUS_GROUPS_VAR,
+          value: groups
+        });
+      } else {
+        await storage.variables.create({
+          name: ORGANIZING_STATUS_GROUPS_VAR,
+          value: groups
+        });
+      }
+      res.json(groups);
+    } catch (error) {
+      console.error("Failed to update organizing status groups:", error);
+      res.status(500).json({ message: "Failed to update organizing status groups" });
+    }
+  });
+
   // GET /api/employers/organizing - Get organizing employer list with card check stats
   app.get("/api/employers/organizing", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
     try {
+      const statusGroups = await getOrganizingStatusGroups();
+      const primaryGroup = statusGroups.find(g => g.isPrimary);
+      const secondaryGroups = statusGroups.filter(g => !g.isPrimary && g.statusIds.length > 0);
+      const primaryStatusIds = primaryGroup?.statusIds || [];
+      const hasPrimaryFilter = primaryStatusIds.length > 0;
+
       // Get all active employers with their type info, school types, and region
       const employersResult = await db.execute(sql`
         SELECT 
@@ -266,8 +335,14 @@ export function registerCardchecksRoutes(
         // Table may not exist in non-BTU installations
       }
 
-      // Get worker counts and card check stats per employer/bargaining unit
-      // Workers are "active" if their most recent employment record has employed=true
+      // Get all employment statuses for reference
+      const allStatusesResult = await db.execute(sql`
+        SELECT id, name, code, employed FROM options_employment_status ORDER BY sequence
+      `);
+      const allStatuses = allStatusesResult.rows as any[];
+
+      // Build WHERE filter for primary group status IDs
+      // If primary group has status IDs, only count those; otherwise fall back to employed=true
       const statsResult = await db.execute(sql`
         WITH latest_employment AS (
           SELECT DISTINCT ON (wh.worker_id, wh.employer_id)
@@ -287,7 +362,9 @@ export function registerCardchecksRoutes(
             w.bargaining_unit_id
           FROM latest_employment le
           INNER JOIN workers w ON w.id = le.worker_id
-          WHERE le.is_employed = true
+          WHERE ${hasPrimaryFilter
+            ? sql`le.employment_status_id = ANY(${primaryStatusIds})`
+            : sql`le.is_employed = true`}
         ),
         worker_cardchecks AS (
           SELECT 
@@ -310,6 +387,51 @@ export function registerCardchecksRoutes(
       `);
 
       const stats = statsResult.rows as any[];
+
+      // Get workers for each secondary status group (e.g., On Leave)
+      const secondaryGroupsData: any[] = [];
+      for (const group of secondaryGroups) {
+        if (group.statusIds.length === 0) continue;
+        const groupWorkersResult = await db.execute(sql`
+          WITH latest_employment AS (
+            SELECT DISTINCT ON (wh.worker_id, wh.employer_id)
+              wh.worker_id,
+              wh.employer_id,
+              wh.employment_status_id,
+              es.name as status_name,
+              make_date(wh.year, wh.month, wh.day) as status_date
+            FROM worker_hours wh
+            LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
+            ORDER BY wh.worker_id, wh.employer_id, wh.year DESC, wh.month DESC, wh.day DESC
+          )
+          SELECT 
+            le.worker_id as "workerId",
+            le.employer_id as "employerId",
+            e.name as "employerName",
+            c.display_name as "displayName",
+            le.status_name as "statusName",
+            le.status_date as "statusDate"
+          FROM latest_employment le
+          INNER JOIN workers w ON w.id = le.worker_id
+          INNER JOIN contacts c ON c.id = w.contact_id
+          INNER JOIN employers e ON e.id = le.employer_id
+          WHERE le.employment_status_id = ANY(${group.statusIds})
+            AND e.is_active = true
+          ORDER BY e.name, c.display_name
+        `);
+        secondaryGroupsData.push({
+          id: group.id,
+          name: group.name,
+          workers: groupWorkersResult.rows.map((row: any) => ({
+            workerId: row.workerId,
+            employerId: row.employerId,
+            employerName: row.employerName,
+            displayName: row.displayName,
+            statusName: row.statusName,
+            statusDate: row.statusDate,
+          }))
+        });
+      }
 
       // Get stewards for each employer (table may not exist in all installations)
       let stewards: any[] = [];
@@ -337,7 +459,6 @@ export function registerCardchecksRoutes(
         `);
         stewards = stewardsResult.rows as any[];
       } catch (stewardError: any) {
-        // Table may not exist - continue without steward data
         console.log("Steward assignments table not available, skipping steward data");
       }
 
@@ -367,7 +488,6 @@ export function registerCardchecksRoutes(
       const employerMap = new Map<string, any>();
 
       for (const emp of employers) {
-        // Map school type IDs to full objects with name and icon
         const schoolTypeIds = emp.schoolTypeIds || [];
         const schoolTypes = schoolTypeIds
           .map((id: string) => schoolTypesMap.get(id))
@@ -438,12 +558,13 @@ export function registerCardchecksRoutes(
         }
       }
 
-      // Compute distinct worker totals across all employers
+      // Compute distinct worker totals (using same filter as primary group)
       const distinctResult = await db.execute(sql`
         WITH latest_employment AS (
           SELECT DISTINCT ON (wh.worker_id, wh.employer_id)
             wh.worker_id,
             wh.employer_id,
+            wh.employment_status_id,
             es.employed as is_employed
           FROM worker_hours wh
           LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
@@ -452,7 +573,9 @@ export function registerCardchecksRoutes(
         active_workers AS (
           SELECT DISTINCT le.worker_id
           FROM latest_employment le
-          WHERE le.is_employed = true
+          WHERE ${hasPrimaryFilter
+            ? sql`le.employment_status_id = ANY(${primaryStatusIds})`
+            : sql`le.is_employed = true`}
         )
         SELECT 
           COUNT(DISTINCT aw.worker_id) as "totalDistinctWorkers",
@@ -462,7 +585,6 @@ export function registerCardchecksRoutes(
       `);
       const distinctStats = distinctResult.rows[0] as any;
 
-      // Sort by name (show all employers regardless of worker count)
       const result = Array.from(employerMap.values())
         .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -470,6 +592,8 @@ export function registerCardchecksRoutes(
         employers: result,
         distinctTotalWorkers: Number(distinctStats?.totalDistinctWorkers) || 0,
         distinctSignedWorkers: Number(distinctStats?.signedDistinctWorkers) || 0,
+        secondaryGroups: secondaryGroupsData,
+        statusGroups: statusGroups,
       });
     } catch (error: any) {
       console.error("Failed to fetch organizing employer list:", error);
@@ -482,6 +606,11 @@ export function registerCardchecksRoutes(
     try {
       const { employerId } = req.params;
 
+      const statusGroups = await getOrganizingStatusGroups();
+      const primaryGroup = statusGroups.find(g => g.isPrimary);
+      const primaryStatusIds = primaryGroup?.statusIds || [];
+      const hasPrimaryFilter = primaryStatusIds.length > 0;
+
       // Get employer info
       const employerResult = await db.execute(sql`
         SELECT id, name FROM employers WHERE id = ${employerId}
@@ -493,17 +622,11 @@ export function registerCardchecksRoutes(
 
       const employer = employerResult.rows[0] as any;
 
-      // Get workers at this employer who are missing valid cardchecks
-      // A cardcheck is invalid if:
-      // 1. No signed cardcheck at all (Missing)
-      // 2. BU Mismatch: signed cardcheck is for a different BU than worker's current BU
-      // 3. Termination Expired: worker was terminated for 30+ days and returned to active,
-      //    but their latest signed cardcheck was signed before the termination
       const workersResult = await db.execute(sql`
         WITH latest_employment AS (
-          -- Get the most recent employment status for each worker at this employer
           SELECT DISTINCT ON (wh.worker_id)
             wh.worker_id,
+            wh.employment_status_id,
             es.name as status_name,
             es.employed as is_employed,
             make_date(wh.year, wh.month, wh.day) as status_date
@@ -512,11 +635,12 @@ export function registerCardchecksRoutes(
           WHERE wh.employer_id = ${employerId}
           ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
         ),
-        -- Workers who are currently employed at this employer
         active_workers AS (
           SELECT le.worker_id, le.status_date as current_active_date, le.status_name
           FROM latest_employment le
-          WHERE le.is_employed = true
+          WHERE ${hasPrimaryFilter
+            ? sql`le.employment_status_id = ANY(${primaryStatusIds})`
+            : sql`le.is_employed = true`}
         ),
         -- Get the latest signed cardcheck for each worker (if any)
         latest_signed_cardcheck AS (

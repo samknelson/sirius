@@ -1,6 +1,6 @@
-import { Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital, Users, Award, Loader2, UserX, Download, Briefcase, X, MapPin, School, GraduationCap, Baby, Backpack, BookOpen, Library, Sparkles, HelpCircle, Church, Flag, Star } from "lucide-react";
+import { Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital, Users, Award, Loader2, UserX, Download, Briefcase, X, MapPin, School, GraduationCap, Baby, Backpack, BookOpen, Library, Sparkles, HelpCircle, Church, Flag, Star, Settings, Plus, Trash2, Clock } from "lucide-react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,11 +10,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useState, useMemo } from "react";
 import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
 import { useTerm } from "@/contexts/TerminologyContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 pdfMake.vfs = (pdfFonts as any).pdfMake?.vfs || pdfFonts.vfs;
 
@@ -97,6 +103,35 @@ interface Region {
   name: string;
 }
 
+interface StatusGroup {
+  id: string;
+  name: string;
+  statusIds: string[];
+  isPrimary: boolean;
+}
+
+interface EmploymentStatusOption {
+  id: string;
+  name: string;
+  code: string;
+  employed: boolean;
+}
+
+interface SecondaryGroupWorker {
+  workerId: string;
+  employerId: string;
+  employerName: string;
+  displayName: string;
+  statusName: string;
+  statusDate: string | null;
+}
+
+interface SecondaryGroupData {
+  id: string;
+  name: string;
+  workers: SecondaryGroupWorker[];
+}
+
 interface FetchResult {
   data: MissingCardchecksResponse | null;
   error: boolean;
@@ -133,7 +168,8 @@ function generateAggregatePdf(
   employers: OrganizingEmployer[],
   missingData: Map<string, FetchResult>,
   totalStats: { totalWorkers: number; signedWorkers: number; employerCount: number },
-  term: TermFn
+  term: TermFn,
+  secondaryGroups: SecondaryGroupData[] = []
 ) {
   const content: any[] = [];
   const overallPercentage = totalStats.totalWorkers > 0 
@@ -294,6 +330,49 @@ function generateAggregatePdf(
       },
     });
   });
+
+  for (const group of secondaryGroups) {
+    if (group.workers.length === 0) continue;
+    
+    content.push({ text: '', pageBreak: 'before' });
+    content.push(
+      { text: group.name, style: 'title', margin: [0, 0, 0, 5] as [number, number, number, number] },
+      { text: `${group.workers.length} ${term('worker', { plural: group.workers.length !== 1, lowercase: true })}`, style: 'subtitle', margin: [0, 0, 0, 15] as [number, number, number, number] },
+    );
+
+    const groupTableBody: any[] = [
+      [
+        { text: 'Name', style: 'tableHeader' },
+        { text: term('employer'), style: 'tableHeader' },
+        { text: 'Status', style: 'tableHeader' },
+        { text: 'Since', style: 'tableHeader' },
+      ],
+    ];
+
+    for (const worker of group.workers) {
+      groupTableBody.push([
+        { text: worker.displayName },
+        { text: worker.employerName },
+        { text: worker.statusName },
+        { text: worker.statusDate ? new Date(worker.statusDate).toLocaleDateString() : '-' },
+      ]);
+    }
+
+    content.push({
+      table: {
+        headerRows: 1,
+        widths: ['*', '*', 'auto', 'auto'],
+        body: groupTableBody,
+      },
+      layout: {
+        fillColor: (rowIndex: number) => (rowIndex === 0 ? '#f3f4f6' : null),
+        hLineWidth: () => 0.5,
+        vLineWidth: () => 0.5,
+        hLineColor: () => '#d1d5db',
+        vLineColor: () => '#d1d5db',
+      },
+    });
+  }
 
   const docDefinition = {
     pageSize: 'LETTER' as const,
@@ -598,6 +677,272 @@ function LoadingSkeleton() {
   );
 }
 
+function StatusGroupsDialog({ isAdmin }: { isAdmin: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [groups, setGroups] = useState<StatusGroup[]>([]);
+  const { toast } = useToast();
+
+  const { data: statuses = [] } = useQuery<EmploymentStatusOption[]>({
+    queryKey: ["/api/options/employment-status"],
+    enabled: open,
+  });
+
+  const { data: savedGroups = [] } = useQuery<StatusGroup[]>({
+    queryKey: ["/api/organizing/status-groups"],
+    enabled: open,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async (newGroups: StatusGroup[]) => {
+      await apiRequest("PUT", "/api/organizing/status-groups", { groups: newGroups });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/organizing/status-groups"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/employers/organizing"] });
+      toast({ title: "Status groups saved" });
+      setOpen(false);
+    },
+    onError: () => {
+      toast({ title: "Failed to save status groups", variant: "destructive" });
+    },
+  });
+
+  const handleOpen = (isOpen: boolean) => {
+    if (isOpen) {
+      setGroups(savedGroups.length > 0 ? JSON.parse(JSON.stringify(savedGroups)) : []);
+    }
+    setOpen(isOpen);
+  };
+
+  const addGroup = () => {
+    setGroups([...groups, {
+      id: crypto.randomUUID(),
+      name: "",
+      statusIds: [],
+      isPrimary: groups.length === 0,
+    }]);
+  };
+
+  const removeGroup = (id: string) => {
+    const updated = groups.filter(g => g.id !== id);
+    if (updated.length > 0 && !updated.some(g => g.isPrimary)) {
+      updated[0].isPrimary = true;
+    }
+    setGroups(updated);
+  };
+
+  const updateGroupName = (id: string, name: string) => {
+    setGroups(groups.map(g => g.id === id ? { ...g, name } : g));
+  };
+
+  const togglePrimary = (id: string) => {
+    setGroups(groups.map(g => ({ ...g, isPrimary: g.id === id })));
+  };
+
+  const toggleStatus = (groupId: string, statusId: string) => {
+    setGroups(groups.map(g => {
+      if (g.id !== groupId) return g;
+      const has = g.statusIds.includes(statusId);
+      return {
+        ...g,
+        statusIds: has
+          ? g.statusIds.filter(s => s !== statusId)
+          : [...g.statusIds, statusId],
+      };
+    }));
+  };
+
+  const assignedStatusIds = new Set(groups.flatMap(g => g.statusIds));
+
+  if (!isAdmin) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" data-testid="button-status-groups-config">
+          <Settings className="h-4 w-4 mr-2" />
+          Status Groups
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Organizing List Status Groups</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground mb-4">
+          Configure which employment statuses appear on the main employer cards (primary group)
+          and which statuses get their own summary sections.
+        </p>
+
+        <div className="space-y-6">
+          {groups.map((group) => (
+            <Card key={group.id} data-testid={`card-status-group-${group.id}`}>
+              <CardContent className="pt-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Group name (e.g., Active Workers, On Leave)"
+                    value={group.name}
+                    onChange={(e) => updateGroupName(group.id, e.target.value)}
+                    className="flex-1"
+                    data-testid={`input-group-name-${group.id}`}
+                  />
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Checkbox
+                      id={`primary-${group.id}`}
+                      checked={group.isPrimary}
+                      onCheckedChange={() => togglePrimary(group.id)}
+                      data-testid={`checkbox-primary-${group.id}`}
+                    />
+                    <Label htmlFor={`primary-${group.id}`} className="text-sm whitespace-nowrap">
+                      Primary
+                    </Label>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeGroup(group.id)}
+                    data-testid={`button-remove-group-${group.id}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+                {group.isPrimary && (
+                  <p className="text-xs text-muted-foreground">
+                    Workers with these statuses will appear on the main employer cards and count toward card check statistics.
+                  </p>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  {statuses.map((status) => {
+                    const isInThisGroup = group.statusIds.includes(status.id);
+                    const isInOtherGroup = !isInThisGroup && assignedStatusIds.has(status.id);
+                    return (
+                      <div key={status.id} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`status-${group.id}-${status.id}`}
+                          checked={isInThisGroup}
+                          disabled={isInOtherGroup}
+                          onCheckedChange={() => toggleStatus(group.id, status.id)}
+                          data-testid={`checkbox-status-${group.id}-${status.id}`}
+                        />
+                        <Label
+                          htmlFor={`status-${group.id}-${status.id}`}
+                          className={`text-sm ${isInOtherGroup ? "text-muted-foreground line-through" : ""}`}
+                        >
+                          {status.name} ({status.code})
+                        </Label>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+
+          <Button variant="outline" onClick={addGroup} className="w-full" data-testid="button-add-group">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Status Group
+          </Button>
+        </div>
+
+        <DialogFooter className="mt-4">
+          <Button variant="ghost" onClick={() => setOpen(false)} data-testid="button-cancel-groups">
+            Cancel
+          </Button>
+          <Button
+            onClick={() => saveMutation.mutate(groups)}
+            disabled={saveMutation.isPending || groups.some(g => !g.name.trim())}
+            data-testid="button-save-groups"
+          >
+            {saveMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SecondaryGroupSection({ group, term }: { group: SecondaryGroupData; term: TermFn }) {
+  const [expanded, setExpanded] = useState(false);
+  const displayWorkers = expanded ? group.workers : group.workers.slice(0, 10);
+  const hasMore = group.workers.length > 10;
+
+  if (group.workers.length === 0) return null;
+
+  const employerCounts = new Map<string, number>();
+  for (const w of group.workers) {
+    employerCounts.set(w.employerName, (employerCounts.get(w.employerName) || 0) + 1);
+  }
+
+  return (
+    <Card data-testid={`card-secondary-group-${group.id}`}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Clock className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-base">{group.name}</CardTitle>
+          </div>
+          <Badge variant="secondary" data-testid={`badge-group-count-${group.id}`}>
+            {group.workers.length} {term('worker', { plural: group.workers.length !== 1, lowercase: true })}
+            {" across "}
+            {employerCounts.size} {term('employer', { plural: employerCounts.size !== 1, lowercase: true })}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>{term('employer')}</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Since</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {displayWorkers.map((worker) => (
+              <TableRow key={`${worker.workerId}-${worker.employerId}`}>
+                <TableCell>
+                  <Link href={`/workers/${worker.workerId}`}>
+                    <span className="underline-offset-2 hover:underline cursor-pointer" data-testid={`link-worker-${worker.workerId}`}>
+                      {worker.displayName}
+                    </span>
+                  </Link>
+                </TableCell>
+                <TableCell>
+                  <Link href={`/employers/${worker.employerId}`}>
+                    <span className="underline-offset-2 hover:underline cursor-pointer text-muted-foreground" data-testid={`link-employer-${worker.employerId}`}>
+                      {worker.employerName}
+                    </span>
+                  </Link>
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline">{worker.statusName}</Badge>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {worker.statusDate
+                    ? new Date(worker.statusDate).toLocaleDateString()
+                    : "-"}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        {hasMore && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full mt-2"
+            onClick={() => setExpanded(!expanded)}
+            data-testid={`button-toggle-group-${group.id}`}
+          >
+            {expanded ? "Show less" : `Show all ${group.workers.length} ${term('worker', { plural: true, lowercase: true })}`}
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function EmployersOrganizing() {
   const [search, setSearch] = useState("");
   const [employerTypeFilter, setEmployerTypeFilter] = useState<string>("");
@@ -605,16 +950,18 @@ export default function EmployersOrganizing() {
   const [regionFilter, setRegionFilter] = useState<string>("");
   const [isExporting, setIsExporting] = useState(false);
   const term = useTerm();
-  const { hasComponent } = useAuth();
+  const { hasComponent, hasPermission } = useAuth();
 
-  // This page is accessible when either sitespecific.btu OR cardcheck component is enabled
   const hasAccess = hasComponent("sitespecific.btu") || hasComponent("cardcheck");
   const hasBtuComponent = hasComponent("sitespecific.btu");
+  const isAdmin = hasPermission("admin");
 
   interface OrganizingResponse {
     employers: OrganizingEmployer[];
     distinctTotalWorkers: number;
     distinctSignedWorkers: number;
+    secondaryGroups?: SecondaryGroupData[];
+    statusGroups?: StatusGroup[];
   }
 
   const { data: organizingData, isLoading, error } = useQuery<OrganizingResponse>({
@@ -623,6 +970,7 @@ export default function EmployersOrganizing() {
   });
 
   const employers = organizingData?.employers || [];
+  const secondaryGroups = organizingData?.secondaryGroups || [];
 
   // Fetch filter options
   const { data: employerTypes = [] } = useQuery<EmployerType[]>({
@@ -711,7 +1059,7 @@ export default function EmployersOrganizing() {
     setIsExporting(true);
     try {
       const missingData = await fetchAllMissingCardchecks(employers);
-      generateAggregatePdf(employers, missingData, totalStats, term);
+      generateAggregatePdf(employers, missingData, totalStats, term, secondaryGroups);
     } catch (err) {
       console.error("Failed to generate PDF:", err);
     } finally {
@@ -729,6 +1077,7 @@ export default function EmployersOrganizing() {
             <span className="text-sm text-muted-foreground" data-testid="text-overall-stats">
               {totalStats.signedWorkers}/{totalStats.totalWorkers} {term('worker', { plural: true, lowercase: true })} ({overallPercentage}%) across {totalStats.employerCount} {term('employer', { plural: true, lowercase: true })}
             </span>
+            <StatusGroupsDialog isAdmin={isAdmin} />
             {employers.length > 0 && (
               <Button 
                 variant="default" 
@@ -871,6 +1220,14 @@ export default function EmployersOrganizing() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredEmployers.map((employer) => (
               <EmployerCard key={employer.id} employer={employer} term={term} />
+            ))}
+          </div>
+        )}
+
+        {secondaryGroups.length > 0 && (
+          <div className="mt-8 space-y-4" data-testid="secondary-groups-section">
+            {secondaryGroups.map((group) => (
+              <SecondaryGroupSection key={group.id} group={group} term={term} />
             ))}
           </div>
         )}
