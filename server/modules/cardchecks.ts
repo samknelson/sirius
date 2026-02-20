@@ -226,8 +226,10 @@ export function registerCardchecksRoutes(
     }
   });
 
-  // ==================== Organizing Status Groups Configuration ====================
+  // ==================== Organizing Configuration ====================
   const ORGANIZING_STATUS_GROUPS_VAR = "organizing_status_groups";
+  const ORGANIZING_NEW_MEMBER_DAYS_VAR = "organizing_new_member_days";
+  const DEFAULT_NEW_MEMBER_DAYS = 30;
 
   interface StatusGroup {
     id: string;
@@ -246,6 +248,14 @@ export function registerCardchecksRoutes(
       return variable.value as StatusGroup[];
     }
     return [];
+  }
+
+  async function getNewMemberDays(): Promise<number> {
+    const variable = await storage.variables.getByName(ORGANIZING_NEW_MEMBER_DAYS_VAR);
+    if (variable && typeof variable.value === 'number' && variable.value > 0) {
+      return variable.value;
+    }
+    return DEFAULT_NEW_MEMBER_DAYS;
   }
 
   app.get("/api/organizing/status-groups", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
@@ -290,6 +300,43 @@ export function registerCardchecksRoutes(
     } catch (error) {
       console.error("Failed to update organizing status groups:", error);
       res.status(500).json({ message: "Failed to update organizing status groups" });
+    }
+  });
+
+  // GET/PUT /api/organizing/new-member-days - Configure new member window
+  app.get("/api/organizing/new-member-days", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
+    try {
+      const days = await getNewMemberDays();
+      res.json({ days });
+    } catch (error) {
+      console.error("Failed to fetch new member days:", error);
+      res.status(500).json({ message: "Failed to fetch new member days" });
+    }
+  });
+
+  app.put("/api/organizing/new-member-days", requireAuth, cardcheckComponent, requireAccess('admin'), async (req, res) => {
+    try {
+      const { days } = req.body;
+      if (typeof days !== 'number' || days < 1 || days > 365) {
+        return res.status(400).json({ message: "Days must be a number between 1 and 365" });
+      }
+
+      const existing = await storage.variables.getByName(ORGANIZING_NEW_MEMBER_DAYS_VAR);
+      if (existing) {
+        await storage.variables.update(existing.id, {
+          name: ORGANIZING_NEW_MEMBER_DAYS_VAR,
+          value: days
+        });
+      } else {
+        await storage.variables.create({
+          name: ORGANIZING_NEW_MEMBER_DAYS_VAR,
+          value: days
+        });
+      }
+      res.json({ days });
+    } catch (error) {
+      console.error("Failed to update new member days:", error);
+      res.status(500).json({ message: "Failed to update new member days" });
     }
   });
 
@@ -592,12 +639,71 @@ export function registerCardchecksRoutes(
       const result = Array.from(employerMap.values())
         .sort((a, b) => a.name.localeCompare(b.name));
 
+      // Query new members: workers whose earliest signed card check is within the last X days
+      const newMemberDays = await getNewMemberDays();
+      const newMembersResult = await db.execute(sql`
+        WITH first_signed AS (
+          SELECT 
+            cc.worker_id,
+            MIN(cc.signed_date) as first_signed_date,
+            (ARRAY_AGG(cc.bargaining_unit_id ORDER BY cc.signed_date ASC))[1] as bargaining_unit_id
+          FROM cardchecks cc
+          WHERE cc.status = 'signed'
+          GROUP BY cc.worker_id
+          HAVING MIN(cc.signed_date) >= CURRENT_DATE - ${newMemberDays}::integer
+        )
+        SELECT 
+          fs.worker_id as "workerId",
+          c.display_name as "displayName",
+          fs.first_signed_date as "signedDate",
+          bu.name as "bargainingUnitName",
+          bu.id as "bargainingUnitId",
+          COALESCE(
+            (
+              SELECT e.name 
+              FROM worker_hours wh
+              INNER JOIN employers e ON e.id = wh.employer_id
+              WHERE wh.worker_id = fs.worker_id
+              ORDER BY wh.year DESC, wh.month DESC, wh.day DESC
+              LIMIT 1
+            ),
+            'Unknown'
+          ) as "employerName",
+          COALESCE(
+            (
+              SELECT wh.employer_id
+              FROM worker_hours wh
+              WHERE wh.worker_id = fs.worker_id
+              ORDER BY wh.year DESC, wh.month DESC, wh.day DESC
+              LIMIT 1
+            ),
+            NULL
+          ) as "employerId"
+        FROM first_signed fs
+        INNER JOIN workers w ON w.id = fs.worker_id
+        INNER JOIN contacts c ON c.id = w.contact_id
+        LEFT JOIN bargaining_units bu ON bu.id = fs.bargaining_unit_id
+        ORDER BY fs.first_signed_date DESC, c.display_name
+      `);
+
+      const newMembers = newMembersResult.rows.map((row: any) => ({
+        workerId: row.workerId,
+        displayName: row.displayName,
+        signedDate: row.signedDate,
+        bargainingUnitName: row.bargainingUnitName || 'Unknown',
+        bargainingUnitId: row.bargainingUnitId,
+        employerName: row.employerName,
+        employerId: row.employerId,
+      }));
+
       res.json({
         employers: result,
         distinctTotalWorkers: Number(distinctStats?.totalDistinctWorkers) || 0,
         distinctSignedWorkers: Number(distinctStats?.signedDistinctWorkers) || 0,
         secondaryGroups: secondaryGroupsData,
         statusGroups: statusGroups,
+        newMembers,
+        newMemberDays,
       });
     } catch (error: any) {
       console.error("Failed to fetch organizing employer list:", error);

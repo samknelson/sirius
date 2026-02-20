@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
 import { useTerm } from "@/contexts/TerminologyContext";
@@ -132,6 +132,16 @@ interface SecondaryGroupData {
   workers: SecondaryGroupWorker[];
 }
 
+interface NewMember {
+  workerId: string;
+  displayName: string;
+  signedDate: string;
+  bargainingUnitName: string;
+  bargainingUnitId: string;
+  employerName: string;
+  employerId: string | null;
+}
+
 interface FetchResult {
   data: MissingCardchecksResponse | null;
   error: boolean;
@@ -169,7 +179,9 @@ function generateAggregatePdf(
   missingData: Map<string, FetchResult>,
   totalStats: { totalWorkers: number; signedWorkers: number; employerCount: number },
   term: TermFn,
-  secondaryGroups: SecondaryGroupData[] = []
+  secondaryGroups: SecondaryGroupData[] = [],
+  newMembers: NewMember[] = [],
+  newMemberDays: number = 30
 ) {
   const content: any[] = [];
   const overallPercentage = totalStats.totalWorkers > 0 
@@ -363,6 +375,48 @@ function generateAggregatePdf(
         headerRows: 1,
         widths: ['*', '*', 'auto', 'auto'],
         body: groupTableBody,
+      },
+      layout: {
+        fillColor: (rowIndex: number) => (rowIndex === 0 ? '#f3f4f6' : null),
+        hLineWidth: () => 0.5,
+        vLineWidth: () => 0.5,
+        hLineColor: () => '#d1d5db',
+        vLineColor: () => '#d1d5db',
+      },
+    });
+  }
+
+  if (newMembers.length > 0) {
+    content.push({ text: '', pageBreak: 'before' });
+    content.push(
+      { text: 'New Members', style: 'title', margin: [0, 0, 0, 5] as [number, number, number, number] },
+      { text: `${newMembers.length} new ${term('worker', { plural: newMembers.length !== 1, lowercase: true })} in last ${newMemberDays} days`, style: 'subtitle', margin: [0, 0, 0, 5] as [number, number, number, number] },
+      { text: 'These members need to be voted into the union at a membership meeting.', style: 'date', margin: [0, 0, 0, 15] as [number, number, number, number] },
+    );
+
+    const newMemberTableBody: any[] = [
+      [
+        { text: 'Name', style: 'tableHeader' },
+        { text: term('employer'), style: 'tableHeader' },
+        { text: term('bargainingUnit'), style: 'tableHeader' },
+        { text: 'Signed Date', style: 'tableHeader' },
+      ],
+    ];
+
+    for (const member of newMembers) {
+      newMemberTableBody.push([
+        { text: member.displayName },
+        { text: member.employerName },
+        { text: member.bargainingUnitName },
+        { text: new Date(member.signedDate).toLocaleDateString() },
+      ]);
+    }
+
+    content.push({
+      table: {
+        headerRows: 1,
+        widths: ['*', '*', 'auto', 'auto'],
+        body: newMemberTableBody,
       },
       layout: {
         fillColor: (rowIndex: number) => (rowIndex === 0 ? '#f3f4f6' : null),
@@ -680,6 +734,7 @@ function LoadingSkeleton() {
 function StatusGroupsDialog({ isAdmin }: { isAdmin: boolean }) {
   const [open, setOpen] = useState(false);
   const [groups, setGroups] = useState<StatusGroup[]>([]);
+  const [newMemberDays, setNewMemberDays] = useState<number>(30);
   const { toast } = useToast();
 
   const { data: statuses = [] } = useQuery<EmploymentStatusOption[]>({
@@ -692,24 +747,40 @@ function StatusGroupsDialog({ isAdmin }: { isAdmin: boolean }) {
     enabled: open,
   });
 
+  const { data: savedDays } = useQuery<{ days: number }>({
+    queryKey: ["/api/organizing/new-member-days"],
+    enabled: open,
+  });
+
   const saveMutation = useMutation({
-    mutationFn: async (newGroups: StatusGroup[]) => {
-      await apiRequest("PUT", "/api/organizing/status-groups", { groups: newGroups });
+    mutationFn: async ({ groups: newGroups, days }: { groups: StatusGroup[]; days: number }) => {
+      await Promise.all([
+        apiRequest("PUT", "/api/organizing/status-groups", { groups: newGroups }),
+        apiRequest("PUT", "/api/organizing/new-member-days", { days }),
+      ]);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/organizing/status-groups"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/organizing/new-member-days"] });
       queryClient.invalidateQueries({ queryKey: ["/api/employers/organizing"] });
-      toast({ title: "Status groups saved" });
+      toast({ title: "Settings saved" });
       setOpen(false);
     },
     onError: () => {
-      toast({ title: "Failed to save status groups", variant: "destructive" });
+      toast({ title: "Failed to save settings", variant: "destructive" });
     },
   });
+
+  useEffect(() => {
+    if (open && savedDays?.days !== undefined) {
+      setNewMemberDays(savedDays.days);
+    }
+  }, [open, savedDays]);
 
   const handleOpen = (isOpen: boolean) => {
     if (isOpen) {
       setGroups(savedGroups.length > 0 ? JSON.parse(JSON.stringify(savedGroups)) : []);
+      setNewMemberDays(savedDays?.days ?? 30);
     }
     setOpen(isOpen);
   };
@@ -764,11 +835,32 @@ function StatusGroupsDialog({ isAdmin }: { isAdmin: boolean }) {
           Status Groups
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" aria-describedby="organizing-settings-desc">
         <DialogHeader>
-          <DialogTitle>Organizing List Status Groups</DialogTitle>
+          <DialogTitle>Organizing List Settings</DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground mb-4">
+        <p id="organizing-settings-desc" className="text-sm text-muted-foreground mb-4">
+          Configure status groups and new member tracking for the organizing employer list.
+        </p>
+
+        <div className="mb-6">
+          <Label className="text-sm font-medium mb-2 block">New Member Window (days)</Label>
+          <p className="text-xs text-muted-foreground mb-2">
+            Workers whose first signed card check falls within this many days are shown as new members.
+          </p>
+          <Input
+            type="number"
+            min={1}
+            max={365}
+            value={newMemberDays}
+            onChange={(e) => setNewMemberDays(Math.max(1, Math.min(365, parseInt(e.target.value) || 30)))}
+            className="w-32"
+            data-testid="input-new-member-days"
+          />
+        </div>
+
+        <Label className="text-sm font-medium mb-2 block">Employment Status Groups</Label>
+        <p className="text-xs text-muted-foreground mb-4">
           Configure which employment statuses appear on the main employer cards (primary group)
           and which statuses get their own summary sections.
         </p>
@@ -848,7 +940,7 @@ function StatusGroupsDialog({ isAdmin }: { isAdmin: boolean }) {
             Cancel
           </Button>
           <Button
-            onClick={() => saveMutation.mutate(groups)}
+            onClick={() => saveMutation.mutate({ groups, days: newMemberDays })}
             disabled={saveMutation.isPending || groups.some(g => !g.name.trim())}
             data-testid="button-save-groups"
           >
@@ -943,6 +1035,86 @@ function SecondaryGroupSection({ group, term }: { group: SecondaryGroupData; ter
   );
 }
 
+function NewMembersSection({ members, days, term }: { members: NewMember[]; days: number; term: TermFn }) {
+  const [expanded, setExpanded] = useState(false);
+  const displayMembers = expanded ? members : members.slice(0, 10);
+  const hasMore = members.length > 10;
+
+  if (members.length === 0) return null;
+
+  return (
+    <Card data-testid="card-new-members">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Star className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-base">New Members</CardTitle>
+          </div>
+          <Badge variant="secondary" data-testid="badge-new-members-count">
+            {members.length} new in last {days} days
+          </Badge>
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          {term('worker', { plural: true })} whose first signed card check is within the last {days} days. These members need to be voted into the union at a membership meeting.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>{term('employer')}</TableHead>
+              <TableHead>{term('bargainingUnit')}</TableHead>
+              <TableHead>Signed Date</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {displayMembers.map((member) => (
+              <TableRow key={member.workerId}>
+                <TableCell>
+                  <Link href={`/workers/${member.workerId}`}>
+                    <span className="underline-offset-2 hover:underline cursor-pointer" data-testid={`link-new-member-${member.workerId}`}>
+                      {member.displayName}
+                    </span>
+                  </Link>
+                </TableCell>
+                <TableCell>
+                  {member.employerId ? (
+                    <Link href={`/employers/${member.employerId}`}>
+                      <span className="underline-offset-2 hover:underline cursor-pointer text-muted-foreground" data-testid={`link-new-member-employer-${member.employerId}`}>
+                        {member.employerName}
+                      </span>
+                    </Link>
+                  ) : (
+                    <span className="text-muted-foreground">{member.employerName}</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline">{member.bargainingUnitName}</Badge>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {new Date(member.signedDate).toLocaleDateString()}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        {hasMore && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full mt-2"
+            onClick={() => setExpanded(!expanded)}
+            data-testid="button-toggle-new-members"
+          >
+            {expanded ? "Show less" : `Show all ${members.length} new members`}
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function EmployersOrganizing() {
   const [search, setSearch] = useState("");
   const [employerTypeFilter, setEmployerTypeFilter] = useState<string>("");
@@ -962,6 +1134,8 @@ export default function EmployersOrganizing() {
     distinctSignedWorkers: number;
     secondaryGroups?: SecondaryGroupData[];
     statusGroups?: StatusGroup[];
+    newMembers?: NewMember[];
+    newMemberDays?: number;
   }
 
   const { data: organizingData, isLoading, error } = useQuery<OrganizingResponse>({
@@ -1059,7 +1233,11 @@ export default function EmployersOrganizing() {
     setIsExporting(true);
     try {
       const missingData = await fetchAllMissingCardchecks(employers);
-      generateAggregatePdf(employers, missingData, totalStats, term, secondaryGroups);
+      generateAggregatePdf(
+        employers, missingData, totalStats, term, secondaryGroups,
+        organizingData?.newMembers ?? [],
+        organizingData?.newMemberDays ?? 30
+      );
     } catch (err) {
       console.error("Failed to generate PDF:", err);
     } finally {
@@ -1221,6 +1399,16 @@ export default function EmployersOrganizing() {
             {filteredEmployers.map((employer) => (
               <EmployerCard key={employer.id} employer={employer} term={term} />
             ))}
+          </div>
+        )}
+
+        {(organizingData?.newMembers?.length ?? 0) > 0 && (
+          <div className="mt-8" data-testid="new-members-section">
+            <NewMembersSection
+              members={organizingData!.newMembers!}
+              days={organizingData!.newMemberDays ?? 30}
+              term={term}
+            />
           </div>
         )}
 
