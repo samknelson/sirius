@@ -625,7 +625,7 @@ function EmployerCard({ employer, term }: { employer: OrganizingEmployer; term: 
                     {missingRevenue !== null && (
                       <div className="flex items-center justify-end text-xs text-muted-foreground mt-0.5" data-testid={`text-missing-revenue-${employer.id}-${unit.id}`}>
                         <DollarSign className="h-3 w-3 mr-0.5" />
-                        <span>${missingRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} potential missing dues</span>
+                        <span>{missingRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} potential missing dues</span>
                       </div>
                     )}
                   </div>
