@@ -131,4 +131,44 @@ export function registerWorkerStewardAssignmentRoutes(
       res.status(500).json({ message: error.message || "Failed to delete steward assignment" });
     }
   });
+
+  const bulkDeleteSchema = z.object({
+    ids: z.array(z.string().uuid()).min(1).max(500),
+  });
+
+  app.post("/api/steward-assignments/bulk-delete", requireAuth, stewardComponent, requireAccess('staff'), async (req, res) => {
+    try {
+      const { ids } = bulkDeleteSchema.parse(req.body);
+
+      let deleted = 0;
+      let notFound = 0;
+      let errors = 0;
+
+      for (const id of ids) {
+        try {
+          const existing = await storage.workerStewardAssignments.getAssignmentById(id);
+          if (!existing) {
+            notFound++;
+            continue;
+          }
+          const result = await storage.workerStewardAssignments.deleteAssignment(id);
+          if (result) {
+            deleted++;
+          } else {
+            errors++;
+          }
+        } catch {
+          errors++;
+        }
+      }
+
+      res.json({ deleted, notFound, errors, total: ids.length });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error bulk deleting steward assignments:", error);
+      res.status(500).json({ message: error.message || "Failed to bulk delete steward assignments" });
+    }
+  });
 }
