@@ -1,4 +1,4 @@
-import { Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital, Users, Award, Loader2, UserX, Download, Briefcase, X, MapPin, School, GraduationCap, Baby, Backpack, BookOpen, Library, Sparkles, HelpCircle, Church, Flag, Star, Settings, Plus, Trash2, Clock } from "lucide-react";
+import { Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital, Users, Award, Loader2, UserX, Download, Briefcase, X, MapPin, School, GraduationCap, Baby, Backpack, BookOpen, Library, Sparkles, HelpCircle, Church, Flag, Star, Settings, Plus, Trash2, Clock, DollarSign } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -29,6 +29,7 @@ interface BargainingUnitStats {
   name: string;
   totalWorkers: number;
   signedWorkers: number;
+  duesRate: number | null;
 }
 
 interface Steward {
@@ -611,12 +612,22 @@ function EmployerCard({ employer, term }: { employer: OrganizingEmployer; term: 
                 const unitPercentage = unit.totalWorkers > 0 
                   ? Math.round((unit.signedWorkers / unit.totalWorkers) * 100) 
                   : 0;
+                const missingWorkers = unit.totalWorkers - unit.signedWorkers;
+                const missingRevenue = unit.duesRate && missingWorkers > 0 ? missingWorkers * unit.duesRate : null;
                 return (
-                  <div key={unit.id} className="flex items-center justify-between text-sm" data-testid={`unit-${employer.id}-${unit.id}`}>
-                    <span className="truncate text-muted-foreground">{unit.name}</span>
-                    <span className="font-medium shrink-0 ml-2">
-                      {unit.signedWorkers}/{unit.totalWorkers} ({unitPercentage}%)
-                    </span>
+                  <div key={unit.id} data-testid={`unit-${employer.id}-${unit.id}`}>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="truncate text-muted-foreground">{unit.name}</span>
+                      <span className="font-medium shrink-0 ml-2">
+                        {unit.signedWorkers}/{unit.totalWorkers} ({unitPercentage}%)
+                      </span>
+                    </div>
+                    {missingRevenue !== null && (
+                      <div className="flex items-center justify-end text-xs text-muted-foreground mt-0.5" data-testid={`text-missing-revenue-${employer.id}-${unit.id}`}>
+                        <DollarSign className="h-3 w-3 mr-0.5" />
+                        <span>${missingRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} potential missing dues</span>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1202,10 +1213,25 @@ export default function EmployersOrganizing() {
   };
 
   const totalStats = useMemo(() => {
+    let totalMissingDuesRevenue = 0;
+    let hasDuesRates = false;
+    for (const emp of employers) {
+      for (const bu of emp.bargainingUnits) {
+        if (bu.duesRate && bu.duesRate > 0) {
+          hasDuesRates = true;
+          const missing = bu.totalWorkers - bu.signedWorkers;
+          if (missing > 0) {
+            totalMissingDuesRevenue += missing * bu.duesRate;
+          }
+        }
+      }
+    }
     return {
       totalWorkers: organizingData?.distinctTotalWorkers || 0,
       signedWorkers: organizingData?.distinctSignedWorkers || 0,
       employerCount: employers.length,
+      totalMissingDuesRevenue,
+      hasDuesRates,
     };
   }, [organizingData, employers]);
 
@@ -1254,6 +1280,11 @@ export default function EmployersOrganizing() {
           <div className="flex items-center gap-4">
             <span className="text-sm text-muted-foreground" data-testid="text-overall-stats">
               {totalStats.signedWorkers}/{totalStats.totalWorkers} {term('worker', { plural: true, lowercase: true })} ({overallPercentage}%) across {totalStats.employerCount} {term('employer', { plural: true, lowercase: true })}
+              {totalStats.hasDuesRates && totalStats.totalMissingDuesRevenue > 0 && (
+                <span className="ml-2 font-medium text-destructive" data-testid="text-total-missing-revenue">
+                  · ${totalStats.totalMissingDuesRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} potential missing dues
+                </span>
+              )}
             </span>
             <StatusGroupsDialog isAdmin={isAdmin} />
             {employers.length > 0 && (

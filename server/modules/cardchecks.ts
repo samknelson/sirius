@@ -564,6 +564,29 @@ export function registerCardchecksRoutes(
         });
       }
 
+      // Build a map of lowest dues rate per bargaining unit from their data.accountRates
+      const allBargainingUnits = await storage.bargainingUnits.getAllBargainingUnits();
+      const buMinRateMap = new Map<string, number>();
+      for (const bu of allBargainingUnits) {
+        const buData = bu.data as { accountRates?: Record<string, unknown> } | null;
+        if (!buData?.accountRates) continue;
+        let minRate: number | null = null;
+        for (const value of Object.values(buData.accountRates)) {
+          if (typeof value === 'number' && value > 0) {
+            if (minRate === null || value < minRate) minRate = value;
+          } else if (Array.isArray(value)) {
+            for (const entry of value) {
+              const r = typeof entry === 'object' && entry !== null && 'rate' in entry
+                ? (entry as { rate: number }).rate : null;
+              if (typeof r === 'number' && r > 0 && (minRate === null || r < minRate)) minRate = r;
+            }
+          }
+        }
+        if (minRate !== null) {
+          buMinRateMap.set(bu.id, minRate);
+        }
+      }
+
       // Aggregate stats by employer
       for (const stat of stats) {
         const emp = employerMap.get(stat.employerId);
@@ -575,7 +598,8 @@ export function registerCardchecksRoutes(
               id: stat.bargainingUnitId,
               name: stat.bargainingUnitName || 'Unknown',
               totalWorkers: Number(stat.totalWorkers) || 0,
-              signedWorkers: Number(stat.signedWorkers) || 0
+              signedWorkers: Number(stat.signedWorkers) || 0,
+              duesRate: buMinRateMap.get(stat.bargainingUnitId) || null
             });
           }
         }
