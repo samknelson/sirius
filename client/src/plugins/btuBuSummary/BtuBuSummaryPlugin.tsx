@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Users, DollarSign } from "lucide-react";
+import { Users } from "lucide-react";
 import { DashboardPluginProps } from "../types";
 
 interface BuSummaryUnit {
@@ -77,9 +77,8 @@ export function BtuBuSummaryPlugin({ userPermissions, enabledComponents }: Dashb
         </div>
 
         {totals.missingDuesRevenue != null && totals.missingDuesRevenue > 0 && (
-          <div className="flex items-center gap-2 text-xs text-destructive pb-1 border-b" data-testid="text-bu-total-missing-dues">
-            <DollarSign className="h-3 w-3 shrink-0" />
-            <span>${formatCurrency(totals.missingDuesRevenue)} potential missing dues</span>
+          <div className="text-xs text-destructive pb-1 border-b" data-testid="text-bu-total-missing-dues">
+            ${formatCurrency(totals.missingDuesRevenue)} potential missing dues
           </div>
         )}
 
@@ -99,9 +98,8 @@ export function BtuBuSummaryPlugin({ userPermissions, enabledComponents }: Dashb
               </div>
               <PercentageBar percentage={unit.percentage} />
               {unit.missingRevenue != null && unit.missingRevenue > 0 && (
-                <div className="flex items-center gap-1 text-[11px] text-destructive" data-testid={`text-bu-missing-dues-${unit.id}`}>
-                  <DollarSign className="h-3 w-3 shrink-0" />
-                  <span>${formatCurrency(unit.missingRevenue)} potential missing dues</span>
+                <div className="text-[11px] text-destructive" data-testid={`text-bu-missing-dues-${unit.id}`}>
+                  ${formatCurrency(unit.missingRevenue)} potential missing dues
                 </div>
               )}
             </div>
