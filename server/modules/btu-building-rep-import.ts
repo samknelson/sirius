@@ -250,6 +250,20 @@ export function registerBtuBuildingRepImportRoutes(
             bargainingUnitName: string;
             assignmentId: string;
           }>,
+          alreadyAssignedRows: [] as Array<{
+            name: string;
+            badgeId: string;
+            workerId: string;
+            employerName: string;
+            bargainingUnitName: string;
+          }>,
+          skippedDuringProcess: [] as Array<{
+            name: string;
+            badgeId: string;
+            workerId: string;
+            employerName: string;
+            reason: string;
+          }>,
         };
 
         for (const row of toProcess) {
@@ -260,6 +274,13 @@ export function registerBtuBuildingRepImportRoutes(
 
             if (existingCheck) {
               results.skipped++;
+              results.skippedDuringProcess.push({
+                name: row.workerName || row.name,
+                badgeId: row.badgeId,
+                workerId: row.workerId!,
+                employerName: row.employerName || 'Unknown',
+                reason: 'Already assigned (duplicate found during processing)',
+              });
               results.processed++;
               continue;
             }
@@ -289,6 +310,18 @@ export function registerBtuBuildingRepImportRoutes(
             results.processed++;
           }
         }
+
+        const alreadyAssignedRows = rows.filter(r => r.matched && !r.error && r.alreadyAssigned);
+        for (const row of alreadyAssignedRows) {
+          results.alreadyAssignedRows.push({
+            name: row.workerName || row.name,
+            badgeId: row.badgeId,
+            workerId: row.workerId!,
+            employerName: row.employerName || 'Unknown',
+            bargainingUnitName: row.bargainingUnitName || 'Unknown',
+          });
+        }
+        results.alreadyAssigned = alreadyAssignedRows.length;
 
         const unmatchedRows = rows.filter(r => !r.matched || !!r.error);
         for (const row of unmatchedRows) {

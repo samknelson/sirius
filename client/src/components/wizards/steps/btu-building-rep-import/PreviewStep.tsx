@@ -54,6 +54,13 @@ export function PreviewStep({ wizardId, wizardType, data, onDataChange }: Previe
   const alreadyAssigned = rows.filter(r => r.matched && !r.error && r.alreadyAssigned);
   const unmatched = rows.filter(r => !r.matched || !!r.error);
 
+  const errorsByReason = new Map<string, number>();
+  for (const row of unmatched) {
+    const reason = row.error || 'Unknown';
+    errorsByReason.set(reason, (errorsByReason.get(reason) || 0) + 1);
+  }
+  const sortedReasons = Array.from(errorsByReason.entries()).sort((a, b) => b[1] - a[1]);
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -78,10 +85,34 @@ export function PreviewStep({ wizardId, wizardType, data, onDataChange }: Previe
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-red-600" data-testid="text-unmatched">{unmatched.length}</div>
-            <p className="text-xs text-muted-foreground">Unmatched</p>
+            <p className="text-xs text-muted-foreground">Not Importable</p>
           </CardContent>
         </Card>
       </div>
+
+      {unmatched.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Info className="h-5 w-5 text-muted-foreground" />
+              Skip Reason Breakdown
+            </CardTitle>
+            <CardDescription>
+              Why {unmatched.length} records will not be imported
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {sortedReasons.map(([reason, count], idx) => (
+                <div key={idx} className="flex items-center justify-between py-1.5 border-b last:border-b-0" data-testid={`preview-reason-${idx}`}>
+                  <span className="text-sm">{reason}</span>
+                  <Badge variant="secondary">{count}</Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {toCreate.length > 0 && (
         <Card>
