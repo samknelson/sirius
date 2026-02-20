@@ -877,8 +877,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // GET /api/employers/:id - Get a specific employer (requires employer.view policy)
-  app.get("/api/employers/:id", requireAuth, requireAccess('employer.view', (req) => req.params.id), async (req, res) => {
+  // GET /api/employers/:id - Get a specific employer (requires employer.steward.view policy)
+  app.get("/api/employers/:id", requireAuth, requireAccess('employer.steward.view', (req) => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       const employer = await storage.employers.getEmployer(id);
@@ -894,8 +894,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // GET /api/employers/:employerId/workers - Get workers for an employer (requires employer.view policy)
-  app.get("/api/employers/:employerId/workers", requireAuth, requireAccess('employer.view', (req) => req.params.employerId), async (req, res) => {
+  // GET /api/employers/:employerId/workers - Get workers for an employer (requires employer.steward.view policy)
+  app.get("/api/employers/:employerId/workers", requireAuth, requireAccess('employer.steward.view', (req) => req.params.employerId), async (req, res) => {
     try {
       const { employerId } = req.params;
       

@@ -167,10 +167,10 @@ export const workerTabTree: HierarchicalTab[] = [
  * Employer entity tab tree
  */
 export const employerTabTree: HierarchicalTab[] = [
-  { id: 'details', label: 'Details', hrefTemplate: '/employers/{id}', policyId: 'employer.view' },
+  { id: 'details', label: 'Details', hrefTemplate: '/employers/{id}', policyId: 'employer.steward.view' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/employers/{id}/edit', permission: 'staff' },
-  { id: 'workers', label: 'Workers', hrefTemplate: '/employers/{id}/workers', policyId: 'employer.mine' },
-  { id: 'contacts', label: 'Contacts', hrefTemplate: '/employers/{id}/contacts', policyId: 'employer.mine' },
+  { id: 'workers', label: 'Workers', hrefTemplate: '/employers/{id}/workers', policyId: 'employer.steward.view' },
+  { id: 'contacts', label: 'Contacts', hrefTemplate: '/employers/{id}/contacts', policyId: 'employer.steward.view' },
   { id: 'policy-history', label: 'Policy History', hrefTemplate: '/employers/{id}/policy-history', permission: 'staff' },
   { id: 'wizards', label: 'Wizards', hrefTemplate: '/employers/{id}/wizards', permission: 'staff' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/employers/{id}/logs', permission: 'staff' },
@@ -183,13 +183,13 @@ export const employerTabTree: HierarchicalTab[] = [
     ]
   },
   { 
-    id: 'union', label: 'Union', hrefTemplate: '/employers/{id}/union/stewards', permission: 'staff', component: 'worker.steward',
+    id: 'union', label: 'Union', hrefTemplate: '/employers/{id}/union/stewards', policyId: 'employer.steward.view', component: 'worker.steward',
     children: [
-      { id: 'stewards', label: 'Stewards', hrefTemplate: '/employers/{id}/union/stewards', permission: 'staff', component: 'worker.steward', termKey: 'steward', termPlural: true },
+      { id: 'stewards', label: 'Stewards', hrefTemplate: '/employers/{id}/union/stewards', policyId: 'employer.steward.view', component: 'worker.steward', termKey: 'steward', termPlural: true },
     ]
   },
   { id: 'dispatch', label: 'Dispatch', hrefTemplate: '/employers/{id}/dispatch', permission: 'staff', component: 'dispatch' },
-  { id: 'school-attributes', label: 'School Attributes', hrefTemplate: '/employers/{id}/school-attributes', permission: 'staff', component: 'sitespecific.btu' },
+  { id: 'school-attributes', label: 'School Attributes', hrefTemplate: '/employers/{id}/school-attributes', policyId: 'employer.steward.view', component: 'sitespecific.btu' },
 ];
 
 /**
