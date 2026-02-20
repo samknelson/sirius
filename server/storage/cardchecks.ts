@@ -1,5 +1,5 @@
 import { getClient } from './transaction-context';
-import { cardchecks, cardcheckDefinitions, workers, contacts, bargainingUnits, employers, esigs, type Cardcheck, type InsertCardcheck, type Esig, type InsertEsig, type File } from "@shared/schema";
+import { cardchecks, cardcheckDefinitions, workers, contacts, bargainingUnits, employers, esigs, workerHours, optionsEmploymentStatus, type Cardcheck, type InsertCardcheck, type Esig, type InsertEsig, type File } from "@shared/schema";
 import { eq, and, gte, lte, sql, isNull, isNotNull, inArray, count } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 import { 
@@ -87,6 +87,9 @@ export interface CardcheckReportItem {
   previousCardcheckCount: number;
   definitionId: string;
   definitionName: string;
+  buChanged: boolean;
+  previousBargainingUnitName: string | null;
+  terminatedOver30Days: boolean;
 }
 
 export interface SignCardcheckParams {
@@ -424,7 +427,60 @@ export function createCardcheckStorage(): CardcheckStorage {
         .groupBy(cardchecks.workerId);
       
       const cardcheckCountMap = new Map(previousCountsQuery.map(r => [r.workerId, Number(r.count)]));
-      
+
+      const allWorkerCardchecks = await client
+        .select({
+          id: cardchecks.id,
+          workerId: cardchecks.workerId,
+          bargainingUnitId: cardchecks.bargainingUnitId,
+          signedDate: cardchecks.signedDate,
+        })
+        .from(cardchecks)
+        .where(inArray(cardchecks.workerId, workerIds));
+
+      const workerCardchecksMap = new Map<string, typeof allWorkerCardchecks>();
+      for (const cc of allWorkerCardchecks) {
+        if (!workerCardchecksMap.has(cc.workerId)) {
+          workerCardchecksMap.set(cc.workerId, []);
+        }
+        workerCardchecksMap.get(cc.workerId)!.push(cc);
+      }
+      workerCardchecksMap.forEach((ccs) => {
+        ccs.sort((a: any, b: any) => {
+          const dateA = a.signedDate ? new Date(a.signedDate).getTime() : 0;
+          const dateB = b.signedDate ? new Date(b.signedDate).getTime() : 0;
+          if (dateA !== dateB) return dateA - dateB;
+          return a.id.localeCompare(b.id);
+        });
+      });
+
+      const allEmploymentRecords = workerIds.length > 0
+        ? await client.execute(sql`
+            SELECT
+              wh.worker_id as "workerId",
+              wh.year,
+              wh.month,
+              wh.day,
+              es.employed
+            FROM worker_hours wh
+            JOIN options_employment_status es ON es.id = wh.employment_status_id
+            WHERE wh.worker_id IN (${sql.join(workerIds.map(id => sql`${id}`), sql`, `)})
+            ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
+          `)
+        : { rows: [] as any[] };
+
+      const workerEmploymentMap = new Map<string, { date: Date; employed: boolean }[]>();
+      for (const rec of allEmploymentRecords.rows as any[]) {
+        const wid = rec.workerId as string;
+        if (!workerEmploymentMap.has(wid)) {
+          workerEmploymentMap.set(wid, []);
+        }
+        workerEmploymentMap.get(wid)!.push({
+          date: new Date(Number(rec.year), Number(rec.month) - 1, Number(rec.day)),
+          employed: Boolean(rec.employed),
+        });
+      }
+
       const results: CardcheckReportItem[] = [];
       
       for (const card of allCardchecks) {
@@ -446,7 +502,38 @@ export function createCardcheckStorage(): CardcheckStorage {
         const workerName = contact 
           ? `${contact.family || ''}, ${contact.given || ''}`.trim().replace(/^,\s*|,\s*$/g, '') || contact.displayName || `Worker #${worker.siriusId}`
           : `Worker #${worker.siriusId}`;
-        
+
+        let buChanged = false;
+        let previousBargainingUnitName: string | null = null;
+        if (hasPrevious) {
+          const workerCcs = workerCardchecksMap.get(card.workerId) || [];
+          const thisIndex = workerCcs.findIndex(cc => cc.id === card.id);
+          if (thisIndex > 0) {
+            const prevCc = workerCcs[thisIndex - 1];
+            const prevBuId = prevCc.bargainingUnitId;
+            const currentBuId = card.bargainingUnitId;
+            if (prevBuId !== currentBuId) {
+              buChanged = true;
+              previousBargainingUnitName = prevBuId ? buMap.get(prevBuId) || null : null;
+            }
+          }
+        }
+
+        let terminatedOver30Days = false;
+        if (hasPrevious && card.signedDate) {
+          const empRecords = workerEmploymentMap.get(card.workerId);
+          if (empRecords) {
+            const signedTime = new Date(card.signedDate).getTime();
+            const priorRecord = empRecords.find(r => r.date.getTime() <= signedTime);
+            if (priorRecord && !priorRecord.employed) {
+              const diffDays = (signedTime - priorRecord.date.getTime()) / (1000 * 60 * 60 * 24);
+              if (diffDays >= 30) {
+                terminatedOver30Days = true;
+              }
+            }
+          }
+        }
+
         results.push({
           cardcheckId: card.id,
           workerId: card.workerId,
@@ -460,6 +547,9 @@ export function createCardcheckStorage(): CardcheckStorage {
           previousCardcheckCount: totalCardchecks - 1,
           definitionId: card.cardcheckDefinitionId,
           definitionName: defMap.get(card.cardcheckDefinitionId) || 'Unknown',
+          buChanged,
+          previousBargainingUnitName,
+          terminatedOver30Days,
         });
       }
       

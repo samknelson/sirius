@@ -22,7 +22,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { FileCheck, Download, Filter, Users, Search, X, ArrowUpDown } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { FileCheck, Download, Filter, Users, Search, X, ArrowUpDown, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { Link } from "wouter";
 
@@ -39,6 +40,9 @@ interface CardcheckReportItem {
   previousCardcheckCount: number;
   definitionId: string;
   definitionName: string;
+  buChanged: boolean;
+  previousBargainingUnitName: string | null;
+  terminatedOver30Days: boolean;
 }
 
 interface BargainingUnit {
@@ -370,6 +374,7 @@ export default function CardcheckReport() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Card Check</TableHead>
                     <SortHeader field="workerName">Worker</SortHeader>
                     {showOnListsIdTypes.map((idType) => (
                       <TableHead key={idType.id}>{idType.name}</TableHead>
@@ -385,11 +390,16 @@ export default function CardcheckReport() {
                   {filteredAndSortedData.map((item) => (
                     <TableRow key={item.cardcheckId} data-testid={`row-cardcheck-${item.cardcheckId}`}>
                       <TableCell>
-                        <Link href={`/workers/${item.workerId}`}>
-                          <span className="text-primary hover:underline cursor-pointer" data-testid={`link-worker-${item.workerId}`}>
-                            {item.workerName}
+                        <Link href={`/cardchecks/${item.cardcheckId}`}>
+                          <span className="text-primary hover:underline cursor-pointer" data-testid={`link-cardcheck-${item.cardcheckId}`}>
+                            View
                           </span>
                         </Link>
+                      </TableCell>
+                      <TableCell>
+                        <span data-testid={`text-worker-${item.workerId}`}>
+                          {item.workerName}
+                        </span>
                         <div className="text-xs text-muted-foreground">
                           ID: {item.workerSiriusId}
                         </div>
@@ -414,9 +424,41 @@ export default function CardcheckReport() {
                       </TableCell>
                       <TableCell>
                         {item.hasPreviousCardcheck ? (
-                          <Badge variant="outline">
-                            {item.previousCardcheckCount} previous
-                          </Badge>
+                          <div className="space-y-1">
+                            <Badge variant="outline">
+                              {item.previousCardcheckCount} previous
+                            </Badge>
+                            {(item.buChanged || item.terminatedOver30Days) && (
+                              <div className="flex flex-col gap-1">
+                                {item.buChanged && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge variant="default" className="bg-amber-600 text-xs cursor-help" data-testid={`badge-bu-changed-${item.cardcheckId}`}>
+                                        <AlertTriangle size={10} className="mr-1" />
+                                        BU Changed
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      Previous BU: {item.previousBargainingUnitName || "None"}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                                {item.terminatedOver30Days && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge variant="default" className="bg-amber-600 text-xs cursor-help" data-testid={`badge-terminated-30-${item.cardcheckId}`}>
+                                        <AlertTriangle size={10} className="mr-1" />
+                                        Rehire (30+ days)
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      Worker was terminated for 30+ days before this card check
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-muted-foreground">First card check</span>
                         )}
