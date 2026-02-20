@@ -26,6 +26,10 @@ import { ResultsStep as BTUSigResultsStep } from './btu-cardcheck-sig-import/Res
 import { ConfigureStep as BTUScrapeConfigureStep } from './btu-cardcheck-scrape-import/ConfigureStep';
 import { ProcessStep as BTUScrapeProcessStep } from './btu-cardcheck-scrape-import/ProcessStep';
 import { ResultsStep as BTUScrapeResultsStep } from './btu-cardcheck-scrape-import/ResultsStep';
+import { UploadStep as BTUBuildingRepUploadStep } from './btu-building-rep-import/UploadStep';
+import { PreviewStep as BTUBuildingRepPreviewStep } from './btu-building-rep-import/PreviewStep';
+import { ProcessStep as BTUBuildingRepProcessStep } from './btu-building-rep-import/ProcessStep';
+import { ResultsStep as BTUBuildingRepResultsStep } from './btu-building-rep-import/ResultsStep';
 
 export interface WizardStepComponent {
   (props: { wizardId: string; wizardType: string; data?: any; onDataChange?: (data: any) => void }): JSX.Element;
@@ -140,6 +144,18 @@ const evaluateScrapeProcessComplete: StepCompletionEvaluator = ({ wizard }) => {
   return !!wizard?.data?.processResults;
 };
 
+const evaluateBuildingRepUploadComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.previewData;
+};
+
+const evaluateBuildingRepPreviewComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.previewData && (wizard?.data?.previewData?.toCreateCount > 0 || wizard?.data?.previewData?.alreadyAssignedCount > 0);
+};
+
+const evaluateBuildingRepProcessComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.processResults;
+};
+
 export const stepControllerRegistry: StepControllerRegistry = {
   'gbhet_legal_workers_monthly': {
     'upload': { Component: UploadStep, evaluateCompletion: evaluateUploadComplete },
@@ -226,6 +242,12 @@ export const stepControllerRegistry: StepControllerRegistry = {
     'configure': { Component: BTUScrapeConfigureStep, evaluateCompletion: evaluateScrapeConfigureComplete },
     'process': { Component: BTUScrapeProcessStep, evaluateCompletion: evaluateScrapeProcessComplete },
     'results': { Component: BTUScrapeResultsStep, evaluateCompletion: alwaysComplete },
+  },
+  'btu_building_rep_import': {
+    'upload': { Component: BTUBuildingRepUploadStep, evaluateCompletion: evaluateBuildingRepUploadComplete },
+    'preview': { Component: BTUBuildingRepPreviewStep, evaluateCompletion: evaluateBuildingRepPreviewComplete },
+    'process': { Component: BTUBuildingRepProcessStep, evaluateCompletion: evaluateBuildingRepProcessComplete },
+    'results': { Component: BTUBuildingRepResultsStep, evaluateCompletion: alwaysComplete },
   },
 };
 
@@ -315,6 +337,12 @@ export const stepComponentRegistry: StepComponentRegistry = {
     'configure': BTUScrapeConfigureStep,
     'process': BTUScrapeProcessStep,
     'results': BTUScrapeResultsStep,
+  },
+  'btu_building_rep_import': {
+    'upload': BTUBuildingRepUploadStep,
+    'preview': BTUBuildingRepPreviewStep,
+    'process': BTUBuildingRepProcessStep,
+    'results': BTUBuildingRepResultsStep,
   },
 };
 
