@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Users } from "lucide-react";
+import { Users, DollarSign } from "lucide-react";
 import { DashboardPluginProps } from "../types";
 
 interface BuSummaryUnit {
@@ -10,6 +10,8 @@ interface BuSummaryUnit {
   workerCount: number;
   signedCount: number;
   percentage: number;
+  duesRate: number | null;
+  missingRevenue: number | null;
 }
 
 interface BuSummaryData {
@@ -23,6 +25,7 @@ interface BuSummaryData {
     workerCount: number;
     signedCount: number;
     percentage: number;
+    missingDuesRevenue: number | null;
   };
 }
 
@@ -35,6 +38,10 @@ function PercentageBar({ percentage }: { percentage: number }) {
       />
     </div>
   );
+}
+
+function formatCurrency(value: number): string {
+  return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function BtuBuSummaryPlugin({ userPermissions, enabledComponents }: DashboardPluginProps) {
@@ -64,10 +71,17 @@ export function BtuBuSummaryPlugin({ userPermissions, enabledComponents }: Dashb
         </Badge>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex items-center justify-between text-xs text-muted-foreground pb-1 border-b">
+        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground pb-1 border-b flex-wrap">
           <span data-testid="text-bu-total-workers">{totals.workerCount.toLocaleString()} total workers</span>
           <span data-testid="text-bu-total-signed">{totals.signedCount.toLocaleString()} signed card checks</span>
         </div>
+
+        {totals.missingDuesRevenue != null && totals.missingDuesRevenue > 0 && (
+          <div className="flex items-center gap-2 text-xs text-destructive pb-1 border-b" data-testid="text-bu-total-missing-dues">
+            <DollarSign className="h-3 w-3 shrink-0" />
+            <span>${formatCurrency(totals.missingDuesRevenue)} potential missing dues</span>
+          </div>
+        )}
 
         <div className="space-y-3">
           {units.map((unit) => (
@@ -84,6 +98,12 @@ export function BtuBuSummaryPlugin({ userPermissions, enabledComponents }: Dashb
                 </div>
               </div>
               <PercentageBar percentage={unit.percentage} />
+              {unit.missingRevenue != null && unit.missingRevenue > 0 && (
+                <div className="flex items-center gap-1 text-[11px] text-destructive" data-testid={`text-bu-missing-dues-${unit.id}`}>
+                  <DollarSign className="h-3 w-3 shrink-0" />
+                  <span>${formatCurrency(unit.missingRevenue)} potential missing dues</span>
+                </div>
+              )}
             </div>
           ))}
 

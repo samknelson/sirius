@@ -494,6 +494,28 @@ export function registerDashboardRoutes(
             ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
           )`;
 
+      const allBargainingUnits = await storage.bargainingUnits.getAllBargainingUnits();
+      const buMinRateMap = new Map<string, number>();
+      for (const bu of allBargainingUnits) {
+        const buData = bu.data as { accountRates?: Record<string, unknown> } | null;
+        if (!buData?.accountRates) continue;
+        let minRate: number | null = null;
+        for (const value of Object.values(buData.accountRates)) {
+          if (typeof value === 'number' && value > 0) {
+            if (minRate === null || value < minRate) minRate = value;
+          } else if (Array.isArray(value)) {
+            for (const entry of value) {
+              const r = typeof entry === 'object' && entry !== null && 'rate' in entry
+                ? (entry as { rate: number }).rate : null;
+              if (typeof r === 'number' && r > 0 && (minRate === null || r < minRate)) minRate = r;
+            }
+          }
+        }
+        if (minRate !== null) {
+          buMinRateMap.set(bu.id, minRate);
+        }
+      }
+
       const { buResults, unassignedResults } = await storage.readOnly.query(async (client) => {
         const buResults = await client
           .select({
@@ -534,16 +556,32 @@ export function registerDashboardRoutes(
       const totalWorkers = buWorkers + unassignedWorkerCount;
       const totalSigned = buSigned + unassignedSignedCount;
 
-      res.json({
-        units: buResults.map(r => ({
+      let totalMissingDuesRevenue = 0;
+      let hasDuesRates = false;
+
+      const unitsMapped = buResults.map(r => {
+        const wc = Number(r.workerCount);
+        const sc = Number(r.signedWorkerCount);
+        const duesRate = buMinRateMap.get(r.bargainingUnitId) ?? null;
+        const missingWorkers = wc - sc;
+        const missingRevenue = duesRate && missingWorkers > 0 ? missingWorkers * duesRate : null;
+        if (duesRate) hasDuesRates = true;
+        if (missingRevenue) totalMissingDuesRevenue += missingRevenue;
+        return {
           id: r.bargainingUnitId,
           name: r.bargainingUnitName,
-          workerCount: Number(r.workerCount),
-          signedCount: Number(r.signedWorkerCount),
-          percentage: Number(r.workerCount) > 0
-            ? Math.round((Number(r.signedWorkerCount) / Number(r.workerCount)) * 1000) / 10
+          workerCount: wc,
+          signedCount: sc,
+          percentage: wc > 0
+            ? Math.round((sc / wc) * 1000) / 10
             : 0,
-        })),
+          duesRate,
+          missingRevenue,
+        };
+      });
+
+      res.json({
+        units: unitsMapped,
         unassigned: unassignedWorkerCount > 0 ? {
           workerCount: unassignedWorkerCount,
           signedCount: unassignedSignedCount,
@@ -557,6 +595,7 @@ export function registerDashboardRoutes(
           percentage: totalWorkers > 0
             ? Math.round((totalSigned / totalWorkers) * 1000) / 10
             : 0,
+          missingDuesRevenue: hasDuesRates ? totalMissingDuesRevenue : null,
         },
       });
     } catch (error) {
