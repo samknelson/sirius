@@ -8,7 +8,7 @@ A comprehensive guide documenting every problem encountered while deploying this
 
 1. [Architecture Overview](#1-architecture-overview)
 2. [Build System Configuration](#2-build-system-configuration)
-3. [flightcontrol.json Setup](#3-flightcontroljson-setup)
+3. [Controlled Release Deployment Model](#3-controlled-release-deployment-model)
 4. [Session & Cookie Configuration (CloudFront/Proxy)](#4-session--cookie-configuration-cloudfrontproxy)
 5. [Multi-Provider Authentication](#5-multi-provider-authentication)
 6. [AWS Cognito Integration](#6-aws-cognito-integration)
@@ -16,7 +16,8 @@ A comprehensive guide documenting every problem encountered while deploying this
 8. [Component Schema Creation (Drizzle ORM)](#8-component-schema-creation-drizzle-orm)
 9. [Ephemeral PR Preview Environments](#9-ephemeral-pr-preview-environments)
 10. [Secrets & Environment Variables](#10-secrets--environment-variables)
-11. [Troubleshooting Checklist](#11-troubleshooting-checklist)
+11. [Self-Hosted Production: Docker & ECR](#11-self-hosted-production-docker--ecr)
+12. [Troubleshooting Checklist](#12-troubleshooting-checklist)
 
 ---
 
@@ -97,44 +98,91 @@ If your `package.json` has `"type": "module"`, esbuild **must** output `--format
 
 ---
 
-## 3. flightcontrol.json Setup
+## 3. Controlled Release Deployment Model
 
-### Minimal working configuration
+### Git & Deployment Architecture
+
+Sirius uses a 4-layer "Controlled Release" model to manage highly-coupled code across multiple clients with distinct deployment timelines.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Git Branch Strategy                         │
+│                                                                    │
+│  Layer 1: Dev           dev-hta ──┐    dev-btu ──┐                │
+│  (direct commits)                 │              │                 │
+│                                   ▼              ▼                 │
+│  Layer 2: Integration        ┌─────────┐                           │
+│  (PRs only)                  │  main   │ ◄── stable shared code   │
+│                              └────┬────┘                           │
+│                            ┌──────┼──────┐                         │
+│                            ▼      ▼      ▼                         │
+│  Layer 3: Hosted Prod   prod-hta  │   prod-btu                    │
+│  (fast-forward PRs)     (AWS/FC)  │   (AWS/FC)                    │
+│                                   │                                │
+│  Layer 4: Self-Hosted             ▼                                │
+│  (Docker/ECR)              ECR Image Build                         │
+│                            (GitHub Actions)                        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Layer Details
+
+| Layer | Branches | Trigger | Deploys To |
+|-------|----------|---------|------------|
+| Dev | `dev-hta`, `dev-btu` | Direct commits | Nothing (local dev) |
+| Integration | `main` | PR from `dev-*` → `main` | Ephemeral preview env (Flight Control) |
+| Hosted Production | `prod-hta`, `prod-btu` | PR from `main` → `prod-*` | AWS Fargate (Flight Control) |
+| Self-Hosted Production | `main` (on merge) | Push to `main` | Docker image → Amazon ECR |
+
+### flightcontrol.json Structure
+
+The Flight Control config defines one environment per production client plus a shared preview environment:
 
 ```json
 {
   "$schema": "https://app.flightcontrol.dev/schema.json",
-  "ci": {
-    "type": "ec2",
-    "instanceSize": "t3.large"
-  },
+  "ci": { "type": "ec2", "instanceSize": "t3.large" },
   "environments": [
     {
-      "id": "production",
-      "name": "Production",
-      "region": "us-east-1",
-      "source": { "branch": "main" },
-      "services": [
-        {
-          "id": "my-app",
-          "name": "My Application",
-          "type": "fargate",
-          "buildType": "nixpacks",
-          "cpu": 0.5,
-          "memory": 1,
-          "minInstances": 1,
-          "maxInstances": 3,
-          "port": 3000,
-          "healthCheckPath": "/api/health",
-          "envVariables": {
-            "NODE_ENV": "production"
-          }
+      "id": "prod-hta",
+      "name": "Production (HTA)",
+      "source": { "branch": "prod-hta" },
+      "services": [{
+        "envVariables": {
+          "DATABASE_URL": { "fromParameterStore": "DATABASE_URL" },
+          "SESSION_SECRET": { "fromParameterStore": "SESSION_SECRET" }
         }
-      ]
+      }]
+    },
+    {
+      "id": "prod-btu",
+      "name": "Production (BTU)",
+      "source": { "branch": "prod-btu" },
+      "services": [{
+        "envVariables": {
+          "DATABASE_URL": { "fromParameterStore": "DATABASE_URL" },
+          "SESSION_SECRET": { "fromParameterStore": "SESSION_SECRET" }
+        }
+      }]
+    },
+    {
+      "id": "preview",
+      "name": "PR Preview",
+      "source": { "pr": true, "branch": "main" },
+      "services": [{ "startCommand": "npm run start:preview", "envVariables": { "MOCK_AUTH": "true" } }]
     }
   ]
 }
 ```
+
+Sensitive env vars (`DATABASE_URL`, `SESSION_SECRET`) are stored in AWS Systems Manager Parameter Store and referenced via `fromParameterStore`. Preview environments auto-generate a session secret at runtime.
+
+### Adding a New Client
+
+1. Create a `prod-<client>` branch from `main`
+2. Add a new environment block to `flightcontrol.json` with `"source": { "branch": "prod-<client>" }`
+3. Set the client's `DATABASE_URL` and `SESSION_SECRET` in AWS Parameter Store
+4. Configure client-specific Components via the Components admin UI (feature flags are database-driven, not code-driven)
 
 ### Problem: Health check failures
 
@@ -561,32 +609,104 @@ import { EndpointType } from "@neondatabase/api-client";
 
 | Secret | Flight Control | GitHub Actions | Notes |
 |--------|:-:|:-:|-------|
-| `DATABASE_URL` | Yes (prod/staging) | No | Set per environment |
-| `SESSION_SECRET` | Yes | No | Unique per environment |
+| `DATABASE_URL` | Yes (prod-*) | No | Per-client Neon connection string, via Parameter Store |
+| `SESSION_SECRET` | Yes (prod-*) | No | Unique per environment, via Parameter Store |
 | `COGNITO_*` | Yes (if using Cognito) | No | 5 variables total |
 | `NEON_API_KEY` | Yes (preview only) | Yes | Same key, both places |
 | `NEON_PROJECT_ID` | Yes (preview only) | Yes | Same ID, both places |
 | `MOCK_AUTH` | Yes (preview only) | No | Set to `"true"` for previews |
 | `NODE_ENV` | Yes (all) | No | Always `"production"` |
 | `REPL_ID` | No | No | Only exists in Replit env |
+| `AWS_ACCESS_KEY_ID` | No | Yes | For ECR push workflow |
+| `AWS_SECRET_ACCESS_KEY` | No | Yes | For ECR push workflow |
+| `AWS_REGION` | No | Yes | For ECR push workflow |
+| `ECR_REPOSITORY` | No | Yes | ECR repo name for Docker images |
 
-### Setting secrets in Flight Control
+### Setting secrets in Flight Control (Parameter Store)
+
+Production environments use AWS Systems Manager Parameter Store for sensitive values:
 
 1. Go to your Flight Control dashboard
-2. Select the environment (production, staging, or preview)
+2. Select the environment (`prod-hta`, `prod-btu`, etc.)
 3. Navigate to the service's environment variables
-4. Add each variable as a secret (encrypted) or plain env var
-5. Redeploy for changes to take effect
+4. Variables with `fromParameterStore` are managed in AWS SSM
+5. Set `DATABASE_URL` and `SESSION_SECRET` per client environment
+6. Redeploy for changes to take effect
 
 ### Setting secrets in GitHub
 
 1. Go to your GitHub repo → Settings → Secrets and variables → Actions
-2. Add repository secrets: `NEON_API_KEY` and `NEON_PROJECT_ID`
-3. These are used by the preview cleanup workflow
+2. Add repository secrets:
+   - `NEON_API_KEY` and `NEON_PROJECT_ID` — used by preview cleanup workflow
+   - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `ECR_REPOSITORY` — used by ECR build workflow
 
 ---
 
-## 11. Troubleshooting Checklist
+## 11. Self-Hosted Production: Docker & ECR
+
+For clients that run the application on their own infrastructure (e.g., client FLS), we build a Docker image and push it to a private Amazon ECR registry whenever code is merged into `main`.
+
+### Dockerfile
+
+The `Dockerfile` uses a multi-stage build:
+
+1. **Builder stage**: Installs all dependencies, runs `npm run build` (Vite + esbuild)
+2. **Runtime stage**: Installs only production dependencies, copies build artifacts
+
+```
+Build output structure in container:
+/app/
+├── dist/
+│   ├── public/              (Vite frontend)
+│   ├── server/index.js      (esbuild server bundle)
+│   └── scripts/start-preview.js
+├── shared/                  (runtime schemas)
+├── node_modules/            (production only)
+└── package.json
+```
+
+The Dockerfile accepts build args for traceability:
+- `GIT_COMMIT_SHA` — embedded as an OCI label
+- `BUILD_DATE` — embedded as an OCI label
+
+### GitHub Actions Workflow
+
+The `.github/workflows/ecr-build-push.yml` workflow runs on every push to `main`:
+
+1. Checks out the code
+2. Configures AWS credentials (from GitHub Secrets)
+3. Logs into Amazon ECR
+4. Builds the Docker image with git metadata labels
+5. Tags with both the commit SHA and `latest`
+6. Pushes both tags to ECR
+
+### Required GitHub Secrets for ECR
+
+| Secret | Description |
+|--------|-------------|
+| `AWS_ACCESS_KEY_ID` | IAM user with `ecr:GetAuthorizationToken`, `ecr:BatchCheckLayerAvailability`, `ecr:PutImage` etc. |
+| `AWS_SECRET_ACCESS_KEY` | Corresponding secret key |
+| `AWS_REGION` | e.g., `us-east-1` |
+| `ECR_REPOSITORY` | ECR repository name (e.g., `sirius-app`) |
+
+### Client Deployment
+
+The self-hosted client's IT team pulls from ECR and runs with their own configuration:
+
+```bash
+docker pull <account-id>.dkr.ecr.<region>.amazonaws.com/sirius-app:latest
+docker run -d \
+  -e DATABASE_URL="postgresql://..." \
+  -e SESSION_SECRET="..." \
+  -e NODE_ENV=production \
+  -e PORT=3000 \
+  -p 3000:3000 \
+  sirius-app:latest
+```
+
+---
+
+## 12. Troubleshooting Checklist
 
 ### Deployment won't start
 
@@ -635,15 +755,17 @@ import { EndpointType } from "@neondatabase/api-client";
 
 ---
 
-## Quick Reference: Adding a New Environment
+## Quick Reference: Adding a New Client
 
-1. Add a new environment block to `flightcontrol.json`
-2. Set the `source.branch` to the correct git branch
-3. Configure all required environment variables in Flight Control dashboard
-4. Ensure the health check path exists and responds without auth
-5. Push to the configured branch to trigger deployment
-6. Monitor Flight Control logs for build/start errors
-7. Verify session cookies work if behind a CDN/proxy
+1. Create a `prod-<client>` branch from `main`: `git checkout main && git checkout -b prod-<client>`
+2. Add a new environment block to `flightcontrol.json` with `"source": { "branch": "prod-<client>" }`
+3. Set `DATABASE_URL` and `SESSION_SECRET` in AWS Parameter Store for the new environment
+4. Create the client's Neon database project (or use an existing one)
+5. Push to the `prod-<client>` branch to trigger initial deployment
+6. Configure client-specific Components via the admin UI
+7. Create a `dev-<client>` branch for development work
+8. Monitor Flight Control logs for build/start errors
+9. Verify session cookies work if behind a CDN/proxy
 
 ---
 

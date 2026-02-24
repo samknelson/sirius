@@ -6,16 +6,16 @@
   },
   "environments": [
     {
-      "id": "production",
-      "name": "Production",
+      "id": "prod-hta",
+      "name": "Production (HTA)",
       "region": "us-east-1",
       "source": {
-        "branch": "main"
+        "branch": "prod-hta"
       },
       "services": [
         {
-          "id": "sirius-app",
-          "name": "Sirius Application",
+          "id": "sirius-app-hta",
+          "name": "Sirius Application (HTA)",
           "type": "fargate",
           "buildType": "nixpacks",
           "cpu": 0.5,
@@ -26,33 +26,45 @@
           "healthCheckPath": "/api/health",
           "envVariables": {
             "NODE_ENV": "production",
-            "PORT": "3000"
+            "PORT": "3000",
+            "SESSION_SECRET": {
+              "fromParameterStore": "SESSION_SECRET"
+            },
+            "DATABASE_URL": {
+              "fromParameterStore": "DATABASE_URL"
+            }
           }
         }
       ]
     },
     {
-      "id": "staging",
-      "name": "Staging",
+      "id": "prod-btu",
+      "name": "Production (BTU)",
       "region": "us-east-1",
       "source": {
-        "branch": "develop"
+        "branch": "prod-btu"
       },
       "services": [
         {
-          "id": "sirius-app-staging",
-          "name": "Sirius Application (Staging)",
+          "id": "sirius-app-btu",
+          "name": "Sirius Application (BTU)",
           "type": "fargate",
           "buildType": "nixpacks",
-          "cpu": 0.25,
-          "memory": 0.5,
+          "cpu": 0.5,
+          "memory": 1,
           "minInstances": 1,
-          "maxInstances": 1,
+          "maxInstances": 3,
           "port": 3000,
           "healthCheckPath": "/api/health",
           "envVariables": {
             "NODE_ENV": "production",
-            "PORT": "3000"
+            "PORT": "3000",
+            "SESSION_SECRET": {
+              "fromParameterStore": "SESSION_SECRET"
+            },
+            "DATABASE_URL": {
+              "fromParameterStore": "DATABASE_URL"
+            }
           }
         }
       ]

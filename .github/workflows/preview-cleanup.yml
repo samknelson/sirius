@@ -3,6 +3,7 @@ name: Cleanup Preview Database
 on:
   pull_request:
     types: [closed]
+    branches: [main]
 
 jobs:
   cleanup-neon-branch:

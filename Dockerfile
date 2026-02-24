@@ -16,6 +16,12 @@ FROM node:20-slim
 
 WORKDIR /app
 
+ARG GIT_COMMIT_SHA=unknown
+ARG BUILD_DATE=unknown
+
+LABEL org.opencontainers.image.revision="${GIT_COMMIT_SHA}" \
+      org.opencontainers.image.created="${BUILD_DATE}"
+
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
@@ -27,11 +33,11 @@ COPY --from=builder /app/dist ./dist
 COPY shared ./shared
 
 ENV NODE_ENV=production
+ENV PORT=3000
 
-# Flight Control provides PORT via environment variable (typically 3000)
-# The app reads process.env.PORT to bind to the correct port
-EXPOSE 3000
+EXPOSE ${PORT}
 
-# Health check uses the PORT env var - Flight Control handles this externally
-# so we can remove the internal healthcheck and let the load balancer do it
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:${PORT}/api/health || exit 1
+
 CMD ["npm", "start"]

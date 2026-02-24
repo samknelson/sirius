@@ -34,6 +34,12 @@ The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI),
     -   **Recursion Protection**: Policy delegation tracks evaluation stack to prevent infinite loops when policies reference each other.
 -   **Logging**: Winston logging with a PostgreSQL backend for audit trails.
 -   **Data Storage**: PostgreSQL (Neon Database) managed with Drizzle ORM.
+-   **Deployment Pipeline**: "Controlled Release" model with 4 layers:
+    -   **Dev Layer**: Long-lived `dev-*` branches for each client (direct commits allowed).
+    -   **Integration Layer (`main`)**: PRs from `dev-*` → `main` trigger ephemeral preview environments with Neon DB cloning via Flight Control.
+    -   **Hosted Production Layer**: Fast-forward PRs from `main` → `prod-*` branches. Flight Control deploys each `prod-*` branch to its own AWS Fargate service.
+    -   **Self-Hosted Production Layer**: Merges to `main` trigger a GitHub Actions workflow that builds a Docker image and pushes to Amazon ECR for self-hosted clients.
+    -   **Configuration Files**: `flightcontrol.json` (Flight Control environments), `.github/workflows/preview-cleanup.yml` (Neon branch cleanup), `.github/workflows/ecr-build-push.yml` (Docker/ECR), `Dockerfile` (container build), `scripts/start-preview.ts` (preview DB provisioning).
 -   **Object Storage**: Replit Object Storage (Google Cloud Storage backend) for persistent file storage.
 -   **Real-time Notifications**: WebSocket-based push notification system.
 -   **Event Bus System**: Typed publish/subscribe event bus for domain and audit events.
