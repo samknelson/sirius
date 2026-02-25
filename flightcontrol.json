@@ -6,7 +6,7 @@
   },
   "environments": [
     {
-      "id": "cmkmuyam40boit5gmvck3gcgk",
+      "id": "production",
       "name": "Production",
       "region": "us-east-1",
       "source": {
