@@ -26,13 +26,7 @@
           "healthCheckPath": "/api/health",
           "envVariables": {
             "NODE_ENV": "production",
-            "PORT": "3000",
-            "SESSION_SECRET": {
-              "fromParameterStore": "SESSION_SECRET"
-            },
-            "DATABASE_URL": {
-              "fromParameterStore": "DATABASE_URL"
-            }
+            "PORT": "3000"
           }
         }
       ]
