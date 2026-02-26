@@ -1,4 +1,4 @@
-name: Cleanup Preview Database
+name: Cleanup Preview Environment
 
 on:
   pull_request:
@@ -6,10 +6,20 @@ on:
     branches: [main]
 
 jobs:
-  cleanup-neon-branch:
+  cleanup-preview:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete Neon Branch
+      - name: Log PR close reason
+        run: |
+          if [ "${{ github.event.pull_request.merged }}" == "true" ]; then
+            echo "PR #${{ github.event.pull_request.number }} was MERGED into main"
+            echo "Merge commit: ${{ github.event.pull_request.merge_commit_sha }}"
+          else
+            echo "PR #${{ github.event.pull_request.number }} was CLOSED without merging"
+          fi
+          echo "Source branch: ${{ github.head_ref }}"
+
+      - name: Delete Neon Database Branch
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
@@ -22,16 +32,16 @@ jobs:
 
           if echo "$BRANCH_NAME" | grep -q "^dev-hta"; then
             PROJECT_ID="${NEON_PROJECT_ID_HTA:-$NEON_PROJECT_ID}"
-            echo "🏢 Detected client: HTA"
+            echo "Detected client: HTA"
           elif echo "$BRANCH_NAME" | grep -q "^dev-btu"; then
             PROJECT_ID="${NEON_PROJECT_ID_BTU:-$NEON_PROJECT_ID}"
-            echo "🏢 Detected client: BTU"
+            echo "Detected client: BTU"
           else
             PROJECT_ID="$NEON_PROJECT_ID"
-            echo "🏢 Using default Neon project"
+            echo "Using default Neon project"
           fi
 
-          echo "🔍 Looking for Neon branch: ${NEON_BRANCH_NAME} in project ${PROJECT_ID}"
+          echo "Looking for Neon branch: ${NEON_BRANCH_NAME} in project ${PROJECT_ID}"
 
           BRANCHES_RESPONSE=$(curl -s -X GET \
             "https://console.neon.tech/api/v2/projects/${PROJECT_ID}/branches" \
@@ -41,16 +51,20 @@ jobs:
           BRANCH_ID=$(echo "$BRANCHES_RESPONSE" | jq -r ".branches[] | select(.name == \"${NEON_BRANCH_NAME}\") | .id")
 
           if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" == "null" ]; then
-            echo "⚠️ Branch ${NEON_BRANCH_NAME} not found, nothing to delete"
+            echo "Branch ${NEON_BRANCH_NAME} not found — nothing to delete (may have been cleaned up already)"
             exit 0
           fi
 
-          echo "🗑️ Deleting branch: ${NEON_BRANCH_NAME} (ID: ${BRANCH_ID})"
+          echo "Deleting Neon branch: ${NEON_BRANCH_NAME} (ID: ${BRANCH_ID})"
 
-          DELETE_RESPONSE=$(curl -s -X DELETE \
+          DELETE_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
             "https://console.neon.tech/api/v2/projects/${PROJECT_ID}/branches/${BRANCH_ID}" \
             -H "Authorization: Bearer ${NEON_API_KEY}" \
             -H "Content-Type: application/json")
 
-          echo "✅ Deleted Neon branch: ${NEON_BRANCH_NAME}"
-          echo "Response: $DELETE_RESPONSE"
+          if [ "$DELETE_RESPONSE" == "200" ] || [ "$DELETE_RESPONSE" == "204" ]; then
+            echo "Successfully deleted Neon branch: ${NEON_BRANCH_NAME}"
+          else
+            echo "WARNING: Neon branch deletion returned HTTP ${DELETE_RESPONSE}"
+            exit 1
+          fi

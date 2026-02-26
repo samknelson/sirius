@@ -9,7 +9,20 @@ import { storage } from "../storage";
 export type AuthProvider = AuthProviderType;
 
 function isMockAuthEnabled(): boolean {
-  return process.env.MOCK_AUTH === "true";
+  if (process.env.MOCK_AUTH !== "true") return false;
+
+  const isProductionBranch = ["prod-hta", "prod-btu"].some(
+    (branch) => process.env.FC_BRANCH === branch || process.env.GIT_BRANCH === branch
+  );
+  if (isProductionBranch) {
+    logger.error("MOCK_AUTH is set on a production branch — ignoring for safety", {
+      source: "auth",
+      branch: process.env.FC_BRANCH || process.env.GIT_BRANCH,
+    });
+    return false;
+  }
+
+  return true;
 }
 
 export function getAuthProvider(): AuthProvider {
