@@ -86,13 +86,19 @@ async function provisionPreviewDatabase(): Promise<string> {
   } else {
     console.log(`📝 Branch not found, creating new branch from main...`);
     
-    const mainBranch = branches.find((b: Branch) => b.name === "main" || b.primary);
+    console.log(`📋 Available branches in project:`);
+    for (const b of branches) {
+      console.log(`   - ${b.name} (ID: ${b.id}, primary: ${b.primary || false})`);
+    }
+
+    const mainBranch = branches.find((b: Branch) => b.name === "main") 
+      || branches.find((b: Branch) => b.primary);
     
     if (!mainBranch) {
       throw new Error("Could not find main/primary branch to fork from");
     }
 
-    console.log(`🔀 Forking from: ${mainBranch.name} (ID: ${mainBranch.id})`);
+    console.log(`🔀 Forking from: ${mainBranch.name} (ID: ${mainBranch.id}, primary: ${mainBranch.primary || false})`);
 
     const { data: createResponse } = await neonClient.createProjectBranch(NEON_PROJECT_ID, {
       branch: {
