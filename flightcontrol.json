@@ -63,7 +63,9 @@
       "region": "us-east-1",
       "source": {
         "pr": true,
-        "branch": "main"
+        "filter": {
+          "toBranches": ["main"]
+        }
       },
       "services": [
         {
