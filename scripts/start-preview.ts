@@ -92,6 +92,7 @@ async function provisionPreviewDatabase(): Promise<string> {
     }
 
     const parentBranch = branches.find((b: Branch) => b.primary)
+      || branches.find((b: Branch) => b.name === "production")
       || branches.find((b: Branch) => b.name === "main");
     
     if (!parentBranch) {
