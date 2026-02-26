@@ -5,6 +5,7 @@ import session from "express-session";
 import type { Express, RequestHandler, Request } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
+import { randomBytes } from "crypto";
 import { storage } from "../storage";
 import { storageLogger, logger } from "../logger";
 import { getRequestContext } from "../middleware/request-context";
@@ -99,10 +100,15 @@ export async function logLogoutEvent(req: Request): Promise<void> {
 
 export function getSession() {
   if (!process.env.SESSION_SECRET) {
-    if (process.env.NODE_ENV === 'production') {
+    if (process.env.NODE_ENV === 'production' && !process.env.MOCK_AUTH) {
       throw new Error('SESSION_SECRET environment variable is required in production');
     }
-    console.warn('WARNING: Using fallback SESSION_SECRET for development. Set SESSION_SECRET in production!');
+    if (process.env.MOCK_AUTH) {
+      process.env.SESSION_SECRET = randomBytes(32).toString('hex');
+      console.warn('Preview environment: auto-generated SESSION_SECRET');
+    } else {
+      console.warn('WARNING: Using fallback SESSION_SECRET for development. Set SESSION_SECRET in production!');
+    }
   }
   
   const sessionTtl = 7 * 24 * 60 * 60 * 1000;
