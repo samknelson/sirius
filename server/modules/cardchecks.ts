@@ -633,7 +633,7 @@ export function registerCardchecksRoutes(
         }
       }
 
-      // Compute distinct worker totals (using same filter as primary group)
+      // Compute distinct worker totals per BU (using same filter as primary group)
       const distinctResult = await db.execute(sql`
         WITH latest_employment AS (
           SELECT DISTINCT ON (wh.worker_id, wh.employer_id)
@@ -653,12 +653,31 @@ export function registerCardchecksRoutes(
             : sql`le.is_employed = true`}
         )
         SELECT 
+          w.bargaining_unit_id as "bargainingUnitId",
           COUNT(DISTINCT aw.worker_id) as "totalDistinctWorkers",
           COUNT(DISTINCT CASE WHEN cc.status = 'signed' THEN aw.worker_id END) as "signedDistinctWorkers"
         FROM active_workers aw
+        INNER JOIN workers w ON w.id = aw.worker_id
         LEFT JOIN cardchecks cc ON cc.worker_id = aw.worker_id AND cc.status = 'signed'
+        GROUP BY w.bargaining_unit_id
       `);
-      const distinctStats = distinctResult.rows[0] as any;
+      const distinctRows = distinctResult.rows as any[];
+      let grandTotalWorkers = 0;
+      let grandSignedWorkers = 0;
+      let distinctMissingDuesRevenue = 0;
+      for (const row of distinctRows) {
+        const total = Number(row.totalDistinctWorkers) || 0;
+        const signed = Number(row.signedDistinctWorkers) || 0;
+        grandTotalWorkers += total;
+        grandSignedWorkers += signed;
+        const missing = total - signed;
+        if (missing > 0 && row.bargainingUnitId) {
+          const rate = buMinRateMap.get(row.bargainingUnitId);
+          if (rate && rate > 0) {
+            distinctMissingDuesRevenue += missing * rate;
+          }
+        }
+      }
 
       const result = Array.from(employerMap.values())
         .sort((a, b) => a.name.localeCompare(b.name));
@@ -722,8 +741,9 @@ export function registerCardchecksRoutes(
 
       res.json({
         employers: result,
-        distinctTotalWorkers: Number(distinctStats?.totalDistinctWorkers) || 0,
-        distinctSignedWorkers: Number(distinctStats?.signedDistinctWorkers) || 0,
+        distinctTotalWorkers: grandTotalWorkers,
+        distinctSignedWorkers: grandSignedWorkers,
+        distinctMissingDuesRevenue,
         secondaryGroups: secondaryGroupsData,
         statusGroups: statusGroups,
         newMembers,

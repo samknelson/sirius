@@ -1212,24 +1212,21 @@ export default function EmployersOrganizing() {
   };
 
   const totalStats = useMemo(() => {
-    let totalMissingDuesRevenue = 0;
     let hasDuesRates = false;
     for (const emp of employers) {
       for (const bu of emp.bargainingUnits) {
         if (bu.duesRate && bu.duesRate > 0) {
           hasDuesRates = true;
-          const missing = bu.totalWorkers - bu.signedWorkers;
-          if (missing > 0) {
-            totalMissingDuesRevenue += missing * bu.duesRate;
-          }
+          break;
         }
       }
+      if (hasDuesRates) break;
     }
     return {
       totalWorkers: organizingData?.distinctTotalWorkers || 0,
       signedWorkers: organizingData?.distinctSignedWorkers || 0,
       employerCount: employers.length,
-      totalMissingDuesRevenue,
+      totalMissingDuesRevenue: organizingData?.distinctMissingDuesRevenue || 0,
       hasDuesRates,
     };
   }, [organizingData, employers]);
