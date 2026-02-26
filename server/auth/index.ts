@@ -4,8 +4,13 @@ import { setupSamlAuth, isSamlConfigured } from "./saml";
 import { setupCognitoAuth, isCognitoConfigured } from "./cognito";
 import type { AuthProviderType } from "@shared/schema";
 import { logger } from "../logger";
+import { storage } from "../storage";
 
 export type AuthProvider = AuthProviderType;
+
+function isMockAuthEnabled(): boolean {
+  return process.env.MOCK_AUTH === "true";
+}
 
 export function getAuthProvider(): AuthProvider {
   if (isSamlConfigured()) {
@@ -20,11 +25,87 @@ export function getAuthProvider(): AuthProvider {
   return "replit";
 }
 
+async function setupMockAuth(app: Express): Promise<void> {
+  const mockEmail = process.env.MOCK_USER_EMAIL || "admin@preview.local";
+  const mockExternalId = `mock-${mockEmail}`;
+
+  logger.warn("Mock auth enabled — all requests will be auto-authenticated", {
+    source: "auth",
+    mockEmail,
+  });
+
+  app.use(async (req, _res, next) => {
+    if ((req as any).user) {
+      return next();
+    }
+
+    const session = req.session as any;
+    if (session?.passport?.user) {
+      return next();
+    }
+
+    try {
+      let identity = await storage.authIdentities.getByProviderAndExternalId("local", mockExternalId);
+      let dbUser;
+
+      if (identity) {
+        dbUser = await storage.users.getUser(identity.userId);
+      } else {
+        dbUser = await storage.users.getUserByEmail(mockEmail);
+        if (!dbUser) {
+          dbUser = await storage.users.createUser({
+            email: mockEmail,
+            firstName: "Preview",
+            lastName: "Admin",
+            isActive: true,
+          });
+        }
+        identity = await storage.authIdentities.create({
+          userId: dbUser!.id,
+          providerType: "local",
+          externalId: mockExternalId,
+          email: mockEmail,
+          displayName: "Preview Admin",
+        });
+      }
+
+      const mockUser = {
+        claims: {
+          sub: mockExternalId,
+          email: mockEmail,
+          first_name: "Preview",
+          last_name: "Admin",
+        },
+        expires_at: Math.floor(Date.now() / 1000) + 86400,
+        providerType: "local",
+        dbUser,
+      };
+
+      (req as any).user = mockUser;
+      req.isAuthenticated = () => true;
+
+      if (session) {
+        session.passport = { user: mockUser };
+      }
+    } catch (error) {
+      logger.error("Mock auth error", { source: "auth", error: (error as Error).message });
+    }
+
+    next();
+  });
+}
+
 export async function setupAuth(app: Express): Promise<void> {
   await setupReplitAuth(app);
   
   const providers: string[] = [];
   
+  if (isMockAuthEnabled()) {
+    await setupMockAuth(app);
+    providers.push("mock");
+    logger.warn("Mock auth is active — preview environment", { source: "auth" });
+  }
+
   if (process.env.REPL_ID) {
     providers.push("replit");
   }
@@ -52,6 +133,7 @@ export async function setupAuth(app: Express): Promise<void> {
         replit: !!process.env.REPL_ID,
         saml: samlConfigured,
         cognito: cognitoConfigured,
+        mock: isMockAuthEnabled(),
       },
     });
   });
@@ -66,7 +148,6 @@ export async function setupAuth(app: Express): Promise<void> {
       hasUser: !!user,
     });
     
-    // Log the logout event for audit trail
     await logLogoutEvent(req);
     
     if (providerType === "oauth" && cognitoConfigured) {
@@ -77,7 +158,6 @@ export async function setupAuth(app: Express): Promise<void> {
       return res.redirect("/api/saml/logout");
     }
     
-    // Replit OIDC logout
     if (providerType === "replit" && process.env.REPL_ID) {
       const replitLogoutUrl = await getReplitLogoutUrl(req);
       if (replitLogoutUrl) {
@@ -88,7 +168,6 @@ export async function setupAuth(app: Express): Promise<void> {
       }
     }
     
-    // Fallback: local session destroy
     req.logout((err) => {
       if (err) {
         logger.error("Logout error", { source: "auth", error: err.message });
@@ -103,7 +182,12 @@ export async function setupAuth(app: Express): Promise<void> {
   });
 }
 
-export const isAuthenticated: RequestHandler = replitIsAuthenticated;
+export const isAuthenticated: RequestHandler = (req, res, next) => {
+  if (isMockAuthEnabled() && (req as any).user) {
+    return next();
+  }
+  return replitIsAuthenticated(req, res, next);
+};
 
 export function getSession() {
   return replitGetSession();
