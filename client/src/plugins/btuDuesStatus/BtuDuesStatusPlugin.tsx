@@ -22,6 +22,7 @@ interface DuesSummary {
   wizardName?: string;
   status?: string;
   date?: string;
+  transactionDates?: string[];
   processResults?: {
     totalRows: number;
     successCount: number;
@@ -90,11 +91,26 @@ export function BtuDuesStatusPlugin({ userPermissions, enabledComponents }: Dash
         <StatusBadge status={summary.status || 'unknown'} />
       </CardHeader>
       <CardContent className="space-y-3">
-        {summary.date && (
-          <p className="text-xs text-muted-foreground" data-testid="text-dues-date">
-            {format(new Date(summary.date), "MMM d, yyyy")}
-          </p>
-        )}
+        <div className="text-xs" data-testid="text-dues-date">
+          {summary.transactionDates && summary.transactionDates.length > 0 ? (
+            <>
+              <span className="text-foreground font-medium" data-testid="text-dues-transaction-date">
+                {summary.transactionDates.length === 1
+                  ? format(new Date(summary.transactionDates[0] + 'T00:00:00'), "MMM d, yyyy")
+                  : summary.transactionDates.map(d => format(new Date(d + 'T00:00:00'), "MMM d, yyyy")).join(", ")}
+              </span>
+              {summary.date && (
+                <span className="text-muted-foreground ml-2" data-testid="text-dues-run-date">
+                  run date {format(new Date(summary.date), "MMM d, yyyy")}
+                </span>
+              )}
+            </>
+          ) : summary.date ? (
+            <span className="text-muted-foreground">
+              {format(new Date(summary.date), "MMM d, yyyy")}
+            </span>
+          ) : null}
+        </div>
 
         {processResults && isFinished && (
           <div className="space-y-0.5">

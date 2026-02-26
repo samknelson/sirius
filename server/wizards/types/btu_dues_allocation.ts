@@ -333,6 +333,7 @@ export class BtuDuesAllocationWizard extends FeedWizard {
     const allocatedWorkers: Map<string, AllocatedWorkerEntry> = new Map();
     
     const workersNotFound: WorkerNotFoundEntry[] = [];
+    const transactionDateSet = new Set<string>();
 
     for (let i = 0; i < totalRows; i += batchSize) {
       const batch = mappedRows.slice(i, Math.min(i + batchSize, totalRows));
@@ -421,6 +422,7 @@ export class BtuDuesAllocationWizard extends FeedWizard {
 
           if (result.totalTransactions.length > 0) {
             createdCount++;
+            transactionDateSet.add(transactionDate.toISOString().split('T')[0]);
             rowResults.push({
               rowIndex,
               status: 'success',
@@ -541,6 +543,7 @@ export class BtuDuesAllocationWizard extends FeedWizard {
         skippedDuplicateCount,
         cardCheckComparisonReport: comparisonReport,
         allocatedWorkers: allocatedWorkersList,
+        transactionDates: Array.from(transactionDateSet).sort(),
       },
       status: failureCount === 0 ? 'completed' : 'completed_with_errors'
     });

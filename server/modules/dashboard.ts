@@ -447,6 +447,7 @@ export function registerDashboardRoutes(
         completedAt?: string;
       } | null;
       const skippedDuplicateCount = data?.skippedDuplicateCount as number | undefined;
+      const transactionDates = data?.transactionDates as string[] | undefined;
       const comparisonReport = data?.cardCheckComparisonReport as {
         matchingRate?: any[];
         mismatchingRate?: any[];
@@ -469,6 +470,7 @@ export function registerDashboardRoutes(
           completedAt: processResults.completedAt ?? null,
         } : null,
         skippedDuplicateCount: skippedDuplicateCount ?? 0,
+        transactionDates: transactionDates || [],
         comparisonReport: comparisonReport ? {
           matchingRate: comparisonReport.matchingRate?.length ?? 0,
           mismatchingRate: comparisonReport.mismatchingRate?.length ?? 0,
