@@ -27,7 +27,7 @@ jobs:
           NEON_PROJECT_ID_BTU: ${{ secrets.NEON_PROJECT_ID_BTU }}
         run: |
           BRANCH_NAME="${{ github.head_ref }}"
-          SANITIZED_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9-_]/-/g' | sed 's/-\+/-/g' | sed 's/^-\|-$//g' | cut -c1-63)
+          SANITIZED_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9_-]/-/g' | sed 's/-\{2,\}/-/g' | sed 's/^-//;s/-$//' | cut -c1-63)
           NEON_BRANCH_NAME="preview-${SANITIZED_BRANCH}"
 
           if echo "$BRANCH_NAME" | grep -q "^dev-hta"; then
