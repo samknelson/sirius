@@ -16,9 +16,42 @@ function sanitizeBranchName(name: string): string {
     .substring(0, 63);
 }
 
+interface ClientConfig {
+  clientId: string;
+  neonProjectId: string;
+}
+
+function detectClient(branchName: string): ClientConfig {
+  const clientMappings: { prefix: string; clientId: string; envVar: string }[] = [
+    { prefix: "dev-hta", clientId: "hta", envVar: "NEON_PROJECT_ID_HTA" },
+    { prefix: "dev-btu", clientId: "btu", envVar: "NEON_PROJECT_ID_BTU" },
+  ];
+
+  for (const mapping of clientMappings) {
+    if (branchName.startsWith(mapping.prefix)) {
+      const projectId = getEnv(mapping.envVar);
+      if (projectId) {
+        console.log(`🏢 Detected client: ${mapping.clientId.toUpperCase()} (from branch prefix: ${mapping.prefix})`);
+        return { clientId: mapping.clientId, neonProjectId: projectId };
+      } else {
+        console.warn(`⚠️ Branch matches ${mapping.clientId.toUpperCase()} but ${mapping.envVar} is not set, falling back to default`);
+      }
+    }
+  }
+
+  const defaultProjectId = getEnv("NEON_PROJECT_ID");
+  if (!defaultProjectId) {
+    console.error("❌ FATAL: No matching client Neon project ID found and NEON_PROJECT_ID fallback is not set");
+    console.error("Set NEON_PROJECT_ID_HTA, NEON_PROJECT_ID_BTU, or NEON_PROJECT_ID in Flight Control environment variables");
+    process.exit(1);
+  }
+
+  console.log("🏢 No specific client detected, using default NEON_PROJECT_ID");
+  return { clientId: "default", neonProjectId: defaultProjectId };
+}
+
 async function provisionPreviewDatabase(): Promise<string> {
   const NEON_API_KEY = getEnv("NEON_API_KEY");
-  const NEON_PROJECT_ID = getEnv("NEON_PROJECT_ID");
   
   if (!NEON_API_KEY) {
     console.error("❌ FATAL: NEON_API_KEY is required for preview environments");
@@ -26,14 +59,13 @@ async function provisionPreviewDatabase(): Promise<string> {
     process.exit(1);
   }
   
-  if (!NEON_PROJECT_ID) {
-    console.error("❌ FATAL: NEON_PROJECT_ID is required for preview environments");
-    console.error("Set NEON_PROJECT_ID in Flight Control environment variables");
-    process.exit(1);
-  }
+  const client = detectClient(GIT_BRANCH);
+  const NEON_PROJECT_ID = client.neonProjectId;
   
   console.log("🚀 Neon Preview Database Provisioning (Runtime)");
   console.log(`📌 Git Branch: ${GIT_BRANCH}`);
+  console.log(`🏢 Client: ${client.clientId.toUpperCase()}`);
+  console.log(`📦 Neon Project: ${NEON_PROJECT_ID}`);
   
   const neonClient = createApiClient({
     apiKey: NEON_API_KEY,
