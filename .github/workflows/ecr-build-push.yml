@@ -9,7 +9,25 @@ env:
   ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
 
 jobs:
+  check-secrets:
+    runs-on: ubuntu-latest
+    outputs:
+      has-ecr-config: ${{ steps.check.outputs.configured }}
+    steps:
+      - name: Check if ECR secrets are configured
+        id: check
+        run: |
+          if [ -n "${{ secrets.AWS_REGION }}" ] && [ -n "${{ secrets.ECR_REPOSITORY }}" ] && [ -n "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then
+            echo "configured=true" >> $GITHUB_OUTPUT
+          else
+            echo "configured=false" >> $GITHUB_OUTPUT
+            echo "ECR build skipped — AWS secrets not configured yet"
+            echo "Set AWS_REGION, ECR_REPOSITORY, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY in GitHub Actions secrets to enable"
+          fi
+
   build-and-push:
+    needs: check-secrets
+    if: needs.check-secrets.outputs.has-ecr-config == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -45,6 +63,6 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
-          echo "### 🐳 Docker Image Published" >> $GITHUB_STEP_SUMMARY
+          echo "### Docker Image Published" >> $GITHUB_STEP_SUMMARY
           echo "- **Registry:** $ECR_REGISTRY/$ECR_REPOSITORY" >> $GITHUB_STEP_SUMMARY
           echo "- **Tags:** \`$IMAGE_TAG\`, \`latest\`" >> $GITHUB_STEP_SUMMARY
