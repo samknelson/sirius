@@ -544,6 +544,7 @@ export class BtuDuesAllocationWizard extends FeedWizard {
         cardCheckComparisonReport: comparisonReport,
         allocatedWorkers: allocatedWorkersList,
         transactionDates: Array.from(transactionDateSet).sort(),
+        accountId,
       },
       status: failureCount === 0 ? 'completed' : 'completed_with_errors'
     });
@@ -700,8 +701,13 @@ export class BtuDuesAllocationWizard extends FeedWizard {
       throw new Error('No allocated worker data available for rescan. This wizard may have been processed before this feature was available.');
     }
 
-    const accountId = wizardData?.accountId;
-    if (!accountId) throw new Error('No account ID found in wizard data');
+    let accountId = wizardData?.accountId;
+    if (!accountId) {
+      const pluginConfigs = await storage.chargePluginConfigs.getEnabledForPlugin('btu-dues-allocation', null);
+      const settings = pluginConfigs[0]?.settings as { accountIds?: string[] } | null;
+      accountId = settings?.accountIds?.[0];
+      if (!accountId) throw new Error('No account ID found in wizard data or plugin configuration');
+    }
 
     const workersNotFound: WorkerNotFoundEntry[] = wizardData?.cardCheckComparisonReport?.workerNotFound || [];
 
