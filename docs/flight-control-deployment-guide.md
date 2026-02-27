@@ -18,6 +18,7 @@ A comprehensive guide documenting every problem encountered while deploying this
 10. [Secrets & Environment Variables](#10-secrets--environment-variables)
 11. [Self-Hosted Production: Docker & ECR](#11-self-hosted-production-docker--ecr)
 12. [Troubleshooting Checklist](#12-troubleshooting-checklist)
+13. [Deploying to Production Branches](#deploying-to-production-branches)
 
 ---
 
@@ -752,6 +753,73 @@ docker run -d \
 - [ ] Remote has commits not in local: `git pull --rebase origin main` then push
 - [ ] Branch protection rules may block direct pushes to main
 - [ ] Force push only if you're certain your local is authoritative: `git push --force origin main`
+
+---
+
+## Deploying to Production Branches
+
+### Overview
+
+Production deployments are controlled by advancing `prod-*` branches to specific commits on `main`. You choose exactly which commit each client gets — clients can be on different versions.
+
+### Option A: Deploy the Latest from Main (GitHub UI)
+
+Use this when you want to bring a client's production fully up to date with `main`.
+
+1. Go to your GitHub repo
+2. Click **Pull requests** → **New pull request**
+3. Set **base:** `prod-hta` and **compare:** `main`
+4. Create the PR, review the changes, and merge
+5. Flight Control will automatically deploy
+
+This always takes everything on `main` up to the latest commit.
+
+### Option B: Deploy a Specific Commit (Command Line)
+
+Use this when `main` has recent commits that aren't ready for a specific client.
+
+```bash
+# 1. Find the commit you want
+git log main --oneline
+# Example output:
+# abc1234 Fix billing report
+# def5678 Add new dashboard widget
+# ghi9012 Update worker search
+# jkl3456 Refactor auth module
+
+# 2. Push that specific commit to the prod branch
+git push origin abc1234:refs/heads/prod-hta
+```
+
+This sets `prod-hta` to exactly commit `abc1234`, skipping any newer commits that aren't ready.
+
+### Example: Different Versions per Client
+
+```bash
+# HTA gets the latest (all commits up to today)
+git push origin main:refs/heads/prod-hta
+
+# BTU stays on last week's version
+git push origin ghi9012:refs/heads/prod-btu
+```
+
+### Catching Up Later
+
+When BTU is ready for the latest:
+```bash
+git push origin main:refs/heads/prod-btu
+```
+
+Or advance to a specific newer commit:
+```bash
+git push origin def5678:refs/heads/prod-btu
+```
+
+### Important Rules
+
+- **Never commit directly to `prod-*` branches.** Always advance them from `main`.
+- **Never force-push** to `prod-*` branches. The push should always be a fast-forward.
+- If `git push` is rejected, it means the prod branch has diverged from main — investigate before proceeding.
 
 ---
 
