@@ -90,6 +90,18 @@ export default function AllEmployerContacts() {
     setContactTypeFilter("all");
   };
 
+  const downloadCsv = (csvString: string, filename: string) => {
+    const blob = new Blob([csvString], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const handleExportCSV = () => {
     if (!employerContacts?.length) return;
 
@@ -107,15 +119,49 @@ export default function AllEmployerContacts() {
     }));
 
     const csv = stringify(csvData, { header: true });
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `employer-contacts-${new Date().toISOString().split("T")[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadCsv(csv, `employer-contacts-${new Date().toISOString().split("T")[0]}.csv`);
+  };
+
+  const handleExportByContact = () => {
+    if (!employerContacts?.length) return;
+
+    const grouped = new Map<string, {
+      contact: EmployerContactWithDetails["contact"];
+      contactTypes: Set<string>;
+      employers: string[];
+    }>();
+
+    for (const ec of employerContacts) {
+      const key = ec.contact.id;
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          contact: ec.contact,
+          contactTypes: new Set(),
+          employers: [],
+        });
+      }
+      const entry = grouped.get(key)!;
+      entry.employers.push(ec.employer.name);
+      if (ec.contactType?.name) {
+        entry.contactTypes.add(ec.contactType.name);
+      }
+    }
+
+    const csvData = Array.from(grouped.values()).map(({ contact, contactTypes, employers }) => ({
+      "Display Name": contact.displayName || "",
+      "Title": contact.title || "",
+      "First Name": contact.given || "",
+      "Middle Name": contact.middle || "",
+      "Last Name": contact.family || "",
+      "Generational": contact.generational || "",
+      "Credentials": contact.credentials || "",
+      "Email": contact.email || "",
+      "Contact Types": Array.from(contactTypes).join(", "),
+      "Employers": employers.join(", "),
+    }));
+
+    const csv = stringify(csvData, { header: true });
+    downloadCsv(csv, `contacts-by-employer-${new Date().toISOString().split("T")[0]}.csv`);
   };
 
   return (
@@ -129,15 +175,26 @@ export default function AllEmployerContacts() {
             View and manage all employer contact relationships
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={handleExportCSV}
-          disabled={!employerContacts?.length}
-          data-testid="button-export-csv"
-        >
-          <Download className="h-4 w-4 mr-2" />
-          Export CSV
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={handleExportByContact}
+            disabled={!employerContacts?.length}
+            data-testid="button-export-by-contact"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export by Contact
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleExportCSV}
+            disabled={!employerContacts?.length}
+            data-testid="button-export-csv"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
+        </div>
       </div>
 
       <Card>
