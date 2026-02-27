@@ -169,6 +169,13 @@ export function registerCardchecksRoutes(
         return res.status(401).json({ message: "User not found" });
       }
 
+      // Verify the user still exists in the database (session cache may be stale)
+      const verifiedUser = await storage.users.getUser(dbUser.id);
+      if (!verifiedUser) {
+        console.warn(`Stale session detected: user ${dbUser.id} (${dbUser.email}) no longer exists in users table`);
+        return res.status(401).json({ message: "Your user session is stale. Please log out and log back in." });
+      }
+
       const existingCardcheck = await storage.cardchecks.getCardcheckById(cardcheckId);
       if (!existingCardcheck) {
         return res.status(404).json({ message: "Cardcheck not found" });
@@ -193,7 +200,7 @@ export function registerCardchecksRoutes(
 
       const result = await storage.cardchecks.signCardcheck({
         cardcheckId,
-        userId: dbUser.id,
+        userId: verifiedUser.id,
         docRender,
         docType,
         esigData,
