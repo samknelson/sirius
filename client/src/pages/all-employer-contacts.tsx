@@ -20,8 +20,10 @@ import {
   Truck, 
   HardHat, 
   Users,
+  Download,
   type LucideIcon 
 } from "lucide-react";
+import { stringify } from "csv-stringify/browser/esm/sync";
 import type { Employer, Contact, EmployerContact, EmployerContactType } from "@shared/schema";
 
 const iconMap: Record<string, LucideIcon> = {
@@ -88,6 +90,34 @@ export default function AllEmployerContacts() {
     setContactTypeFilter("all");
   };
 
+  const handleExportCSV = () => {
+    if (!employerContacts?.length) return;
+
+    const csvData = employerContacts.map(ec => ({
+      "Employer": ec.employer.name,
+      "Contact Type": ec.contactType?.name || "",
+      "Display Name": ec.contact.displayName || "",
+      "Title": ec.contact.title || "",
+      "First Name": ec.contact.given || "",
+      "Middle Name": ec.contact.middle || "",
+      "Last Name": ec.contact.family || "",
+      "Generational": ec.contact.generational || "",
+      "Credentials": ec.contact.credentials || "",
+      "Email": ec.contact.email || "",
+    }));
+
+    const csv = stringify(csvData, { header: true });
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `employer-contacts-${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -99,6 +129,15 @@ export default function AllEmployerContacts() {
             View and manage all employer contact relationships
           </p>
         </div>
+        <Button
+          variant="outline"
+          onClick={handleExportCSV}
+          disabled={!employerContacts?.length}
+          data-testid="button-export-csv"
+        >
+          <Download className="h-4 w-4 mr-2" />
+          Export CSV
+        </Button>
       </div>
 
       <Card>
