@@ -815,6 +815,12 @@ Or advance to a specific newer commit:
 git push origin def5678:refs/heads/prod-btu
 ```
 
+### Prerequisites
+
+- You can run these commands from **any local branch** — your checkout doesn't matter. The command pushes a specific commit to a specific remote branch directly.
+- Make sure you've fetched the latest from the remote first: `git fetch origin main`
+- The commit SHA must exist in your local Git history (which it will after fetching).
+
 ### Important Rules
 
 - **Never commit directly to `prod-*` branches.** Always advance them from `main`.
