@@ -47,12 +47,31 @@ jobs:
 
           echo "Looking for Neon branch: ${NEON_BRANCH_NAME} in project ${PROJECT_ID}"
 
-          BRANCHES_RESPONSE=$(curl -s -X GET \
+          if [ -z "$NEON_API_KEY" ]; then
+            echo "ERROR: NEON_API_KEY secret is not set in GitHub Actions"
+            exit 1
+          fi
+
+          if [ -z "$PROJECT_ID" ]; then
+            echo "ERROR: No Neon project ID resolved for branch ${BRANCH_NAME}"
+            exit 1
+          fi
+
+          BRANCHES_RESPONSE=$(curl -s -w "\n%{http_code}" -X GET \
             "https://console.neon.tech/api/v2/projects/${PROJECT_ID}/branches" \
             -H "Authorization: Bearer ${NEON_API_KEY}" \
             -H "Content-Type: application/json")
 
-          BRANCH_ID=$(echo "$BRANCHES_RESPONSE" | jq -r ".branches[] | select(.name == \"${NEON_BRANCH_NAME}\") | .id")
+          HTTP_CODE=$(echo "$BRANCHES_RESPONSE" | tail -1)
+          BODY=$(echo "$BRANCHES_RESPONSE" | sed '$d')
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "ERROR: Neon API returned HTTP ${HTTP_CODE}"
+            echo "Response: ${BODY}"
+            exit 1
+          fi
+
+          BRANCH_ID=$(echo "$BODY" | jq -r ".branches[] | select(.name == \"${NEON_BRANCH_NAME}\") | .id")
 
           if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" == "null" ]; then
             echo "Branch ${NEON_BRANCH_NAME} not found — nothing to delete (may have been cleaned up already)"
