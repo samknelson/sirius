@@ -118,7 +118,7 @@ Sirius uses a 4-layer "Controlled Release" model to manage highly-coupled code a
 │                            ┌──────┼──────┐                         │
 │                            ▼      ▼      ▼                         │
 │  Layer 3: Hosted Prod   prod-hta  │   prod-btu                    │
-│  (fast-forward PRs)     (AWS/FC)  │   (AWS/FC)                    │
+│  (ff pushes)            (AWS/FC)  │   (AWS/FC)                    │
 │                                   │                                │
 │  Layer 4: Self-Hosted             ▼                                │
 │  (Docker/ECR)              ECR Image Build                         │
@@ -132,7 +132,7 @@ Sirius uses a 4-layer "Controlled Release" model to manage highly-coupled code a
 |-------|----------|---------|------------|
 | Dev | `dev-hta`, `dev-btu` | Direct commits | Nothing (local dev) |
 | Integration | `main` | PR from `dev-*` → `main` | Ephemeral preview env (Flight Control) |
-| Hosted Production | `prod-hta`, `prod-btu` | PR from `main` → `prod-*` | AWS Fargate (Flight Control) |
+| Hosted Production | `prod-hta`, `prod-btu` | Fast-forward push from `main` | AWS Fargate (Flight Control) |
 | Self-Hosted Production | `main` (on merge) | Push to `main` | Docker image → Amazon ECR |
 
 ### flightcontrol.json Structure
@@ -145,14 +145,16 @@ The Flight Control config defines one environment per production client plus a s
   "ci": { "type": "ec2", "instanceSize": "t3.large" },
   "environments": [
     {
-      "id": "prod-hta",
+      "id": "production",
       "name": "Production (HTA)",
       "source": { "branch": "prod-hta" },
       "services": [{
-        "envVariables": {
-          "DATABASE_URL": { "fromParameterStore": "DATABASE_URL" },
-          "SESSION_SECRET": { "fromParameterStore": "SESSION_SECRET" }
-        }
+        "id": "sirius-app",
+        "type": "fargate",
+        "buildType": "nixpacks",
+        "port": 3000,
+        "healthCheckPath": "/api/health",
+        "envVariables": { "NODE_ENV": "production", "PORT": "3000" }
       }]
     },
     {
@@ -160,23 +162,29 @@ The Flight Control config defines one environment per production client plus a s
       "name": "Production (BTU)",
       "source": { "branch": "prod-btu" },
       "services": [{
-        "envVariables": {
-          "DATABASE_URL": { "fromParameterStore": "DATABASE_URL" },
-          "SESSION_SECRET": { "fromParameterStore": "SESSION_SECRET" }
-        }
+        "id": "sirius-app-btu",
+        "type": "fargate",
+        "buildType": "nixpacks",
+        "port": 3000,
+        "healthCheckPath": "/api/health",
+        "envVariables": { "NODE_ENV": "production", "PORT": "3000" }
       }]
     },
     {
       "id": "preview",
       "name": "PR Preview",
-      "source": { "pr": true, "branch": "main" },
-      "services": [{ "startCommand": "npm run start:preview", "envVariables": { "MOCK_AUTH": "true" } }]
+      "source": { "pr": true, "filter": { "toBranches": ["main"] } },
+      "services": [{
+        "id": "sirius-app-preview",
+        "startCommand": "npm run start:preview",
+        "envVariables": { "NODE_ENV": "production", "MOCK_AUTH": "true", "PORT": "3000" }
+      }]
     }
   ]
 }
 ```
 
-Sensitive env vars (`DATABASE_URL`, `SESSION_SECRET`) are stored in AWS Systems Manager Parameter Store and referenced via `fromParameterStore`. Preview environments auto-generate a session secret at runtime.
+Note: The HTA production environment uses `id: "production"` (not `"prod-hta"`) to preserve the existing Flight Control infrastructure. Changing the `id` would create a new environment from scratch. Sensitive env vars (`DATABASE_URL`, `SESSION_SECRET`) are set directly in the Flight Control dashboard for each environment. Preview environments auto-generate a session secret at runtime when `MOCK_AUTH=true`.
 
 ### Adding a New Client
 
@@ -561,26 +569,33 @@ Flight Control expects `"pr": true` (a boolean), not an object. Using an object 
 }
 ```
 
+### Multi-Client Database Cloning
+
+Preview environments clone from the **correct client's production database**, not a generic branch. The `start-preview.ts` script detects the client from the branch name:
+
+- `dev-hta-*` branches → clone from HTA's Neon project (`NEON_PROJECT_ID_HTA`)
+- `dev-btu-*` branches → clone from BTU's Neon project (`NEON_PROJECT_ID_BTU`)
+- Other branches → fallback to `NEON_PROJECT_ID`
+
+The clone parent is always the **primary branch** in the client's Neon project (typically named "production"), ensuring the preview has real production data.
+
+### Mock Authentication
+
+Preview environments use `MOCK_AUTH=true` which auto-authenticates all requests as a "Preview Admin" user. Set `MOCK_USER_EMAIL` to log in as a specific existing user in the cloned database. A safety guard prevents `MOCK_AUTH` from being enabled on production branches.
+
 ### Cleanup: GitHub Action
 
-When a PR is closed, a GitHub Action deletes the Neon branch:
+When a PR is closed (merged or not), the `.github/workflows/preview-cleanup.yml` workflow deletes the Neon database branch. It detects the client from the branch name and targets the correct Neon project:
 
 ```yaml
-name: Cleanup Preview Database
+name: Cleanup Preview Environment
 on:
   pull_request:
     types: [closed]
-jobs:
-  cleanup-neon-branch:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Delete Neon Branch
-        env:
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
-        run: |
-          # Sanitize and find the branch, then delete via Neon API
+    branches: [main]
 ```
+
+Flight Control automatically destroys the preview Fargate service when the PR closes. The GitHub Action handles only the Neon database branch cleanup.
 
 ### Neon API client notes
 
@@ -608,20 +623,23 @@ import { EndpointType } from "@neondatabase/api-client";
 
 ### Where to set each secret
 
-| Secret | Flight Control | GitHub Actions | Notes |
-|--------|:-:|:-:|-------|
-| `DATABASE_URL` | Yes (prod-*) | No | Per-client Neon connection string, via Parameter Store |
-| `SESSION_SECRET` | Yes (prod-*) | No | Unique per environment, via Parameter Store |
-| `COGNITO_*` | Yes (if using Cognito) | No | 5 variables total |
-| `NEON_API_KEY` | Yes (preview only) | Yes | Same key, both places |
-| `NEON_PROJECT_ID` | Yes (preview only) | Yes | Same ID, both places |
-| `MOCK_AUTH` | Yes (preview only) | No | Set to `"true"` for previews |
-| `NODE_ENV` | Yes (all) | No | Always `"production"` |
-| `REPL_ID` | No | No | Only exists in Replit env |
-| `AWS_ACCESS_KEY_ID` | No | Yes | For ECR push workflow |
-| `AWS_SECRET_ACCESS_KEY` | No | Yes | For ECR push workflow |
-| `AWS_REGION` | No | Yes | For ECR push workflow |
-| `ECR_REPOSITORY` | No | Yes | ECR repo name for Docker images |
+| Secret | Flight Control (prod) | Flight Control (preview) | GitHub Actions | Notes |
+|--------|:-:|:-:|:-:|-------|
+| `DATABASE_URL` | Yes | No (auto-provisioned) | No | Per-client Neon connection string |
+| `SESSION_SECRET` | Yes | No (auto-generated) | No | Unique per environment |
+| `COGNITO_*` | Yes (if using Cognito) | No | No | 5 variables total |
+| `NEON_API_KEY` | No | Yes | Yes | Same key, both places |
+| `NEON_PROJECT_ID` | No | Yes | Yes | Default/fallback Neon project |
+| `NEON_PROJECT_ID_HTA` | No | Yes | Yes | HTA's Neon project |
+| `NEON_PROJECT_ID_BTU` | No | Yes | Yes | BTU's Neon project |
+| `MOCK_AUTH` | No | In flightcontrol.json | No | Set to `"true"` for previews |
+| `MOCK_USER_EMAIL` | No | Optional | No | Override mock user email |
+| `NODE_ENV` | In flightcontrol.json | In flightcontrol.json | No | Always `"production"` |
+| `PORT` | In flightcontrol.json | In flightcontrol.json | No | Always `"3000"` |
+| `AWS_ACCESS_KEY_ID` | No | No | Yes | For ECR push workflow |
+| `AWS_SECRET_ACCESS_KEY` | No | No | Yes | For ECR push workflow |
+| `AWS_REGION` | No | No | Yes | For ECR push workflow |
+| `ECR_REPOSITORY` | No | No | Yes | ECR repo name for Docker images |
 
 ### Setting secrets in Flight Control (Parameter Store)
 
@@ -638,8 +656,11 @@ Production environments use AWS Systems Manager Parameter Store for sensitive va
 
 1. Go to your GitHub repo → Settings → Secrets and variables → Actions
 2. Add repository secrets:
-   - `NEON_API_KEY` and `NEON_PROJECT_ID` — used by preview cleanup workflow
-   - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `ECR_REPOSITORY` — used by ECR build workflow
+   - `NEON_API_KEY` — used by preview cleanup workflow
+   - `NEON_PROJECT_ID` — default/fallback Neon project
+   - `NEON_PROJECT_ID_HTA` — HTA's Neon project
+   - `NEON_PROJECT_ID_BTU` — BTU's Neon project
+   - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `ECR_REPOSITORY` — used by ECR build workflow (optional until self-hosted layer is needed)
 
 ---
 
@@ -674,12 +695,15 @@ The Dockerfile accepts build args for traceability:
 
 The `.github/workflows/ecr-build-push.yml` workflow runs on every push to `main`:
 
-1. Checks out the code
-2. Configures AWS credentials (from GitHub Secrets)
-3. Logs into Amazon ECR
-4. Builds the Docker image with git metadata labels
-5. Tags with both the commit SHA and `latest`
-6. Pushes both tags to ECR
+1. Checks if AWS secrets are configured (skips gracefully if not)
+2. Checks out the code
+3. Configures AWS credentials (from GitHub Secrets)
+4. Logs into Amazon ECR
+5. Builds the Docker image with git metadata labels
+6. Tags with both the commit SHA and `latest`
+7. Pushes both tags to ECR
+
+If the AWS secrets are not configured, the workflow skips the build without failing. This allows the workflow to exist in the repo without requiring ECR setup until a self-hosted client is needed.
 
 ### Required GitHub Secrets for ECR
 
@@ -843,15 +867,17 @@ git push origin def5678:refs/heads/prod-btu
 
 ## Quick Reference: Adding a New Client
 
-1. Create a `prod-<client>` branch from `main`: `git checkout main && git checkout -b prod-<client>`
-2. Add a new environment block to `flightcontrol.json` with `"source": { "branch": "prod-<client>" }`
-3. Set `DATABASE_URL` and `SESSION_SECRET` in AWS Parameter Store for the new environment
-4. Create the client's Neon database project (or use an existing one)
-5. Push to the `prod-<client>` branch to trigger initial deployment
-6. Configure client-specific Components via the admin UI
-7. Create a `dev-<client>` branch for development work
-8. Monitor Flight Control logs for build/start errors
-9. Verify session cookies work if behind a CDN/proxy
+1. Create the client's Neon database project (or use an existing one)
+2. Create a `prod-<client>` branch from `main`: `git checkout main && git checkout -b prod-<client>`
+3. Add a new environment block to `flightcontrol.json` with `"source": { "branch": "prod-<client>" }`
+4. Set `DATABASE_URL` and `SESSION_SECRET` in the Flight Control dashboard for the new environment
+5. Add client detection to `scripts/start-preview.ts` (`detectClient` function) and `.github/workflows/preview-cleanup.yml`
+6. Add `NEON_PROJECT_ID_<CLIENT>` to both the Flight Control preview environment and GitHub Actions secrets
+7. Push to the `prod-<client>` branch to trigger initial deployment: `git push origin main:refs/heads/prod-<client>`
+8. Create a `dev-<client>` branch for development work
+9. Configure client-specific Components via the admin UI
+10. Monitor Flight Control logs for build/start errors
+11. Verify session cookies work if behind a CDN/proxy
 
 ---
 
