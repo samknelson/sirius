@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
 import { IconPicker } from "@/components/ui/icon-picker";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -28,6 +29,7 @@ export default function CardcheckDefinitionEditPage() {
   const [formRateTitle, setFormRateTitle] = useState("");
   const [formRateDescription, setFormRateDescription] = useState("");
   const [formIcon, setFormIcon] = useState<string | undefined>(undefined);
+  const [formWorkerCanRevoke, setFormWorkerCanRevoke] = useState(false);
 
   const { data: definition, isLoading, error } = useQuery<CardcheckDefinition>({
     queryKey: ["/api/cardcheck/definition", id],
@@ -50,6 +52,8 @@ export default function CardcheckDefinitionEditPage() {
       setFormRateTitle(rateField?.title || "");
       setFormRateDescription(rateField?.description || "");
       setFormIcon((definition.data as any)?.icon || undefined);
+      const revokeRoles = (definition.data as any)?.revokeRoles || [];
+      setFormWorkerCanRevoke(revokeRoles.includes("worker"));
     }
   }, [definition]);
 
@@ -101,10 +105,16 @@ export default function CardcheckDefinitionEditPage() {
       ? { title: formRateTitle.trim(), description: formRateDescription.trim() || undefined }
       : undefined;
     
+    const revokeRoles = ["staff"];
+    if (formWorkerCanRevoke) {
+      revokeRoles.push("worker");
+    }
+
     const updatedData = {
       ...existingData,
       checkboxes: nonEmptyCheckboxes.length > 0 ? nonEmptyCheckboxes : undefined,
       rateField,
+      revokeRoles,
     };
     
     if (formIcon) {
@@ -284,6 +294,39 @@ export default function CardcheckDefinitionEditPage() {
                   placeholder="e.g., Enter the agreed hourly rate in dollars"
                   data-testid="input-rate-description"
                 />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <Label>Revocation Settings</Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Control which roles can revoke a signed card check.
+                </p>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="revoke-staff"
+                    checked={true}
+                    disabled
+                    data-testid="checkbox-revoke-staff"
+                  />
+                  <Label htmlFor="revoke-staff" className="text-sm text-muted-foreground">
+                    Staff (always enabled)
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="revoke-worker"
+                    checked={formWorkerCanRevoke}
+                    onCheckedChange={(checked) => setFormWorkerCanRevoke(checked === true)}
+                    data-testid="checkbox-revoke-worker"
+                  />
+                  <Label htmlFor="revoke-worker" className="text-sm">
+                    Worker (self-service)
+                  </Label>
+                </div>
               </div>
             </div>
 

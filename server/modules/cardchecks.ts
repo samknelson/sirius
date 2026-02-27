@@ -84,6 +84,28 @@ export function registerCardchecksRoutes(
         return res.status(400).json({ message: "Cannot modify a revoked cardcheck. Revoked cardchecks are permanently locked." });
       }
       
+      if (req.body.status === "revoked") {
+        const user = req.user as any;
+        const session = req.session as any;
+        const { getEffectiveUser } = await import("./masquerade");
+        const { dbUser } = await getEffectiveUser(session, user);
+        if (dbUser) {
+          const isStaff = await storage.users.userHasPermission(dbUser.id, "staff");
+          if (!isStaff) {
+            const def = await storage.cardcheckDefinitions.getCardcheckDefinitionById(existing.cardcheckDefinitionId);
+            const revokeRoles: string[] = (def?.data as any)?.revokeRoles || ["staff"];
+            if (!revokeRoles.includes("worker")) {
+              return res.status(403).json({ message: "You do not have permission to revoke this card check." });
+            }
+            const contact = dbUser.email ? await storage.contacts.getContactByEmail(dbUser.email) : null;
+            const workerRecord = contact ? await storage.workers.getWorkerByContactId(contact.id) : null;
+            if (!workerRecord || workerRecord.id !== existing.workerId) {
+              return res.status(403).json({ message: "You can only revoke your own card check." });
+            }
+          }
+        }
+      }
+
       const body = { ...req.body };
       if (body.signedDate && typeof body.signedDate === "string") {
         body.signedDate = new Date(body.signedDate);

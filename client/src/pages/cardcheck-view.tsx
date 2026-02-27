@@ -526,7 +526,11 @@ export default function CardcheckViewPage() {
             </span>
           )}
           
-          {cardcheck.status === "signed" && (
+          {cardcheck.status === "signed" && (() => {
+            const revokeRoles: string[] = (definition?.data as any)?.revokeRoles || ["staff"];
+            const canRevoke = hasPermission('staff') || revokeRoles.includes("worker");
+            return canRevoke;
+          })() && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive" data-testid="button-revoke">
