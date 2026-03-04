@@ -245,7 +245,7 @@ export default function Header() {
 
                 {/* Worker dispatch history - for workers */}
                 {hasPermission("worker") && hasComponent("dispatch") && user?.workerId && !staffPolicy?.access?.granted && (
-                  <Link href={`/workers/${user.workerId}/dispatch`} onClick={() => setMobileMenuOpen(false)}>
+                  <Link href={`/workers/${user.workerId}/dispatch/list`} onClick={() => setMobileMenuOpen(false)}>
                     <Button
                       variant={location.includes("/dispatch") ? "default" : "ghost"}
                       className="w-full justify-start"
@@ -708,7 +708,7 @@ export default function Header() {
 
             {/* Worker dispatch history - for workers */}
             {hasPermission("worker") && hasComponent("dispatch") && user?.workerId && !staffPolicy?.access?.granted && (
-              <Link href={`/workers/${user.workerId}/dispatch`}>
+              <Link href={`/workers/${user.workerId}/dispatch/list`}>
                 <Button
                   variant={location.includes("/dispatch") ? "default" : "ghost"}
                   size="sm"

@@ -1,9 +1,12 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
-import { Eye, User, Briefcase, Mail, MessageSquare, Bell, ExternalLink, Filter } from "lucide-react";
+import { Eye, User, Briefcase, Mail, MessageSquare, Bell, ExternalLink, Filter, Check, X, Loader2 } from "lucide-react";
 import { format } from "date-fns";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   Tooltip,
   TooltipContent,
@@ -141,16 +144,102 @@ const statusOptions = [
   { value: "expired", label: "Expired" },
 ];
 
+interface StatusOption {
+  status: string;
+  possible: boolean;
+  reason?: string;
+}
+
+function DispatchActions({ dispatch, workerId }: { dispatch: DispatchWithRelations; workerId: string }) {
+  const { toast } = useToast();
+
+  const { data: statusOptions, isLoading: optionsLoading } = useQuery<StatusOption[]>({
+    queryKey: ['/api/dispatches', dispatch.id, 'status-options'],
+    queryFn: async () => {
+      const res = await fetch(`/api/dispatches/${dispatch.id}/status-options`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!dispatch.id,
+  });
+
+  const setStatusMutation = useMutation({
+    mutationFn: async (status: string) => {
+      await apiRequest("POST", `/api/dispatches/${dispatch.id}/set-status`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/dispatches/worker/${workerId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/dispatches', dispatch.id, 'status-options'] });
+      toast({ title: "Dispatch updated" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update dispatch", variant: "destructive" });
+    },
+  });
+
+  if (optionsLoading) {
+    return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />;
+  }
+
+  const canAccept = statusOptions?.find(o => o.status === "accepted")?.possible;
+  const canDecline = statusOptions?.find(o => o.status === "declined")?.possible;
+
+  if (!canAccept && !canDecline) return null;
+
+  return (
+    <div className="flex gap-1">
+      {canAccept && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+              onClick={() => setStatusMutation.mutate("accepted")}
+              disabled={setStatusMutation.isPending}
+              data-testid={`button-accept-${dispatch.id}`}
+            >
+              {setStatusMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Accept Dispatch</TooltipContent>
+        </Tooltip>
+      )}
+      {canDecline && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+              onClick={() => setStatusMutation.mutate("declined")}
+              disabled={setStatusMutation.isPending}
+              data-testid={`button-decline-${dispatch.id}`}
+            >
+              {setStatusMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Decline Dispatch</TooltipContent>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
+
 export interface DispatchListTableProps {
   dispatches: DispatchWithRelations[];
   showWorker?: boolean;
   showJob?: boolean;
+  workerActions?: boolean;
+  workerId?: string;
 }
 
 export function DispatchListTable({ 
   dispatches, 
   showWorker = false,
   showJob = false,
+  workerActions = false,
+  workerId,
 }: DispatchListTableProps) {
   const [statusFilter, setStatusFilter] = useState("all");
 
@@ -247,6 +336,9 @@ export function DispatchListTable({
             </TableCell>
             <TableCell>
               <div className="flex gap-1">
+                {workerActions && workerId && (
+                  <DispatchActions dispatch={dispatch} workerId={workerId} />
+                )}
                 {showWorker && dispatch.workerId && (
                   <Tooltip>
                     <TooltipTrigger asChild>
