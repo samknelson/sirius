@@ -720,28 +720,32 @@ export function PhoneNumberManagement({ contactId, canEdit = true }: PhoneNumber
                       />
                     </div>
 
-                    <Separator />
+                    {canEdit && (
+                      <>
+                        <Separator />
 
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <Label htmlFor="allowlist-switch">Allowlist</Label>
-                        <p className="text-sm text-muted-foreground">
-                          Allow sending even when the system is in dev or test mode
-                        </p>
-                      </div>
-                      <Switch
-                        id="allowlist-switch"
-                        checked={smsOptinData?.optin?.allowlist ?? false}
-                        onCheckedChange={(checked) => {
-                          updateSmsOptinMutation.mutate({
-                            phoneNumber: smsOptinPhoneNumber.phoneNumber,
-                            allowlist: checked,
-                          });
-                        }}
-                        disabled={updateSmsOptinMutation.isPending}
-                        data-testid="switch-sms-allowlist"
-                      />
-                    </div>
+                        <div className="flex items-center justify-between">
+                          <div className="space-y-0.5">
+                            <Label htmlFor="allowlist-switch">Allowlist</Label>
+                            <p className="text-sm text-muted-foreground">
+                              Allow sending even when the system is in dev or test mode
+                            </p>
+                          </div>
+                          <Switch
+                            id="allowlist-switch"
+                            checked={smsOptinData?.optin?.allowlist ?? false}
+                            onCheckedChange={(checked) => {
+                              updateSmsOptinMutation.mutate({
+                                phoneNumber: smsOptinPhoneNumber.phoneNumber,
+                                allowlist: checked,
+                              });
+                            }}
+                            disabled={updateSmsOptinMutation.isPending}
+                            data-testid="switch-sms-allowlist"
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   {smsOptinData?.exists && smsOptinData.optin && (
