@@ -838,6 +838,12 @@ export function PhoneNumberManagement({ contactId, canEdit = true }: PhoneNumber
                 </>
               )}
 
+              <div className="text-xs text-muted-foreground pt-4 border-t">
+                <p>
+                  By checking this box, you agree to receive automated dispatch alerts from HTA Connect (a program of the Hospitality Industry Training and Education Fund). Message and data rates may apply. Frequency depends on job availability. Text STOP to cancel, HELP for help.
+                </p>
+              </div>
+
               <div className="flex justify-end pt-4">
                 <Button onClick={() => setSmsOptinPhoneNumber(null)} data-testid="button-close-optin">
                   Close
