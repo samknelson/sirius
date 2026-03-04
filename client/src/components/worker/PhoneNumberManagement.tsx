@@ -699,25 +699,29 @@ export function PhoneNumberManagement({ contactId, canEdit = true }: PhoneNumber
               ) : (
                 <>
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <Label htmlFor="optin-switch">SMS Opt-in</Label>
-                        <p className="text-sm text-muted-foreground">
-                          Allow sending SMS messages to this number
-                        </p>
+                    <div className="space-y-3 p-4 border rounded-md">
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          id="optin-checkbox"
+                          checked={smsOptinData?.optin?.optin ?? false}
+                          onCheckedChange={(checked) => {
+                            if (checked === "indeterminate") return;
+                            updateSmsOptinMutation.mutate({
+                              phoneNumber: smsOptinPhoneNumber.phoneNumber,
+                              optin: checked,
+                            });
+                          }}
+                          disabled={updateSmsOptinMutation.isPending}
+                          data-testid="checkbox-sms-optin"
+                        />
+                        <Label htmlFor="optin-checkbox" className="text-sm leading-relaxed cursor-pointer">
+                          By checking this box, you agree to receive automated dispatch alerts from HTA Connect (a program of the Hospitality Industry Training and Education Fund). Message and data rates may apply. Frequency depends on job availability. Text STOP to cancel, HELP for help.
+                        </Label>
                       </div>
-                      <Switch
-                        id="optin-switch"
-                        checked={smsOptinData?.optin?.optin ?? false}
-                        onCheckedChange={(checked) => {
-                          updateSmsOptinMutation.mutate({
-                            phoneNumber: smsOptinPhoneNumber.phoneNumber,
-                            optin: checked,
-                          });
-                        }}
-                        disabled={updateSmsOptinMutation.isPending}
-                        data-testid="switch-sms-optin"
-                      />
+                      <div className="flex gap-4 pl-7 text-xs">
+                        <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-primary underline hover:no-underline" data-testid="link-privacy-policy">Privacy Policy</a>
+                        <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-primary underline hover:no-underline" data-testid="link-terms-of-service">Terms of Service</a>
+                      </div>
                     </div>
 
                     {canEdit && (
@@ -841,12 +845,6 @@ export function PhoneNumberManagement({ contactId, canEdit = true }: PhoneNumber
                   </div>
                 </>
               )}
-
-              <div className="text-xs text-muted-foreground pt-4 border-t">
-                <p>
-                  By checking this box, you agree to receive automated dispatch alerts from HTA Connect (a program of the Hospitality Industry Training and Education Fund). Message and data rates may apply. Frequency depends on job availability. Text STOP to cancel, HELP for help.
-                </p>
-              </div>
 
               <div className="flex justify-end pt-4">
                 <Button onClick={() => setSmsOptinPhoneNumber(null)} data-testid="button-close-optin">

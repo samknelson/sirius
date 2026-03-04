@@ -2,11 +2,9 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { MessageSquare, Phone, CheckCircle2, XCircle } from "lucide-react";
-import { useState } from "react";
 
 interface PublicOptinData {
   phoneNumber: string;
@@ -15,7 +13,6 @@ interface PublicOptinData {
 
 export default function SmsOptinPage() {
   const { token } = useParams<{ token: string }>();
-  const [localOptin, setLocalOptin] = useState<boolean | null>(null);
 
   const { data, isLoading, error, refetch } = useQuery<PublicOptinData>({
     queryKey: ["/api/public/sms-optin", token],
@@ -31,8 +28,8 @@ export default function SmsOptinPage() {
     },
   });
 
-  const handleOptinChange = (checked: boolean) => {
-    setLocalOptin(checked);
+  const handleOptinChange = (checked: boolean | "indeterminate") => {
+    if (checked === "indeterminate") return;
     updateOptinMutation.mutate(checked);
   };
 
@@ -67,8 +64,6 @@ export default function SmsOptinPage() {
     );
   }
 
-  const currentOptin = localOptin !== null ? localOptin : data.optin;
-
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
@@ -87,22 +82,23 @@ export default function SmsOptinPage() {
             <span className="font-mono text-sm">{data.phoneNumber}</span>
           </div>
 
-          <div className="flex items-center justify-between p-4 border rounded-md">
-            <div className="space-y-0.5">
-              <Label htmlFor="sms-optin" className="text-base font-medium">
-                Receive SMS Messages
+          <div className="space-y-3 p-4 border rounded-md">
+            <div className="flex items-start gap-3">
+              <Checkbox
+                id="sms-optin"
+                checked={data.optin}
+                onCheckedChange={handleOptinChange}
+                disabled={updateOptinMutation.isPending}
+                data-testid="checkbox-public-sms-optin"
+              />
+              <Label htmlFor="sms-optin" className="text-sm leading-relaxed cursor-pointer">
+                By checking this box, you agree to receive automated dispatch alerts from HTA Connect (a program of the Hospitality Industry Training and Education Fund). Message and data rates may apply. Frequency depends on job availability. Text STOP to cancel, HELP for help.
               </Label>
-              <p className="text-sm text-muted-foreground">
-                {currentOptin ? "You will receive SMS notifications" : "You will not receive SMS notifications"}
-              </p>
             </div>
-            <Switch
-              id="sms-optin"
-              checked={currentOptin}
-              onCheckedChange={handleOptinChange}
-              disabled={updateOptinMutation.isPending}
-              data-testid="switch-public-sms-optin"
-            />
+            <div className="flex gap-4 pl-7 text-xs">
+              <a href="/privacy" className="text-primary underline hover:no-underline" data-testid="link-privacy-policy">Privacy Policy</a>
+              <a href="/terms" className="text-primary underline hover:no-underline" data-testid="link-terms-of-service">Terms of Service</a>
+            </div>
           </div>
 
           {updateOptinMutation.isSuccess && (
@@ -118,12 +114,6 @@ export default function SmsOptinPage() {
               <span className="text-sm">Failed to save preferences. Please try again.</span>
             </div>
           )}
-
-          <div className="text-center text-xs text-muted-foreground pt-4 border-t">
-            <p>
-              By checking this box, you agree to receive automated dispatch alerts from HTA Connect (a program of the Hospitality Industry Training and Education Fund). Message and data rates may apply. Frequency depends on job availability. Text STOP to cancel, HELP for help.
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>

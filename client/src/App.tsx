@@ -25,6 +25,8 @@ import RegisterPage from "@/pages/register";
 // Lazy-loaded pages
 const Bootstrap = lazy(() => import("@/pages/bootstrap"));
 const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
+const PrivacyPolicyPage = lazy(() => import("@/pages/privacy"));
+const TermsOfServicePage = lazy(() => import("@/pages/terms"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
 const Bookmarks = lazy(() => import("@/pages/bookmarks"));
 const AlertsPage = lazy(() => import("@/pages/alerts").then(m => ({ default: m.default })));
@@ -337,6 +339,8 @@ function Router() {
         <Route path="/register" component={RegisterPage} />
         <Route path="/unauthorized" component={UnauthorizedPage} />
         <Route path="/sms/optin/:token" component={SmsOptinPage} />
+        <Route path="/privacy" component={PrivacyPolicyPage} />
+        <Route path="/terms" component={TermsOfServicePage} />
 
       {/* Protected routes */}
       <Route path="/workers/add">
