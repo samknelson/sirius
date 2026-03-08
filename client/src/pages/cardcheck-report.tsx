@@ -597,10 +597,12 @@ export default function CardcheckReport() {
                                   {item.buChanged && (
                                     <Tooltip>
                                       <TooltipTrigger asChild>
-                                        <Badge variant="default" className="bg-amber-600 text-xs cursor-help" data-testid={`badge-bu-changed-${item.cardcheckId}`}>
-                                          <AlertTriangle size={10} className="mr-1" />
-                                          BU Changed
-                                        </Badge>
+                                        <span>
+                                          <Badge variant="default" className="bg-amber-600 text-xs cursor-help" data-testid={`badge-bu-changed-${item.cardcheckId}`}>
+                                            <AlertTriangle size={10} className="mr-1" />
+                                            BU Changed
+                                          </Badge>
+                                        </span>
                                       </TooltipTrigger>
                                       <TooltipContent>
                                         Previous BU: {item.previousBargainingUnitName || "None"}
@@ -610,10 +612,12 @@ export default function CardcheckReport() {
                                   {item.terminatedOver30Days && (
                                     <Tooltip>
                                       <TooltipTrigger asChild>
-                                        <Badge variant="default" className="bg-amber-600 text-xs cursor-help" data-testid={`badge-terminated-30-${item.cardcheckId}`}>
-                                          <AlertTriangle size={10} className="mr-1" />
-                                          Rehire (30+ days)
-                                        </Badge>
+                                        <span>
+                                          <Badge variant="default" className="bg-amber-600 text-xs cursor-help" data-testid={`badge-terminated-30-${item.cardcheckId}`}>
+                                            <AlertTriangle size={10} className="mr-1" />
+                                            Rehire (30+ days)
+                                          </Badge>
+                                        </span>
                                       </TooltipTrigger>
                                       <TooltipContent>
                                         Worker was terminated for 30+ days before this card check
@@ -632,10 +636,12 @@ export default function CardcheckReport() {
                             {item.buMismatch && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <Badge variant="destructive" className="text-xs cursor-help" data-testid={`badge-bu-mismatch-${item.cardcheckId}`}>
-                                    <ShieldAlert size={10} className="mr-1" />
-                                    BU Mismatch
-                                  </Badge>
+                                  <span>
+                                    <Badge variant="destructive" className="text-xs cursor-help" data-testid={`badge-bu-mismatch-${item.cardcheckId}`}>
+                                      <ShieldAlert size={10} className="mr-1" />
+                                      BU Mismatch
+                                    </Badge>
+                                  </span>
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   <div>Card BU: {item.cardBargainingUnitName || "None"}</div>
@@ -646,10 +652,12 @@ export default function CardcheckReport() {
                             {item.currentlyTerminated30Days && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <Badge variant="destructive" className="text-xs cursor-help" data-testid={`badge-currently-terminated-${item.cardcheckId}`}>
-                                    <ShieldAlert size={10} className="mr-1" />
-                                    Terminated 30+
-                                  </Badge>
+                                  <span>
+                                    <Badge variant="destructive" className="text-xs cursor-help" data-testid={`badge-currently-terminated-${item.cardcheckId}`}>
+                                      <ShieldAlert size={10} className="mr-1" />
+                                      Terminated 30+
+                                    </Badge>
+                                  </span>
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   Terminated since {item.currentTerminationDate ? format(new Date(item.currentTerminationDate + "T00:00:00"), "MMM d, yyyy") : "unknown date"}
