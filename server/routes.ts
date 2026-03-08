@@ -480,12 +480,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             ea.entity_id as worker_id,
             l.amount,
             l.date
-          FROM ledger_entity_accounts ea
+          FROM ledger_ea ea
           INNER JOIN ledger l ON l.ea_id = ea.id
           WHERE ea.entity_type = 'worker'
             AND ea.account_id = ${duesAccountId}
             AND ea.entity_id = ANY(${limitedWorkerIds})
-          ORDER BY ea.entity_id, l.date DESC, l.created_at DESC
+          ORDER BY ea.entity_id, l.date DESC
         `);
         const map: Record<string, { amount: string; date: string }> = {};
         for (const row of result.rows as any[]) {
