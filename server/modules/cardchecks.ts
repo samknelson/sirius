@@ -4,6 +4,7 @@ import { insertCardcheckSchema } from "@shared/schema";
 import { requireComponent } from "./components";
 import { db } from "../db";
 import { sql, SQL } from "drizzle-orm";
+import { sendCardcheckRevocationNotification } from "../services/cardcheck-revocation-notifications";
 
 export function registerCardchecksRoutes(
   app: Express,
@@ -123,6 +124,14 @@ export function registerCardchecksRoutes(
         res.status(404).json({ message: "Cardcheck not found" });
         return;
       }
+
+      if (req.body.status === "revoked" && existing.status !== "revoked") {
+        const def = await storage.cardcheckDefinitions.getCardcheckDefinitionById(existing.cardcheckDefinitionId);
+        const defName = def?.name || "Unknown";
+        setImmediate(() => {
+          sendCardcheckRevocationNotification(existing.workerId, id, defName).catch(() => {});
+        });
+      }
       
       res.json(updatedCardcheck);
     } catch (error: any) {
@@ -234,6 +243,8 @@ export function registerCardchecksRoutes(
       let skipped = 0;
       const errors: string[] = [];
 
+      const defCache = new Map<string, string>();
+
       for (const id of uniqueIds) {
         try {
           const existing = await storage.cardchecks.getCardcheckById(id);
@@ -247,6 +258,16 @@ export function registerCardchecksRoutes(
           }
           await storage.cardchecks.updateCardcheck(id, { status: "revoked" });
           revoked++;
+
+          let defName = defCache.get(existing.cardcheckDefinitionId);
+          if (!defName) {
+            const def = await storage.cardcheckDefinitions.getCardcheckDefinitionById(existing.cardcheckDefinitionId);
+            defName = def?.name || "Unknown";
+            defCache.set(existing.cardcheckDefinitionId, defName);
+          }
+          setImmediate(() => {
+            sendCardcheckRevocationNotification(existing.workerId, id, defName!).catch(() => {});
+          });
         } catch (err: any) {
           errors.push(`Failed to revoke ${id}: ${err.message}`);
         }
