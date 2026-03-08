@@ -258,6 +258,7 @@ export function registerCardchecksRoutes(
   // ==================== Organizing Configuration ====================
   const ORGANIZING_STATUS_GROUPS_VAR = "organizing_status_groups";
   const ORGANIZING_NEW_MEMBER_DAYS_VAR = "organizing_new_member_days";
+  const ORGANIZING_DUES_BU_IDS_VAR = "organizing_dues_bu_ids";
   const DEFAULT_NEW_MEMBER_DAYS = 30;
 
   interface StatusGroup {
@@ -285,6 +286,14 @@ export function registerCardchecksRoutes(
       return variable.value;
     }
     return DEFAULT_NEW_MEMBER_DAYS;
+  }
+
+  async function getDuesBuIds(): Promise<string[]> {
+    const variable = await storage.variables.getByName(ORGANIZING_DUES_BU_IDS_VAR);
+    if (variable && Array.isArray(variable.value)) {
+      return variable.value as string[];
+    }
+    return [];
   }
 
   app.get("/api/organizing/status-groups", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
@@ -366,6 +375,42 @@ export function registerCardchecksRoutes(
     } catch (error) {
       console.error("Failed to update new member days:", error);
       res.status(500).json({ message: "Failed to update new member days" });
+    }
+  });
+
+  app.get("/api/organizing/dues-bu-ids", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
+    try {
+      const buIds = await getDuesBuIds();
+      res.json({ buIds });
+    } catch (error) {
+      console.error("Failed to fetch dues BU IDs:", error);
+      res.status(500).json({ message: "Failed to fetch dues BU IDs" });
+    }
+  });
+
+  app.put("/api/organizing/dues-bu-ids", requireAuth, cardcheckComponent, requireAccess('admin'), async (req, res) => {
+    try {
+      const { buIds } = req.body;
+      if (!Array.isArray(buIds) || !buIds.every((id: unknown) => typeof id === 'string')) {
+        return res.status(400).json({ message: "buIds must be an array of strings" });
+      }
+
+      const existing = await storage.variables.getByName(ORGANIZING_DUES_BU_IDS_VAR);
+      if (existing) {
+        await storage.variables.update(existing.id, {
+          name: ORGANIZING_DUES_BU_IDS_VAR,
+          value: buIds
+        });
+      } else {
+        await storage.variables.create({
+          name: ORGANIZING_DUES_BU_IDS_VAR,
+          value: buIds
+        });
+      }
+      res.json({ buIds });
+    } catch (error) {
+      console.error("Failed to update dues BU IDs:", error);
+      res.status(500).json({ message: "Failed to update dues BU IDs" });
     }
   });
 
@@ -691,6 +736,9 @@ export function registerCardchecksRoutes(
         GROUP BY w.bargaining_unit_id
       `);
       const distinctRows = distinctResult.rows as any[];
+      const duesBuIds = await getDuesBuIds();
+      const duesBuIdSet = duesBuIds.length > 0 ? new Set(duesBuIds) : null;
+
       let grandTotalWorkers = 0;
       let grandSignedWorkers = 0;
       let distinctMissingDuesRevenue = 0;
@@ -701,6 +749,7 @@ export function registerCardchecksRoutes(
         grandSignedWorkers += signed;
         const missing = total - signed;
         if (missing > 0 && row.bargainingUnitId) {
+          if (duesBuIdSet && !duesBuIdSet.has(row.bargainingUnitId)) continue;
           const rate = buMinRateMap.get(row.bargainingUnitId);
           if (rate && rate > 0) {
             distinctMissingDuesRevenue += missing * rate;

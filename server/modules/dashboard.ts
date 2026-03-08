@@ -558,6 +558,10 @@ export function registerDashboardRoutes(
       const totalWorkers = buWorkers + unassignedWorkerCount;
       const totalSigned = buSigned + unassignedSignedCount;
 
+      const duesBuVar = await storage.variables.getByName("organizing_dues_bu_ids");
+      const duesBuIds: string[] = duesBuVar && Array.isArray(duesBuVar.value) ? duesBuVar.value as string[] : [];
+      const duesBuIdSet = duesBuIds.length > 0 ? new Set(duesBuIds) : null;
+
       let totalMissingDuesRevenue = 0;
       let hasDuesRates = false;
 
@@ -566,7 +570,8 @@ export function registerDashboardRoutes(
         const sc = Number(r.signedWorkerCount);
         const duesRate = buMinRateMap.get(r.bargainingUnitId) ?? null;
         const missingWorkers = wc - sc;
-        const missingRevenue = duesRate && missingWorkers > 0 ? missingWorkers * duesRate : null;
+        const includedInDues = !duesBuIdSet || duesBuIdSet.has(r.bargainingUnitId);
+        const missingRevenue = includedInDues && duesRate && missingWorkers > 0 ? missingWorkers * duesRate : null;
         if (duesRate) hasDuesRates = true;
         if (missingRevenue) totalMissingDuesRevenue += missingRevenue;
         return {

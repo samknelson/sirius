@@ -745,6 +745,7 @@ function StatusGroupsDialog({ isAdmin }: { isAdmin: boolean }) {
   const [open, setOpen] = useState(false);
   const [groups, setGroups] = useState<StatusGroup[]>([]);
   const [newMemberDays, setNewMemberDays] = useState<number>(30);
+  const [duesBuIds, setDuesBuIds] = useState<string[]>([]);
   const { toast } = useToast();
 
   const { data: statuses = [] } = useQuery<EmploymentStatusOption[]>({
@@ -762,17 +763,30 @@ function StatusGroupsDialog({ isAdmin }: { isAdmin: boolean }) {
     enabled: open,
   });
 
+  const { data: savedDuesBuIds } = useQuery<{ buIds: string[] }>({
+    queryKey: ["/api/organizing/dues-bu-ids"],
+    enabled: open,
+  });
+
+  const { data: allBargainingUnits = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/bargaining-units"],
+    enabled: open,
+  });
+
   const saveMutation = useMutation({
-    mutationFn: async ({ groups: newGroups, days }: { groups: StatusGroup[]; days: number }) => {
+    mutationFn: async ({ groups: newGroups, days, buIds }: { groups: StatusGroup[]; days: number; buIds: string[] }) => {
       await Promise.all([
         apiRequest("PUT", "/api/organizing/status-groups", { groups: newGroups }),
         apiRequest("PUT", "/api/organizing/new-member-days", { days }),
+        apiRequest("PUT", "/api/organizing/dues-bu-ids", { buIds }),
       ]);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/organizing/status-groups"] });
       queryClient.invalidateQueries({ queryKey: ["/api/organizing/new-member-days"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/organizing/dues-bu-ids"] });
       queryClient.invalidateQueries({ queryKey: ["/api/employers/organizing"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins/btu-bu-summary/data"] });
       toast({ title: "Settings saved" });
       setOpen(false);
     },
@@ -787,10 +801,17 @@ function StatusGroupsDialog({ isAdmin }: { isAdmin: boolean }) {
     }
   }, [open, savedDays]);
 
+  useEffect(() => {
+    if (open && savedDuesBuIds?.buIds) {
+      setDuesBuIds(savedDuesBuIds.buIds);
+    }
+  }, [open, savedDuesBuIds]);
+
   const handleOpen = (isOpen: boolean) => {
     if (isOpen) {
       setGroups(savedGroups.length > 0 ? JSON.parse(JSON.stringify(savedGroups)) : []);
       setNewMemberDays(savedDays?.days ?? 30);
+      setDuesBuIds(savedDuesBuIds?.buIds ?? []);
     }
     setOpen(isOpen);
   };
@@ -867,6 +888,35 @@ function StatusGroupsDialog({ isAdmin }: { isAdmin: boolean }) {
             className="w-32"
             data-testid="input-new-member-days"
           />
+        </div>
+
+        <div className="mb-6">
+          <Label className="text-sm font-medium mb-2 block">Missing Dues Bargaining Units</Label>
+          <p className="text-xs text-muted-foreground mb-2">
+            Select which bargaining units are included in potential missing dues calculations.
+            If none are selected, all bargaining units are included.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {allBargainingUnits.map((bu) => (
+              <div key={bu.id} className="flex items-center gap-2">
+                <Checkbox
+                  id={`dues-bu-${bu.id}`}
+                  checked={duesBuIds.includes(bu.id)}
+                  onCheckedChange={(checked) => {
+                    setDuesBuIds(prev =>
+                      checked
+                        ? [...prev, bu.id]
+                        : prev.filter(id => id !== bu.id)
+                    );
+                  }}
+                  data-testid={`checkbox-dues-bu-${bu.id}`}
+                />
+                <Label htmlFor={`dues-bu-${bu.id}`} className="text-sm">
+                  {bu.name}
+                </Label>
+              </div>
+            ))}
+          </div>
         </div>
 
         <Label className="text-sm font-medium mb-2 block">Employment Status Groups</Label>
@@ -950,7 +1000,7 @@ function StatusGroupsDialog({ isAdmin }: { isAdmin: boolean }) {
             Cancel
           </Button>
           <Button
-            onClick={() => saveMutation.mutate({ groups, days: newMemberDays })}
+            onClick={() => saveMutation.mutate({ groups, days: newMemberDays, buIds: duesBuIds })}
             disabled={saveMutation.isPending || groups.some(g => !g.name.trim())}
             data-testid="button-save-groups"
           >

@@ -59,6 +59,7 @@ The frontend utilizes React 18 with TypeScript, Vite, Shadcn/ui (built on Radix 
 -   **BTU Building Rep Import**: Wizard for importing building representatives from a fixed-format CSV file (Name, ID/Badge #, Phone, Email). Matches workers by BPS Employee ID, determines current employer from worker_hours employment records, and creates steward assignments (worker_steward_assignments table). Features a 4-step flow: Upload > Preview > Process > Results, with clear reporting of matched, unmatched, already-assigned, and error rows.
 -   **Steward Bulk Remove**: The steward list page (`/stewards`) supports checkbox selection with select-all and a bulk remove operation. Removals go through the individual `deleteAssignment` storage method which triggers per-record audit logging to each affected worker's record. Includes confirmation dialog and partial-failure reporting.
 -   **Worker ID Show on Lists**: Configurable worker ID types can be displayed as dynamic columns on worker lists and reports.
+-   **Organizing Missing Dues BU Filter**: Configurable setting in the OEL Status Groups dialog that controls which bargaining units are included in potential missing dues calculations. Stored as `organizing_dues_bu_ids` variable. Applied to both the OEL `distinctMissingDuesRevenue` and the BU Summary dashboard plugin `totalMissingDuesRevenue`. Empty selection means all BUs are included.
 -   **BTU Territories**: Manages geographical territory assignments for BTU-specific features, linking territories to employers and workers.
 
 # External Dependencies
