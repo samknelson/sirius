@@ -94,6 +94,7 @@ export interface CardcheckReportItem {
   cardBargainingUnitName: string | null;
   buMismatch: boolean;
   currentlyTerminated30Days: boolean;
+  currentTerminationDate: string | null;
 }
 
 export interface SignCardcheckParams {
@@ -543,6 +544,7 @@ export function createCardcheckStorage(): CardcheckStorage {
         const buMismatch = cardBuId !== workerBuId;
 
         let currentlyTerminated30Days = false;
+        let currentTerminationDate: string | null = null;
         {
           const empRecords = workerEmploymentMap.get(card.workerId);
           if (empRecords && empRecords.length > 0) {
@@ -552,6 +554,7 @@ export function createCardcheckStorage(): CardcheckStorage {
               const diffDays = (nowMs - latestRecord.date.getTime()) / (1000 * 60 * 60 * 24);
               if (diffDays >= 30) {
                 currentlyTerminated30Days = true;
+                currentTerminationDate = latestRecord.date.toISOString().split('T')[0];
               }
             }
           }
@@ -577,6 +580,7 @@ export function createCardcheckStorage(): CardcheckStorage {
           cardBargainingUnitName: card.bargainingUnitId ? buMap.get(card.bargainingUnitId) || null : null,
           buMismatch,
           currentlyTerminated30Days,
+          currentTerminationDate,
         });
       }
       

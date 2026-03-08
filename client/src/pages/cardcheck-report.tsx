@@ -59,6 +59,7 @@ interface CardcheckReportItem {
   cardBargainingUnitName: string | null;
   buMismatch: boolean;
   currentlyTerminated30Days: boolean;
+  currentTerminationDate: string | null;
 }
 
 interface BargainingUnit {
@@ -638,7 +639,7 @@ export default function CardcheckReport() {
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   <div>Card BU: {item.cardBargainingUnitName || "None"}</div>
-                                  <div>Current BU: {item.bargainingUnitName || "None"}</div>
+                                  <div>Worker's current BU: {item.bargainingUnitName || "None"}</div>
                                 </TooltipContent>
                               </Tooltip>
                             )}
@@ -651,7 +652,7 @@ export default function CardcheckReport() {
                                   </Badge>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  Worker has been terminated for 30+ days (current status)
+                                  Terminated since {item.currentTerminationDate ? format(new Date(item.currentTerminationDate + "T00:00:00"), "MMM d, yyyy") : "unknown date"}
                                 </TooltipContent>
                               </Tooltip>
                             )}
