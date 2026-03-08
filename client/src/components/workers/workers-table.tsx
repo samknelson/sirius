@@ -1261,27 +1261,47 @@ export function WorkersTable({
                         const statusName = statuses.length > 0 ? statuses[0].name : null;
                         const statusCode = statuses.length > 0 ? statuses[0].code : null;
                         const dues = latestDuesMap[worker.id];
+                        const buName = worker.bargainingUnitName;
                         const statusColor = statusCode === 'paid' ? 'text-green-600'
                           : statusCode === 'delinquent' ? 'text-red-600'
                           : statusCode === 'pend' ? 'text-yellow-600'
                           : 'text-muted-foreground';
 
-                        if (!statusName) {
+                        if (!statusName && !buName) {
                           return <span className="text-sm text-muted-foreground italic" data-testid={`membership-${worker.id}`}>-</span>;
+                        }
+
+                        const content = (
+                          <div className="flex flex-col" data-testid={`membership-${worker.id}`}>
+                            {buName && (
+                              <span className="text-xs text-muted-foreground" data-testid={`membership-bu-${worker.id}`}>{buName}</span>
+                            )}
+                            {statusName ? (
+                              <span className={`text-sm font-medium ${statusColor}`}>
+                                {statusName}
+                              </span>
+                            ) : (
+                              <span className="text-sm text-muted-foreground italic">-</span>
+                            )}
+                          </div>
+                        );
+
+                        if (!statusName) {
+                          return content;
                         }
 
                         return (
                           <HoverCard>
                             <HoverCardTrigger asChild>
-                              <span
-                                className={`text-sm font-medium cursor-pointer ${statusColor}`}
-                                data-testid={`membership-${worker.id}`}
-                              >
-                                {statusName}
-                              </span>
+                              <div className="cursor-pointer">
+                                {content}
+                              </div>
                             </HoverCardTrigger>
                             <HoverCardContent className="w-64" data-testid={`membership-hover-${worker.id}`}>
                               <div className="space-y-2">
+                                {buName && (
+                                  <p className="text-xs text-muted-foreground">{buName}</p>
+                                )}
                                 <p className="text-sm font-semibold text-foreground">{statusName}</p>
                                 {dues ? (
                                   <div className="text-sm text-muted-foreground">
