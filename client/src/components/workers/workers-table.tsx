@@ -12,6 +12,7 @@ import { ComponentConfig } from "@shared/components";
 import { formatSSN } from "@shared/schema";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { parsePhoneNumber } from "libphonenumber-js";
 import {
   Select,
@@ -91,6 +92,15 @@ interface WorkerWithContact extends Worker {
   workStatusName?: string;
   bargainingUnitCode?: string | null;
   bargainingUnitName?: string | null;
+  denormMsIdsParsed?: string[];
+}
+
+interface MemberStatusOption {
+  id: string;
+  name: string;
+  code: string | null;
+  industryId: string;
+  data?: { color?: string } | null;
 }
 
 interface EmployerInfo {
@@ -337,6 +347,21 @@ export function WorkersTable({
     return Array.from(defsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [cardcheckStatusSummary, cardcheckDefinitions]);
 
+  // Fetch member status options (when cardcheck is enabled, for membership column)
+  const { data: memberStatusOptions = [] } = useQuery<MemberStatusOption[]>({
+    queryKey: ["/api/options/worker-ms"],
+    enabled: cardcheckEnabled,
+  });
+
+  // Create map for member status lookup by ID
+  const memberStatusMap = useMemo(() => {
+    const map = new Map<string, MemberStatusOption>();
+    for (const ms of memberStatusOptions) {
+      map.set(ms.id, ms);
+    }
+    return map;
+  }, [memberStatusOptions]);
+
   // Fetch worker ID types configured to show on lists
   const { data: showOnListsIdTypes = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ["/api/worker-id-types/show-on-lists"],
@@ -371,6 +396,23 @@ export function WorkersTable({
     }
     return map;
   }, [workerIdsForList]);
+
+  // Fetch latest dues payment for displayed workers
+  const { data: latestDuesMap = {} } = useQuery<Record<string, { amount: string; date: string }>>({
+    queryKey: ["/api/workers/latest-dues", workerIdsList],
+    queryFn: async () => {
+      if (workerIdsList.length === 0) return {};
+      const res = await fetch("/api/workers/latest-dues", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workerIds: workerIdsList }),
+        credentials: "include",
+      });
+      if (!res.ok) return {};
+      return res.json();
+    },
+    enabled: workerIdsList.length > 0 && cardcheckEnabled,
+  });
 
   // Create map for worker employers
   const employerMap = new Map(workerEmployers.map(we => [we.workerId, we.employers]));
@@ -473,6 +515,7 @@ export function WorkersTable({
       bargainingUnitId: worker.bargaining_unit_id || undefined,
       bargainingUnitCode: worker.bargaining_unit_code || undefined,
       bargainingUnitName: worker.bargaining_unit_name || undefined,
+      denormMsIdsParsed: Array.isArray(worker.denorm_ms_ids) ? worker.denorm_ms_ids : [],
     };
   });
 
@@ -960,17 +1003,14 @@ export function WorkersTable({
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Contact</span>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  <span>Unit</span>
-                </th>
+                {cardcheckEnabled && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <span>Membership</span>
+                  </th>
+                )}
                 {trustBenefitsEnabled && (
                   <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     <span>Benefits</span>
-                  </th>
-                )}
-                {cardcheckEnabled && cardcheckStatusSummary.length > 0 && (
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    <span>Card Checks</span>
                   </th>
                 )}
                 {showOnListsIdTypes.map((idType) => (
@@ -997,12 +1037,19 @@ export function WorkersTable({
                       <div className={`w-8 h-8 ${avatarColors[index % avatarColors.length]} rounded-full flex items-center justify-center`}>
                         <User size={12} />
                       </div>
-                      <span 
-                        className="text-sm font-medium text-foreground"
-                        data-testid={`text-worker-name-${worker.id}`}
-                      >
-                        {worker.contactName}
-                      </span>
+                      <div>
+                        <span 
+                          className="text-sm font-medium text-foreground"
+                          data-testid={`text-worker-name-${worker.id}`}
+                        >
+                          {worker.contactName}
+                        </span>
+                        {worker.denormJobTitle && (
+                          <p className="text-xs text-muted-foreground" data-testid={`text-job-title-${worker.id}`}>
+                            {worker.denormJobTitle}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -1125,30 +1172,58 @@ export function WorkersTable({
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <TooltipProvider>
-                      {worker.bargainingUnitCode ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div 
-                              className="cursor-help"
-                              data-testid={`unit-code-${worker.id}`}
-                            >
-                              {renderIcon(
-                                worker.bargainingUnitId ? bargainingUnitIconMap.get(worker.bargainingUnitId) || "Users" : "Users",
-                                "h-5 w-5 text-muted-foreground"
-                              )}
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>{worker.bargainingUnitCode} - {worker.bargainingUnitName}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      ) : (
-                        <span className="text-sm text-muted-foreground italic">-</span>
-                      )}
-                    </TooltipProvider>
-                  </td>
+                  {cardcheckEnabled && (
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {(() => {
+                        const msIds = worker.denormMsIdsParsed || [];
+                        const statuses = msIds
+                          .map(msId => memberStatusMap.get(msId))
+                          .filter((ms): ms is MemberStatusOption => ms !== undefined);
+                        const statusName = statuses.length > 0 ? statuses[0].name : null;
+                        const statusCode = statuses.length > 0 ? statuses[0].code : null;
+                        const dues = latestDuesMap[worker.id];
+                        const statusColor = statusCode === 'paid' ? 'text-green-600'
+                          : statusCode === 'delinquent' ? 'text-red-600'
+                          : statusCode === 'pend' ? 'text-yellow-600'
+                          : 'text-muted-foreground';
+
+                        if (!statusName) {
+                          return <span className="text-sm text-muted-foreground italic" data-testid={`membership-${worker.id}`}>-</span>;
+                        }
+
+                        return (
+                          <HoverCard>
+                            <HoverCardTrigger asChild>
+                              <span
+                                className={`text-sm font-medium cursor-pointer ${statusColor}`}
+                                data-testid={`membership-${worker.id}`}
+                              >
+                                {statusName}
+                              </span>
+                            </HoverCardTrigger>
+                            <HoverCardContent className="w-64" data-testid={`membership-hover-${worker.id}`}>
+                              <div className="space-y-2">
+                                <p className="text-sm font-semibold text-foreground">{statusName}</p>
+                                {dues ? (
+                                  <div className="text-sm text-muted-foreground">
+                                    <p>Last dues: ${parseFloat(dues.amount).toFixed(2)}</p>
+                                    <p>Date: {dues.date}</p>
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-muted-foreground italic">No dues on record</p>
+                                )}
+                                <Link href={`/workers/${worker.id}/union/cardchecks`}>
+                                  <span className="text-sm text-primary hover:underline cursor-pointer" data-testid={`link-cardchecks-${worker.id}`}>
+                                    View Card Checks →
+                                  </span>
+                                </Link>
+                              </div>
+                            </HoverCardContent>
+                          </HoverCard>
+                        );
+                      })()}
+                    </td>
+                  )}
                   {trustBenefitsEnabled && (
                     <td className="px-6 py-4 whitespace-nowrap">
                       <TooltipProvider>
@@ -1172,46 +1247,6 @@ export function WorkersTable({
                           ) : (
                             <span className="text-sm text-muted-foreground italic">None</span>
                           )}
-                        </div>
-                      </TooltipProvider>
-                    </td>
-                  )}
-                  {cardcheckEnabled && cardcheckStatusSummary.length > 0 && (
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <TooltipProvider>
-                        <div className="flex items-center gap-2" data-testid={`cardcheck-icons-${worker.id}`}>
-                          {(() => {
-                            const workerCardchecks = cardcheckMap.get(worker.id) || [];
-                            if (workerCardchecks.length === 0) {
-                              return <span className="text-sm text-muted-foreground italic">-</span>;
-                            }
-                            return workerCardchecks.map((cc) => {
-                              const statusColor = cc.status === 'signed' 
-                                ? 'text-green-600' 
-                                : cc.status === 'revoked' 
-                                  ? 'text-red-600' 
-                                  : 'text-yellow-500';
-                              const statusLabel = cc.status === 'signed' 
-                                ? 'Signed' 
-                                : cc.status === 'revoked' 
-                                  ? 'Revoked' 
-                                  : cc.status === 'pending'
-                                    ? 'Pending signature'
-                                    : 'None on file';
-                              return (
-                                <Tooltip key={cc.definitionId}>
-                                  <TooltipTrigger asChild>
-                                    <div className="cursor-help">
-                                      {renderIcon(cc.definitionIcon, `h-4 w-4 ${statusColor}`)}
-                                    </div>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>{cc.definitionName}: {statusLabel}</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              );
-                            });
-                          })()}
                         </div>
                       </TooltipProvider>
                     </td>

@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { stringify } from "csv-stringify/sync";
+import { sql } from "drizzle-orm";
 import { storage } from "./storage";
 import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type InsertEmployer, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
 import { z } from "zod";
@@ -447,6 +448,51 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     } catch (error) {
       console.error("Failed to fetch paginated workers:", error);
       res.status(500).json({ message: "Failed to fetch workers" });
+    }
+  });
+
+  // POST /api/workers/latest-dues - Get latest dues payment info for a batch of workers
+  app.post("/api/workers/latest-dues", requireAuth, requirePermission("staff"), async (req, res) => {
+    try {
+      const { workerIds } = req.body;
+      if (!Array.isArray(workerIds) || workerIds.length === 0) {
+        return res.json({});
+      }
+      const limitedWorkerIds = workerIds.slice(0, 100);
+      const duesMap = await storage.readOnly.query(async (client) => {
+        const configResult = await client.execute(sql`
+          SELECT settings FROM charge_plugin_configs WHERE plugin_id = 'btu-dues-allocation' AND enabled = true LIMIT 1
+        `);
+        if (configResult.rows.length === 0) {
+          return {};
+        }
+        const settings = (configResult.rows[0] as any).settings as { accountIds?: string[] } | null;
+        const duesAccountId = settings?.accountIds?.[0];
+        if (!duesAccountId) {
+          return {};
+        }
+        const result = await client.execute(sql`
+          SELECT DISTINCT ON (ea.entity_id)
+            ea.entity_id as worker_id,
+            l.amount,
+            l.date
+          FROM ledger_entity_accounts ea
+          INNER JOIN ledger l ON l.ea_id = ea.id
+          WHERE ea.entity_type = 'worker'
+            AND ea.account_id = ${duesAccountId}
+            AND ea.entity_id = ANY(${limitedWorkerIds})
+          ORDER BY ea.entity_id, l.date DESC, l.created_at DESC
+        `);
+        const map: Record<string, { amount: string; date: string }> = {};
+        for (const row of result.rows as any[]) {
+          map[row.worker_id] = { amount: row.amount, date: row.date };
+        }
+        return map;
+      });
+      res.json(duesMap);
+    } catch (error) {
+      console.error("Failed to fetch latest dues:", error);
+      res.status(500).json({ message: "Failed to fetch latest dues" });
     }
   });
 

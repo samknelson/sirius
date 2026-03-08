@@ -417,6 +417,7 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
       w.denorm_job_title,
       w.denorm_home_employer_id,
       w.denorm_employer_ids,
+      w.denorm_ms_ids,
       w.bargaining_unit_id,
       c.display_name as contact_name,
       c.email as contact_email,
