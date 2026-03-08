@@ -134,6 +134,8 @@ export interface WorkersExportParams {
   bargainingUnitId?: string;
   benefitId?: string;
   contactStatus?: 'all' | 'has_email' | 'missing_email' | 'has_phone' | 'missing_phone' | 'has_address' | 'missing_address' | 'complete' | 'incomplete';
+  jobTitle?: string;
+  memberStatusId?: string;
 }
 
 export interface WorkersPaginationParams {
@@ -150,6 +152,8 @@ export interface WorkersPaginationParams {
   benefitId?: string;
   contactStatus?: 'all' | 'has_email' | 'missing_email' | 'has_phone' | 'missing_phone' | 'has_address' | 'missing_address' | 'complete' | 'incomplete';
   hasMultipleEmployers?: boolean;
+  jobTitle?: string;
+  memberStatusId?: string;
 }
 
 export interface WorkerSearchResult {
@@ -216,6 +220,8 @@ interface InternalSearchParams {
   benefitId?: string;
   contactStatus?: string;
   hasMultipleEmployers?: boolean;
+  jobTitle?: string;
+  memberStatusId?: string;
   page?: number;
   pageSize?: number;
 }
@@ -260,7 +266,7 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
   const search = params.search?.trim() ?? '';
   const sortOrder = params.sortOrder ?? 'asc';
   const sortBy = params.sortBy ?? 'lastName';
-  const { employerId, employerTypeId, bargainingUnitId, benefitId, contactStatus, hasMultipleEmployers } = params;
+  const { employerId, employerTypeId, bargainingUnitId, benefitId, contactStatus, hasMultipleEmployers, jobTitle, memberStatusId } = params;
 
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
@@ -317,7 +323,17 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
     ? sql`AND array_length(w.denorm_employer_ids, 1) > 1`
     : sql``;
 
-  const allConditions = sql`${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition} ${multipleEmployersCondition}`;
+  const jobTitleCondition = jobTitle
+    ? sql`AND LOWER(w.denorm_job_title) LIKE ${`%${jobTitle.toLowerCase()}%`}`
+    : sql``;
+
+  const memberStatusCondition = memberStatusId
+    ? memberStatusId === 'none'
+      ? sql`AND (w.denorm_ms_ids IS NULL OR array_length(w.denorm_ms_ids, 1) IS NULL)`
+      : sql`AND ${memberStatusId} = ANY(w.denorm_ms_ids)`
+    : sql``;
+
+  const allConditions = sql`${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition} ${multipleEmployersCondition} ${jobTitleCondition} ${memberStatusCondition}`;
 
   const isPaginated = params.page !== undefined && params.pageSize !== undefined;
   let total: number | undefined;
@@ -541,6 +557,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         benefitId: params.benefitId,
         contactStatus: params.contactStatus,
         hasMultipleEmployers: params.hasMultipleEmployers,
+        jobTitle: params.jobTitle,
+        memberStatusId: params.memberStatusId,
         page,
         pageSize,
       });
@@ -563,6 +581,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         bargainingUnitId: params.bargainingUnitId,
         benefitId: params.benefitId,
         contactStatus: params.contactStatus,
+        jobTitle: params.jobTitle,
+        memberStatusId: params.memberStatusId,
       });
       return rows;
     },

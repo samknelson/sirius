@@ -20,6 +20,7 @@ export default function Workers() {
   const [pageSize] = useState(50);
   const [searchInput, setSearchInput] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
+  const [appliedJobTitle, setAppliedJobTitle] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [sortBy, setSortBy] = useState<"lastName" | "firstName" | "employer">("lastName");
   const [filters, setFilters] = useState<WorkerFilters>({
@@ -28,16 +29,31 @@ export default function Workers() {
     bargainingUnitId: "all",
     benefitId: "all",
     contactStatus: "all",
+    jobTitle: "",
+    memberStatusId: "all",
   });
 
   const handleApplySearch = useCallback(() => {
     setAppliedSearch(searchInput);
+    setAppliedJobTitle(filters.jobTitle);
     setPage(1);
-  }, [searchInput]);
+  }, [searchInput, filters.jobTitle]);
 
   const handleFiltersChange = useCallback((newFilters: WorkerFilters) => {
-    setFilters(newFilters);
-    setPage(1);
+    setFilters(prev => {
+      const jobTitleOnly = prev.employerId === newFilters.employerId
+        && prev.employerTypeId === newFilters.employerTypeId
+        && prev.bargainingUnitId === newFilters.bargainingUnitId
+        && prev.benefitId === newFilters.benefitId
+        && prev.contactStatus === newFilters.contactStatus
+        && prev.hasMultipleEmployers === newFilters.hasMultipleEmployers
+        && prev.memberStatusId === newFilters.memberStatusId
+        && prev.jobTitle !== newFilters.jobTitle;
+      if (!jobTitleOnly) {
+        setPage(1);
+      }
+      return newFilters;
+    });
   }, []);
 
   const { data: paginatedData, isLoading } = useQuery<PaginatedWorkersResponse>({
@@ -53,6 +69,8 @@ export default function Workers() {
       benefitId: filters.benefitId,
       contactStatus: filters.contactStatus,
       hasMultipleEmployers: filters.hasMultipleEmployers,
+      jobTitle: appliedJobTitle,
+      memberStatusId: filters.memberStatusId,
     }],
   });
 
@@ -115,6 +133,7 @@ export default function Workers() {
           onSortByChange={setSortBy}
           filters={filters}
           onFiltersChange={handleFiltersChange}
+          appliedJobTitle={appliedJobTitle}
         />
       </main>
     </div>

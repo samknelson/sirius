@@ -40,6 +40,8 @@ export interface WorkerFilters {
   benefitId: string;
   contactStatus: string;
   hasMultipleEmployers?: boolean;
+  jobTitle: string;
+  memberStatusId: string;
 }
 
 interface WorkersTableProps {
@@ -60,6 +62,7 @@ interface WorkersTableProps {
   onSortByChange?: (sortBy: "lastName" | "firstName" | "employer") => void;
   filters?: WorkerFilters;
   onFiltersChange?: (filters: WorkerFilters) => void;
+  appliedJobTitle?: string;
 }
 
 interface WorkerBenefit {
@@ -184,6 +187,7 @@ export function WorkersTable({
   onSortByChange,
   filters: externalFilters,
   onFiltersChange,
+  appliedJobTitle: externalAppliedJobTitle,
 }: WorkersTableProps) {
   const isPaginated = onPageChange !== undefined;
   const [internalSortOrder, setInternalSortOrder] = useState<"asc" | "desc">("asc");
@@ -195,6 +199,8 @@ export function WorkersTable({
     bargainingUnitId: "all",
     benefitId: "all",
     contactStatus: "all",
+    jobTitle: "",
+    memberStatusId: "all",
   });
   
   const sortOrder = externalSortOrder ?? internalSortOrder;
@@ -232,6 +238,13 @@ export function WorkersTable({
       updateFilter("benefitId", "all");
     }
   }, [trustBenefitsEnabled, selectedBenefitId]);
+
+  // Reset member status filter when cardcheck is disabled
+  useEffect(() => {
+    if (!cardcheckEnabled && filters.memberStatusId !== "all") {
+      updateFilter("memberStatusId", "all");
+    }
+  }, [cardcheckEnabled, filters.memberStatusId]);
 
   // Fetch worker-employer summary
   const { data: workerEmployers = [] } = useQuery<WorkerEmployerSummary[]>({
@@ -646,6 +659,9 @@ export function WorkersTable({
     if (selectedBargainingUnitId !== 'all') params.set('bargainingUnitId', selectedBargainingUnitId);
     if (selectedBenefitId !== 'all') params.set('benefitId', selectedBenefitId);
     if (contactStatusFilter !== 'all') params.set('contactStatus', contactStatusFilter);
+    const exportJobTitle = externalAppliedJobTitle ?? filters.jobTitle;
+    if (exportJobTitle) params.set('jobTitle', exportJobTitle);
+    if (filters.memberStatusId !== 'all') params.set('memberStatusId', filters.memberStatusId);
     if (trustBenefitsEnabled) params.set('includeBenefits', 'true');
     
     // Trigger download by opening the export URL
@@ -977,6 +993,69 @@ export function WorkersTable({
                 Multiple Employers
               </label>
             </div>
+
+            {/* Job Title Filter */}
+            <div className="w-48">
+              <Input
+                placeholder="Filter by job title..."
+                value={filters.jobTitle || ""}
+                onChange={(e) => {
+                  const newFilters = { ...filters, jobTitle: e.target.value };
+                  if (onFiltersChange) {
+                    onFiltersChange(newFilters);
+                  } else {
+                    setInternalFilters(newFilters);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && onApplySearch) {
+                    onApplySearch();
+                  }
+                }}
+                className="h-9"
+                data-testid="input-job-title-filter"
+              />
+            </div>
+
+            {/* Member Status Filter - only show when cardcheck component is enabled */}
+            {cardcheckEnabled && (
+              <div className="w-56">
+                <Select
+                  value={filters.memberStatusId || "all"}
+                  onValueChange={(value) => updateFilter("memberStatusId", value)}
+                >
+                  <SelectTrigger data-testid="select-member-status-filter">
+                    <div className="flex items-center gap-2">
+                      <Users size={16} className="text-muted-foreground" />
+                      <SelectValue placeholder="All Statuses" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Member Statuses</SelectItem>
+                    <SelectItem value="none">
+                      <span className="text-muted-foreground italic">No Status</span>
+                    </SelectItem>
+                    {memberStatusOptions
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((ms) => {
+                        const color = ms.code === 'paid' ? 'text-green-600'
+                          : ms.code === 'delinquent' ? 'text-red-600'
+                          : ms.code === 'pend' ? 'text-yellow-600'
+                          : 'text-muted-foreground';
+                        return (
+                          <SelectItem
+                            key={ms.id}
+                            value={ms.id}
+                            data-testid={`select-member-status-${ms.id}`}
+                          >
+                            <span className={color}>{ms.name}</span>
+                          </SelectItem>
+                        );
+                      })}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             
           </div>
         </div>

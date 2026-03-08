@@ -430,6 +430,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const validContactStatuses = ['all', 'has_email', 'missing_email', 'has_phone', 'missing_phone', 'has_address', 'missing_address', 'complete', 'incomplete'];
       const contactStatus = validContactStatuses.includes(contactStatusParam) ? contactStatusParam as any : 'all';
       const hasMultipleEmployers = req.query.hasMultipleEmployers === 'true';
+      const jobTitle = typeof req.query.jobTitle === 'string' && req.query.jobTitle.trim() ? req.query.jobTitle.trim() : undefined;
+      const memberStatusId = typeof req.query.memberStatusId === 'string' && req.query.memberStatusId !== 'all' ? req.query.memberStatusId : undefined;
       
       const result = await storage.workers.getWorkersWithDetailsPaginated({
         page,
@@ -443,6 +445,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         benefitId,
         contactStatus,
         hasMultipleEmployers,
+        jobTitle,
+        memberStatusId,
       });
       res.json(result);
     } catch (error) {
@@ -511,6 +515,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const contactStatusParam = req.query.contactStatus as string;
       const validContactStatuses = ['all', 'has_email', 'missing_email', 'has_phone', 'missing_phone', 'has_address', 'missing_address', 'complete', 'incomplete'];
       const contactStatus = validContactStatuses.includes(contactStatusParam) ? contactStatusParam as any : 'all';
+      const jobTitle = typeof req.query.jobTitle === 'string' && req.query.jobTitle.trim() ? req.query.jobTitle.trim() : undefined;
+      const memberStatusId = typeof req.query.memberStatusId === 'string' && req.query.memberStatusId !== 'all' ? req.query.memberStatusId : undefined;
       const includeBenefits = req.query.includeBenefits === 'true';
       
       // Get all workers matching filters
@@ -522,6 +528,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         bargainingUnitId,
         benefitId,
         contactStatus,
+        jobTitle,
+        memberStatusId,
       });
       
       // Helper to format SSN
