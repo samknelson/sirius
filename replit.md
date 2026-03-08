@@ -49,7 +49,7 @@ The frontend utilizes React 18 with TypeScript, Vite, Shadcn/ui (built on Radix 
 -   **Terminology Framework**: Provides site-specific terminology customization.
 -   **Dispatch System**: Manages dispatch jobs, types, listings, and detail pages. Features a plugin system to filter eligible workers based on configurable criteria (bans, skills, work status, etc.) using denormalized eligibility data for efficiency.
 -   **Worker Bans**: Tracks worker restrictions and dynamically calculates active status.
--   **Worker Member Status History**: Tracks worker member statuses per industry over time, with denormalized IDs for quick lookup.
+-   **Worker Member Status History**: Tracks worker member statuses per industry over time, with denormalized IDs for quick lookup. Includes an automated member status scan system (`server/services/member-status-scan.ts`) that determines Non-member/Pending/Member/Delinquent status based on card check and dues payment history. Per-BU delinquent-days threshold configured via `bargainingUnit.data.memberStatusDelinquentDays` (default 60). Runs daily at 7 AM via cron, after dues imports, and via manual rescan.
 -   **Worker Certifications**: Manages worker certifications, automatically syncing skills based on active certification status.
 -   **EDLS (Employer Day Labor Scheduler)**: Manages day labor scheduling, including sheets, crews, task assignment, supervisor tracking, and audit logging. Incorporates specialized worker queries for EDLS context and advanced filtering with rating statistics.
 -   **Web Services Framework**: Server-side API framework for exposing services to external clients, supporting bundle-based organization, client credential authentication, and optional IP allowlisting.

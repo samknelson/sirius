@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import type { WorkerMshStorage } from "../storage/worker-msh";
+import { scanWorkerMemberStatus, scanAllWorkers } from "../services/member-status-scan";
 
 export function registerWorkerMshRoutes(
   app: Express,
@@ -81,6 +82,27 @@ export function registerWorkerMshRoutes(
     } catch (error) {
       console.error("Failed to delete worker member status history:", error);
       res.status(500).json({ message: "Failed to delete worker member status history" });
+    }
+  });
+
+  app.post("/api/workers/rescan-all-member-status", requireAuth, requireAccess('admin'), async (req, res) => {
+    try {
+      const result = await scanAllWorkers('live');
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to rescan all worker member statuses:", error);
+      res.status(500).json({ message: error instanceof Error ? error.message : "Failed to rescan all worker member statuses" });
+    }
+  });
+
+  app.post("/api/workers/:workerId/rescan-member-status", requireAuth, requirePermission("staff"), async (req, res) => {
+    try {
+      const { workerId } = req.params;
+      const result = await scanWorkerMemberStatus(workerId);
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to rescan worker member status:", error);
+      res.status(500).json({ message: error instanceof Error ? error.message : "Failed to rescan worker member status" });
     }
   });
 }

@@ -353,6 +353,9 @@ function BargainingUnitEditContent() {
   const [editIcon, setEditIcon] = useState<string | undefined>(
     (bargainingUnit.data as { icon?: string } | null)?.icon
   );
+  const [editDelinquentDays, setEditDelinquentDays] = useState<number>(
+    (bargainingUnit.data as { memberStatusDelinquentDays?: number } | null)?.memberStatusDelinquentDays || 60
+  );
 
   const updateMutation = useMutation({
     mutationFn: async (data: { name: string; siriusId: string; data?: Record<string, unknown> | null }) => {
@@ -397,11 +400,12 @@ function BargainingUnitEditContent() {
     }
 
     const existingData = (bargainingUnit.data as Record<string, unknown>) || {};
-    const newData = editIcon 
-      ? { ...existingData, icon: editIcon } 
-      : Object.keys(existingData).filter(k => k !== 'icon').length > 0
-        ? Object.fromEntries(Object.entries(existingData).filter(([k]) => k !== 'icon'))
-        : null;
+    const newData: Record<string, unknown> = { ...existingData, memberStatusDelinquentDays: editDelinquentDays };
+    if (editIcon) {
+      newData.icon = editIcon;
+    } else {
+      delete newData.icon;
+    }
 
     updateMutation.mutate({
       name: editName.trim(),
@@ -453,6 +457,24 @@ function BargainingUnitEditContent() {
                 value={editIcon}
                 onChange={setEditIcon}
                 data-testid="icon-picker-edit"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-delinquent-days" className="text-sm font-medium text-foreground">
+                Member Status: Delinquent After (days)
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Number of days since the last dues payment before a member's status changes to Delinquent.
+              </p>
+              <Input
+                id="edit-delinquent-days"
+                type="number"
+                min={1}
+                max={365}
+                value={editDelinquentDays}
+                onChange={(e) => setEditDelinquentDays(Math.max(1, Math.min(365, parseInt(e.target.value) || 60)))}
+                className="w-32"
+                data-testid="input-edit-delinquent-days"
               />
             </div>
           </div>

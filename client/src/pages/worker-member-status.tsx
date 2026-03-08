@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, Pencil } from "lucide-react";
+import { Plus, Trash2, Pencil, RefreshCw, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -154,6 +154,35 @@ function WorkerMemberStatusContent() {
     },
   });
 
+  const rescanMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/workers/${worker.id}/rescan-member-status`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to rescan member status");
+      }
+      return response.json();
+    },
+    onSuccess: (result: { changed: boolean; newStatusCode: string; previousStatusCode: string | null }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/workers", worker.id, "msh"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/workers", worker.id] });
+      if (result.changed) {
+        toast({ title: "Status updated", description: `Member status changed from ${result.previousStatusCode || "none"} to ${result.newStatusCode}` });
+      } else {
+        toast({ title: "No change", description: `Member status is already ${result.newStatusCode}` });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Rescan failed",
+        description: error.message || "Failed to rescan member status",
+        variant: "destructive",
+      });
+    },
+  });
+
   const resetForm = () => {
     setSelectedDate("");
     setSelectedIndustryId("");
@@ -230,13 +259,24 @@ function WorkerMemberStatusContent() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Member Status History</CardTitle>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" data-testid="button-add-member-status">
-              <Plus size={16} className="mr-2" />
-              Add Entry
-            </Button>
-          </DialogTrigger>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => rescanMutation.mutate()}
+            disabled={rescanMutation.isPending}
+            data-testid="button-rescan-member-status"
+          >
+            {rescanMutation.isPending ? <Loader2 size={16} className="mr-2 animate-spin" /> : <RefreshCw size={16} className="mr-2" />}
+            Rescan
+          </Button>
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" data-testid="button-add-member-status">
+                <Plus size={16} className="mr-2" />
+                Add Entry
+              </Button>
+            </DialogTrigger>
           <DialogContent data-testid="dialog-add-member-status">
             <DialogHeader>
               <DialogTitle>Add Member Status Entry</DialogTitle>
@@ -311,6 +351,7 @@ function WorkerMemberStatusContent() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </CardHeader>
       <CardContent>
         {isLoading ? (

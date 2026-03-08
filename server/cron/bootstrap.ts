@@ -58,6 +58,12 @@ const DEFAULT_CRON_JOBS: DefaultCronJob[] = [
     schedule: '0 3 * * *', // Daily at 3 AM
     isEnabled: false, // Disabled by default - must configure policies first
   },
+  {
+    name: 'member-status-scan',
+    description: 'Scans all active workers and updates their member status based on card check and dues payment history',
+    schedule: '0 7 * * *', // Daily at 7 AM
+    isEnabled: true,
+  },
 ];
 
 export async function bootstrapCronJobs(): Promise<void> {

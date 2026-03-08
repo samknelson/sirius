@@ -5,6 +5,7 @@ import { createBtuWorkerImportStorage } from '../../storage/btu-worker-import.js
 import { createCardcheckStorage, SignedCardcheckWithDetails } from '../../storage/cardchecks.js';
 import { createBargainingUnitStorage, type BargainingUnitData } from '../../storage/bargaining-units.js';
 import { executeChargePlugins, TriggerType, DuesImportSavedContext } from '../../charge-plugins/index.js';
+import { scanWorkerMemberStatus } from '../../services/member-status-scan.js';
 import { sql } from 'drizzle-orm';
 import { parse as parseCSV } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
@@ -548,6 +549,29 @@ export class BtuDuesAllocationWizard extends FeedWizard {
       },
       status: failureCount === 0 ? 'completed' : 'completed_with_errors'
     });
+
+    const uniqueWorkerIds = new Set(allocatedWorkersList.map(w => w.workerId));
+    let msUpdated = 0;
+    for (const wId of uniqueWorkerIds) {
+      try {
+        const scanResult = await scanWorkerMemberStatus(wId);
+        if (scanResult.changed) msUpdated++;
+      } catch (err) {
+        logger.error("Failed to rescan member status after dues import", {
+          service: "btu-dues-allocation",
+          workerId: wId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    if (msUpdated > 0) {
+      logger.info(`Updated member status for ${msUpdated} workers after dues import`, {
+        service: "btu-dues-allocation",
+        wizardId,
+        totalWorkers: uniqueWorkerIds.size,
+        statusUpdated: msUpdated,
+      });
+    }
 
     return results;
   }

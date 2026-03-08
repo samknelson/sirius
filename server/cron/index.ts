@@ -12,3 +12,4 @@ export { workerBanActiveScanHandler } from './jobs/workerBanActiveScan';
 export { workerCertificationActiveScanHandler } from './jobs/workerCertificationActiveScan';
 export { logCleanupHandler } from './jobs/logCleanup';
 export type { RetentionPolicy, LogCleanupSettings } from './jobs/logCleanup';
+export { memberStatusScanHandler } from './jobs/memberStatusScan';
