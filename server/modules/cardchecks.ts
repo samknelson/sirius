@@ -216,6 +216,49 @@ export function registerCardchecksRoutes(
     }
   });
 
+  app.post("/api/cardchecks/bulk-revoke", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
+    try {
+      const { cardcheckIds } = req.body;
+      if (!Array.isArray(cardcheckIds) || cardcheckIds.length === 0) {
+        return res.status(400).json({ message: "cardcheckIds must be a non-empty array" });
+      }
+      const uniqueIds = [...new Set(cardcheckIds.filter((id: unknown) => typeof id === "string"))];
+      if (uniqueIds.length === 0) {
+        return res.status(400).json({ message: "No valid card check IDs provided" });
+      }
+      if (uniqueIds.length > 500) {
+        return res.status(400).json({ message: "Cannot revoke more than 500 card checks at once" });
+      }
+
+      let revoked = 0;
+      let skipped = 0;
+      const errors: string[] = [];
+
+      for (const id of uniqueIds) {
+        try {
+          const existing = await storage.cardchecks.getCardcheckById(id);
+          if (!existing) {
+            errors.push(`Card check ${id} not found`);
+            continue;
+          }
+          if (existing.status === "revoked") {
+            skipped++;
+            continue;
+          }
+          await storage.cardchecks.updateCardcheck(id, { status: "revoked" });
+          revoked++;
+        } catch (err: any) {
+          errors.push(`Failed to revoke ${id}: ${err.message}`);
+        }
+      }
+
+      res.json({ revoked, skipped, errors });
+    } catch (error: any) {
+      console.error("Failed to bulk revoke cardchecks:", error);
+      res.status(500).json({ message: "Failed to bulk revoke cardchecks" });
+    }
+  });
+
   // GET /api/reports/cardchecks - Get cardcheck report with filters
   app.get("/api/reports/cardchecks", requireAuth, cardcheckComponent, requirePermission("staff"), async (req, res) => {
     try {

@@ -90,6 +90,10 @@ export interface CardcheckReportItem {
   buChanged: boolean;
   previousBargainingUnitName: string | null;
   terminatedOver30Days: boolean;
+  cardBargainingUnitId: string | null;
+  cardBargainingUnitName: string | null;
+  buMismatch: boolean;
+  currentlyTerminated30Days: boolean;
 }
 
 export interface SignCardcheckParams {
@@ -534,6 +538,25 @@ export function createCardcheckStorage(): CardcheckStorage {
           }
         }
 
+        const cardBuId = card.bargainingUnitId || null;
+        const workerBuId = worker.bargainingUnitId || null;
+        const buMismatch = cardBuId !== workerBuId;
+
+        let currentlyTerminated30Days = false;
+        {
+          const empRecords = workerEmploymentMap.get(card.workerId);
+          if (empRecords && empRecords.length > 0) {
+            const latestRecord = empRecords[0];
+            if (!latestRecord.employed) {
+              const nowMs = Date.now();
+              const diffDays = (nowMs - latestRecord.date.getTime()) / (1000 * 60 * 60 * 24);
+              if (diffDays >= 30) {
+                currentlyTerminated30Days = true;
+              }
+            }
+          }
+        }
+
         results.push({
           cardcheckId: card.id,
           workerId: card.workerId,
@@ -550,6 +573,10 @@ export function createCardcheckStorage(): CardcheckStorage {
           buChanged,
           previousBargainingUnitName,
           terminatedOver30Days,
+          cardBargainingUnitId: card.bargainingUnitId || null,
+          cardBargainingUnitName: card.bargainingUnitId ? buMap.get(card.bargainingUnitId) || null : null,
+          buMismatch,
+          currentlyTerminated30Days,
         });
       }
       
