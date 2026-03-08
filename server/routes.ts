@@ -15,6 +15,7 @@ import { registerTrustBenefitsRoutes } from "./modules/trust-benefits";
 import { registerTrustProvidersRoutes } from "./modules/trust-providers";
 import { registerTrustProviderContactRoutes } from "./modules/trust-provider-contacts";
 import { registerConsolidatedOptionsRoutes } from "./modules/options-routes";
+import { getOptionsType } from "./modules/options-registry";
 import { registerWorkerIdsRoutes } from "./modules/worker-ids";
 import { registerAddressValidationRoutes } from "./modules/address-validation";
 import {
@@ -542,7 +543,37 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
         return ssn;
       };
-      
+
+      const workerIdsList = workers.map(w => w.id);
+
+      const [showOnListsTypes, workerIdRecords, allEmployers, memberStatusOptions] = await Promise.all([
+        storage.workerIds.getShowOnListsIdTypes(),
+        workerIdsList.length > 0 ? storage.workerIds.getWorkerIdsForListByWorkerIds(workerIdsList) : Promise.resolve([]),
+        storage.employers.getAllEmployers(),
+        (async () => {
+          const config = getOptionsType("worker-ms");
+          return config ? config.getAll() : [];
+        })(),
+      ]);
+
+      const employerNameMap = new Map<string, string>();
+      for (const emp of allEmployers) {
+        employerNameMap.set(emp.id, emp.name);
+      }
+
+      const memberStatusNameMap = new Map<string, string>();
+      for (const ms of memberStatusOptions) {
+        memberStatusNameMap.set(ms.id, ms.name);
+      }
+
+      const workerIdMap = new Map<string, Map<string, string>>();
+      for (const wid of workerIdRecords) {
+        if (!workerIdMap.has(wid.workerId)) {
+          workerIdMap.set(wid.workerId, new Map());
+        }
+        workerIdMap.get(wid.workerId)!.set(wid.typeId, wid.value);
+      }
+
       // Build CSV data
       const csvData = workers.map(worker => {
         const baseData: Record<string, string> = {
@@ -550,14 +581,35 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           'Middle Name': worker.middle || '',
           'Last Name': worker.family || '',
           'SSN': formatSSN(worker.ssn),
-          'Street': worker.address_street || '',
-          'City': worker.address_city || '',
-          'State': worker.address_state || '',
-          'Postal Code': worker.address_postal_code || '',
-          'Country': worker.address_country || '',
-          'Email': worker.contact_email || '',
-          'Phone Number': worker.phone_number || '',
         };
+
+        for (const idType of showOnListsTypes) {
+          const idValue = workerIdMap.get(worker.id)?.get(idType.id) || '';
+          baseData[idType.name] = idValue;
+        }
+
+        baseData['Job Title'] = (worker as any).denorm_job_title || '';
+        baseData['Bargaining Unit'] = (worker as any).bargaining_unit_name || '';
+
+        const msIds: string[] = (worker as any).denorm_ms_ids || [];
+        const msNames = msIds
+          .map(id => memberStatusNameMap.get(id))
+          .filter((n): n is string => !!n);
+        baseData['Member Status'] = msNames.join('; ');
+
+        const employerIds: string[] = (worker as any).denorm_employer_ids || [];
+        const empNames = employerIds
+          .map(id => employerNameMap.get(id))
+          .filter((n): n is string => !!n);
+        baseData['Employer(s)'] = empNames.join('; ');
+
+        baseData['Street'] = worker.address_street || '';
+        baseData['City'] = worker.address_city || '';
+        baseData['State'] = worker.address_state || '';
+        baseData['Postal Code'] = worker.address_postal_code || '';
+        baseData['Country'] = worker.address_country || '';
+        baseData['Email'] = worker.contact_email || '';
+        baseData['Phone Number'] = worker.phone_number || '';
         
         if (includeBenefits) {
           const benefits = worker.benefits || [];
@@ -577,6 +629,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         'Middle Name',
         'Last Name',
         'SSN',
+        ...showOnListsTypes.map(t => t.name),
+        'Job Title',
+        'Bargaining Unit',
+        'Member Status',
+        'Employer(s)',
         'Street',
         'City',
         'State',
