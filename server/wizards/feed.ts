@@ -145,7 +145,15 @@ export abstract class FeedWizard extends BaseWizard {
    * @param mode The feed mode ('create' or 'update')
    * @returns Array of validation errors for this row
    */
+  protected isEmptyRow(row: Record<string, any>): boolean {
+    return Object.values(row).every(v => v === null || v === undefined || String(v).trim() === '');
+  }
+
   async validateRow(row: Record<string, any>, rowIndex: number, mode: 'create' | 'update'): Promise<ValidationError[]> {
+    if (this.isEmptyRow(row)) {
+      return [];
+    }
+
     const errors: ValidationError[] = [];
     const fields = this.getFields?.() || [];
 
@@ -595,6 +603,10 @@ export abstract class FeedWizard extends BaseWizard {
       for (let j = 0; j < batch.length; j++) {
         const rowIndex = i + j;
         const row = batch[j];
+
+        if (this.isEmptyRow(row)) {
+          continue;
+        }
         
         try {
           // Extract worker data from row
