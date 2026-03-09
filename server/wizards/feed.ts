@@ -417,9 +417,9 @@ export abstract class FeedWizard extends BaseWizard {
       
       // Reasonable range for Excel dates (1900-01-01 to ~2100)
       if (serial >= 1 && serial <= 73050) {
-        // Excel epoch: January 1, 1900 = serial 1
-        // But Excel incorrectly treats 1900 as a leap year, so dates after Feb 28, 1900 need adjustment
-        const excelEpoch = new Date(Date.UTC(1899, 11, 30)); // Dec 30, 1899 (serial 0)
+        // Excel epoch: January 1, 1900 = serial 1, so serial 0 = Dec 31, 1899
+        // Excel incorrectly treats 1900 as a leap year, so dates after Feb 28, 1900 (serial > 60) need adjustment
+        const excelEpoch = new Date(Date.UTC(1899, 11, 31)); // Dec 31, 1899 (serial 0)
         const adjustedSerial = serial > 60 ? serial - 1 : serial; // Adjust for Excel's leap year bug
         const parsed = new Date(excelEpoch.getTime() + adjustedSerial * 24 * 60 * 60 * 1000);
         
