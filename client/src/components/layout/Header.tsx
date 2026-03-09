@@ -539,6 +539,19 @@ export default function Header() {
                   </Link>
                 )}
 
+                {hasPermission("staff") && hasComponent("sitespecific.hta") && (
+                  <Link href="/imports" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location === "/imports" ? "default" : "ghost"}
+                      className="w-full justify-start"
+                      data-testid="mobile-nav-imports"
+                    >
+                      <FileSpreadsheet className="h-4 w-4 mr-2" />
+                      Imports
+                    </Button>
+                  </Link>
+                )}
+
                 {hasPermission("admin") && (
                   <Link href="/config" onClick={() => setMobileMenuOpen(false)}>
                     <Button
@@ -1006,6 +1019,19 @@ export default function Header() {
                 >
                   <FileText className="h-4 w-4 mr-2" />
                   Reports
+                </Button>
+              </Link>
+            )}
+
+            {hasPermission("staff") && hasComponent("sitespecific.hta") && (
+              <Link href="/imports">
+                <Button
+                  variant={location === "/imports" ? "default" : "ghost"}
+                  size="sm"
+                  data-testid="nav-imports"
+                >
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Imports
                 </Button>
               </Link>
             )}
