@@ -71,6 +71,7 @@ import { registerWorkerRatingsRoutes } from "./modules/worker-ratings";
 import { requireComponent } from "./modules/components";
 import { registerWorkerStewardAssignmentRoutes } from "./modules/worker-steward-assignments";
 import { registerBtuCsgRoutes } from "./modules/sitespecific-btu-csg";
+import { registerHtaRoutes } from "./modules/hta";
 import { registerEdlsSheetsRoutes } from "./modules/edls-sheets";
 import { registerEdlsTasksRoutes } from "./modules/edls-tasks";
 import { registerWebServiceBundle } from "./modules/webservices";
@@ -1158,6 +1159,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register site-specific routes
   registerBtuCsgRoutes(app, requireAuth, requirePermission);
+
+  registerHtaRoutes(app, requireAuth, requirePermission);
 
   // Register EDLS routes
   registerEdlsSheetsRoutes(app, requireAuth, requirePermission);
