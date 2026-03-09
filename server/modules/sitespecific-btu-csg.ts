@@ -454,6 +454,7 @@ export function registerBtuCsgRoutes(
       secondaryEmployerName: z.string().optional(),
       bargainingUnitId: z.string().optional(),
       employmentStatusId: z.string().optional(),
+      territoryId: z.string().optional(),
     }),
   });
 
@@ -489,6 +490,9 @@ export function registerBtuCsgRoutes(
       }
       if (updates.employmentStatusId !== undefined) {
         cleanedUpdates.employmentStatusId = updates.employmentStatusId === "" ? null : updates.employmentStatusId;
+      }
+      if (updates.territoryId !== undefined) {
+        cleanedUpdates.territoryId = updates.territoryId === "" ? null : updates.territoryId;
       }
 
       // Validate that at least one field is being updated
