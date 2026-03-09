@@ -33,8 +33,30 @@ export interface ScanOptions {
   workerId?: string;
 }
 
+async function getWorkerName(client: any, workerId: string): Promise<string> {
+  const rows = await client
+    .select({ given: contacts.given, family: contacts.family })
+    .from(contacts)
+    .innerJoin(workers, eq(workers.contactId, contacts.id))
+    .where(eq(workers.id, workerId));
+  return rows[0] ? `${rows[0].given || ''} ${rows[0].family || ''}`.trim() : workerId;
+}
+
+async function getMostRecentWshStatus(
+  client: any,
+  workerId: string
+): Promise<{ wsId: string; date: string } | null> {
+  const [entry] = await client
+    .select({ wsId: workerWsh.wsId, date: workerWsh.date })
+    .from(workerWsh)
+    .where(eq(workerWsh.workerId, workerId))
+    .orderBy(desc(workerWsh.date), sql`${workerWsh.createdAt} DESC NULLS LAST`)
+    .limit(1);
+  return entry || null;
+}
+
 export async function runInactivityScan(options?: ScanOptions): Promise<InactivityScanResult> {
-  const mode = options?.mode || "live";
+  const mode = options?.mode || "test";
   const targetWorkerId = options?.workerId;
 
   const result: InactivityScanResult = {
@@ -79,11 +101,11 @@ export async function runInactivityScan(options?: ScanOptions): Promise<Inactivi
 
   const wsMap = new Map(allWsOptions.map(o => [o.id, o.name]));
 
-  let targetWorkers: Array<{ id: string; denormWsId: string | null }>;
+  let targetWorkers: Array<{ id: string }>;
 
   if (targetWorkerId) {
     const [worker] = await client
-      .select({ id: workers.id, denormWsId: workers.denormWsId, denormMsIds: workers.denormMsIds })
+      .select({ id: workers.id, denormMsIds: workers.denormMsIds })
       .from(workers)
       .where(eq(workers.id, targetWorkerId));
 
@@ -94,18 +116,15 @@ export async function runInactivityScan(options?: ScanOptions): Promise<Inactivi
 
     const msIds = worker.denormMsIds || [];
     if (!msIds.includes(unionMsOption.id)) {
-      const workerContact = await client
-        .select({ given: contacts.given, family: contacts.family })
-        .from(contacts)
-        .innerJoin(workers, eq(workers.contactId, contacts.id))
-        .where(eq(workers.id, targetWorkerId));
-      const name = workerContact[0] ? `${workerContact[0].given || ''} ${workerContact[0].family || ''}`.trim() : targetWorkerId;
+      const workerName = await getWorkerName(client, targetWorkerId);
+      const mostRecent = await getMostRecentWshStatus(client, targetWorkerId);
+      const currentStatusName = mostRecent ? (wsMap.get(mostRecent.wsId) || 'Unknown') : 'No entries';
 
       result.scanned = 1;
       result.details.push({
         workerId: targetWorkerId,
-        workerName: name,
-        currentStatus: wsMap.get(worker.denormWsId || '') || 'Unknown',
+        workerName,
+        currentStatus: currentStatusName,
         lastActiveDate: null,
         action: "not_union",
         reason: "Worker does not have Union member status",
@@ -113,13 +132,10 @@ export async function runInactivityScan(options?: ScanOptions): Promise<Inactivi
       return result;
     }
 
-    targetWorkers = [{ id: worker.id, denormWsId: worker.denormWsId }];
+    targetWorkers = [{ id: worker.id }];
   } else {
     targetWorkers = await client
-      .select({
-        id: workers.id,
-        denormWsId: workers.denormWsId,
-      })
+      .select({ id: workers.id })
       .from(workers)
       .where(sql`${workers.denormMsIds} @> ARRAY[${unionMsOption.id}]::varchar[]`);
   }
@@ -134,15 +150,13 @@ export async function runInactivityScan(options?: ScanOptions): Promise<Inactivi
 
   for (const worker of targetWorkers) {
     try {
-      const workerContact = await client
-        .select({ given: contacts.given, family: contacts.family })
-        .from(contacts)
-        .innerJoin(workers, eq(workers.contactId, contacts.id))
-        .where(eq(workers.id, worker.id));
-      const workerName = workerContact[0] ? `${workerContact[0].given || ''} ${workerContact[0].family || ''}`.trim() : worker.id;
-      const currentStatusName = wsMap.get(worker.denormWsId || '') || 'Unknown';
+      const workerName = await getWorkerName(client, worker.id);
 
-      if (worker.denormWsId !== activeWsOption.id) {
+      const mostRecent = await getMostRecentWshStatus(client, worker.id);
+      const currentWsId = mostRecent?.wsId || null;
+      const currentStatusName = currentWsId ? (wsMap.get(currentWsId) || 'Unknown') : 'No entries';
+
+      if (currentWsId !== activeWsOption.id) {
         result.alreadyInactive++;
         result.details.push({
           workerId: worker.id,
@@ -150,7 +164,7 @@ export async function runInactivityScan(options?: ScanOptions): Promise<Inactivi
           currentStatus: currentStatusName,
           lastActiveDate: null,
           action: "already_inactive",
-          reason: `Current status is "${currentStatusName}" (not Active)`,
+          reason: `Most recent work status is "${currentStatusName}" (not Active)`,
         });
         continue;
       }
