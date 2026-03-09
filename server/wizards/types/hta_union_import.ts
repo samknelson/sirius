@@ -624,7 +624,7 @@ export class HtaUnionImportWizard extends FeedWizard {
       if (memberStatusType === 'Union') {
         try {
           const { runInactivityScan } = await import('../../services/hta-inactivity-scan.js');
-          await runInactivityScan();
+          await runInactivityScan({ mode: 'live' });
         } catch (err) {
           console.error('Failed to run inactivity scan after union import:', err);
         }
