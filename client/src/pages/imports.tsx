@@ -18,7 +18,6 @@ export default function Imports() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [selectedWizardType, setSelectedWizardType] = useState<string>("");
   const [launchArgValues, setLaunchArgValues] = useState<Record<string, any>>({});
 
   const { data: allWizardTypes, isLoading: typesLoading } = useQuery<WizardType[]>({
@@ -26,6 +25,7 @@ export default function Imports() {
   });
 
   const feedTypes = allWizardTypes?.filter(wt => wt.isFeed && !wt.entityType) || [];
+  const selectedWizardType = feedTypes.length === 1 ? feedTypes[0].name : feedTypes[0]?.name || "";
 
   const { data: launchArguments } = useQuery<LaunchArgument[]>({
     queryKey: ["/api/wizard-types", selectedWizardType, "launch-arguments"],
@@ -69,7 +69,6 @@ export default function Imports() {
     onSuccess: (newWizard: Wizard) => {
       queryClient.invalidateQueries({ queryKey: ["/api/wizards"] });
       setIsCreateDialogOpen(false);
-      setSelectedWizardType("");
       setLaunchArgValues({});
       toast({ title: "Import created", description: "Your import wizard has been created." });
       setLocation(`/wizards/${newWizard.id}`);
@@ -99,9 +98,9 @@ export default function Imports() {
     <div className="container mx-auto py-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-imports-title">Imports</h1>
+          <h1 className="text-2xl font-bold" data-testid="text-imports-title">Worker Import</h1>
           <p className="text-muted-foreground" data-testid="text-imports-description">
-            Upload and process data imports
+            Upload and process worker data imports
           </p>
         </div>
         {feedTypes.length > 0 && (
@@ -114,27 +113,12 @@ export default function Imports() {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Create New Import</DialogTitle>
+                <DialogTitle>New Worker Import</DialogTitle>
                 <DialogDescription>
-                  Select the type of import to create.
+                  Configure and start a new worker import.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Import Type</Label>
-                  <Select value={selectedWizardType} onValueChange={setSelectedWizardType}>
-                    <SelectTrigger data-testid="select-import-type">
-                      <SelectValue placeholder="Select import type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {feedTypes.map(ft => (
-                        <SelectItem key={ft.name} value={ft.name} data-testid={`option-import-type-${ft.name}`}>
-                          {ft.displayName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
                 {launchArguments && launchArguments.length > 0 && launchArguments.map(arg => (
                   <div key={arg.id} className="space-y-2">
                     <Label>{arg.name}{arg.required && " *"}</Label>
