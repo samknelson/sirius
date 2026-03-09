@@ -279,6 +279,11 @@ export class HtaUnionImportWizard extends FeedWizard {
     batchSize?: number,
     onProgress?: (progress: { processed: number; total: number; validRows: number; invalidRows: number }) => void
   ) {
+    this.workStatusCache = null;
+    this.employmentStatusCache = null;
+    this.employerCache = null;
+    this.memberStatusCache = null;
+
     const wizard = await storage.wizards.getById(wizardId);
     if (wizard) {
       this.currentMemberStatusType = this.getMemberStatusType(wizard);
