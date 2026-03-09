@@ -303,11 +303,11 @@ async function handleDispatchSaved(
     return;
   }
 
-  if (payload.status !== "pending") {
+  if (payload.status !== "notified") {
     return;
   }
 
-  if (payload.previousStatus === "pending") {
+  if (payload.previousStatus === "notified") {
     return;
   }
 
@@ -358,7 +358,7 @@ async function handleDispatchSaved(
       return;
     }
 
-    const { commIds, anyConfirmed } = await sendDispatchNotifications(
+    const { commIds } = await sendDispatchNotifications(
       payload.dispatchId,
       workerInfo,
       jobConfig,
@@ -368,43 +368,11 @@ async function handleDispatchSaved(
       const dispatchStorage = createDispatchStorage();
       await dispatchStorage.update(payload.dispatchId, { commIds });
 
-      if (anyConfirmed) {
-        const statusResult = await dispatchStorage.setStatus(
-          payload.dispatchId,
-          "notified",
-        );
-        if (statusResult.success) {
-          logger.info(`Dispatch set to notified after confirmed delivery`, {
-            service: SERVICE_NAME,
-            dispatchId: payload.dispatchId,
-            commIds,
-          });
-        } else {
-          logger.warn(`Failed to set dispatch to notified`, {
-            service: SERVICE_NAME,
-            dispatchId: payload.dispatchId,
-            error: statusResult.error,
-          });
-        }
-      } else {
-        logger.info(
-          `Dispatch notifications sent, awaiting delivery confirmation via callback`,
-          {
-            service: SERVICE_NAME,
-            dispatchId: payload.dispatchId,
-            commIds,
-          },
-        );
-      }
-    } else {
-      logger.warn(
-        `No notifications could be sent for dispatch, leaving as pending`,
-        {
-          service: SERVICE_NAME,
-          dispatchId: payload.dispatchId,
-          workerId: payload.workerId,
-        },
-      );
+      logger.info(`Updated dispatch with comm IDs`, {
+        service: SERVICE_NAME,
+        dispatchId: payload.dispatchId,
+        commIds,
+      });
     }
   } catch (error: any) {
     logger.error(`Failed to process dispatch notification`, {
