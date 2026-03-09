@@ -62,6 +62,7 @@ The frontend utilizes React 18 with TypeScript, Vite, Shadcn/ui (built on Radix 
 -   **Worker ID Show on Lists**: Configurable worker ID types can be displayed as dynamic columns on worker lists and reports.
 -   **Organizing Missing Dues BU Filter**: Configurable setting in the OEL Status Groups dialog that controls which bargaining units are included in potential missing dues calculations. Stored as `organizing_dues_bu_ids` variable. Applied to both the OEL `distinctMissingDuesRevenue` and the BU Summary dashboard plugin `totalMissingDuesRevenue`. Empty selection means all BUs are included.
 -   **BTU Territories**: Manages geographical territory assignments for BTU-specific features, linking territories to employers and workers.
+-   **Contact Export Tool**: Staff-only tool at `/reports/contact-export` that accepts an uploaded file of worker IDs (matched against a selected worker ID type), resolves them via the `worker_ids` table, and returns a CSV download containing each matched worker's contact info (email, phone, address), member status, and active employer(s). Displays matched/unmatched counts and lists unmatched IDs. Endpoint: `POST /api/workers/contact-export` (multer file upload, max 10,000 IDs).
 
 # External Dependencies
 

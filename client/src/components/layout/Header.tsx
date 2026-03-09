@@ -594,18 +594,26 @@ export default function Header() {
                   </>
                 )}
 
-                {(hasPermission("admin") || (hasComponent("cardcheck") && hasPermission("staff"))) && (
+                {(hasPermission("admin") || hasPermission("staff")) && (
                   <>
-                    <Link href="/reports" onClick={() => setMobileMenuOpen(false)}>
-                      <Button
-                        variant={location === "/reports" ? "default" : "ghost"}
-                        className="w-full justify-start"
-                        data-testid="mobile-nav-reports"
-                      >
-                        <FileText className="h-4 w-4 mr-2" />
+                    {hasPermission("admin") && (
+                      <Link href="/reports" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location === "/reports" ? "default" : "ghost"}
+                          className="w-full justify-start"
+                          data-testid="mobile-nav-reports"
+                        >
+                          <FileText className="h-4 w-4 mr-2" />
+                          Reports
+                        </Button>
+                      </Link>
+                    )}
+                    {!hasPermission("admin") && (
+                      <div className="px-4 py-2 text-sm font-medium text-muted-foreground">
+                        <FileText className="h-4 w-4 mr-2 inline" />
                         Reports
-                      </Button>
-                    </Link>
+                      </div>
+                    )}
                     {hasComponent("cardcheck") && hasPermission("staff") && (
                       <Link href="/reports/cardchecks" onClick={() => setMobileMenuOpen(false)}>
                         <Button
@@ -615,6 +623,18 @@ export default function Header() {
                         >
                           <FileCheck className="h-4 w-4 mr-2" />
                           Card Check Report
+                        </Button>
+                      </Link>
+                    )}
+                    {hasPermission("staff") && (
+                      <Link href="/reports/contact-export" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location === "/reports/contact-export" ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-contact-export"
+                        >
+                          <FileSpreadsheet className="h-4 w-4 mr-2" />
+                          Contact Export
                         </Button>
                       </Link>
                     )}
@@ -1122,7 +1142,7 @@ export default function Header() {
               </DropdownMenu>
             )}
 
-            {(hasPermission("admin") || (hasComponent("cardcheck") && hasPermission("staff"))) && (
+            {(hasPermission("admin") || hasPermission("staff")) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -1152,6 +1172,16 @@ export default function Header() {
                         <div className="flex items-center cursor-pointer" data-testid="menu-cardcheck-report">
                           <FileCheck className="h-4 w-4 mr-2" />
                           Card Check Report
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasPermission("staff") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/reports/contact-export" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-contact-export">
+                          <FileSpreadsheet className="h-4 w-4 mr-2" />
+                          Contact Export
                         </div>
                       </Link>
                     </DropdownMenuItem>

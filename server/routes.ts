@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { stringify } from "csv-stringify/sync";
 import { sql } from "drizzle-orm";
+import multer from "multer";
 import { storage } from "./storage";
 import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type InsertEmployer, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
 import { z } from "zod";
@@ -658,6 +659,196 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     } catch (error) {
       console.error("Failed to export workers:", error);
       res.status(500).json({ message: "Failed to export workers" });
+    }
+  });
+
+  const contactExportUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 },
+  });
+
+  app.post("/api/workers/contact-export", requireAuth, requirePermission("staff"), contactExportUpload.single("file"), async (req, res) => {
+    try {
+      const file = (req as any).file;
+      const typeId = typeof req.body.typeId === "string" ? req.body.typeId : null;
+
+      if (!file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      if (!typeId) {
+        return res.status(400).json({ message: "Worker ID type is required" });
+      }
+
+      const fileContent = file.buffer.toString("utf-8");
+      const rawIds = fileContent
+        .split(/[\r\n]+/)
+        .map((line: string) => line.trim())
+        .filter((line: string) => line.length > 0);
+
+      if (rawIds.length === 0) {
+        return res.status(400).json({ message: "File contains no IDs" });
+      }
+      if (rawIds.length > 10000) {
+        return res.status(400).json({ message: "File contains more than 10,000 IDs. Please split into smaller batches." });
+      }
+
+      const workerIdRecords = await storage.readOnly.query(async (queryClient: any) => {
+        const result = await queryClient.execute(sql`
+          SELECT wi.value, wi.worker_id
+          FROM worker_ids wi
+          WHERE wi.type_id = ${typeId}
+            AND wi.value = ANY(ARRAY[${sql.join(rawIds.map((id: string) => sql`${id}`), sql`, `)}]::text[])
+        `);
+        return result.rows as Array<{ value: string; worker_id: string }>;
+      });
+
+      const idToWorkerMap = new Map<string, string>();
+      for (const rec of workerIdRecords) {
+        idToWorkerMap.set(rec.value, rec.worker_id);
+      }
+
+      const matchedIds: string[] = [];
+      const unmatchedIds: string[] = [];
+      const workerIdSet = new Set<string>();
+
+      for (const rawId of rawIds) {
+        const workerId = idToWorkerMap.get(rawId);
+        if (workerId) {
+          matchedIds.push(rawId);
+          workerIdSet.add(workerId);
+        } else {
+          unmatchedIds.push(rawId);
+        }
+      }
+
+      const workerIds = [...workerIdSet];
+
+      if (workerIds.length === 0) {
+        return res.json({
+          matched: 0,
+          unmatched: unmatchedIds.length,
+          unmatchedIds,
+          csvData: null,
+        });
+      }
+
+      const workerData = await storage.readOnly.query(async (queryClient: any) => {
+        const result = await queryClient.execute(sql`
+          SELECT
+            w.id,
+            c.given,
+            c.family,
+            c.email,
+            w.denorm_ms_ids,
+            w.denorm_employer_ids,
+            (SELECT cp2.number FROM contact_phone cp2 WHERE cp2.contact_id = c.id AND cp2.is_active = true ORDER BY cp2.is_primary DESC NULLS LAST LIMIT 1) as phone_number,
+            (SELECT cpo.street FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_street,
+            (SELECT cpo.city FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_city,
+            (SELECT cpo.state FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_state,
+            (SELECT cpo.postal_code FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_postal_code
+          FROM workers w
+          INNER JOIN contacts c ON w.contact_id = c.id
+          WHERE w.id = ANY(ARRAY[${sql.join(workerIds.map((id: string) => sql`${id}`), sql`, `)}]::varchar[])
+        `);
+        return result.rows as Array<{
+          id: string;
+          given: string | null;
+          family: string | null;
+          email: string | null;
+          denorm_ms_ids: string[] | null;
+          denorm_employer_ids: string[] | null;
+          phone_number: string | null;
+          address_street: string | null;
+          address_city: string | null;
+          address_state: string | null;
+          address_postal_code: string | null;
+        }>;
+      });
+
+      const workerMap = new Map<string, (typeof workerData)[0]>();
+      for (const w of workerData) {
+        workerMap.set(w.id, w);
+      }
+
+      const allEmployerIds = new Set<string>();
+      const allMsIds = new Set<string>();
+      for (const w of workerData) {
+        (w.denorm_employer_ids || []).forEach(id => allEmployerIds.add(id));
+        (w.denorm_ms_ids || []).forEach(id => allMsIds.add(id));
+      }
+
+      const [allEmployers, memberStatusOptions] = await Promise.all([
+        storage.employers.getAllEmployers(),
+        (async () => {
+          const config = getOptionsType("worker-ms");
+          return config ? config.getAll() : [];
+        })(),
+      ]);
+
+      const employerNameMap = new Map<string, string>();
+      for (const emp of allEmployers) {
+        employerNameMap.set(emp.id, emp.name);
+      }
+      const memberStatusNameMap = new Map<string, string>();
+      for (const ms of memberStatusOptions) {
+        memberStatusNameMap.set(ms.id, ms.name);
+      }
+
+      const workerIdTypeRecords = await storage.workerIds.getWorkerIdsForListByWorkerIds(workerIds);
+      const workerIdValueMap = new Map<string, string>();
+      for (const wid of workerIdTypeRecords) {
+        if (wid.typeId === typeId) {
+          workerIdValueMap.set(wid.workerId, wid.value);
+        }
+      }
+
+      const csvRows = [];
+      for (const rawId of rawIds) {
+        const workerId = idToWorkerMap.get(rawId);
+        if (!workerId) continue;
+        const w = workerMap.get(workerId);
+        if (!w) continue;
+
+        const msNames = (w.denorm_ms_ids || [])
+          .map(id => memberStatusNameMap.get(id))
+          .filter((n): n is string => !!n);
+
+        const empNames = (w.denorm_employer_ids || [])
+          .map(id => employerNameMap.get(id))
+          .filter((n): n is string => !!n);
+
+        csvRows.push({
+          'ID': rawId,
+          'First Name': w.given || '',
+          'Last Name': w.family || '',
+          'Email': w.email || '',
+          'Phone': w.phone_number || '',
+          'Street': w.address_street || '',
+          'City': w.address_city || '',
+          'State': w.address_state || '',
+          'Postal Code': w.address_postal_code || '',
+          'Member Status': msNames.join('; '),
+          'Employer(s)': empNames.join('; '),
+        });
+      }
+
+      const columns = [
+        'ID', 'First Name', 'Last Name', 'Email', 'Phone',
+        'Street', 'City', 'State', 'Postal Code',
+        'Member Status', 'Employer(s)',
+      ];
+
+      const csv = stringify(csvRows, { header: true, columns });
+
+      res.json({
+        matched: matchedIds.length,
+        unmatched: unmatchedIds.length,
+        unmatchedIds,
+        csv,
+      });
+    } catch (error) {
+      console.error("Failed to export contacts:", error);
+      res.status(500).json({ message: "Failed to export contacts" });
     }
   });
 

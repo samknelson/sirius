@@ -29,6 +29,7 @@ const AlertsPage = lazy(() => import("@/pages/alerts").then(m => ({ default: m.d
 const AlertsRedirect = lazy(() => import("@/pages/alerts").then(m => ({ default: m.AlertsRedirect })));
 const Reports = lazy(() => import("@/pages/reports"));
 const ReportType = lazy(() => import("@/pages/report-type"));
+const ContactExport = lazy(() => import("@/pages/contact-export"));
 const Workers = lazy(() => import("@/pages/workers"));
 const WorkersAdd = lazy(() => import("@/pages/workers-add"));
 const WorkerView = lazy(() => import("@/pages/worker-view"));
@@ -791,6 +792,14 @@ function Router() {
         <ProtectedRoute permission="staff" component="cardcheck">
           <AuthenticatedLayout>
             <CardcheckReportPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/reports/contact-export">
+        <ProtectedRoute permission="staff">
+          <AuthenticatedLayout>
+            <ContactExport />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
