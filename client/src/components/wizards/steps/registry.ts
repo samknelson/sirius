@@ -138,6 +138,13 @@ export const stepControllerRegistry: StepControllerRegistry = {
     'run': { Component: RunStep, evaluateCompletion: evaluateRunComplete },
     'results': { Component: ResultsStep, evaluateCompletion: alwaysComplete },
   },
+  'hta_union_import': {
+    'upload': { Component: UploadStep, evaluateCompletion: evaluateUploadComplete },
+    'map': { Component: MapStep, evaluateCompletion: evaluateMapComplete },
+    'validate': { Component: ValidateStep, evaluateCompletion: evaluateValidateComplete },
+    'process': { Component: ProcessStep, evaluateCompletion: alwaysComplete },
+    'review': { Component: ReviewStep, evaluateCompletion: alwaysComplete },
+  },
 };
 
 export const stepComponentRegistry: StepComponentRegistry = {
@@ -191,6 +198,13 @@ export const stepComponentRegistry: StepComponentRegistry = {
     'inputs': BTUWorkersInvalidCardcheckInputsStep,
     'run': RunStep,
     'results': ResultsStep,
+  },
+  'hta_union_import': {
+    'upload': UploadStep,
+    'map': MapStep,
+    'validate': ValidateStep,
+    'process': ProcessStep,
+    'review': ReviewStep,
   },
 };
 
