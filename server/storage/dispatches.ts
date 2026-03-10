@@ -460,13 +460,6 @@ export function createDispatchStorage(): DispatchStorage {
           return { possible: true };
         }
 
-        case "expired": {
-          if (currentStatus !== "pending" && currentStatus !== "notified") {
-            return { possible: false, reason: `Can only expire from pending or notified status (current: ${currentStatus})` };
-          }
-          return { possible: true };
-        }
-
         case "layoff":
         case "resigned": {
           if (currentStatus !== "accepted") {
@@ -573,17 +566,17 @@ export function createDispatchStorage(): DispatchStorage {
       for (const d of remaining) {
         await client
           .update(dispatches)
-          .set({ status: "expired" })
+          .set({ status: "declined" })
           .where(eq(dispatches.id, d.id));
 
         eventBus.emit(EventType.DISPATCH_SAVED, {
           dispatchId: d.id,
           workerId: d.workerId,
           jobId: d.jobId,
-          status: "expired",
+          status: "declined",
           previousStatus: d.status,
         }).catch(err => {
-          console.error("Failed to emit DISPATCH_SAVED event for expired dispatch:", err);
+          console.error("Failed to emit DISPATCH_SAVED event for auto-declined dispatch:", err);
         });
       }
     }

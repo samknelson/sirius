@@ -33,7 +33,6 @@ const statusColors: Record<string, string> = {
   layoff: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300",
   resigned: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300",
   declined: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300",
-  expired: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300",
 };
 
 const commStatusColors: Record<string, string> = {
@@ -138,7 +137,6 @@ const statusOptions = [
   { value: "layoff", label: "Layoff" },
   { value: "resigned", label: "Resigned" },
   { value: "declined", label: "Declined" },
-  { value: "expired", label: "Expired" },
 ];
 
 export interface DispatchListTableProps {
