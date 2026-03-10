@@ -175,6 +175,7 @@ export function registerDispatchJobsRoutes(
           status,
           startYmd,
           workerCount,
+          payRate,
           data,
         } = req.body;
         const updates: any = {};
@@ -248,6 +249,10 @@ export function registerDispatchJobsRoutes(
 
         if (workerCount !== undefined) {
           updates.workerCount = workerCount;
+        }
+
+        if (payRate !== undefined) {
+          updates.payRate = payRate === null ? null : String(payRate);
         }
 
         if (data !== undefined) {

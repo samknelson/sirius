@@ -45,6 +45,7 @@ type FormData = {
   jobTypeId: string;
   startYmd: string;
   workerCount: string;
+  payRate: string;
   status: DispatchJobStatus;
 };
 
@@ -89,6 +90,7 @@ function DispatchJobEditContent() {
       jobTypeId: job.jobTypeId || "",
       startYmd: job.startYmd,
       workerCount: job.workerCount?.toString() || "",
+      payRate: job.payRate?.toString() || "",
       status: job.status as DispatchJobStatus,
     },
   });
@@ -117,11 +119,12 @@ function DispatchJobEditContent() {
         ...(jobData ?? {}),
         requiredSkills: selectedSkills.length > 0 ? selectedSkills : [],
       };
+      const payRateVal = data.payRate && data.payRate.trim() !== "" ? data.payRate.trim() : null;
       return apiRequest("PUT", `/api/dispatch-jobs/${job.id}`, {
         ...data,
         jobTypeId: data.jobTypeId || null,
-        startDate: data.startDate, // Send as YYYY-MM-DD string, backend handles timezone
         workerCount: workerCountNum,
+        payRate: payRateVal,
         status: data.status,
         data: updatedJobData,
       });
@@ -320,47 +323,74 @@ function DispatchJobEditContent() {
               />
             </div>
 
-            {!isFixedWorkerCount ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {!isFixedWorkerCount ? (
+                <FormField
+                  control={form.control}
+                  name="workerCount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Worker Count *
+                        {minWorkers !== undefined && maxWorkers !== undefined && (
+                          <span className="text-muted-foreground ml-2 font-normal">
+                            ({minWorkers} - {maxWorkers})
+                          </span>
+                        )}
+                        {minWorkers !== undefined && maxWorkers === undefined && (
+                          <span className="text-muted-foreground ml-2 font-normal">
+                            (min: {minWorkers})
+                          </span>
+                        )}
+                        {minWorkers === undefined && maxWorkers !== undefined && (
+                          <span className="text-muted-foreground ml-2 font-normal">
+                            (max: {maxWorkers})
+                          </span>
+                        )}
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          min={minWorkers ?? 1}
+                          max={maxWorkers}
+                          placeholder="Number of workers"
+                          data-testid="input-workercount"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : (
+                <input type="hidden" {...form.register("workerCount")} />
+              )}
+
               <FormField
                 control={form.control}
-                name="workerCount"
+                name="payRate"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>
-                      Worker Count *
-                      {minWorkers !== undefined && maxWorkers !== undefined && (
-                        <span className="text-muted-foreground ml-2 font-normal">
-                          ({minWorkers} - {maxWorkers})
-                        </span>
-                      )}
-                      {minWorkers !== undefined && maxWorkers === undefined && (
-                        <span className="text-muted-foreground ml-2 font-normal">
-                          (min: {minWorkers})
-                        </span>
-                      )}
-                      {minWorkers === undefined && maxWorkers !== undefined && (
-                        <span className="text-muted-foreground ml-2 font-normal">
-                          (max: {maxWorkers})
-                        </span>
-                      )}
-                    </FormLabel>
+                    <FormLabel>Pay Rate</FormLabel>
                     <FormControl>
-                      <Input
-                        {...field}
-                        type="number"
-                        min={minWorkers ?? 1}
-                        max={maxWorkers}
-                        placeholder="Number of workers"
-                        data-testid="input-workercount"
-                      />
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          className="pl-7"
+                          data-testid="input-payrate"
+                        />
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-            ) : (
-              <input type="hidden" {...form.register("workerCount")} />
-            )}
+            </div>
 
             {skillsComponentEnabled && skills.length > 0 && (
               <div className="space-y-3">

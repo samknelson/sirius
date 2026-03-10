@@ -51,6 +51,7 @@ const formSchema = z.object({
   status: z.enum(dispatchJobStatusEnum),
   startYmd: z.string().min(1, "Start date is required"),
   workerCount: z.string().optional(),
+  payRate: z.string().optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -91,6 +92,7 @@ export default function DispatchJobNewPage() {
       status: "draft",
       startYmd: getTodayYmd(),
       workerCount: "",
+      payRate: "",
     },
   });
 
@@ -100,6 +102,10 @@ export default function DispatchJobNewPage() {
         data.workerCount && data.workerCount.trim() !== ""
           ? parseInt(data.workerCount, 10)
           : null;
+      const payRateVal =
+        data.payRate && data.payRate.trim() !== ""
+          ? data.payRate.trim()
+          : null;
       return apiRequest("POST", "/api/dispatch-jobs", {
         title: data.title,
         description: data.description,
@@ -108,6 +114,7 @@ export default function DispatchJobNewPage() {
         status: data.status,
         startYmd: data.startYmd,
         workerCount: workerCountNum,
+        payRate: payRateVal,
         data:
           selectedSkills.length > 0
             ? { requiredSkills: selectedSkills }
@@ -248,7 +255,7 @@ export default function DispatchJobNewPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <FormField
                   control={form.control}
                   name="status"
@@ -309,6 +316,31 @@ export default function DispatchJobNewPage() {
                           placeholder="Number of workers needed"
                           data-testid="input-workercount"
                         />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="payRate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Pay Rate</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                          <Input
+                            {...field}
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            className="pl-7"
+                            data-testid="input-payrate"
+                          />
+                        </div>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
