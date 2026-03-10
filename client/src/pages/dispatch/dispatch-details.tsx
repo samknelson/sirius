@@ -128,11 +128,18 @@ function DispatchDetailsContent() {
           </CardHeader>
           <CardContent>
             {dispatch.job ? (
-              <Link href={`/dispatch/job/${dispatch.jobId}`}>
-                <p className="font-medium text-foreground hover:underline cursor-pointer" data-testid="link-job-title">
-                  {dispatch.job.title}
-                </p>
-              </Link>
+              <div className="space-y-1">
+                <Link href={`/dispatch/job/${dispatch.jobId}`}>
+                  <p className="font-medium text-foreground hover:underline cursor-pointer" data-testid="link-job-title">
+                    {dispatch.job.title}
+                  </p>
+                </Link>
+                {dispatch.job.payRate != null && (
+                  <p className="text-sm text-muted-foreground" data-testid="text-pay-rate">
+                    Pay Rate: ${parseFloat(dispatch.job.payRate).toFixed(2)}
+                  </p>
+                )}
+              </div>
             ) : (
               <p className="font-medium text-muted-foreground" data-testid="text-job-title">
                 Unknown Job
