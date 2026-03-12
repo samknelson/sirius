@@ -55,7 +55,7 @@ export default function GbhetLegalHourlyConfigList({ pluginId }: ChargePluginCon
   });
 
   const { data: employmentStatuses = [] } = useQuery<EmploymentStatus[]>({
-    queryKey: ["/api/employment-statuses"],
+    queryKey: ["/api/options/employment-status"],
   });
 
   const toggleEnabledMutation = useMutation({

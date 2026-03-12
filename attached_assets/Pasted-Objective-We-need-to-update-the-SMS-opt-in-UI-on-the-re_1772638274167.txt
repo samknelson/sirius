@@ -1,0 +1,45 @@
+Objective
+We need to update the SMS opt-in UI on the registration portal and create two new legal pages (Privacy Policy and Terms of Service) to comply with Twilio A2P 10DLC manual review standards.
+
+Task 1: Update the SMS Opt-In UI Component
+Locate the user registration/account setup flow where users provide their phone number and opt-in to SMS.
+
+Change the Input Type: If the current SMS opt-in is a toggle switch, replace it with a standard, unchecked HTML checkbox. It is critical that this box is not pre-checked by default.
+
+Layout Validation: Ensure the phone number input field is visually grouped with this new opt-in checkbox.
+
+Update Disclosure Copy: Place the following exact text immediately next to or below the checkbox:
+
+"By checking this box, you agree to receive automated dispatch alerts from HTA Connect (a program of the Hospitality Industry Training and Education Fund). Message and data rates may apply. Frequency depends on job availability. Text STOP to cancel, HELP for help."
+
+Add Legal Links: Directly underneath the disclosure text, add two visible hyperlinks reading "Privacy Policy" and "Terms of Service" that route to /privacy and /terms, respectively.
+
+Task 2: Create the Privacy Policy Page
+Create a new route and page at /privacy for HTA Connect. Use the following text for the SMS and Data section.
+
+Page Title: HTA Connect Privacy Policy
+Content to include:
+
+SMS Consent and Phone Number Privacy
+HTA Connect (a program of the Hospitality Industry Training and Education Fund) respects your privacy. We collect your mobile phone number solely for the purpose of sending secure, internal dispatch notifications and workforce coordination alerts related to your union representation and apprenticeship.
+
+No Third-Party Sharing: We do not sell, rent, or share your personal information, mobile phone number, or SMS opt-in consent data with any third parties, affiliates, or partners for marketing or promotional purposes under any circumstances.
+
+All text messaging originator opt-in data and consent are strictly confidential and isolated to the HTA Connect dispatch system.
+
+Task 3: Create the Terms of Service Page
+Create a new route and page at /terms for HTA Connect. Use the following text for the SMS terms.
+
+Page Title: HTA Connect Terms of Service
+Content to include:
+
+SMS/Text Messaging Terms
+Program Description: By opting into HTA Connect SMS alerts, you agree to receive automated text messages from HTA Connect (a program of the Hospitality Industry Training and Education Fund) containing time-sensitive job notifications, dispatch offers, and shift reminders.
+
+Message Frequency: Message frequency varies and depends entirely on your job availability and dispatch volume.
+
+Pricing: Message and data rates may apply. Please consult your wireless carrier for pricing details.
+
+Opt-Out Instructions: You may cancel your SMS subscription at any time. To stop receiving messages, reply STOP, QUIT, END, CANCEL, or UNSUBSCRIBE to any text message you receive from us. You will receive a single confirmation message that you have been successfully unsubscribed.
+
+Customer Care/Help Instructions: If you need assistance or are experiencing issues with the messaging program, reply HELP to any of our messages for more information.

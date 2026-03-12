@@ -27,27 +27,24 @@ export async function captureRequestContext(req: Request, res: Response, next: N
     ipAddress: getClientIp(req),
   };
 
-  // If user is authenticated, add user information from already-attached dbUser
+  // If user is authenticated, add user information via resolveDbUser helper
   const user = req.user as any;
-  if (user?.dbUser) {
-    context.userId = user.dbUser.id;
-    context.userEmail = user.dbUser.email;
-  } else if (user?.claims?.sub) {
-    // Fallback: If dbUser wasn't attached during deserialization, fetch it now
+  if (user?.claims?.sub) {
     try {
-      const replitUserId = user.claims.sub;
-      const dbUser = await storage.users.getUserByReplitId(replitUserId);
-      
+      const { resolveDbUser } = await import("../auth/helpers");
+      const dbUser = await resolveDbUser(user, user.claims.sub);
       if (dbUser) {
         context.userId = dbUser.id;
         context.userEmail = dbUser.email;
-        // Also attach to req.user for future middleware
-        user.dbUser = dbUser;
       }
     } catch (error) {
       // Log but don't block request if user lookup fails
       logger.error('Failed to fetch user context', { error });
     }
+  } else if (user?.dbUser) {
+    // Fallback for edge case where dbUser exists but claims don't
+    context.userId = user.dbUser.id;
+    context.userEmail = user.dbUser.email;
   }
 
   // Run the rest of the request in this async context

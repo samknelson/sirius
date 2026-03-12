@@ -25,7 +25,7 @@ function TrustProviderContactEditContent() {
   const { toast } = useToast();
 
   const { data: contactTypes } = useQuery<TrustProviderType[]>({
-    queryKey: ["/api/provider-contact-types"],
+    queryKey: ["/api/options/trust-provider-type"],
   });
 
   const form = useForm<UpdateContactTypeFormData>({

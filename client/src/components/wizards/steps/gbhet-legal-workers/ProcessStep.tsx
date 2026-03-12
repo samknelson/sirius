@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CheckCircle2, XCircle, AlertCircle, Play, Loader2, Database } from "lucide-react";
+import { CheckCircle2, XCircle, AlertCircle, Play, Loader2, Database, Search } from "lucide-react";
 
 interface ProcessStepProps {
   wizardId: string;
@@ -31,6 +31,15 @@ interface ProcessResults {
   errors: ProcessError[];
   resultsFileId?: string;
   completedAt?: string;
+  inactivityScan?: {
+    ran: boolean;
+    scanned: number;
+    deactivated: number;
+    alreadyInactive: number;
+    stillActive: number;
+    errors: string[];
+    details: Array<{ workerId: string; workerName: string; action: string; reason: string }>;
+  };
 }
 
 export function ProcessStep({ wizardId, wizardType, data, onDataChange }: ProcessStepProps) {
@@ -39,6 +48,7 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
   const [results, setResults] = useState<ProcessResults | null>(data?.processResults || null);
   const [error, setError] = useState<string | null>(null);
   const [wizardStatus, setWizardStatus] = useState<string | null>(null);
+  const [scanPhase, setScanPhase] = useState<string | null>(null);
 
   const { data: wizard } = useQuery<any>({
     queryKey: [`/api/wizards/${wizardId}`],
@@ -50,6 +60,7 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
   const startProcessing = async () => {
     setIsProcessing(true);
     setError(null);
+    setScanPhase(null);
     setProgress({ processed: 0, total: 0, createdCount: 0, updatedCount: 0, successCount: 0, failureCount: 0 });
 
     try {
@@ -61,15 +72,20 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
         const data = JSON.parse(event.data);
 
         if (data.type === 'progress') {
-          setProgress((prev) => ({
-            processed: data.processed !== undefined ? data.processed : prev.processed,
-            total: data.total !== undefined ? data.total : prev.total,
-            createdCount: data.createdCount !== undefined ? data.createdCount : prev.createdCount,
-            updatedCount: data.updatedCount !== undefined ? data.updatedCount : prev.updatedCount,
-            successCount: data.successCount !== undefined ? data.successCount : prev.successCount,
-            failureCount: data.failureCount !== undefined ? data.failureCount : prev.failureCount,
-          }));
+          if (data.phase) {
+            setScanPhase(data.phaseMessage || data.phase);
+          } else {
+            setProgress((prev) => ({
+              processed: data.processed !== undefined ? data.processed : prev.processed,
+              total: data.total !== undefined ? data.total : prev.total,
+              createdCount: data.createdCount !== undefined ? data.createdCount : prev.createdCount,
+              updatedCount: data.updatedCount !== undefined ? data.updatedCount : prev.updatedCount,
+              successCount: data.successCount !== undefined ? data.successCount : prev.successCount,
+              failureCount: data.failureCount !== undefined ? data.failureCount : prev.failureCount,
+            }));
+          }
         } else if (data.type === 'complete') {
+          setScanPhase(null);
           setResults(data.results);
           setWizardStatus(data.wizardStatus);
           setIsProcessing(false);
@@ -137,7 +153,9 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
               <div className="flex items-center space-x-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span className="text-sm font-medium">
-                  {mode === 'create' ? 'Creating workers...' : 'Updating workers...'}
+                  {scanPhase
+                    ? scanPhase
+                    : mode === 'create' ? 'Creating workers...' : 'Updating workers...'}
                 </span>
               </div>
               
@@ -305,6 +323,79 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
                     Successfully {mode === 'create' ? 'created' : 'updated'} {results.successCount.toLocaleString()} worker{results.successCount !== 1 ? 's' : ''}.
                   </AlertDescription>
                 </Alert>
+              )}
+
+              {results.inactivityScan && (
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center gap-2">
+                      <Search className="h-5 w-5 text-muted-foreground" />
+                      <CardTitle className="text-base">Inactivity Scan Results</CardTitle>
+                    </div>
+                    <CardDescription>
+                      Automatic scan for workers inactive for more than 3 months
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {!results.inactivityScan.ran ? (
+                      <Alert variant="destructive">
+                        <XCircle className="h-4 w-4" />
+                        <AlertTitle>Scan Failed</AlertTitle>
+                        <AlertDescription>
+                          {results.inactivityScan.errors.join(', ') || 'Unknown error'}
+                        </AlertDescription>
+                      </Alert>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-4 gap-4 text-sm">
+                          <div className="text-center" data-testid="text-scan-scanned">
+                            <p className="text-lg font-semibold">{results.inactivityScan.scanned}</p>
+                            <p className="text-muted-foreground">Scanned</p>
+                          </div>
+                          <div className="text-center" data-testid="text-scan-deactivated">
+                            <p className="text-lg font-semibold text-orange-600">{results.inactivityScan.deactivated}</p>
+                            <p className="text-muted-foreground">Deactivated</p>
+                          </div>
+                          <div className="text-center" data-testid="text-scan-already-inactive">
+                            <p className="text-lg font-semibold text-muted-foreground">{results.inactivityScan.alreadyInactive}</p>
+                            <p className="text-muted-foreground">Already Inactive</p>
+                          </div>
+                          <div className="text-center" data-testid="text-scan-still-active">
+                            <p className="text-lg font-semibold text-green-600">{results.inactivityScan.stillActive}</p>
+                            <p className="text-muted-foreground">Still Active</p>
+                          </div>
+                        </div>
+                        {results.inactivityScan.deactivated > 0 && (
+                          <Alert>
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertTitle>Workers Deactivated</AlertTitle>
+                            <AlertDescription>
+                              {results.inactivityScan.deactivated} worker{results.inactivityScan.deactivated !== 1 ? 's were' : ' was'} set to Inactive due to no active work status in the last 3 months.
+                            </AlertDescription>
+                          </Alert>
+                        )}
+                        {results.inactivityScan.deactivated === 0 && results.inactivityScan.scanned > 0 && (
+                          <Alert>
+                            <CheckCircle2 className="h-4 w-4" />
+                            <AlertTitle>No Changes Needed</AlertTitle>
+                            <AlertDescription>
+                              All scanned workers are either still active or were already inactive.
+                            </AlertDescription>
+                          </Alert>
+                        )}
+                        {results.inactivityScan.errors.length > 0 && (
+                          <Alert variant="destructive">
+                            <XCircle className="h-4 w-4" />
+                            <AlertTitle>Scan Errors</AlertTitle>
+                            <AlertDescription>
+                              {results.inactivityScan.errors.join(', ')}
+                            </AlertDescription>
+                          </Alert>
+                        )}
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
               )}
             </div>
           )}

@@ -9,6 +9,25 @@ const updateSmsOptinSchema = z.object({
   allowlist: z.boolean().optional(),
 });
 
+async function checkSmsOptinAccess(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+  requireAccess: PolicyMiddleware
+): Promise<void> {
+  const { phoneNumber } = req.params;
+  const matchingPhones = await storage.contacts.phoneNumbers.getPhoneNumbersByNumber(phoneNumber);
+
+  for (const phone of matchingPhones) {
+    const worker = await storage.workers.getWorkerByContactId(phone.contactId);
+    if (worker) {
+      return requireAccess('worker.view', () => worker.id)(req, res, next);
+    }
+  }
+
+  return requireAccess('admin')(req, res, next);
+}
+
 // Type for middleware functions
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -341,10 +360,10 @@ export function registerPhoneNumberRoutes(
     }
   });
 
-  // SMS Opt-in Routes (requires admin policy)
+  // SMS Opt-in Routes (admin or worker viewing own phone number)
   if (requireAccess) {
     // GET /api/sms-optin/:phoneNumber - Get SMS opt-in status for a phone number
-    app.get("/api/sms-optin/:phoneNumber", requireAuth, requireAccess('admin'), async (req, res) => {
+    app.get("/api/sms-optin/:phoneNumber", requireAuth, (req, res, next) => checkSmsOptinAccess(req, res, next, requireAccess), async (req, res) => {
       try {
         const { phoneNumber } = req.params;
         const optin = await smsOptinStorage.getSmsOptinByPhoneNumber(phoneNumber);
@@ -381,7 +400,7 @@ export function registerPhoneNumberRoutes(
     });
 
     // PUT /api/sms-optin/:phoneNumber - Create or update SMS opt-in for a phone number
-    app.put("/api/sms-optin/:phoneNumber", requireAuth, requireAccess('admin'), async (req, res) => {
+    app.put("/api/sms-optin/:phoneNumber", requireAuth, (req, res, next) => checkSmsOptinAccess(req, res, next, requireAccess), async (req, res) => {
       try {
         const { phoneNumber } = req.params;
         
@@ -486,7 +505,7 @@ export function registerPhoneNumberRoutes(
     });
 
     // GET /api/sms-optin/:phoneNumber/public-token - Get or create public token for a phone number
-    app.get("/api/sms-optin/:phoneNumber/public-token", requireAuth, requireAccess('admin'), async (req, res) => {
+    app.get("/api/sms-optin/:phoneNumber/public-token", requireAuth, (req, res, next) => checkSmsOptinAccess(req, res, next, requireAccess), async (req, res) => {
       try {
         const { phoneNumber } = req.params;
         

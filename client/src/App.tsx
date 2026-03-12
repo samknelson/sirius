@@ -19,15 +19,21 @@ import "@/plugins/charge-plugins";
 import LoginPage from "@/pages/login";
 import UnauthorizedPage from "@/pages/unauthorized";
 import NotFound from "@/pages/not-found";
+import VerifyWorkerPage from "@/pages/verify-worker";
+import RegisterPage from "@/pages/register";
 
 // Lazy-loaded pages
 const Bootstrap = lazy(() => import("@/pages/bootstrap"));
 const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
+const PrivacyPolicyPage = lazy(() => import("@/pages/privacy"));
+const TermsOfServicePage = lazy(() => import("@/pages/terms"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
 const Bookmarks = lazy(() => import("@/pages/bookmarks"));
 const AlertsPage = lazy(() => import("@/pages/alerts").then(m => ({ default: m.default })));
 const AlertsRedirect = lazy(() => import("@/pages/alerts").then(m => ({ default: m.AlertsRedirect })));
 const Reports = lazy(() => import("@/pages/reports"));
+const Imports = lazy(() => import("@/pages/imports"));
+const InactivityScan = lazy(() => import("@/pages/inactivity-scan"));
 const ReportType = lazy(() => import("@/pages/report-type"));
 const Workers = lazy(() => import("@/pages/workers"));
 const WorkersAdd = lazy(() => import("@/pages/workers-add"));
@@ -38,15 +44,19 @@ const WorkerIDs = lazy(() => import("@/pages/worker-ids"));
 const WorkerBirthDate = lazy(() => import("@/pages/worker-birth-date"));
 const WorkerGender = lazy(() => import("@/pages/worker-gender"));
 const WorkerWorkStatus = lazy(() => import("@/pages/worker-work-status"));
+const WorkerMemberStatus = lazy(() => import("@/pages/worker-member-status"));
 const WorkerUserPage = lazy(() => import("@/pages/worker-user"));
 const WorkerBargainingUnit = lazy(() => import("@/pages/worker-bargaining-unit"));
 const WorkerSteward = lazy(() => import("@/pages/worker-steward"));
-const WorkerRepresentatives = lazy(() => import("@/pages/worker-representatives"));
 const WorkerDispatchStatus = lazy(() => import("@/pages/workers/dispatch-status"));
 const WorkerDispatchDoNotCall = lazy(() => import("@/pages/workers/dispatch-do-not-call"));
 const WorkerDispatchHoldForEmployer = lazy(() => import("@/pages/workers/dispatch-hold-for-employer"));
+const WorkerDispatchEba = lazy(() => import("@/pages/workers/dispatch-eba"));
 const WorkerBans = lazy(() => import("@/pages/workers/bans"));
 const WorkerSkills = lazy(() => import("@/pages/worker-skills"));
+const WorkerCertifications = lazy(() => import("@/pages/worker-certifications"));
+const WorkerCertificationView = lazy(() => import("@/pages/worker-certification-view"));
+const WorkerRatings = lazy(() => import("@/pages/worker-ratings"));
 const WorkerLedgerAccounts = lazy(() => import("@/pages/worker-ledger-accounts"));
 const Stewards = lazy(() => import("@/pages/stewards"));
 const WorkerBenefitsHistory = lazy(() => import("@/pages/worker-benefits-history"));
@@ -56,6 +66,7 @@ const WorkerCurrentEmployment = lazy(() => import("@/pages/worker-current-employ
 const WorkerEmploymentHistory = lazy(() => import("@/pages/worker-employment-history"));
 const WorkerHoursMonthly = lazy(() => import("@/pages/worker-hours-monthly"));
 const WorkerHoursDaily = lazy(() => import("@/pages/worker-hours-daily"));
+const WorkerDispatches = lazy(() => import("@/pages/worker-dispatches"));
 const WorkerHoursView = lazy(() => import("@/pages/worker-hours-view"));
 const WorkerHoursEdit = lazy(() => import("@/pages/worker-hours-edit"));
 const WorkerHoursDelete = lazy(() => import("@/pages/worker-hours-delete"));
@@ -163,30 +174,42 @@ const FloodEventsPage = lazy(() => import("@/pages/flood-events"));
 const FloodEventsConfigPage = lazy(() => import("@/pages/flood-events-config"));
 const PostalAddressesConfigPage = lazy(() => import("@/pages/config/addresses"));
 const PhoneNumbersConfigPage = lazy(() => import("@/pages/config/phone-numbers"));
-const GenderOptionsPage = lazy(() => import("@/pages/config/gender-options"));
-const WorkerIDTypesPage = lazy(() => import("@/pages/config/worker-id-types"));
-const WorkerWorkStatusesPage = lazy(() => import("@/pages/config/worker-work-statuses"));
-const SkillOptionsPage = lazy(() => import("@/pages/config/skill-options"));
+const DynamicOptionsPage = lazy(() => import("@/pages/config/options"));
 const StewardSettingsPage = lazy(() => import("@/pages/config/steward-settings"));
-const EmploymentStatusesPage = lazy(() => import("@/pages/config/employment-statuses"));
-const TrustBenefitTypesPage = lazy(() => import("@/pages/config/trust-benefit-types"));
-const EmployerContactTypesPage = lazy(() => import("@/pages/config/employer-contact-types"));
-const EmployerTypesPage = lazy(() => import("@/pages/config/employer-types"));
-const ProviderContactTypesPage = lazy(() => import("@/pages/config/provider-contact-types"));
 const EventTypesPage = lazy(() => import("@/pages/config/event-types"));
 const DispatchJobTypesPage = lazy(() => import("@/pages/config/dispatch-job-types"));
 const DispatchJobTypeViewPage = lazy(() => import("@/pages/config/dispatch-job-type-view"));
 const DispatchJobTypeEditPage = lazy(() => import("@/pages/config/dispatch-job-type-edit"));
 const DispatchJobTypeDeletePage = lazy(() => import("@/pages/config/dispatch-job-type-delete"));
 const DispatchJobTypePluginsPage = lazy(() => import("@/pages/config/dispatch-job-type-plugins"));
+const DispatchJobTypeNotificationsPage = lazy(() => import("@/pages/config/dispatch-job-type-notifications"));
+const DispatchJobTypeRunSettingsPage = lazy(() => import("@/pages/config/dispatch-job-type-run-settings"));
 const DispatchDncConfigPage = lazy(() => import("@/pages/config/dispatch-dnc"));
+const DispatchEbaSettingsPage = lazy(() => import("@/pages/config/dispatch-eba-settings"));
+const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
+const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
+const WsBundlesPage = lazy(() => import("@/pages/config/ws/bundles"));
+const WsClientsPage = lazy(() => import("@/pages/config/ws/clients"));
+const WsClientSettingsPage = lazy(() => import("@/pages/config/ws/client-settings"));
+const WsClientCredentialsPage = lazy(() => import("@/pages/config/ws/client-credentials"));
+const WsClientIpRulesPage = lazy(() => import("@/pages/config/ws/client-ip-rules"));
+const WsClientTestPage = lazy(() => import("@/pages/config/ws/client-test"));
+const WsClientLogsPage = lazy(() => import("@/pages/config/ws/client-logs"));
 const WorkerBanConfigPage = lazy(() => import("@/pages/config/workers-ban"));
 const DispatchJobsPage = lazy(() => import("@/pages/dispatch/jobs"));
 const DispatchJobDetailsPage = lazy(() => import("@/pages/dispatch/job-details"));
 const DispatchJobEditPage = lazy(() => import("@/pages/dispatch/job-edit"));
-const DispatchJobDispatchesPage = lazy(() => import("@/pages/dispatch/job-dispatches"));
+const DispatchJobDispatchesListPage = lazy(() => import("@/pages/dispatch/job-dispatches"));
+const DispatchJobDispatchesCbnPage = lazy(() => import("@/pages/dispatch/job-dispatches-cbn"));
 const DispatchJobEligibleWorkersPage = lazy(() => import("@/pages/dispatch/job-eligible-workers"));
+const DispatchJobEligibleWorkersCheckPage = lazy(() => import("@/pages/dispatch/job-eligible-check"));
 const DispatchJobNewPage = lazy(() => import("@/pages/dispatch/job-new"));
+const DispatchJobRunPage = lazy(() => import("@/pages/dispatch/job-run"));
+const DispatchJobRunSettingsPage = lazy(() => import("@/pages/dispatch/job-run-settings"));
+const DispatchJobRunBatchPage = lazy(() => import("@/pages/dispatch/job-run-batch"));
+const DispatchDetailsPage = lazy(() => import("@/pages/dispatch/dispatch-details"));
+const DispatchEditPage = lazy(() => import("@/pages/dispatch/dispatch-edit"));
+const DispatchManagePage = lazy(() => import("@/pages/dispatch/dispatch-manage"));
 const MasqueradePage = lazy(() => import("@/pages/config/masquerade"));
 const SystemModePage = lazy(() => import("@/pages/config/system-mode"));
 const DefaultPolicyPage = lazy(() => import("@/pages/config/default-policy"));
@@ -236,6 +259,12 @@ const BtuCsgViewPage = lazy(() => import("@/pages/sitespecific/btu/csg-view"));
 const BtuCsgEditPage = lazy(() => import("@/pages/sitespecific/btu/csg-edit"));
 const BtuCsgNewPage = lazy(() => import("@/pages/sitespecific/btu/csg-new"));
 const BtuEmployerMapListPage = lazy(() => import("@/pages/sitespecific/btu/employer-map-list"));
+const EdlsSheetsPage = lazy(() => import("@/pages/edls/sheets"));
+const EdlsSheetDetailsPage = lazy(() => import("@/pages/edls/sheet-details"));
+const EdlsSheetAssignmentsPage = lazy(() => import("@/pages/edls/sheet-assignments"));
+const EdlsSheetManagePage = lazy(() => import("@/pages/edls/sheet-manage"));
+const EdlsSheetEditPage = lazy(() => import("@/pages/edls/sheet-edit"));
+const EdlsSheetLogsPage = lazy(() => import("@/pages/edls/sheet-logs"));
 
 // Loading fallback component
 function PageLoader() {
@@ -308,8 +337,12 @@ function Router() {
         {/* Public routes */}
         <Route path="/bootstrap" component={Bootstrap} />
         <Route path="/login" component={LoginPage} />
+        <Route path="/verify-worker" component={VerifyWorkerPage} />
+        <Route path="/register" component={RegisterPage} />
         <Route path="/unauthorized" component={UnauthorizedPage} />
         <Route path="/sms/optin/:token" component={SmsOptinPage} />
+        <Route path="/privacy" component={PrivacyPolicyPage} />
+        <Route path="/terms" component={TermsOfServicePage} />
 
       {/* Protected routes */}
       <Route path="/workers/add">
@@ -432,6 +465,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/workers/:id/member-status">
+        <ProtectedRoute tabId="member-status" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerMemberStatus />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/:id/user">
         <ProtectedRoute tabId="user" entityType="worker">
           <AuthenticatedLayout>
@@ -452,6 +493,38 @@ function Router() {
         <ProtectedRoute tabId="skills" entityType="worker">
           <AuthenticatedLayout>
             <WorkerSkills />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/certifications">
+        <ProtectedRoute tabId="certifications" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerCertifications />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/worker-certification/:id">
+        <ProtectedRoute component="worker.certifications">
+          <AuthenticatedLayout>
+            <WorkerCertificationView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/worker-certification/:id/edit">
+        <ProtectedRoute component="worker.certifications" permission="staff">
+          <AuthenticatedLayout>
+            <WorkerCertificationView defaultTab="edit" />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/ratings">
+        <ProtectedRoute tabId="ratings" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerRatings />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -504,14 +577,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/workers/:id/union/representatives">
-        <ProtectedRoute tabId="representatives" entityType="worker">
-          <AuthenticatedLayout>
-            <WorkerRepresentatives />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
       <Route path="/workers/:id/dispatch/status">
         <ProtectedRoute tabId="dispatch-status" entityType="worker">
           <AuthenticatedLayout>
@@ -532,6 +597,14 @@ function Router() {
         <ProtectedRoute tabId="dispatch-hfe" entityType="worker">
           <AuthenticatedLayout>
             <WorkerDispatchHoldForEmployer />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/dispatch/eba">
+        <ProtectedRoute tabId="dispatch-eba" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerDispatchEba />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -580,6 +653,14 @@ function Router() {
         <ProtectedRoute tabId="daily" entityType="worker">
           <AuthenticatedLayout>
             <WorkerHoursDaily />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/dispatch/list">
+        <ProtectedRoute tabId="dispatch-list" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerDispatches />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -726,6 +807,22 @@ function Router() {
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <Reports />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/imports">
+        <ProtectedRoute permission="staff">
+          <AuthenticatedLayout>
+            <Imports />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/inactivity-scan">
+        <ProtectedRoute permission="staff">
+          <AuthenticatedLayout>
+            <InactivityScan />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1508,51 +1605,11 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/gender-options">
+      <Route path="/config/options/:type">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <GenderOptionsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/worker-id-types">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <WorkerIDTypesPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/worker-work-statuses">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <WorkerWorkStatusesPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/skill-options">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <SkillOptionsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/employment-statuses">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <EmploymentStatusesPage />
+              <DynamicOptionsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -1563,36 +1620,6 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <StewardSettingsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/trust-benefit-types">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <TrustBenefitTypesPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/employer-contact-types">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <EmployerContactTypesPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/employer-types">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <EmployerTypesPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -1642,6 +1669,22 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/dispatch-job-type/:id/notifications">
+        <ProtectedRoute tabId="notifications" entityType="dispatch_job_type">
+          <AuthenticatedLayout>
+            <DispatchJobTypeNotificationsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/dispatch-job-type/:id/run-settings">
+        <ProtectedRoute tabId="run-settings" entityType="dispatch_job_type">
+          <AuthenticatedLayout>
+            <DispatchJobTypeRunSettingsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/dispatch-job-type/:id/delete">
         <ProtectedRoute tabId="delete" entityType="dispatch_job_type">
           <AuthenticatedLayout>
@@ -1660,6 +1703,96 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/dispatch/eba">
+        <ProtectedRoute permission="admin" component="dispatch.eba">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DispatchEbaSettingsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/edls/settings">
+        <ProtectedRoute permission="admin" component="edls">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <EdlsSettingsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/edls/tasks">
+        <ProtectedRoute permission="admin" component="edls">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <EdlsTasksPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/ws/bundles">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WsBundlesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/ws/clients/:id/logs">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <WsClientLogsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/ws/clients/:id/test">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <WsClientTestPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/ws/clients/:id/ip-rules">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <WsClientIpRulesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/ws/clients/:id/credentials">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <WsClientCredentialsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/ws/clients/:id">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <WsClientSettingsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/ws/clients">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WsClientsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/workers/ban">
         <ProtectedRoute permission="admin" component="worker.ban">
           <AuthenticatedLayout>
@@ -1671,7 +1804,7 @@ function Router() {
       </Route>
 
       <Route path="/dispatch/jobs">
-        <ProtectedRoute permission="admin" component="dispatch">
+        <ProtectedRoute policy="staff" component="dispatch">
           <AuthenticatedLayout>
             <DispatchJobsPage />
           </AuthenticatedLayout>
@@ -1679,7 +1812,7 @@ function Router() {
       </Route>
 
       <Route path="/dispatch/job/new">
-        <ProtectedRoute permission="admin" component="dispatch">
+        <ProtectedRoute policy="staff" component="dispatch">
           <AuthenticatedLayout>
             <DispatchJobNewPage />
           </AuthenticatedLayout>
@@ -1702,28 +1835,130 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/dispatch/job/:id/dispatches">
-        <ProtectedRoute tabId="dispatches" entityType="dispatch_job">
+      <Route path="/dispatch/job/:id/run/control">
+        <ProtectedRoute tabId="run-control" entityType="dispatch_job">
           <AuthenticatedLayout>
-            <DispatchJobDispatchesPage />
+            <DispatchJobRunPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
-      <Route path="/dispatch/job/:id/eligible-workers">
-        <ProtectedRoute tabId="eligible-workers" entityType="dispatch_job">
+      <Route path="/dispatch/job/:id/run/batch">
+        <ProtectedRoute tabId="run-batch" entityType="dispatch_job">
+          <AuthenticatedLayout>
+            <DispatchJobRunBatchPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job/:id/run/settings">
+        <ProtectedRoute tabId="run-settings" entityType="dispatch_job">
+          <AuthenticatedLayout>
+            <DispatchJobRunSettingsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job/:id/dispatches/list">
+        <ProtectedRoute tabId="dispatches-list" entityType="dispatch_job">
+          <AuthenticatedLayout>
+            <DispatchJobDispatchesListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job/:id/dispatches/cbn">
+        <ProtectedRoute tabId="dispatches-cbn" entityType="dispatch_job">
+          <AuthenticatedLayout>
+            <DispatchJobDispatchesCbnPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job/:id/eligible-workers/list">
+        <ProtectedRoute tabId="eligible-workers-list" entityType="dispatch_job">
           <AuthenticatedLayout>
             <DispatchJobEligibleWorkersPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/provider-contact-types">
-        <ProtectedRoute permission="admin">
+      <Route path="/dispatch/job/:id/eligible-workers/check">
+        <ProtectedRoute tabId="eligible-workers-check" entityType="dispatch_job">
           <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <ProviderContactTypesPage />
-            </ConfigurationLayout>
+            <DispatchJobEligibleWorkersCheckPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/:id">
+        <ProtectedRoute tabId="details" entityType="dispatch">
+          <AuthenticatedLayout>
+            <DispatchDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="dispatch">
+          <AuthenticatedLayout>
+            <DispatchEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/:id/manage">
+        <ProtectedRoute tabId="manage" entityType="dispatch">
+          <AuthenticatedLayout>
+            <DispatchManagePage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/edls/sheets">
+        <ProtectedRoute policy="edls.any" component="edls">
+          <AuthenticatedLayout>
+            <EdlsSheetsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/edls/sheet/:id">
+        <ProtectedRoute tabId="details" entityType="edls_sheet">
+          <AuthenticatedLayout>
+            <EdlsSheetDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/edls/sheet/:id/assignments">
+        <ProtectedRoute tabId="assignments" entityType="edls_sheet">
+          <AuthenticatedLayout>
+            <EdlsSheetAssignmentsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/edls/sheet/:id/manage">
+        <ProtectedRoute tabId="manage" entityType="edls_sheet">
+          <AuthenticatedLayout>
+            <EdlsSheetManagePage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/edls/sheet/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="edls_sheet">
+          <AuthenticatedLayout>
+            <EdlsSheetEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/edls/sheet/:id/logs">
+        <ProtectedRoute tabId="logs" entityType="edls_sheet">
+          <AuthenticatedLayout>
+            <EdlsSheetLogsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

@@ -7,7 +7,10 @@ import {
 } from "../types";
 import { registerEligibilityPlugin } from "../registry";
 import { storage } from "../../storage/database";
+import { createUnifiedOptionsStorage } from "../../storage/unified-options";
 import { z } from "zod";
+
+const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
 const workStatusConfigSchema = baseEligibilityConfigSchema.extend({
   allowedStatusIds: z.array(z.string().uuid()).min(1, "At least one allowed status is required"),
@@ -59,7 +62,7 @@ class WorkStatusPlugin extends EligibilityPlugin<WorkStatusConfig> {
     }
 
     const allowedStatuses = await Promise.all(
-      config.allowedStatusIds.map(id => storage.options.workerWs.get(id))
+      config.allowedStatusIds.map(id => unifiedOptionsStorage.get("worker-ws", id))
     );
     const allowedNames = allowedStatuses
       .filter((s): s is NonNullable<typeof s> => s !== undefined && s !== null)

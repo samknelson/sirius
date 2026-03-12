@@ -1,4 +1,6 @@
-import { db } from "../db";
+import { createNoopValidator } from './utils/validation';
+import { getClient } from './transaction-context';
+import { db } from './db';
 import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
 import type { 
   LedgerAccount, 
@@ -17,6 +19,11 @@ import { eq, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, in
 import { alias as pgAlias } from "drizzle-orm/pg-core";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { formatAmount, getCurrency } from "@shared/currency";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface StripePaymentMethodStorage {
   getAll(): Promise<LedgerStripePaymentMethod[]>;
@@ -145,22 +152,28 @@ export interface LedgerStorage {
 export function createLedgerAccountStorage(): LedgerAccountStorage {
   return {
     async getAll(): Promise<LedgerAccount[]> {
-      const results = await db.select().from(ledgerAccounts);
+      const client = getClient();
+      const results = await client.select().from(ledgerAccounts);
       return results;
     },
 
     async get(id: string): Promise<LedgerAccount | undefined> {
-      const [account] = await db.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, id));
+      const client = getClient();
+      const [account] = await client.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, id));
       return account || undefined;
     },
 
     async create(insertAccount: InsertLedgerAccount): Promise<LedgerAccount> {
-      const [account] = await db.insert(ledgerAccounts).values(insertAccount).returning();
+      validate.validateOrThrow(insertAccount);
+      const client = getClient();
+      const [account] = await client.insert(ledgerAccounts).values(insertAccount).returning();
       return account;
     },
 
     async update(id: string, accountUpdate: Partial<InsertLedgerAccount>): Promise<LedgerAccount | undefined> {
-      const [account] = await db.update(ledgerAccounts)
+      validate.validateOrThrow(id);
+      const client = getClient();
+      const [account] = await client.update(ledgerAccounts)
         .set(accountUpdate)
         .where(eq(ledgerAccounts.id, id))
         .returning();
@@ -168,13 +181,15 @@ export function createLedgerAccountStorage(): LedgerAccountStorage {
     },
 
     async delete(id: string): Promise<boolean> {
-      const result = await db.delete(ledgerAccounts).where(eq(ledgerAccounts.id, id));
+      const client = getClient();
+      const result = await client.delete(ledgerAccounts).where(eq(ledgerAccounts.id, id));
       return result.rowCount ? result.rowCount > 0 : false;
     },
 
     async getParticipants(accountId: string, limit: number, offset: number): Promise<{ data: AccountParticipant[]; total: number }> {
+      const client = getClient();
       // First, get all participants with aggregated data (no pagination yet)
-      const allParticipants = await db
+      const allParticipants = await client
         .select({
           eaId: ledgerEa.id,
           entityType: ledgerEa.entityType,
@@ -198,7 +213,7 @@ export function createLedgerAccountStorage(): LedgerAccountStorage {
 
       // Fetch all employers
       const employersData = employerIds.length > 0
-        ? await db.select({ id: employers.id, name: employers.name })
+        ? await client.select({ id: employers.id, name: employers.name })
             .from(employers)
             .where(inArray(employers.id, employerIds))
         : [];
@@ -206,7 +221,7 @@ export function createLedgerAccountStorage(): LedgerAccountStorage {
 
       // Fetch all workers and their contacts
       const workersData = workerIds.length > 0
-        ? await db.select({ 
+        ? await client.select({ 
             id: workers.id, 
             contactId: workers.contactId,
             given: contacts.given,
@@ -220,7 +235,7 @@ export function createLedgerAccountStorage(): LedgerAccountStorage {
 
       // Fetch all trust providers
       const providersData = providerIds.length > 0
-        ? await db.select({ id: trustProviders.id, name: trustProviders.name })
+        ? await client.select({ id: trustProviders.id, name: trustProviders.name })
             .from(trustProviders)
             .where(inArray(trustProviders.id, providerIds))
         : [];
@@ -268,18 +283,21 @@ export function createLedgerAccountStorage(): LedgerAccountStorage {
 export function createStripePaymentMethodStorage(): StripePaymentMethodStorage {
   return {
     async getAll(): Promise<LedgerStripePaymentMethod[]> {
-      return await db.select().from(ledgerStripePaymentMethods)
+      const client = getClient();
+      return await client.select().from(ledgerStripePaymentMethods)
         .orderBy(desc(ledgerStripePaymentMethods.createdAt));
     },
 
     async get(id: string): Promise<LedgerStripePaymentMethod | undefined> {
-      const [paymentMethod] = await db.select().from(ledgerStripePaymentMethods)
+      const client = getClient();
+      const [paymentMethod] = await client.select().from(ledgerStripePaymentMethods)
         .where(eq(ledgerStripePaymentMethods.id, id));
       return paymentMethod || undefined;
     },
 
     async getByEntity(entityType: string, entityId: string): Promise<LedgerStripePaymentMethod[]> {
-      return await db.select().from(ledgerStripePaymentMethods)
+      const client = getClient();
+      return await client.select().from(ledgerStripePaymentMethods)
         .where(and(
           eq(ledgerStripePaymentMethods.entityType, entityType),
           eq(ledgerStripePaymentMethods.entityId, entityId)
@@ -288,14 +306,18 @@ export function createStripePaymentMethodStorage(): StripePaymentMethodStorage {
     },
 
     async create(insertPaymentMethod: InsertLedgerStripePaymentMethod): Promise<LedgerStripePaymentMethod> {
-      const [paymentMethod] = await db.insert(ledgerStripePaymentMethods)
+      validate.validateOrThrow(insertPaymentMethod);
+      const client = getClient();
+      const [paymentMethod] = await client.insert(ledgerStripePaymentMethods)
         .values(insertPaymentMethod)
         .returning();
       return paymentMethod;
     },
 
     async update(id: string, paymentMethodUpdate: Partial<InsertLedgerStripePaymentMethod>): Promise<LedgerStripePaymentMethod | undefined> {
-      const [paymentMethod] = await db.update(ledgerStripePaymentMethods)
+      validate.validateOrThrow(id);
+      const client = getClient();
+      const [paymentMethod] = await client.update(ledgerStripePaymentMethods)
         .set(paymentMethodUpdate)
         .where(eq(ledgerStripePaymentMethods.id, id))
         .returning();
@@ -303,14 +325,16 @@ export function createStripePaymentMethodStorage(): StripePaymentMethodStorage {
     },
 
     async delete(id: string): Promise<boolean> {
-      const result = await db.delete(ledgerStripePaymentMethods)
+      const client = getClient();
+      const result = await client.delete(ledgerStripePaymentMethods)
         .where(eq(ledgerStripePaymentMethods.id, id))
         .returning();
       return result.length > 0;
     },
 
     async setAsDefault(paymentMethodId: string, entityType: string, entityId: string): Promise<LedgerStripePaymentMethod | undefined> {
-      await db
+      const client = getClient();
+      await client
         .update(ledgerStripePaymentMethods)
         .set({ isDefault: false })
         .where(and(
@@ -318,7 +342,7 @@ export function createStripePaymentMethodStorage(): StripePaymentMethodStorage {
           eq(ledgerStripePaymentMethods.entityId, entityId)
         ));
       
-      const [paymentMethod] = await db
+      const [paymentMethod] = await client
         .update(ledgerStripePaymentMethods)
         .set({ isDefault: true })
         .where(and(
@@ -336,16 +360,19 @@ export function createStripePaymentMethodStorage(): StripePaymentMethodStorage {
 export function createLedgerEaStorage(): LedgerEaStorage {
   return {
     async getAll(): Promise<SelectLedgerEa[]> {
-      return await db.select().from(ledgerEa);
+      const client = getClient();
+      return await client.select().from(ledgerEa);
     },
 
     async get(id: string): Promise<SelectLedgerEa | undefined> {
-      const [entry] = await db.select().from(ledgerEa).where(eq(ledgerEa.id, id));
+      const client = getClient();
+      const [entry] = await client.select().from(ledgerEa).where(eq(ledgerEa.id, id));
       return entry || undefined;
     },
 
     async getByEntity(entityType: string, entityId: string): Promise<SelectLedgerEa[]> {
-      return await db.select().from(ledgerEa)
+      const client = getClient();
+      return await client.select().from(ledgerEa)
         .where(and(
           eq(ledgerEa.entityType, entityType),
           eq(ledgerEa.entityId, entityId)
@@ -353,7 +380,8 @@ export function createLedgerEaStorage(): LedgerEaStorage {
     },
 
     async getByEntityAndAccount(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa | undefined> {
-      const [entry] = await db.select().from(ledgerEa)
+      const client = getClient();
+      const [entry] = await client.select().from(ledgerEa)
         .where(and(
           eq(ledgerEa.entityType, entityType),
           eq(ledgerEa.entityId, entityId),
@@ -419,7 +447,8 @@ export function createLedgerEaStorage(): LedgerEaStorage {
     },
 
     async getBalance(id: string): Promise<string> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .select({ totalBalance: sum(ledger.amount) })
         .from(ledger)
         .where(eq(ledger.eaId, id));
@@ -429,12 +458,16 @@ export function createLedgerEaStorage(): LedgerEaStorage {
     },
 
     async create(insertEntry: InsertLedgerEa): Promise<SelectLedgerEa> {
-      const [entry] = await db.insert(ledgerEa).values(insertEntry).returning();
+      validate.validateOrThrow(insertEntry);
+      const client = getClient();
+      const [entry] = await client.insert(ledgerEa).values(insertEntry).returning();
       return entry;
     },
 
     async update(id: string, entryUpdate: Partial<InsertLedgerEa>): Promise<SelectLedgerEa | undefined> {
-      const [entry] = await db.update(ledgerEa)
+      validate.validateOrThrow(id);
+      const client = getClient();
+      const [entry] = await client.update(ledgerEa)
         .set(entryUpdate)
         .where(eq(ledgerEa.id, id))
         .returning();
@@ -442,7 +475,8 @@ export function createLedgerEaStorage(): LedgerEaStorage {
     },
 
     async delete(id: string): Promise<boolean> {
-      const result = await db.delete(ledgerEa).where(eq(ledgerEa.id, id));
+      const client = getClient();
+      const result = await client.delete(ledgerEa).where(eq(ledgerEa.id, id));
       return result.rowCount ? result.rowCount > 0 : false;
     }
   };
@@ -451,24 +485,28 @@ export function createLedgerEaStorage(): LedgerEaStorage {
 export function createLedgerPaymentStorage(): LedgerPaymentStorage {
   return {
     async getAll(): Promise<LedgerPayment[]> {
-      return await db.select().from(ledgerPayments)
+      const client = getClient();
+      return await client.select().from(ledgerPayments)
         .orderBy(desc(ledgerPayments.id));
     },
 
     async get(id: string): Promise<LedgerPayment | undefined> {
-      const [payment] = await db.select().from(ledgerPayments)
+      const client = getClient();
+      const [payment] = await client.select().from(ledgerPayments)
         .where(eq(ledgerPayments.id, id));
       return payment || undefined;
     },
 
     async getByLedgerEaId(ledgerEaId: string): Promise<LedgerPayment[]> {
-      return await db.select().from(ledgerPayments)
+      const client = getClient();
+      return await client.select().from(ledgerPayments)
         .where(eq(ledgerPayments.ledgerEaId, ledgerEaId))
         .orderBy(desc(ledgerPayments.id));
     },
 
     async getByAccountIdWithEntity(accountId: string): Promise<LedgerPaymentWithEntity[]> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           payment: ledgerPayments,
           ea: ledgerEa,
@@ -499,7 +537,8 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
       limit: number,
       offset: number
     ): Promise<{ data: LedgerPaymentWithEntity[]; total: number }> {
-      const [countResult] = await db
+      const client = getClient();
+      const [countResult] = await client
         .select({
           count: db.$count(ledgerPayments.id)
         })
@@ -509,7 +548,7 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
 
       const total = Number(countResult?.count || 0);
 
-      const results = await db
+      const results = await client
         .select({
           payment: ledgerPayments,
           ea: ledgerEa,
@@ -540,18 +579,20 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
     },
 
     async create(insertPayment: InsertLedgerPayment): Promise<LedgerPayment> {
+      validate.validateOrThrow(insertPayment);
+      const client = getClient();
       // Validate currency match between payment type and account
-      const [ea] = await db.select().from(ledgerEa).where(eq(ledgerEa.id, insertPayment.ledgerEaId));
+      const [ea] = await client.select().from(ledgerEa).where(eq(ledgerEa.id, insertPayment.ledgerEaId));
       if (!ea) {
         throw new Error("Account entry not found");
       }
       
-      const [account] = await db.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, ea.accountId));
+      const [account] = await client.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, ea.accountId));
       if (!account) {
         throw new Error("Account not found");
       }
       
-      const [paymentType] = await db.select().from(optionsLedgerPaymentType).where(eq(optionsLedgerPaymentType.id, insertPayment.paymentType));
+      const [paymentType] = await client.select().from(optionsLedgerPaymentType).where(eq(optionsLedgerPaymentType.id, insertPayment.paymentType));
       if (!paymentType) {
         throw new Error("Payment type not found");
       }
@@ -560,31 +601,33 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         throw new Error(`Currency mismatch: Payment type "${paymentType.name}" uses ${paymentType.currencyCode} but account "${account.name}" uses ${account.currencyCode}`);
       }
       
-      const [payment] = await db.insert(ledgerPayments)
+      const [payment] = await client.insert(ledgerPayments)
         .values(insertPayment as any)
         .returning();
       return payment;
     },
 
     async update(id: string, paymentUpdate: Partial<InsertLedgerPayment>): Promise<LedgerPayment | undefined> {
+      validate.validateOrThrow(id);
+      const client = getClient();
       // If payment type is being changed, validate currency match
       if (paymentUpdate.paymentType) {
-        const [existingPayment] = await db.select().from(ledgerPayments).where(eq(ledgerPayments.id, id));
+        const [existingPayment] = await client.select().from(ledgerPayments).where(eq(ledgerPayments.id, id));
         if (!existingPayment) {
           return undefined;
         }
         
-        const [ea] = await db.select().from(ledgerEa).where(eq(ledgerEa.id, existingPayment.ledgerEaId));
+        const [ea] = await client.select().from(ledgerEa).where(eq(ledgerEa.id, existingPayment.ledgerEaId));
         if (!ea) {
           throw new Error("Account entry not found");
         }
         
-        const [account] = await db.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, ea.accountId));
+        const [account] = await client.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, ea.accountId));
         if (!account) {
           throw new Error("Account not found");
         }
         
-        const [paymentType] = await db.select().from(optionsLedgerPaymentType).where(eq(optionsLedgerPaymentType.id, paymentUpdate.paymentType));
+        const [paymentType] = await client.select().from(optionsLedgerPaymentType).where(eq(optionsLedgerPaymentType.id, paymentUpdate.paymentType));
         if (!paymentType) {
           throw new Error("Payment type not found");
         }
@@ -594,7 +637,7 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         }
       }
       
-      const [payment] = await db.update(ledgerPayments)
+      const [payment] = await client.update(ledgerPayments)
         .set(paymentUpdate as any)
         .where(eq(ledgerPayments.id, id))
         .returning();
@@ -602,7 +645,8 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
     },
 
     async delete(id: string): Promise<boolean> {
-      const result = await db.delete(ledgerPayments)
+      const client = getClient();
+      const result = await client.delete(ledgerPayments)
         .where(eq(ledgerPayments.id, id));
       return result.rowCount ? result.rowCount > 0 : false;
     }
@@ -612,21 +656,25 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
 export function createLedgerEntryStorage(): LedgerEntryStorage {
   return {
     async getAll(): Promise<Ledger[]> {
-      return await db.select().from(ledger);
+      const client = getClient();
+      return await client.select().from(ledger);
     },
 
     async get(id: string): Promise<Ledger | undefined> {
-      const [entry] = await db.select().from(ledger).where(eq(ledger.id, id));
+      const client = getClient();
+      const [entry] = await client.select().from(ledger).where(eq(ledger.id, id));
       return entry || undefined;
     },
 
     async getByEaId(eaId: string): Promise<Ledger[]> {
-      return await db.select().from(ledger)
+      const client = getClient();
+      return await client.select().from(ledger)
         .where(eq(ledger.eaId, eaId));
     },
 
     async getByReference(referenceType: string, referenceId: string): Promise<Ledger[]> {
-      return await db.select().from(ledger)
+      const client = getClient();
+      return await client.select().from(ledger)
         .where(and(
           eq(ledger.referenceType, referenceType),
           eq(ledger.referenceId, referenceId)
@@ -634,12 +682,13 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
     },
 
     async getTransactions(filter: TransactionFilter): Promise<LedgerEntryWithDetails[]> {
+      const client = getClient();
       const refEmployers = pgAlias(employers, 'ref_employers');
       const refTrustProviders = pgAlias(trustProviders, 'ref_trust_providers');
       const refWorkers = pgAlias(workers, 'ref_workers');
       const refContacts = pgAlias(contacts, 'ref_contacts');
 
-      const query = db
+      const query = client
         .select({
           entry: ledger,
           ea: ledgerEa,
@@ -808,14 +857,18 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
     },
 
     async create(insertEntry: InsertLedger): Promise<Ledger> {
-      const [entry] = await db.insert(ledger)
+      validate.validateOrThrow(insertEntry);
+      const client = getClient();
+      const [entry] = await client.insert(ledger)
         .values(insertEntry as any)
         .returning();
       return entry;
     },
 
     async update(id: string, entryUpdate: Partial<InsertLedger>): Promise<Ledger | undefined> {
-      const [entry] = await db.update(ledger)
+      validate.validateOrThrow(id);
+      const client = getClient();
+      const [entry] = await client.update(ledger)
         .set(entryUpdate as any)
         .where(eq(ledger.id, id))
         .returning();
@@ -823,13 +876,15 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
     },
 
     async delete(id: string): Promise<boolean> {
-      const result = await db.delete(ledger)
+      const client = getClient();
+      const result = await client.delete(ledger)
         .where(eq(ledger.id, id));
       return result.rowCount ? result.rowCount > 0 : false;
     },
 
     async deleteByReference(referenceType: string, referenceId: string): Promise<number> {
-      const result = await db.delete(ledger)
+      const client = getClient();
+      const result = await client.delete(ledger)
         .where(and(
           eq(ledger.referenceType, referenceType),
           eq(ledger.referenceId, referenceId)
@@ -838,7 +893,8 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
     },
 
     async getByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<Ledger | undefined> {
-      const [entry] = await db.select()
+      const client = getClient();
+      const [entry] = await client.select()
         .from(ledger)
         .where(and(
           eq(ledger.chargePlugin, chargePlugin),
@@ -849,7 +905,8 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
     },
 
     async getByReferenceAndConfig(referenceId: string, chargePluginConfigId: string): Promise<Ledger[]> {
-      return await db.select()
+      const client = getClient();
+      return await client.select()
         .from(ledger)
         .where(and(
           eq(ledger.referenceId, referenceId),
@@ -858,6 +915,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
     },
 
     async getByFilter(filter: LedgerEntryFilter): Promise<Ledger[]> {
+      const client = getClient();
       const conditions: any[] = [];
 
       if (filter.chargePlugins && filter.chargePlugins.length > 0) {
@@ -872,7 +930,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         conditions.push(sqlRaw`${ledger.date} <= ${filter.dateTo}`);
       }
 
-      const query = db.select().from(ledger);
+      const query = client.select().from(ledger);
       
       if (conditions.length > 0) {
         return await query.where(and(...conditions)).orderBy(desc(ledger.date));
@@ -882,7 +940,8 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
     },
 
     async deleteByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<boolean> {
-      const result = await db.delete(ledger)
+      const client = getClient();
+      const result = await client.delete(ledger)
         .where(and(
           eq(ledger.chargePlugin, chargePlugin),
           eq(ledger.chargePluginKey, chargePluginKey)
@@ -960,8 +1019,9 @@ function buildInvoicesForEa(entries: SimpleLedgerEntry[]): Map<string, InvoiceBu
 function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
   return {
     async listForEa(eaId: string): Promise<InvoiceSummary[]> {
+      const client = getClient();
       // Get all ledger entries for this EA
-      const entries = await db.select({
+      const entries = await client.select({
         id: ledger.id,
         amount: ledger.amount,
         date: ledger.date,
@@ -1007,20 +1067,21 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
     },
 
     async getDetails(eaId: string, month: number, year: number): Promise<InvoiceDetails | undefined> {
+      const client = getClient();
       // Get EA to fetch accountId
-      const ea = await db.select().from(ledgerEa).where(eq(ledgerEa.id, eaId)).limit(1);
+      const ea = await client.select().from(ledgerEa).where(eq(ledgerEa.id, eaId)).limit(1);
       if (ea.length === 0) {
         return undefined;
       }
 
       // Get account to fetch invoice header/footer
-      const account = await db.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, ea[0].accountId)).limit(1);
+      const account = await client.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, ea[0].accountId)).limit(1);
       const accountData = (account.length > 0 && account[0]?.data) 
         ? account[0].data as { invoiceHeader?: string; invoiceFooter?: string } 
         : null;
 
       // Get all ledger entries for this EA (need all for running balance)
-      const simpleEntries = await db.select({
+      const simpleEntries = await client.select({
         id: ledger.id,
         amount: ledger.amount,
         date: ledger.date,

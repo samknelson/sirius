@@ -84,7 +84,7 @@ export default function DispatchJobTypesPage() {
   const [formEligibility, setFormEligibility] = useState<EligibilityPluginConfig[]>([]);
   
   const { data: jobTypes = [], isLoading } = useQuery<DispatchJobType[]>({
-    queryKey: ["/api/dispatch-job-types"],
+    queryKey: ["/api/options/dispatch-job-type"],
   });
   
   const { data: eligibilityPlugins = [] } = useQuery<EligibilityPluginMetadata[]>({
@@ -125,13 +125,13 @@ export default function DispatchJobTypesPage() {
         icon: formIcon,
         eligibility: formEligibility,
       };
-      return apiRequest("POST", "/api/dispatch-job-types", {
+      return apiRequest("POST", "/api/options/dispatch-job-type", {
         ...data,
         data: jobTypeData,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dispatch-job-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/dispatch-job-type"] });
       setIsAddDialogOpen(false);
       addForm.reset();
       resetFormState();

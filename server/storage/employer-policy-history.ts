@@ -1,4 +1,5 @@
-import { db } from "../db";
+import { createNoopValidator } from './utils/validation';
+import { getClient } from './transaction-context';
 import {
   employerPolicyHistory,
   policies,
@@ -6,6 +7,11 @@ import {
 } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator<{ employerId: string; date: string; policyId: string; data?: any }, EmployerPolicyHistory>();
 
 export interface EmployerPolicyHistoryStorage {
   getEmployerPolicyHistory(employerId: string): Promise<any[]>;
@@ -18,7 +24,8 @@ export function createEmployerPolicyHistoryStorage(
   updateEmployerPolicy: (employerId: string, denormPolicyId: string | null) => Promise<any>
 ): EmployerPolicyHistoryStorage {
   async function syncEmployerCurrentPolicy(employerId: string): Promise<void> {
-    const [mostRecent] = await db
+    const client = getClient();
+    const [mostRecent] = await client
       .select()
       .from(employerPolicyHistory)
       .where(eq(employerPolicyHistory.employerId, employerId))
@@ -30,7 +37,8 @@ export function createEmployerPolicyHistoryStorage(
 
   const storage: EmployerPolicyHistoryStorage = {
     async getEmployerPolicyHistory(employerId: string): Promise<any[]> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           id: employerPolicyHistory.id,
           date: employerPolicyHistory.date,
@@ -49,7 +57,9 @@ export function createEmployerPolicyHistoryStorage(
     },
 
     async createEmployerPolicyHistory(data: { employerId: string; date: string; policyId: string; data?: any }): Promise<EmployerPolicyHistory> {
-      const [created] = await db
+      validate.validateOrThrow(data);
+      const client = getClient();
+      const [created] = await client
         .insert(employerPolicyHistory)
         .values(data)
         .returning();
@@ -60,7 +70,9 @@ export function createEmployerPolicyHistoryStorage(
     },
 
     async updateEmployerPolicyHistory(id: string, data: { date?: string; policyId?: string; data?: any }): Promise<EmployerPolicyHistory | undefined> {
-      const [updated] = await db
+      validate.validateOrThrow(data);
+      const client = getClient();
+      const [updated] = await client
         .update(employerPolicyHistory)
         .set(data)
         .where(eq(employerPolicyHistory.id, id))
@@ -74,7 +86,8 @@ export function createEmployerPolicyHistoryStorage(
     },
 
     async deleteEmployerPolicyHistory(id: string): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(employerPolicyHistory)
         .where(eq(employerPolicyHistory.id, id))
         .returning();
@@ -108,7 +121,8 @@ export const employerPolicyHistoryLoggingConfig: StorageLoggingConfig<EmployerPo
         return `Created Policy History Entry [${policyName} ${formattedDate}]`;
       },
       after: async (args, result, storage) => {
-        const [policy] = await db.select().from(policies).where(eq(policies.id, result.policyId));
+        const client = getClient();
+        const [policy] = await client.select().from(policies).where(eq(policies.id, result.policyId));
         return {
           policyHistory: result,
           policy: policy,
@@ -128,7 +142,8 @@ export const employerPolicyHistoryLoggingConfig: StorageLoggingConfig<EmployerPo
         if (beforeState?.policyHistory?.employerId) {
           return beforeState.policyHistory.employerId;
         }
-        const [entry] = await db.select().from(employerPolicyHistory).where(eq(employerPolicyHistory.id, args[0]));
+        const client = getClient();
+        const [entry] = await client.select().from(employerPolicyHistory).where(eq(employerPolicyHistory.id, args[0]));
         return entry?.employerId;
       },
       getDescription: async (args, result, beforeState, afterState) => {
@@ -143,12 +158,13 @@ export const employerPolicyHistoryLoggingConfig: StorageLoggingConfig<EmployerPo
         return `Updated Policy History Entry [${oldPolicyName} → ${newPolicyName} ${formattedDate}]`;
       },
       before: async (args, storage) => {
-        const [entry] = await db.select().from(employerPolicyHistory).where(eq(employerPolicyHistory.id, args[0]));
+        const client = getClient();
+        const [entry] = await client.select().from(employerPolicyHistory).where(eq(employerPolicyHistory.id, args[0]));
         if (!entry) {
           return null;
         }
         
-        const [policy] = await db.select().from(policies).where(eq(policies.id, entry.policyId));
+        const [policy] = await client.select().from(policies).where(eq(policies.id, entry.policyId));
         return {
           policyHistory: entry,
           policy: policy,
@@ -162,7 +178,8 @@ export const employerPolicyHistoryLoggingConfig: StorageLoggingConfig<EmployerPo
       after: async (args, result, storage) => {
         if (!result) return null;
         
-        const [policy] = await db.select().from(policies).where(eq(policies.id, result.policyId));
+        const client = getClient();
+        const [policy] = await client.select().from(policies).where(eq(policies.id, result.policyId));
         return {
           policyHistory: result,
           policy: policy,
@@ -182,7 +199,8 @@ export const employerPolicyHistoryLoggingConfig: StorageLoggingConfig<EmployerPo
         if (beforeState?.policyHistory?.employerId) {
           return beforeState.policyHistory.employerId;
         }
-        const [entry] = await db.select().from(employerPolicyHistory).where(eq(employerPolicyHistory.id, args[0]));
+        const client = getClient();
+        const [entry] = await client.select().from(employerPolicyHistory).where(eq(employerPolicyHistory.id, args[0]));
         return entry?.employerId;
       },
       getDescription: async (args, result, beforeState, afterState) => {
@@ -196,12 +214,13 @@ export const employerPolicyHistoryLoggingConfig: StorageLoggingConfig<EmployerPo
         return `Deleted Policy History Entry [${policyName} ${formattedDate}]`;
       },
       before: async (args, storage) => {
-        const [entry] = await db.select().from(employerPolicyHistory).where(eq(employerPolicyHistory.id, args[0]));
+        const client = getClient();
+        const [entry] = await client.select().from(employerPolicyHistory).where(eq(employerPolicyHistory.id, args[0]));
         if (!entry) {
           return null;
         }
         
-        const [policy] = await db.select().from(policies).where(eq(policies.id, entry.policyId));
+        const [policy] = await client.select().from(policies).where(eq(policies.id, entry.policyId));
         return {
           policyHistory: entry,
           policy: policy,

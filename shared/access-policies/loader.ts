@@ -24,6 +24,7 @@ import './worker/view';
 import './worker/edit';
 import './worker/mine';
 import './worker/ledger';
+import './worker/comm';
 
 import './trust/provider/ledger';
 import './trust/provider/mine';
@@ -46,5 +47,15 @@ import './employer/dispatch';
 import './employer/dispatch/manage';
 import './worker/dispatch/dnc/view';
 import './worker/dispatch/dnc/edit';
+import './dispatch/manage';
+
+import './edls/any';
+import './edls/reader';
+import './edls/coordinator';
+import './edls/sheet/view';
+import './edls/sheet/edit';
+import './edls/sheet/create';
+import './edls/sheet/manage';
+import './edls/sheet/set-status';
 
 export { getAllPolicies, getPolicy, hasPolicy } from './index';

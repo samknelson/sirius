@@ -3,16 +3,52 @@ import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, LogIn } from 'lucide-react';
+import { Loader2, LogIn, LogOut, UserPlus } from 'lucide-react';
+import { SignInButton, SignedIn, SignedOut, useClerk } from '@clerk/clerk-react';
+
+const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+function ClerkNotProvisionedMessage() {
+  const [, setLocation] = useLocation();
+  const { signOut } = useClerk();
+
+  return (
+    <div className="space-y-4">
+      <div className="p-4 bg-muted border rounded-lg">
+        <p className="text-sm text-foreground text-center">
+          You are signed in, but your account is not yet linked to the system.
+          If you are staff or an employer contact, please ask your administrator to set up your account.
+        </p>
+      </div>
+
+      <Button
+        variant="outline"
+        className="w-full"
+        onClick={() => setLocation("/login")}
+        data-testid="button-clerk-retry"
+      >
+        Refresh
+      </Button>
+
+      <Button
+        variant="outline"
+        className="w-full"
+        onClick={() => signOut({ redirectUrl: "/login" })}
+        data-testid="button-clerk-signout"
+      >
+        <LogOut className="mr-2 h-4 w-4" />
+        Sign Out
+      </Button>
+    </div>
+  );
+}
 
 export default function LoginPage() {
   const [, setLocation] = useLocation();
   const { login, isAuthenticated, isLoading } = useAuth();
 
-  // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated && !isLoading) {
-      // Check if there's a saved redirect path
       const redirectTo = sessionStorage.getItem('redirectAfterLogin');
       if (redirectTo) {
         sessionStorage.removeItem('redirectAfterLogin');
@@ -45,24 +81,64 @@ export default function LoginPage() {
           </div>
           <CardTitle className="text-2xl font-bold">Welcome to Sirius</CardTitle>
           <CardDescription>
-            Sign in with your Replit account to access the worker management system
+            Sign in to access the worker management system
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button 
-            onClick={login} 
-            className="w-full" 
-            size="lg"
-            data-testid="button-login"
-          >
-            <LogIn className="mr-2 h-5 w-5" />
-            Sign in with Replit
-          </Button>
+          {CLERK_ENABLED ? (
+            <>
+              <SignedOut>
+                <SignInButton mode="modal">
+                  <Button
+                    className="w-full"
+                    size="lg"
+                    data-testid="button-login-clerk"
+                  >
+                    <LogIn className="mr-2 h-5 w-5" />
+                    Sign In
+                  </Button>
+                </SignInButton>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">or</span>
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  size="lg"
+                  onClick={() => setLocation("/register")}
+                  data-testid="button-login-register"
+                >
+                  <UserPlus className="mr-2 h-5 w-5" />
+                  Register as a Worker
+                </Button>
+              </SignedOut>
+              <SignedIn>
+                <ClerkNotProvisionedMessage />
+              </SignedIn>
+            </>
+          ) : (
+            <Button
+              onClick={login}
+              className="w-full"
+              size="lg"
+              data-testid="button-login"
+            >
+              <LogIn className="mr-2 h-5 w-5" />
+              Sign in with Replit
+            </Button>
+          )}
 
           <div className="mt-4 p-4 bg-muted rounded-lg">
             <p className="text-sm text-muted-foreground text-center">
-              Your account must be pre-authorized by an administrator. 
-              If you don't have access, please contact your system administrator.
+              Staff and employer accounts must be pre-authorized by an administrator.
+              Workers can register using the link above.
             </p>
           </div>
         </CardContent>

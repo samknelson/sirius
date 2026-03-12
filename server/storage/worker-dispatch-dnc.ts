@@ -1,4 +1,5 @@
-import { db } from "../db";
+import { createNoopValidator } from './utils/validation';
+import { getClient } from './transaction-context';
 import { 
   workerDispatchDnc,
   workers,
@@ -10,6 +11,11 @@ import {
 import { eq, and } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { eventBus, EventType } from "../services/event-bus";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface WorkerDispatchDncWithRelations extends WorkerDispatchDnc {
   worker?: {
@@ -40,13 +46,14 @@ export interface WorkerDispatchDncStorage {
 }
 
 async function getWorkerName(workerId: string): Promise<string> {
-  const [worker] = await db
+  const client = getClient();
+  const [worker] = await client
     .select({ contactId: workers.contactId, siriusId: workers.siriusId })
     .from(workers)
     .where(eq(workers.id, workerId));
   if (!worker) return 'Unknown Worker';
   
-  const [contact] = await db
+  const [contact] = await client
     .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
     .from(contacts)
     .where(eq(contacts.id, worker.contactId));
@@ -56,7 +63,8 @@ async function getWorkerName(workerId: string): Promise<string> {
 }
 
 async function getEmployerName(employerId: string): Promise<string> {
-  const [employer] = await db
+  const client = getClient();
+  const [employer] = await client
     .select({ name: employers.name })
     .from(employers)
     .where(eq(employers.id, employerId));
@@ -123,11 +131,13 @@ export const workerDispatchDncLoggingConfig: StorageLoggingConfig<WorkerDispatch
 export function createWorkerDispatchDncStorage(): WorkerDispatchDncStorage {
   return {
     async getAll() {
-      return await db.select().from(workerDispatchDnc);
+      const client = getClient();
+      return await client.select().from(workerDispatchDnc);
     },
 
     async get(id: string) {
-      const [result] = await db
+      const client = getClient();
+      const [result] = await client
         .select()
         .from(workerDispatchDnc)
         .where(eq(workerDispatchDnc.id, id));
@@ -135,21 +145,24 @@ export function createWorkerDispatchDncStorage(): WorkerDispatchDncStorage {
     },
 
     async getByWorker(workerId: string) {
-      return await db
+      const client = getClient();
+      return await client
         .select()
         .from(workerDispatchDnc)
         .where(eq(workerDispatchDnc.workerId, workerId));
     },
 
     async getByEmployer(employerId: string) {
-      return await db
+      const client = getClient();
+      return await client
         .select()
         .from(workerDispatchDnc)
         .where(eq(workerDispatchDnc.employerId, employerId));
     },
 
     async getByWorkerAndEmployer(workerId: string, employerId: string) {
-      return await db
+      const client = getClient();
+      return await client
         .select()
         .from(workerDispatchDnc)
         .where(and(
@@ -159,7 +172,9 @@ export function createWorkerDispatchDncStorage(): WorkerDispatchDncStorage {
     },
 
     async create(dnc: InsertWorkerDispatchDnc) {
-      const [result] = await db
+      validate.validateOrThrow(dnc);
+      const client = getClient();
+      const [result] = await client
         .insert(workerDispatchDnc)
         .values(dnc)
         .returning();
@@ -177,7 +192,9 @@ export function createWorkerDispatchDncStorage(): WorkerDispatchDncStorage {
     },
 
     async update(id: string, dnc: Partial<InsertWorkerDispatchDnc>) {
-      const [result] = await db
+      validate.validateOrThrow(id);
+      const client = getClient();
+      const [result] = await client
         .update(workerDispatchDnc)
         .set(dnc)
         .where(eq(workerDispatchDnc.id, id))
@@ -198,7 +215,8 @@ export function createWorkerDispatchDncStorage(): WorkerDispatchDncStorage {
     },
 
     async delete(id: string) {
-      const [deleted] = await db
+      const client = getClient();
+      const [deleted] = await client
         .delete(workerDispatchDnc)
         .where(eq(workerDispatchDnc.id, id))
         .returning();

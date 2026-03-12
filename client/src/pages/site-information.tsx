@@ -13,8 +13,10 @@ import { SiteSettings } from "@/lib/system-types";
 export default function SiteInformation() {
   const { toast } = useToast();
   const [siteName, setSiteName] = useState("");
+  const [siteTitle, setSiteTitle] = useState("");
   const [footer, setFooter] = useState("");
   const [isEditingName, setIsEditingName] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingFooter, setIsEditingFooter] = useState(false);
 
   const { data: settings, isLoading } = useQuery<SiteSettings>({
@@ -23,19 +25,21 @@ export default function SiteInformation() {
 
   // Update local state when settings are loaded
   useEffect(() => {
-    if (settings && !isEditingName && !isEditingFooter) {
+    if (settings && !isEditingName && !isEditingTitle && !isEditingFooter) {
       setSiteName(settings.siteName);
+      setSiteTitle(settings.siteTitle || "");
       setFooter(settings.footer || "");
     }
-  }, [settings, isEditingName, isEditingFooter]);
+  }, [settings, isEditingName, isEditingTitle, isEditingFooter]);
 
   const updateMutation = useMutation({
-    mutationFn: async (updates: { siteName?: string; footer?: string }) => {
+    mutationFn: async (updates: { siteName?: string; siteTitle?: string; footer?: string }) => {
       return await apiRequest("PUT", "/api/site-settings", updates);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/site-settings"] });
       setIsEditingName(false);
+      setIsEditingTitle(false);
       setIsEditingFooter(false);
       toast({
         title: "Settings saved",
@@ -63,6 +67,18 @@ export default function SiteInformation() {
     updateMutation.mutate({ siteName });
   };
 
+  const handleSaveTitle = () => {
+    if (siteTitle.length > 50) {
+      toast({
+        title: "Validation error",
+        description: "Site title must be 50 characters or less.",
+        variant: "destructive",
+      });
+      return;
+    }
+    updateMutation.mutate({ siteTitle });
+  };
+
   const handleSaveFooter = () => {
     updateMutation.mutate({ footer });
   };
@@ -70,6 +86,11 @@ export default function SiteInformation() {
   const handleCancelName = () => {
     setSiteName(settings?.siteName || "");
     setIsEditingName(false);
+  };
+
+  const handleCancelTitle = () => {
+    setSiteTitle(settings?.siteTitle || "");
+    setIsEditingTitle(false);
   };
 
   const handleCancelFooter = () => {
@@ -149,6 +170,67 @@ export default function SiteInformation() {
                 <Button
                   onClick={() => setIsEditingName(true)}
                   data-testid="button-edit-name"
+                >
+                  Edit
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="site-title">Title Bar Site Name (max 50 characters)</Label>
+            {isEditingTitle ? (
+              <div className="space-y-2">
+                <Input
+                  id="site-title"
+                  value={siteTitle}
+                  onChange={(e) => setSiteTitle(e.target.value)}
+                  placeholder="Enter title bar site name"
+                  maxLength={50}
+                  data-testid="input-site-title"
+                />
+                <div className="text-sm text-muted-foreground">
+                  {siteTitle.length}/50 characters
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleSaveTitle}
+                    disabled={updateMutation.isPending}
+                    data-testid="button-save-title"
+                  >
+                    {updateMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        Save
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleCancelTitle}
+                    disabled={updateMutation.isPending}
+                    data-testid="button-cancel-title"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div
+                  className="px-3 py-2 bg-muted rounded-md"
+                  data-testid="text-site-title"
+                >
+                  {settings?.siteTitle || <em className="text-muted-foreground">Not set</em>}
+                </div>
+                <Button
+                  onClick={() => setIsEditingTitle(true)}
+                  data-testid="button-edit-title"
                 >
                   Edit
                 </Button>

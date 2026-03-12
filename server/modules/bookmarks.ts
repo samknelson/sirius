@@ -1,7 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { insertBookmarkSchema } from "@shared/schema";
-import { requireAccess } from "../services/access-policy-evaluator";
 import { enforceFloodLimit, FloodError } from "../flood";
 import { getEffectiveUser } from "./masquerade";
 
@@ -14,12 +13,11 @@ export function registerBookmarkRoutes(
   requirePermission: PermissionMiddleware
 ) {
   // GET /api/bookmarks - Get all bookmarks for the current user
-  app.get("/api/bookmarks", requireAccess('staff'), async (req, res) => {
+  app.get("/api/bookmarks", requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
-      const replitUserId = user.claims.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, replitUserId);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
@@ -33,12 +31,11 @@ export function registerBookmarkRoutes(
   });
 
   // GET /api/bookmarks/enriched - Get all bookmarks with display names pre-resolved
-  app.get("/api/bookmarks/enriched", requireAccess('staff'), async (req, res) => {
+  app.get("/api/bookmarks/enriched", requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
-      const replitUserId = user.claims.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, replitUserId);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
@@ -52,7 +49,7 @@ export function registerBookmarkRoutes(
   });
 
   // GET /api/bookmarks/check - Check if a specific entity is bookmarked
-  app.get("/api/bookmarks/check", requireAccess('staff'), async (req, res) => {
+  app.get("/api/bookmarks/check", requireAuth, async (req, res) => {
     try {
       const { entityType, entityId } = req.query;
       
@@ -61,9 +58,8 @@ export function registerBookmarkRoutes(
       }
 
       const user = req.user as any;
-      const replitUserId = user.claims.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, replitUserId);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
@@ -77,12 +73,11 @@ export function registerBookmarkRoutes(
   });
 
   // POST /api/bookmarks - Create a new bookmark
-  app.post("/api/bookmarks", requireAccess('staff'), async (req, res) => {
+  app.post("/api/bookmarks", requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
-      const replitUserId = user.claims.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, replitUserId);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
@@ -122,13 +117,12 @@ export function registerBookmarkRoutes(
   });
 
   // DELETE /api/bookmarks/:id - Delete a bookmark by ID
-  app.delete("/api/bookmarks/:id", requireAccess('staff'), async (req, res) => {
+  app.delete("/api/bookmarks/:id", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const user = req.user as any;
-      const replitUserId = user.claims.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, replitUserId);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
@@ -156,7 +150,7 @@ export function registerBookmarkRoutes(
   });
 
   // DELETE /api/bookmarks/entity/:entityType/:entityId - Delete a bookmark by entity type and ID
-  app.delete("/api/bookmarks/entity/:entityType/:entityId", requireAccess('staff'), async (req, res) => {
+  app.delete("/api/bookmarks/entity/:entityType/:entityId", requireAuth, async (req, res) => {
     try {
       const { entityType, entityId } = req.params;
       
@@ -165,9 +159,8 @@ export function registerBookmarkRoutes(
       }
 
       const user = req.user as any;
-      const replitUserId = user.claims.sub;
       const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, replitUserId);
+      const { dbUser } = await getEffectiveUser(session, user);
       
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });

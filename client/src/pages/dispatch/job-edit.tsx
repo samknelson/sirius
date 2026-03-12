@@ -28,9 +28,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Save, X } from "lucide-react";
-import { format } from "date-fns";
 import { Link } from "wouter";
-import { dispatchJobStatusEnum, type Employer, type DispatchJobType, type JobTypeData, type OptionsSkill } from "@shared/schema";
+import { type Employer, type DispatchJobType, type JobTypeData, type OptionsSkill, dispatchJobStatusEnum, type DispatchJobStatus } from "@shared/schema";
 import { DispatchJobLayout, useDispatchJobLayout } from "@/components/layouts/DispatchJobLayout";
 import { renderIcon } from "@/components/ui/icon-picker";
 
@@ -44,9 +43,12 @@ type FormData = {
   description?: string;
   employerId: string;
   jobTypeId: string;
-  status: typeof dispatchJobStatusEnum[number];
-  startDate: string;
+  startYmd: string;
   workerCount: string;
+  payRate: string;
+  startTime: string;
+  endTime: string;
+  status: DispatchJobStatus;
 };
 
 interface JobData {
@@ -66,7 +68,7 @@ function DispatchJobEditContent() {
   });
 
   const { data: jobTypes = [] } = useQuery<DispatchJobType[]>({
-    queryKey: ["/api/dispatch-job-types"],
+    queryKey: ["/api/options/dispatch-job-type"],
   });
 
   const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
@@ -78,7 +80,7 @@ function DispatchJobEditContent() {
   );
 
   const { data: skills = [] } = useQuery<OptionsSkill[]>({
-    queryKey: ["/api/options/skills"],
+    queryKey: ["/api/options/skill"],
     enabled: skillsComponentEnabled,
   });
 
@@ -88,9 +90,12 @@ function DispatchJobEditContent() {
       description: job.description || "",
       employerId: job.employerId,
       jobTypeId: job.jobTypeId || "",
-      status: job.status as typeof dispatchJobStatusEnum[number],
-      startDate: format(new Date(job.startDate), "yyyy-MM-dd"),
+      startYmd: job.startYmd,
       workerCount: job.workerCount?.toString() || "",
+      payRate: job.payRate?.toString() || "",
+      startTime: job.startTime || "",
+      endTime: job.endTime || "",
+      status: job.status as DispatchJobStatus,
     },
   });
 
@@ -116,15 +121,18 @@ function DispatchJobEditContent() {
       const workerCountNum = data.workerCount ? parseInt(data.workerCount, 10) : null;
       const updatedJobData: JobData = {
         ...(jobData ?? {}),
-        requiredSkills: selectedSkills.length > 0 ? selectedSkills : undefined,
+        requiredSkills: selectedSkills.length > 0 ? selectedSkills : [],
       };
-      const hasData = Object.values(updatedJobData).some((v) => v !== undefined);
+      const payRateVal = data.payRate && data.payRate.trim() !== "" ? data.payRate.trim() : null;
       return apiRequest("PUT", `/api/dispatch-jobs/${job.id}`, {
         ...data,
         jobTypeId: data.jobTypeId || null,
-        startDate: new Date(data.startDate).toISOString(),
         workerCount: workerCountNum,
-        data: hasData ? updatedJobData : undefined,
+        payRate: payRateVal,
+        startTime: data.startTime?.trim() || null,
+        endTime: data.endTime?.trim() || null,
+        status: data.status,
+        data: updatedJobData,
       });
     },
     onSuccess: () => {
@@ -158,7 +166,7 @@ function DispatchJobEditContent() {
       toast({ title: "Error", description: "Job type is required", variant: "destructive" });
       return;
     }
-    if (!data.startDate) {
+    if (!data.startYmd) {
       toast({ title: "Error", description: "Start date is required", variant: "destructive" });
       return;
     }
@@ -279,32 +287,7 @@ function DispatchJobEditContent() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="status"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Status *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger data-testid="select-status">
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {dispatchJobStatusEnum.map((status) => (
-                          <SelectItem key={status} value={status}>
-                            <span className="capitalize">{status}</span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="startDate"
+                name="startYmd"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Start Date *</FormLabel>
@@ -319,49 +302,137 @@ function DispatchJobEditContent() {
                   </FormItem>
                 )}
               />
-            </div>
 
-            {!isFixedWorkerCount ? (
               <FormField
                 control={form.control}
-                name="workerCount"
+                name="status"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>
-                      Worker Count *
-                      {minWorkers !== undefined && maxWorkers !== undefined && (
-                        <span className="text-muted-foreground ml-2 font-normal">
-                          ({minWorkers} - {maxWorkers})
-                        </span>
-                      )}
-                      {minWorkers !== undefined && maxWorkers === undefined && (
-                        <span className="text-muted-foreground ml-2 font-normal">
-                          (min: {minWorkers})
-                        </span>
-                      )}
-                      {minWorkers === undefined && maxWorkers !== undefined && (
-                        <span className="text-muted-foreground ml-2 font-normal">
-                          (max: {maxWorkers})
-                        </span>
-                      )}
-                    </FormLabel>
+                    <FormLabel>Status</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-status">
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {dispatchJobStatusEnum.map((status) => (
+                          <SelectItem key={status} value={status} data-testid={`option-status-${status}`}>
+                            {status.charAt(0).toUpperCase() + status.slice(1)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {!isFixedWorkerCount ? (
+                <FormField
+                  control={form.control}
+                  name="workerCount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Worker Count *
+                        {minWorkers !== undefined && maxWorkers !== undefined && (
+                          <span className="text-muted-foreground ml-2 font-normal">
+                            ({minWorkers} - {maxWorkers})
+                          </span>
+                        )}
+                        {minWorkers !== undefined && maxWorkers === undefined && (
+                          <span className="text-muted-foreground ml-2 font-normal">
+                            (min: {minWorkers})
+                          </span>
+                        )}
+                        {minWorkers === undefined && maxWorkers !== undefined && (
+                          <span className="text-muted-foreground ml-2 font-normal">
+                            (max: {maxWorkers})
+                          </span>
+                        )}
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          min={minWorkers ?? 1}
+                          max={maxWorkers}
+                          placeholder="Number of workers"
+                          data-testid="input-workercount"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : (
+                <input type="hidden" {...form.register("workerCount")} />
+              )}
+
+              <FormField
+                control={form.control}
+                name="payRate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Pay Rate</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          className="pl-7"
+                          data-testid="input-payrate"
+                        />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="startTime"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Start Time</FormLabel>
                     <FormControl>
                       <Input
                         {...field}
-                        type="number"
-                        min={minWorkers ?? 1}
-                        max={maxWorkers}
-                        placeholder="Number of workers"
-                        data-testid="input-workercount"
+                        type="time"
+                        data-testid="input-starttime"
                       />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-            ) : (
-              <input type="hidden" {...form.register("workerCount")} />
-            )}
+
+              <FormField
+                control={form.control}
+                name="endTime"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>End Time</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="time"
+                        data-testid="input-endtime"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             {skillsComponentEnabled && skills.length > 0 && (
               <div className="space-y-3">

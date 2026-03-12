@@ -1,0 +1,462 @@
+ssed":2,"entriesCreated":3}
+07:47:31 PM [app] INFO: Ban eligibility backfill completed during startup {"service":"dispatch-elig-plugins","workersProcessed":1,"entriesCreated":1}
+07:47:31 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {"service":"charge-plugin-registry","triggers":["wmb_saved"],"requiredComponent":"sitespecific.gbhet.legal"}
+07:47:31 PM [startup] INFO: Permission system initialized with core permissions {"service":"sirius"}
+07:47:31 PM [app] INFO: Registered eligibility plugin: manual {"service":"eligibility-plugin-registry"}
+07:47:31 PM [app] INFO: Registered flood event: bookmark {"service":"flood-registry","threshold":1000,"windowSeconds":360}
+07:47:31 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_skill {"service":"dispatch-elig-registry"}
+07:47:31 PM [startup] INFO: Component cache initialized {"service":"sirius"}
+07:47:31 PM [app] INFO: Backfilling skill eligibility for workers with existing skills {"service":"dispatch-elig-skill","workerCount":2,"skillCount":3}
+07:47:31 PM [startup] INFO: Address validation service initialized {"service":"sirius"}
+07:47:31 PM [startup] INFO: Access control system initialized {"service":"sirius"}
+07:47:31 PM [app] INFO: Registered eligibility plugin: work-status {"service":"eligibility-plugin-registry"}
+07:47:31 PM [app] INFO: Worker ban notifications initialized {"service":"worker-ban-notifications"}
+07:47:31 PM [startup] INFO: Worker ban notifications initialized {"service":"sirius"}
+07:47:31 PM [app] INFO: Registered cron job: sweep-expired-ban-elig {"service":"cron-registry"}
+07:47:31 PM [startup] INFO: Dispatch eligibility system initialized {"service":"sirius"}
+07:47:31 PM [app] INFO: Dispatch eligibility plugins registered {"service":"dispatch-elig-plugins","plugins":["dispatch_ban","dispatch_dnc","dispatch_hfe","dispatch_skill","dispatch_status"]}
+07:47:31 PM [app] INFO: Registered cron job: delete-expired-reports {"service":"cron-registry"}
+07:47:31 PM [app] INFO: Registered charge plugin: btu-steward-attendance {"service":"charge-plugin-registry","triggers":["participant_saved"],"requiredComponent":"sitespecific.btu"}
+> rest-express@1.0.0 start
+07:47:34 PM [app] INFO: Dispatch eligibility plugins registered {"service":"dispatch-elig-plugins","plugins":["dispatch_ban","dispatch_dnc","dispatch_hfe","dispatch_skill","dispatch_status"]}
+07:47:33 PM [app] INFO: Registered charge plugin: btu-steward-attendance {"service":"charge-plugin-registry","triggers":["participant_saved"],"requiredComponent":"sitespecific.btu"}
+07:47:31 PM [startup] INFO: Cron job handlers registered {"service":"sirius"}
+
+        ^
+07:47:31 PM [app] INFO: Component permissions registered {"service":"component-permissions","count":8}
+file:///home/runner/workspace/dist/index.js:8
+07:47:31 PM [app] INFO: Registered cron job: delete-expired-hfe {"service":"cron-registry"}
+07:47:34 PM [app] INFO: Registered cron job: worker-ban-active-scan {"service":"cron-registry"}
+    at setupAuth (file:///home/runner/workspace/dist/index.js:4464:36)
+07:47:34 PM [startup] INFO: Component cache initialized {"service":"sirius"}
+07:47:34 PM [app] INFO: Registered cron job: delete-old-cron-logs {"service":"cron-registry"}
+07:47:31 PM [app] INFO: Registered cron job: delete-old-cron-logs {"service":"cron-registry"}
+07:47:34 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_status {"service":"dispatch-elig-registry"}
+07:47:34 PM [app] INFO: Registered cron job: delete-expired-flood-events {"service":"cron-registry"}
+07:47:31 PM [app] INFO: Registered cron job: log-cleanup {"service":"cron-registry"}
+07:47:34 PM [app] INFO: Registered cron job: sweep-expired-ban-elig {"service":"cron-registry"}
+07:47:34 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_hfe {"service":"dispatch-elig-registry"}
+07:47:34 PM [app] INFO: Completed ban eligibility backfill {"service":"dispatch-elig-ban","workersProcessed":1,"entriesCreated":1}
+07:47:34 PM [app] INFO: Completed skill eligibility backfill {"service":"dispatch-elig-skill","workersProcessed":2,"entriesCreated":3}
+> NODE_ENV=production node dist/index.js
+07:47:34 PM [startup] INFO: Dispatch eligibility system initialized {"service":"sirius"}
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+07:47:34 PM [app] INFO: Worker ban notifications initialized {"service":"worker-ban-notifications"}
+07:47:34 PM [app] INFO: Registered cron job: log-cleanup {"service":"cron-registry"}
+file:///home/runner/workspace/dist/index.js:8
+07:47:31 PM [startup] INFO: Default cron jobs bootstrapped {"service":"sirius"}
+Error: Module not found in bundle: ./providers/replit
+07:47:31 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_dnc {"service":"dispatch-elig-registry"}
+07:47:34 PM [app] INFO: Skill eligibility backfill completed during startup {"service":"dispatch-elig-plugins","workersProcessed":2,"entriesCreated":3}
+Node.js v20.20.0
+07:47:34 PM [app] INFO: Component permissions registered {"service":"component-permissions","count":8}
+07:47:31 PM [app] INFO: Cron job bootstrap completed {"service":"cron-bootstrap","created":0,"skipped":8,"errors":0,"total":8}
+07:47:31 PM [app] INFO: Registered cron job: worker-certification-active-scan {"service":"cron-registry"}
+
+07:47:34 PM [log-notifier] INFO: Log notifier initialized {"service":"sirius"}
+    at file:///home/runner/workspace/dist/index.js:47380:9
+    at file:///home/runner/workspace/dist/index.js:8:9
+07:47:31 PM [log-notifier] INFO: Log notifier initialized {"service":"sirius"}
+07:47:31 PM [app] ERROR: Failed to load auth provider: replit {"service":"sirius","error":{}}
+07:47:34 PM [app] INFO: Backfilling ban eligibility for 1 workers with 1 active dispatch bans {"service":"dispatch-elig-ban","workerCount":1,"banCount":1}
+07:47:31 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_ban {"service":"dispatch-elig-registry"}
+07:47:34 PM [app] INFO: Ban eligibility backfill completed during startup {"service":"dispatch-elig-plugins","workersProcessed":1,"entriesCreated":1}
+07:47:34 PM [app] INFO: Registered cron job: worker-certification-active-scan {"service":"cron-registry"}
+07:47:31 PM [app] INFO: Bootstrapping default cron jobs {"service":"cron-bootstrap"}
+07:47:34 PM [app] INFO: Backfilling skill eligibility for workers with existing skills {"service":"dispatch-elig-skill","workerCount":2,"skillCount":3}
+    at file:///home/runner/workspace/dist/index.js:8:9
+Error: Module not found in bundle: ./providers/replit
+command finished with error [npm run start]: exit status 1
+    at setupAuth (file:///home/runner/workspace/dist/index.js:4464:36)
+07:47:34 PM [startup] INFO: Address validation service initialized {"service":"sirius"}
+07:47:34 PM [startup] INFO: Component permissions synced {"service":"sirius"}
+07:47:33 PM [app] INFO: Registered charge plugin: payment-simple-allocation {"service":"charge-plugin-registry","triggers":["payment_saved"]}
+07:47:33 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {"service":"charge-plugin-registry","triggers":["wmb_saved"],"requiredComponent":"sitespecific.gbhet.legal"}
+    at file:///home/runner/workspace/dist/index.js:47380:9
+07:47:33 PM [startup] INFO: Access control system initialized {"service":"sirius"}
+07:47:34 PM [startup] INFO: Cron job handlers registered {"service":"sirius"}
+
+07:47:34 PM [startup] INFO: Default cron jobs bootstrapped {"service":"sirius"}
+07:47:34 PM [app] INFO: Registered cron job: process-wmb-batch {"service":"cron-registry"}
+07:47:34 PM [app] INFO: Registered cron job: delete-expired-hfe {"service":"cron-registry"}
+> rest-express@1.0.0 start
+07:47:34 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_dnc {"service":"dispatch-elig-registry"}
+07:47:34 PM [app] INFO: Registered flood event: bookmark {"service":"flood-registry","threshold":1000,"windowSeconds":360}
+07:47:34 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_skill {"service":"dispatch-elig-registry"}
+07:47:34 PM [app] INFO: Bootstrapping default cron jobs {"service":"cron-bootstrap"}
+  throw new Error("Module not found in bundle: " + path4);
+07:47:34 PM [app] INFO: Registered cron job: delete-expired-reports {"service":"cron-registry"}
+07:47:31 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_status {"service":"dispatch-elig-registry"}
+> NODE_ENV=production node dist/index.js
+07:47:34 PM [startup] INFO: Worker ban notifications initialized {"service":"sirius"}
+  throw new Error("Module not found in bundle: " + path4);
+07:47:31 PM [startup] INFO: Component permissions synced {"service":"sirius"}
+07:47:31 PM [app] INFO: Registered cron job: delete-expired-flood-events {"service":"cron-registry"}
+07:47:34 PM [app] INFO: Cron job bootstrap completed {"service":"cron-bootstrap","created":0,"skipped":8,"errors":0,"total":8}
+07:47:33 PM [startup] INFO: Permission system initialized with core permissions {"service":"sirius"}
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+07:47:34 PM [app] ERROR: Failed to load auth provider: replit {"service":"sirius","error":{}}
+07:47:33 PM [app] INFO: Registered eligibility plugin: work-status {"service":"eligibility-plugin-registry"}
+command finished with error [npm run start]: exit status 1
+07:47:33 PM [app] INFO: Registered eligibility plugin: manual {"service":"eligibility-plugin-registry"}
+        ^
+07:47:34 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_ban {"service":"dispatch-elig-registry"}
+07:47:31 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_hfe {"service":"dispatch-elig-registry"}
+
+07:47:31 PM [app] INFO: Backfilling ban eligibility for 1 workers with 1 active dispatch bans {"service":"dispatch-elig-ban","workerCount":1,"banCount":1}
+07:47:31 PM [app] INFO: Registered cron job: process-wmb-batch {"service":"cron-registry"}
+07:47:31 PM [startup] INFO: Flood events registered {"service":"sirius"}
+07:47:31 PM [startup] INFO: Flood configs loaded from variables {"service":"sirius"}
+07:47:31 PM [app] INFO: Completed ban eligibility backfill {"service":"dispatch-elig-ban","workersProcessed":1,"entriesCreated":1}
+Node.js v20.20.0
+07:47:31 PM [app] INFO: Registered cron job: worker-ban-active-scan {"service":"cron-registry"}
+07:47:34 PM [startup] INFO: Flood events registered {"service":"sirius"}
+07:47:34 PM [startup] INFO: Flood configs loaded from variables {"service":"sirius"}
+07:47:36 PM [app] INFO: Registered charge plugin: btu-steward-attendance {"service":"charge-plugin-registry","triggers":["participant_saved"],"requiredComponent":"sitespecific.btu"}
+07:47:36 PM [app] INFO: Dispatch eligibility plugins registered {"service":"dispatch-elig-plugins","plugins":["dispatch_ban","dispatch_dnc","dispatch_hfe","dispatch_skill","dispatch_status"]}
+07:47:36 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {"service":"charge-plugin-registry","triggers":["wmb_saved"],"requiredComponent":"sitespecific.gbhet.legal"}
+07:47:37 PM [app] INFO: Registered flood event: bookmark {"service":"flood-registry","threshold":1000,"windowSeconds":360}
+07:47:36 PM [app] INFO: Registered charge plugin: payment-simple-allocation {"service":"charge-plugin-registry","triggers":["payment_saved"]}
+07:47:36 PM [startup] INFO: Component cache initialized {"service":"sirius"}
+07:47:37 PM [app] INFO: Ban eligibility backfill completed during startup {"service":"dispatch-elig-plugins","workersProcessed":1,"entriesCreated":1}
+07:47:36 PM [app] INFO: Registered eligibility plugin: work-status {"service":"eligibility-plugin-registry"}
+07:47:36 PM [startup] INFO: Permission system initialized with core permissions {"service":"sirius"}
+07:47:37 PM [app] INFO: Registered cron job: delete-old-cron-logs {"service":"cron-registry"}
+07:47:36 PM [startup] INFO: Address validation service initialized {"service":"sirius"}
+07:47:36 PM [app] INFO: Component permissions registered {"service":"component-permissions","count":8}
+07:47:37 PM [app] INFO: Completed skill eligibility backfill {"service":"dispatch-elig-skill","workersProcessed":2,"entriesCreated":3}
+07:47:37 PM [app] INFO: Registered cron job: process-wmb-batch {"service":"cron-registry"}
+07:47:36 PM [app] INFO: Backfilling ban eligibility for 1 workers with 1 active dispatch bans {"service":"dispatch-elig-ban","workerCount":1,"banCount":1}
+07:47:37 PM [startup] INFO: Flood events registered {"service":"sirius"}
+07:47:37 PM [app] INFO: Registered cron job: delete-expired-reports {"service":"cron-registry"}
+07:47:37 PM [app] INFO: Skill eligibility backfill completed during startup {"service":"dispatch-elig-plugins","workersProcessed":2,"entriesCreated":3}
+07:47:37 PM [app] INFO: Registered cron job: worker-ban-active-scan {"service":"cron-registry"}
+07:47:37 PM [app] INFO: Worker ban notifications initialized {"service":"worker-ban-notifications"}
+07:47:37 PM [startup] INFO: Flood configs loaded from variables {"service":"sirius"}
+07:47:36 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_skill {"service":"dispatch-elig-registry"}
+07:47:37 PM [app] INFO: Backfilling skill eligibility for workers with existing skills {"service":"dispatch-elig-skill","workerCount":2,"skillCount":3}
+07:47:37 PM [startup] INFO: Worker ban notifications initialized {"service":"sirius"}
+07:47:37 PM [app] INFO: Registered cron job: sweep-expired-ban-elig {"service":"cron-registry"}
+07:47:37 PM [startup] INFO: Dispatch eligibility system initialized {"service":"sirius"}
+07:47:37 PM [startup] INFO: Default cron jobs bootstrapped {"service":"sirius"}
+    at file:///home/runner/workspace/dist/index.js:47380:9
+07:47:36 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_ban {"service":"dispatch-elig-registry"}
+command finished with error [npm run start]: exit status 1
+07:47:37 PM [app] INFO: Cron job bootstrap completed {"service":"cron-bootstrap","created":0,"skipped":8,"errors":0,"total":8}
+07:47:36 PM [startup] INFO: Access control system initialized {"service":"sirius"}
+    at setupAuth (file:///home/runner/workspace/dist/index.js:4464:36)
+07:47:37 PM [app] INFO: Registered cron job: log-cleanup {"service":"cron-registry"}
+> NODE_ENV=production node dist/index.js
+07:47:37 PM [app] INFO: Bootstrapping default cron jobs {"service":"cron-bootstrap"}
+07:47:37 PM [app] INFO: Registered cron job: worker-certification-active-scan {"service":"cron-registry"}
+    at file:///home/runner/workspace/dist/index.js:8:9
+> rest-express@1.0.0 start
+Node.js v20.20.0
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+07:47:36 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_hfe {"service":"dispatch-elig-registry"}
+07:47:36 PM [app] INFO: Registered eligibility plugin: manual {"service":"eligibility-plugin-registry"}
+
+Error: Module not found in bundle: ./providers/replit
+07:47:37 PM [app] ERROR: Failed to load auth provider: replit {"service":"sirius","error":{}}
+07:47:37 PM [log-notifier] INFO: Log notifier initialized {"service":"sirius"}
+07:47:37 PM [app] INFO: Registered cron job: delete-expired-hfe {"service":"cron-registry"}
+07:47:36 PM [startup] INFO: Component permissions synced {"service":"sirius"}
+file:///home/runner/workspace/dist/index.js:8
+07:47:36 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_dnc {"service":"dispatch-elig-registry"}
+07:47:36 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_status {"service":"dispatch-elig-registry"}
+07:47:37 PM [app] INFO: Registered cron job: delete-expired-flood-events {"service":"cron-registry"}
+        ^
+  throw new Error("Module not found in bundle: " + path4);
+
+07:47:37 PM [app] INFO: Completed ban eligibility backfill {"service":"dispatch-elig-ban","workersProcessed":1,"entriesCreated":1}
+07:47:37 PM [startup] INFO: Cron job handlers registered {"service":"sirius"}
+07:47:41 PM [app] INFO: Registered cron job: delete-expired-flood-events {"service":"cron-registry"}
+07:47:41 PM [app] INFO: Component permissions registered {"service":"component-permissions","count":8}
+07:47:41 PM [app] INFO: Dispatch eligibility plugins registered {"service":"dispatch-elig-plugins","plugins":["dispatch_ban","dispatch_dnc","dispatch_hfe","dispatch_skill","dispatch_status"]}
+07:47:41 PM [app] INFO: Registered cron job: worker-ban-active-scan {"service":"cron-registry"}
+07:47:41 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_skill {"service":"dispatch-elig-registry"}
+07:47:41 PM [startup] INFO: Component permissions synced {"service":"sirius"}
+07:47:41 PM [app] INFO: Registered eligibility plugin: work-status {"service":"eligibility-plugin-registry"}
+07:47:41 PM [startup] INFO: Worker ban notifications initialized {"service":"sirius"}
+07:47:41 PM [app] INFO: Ban eligibility backfill completed during startup {"service":"dispatch-elig-plugins","workersProcessed":1,"entriesCreated":1}
+07:47:41 PM [app] INFO: Completed ban eligibility backfill {"service":"dispatch-elig-ban","workersProcessed":1,"entriesCreated":1}
+07:47:41 PM [startup] INFO: Access control system initialized {"service":"sirius"}
+07:47:41 PM [app] INFO: Registered cron job: worker-certification-active-scan {"service":"cron-registry"}
+07:47:41 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_ban {"service":"dispatch-elig-registry"}
+07:47:41 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_hfe {"service":"dispatch-elig-registry"}
+07:47:41 PM [app] INFO: Registered cron job: delete-expired-hfe {"service":"cron-registry"}
+07:47:41 PM [app] INFO: Registered charge plugin: payment-simple-allocation {"service":"charge-plugin-registry","triggers":["payment_saved"]}
+07:47:41 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_dnc {"service":"dispatch-elig-registry"}
+07:47:41 PM [app] INFO: Completed skill eligibility backfill {"service":"dispatch-elig-skill","workersProcessed":2,"entriesCreated":3}
+07:47:41 PM [app] INFO: Backfilling skill eligibility for workers with existing skills {"service":"dispatch-elig-skill","workerCount":2,"skillCount":3}
+07:47:41 PM [app] INFO: Worker ban notifications initialized {"service":"worker-ban-notifications"}
+07:47:41 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_status {"service":"dispatch-elig-registry"}
+07:47:41 PM [app] INFO: Backfilling ban eligibility for 1 workers with 1 active dispatch bans {"service":"dispatch-elig-ban","workerCount":1,"banCount":1}
+07:47:41 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {"service":"charge-plugin-registry","triggers":["wmb_saved"],"requiredComponent":"sitespecific.gbhet.legal"}
+07:47:41 PM [app] INFO: Registered flood event: bookmark {"service":"flood-registry","threshold":1000,"windowSeconds":360}
+07:47:41 PM [startup] INFO: Dispatch eligibility system initialized {"service":"sirius"}
+07:47:41 PM [app] INFO: Registered cron job: delete-expired-reports {"service":"cron-registry"}
+file:///home/runner/workspace/dist/index.js:8
+07:47:44 PM [app] INFO: Ban eligibility backfill completed during startup {"service":"dispatch-elig-plugins","workersProcessed":1,"entriesCreated":1}
+07:47:41 PM [app] INFO: Registered cron job: log-cleanup {"service":"cron-registry"}
+07:47:41 PM [startup] INFO: Component cache initialized {"service":"sirius"}
+07:47:41 PM [app] INFO: Registered charge plugin: btu-steward-attendance {"service":"charge-plugin-registry","triggers":["participant_saved"],"requiredComponent":"sitespecific.btu"}
+07:47:41 PM [app] INFO: Bootstrapping default cron jobs {"service":"cron-bootstrap"}
+07:47:44 PM [startup] INFO: Component permissions synced {"service":"sirius"}
+file:///home/runner/workspace/dist/index.js:8
+07:47:41 PM [app] ERROR: Failed to load auth provider: replit {"service":"sirius","error":{}}
+07:47:41 PM [startup] INFO: Flood configs loaded from variables {"service":"sirius"}
+07:47:45 PM [startup] INFO: Default cron jobs bootstrapped {"service":"sirius"}
+> rest-express@1.0.0 start
+07:47:44 PM [app] INFO: Skill eligibility backfill completed during startup {"service":"dispatch-elig-plugins","workersProcessed":2,"entriesCreated":3}
+  throw new Error("Module not found in bundle: " + path4);
+07:47:41 PM [startup] INFO: Address validation service initialized {"service":"sirius"}
+07:47:44 PM [app] INFO: Bootstrapping default cron jobs {"service":"cron-bootstrap"}
+        ^
+07:47:41 PM [startup] INFO: Permission system initialized with core permissions {"service":"sirius"}
+    at setupAuth (file:///home/runner/workspace/dist/index.js:4464:36)
+07:47:41 PM [startup] INFO: Flood events registered {"service":"sirius"}
+07:47:44 PM [app] INFO: Registered eligibility plugin: manual {"service":"eligibility-plugin-registry"}
+07:47:41 PM [log-notifier] INFO: Log notifier initialized {"service":"sirius"}
+    at file:///home/runner/workspace/dist/index.js:8:9
+    at file:///home/runner/workspace/dist/index.js:47380:9
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+07:47:44 PM [app] INFO: Registered cron job: delete-expired-reports {"service":"cron-registry"}
+07:47:44 PM [app] INFO: Registered cron job: sweep-expired-ban-elig {"service":"cron-registry"}
+07:47:41 PM [app] INFO: Registered cron job: sweep-expired-ban-elig {"service":"cron-registry"}
+07:47:44 PM [app] INFO: Completed skill eligibility backfill {"service":"dispatch-elig-skill","workersProcessed":2,"entriesCreated":3}
+> NODE_ENV=production node dist/index.js
+07:47:45 PM [app] INFO: Cron job bootstrap completed {"service":"cron-bootstrap","created":0,"skipped":8,"errors":0,"total":8}
+07:47:44 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_dnc {"service":"dispatch-elig-registry"}
+
+07:47:44 PM [app] INFO: Registered cron job: delete-old-cron-logs {"service":"cron-registry"}
+07:47:41 PM [app] INFO: Cron job bootstrap completed {"service":"cron-bootstrap","created":0,"skipped":8,"errors":0,"total":8}
+07:47:44 PM [app] INFO: Component permissions registered {"service":"component-permissions","count":8}
+Node.js v20.20.0
+
+07:47:41 PM [app] INFO: Registered eligibility plugin: manual {"service":"eligibility-plugin-registry"}
+07:47:44 PM [startup] INFO: Address validation service initialized {"service":"sirius"}
+Error: Module not found in bundle: ./providers/replit
+  throw new Error("Module not found in bundle: " + path4);
+07:47:44 PM [app] INFO: Registered cron job: process-wmb-batch {"service":"cron-registry"}
+07:47:44 PM [startup] INFO: Permission system initialized with core permissions {"service":"sirius"}
+07:47:44 PM [app] INFO: Dispatch eligibility plugins registered {"service":"dispatch-elig-plugins","plugins":["dispatch_ban","dispatch_dnc","dispatch_hfe","dispatch_skill","dispatch_status"]}
+07:47:44 PM [app] INFO: Registered cron job: delete-expired-flood-events {"service":"cron-registry"}
+    at file:///home/runner/workspace/dist/index.js:8:9
+07:47:44 PM [startup] INFO: Flood configs loaded from variables {"service":"sirius"}
+command finished with error [npm run start]: exit status 1
+07:47:44 PM [app] INFO: Registered flood event: bookmark {"service":"flood-registry","threshold":1000,"windowSeconds":360}
+Node.js v20.20.0
+07:47:44 PM [app] INFO: Registered eligibility plugin: work-status {"service":"eligibility-plugin-registry"}
+07:47:44 PM [app] INFO: Registered cron job: worker-ban-active-scan {"service":"cron-registry"}
+07:47:44 PM [app] INFO: Worker ban notifications initialized {"service":"worker-ban-notifications"}
+07:47:41 PM [app] INFO: Registered cron job: delete-old-cron-logs {"service":"cron-registry"}
+07:47:44 PM [startup] INFO: Component cache initialized {"service":"sirius"}
+07:47:44 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_skill {"service":"dispatch-elig-registry"}
+command finished with error [npm run start]: exit status 1
+07:47:45 PM [app] ERROR: Failed to load auth provider: replit {"service":"sirius","error":{}}
+07:47:44 PM [startup] INFO: Dispatch eligibility system initialized {"service":"sirius"}
+    at file:///home/runner/workspace/dist/index.js:47380:9
+07:47:44 PM [log-notifier] INFO: Log notifier initialized {"service":"sirius"}
+07:47:44 PM [app] INFO: Registered cron job: delete-expired-hfe {"service":"cron-registry"}
+07:47:44 PM [app] INFO: Completed ban eligibility backfill {"service":"dispatch-elig-ban","workersProcessed":1,"entriesCreated":1}
+07:47:44 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_status {"service":"dispatch-elig-registry"}
+07:47:41 PM [app] INFO: Registered cron job: process-wmb-batch {"service":"cron-registry"}
+07:47:41 PM [startup] INFO: Cron job handlers registered {"service":"sirius"}
+07:47:44 PM [startup] INFO: Cron job handlers registered {"service":"sirius"}
+    at setupAuth (file:///home/runner/workspace/dist/index.js:4464:36)
+07:47:41 PM [startup] INFO: Default cron jobs bootstrapped {"service":"sirius"}
+07:47:44 PM [app] INFO: Registered charge plugin: btu-steward-attendance {"service":"charge-plugin-registry","triggers":["participant_saved"],"requiredComponent":"sitespecific.btu"}
+
+07:47:44 PM [startup] INFO: Worker ban notifications initialized {"service":"sirius"}
+        ^
+07:47:44 PM [app] INFO: Registered cron job: log-cleanup {"service":"cron-registry"}
+07:47:44 PM [startup] INFO: Access control system initialized {"service":"sirius"}
+Error: Module not found in bundle: ./providers/replit
+07:47:44 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_hfe {"service":"dispatch-elig-registry"}
+07:47:44 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_ban {"service":"dispatch-elig-registry"}
+
+07:47:44 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {"service":"charge-plugin-registry","triggers":["wmb_saved"],"requiredComponent":"sitespecific.gbhet.legal"}
+07:47:44 PM [startup] INFO: Flood events registered {"service":"sirius"}
+07:47:44 PM [app] INFO: Registered charge plugin: payment-simple-allocation {"service":"charge-plugin-registry","triggers":["payment_saved"]}
+07:47:41 PM [app] INFO: Skill eligibility backfill completed during startup {"service":"dispatch-elig-plugins","workersProcessed":2,"entriesCreated":3}
+07:47:44 PM [app] INFO: Backfilling skill eligibility for workers with existing skills {"service":"dispatch-elig-skill","workerCount":2,"skillCount":3}
+07:47:44 PM [app] INFO: Registered cron job: worker-certification-active-scan {"service":"cron-registry"}
+07:47:44 PM [app] INFO: Backfilling ban eligibility for 1 workers with 1 active dispatch bans {"service":"dispatch-elig-ban","workerCount":1,"banCount":1}
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+07:47:52 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {"service":"charge-plugin-registry","triggers":["wmb_saved"],"requiredComponent":"sitespecific.gbhet.legal"}
+07:47:52 PM [app] INFO: Registered charge plugin: btu-steward-attendance {"service":"charge-plugin-registry","triggers":["participant_saved"],"requiredComponent":"sitespecific.btu"}
+> rest-express@1.0.0 start
+07:47:53 PM [app] INFO: Registered cron job: worker-certification-active-scan {"service":"cron-registry"}
+07:47:53 PM [app] INFO: Registered cron job: sweep-expired-ban-elig {"service":"cron-registry"}
+07:47:52 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_ban {"service":"dispatch-elig-registry"}
+07:47:52 PM [startup] INFO: Permission system initialized with core permissions {"service":"sirius"}
+07:47:52 PM [app] INFO: Dispatch eligibility plugins registered {"service":"dispatch-elig-plugins","plugins":["dispatch_ban","dispatch_dnc","dispatch_hfe","dispatch_skill","dispatch_status"]}
+07:47:53 PM [app] INFO: Completed ban eligibility backfill {"service":"dispatch-elig-ban","workersProcessed":1,"entriesCreated":1}
+07:47:53 PM [app] INFO: Completed skill eligibility backfill {"service":"dispatch-elig-skill","workersProcessed":2,"entriesCreated":3}
+> NODE_ENV=production node dist/index.js
+07:47:52 PM [startup] INFO: Access control system initialized {"service":"sirius"}
+07:47:53 PM [app] INFO: Registered cron job: delete-expired-hfe {"service":"cron-registry"}
+07:47:52 PM [app] INFO: Registered eligibility plugin: work-status {"service":"eligibility-plugin-registry"}
+07:47:52 PM [app] INFO: Registered charge plugin: payment-simple-allocation {"service":"charge-plugin-registry","triggers":["payment_saved"]}
+07:47:52 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_status {"service":"dispatch-elig-registry"}
+07:47:53 PM [startup] INFO: Dispatch eligibility system initialized {"service":"sirius"}
+07:47:52 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_skill {"service":"dispatch-elig-registry"}
+
+07:47:52 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_hfe {"service":"dispatch-elig-registry"}
+07:47:53 PM [app] INFO: Registered cron job: delete-expired-flood-events {"service":"cron-registry"}
+07:47:53 PM [app] INFO: Backfilling skill eligibility for workers with existing skills {"service":"dispatch-elig-skill","workerCount":2,"skillCount":3}
+07:47:52 PM [app] INFO: Backfilling ban eligibility for 1 workers with 1 active dispatch bans {"service":"dispatch-elig-ban","workerCount":1,"banCount":1}
+07:47:53 PM [app] INFO: Registered cron job: process-wmb-batch {"service":"cron-registry"}
+07:47:53 PM [app] INFO: Registered cron job: worker-ban-active-scan {"service":"cron-registry"}
+  throw new Error("Module not found in bundle: " + path4);
+07:47:53 PM [log-notifier] INFO: Log notifier initialized {"service":"sirius"}
+07:47:53 PM [app] ERROR: Failed to load auth provider: replit {"service":"sirius","error":{}}
+07:47:52 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_dnc {"service":"dispatch-elig-registry"}
+file:///home/runner/workspace/dist/index.js:8
+07:47:53 PM [startup] INFO: Flood events registered {"service":"sirius"}
+    at file:///home/runner/workspace/dist/index.js:8:9
+07:47:53 PM [app] INFO: Bootstrapping default cron jobs {"service":"cron-bootstrap"}
+07:47:53 PM [startup] INFO: Flood configs loaded from variables {"service":"sirius"}
+07:47:53 PM [app] INFO: Cron job bootstrap completed {"service":"cron-bootstrap","created":0,"skipped":8,"errors":0,"total":8}
+Error: Module not found in bundle: ./providers/replit
+command finished with error [npm run start]: exit status 1
+07:47:53 PM [app] INFO: Skill eligibility backfill completed during startup {"service":"dispatch-elig-plugins","workersProcessed":2,"entriesCreated":3}
+    at setupAuth (file:///home/runner/workspace/dist/index.js:4464:36)
+07:47:52 PM [startup] INFO: Address validation service initialized {"service":"sirius"}
+
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+Node.js v20.20.0
+07:47:53 PM [app] INFO: Ban eligibility backfill completed during startup {"service":"dispatch-elig-plugins","workersProcessed":1,"entriesCreated":1}
+07:47:53 PM [app] INFO: Registered cron job: delete-expired-reports {"service":"cron-registry"}
+    at file:///home/runner/workspace/dist/index.js:47380:9
+        ^
+07:47:53 PM [startup] INFO: Cron job handlers registered {"service":"sirius"}
+07:47:53 PM [app] INFO: Registered flood event: bookmark {"service":"flood-registry","threshold":1000,"windowSeconds":360}
+07:47:53 PM [startup] INFO: Worker ban notifications initialized {"service":"sirius"}
+07:47:52 PM [startup] INFO: Component permissions synced {"service":"sirius"}
+07:47:52 PM [startup] INFO: Component cache initialized {"service":"sirius"}
+07:47:52 PM [app] INFO: Component permissions registered {"service":"component-permissions","count":8}
+07:47:53 PM [app] INFO: Worker ban notifications initialized {"service":"worker-ban-notifications"}
+07:47:53 PM [startup] INFO: Default cron jobs bootstrapped {"service":"sirius"}
+07:47:53 PM [app] INFO: Registered cron job: delete-old-cron-logs {"service":"cron-registry"}
+07:47:53 PM [app] INFO: Registered cron job: log-cleanup {"service":"cron-registry"}
+07:47:52 PM [app] INFO: Registered eligibility plugin: manual {"service":"eligibility-plugin-registry"}
+07:48:02 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_dnc {"service":"dispatch-elig-registry"}
+07:48:02 PM [startup] INFO: Permission system initialized with core permissions {"service":"sirius"}
+07:48:02 PM [app] INFO: Registered eligibility plugin: work-status {"service":"eligibility-plugin-registry"}
+> rest-express@1.0.0 start
+07:48:02 PM [app] INFO: Component permissions registered {"service":"component-permissions","count":8}
+07:48:02 PM [app] INFO: Registered charge plugin: btu-steward-attendance {"service":"charge-plugin-registry","triggers":["participant_saved"],"requiredComponent":"sitespecific.btu"}
+07:48:03 PM [app] INFO: Worker ban notifications initialized {"service":"worker-ban-notifications"}
+07:48:03 PM [app] INFO: Registered cron job: worker-ban-active-scan {"service":"cron-registry"}
+07:48:02 PM [app] INFO: Completed ban eligibility backfill {"service":"dispatch-elig-ban","workersProcessed":1,"entriesCreated":1}
+07:48:03 PM [app] INFO: Registered cron job: process-wmb-batch {"service":"cron-registry"}
+07:48:02 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_status {"service":"dispatch-elig-registry"}
+07:48:02 PM [app] INFO: Ban eligibility backfill completed during startup {"service":"dispatch-elig-plugins","workersProcessed":1,"entriesCreated":1}
+07:48:03 PM [app] INFO: Registered cron job: delete-old-cron-logs {"service":"cron-registry"}
+07:48:03 PM [app] INFO: Cron job bootstrap completed {"service":"cron-bootstrap","created":0,"skipped":8,"errors":0,"total":8}
+07:48:02 PM [app] INFO: Registered eligibility plugin: manual {"service":"eligibility-plugin-registry"}
+07:48:02 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_skill {"service":"dispatch-elig-registry"}
+07:48:03 PM [startup] INFO: Flood events registered {"service":"sirius"}
+07:48:03 PM [app] INFO: Registered cron job: worker-certification-active-scan {"service":"cron-registry"}
+07:48:02 PM [startup] INFO: Component cache initialized {"service":"sirius"}
+    at setupAuth (file:///home/runner/workspace/dist/index.js:4464:36)
+07:48:02 PM [app] INFO: Backfilling skill eligibility for workers with existing skills {"service":"dispatch-elig-skill","workerCount":2,"skillCount":3}
+07:48:03 PM [startup] INFO: Dispatch eligibility system initialized {"service":"sirius"}
+07:48:03 PM [app] INFO: Registered cron job: delete-expired-flood-events {"service":"cron-registry"}
+Node.js v20.20.0
+07:48:03 PM [startup] INFO: Default cron jobs bootstrapped {"service":"sirius"}
+07:48:03 PM [app] INFO: Registered cron job: log-cleanup {"service":"cron-registry"}
+  throw new Error("Module not found in bundle: " + path4);
+07:48:03 PM [app] ERROR: Failed to load auth provider: replit {"service":"sirius","error":{}}
+07:48:02 PM [app] INFO: Backfilling ban eligibility for 1 workers with 1 active dispatch bans {"service":"dispatch-elig-ban","workerCount":1,"banCount":1}
+07:48:03 PM [app] INFO: Skill eligibility backfill completed during startup {"service":"dispatch-elig-plugins","workersProcessed":2,"entriesCreated":3}
+07:48:03 PM [app] INFO: Registered flood event: bookmark {"service":"flood-registry","threshold":1000,"windowSeconds":360}
+07:48:02 PM [startup] INFO: Component permissions synced {"service":"sirius"}
+07:48:03 PM [app] INFO: Registered cron job: delete-expired-hfe {"service":"cron-registry"}
+07:48:03 PM [startup] INFO: Flood configs loaded from variables {"service":"sirius"}
+    at file:///home/runner/workspace/dist/index.js:47380:9
+07:48:03 PM [log-notifier] INFO: Log notifier initialized {"service":"sirius"}
+07:48:02 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_hfe {"service":"dispatch-elig-registry"}
+Error: Module not found in bundle: ./providers/replit
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+
+07:48:02 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {"service":"charge-plugin-registry","triggers":["wmb_saved"],"requiredComponent":"sitespecific.gbhet.legal"}
+07:48:03 PM [app] INFO: Registered cron job: sweep-expired-ban-elig {"service":"cron-registry"}
+command finished with error [npm run start]: exit status 1
+07:48:02 PM [startup] INFO: Address validation service initialized {"service":"sirius"}
+07:48:02 PM [app] INFO: Registered charge plugin: payment-simple-allocation {"service":"charge-plugin-registry","triggers":["payment_saved"]}
+        ^
+07:48:02 PM [startup] INFO: Access control system initialized {"service":"sirius"}
+07:48:03 PM [app] INFO: Registered cron job: delete-expired-reports {"service":"cron-registry"}
+    at file:///home/runner/workspace/dist/index.js:8:9
+07:48:02 PM [app] INFO: Dispatch eligibility plugins registered {"service":"dispatch-elig-plugins","plugins":["dispatch_ban","dispatch_dnc","dispatch_hfe","dispatch_skill","dispatch_status"]}
+07:48:03 PM [startup] INFO: Cron job handlers registered {"service":"sirius"}
+07:48:03 PM [app] INFO: Bootstrapping default cron jobs {"service":"cron-bootstrap"}
+07:48:02 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_ban {"service":"dispatch-elig-registry"}
+07:48:03 PM [app] INFO: Completed skill eligibility backfill {"service":"dispatch-elig-skill","workersProcessed":2,"entriesCreated":3}
+file:///home/runner/workspace/dist/index.js:8
+07:48:03 PM [startup] INFO: Worker ban notifications initialized {"service":"sirius"}
+
+> NODE_ENV=production node dist/index.js
+> NODE_ENV=production node dist/index.js
+> rest-express@1.0.0 start
+07:48:11 PM [app] INFO: Registered eligibility plugin: work-status {"service":"eligibility-plugin-registry"}
+07:48:11 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {"service":"charge-plugin-registry","triggers":["wmb_saved"],"requiredComponent":"sitespecific.gbhet.legal"}
+07:48:11 PM [startup] INFO: Access control system initialized {"service":"sirius"}
+07:48:11 PM [app] INFO: Backfilling ban eligibility for 1 workers with 1 active dispatch bans {"service":"dispatch-elig-ban","workerCount":1,"banCount":1}
+07:48:12 PM [app] INFO: Registered cron job: sweep-expired-ban-elig {"service":"cron-registry"}
+07:48:11 PM [app] INFO: Ban eligibility backfill completed during startup {"service":"dispatch-elig-plugins","workersProcessed":1,"entriesCreated":1}
+07:48:12 PM [app] INFO: Skill eligibility backfill completed during startup {"service":"dispatch-elig-plugins","workersProcessed":2,"entriesCreated":3}
+07:48:12 PM [startup] INFO: Worker ban notifications initialized {"service":"sirius"}
+07:48:11 PM [app] INFO: Registered eligibility plugin: manual {"service":"eligibility-plugin-registry"}
+07:48:11 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_status {"service":"dispatch-elig-registry"}
+07:48:11 PM [startup] INFO: Permission system initialized with core permissions {"service":"sirius"}
+07:48:11 PM [app] INFO: Backfilling skill eligibility for workers with existing skills {"service":"dispatch-elig-skill","workerCount":2,"skillCount":3}
+07:48:11 PM [app] INFO: Registered charge plugin: payment-simple-allocation {"service":"charge-plugin-registry","triggers":["payment_saved"]}
+07:48:12 PM [app] INFO: Registered cron job: delete-expired-flood-events {"service":"cron-registry"}
+07:48:11 PM [app] INFO: Completed ban eligibility backfill {"service":"dispatch-elig-ban","workersProcessed":1,"entriesCreated":1}
+07:48:12 PM [app] INFO: Completed skill eligibility backfill {"service":"dispatch-elig-skill","workersProcessed":2,"entriesCreated":3}
+07:48:11 PM [startup] INFO: Component permissions synced {"service":"sirius"}
+07:48:12 PM [app] INFO: Registered cron job: delete-expired-reports {"service":"cron-registry"}
+07:48:11 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_ban {"service":"dispatch-elig-registry"}
+07:48:11 PM [app] INFO: Component permissions registered {"service":"component-permissions","count":8}
+07:48:11 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_dnc {"service":"dispatch-elig-registry"}
+07:48:12 PM [app] INFO: Registered cron job: delete-old-cron-logs {"service":"cron-registry"}
+        ^
+07:48:12 PM [app] ERROR: Failed to load auth provider: replit {"service":"sirius","error":{}}
+07:48:11 PM [startup] INFO: Component cache initialized {"service":"sirius"}
+07:48:11 PM [app] INFO: Dispatch eligibility plugins registered {"service":"dispatch-elig-plugins","plugins":["dispatch_ban","dispatch_dnc","dispatch_hfe","dispatch_skill","dispatch_status"]}
+07:48:12 PM [app] INFO: Registered cron job: process-wmb-batch {"service":"cron-registry"}
+    at file:///home/runner/workspace/dist/index.js:8:9
+    at file:///home/runner/workspace/dist/index.js:47380:9
+07:48:12 PM [app] INFO: Registered cron job: worker-ban-active-scan {"service":"cron-registry"}
+07:48:12 PM [startup] INFO: Default cron jobs bootstrapped {"service":"sirius"}
+07:48:12 PM [log-notifier] INFO: Log notifier initialized {"service":"sirius"}
+07:48:12 PM [app] INFO: Registered cron job: log-cleanup {"service":"cron-registry"}
+07:48:11 PM [startup] INFO: Address validation service initialized {"service":"sirius"}
+Error: Module not found in bundle: ./providers/replit
+
+07:48:12 PM [app] INFO: Bootstrapping default cron jobs {"service":"cron-bootstrap"}
+file:///home/runner/workspace/dist/index.js:8
+
+07:48:12 PM [app] INFO: Registered flood event: bookmark {"service":"flood-registry","threshold":1000,"windowSeconds":360}
+07:48:12 PM [startup] INFO: Dispatch eligibility system initialized {"service":"sirius"}
+07:48:12 PM [app] INFO: Registered cron job: delete-expired-hfe {"service":"cron-registry"}
+07:48:11 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_hfe {"service":"dispatch-elig-registry"}
+Node.js v20.20.0
+command finished with error [npm run start]: exit status 1
+07:48:12 PM [app] INFO: Registered cron job: worker-certification-active-scan {"service":"cron-registry"}
+07:48:12 PM [startup] INFO: Cron job handlers registered {"service":"sirius"}
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+07:48:11 PM [app] INFO: Registered charge plugin: btu-steward-attendance {"service":"charge-plugin-registry","triggers":["participant_saved"],"requiredComponent":"sitespecific.btu"}
+    at setupAuth (file:///home/runner/workspace/dist/index.js:4464:36)
+07:48:12 PM [startup] INFO: Flood events registered {"service":"sirius"}
+07:48:12 PM [app] INFO: Worker ban notifications initialized {"service":"worker-ban-notifications"}
+07:48:12 PM [startup] INFO: Flood configs loaded from variables {"service":"sirius"}
+07:48:11 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_skill {"service":"dispatch-elig-registry"}
+07:48:12 PM [app] INFO: Cron job bootstrap completed {"service":"cron-bootstrap","created":0,"skipped":8,"errors":0,"total":8}
+  throw new Error("Module not found in bundle: " + path4);
+crash loop detected
+2026-01-19T19:49:02Z error: The deployment is crash looping. This can happen if the run command fails or exits immediately after starting. Check the logs for more information.

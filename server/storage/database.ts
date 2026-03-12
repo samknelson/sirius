@@ -3,7 +3,6 @@ import { type UserStorage, createUserStorage, userLoggingConfig } from "./users"
 import { type WorkerStorage, createWorkerStorage, workerLoggingConfig } from "./workers";
 import { type EmployerStorage, createEmployerStorage, employerLoggingConfig } from "./employers";
 import { type ContactsStorage, createContactsStorage, type AddressStorage, type PhoneNumberStorage, contactLoggingConfig, addressLoggingConfig, phoneNumberLoggingConfig } from "./contacts";
-import { type OptionsStorage, createOptionsStorage, createEmployerContactTypeStorage, type EmployerContactTypeStorage, employerContactTypeLoggingConfig } from "./options";
 import { type TrustBenefitStorage, createTrustBenefitStorage, trustBenefitLoggingConfig } from "./trust-benefits";
 import { type TrustProviderStorage, createTrustProviderStorage } from "./trust-providers";
 import { type TrustProviderContactStorage, createTrustProviderContactStorage, trustProviderContactLoggingConfig } from "./trust-provider-contacts";
@@ -19,6 +18,7 @@ import { type CronJobStorage, createCronJobStorage, type CronJobRunStorage, crea
 import { type ChargePluginConfigStorage, createChargePluginConfigStorage } from "./charge-plugins";
 import { type LogsStorage, createLogsStorage } from "./logs";
 import { type WorkerWshStorage, createWorkerWshStorage, workerWshLoggingConfig } from "./worker-wsh";
+import { type WorkerMshStorage, createWorkerMshStorage, workerMshLoggingConfig } from "./worker-msh";
 import { type WorkerHoursStorage, createWorkerHoursStorage, workerHoursLoggingConfig } from "./worker-hours";
 import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./policies";
 import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnitLoggingConfig } from "./bargaining-units";
@@ -38,9 +38,19 @@ import { type BtuEmployerMapStorage, createBtuEmployerMapStorage, btuEmployerMap
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./worker-dispatch-dnc";
 import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./worker-skills";
+import { type WorkerCertificationStorage, createWorkerCertificationStorage, workerCertificationLoggingConfig } from "./worker-certifications";
+import { type WorkerRatingStorage, createWorkerRatingStorage, workerRatingLoggingConfig } from "./worker-ratings";
+import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfig } from "./edls-sheets";
+import { type EdlsCrewsStorage, createEdlsCrewsStorage, edlsCrewsLoggingConfig } from "./edls-crews";
+import { type EdlsAssignmentsStorage, createEdlsAssignmentsStorage, edlsAssignmentsLoggingConfig } from "./edls-assignments";
+import { type AuthIdentitiesStorage, createAuthIdentitiesStorage } from "./auth-identities";
+import { type WorkerDispatchEligDenormStorage, createWorkerDispatchEligDenormStorage } from "./worker-dispatch-elig-denorm";
+import { type RawSqlStorage, createRawSqlStorage } from "./raw-sql";
+import { type ReadOnlyStorage, createReadOnlyStorage } from "./read-only";
+import { type WsBundleStorage, type WsClientStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsBundleStorage, createWsClientStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
-import { db } from "../db";
-import { optionsEmploymentStatus, employers, workers, contacts } from "@shared/schema";
+import { db } from "./db";
+import { employers, workers, contacts } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 export interface IStorage {
@@ -49,7 +59,6 @@ export interface IStorage {
   workers: WorkerStorage;
   employers: EmployerStorage;
   contacts: ContactsStorage;
-  options: OptionsStorage;
   trustBenefits: TrustBenefitStorage;
   trustProviders: TrustProviderStorage;
   trustProviderContacts: TrustProviderContactStorage;
@@ -66,6 +75,7 @@ export interface IStorage {
   chargePluginConfigs: ChargePluginConfigStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
+  workerMsh: WorkerMshStorage;
   workerHours: WorkerHoursStorage;
   policies: PolicyStorage;
   bargainingUnits: BargainingUnitStorage;
@@ -87,6 +97,19 @@ export interface IStorage {
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
   workerSkills: WorkerSkillStorage;
+  workerCertifications: WorkerCertificationStorage;
+  workerRatings: WorkerRatingStorage;
+  edlsSheets: EdlsSheetsStorage;
+  edlsCrews: EdlsCrewsStorage;
+  edlsAssignments: EdlsAssignmentsStorage;
+  authIdentities: AuthIdentitiesStorage;
+  workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
+  rawSql: RawSqlStorage;
+  readOnly: ReadOnlyStorage;
+  wsBundles: WsBundleStorage;
+  wsClients: WsClientStorage;
+  wsClientCredentials: WsClientCredentialStorage;
+  wsClientIpRules: WsClientIpRuleStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -95,7 +118,6 @@ export class DatabaseStorage implements IStorage {
   workers: WorkerStorage;
   employers: EmployerStorage;
   contacts: ContactsStorage;
-  options: OptionsStorage;
   trustBenefits: TrustBenefitStorage;
   trustProviders: TrustProviderStorage;
   trustProviderContacts: TrustProviderContactStorage;
@@ -112,6 +134,7 @@ export class DatabaseStorage implements IStorage {
   chargePluginConfigs: ChargePluginConfigStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
+  workerMsh: WorkerMshStorage;
   workerHours: WorkerHoursStorage;
   policies: PolicyStorage;
   bargainingUnits: BargainingUnitStorage;
@@ -133,6 +156,19 @@ export class DatabaseStorage implements IStorage {
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
   workerSkills: WorkerSkillStorage;
+  workerCertifications: WorkerCertificationStorage;
+  workerRatings: WorkerRatingStorage;
+  edlsSheets: EdlsSheetsStorage;
+  edlsCrews: EdlsCrewsStorage;
+  edlsAssignments: EdlsAssignmentsStorage;
+  authIdentities: AuthIdentitiesStorage;
+  workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
+  rawSql: RawSqlStorage;
+  readOnly: ReadOnlyStorage;
+  wsBundles: WsBundleStorage;
+  wsClients: WsClientStorage;
+  wsClientCredentials: WsClientCredentialStorage;
+  wsClientIpRules: WsClientIpRuleStorage;
 
   constructor() {
     this.variables = withStorageLogging(createVariableStorage(), variableLoggingConfig);
@@ -146,14 +182,6 @@ export class DatabaseStorage implements IStorage {
       workerLoggingConfig
     );
     this.employers = withStorageLogging(createEmployerStorage(), employerLoggingConfig);
-    
-    // Create options storage with logged employer contact types
-    const optionsStorage = createOptionsStorage();
-    optionsStorage.employerContactTypes = withStorageLogging(
-      createEmployerContactTypeStorage(),
-      employerContactTypeLoggingConfig
-    );
-    this.options = optionsStorage;
     
     this.trustBenefits = withStorageLogging(
       createTrustBenefitStorage(),
@@ -188,6 +216,16 @@ export class DatabaseStorage implements IStorage {
       ),
       workerWshLoggingConfig
     );
+    this.workerMsh = withStorageLogging(
+      createWorkerMshStorage(
+        this.workers.updateWorkerMemberStatuses.bind(this.workers),
+        async (workerId: string) => {
+          await this.workers.syncWorkerEmployerDenorm(workerId);
+          await this.wmbScanQueue.invalidateWorkerScans(workerId);
+        }
+      ),
+      workerMshLoggingConfig
+    );
     this.workerHours = withStorageLogging(
       createWorkerHoursStorage(
         async (workerId: string) => {
@@ -197,6 +235,10 @@ export class DatabaseStorage implements IStorage {
       ),
       workerHoursLoggingConfig
     );
+    
+    // Inject denorm data provider into workers storage now that workerHours is available
+    this.workers.setDenormDataProvider(this.workerHours.getDenormData.bind(this.workerHours));
+    
     this.policies = withStorageLogging(
       createPolicyStorage(),
       policyLoggingConfig
@@ -242,6 +284,22 @@ export class DatabaseStorage implements IStorage {
     this.workerBans = withStorageLogging(createWorkerBanStorage(), workerBanLoggingConfig);
     this.workerDispatchDnc = withStorageLogging(createWorkerDispatchDncStorage(), workerDispatchDncLoggingConfig);
     this.workerSkills = withStorageLogging(createWorkerSkillStorage(), workerSkillLoggingConfig);
+    this.workerCertifications = withStorageLogging(
+      createWorkerCertificationStorage({ workerSkills: this.workerSkills }), 
+      workerCertificationLoggingConfig
+    );
+    this.workerRatings = withStorageLogging(createWorkerRatingStorage(), workerRatingLoggingConfig);
+    this.edlsSheets = withStorageLogging(createEdlsSheetsStorage(), edlsSheetsLoggingConfig);
+    this.edlsCrews = withStorageLogging(createEdlsCrewsStorage(), edlsCrewsLoggingConfig);
+    this.edlsAssignments = withStorageLogging(createEdlsAssignmentsStorage(), edlsAssignmentsLoggingConfig);
+    this.authIdentities = createAuthIdentitiesStorage();
+    this.workerDispatchEligDenorm = createWorkerDispatchEligDenormStorage();
+    this.rawSql = createRawSqlStorage();
+    this.readOnly = createReadOnlyStorage();
+    this.wsBundles = createWsBundleStorage();
+    this.wsClients = createWsClientStorage();
+    this.wsClientCredentials = createWsClientCredentialStorage();
+    this.wsClientIpRules = createWsClientIpRuleStorage();
   }
 }
 

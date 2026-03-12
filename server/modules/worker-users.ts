@@ -186,6 +186,16 @@ export function registerWorkerUsersRoutes(
       const currentRoles = await storage.users.getUserRoles(user.id);
       const currentRoleIds = currentRoles.map(r => r.id);
       
+      // Automatically assign the "worker" role if it exists
+      const workerRole = await storage.users.getRoleByName('worker');
+      if (workerRole && !currentRoleIds.includes(workerRole.id)) {
+        await storage.users.assignRoleToUser({
+          userId: user.id,
+          roleId: workerRole.id,
+        });
+        currentRoleIds.push(workerRole.id);
+      }
+      
       // Assign all required roles (idempotent)
       for (const roleId of requiredRoleIds) {
         if (!currentRoleIds.includes(roleId)) {
@@ -208,7 +218,11 @@ export function registerWorkerUsersRoutes(
       }
       
       // Remove optional roles that are no longer selected
+      // Include auto-assigned worker role in desired roles to prevent removal
       const allDesiredRoleIds = [...requiredRoleIds, ...optionalRoleIds];
+      if (workerRole) {
+        allDesiredRoleIds.push(workerRole.id);
+      }
       for (const roleId of currentRoleIds) {
         // Only remove if it's an allowed optional role (not required, not a role outside our scope)
         if (allowedOptionalRoleIds.includes(roleId) && !allDesiredRoleIds.includes(roleId)) {

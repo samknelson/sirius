@@ -12,7 +12,7 @@
 /**
  * Entity types that can have entity-level access policies
  */
-export type PolicyEntityType = 'worker' | 'employer' | 'provider' | 'policy' | 'file' | 'contact' | 'cardcheck' | 'esig' | 'worker.dispatch.dnc';
+export type PolicyEntityType = 'worker' | 'employer' | 'provider' | 'policy' | 'file' | 'contact' | 'cardcheck' | 'esig' | 'worker.dispatch.dnc' | 'edls_sheet';
 
 /**
  * Attribute predicate operator

@@ -28,6 +28,18 @@ interface WorkerBenefit extends TrustWmb {
   employer: Employer;
 }
 
+interface MemberStatus {
+  id: string;
+  name: string;
+  code: string | null;
+  industryId: string;
+}
+
+interface Industry {
+  id: string;
+  name: string;
+}
+
 function WorkerDetailsContent() {
   const { worker, contact } = useWorkerLayout();
   const { hasComponent } = useAuth();
@@ -76,14 +88,7 @@ function WorkerDetailsContent() {
 
   // Fetch worker ID types
   const { data: workerIdTypes = [] } = useQuery<WorkerIdType[]>({
-    queryKey: ["/api/worker-id-types"],
-    queryFn: async () => {
-      const response = await fetch("/api/worker-id-types");
-      if (!response.ok) {
-        throw new Error("Failed to fetch worker ID types");
-      }
-      return response.json();
-    },
+    queryKey: ["/api/options/worker-id-type"],
   });
 
   // Fetch worker benefits
@@ -100,7 +105,17 @@ function WorkerDetailsContent() {
 
   // Fetch work statuses
   const { data: workStatuses = [] } = useQuery<WorkerWs[]>({
-    queryKey: ["/api/worker-work-statuses"],
+    queryKey: ["/api/options/worker-ws"],
+  });
+
+  // Fetch member statuses
+  const { data: memberStatuses = [] } = useQuery<MemberStatus[]>({
+    queryKey: ["/api/options/worker-ms"],
+  });
+
+  // Fetch industries
+  const { data: industries = [] } = useQuery<Industry[]>({
+    queryKey: ["/api/options/industry"],
   });
 
   // Fetch current employment
@@ -137,6 +152,16 @@ function WorkerDetailsContent() {
   const currentWorkStatus = worker.denormWsId 
     ? workStatuses.find(ws => ws.id === worker.denormWsId)
     : null;
+
+  // Get current member statuses with their industries
+  const currentMemberStatuses = (worker.denormMsIds || [])
+    .map(msId => {
+      const ms = memberStatuses.find(m => m.id === msId);
+      if (!ms) return null;
+      const industry = industries.find(i => i.id === ms.industryId);
+      return { ms, industry };
+    })
+    .filter((item): item is { ms: MemberStatus; industry: Industry | undefined } => item !== null);
 
   return (
     <Card>
@@ -207,6 +232,25 @@ function WorkerDetailsContent() {
                 </p>
               )}
             </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Users size={14} />
+                Member Status
+              </label>
+              {currentMemberStatuses.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {currentMemberStatuses.map(({ ms, industry }) => (
+                    <Badge key={ms.id} variant="secondary" data-testid={`badge-member-status-${ms.id}`}>
+                      {industry?.name || 'Unknown'}: {ms.name}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-sm" data-testid="text-no-member-status">
+                  No member status set
+                </p>
+              )}
+            </div>
             {hasComponent("bargainingunits") && (
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -254,6 +298,15 @@ function WorkerDetailsContent() {
             <Building2 size={18} />
             Current Employment
           </h3>
+          {worker.denormJobTitle && (
+            <div className="mb-4 p-3 rounded-md bg-muted/30">
+              <div className="flex items-center gap-2">
+                <Briefcase size={14} className="text-muted-foreground" />
+                <span className="text-sm font-medium text-muted-foreground">Job Title:</span>
+                <span className="text-foreground" data-testid="text-worker-job-title">{worker.denormJobTitle}</span>
+              </div>
+            </div>
+          )}
           {isLoadingEmployment ? (
             <div className="space-y-2">
               <Skeleton className="h-10 w-full" />

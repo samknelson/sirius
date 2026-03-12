@@ -35,6 +35,7 @@ interface WorkerHoursEntry {
   employmentStatusId: string;
   hours: number | null;
   home: boolean;
+  jobTitle: string | null;
   employer: Employer;
   employmentStatus: EmploymentStatus;
 }
@@ -81,6 +82,7 @@ function WorkerHoursContent() {
   const [selectedEmploymentStatusId, setSelectedEmploymentStatusId] = useState<string>("");
   const [selectedHours, setSelectedHours] = useState<string>("");
   const [selectedHome, setSelectedHome] = useState<boolean>(false);
+  const [selectedJobTitle, setSelectedJobTitle] = useState<string>("");
 
   // Fetch worker hours
   const { data: hoursEntries = [], isLoading } = useQuery<WorkerHoursEntry[]>({
@@ -99,12 +101,12 @@ function WorkerHoursContent() {
 
   // Fetch employment statuses
   const { data: employmentStatuses = [] } = useQuery<EmploymentStatus[]>({
-    queryKey: ["/api/employment-statuses"],
+    queryKey: ["/api/options/employment-status"],
   });
 
   // Create mutation
   const createMutation = useMutation({
-    mutationFn: async (data: { month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home: boolean }) => {
+    mutationFn: async (data: { month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home: boolean; jobTitle: string | null }) => {
       const response = await fetch(`/api/workers/${worker.id}/hours`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -140,6 +142,7 @@ function WorkerHoursContent() {
     setSelectedEmploymentStatusId("");
     setSelectedHours("");
     setSelectedHome(false);
+    setSelectedJobTitle("");
   };
 
   const handleCreate = () => {
@@ -160,6 +163,7 @@ function WorkerHoursContent() {
       employmentStatusId: selectedEmploymentStatusId,
       hours: selectedHours ? parseFloat(selectedHours) : null,
       home: selectedHome,
+      jobTitle: selectedJobTitle || null,
     });
   };
 
@@ -306,6 +310,17 @@ function WorkerHoursContent() {
                     data-testid="input-hours"
                   />
                 </div>
+                <div>
+                  <Label htmlFor="jobTitle">Job Title</Label>
+                  <Input
+                    id="jobTitle"
+                    type="text"
+                    placeholder="Enter job title"
+                    value={selectedJobTitle}
+                    onChange={(e) => setSelectedJobTitle(e.target.value)}
+                    data-testid="input-job-title"
+                  />
+                </div>
                 <div className="flex items-center justify-between">
                   <Label htmlFor="home">Home</Label>
                   <Switch
@@ -345,6 +360,7 @@ function WorkerHoursContent() {
                 <TableHead>Day</TableHead>
                 <TableHead>Employer</TableHead>
                 <TableHead>Employment Status</TableHead>
+                <TableHead>Job Title</TableHead>
                 <TableHead>Home</TableHead>
                 <TableHead className="text-right">Hours</TableHead>
                 {canEdit && <TableHead className="text-right">Actions</TableHead>}
@@ -358,6 +374,7 @@ function WorkerHoursContent() {
                   <TableCell>{entry.day}</TableCell>
                   <TableCell>{entry.employer?.name || "Unknown"}</TableCell>
                   <TableCell>{entry.employmentStatus?.name || "Unknown"}</TableCell>
+                  <TableCell>{entry.jobTitle || "-"}</TableCell>
                   <TableCell>
                     {entry.home && (
                       <Badge variant="default" data-testid={`badge-home-${entry.id}`}>

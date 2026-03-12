@@ -37,8 +37,8 @@ function SkillsContent() {
     queryKey: ["/api/worker-skills/worker", worker.id],
   });
 
-  const { data: availableSkills = [] } = useQuery<OptionsSkill[]>({
-    queryKey: ["/api/options/skills"],
+  const { data: availableSkills = [], isLoading: isLoadingAvailable } = useQuery<OptionsSkill[]>({
+    queryKey: ["/api/options/skill"],
   });
 
   const assignedSkillIds = new Set(workerSkills.map(ws => ws.skillId));
@@ -164,8 +164,13 @@ function SkillsContent() {
             Manage skills assigned to this worker
           </CardDescription>
         </div>
-        {canEdit && unassignedSkills.length > 0 && (
-          <Button onClick={openAddModal} size="sm" data-testid="button-add-skill">
+        {canEdit && (isLoadingAvailable || unassignedSkills.length > 0) && (
+          <Button 
+            onClick={openAddModal} 
+            size="sm" 
+            disabled={isLoadingAvailable || unassignedSkills.length === 0}
+            data-testid="button-add-skill"
+          >
             <Plus className="h-4 w-4 mr-2" />
             Add Skill
           </Button>
@@ -176,13 +181,19 @@ function SkillsContent() {
           <div className="text-center py-8 text-muted-foreground">
             <Award className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p>No skills assigned to this worker</p>
-            {canEdit && unassignedSkills.length > 0 && (
-              <Button onClick={openAddModal} variant="outline" className="mt-4" data-testid="button-add-first-skill">
+            {canEdit && (isLoadingAvailable || unassignedSkills.length > 0) && (
+              <Button 
+                onClick={openAddModal} 
+                variant="outline" 
+                className="mt-4" 
+                disabled={isLoadingAvailable || unassignedSkills.length === 0}
+                data-testid="button-add-first-skill"
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Add First Skill
               </Button>
             )}
-            {canEdit && unassignedSkills.length === 0 && availableSkills.length === 0 && (
+            {canEdit && !isLoadingAvailable && unassignedSkills.length === 0 && availableSkills.length === 0 && (
               <p className="text-sm mt-2">No skills have been configured yet.</p>
             )}
           </div>

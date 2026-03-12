@@ -110,7 +110,7 @@ function EventEditContent() {
   );
 
   const { data: eventTypes = [] } = useQuery<EventType[]>({
-    queryKey: ["/api/event-types"],
+    queryKey: ["/api/options/event-type"],
   });
 
   const { data: categories = [] } = useQuery<EventCategory[]>({
@@ -656,7 +656,7 @@ function EventCreatePage() {
   const [eventConfig, setEventConfig] = useState<Record<string, any>>({});
 
   const { data: eventTypes = [] } = useQuery<EventType[]>({
-    queryKey: ["/api/event-types"],
+    queryKey: ["/api/options/event-type"],
   });
 
   const { data: categories = [] } = useQuery<EventCategory[]>({

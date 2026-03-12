@@ -1,5 +1,5 @@
-import { createContext, useContext, ReactNode } from "react";
-import { Briefcase, ArrowLeft } from "lucide-react";
+import { createContext, useContext, ReactNode, useMemo } from "react";
+import { Briefcase, ArrowLeft, Play } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,6 @@ interface DispatchJobLayoutProps {
 const statusColors: Record<string, string> = {
   draft: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300",
   open: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
-  running: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
   closed: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300",
   archived: "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300",
 };
@@ -54,7 +53,14 @@ export function DispatchJobLayout({ activeTab, children }: DispatchJobLayoutProp
   });
 
   // Hook must be called before any conditional returns (React rules of hooks)
-  const { tabs: mainTabs } = useDispatchJobTabAccess(id || "");
+  const { tabs: mainTabs, getActiveRoot } = useDispatchJobTabAccess(id || "");
+
+  // Get the active root tab and its children for sub-tab rendering
+  const activeRoot = useMemo(() => {
+    return getActiveRoot(activeTab);
+  }, [activeTab, getActiveRoot]);
+
+  const subTabs = activeRoot?.children;
 
   // Set page title based on job title
   usePageTitle(job?.title);
@@ -117,6 +123,12 @@ export function DispatchJobLayout({ activeTab, children }: DispatchJobLayoutProp
                 <Badge className={statusColors[job.status]} data-testid="badge-status">
                   {job.status}
                 </Badge>
+                {job.running && (
+                  <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300" data-testid="badge-running">
+                    <Play className="h-3 w-3 mr-1" />
+                    Running
+                  </Badge>
+                )}
               </div>
               <p className="text-muted-foreground mt-1">
                 {job.employer?.name}
@@ -131,7 +143,9 @@ export function DispatchJobLayout({ activeTab, children }: DispatchJobLayoutProp
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center space-x-2 py-3">
             {mainTabs.map((tab) => {
-              const isActive = tab.id === activeTab;
+              // A root tab is active if it matches the activeTab directly,
+              // or if the activeRoot matches this tab (meaning one of its children is active)
+              const isActive = tab.id === activeTab || activeRoot?.id === tab.id;
               return isActive ? (
                 <Button
                   key={tab.id}
@@ -156,6 +170,38 @@ export function DispatchJobLayout({ activeTab, children }: DispatchJobLayoutProp
           </div>
         </div>
       </section>
+
+      {/* Sub-Tab Navigation - rendered dynamically when parent has children */}
+      {subTabs && subTabs.length > 0 && (
+        <section className="bg-muted/30 border-b border-border">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center space-x-2 py-2 pl-4">
+              {subTabs.map((tab) => (
+                tab.id === activeTab ? (
+                  <Button
+                    key={tab.id}
+                    variant="secondary"
+                    size="sm"
+                    data-testid={`button-job-${tab.id}`}
+                  >
+                    {tab.label}
+                  </Button>
+                ) : (
+                  <Link key={tab.id} href={tab.href}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      data-testid={`button-job-${tab.id}`}
+                    >
+                      {tab.label}
+                    </Button>
+                  </Link>
+                )
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {children}

@@ -1,11 +1,14 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../../storage";
+import { createUnifiedOptionsStorage } from "../../storage/unified-options";
 import { insertLedgerPaymentSchema, LedgerPayment } from "@shared/schema";
 import { requireAccess, checkAccessInline } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { executeChargePlugins, TriggerType, PaymentSavedContext, LedgerNotification } from "../../charge-plugins";
 import { logger } from "../../logger";
 import { eventBus, EventType } from "../../services/event-bus";
+
+const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
 // Helper to check EA access inline after fetching the EA
 async function checkPaymentEaAccessInline(req: Request, res: Response, ea: { entityType: string; entityId: string }, policyId: string): Promise<boolean> {
@@ -73,7 +76,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
   // GET /api/ledger/payment-types - Get all payment types (available to all authenticated users for dropdowns)
   app.get("/api/ledger/payment-types", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
     try {
-      const paymentTypes = await storage.options.ledgerPaymentTypes.getAllLedgerPaymentTypes();
+      const paymentTypes = await unifiedOptionsStorage.list("ledger-payment-type");
       res.json(paymentTypes);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch payment types" });

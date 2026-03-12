@@ -122,10 +122,9 @@ export function registerCronJobRoutes(
         return res.status(404).json({ message: "Cron job not found" });
       }
 
-      // Get the user ID for audit trail
-      const replitUserId = user.claims.sub;
-      const dbUser = await storage.users.getUserByReplitId(replitUserId);
-      
+      // Get the user ID for audit trail via resolveDbUser helper
+      const { resolveDbUser } = await import("../auth/helpers");
+      const dbUser = await resolveDbUser(user, user?.claims?.sub);
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
       }
@@ -141,6 +140,91 @@ export function registerCronJobRoutes(
       res.status(500).json({ 
         message: error instanceof Error ? error.message : "Failed to run cron job"
       });
+    }
+  });
+
+  // GET /api/cron-jobs/:name/settings - Get settings with adapter support
+  app.get("/api/cron-jobs/:name/settings", requireAccess('admin'), async (req, res) => {
+    try {
+      const { name } = req.params;
+      const job = await storage.cronJobs.getByName(name);
+      
+      if (!job) {
+        return res.status(404).json({ message: "Cron job not found" });
+      }
+
+      const handler = cronJobRegistry.get(name);
+      if (!handler) {
+        return res.status(404).json({ message: "Cron job handler not found" });
+      }
+
+      const currentSettings = (job.settings as Record<string, unknown>) ?? {};
+      const defaultSettings = handler.getDefaultSettings?.() ?? {};
+      const mergedSettings = { ...defaultSettings, ...currentSettings };
+
+      // Check if handler has a custom settings adapter
+      if (handler.settingsAdapter) {
+        const { clientState, values } = await handler.settingsAdapter.loadClientState(mergedSettings);
+        return res.json({
+          mode: 'custom',
+          componentId: handler.settingsAdapter.componentId,
+          clientState,
+          values,
+        });
+      }
+
+      // Fall back to standard fields mode
+      const settingsFields = handler.getSettingsFields?.() ?? [];
+      return res.json({
+        mode: 'fields',
+        fields: settingsFields,
+        values: mergedSettings,
+        defaultSettings,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch cron job settings" });
+    }
+  });
+
+  // PATCH /api/cron-jobs/:name/settings - Update settings with adapter support
+  app.patch("/api/cron-jobs/:name/settings", requireAccess('admin'), async (req, res) => {
+    try {
+      const { name } = req.params;
+      const job = await storage.cronJobs.getByName(name);
+      
+      if (!job) {
+        return res.status(404).json({ message: "Cron job not found" });
+      }
+
+      const handler = cronJobRegistry.get(name);
+      if (!handler) {
+        return res.status(404).json({ message: "Cron job handler not found" });
+      }
+
+      let newSettings: Record<string, unknown>;
+
+      // Check if handler has a custom settings adapter
+      if (handler.settingsAdapter) {
+        newSettings = await handler.settingsAdapter.applyUpdate(req.body);
+      } else {
+        // Standard settings - validate with schema if available
+        if (handler.settingsSchema) {
+          newSettings = handler.settingsSchema.parse(req.body);
+        } else {
+          newSettings = req.body;
+        }
+      }
+
+      const updatedJob = await storage.cronJobs.update(name, { settings: newSettings });
+      res.json(updatedJob);
+    } catch (error) {
+      if (error instanceof Error && error.name === "ZodError") {
+        res.status(400).json({ message: "Invalid settings data", error });
+      } else {
+        res.status(500).json({ 
+          message: error instanceof Error ? error.message : "Failed to update cron job settings" 
+        });
+      }
     }
   });
 }

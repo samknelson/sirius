@@ -1,11 +1,19 @@
-import { db } from "../db";
+import { createNoopValidator } from './utils/validation';
+import { getClient } from './transaction-context';
 import {
   workerWsh,
   optionsWorkerWs,
+  workers,
   type WorkerWsh,
 } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
+import { eventBus, EventType } from "../services/event-bus";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface WorkerWshStorage {
   getWorkerWsh(workerId: string): Promise<any[]>;
@@ -19,14 +27,35 @@ export function createWorkerWshStorage(
   onWorkerDataChanged?: (workerId: string) => Promise<void>
 ): WorkerWshStorage {
   async function syncWorkerCurrentWorkStatus(workerId: string): Promise<void> {
-    const [mostRecent] = await db
+    const client = getClient();
+    
+    const [currentWorker] = await client
+      .select({ denormWsId: workers.denormWsId })
+      .from(workers)
+      .where(eq(workers.id, workerId));
+    
+    const previousWsId = currentWorker?.denormWsId || null;
+    
+    const [mostRecent] = await client
       .select()
       .from(workerWsh)
       .where(eq(workerWsh.workerId, workerId))
       .orderBy(desc(workerWsh.date), sql`${workerWsh.createdAt} DESC NULLS LAST`, desc(workerWsh.id))
       .limit(1);
 
-    await updateWorkerStatus(workerId, mostRecent?.wsId || null);
+    const newWsId = mostRecent?.wsId || null;
+    
+    await updateWorkerStatus(workerId, newWsId);
+    
+    if (previousWsId !== newWsId) {
+      await eventBus.emit(EventType.WORKER_WS_CHANGED, {
+        workerId,
+        wsId: newWsId,
+        previousWsId,
+      }).catch(err => {
+        console.error("Failed to emit WORKER_WS_CHANGED event for worker", workerId, err);
+      });
+    }
     
     if (onWorkerDataChanged) {
       await onWorkerDataChanged(workerId).catch(err => {
@@ -37,7 +66,8 @@ export function createWorkerWshStorage(
 
   const storage: WorkerWshStorage = {
     async getWorkerWsh(workerId: string): Promise<any[]> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           id: workerWsh.id,
           date: workerWsh.date,
@@ -55,7 +85,9 @@ export function createWorkerWshStorage(
     },
 
     async createWorkerWsh(data: { workerId: string; date: string; wsId: string; data?: any }): Promise<WorkerWsh> {
-      const [wsh] = await db
+      validate.validateOrThrow(data);
+      const client = getClient();
+      const [wsh] = await client
         .insert(workerWsh)
         .values(data)
         .returning();
@@ -66,7 +98,9 @@ export function createWorkerWshStorage(
     },
 
     async updateWorkerWsh(id: string, data: { date?: string; wsId?: string; data?: any }): Promise<WorkerWsh | undefined> {
-      const [updated] = await db
+      validate.validateOrThrow(data);
+      const client = getClient();
+      const [updated] = await client
         .update(workerWsh)
         .set(data)
         .where(eq(workerWsh.id, id))
@@ -80,7 +114,8 @@ export function createWorkerWshStorage(
     },
 
     async deleteWorkerWsh(id: string): Promise<boolean> {
-      const result = await db
+      const client = getClient();
+      const result = await client
         .delete(workerWsh)
         .where(eq(workerWsh.id, id))
         .returning();
@@ -114,7 +149,8 @@ export const workerWshLoggingConfig: StorageLoggingConfig<WorkerWshStorage> = {
         return `Created Work Status Entry [${workStatusName} ${formattedDate}]`;
       },
       after: async (args, result, storage) => {
-        const [workStatus] = await db.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, result.wsId));
+        const client = getClient();
+        const [workStatus] = await client.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, result.wsId));
         return {
           wsh: result,
           workStatus: workStatus,
@@ -134,7 +170,8 @@ export const workerWshLoggingConfig: StorageLoggingConfig<WorkerWshStorage> = {
         if (beforeState?.wsh?.workerId) {
           return beforeState.wsh.workerId;
         }
-        const [wshEntry] = await db.select().from(workerWsh).where(eq(workerWsh.id, args[0]));
+        const client = getClient();
+        const [wshEntry] = await client.select().from(workerWsh).where(eq(workerWsh.id, args[0]));
         return wshEntry?.workerId;
       },
       getDescription: async (args, result, beforeState, afterState) => {
@@ -149,12 +186,13 @@ export const workerWshLoggingConfig: StorageLoggingConfig<WorkerWshStorage> = {
         return `Updated Work Status Entry [${oldStatusName} → ${newStatusName} ${formattedDate}]`;
       },
       before: async (args, storage) => {
-        const [wshEntry] = await db.select().from(workerWsh).where(eq(workerWsh.id, args[0]));
+        const client = getClient();
+        const [wshEntry] = await client.select().from(workerWsh).where(eq(workerWsh.id, args[0]));
         if (!wshEntry) {
           return null;
         }
         
-        const [workStatus] = await db.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, wshEntry.wsId));
+        const [workStatus] = await client.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, wshEntry.wsId));
         return {
           wsh: wshEntry,
           workStatus: workStatus,
@@ -168,7 +206,8 @@ export const workerWshLoggingConfig: StorageLoggingConfig<WorkerWshStorage> = {
       after: async (args, result, storage) => {
         if (!result) return null;
         
-        const [workStatus] = await db.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, result.wsId));
+        const client = getClient();
+        const [workStatus] = await client.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, result.wsId));
         return {
           wsh: result,
           workStatus: workStatus,
@@ -188,7 +227,8 @@ export const workerWshLoggingConfig: StorageLoggingConfig<WorkerWshStorage> = {
         if (beforeState?.wsh?.workerId) {
           return beforeState.wsh.workerId;
         }
-        const [wshEntry] = await db.select().from(workerWsh).where(eq(workerWsh.id, args[0]));
+        const client = getClient();
+        const [wshEntry] = await client.select().from(workerWsh).where(eq(workerWsh.id, args[0]));
         return wshEntry?.workerId;
       },
       getDescription: async (args, result, beforeState, afterState) => {
@@ -202,12 +242,13 @@ export const workerWshLoggingConfig: StorageLoggingConfig<WorkerWshStorage> = {
         return `Deleted Work Status Entry [${workStatusName} ${formattedDate}]`;
       },
       before: async (args, storage) => {
-        const [wshEntry] = await db.select().from(workerWsh).where(eq(workerWsh.id, args[0]));
+        const client = getClient();
+        const [wshEntry] = await client.select().from(workerWsh).where(eq(workerWsh.id, args[0]));
         if (!wshEntry) {
           return null;
         }
         
-        const [workStatus] = await db.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, wshEntry.wsId));
+        const [workStatus] = await client.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, wshEntry.wsId));
         return {
           wsh: wshEntry,
           workStatus: workStatus,

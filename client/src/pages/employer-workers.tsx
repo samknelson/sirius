@@ -26,7 +26,7 @@ function EmployerWorkersContent() {
   const [employmentStatusFilter, setEmploymentStatusFilter] = useState<string>("all");
 
   const { data: employmentStatuses } = useQuery<EmploymentStatus[]>({
-    queryKey: ["/api/employment-statuses"],
+    queryKey: ["/api/options/employment-status"],
   });
 
   const { data: workers, isLoading } = useQuery<EmployerWorker[]>({

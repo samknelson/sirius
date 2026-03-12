@@ -63,6 +63,13 @@ function WorkerHoursViewContent() {
                 )}
               </div>
             </div>
+
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Job Title</label>
+              <p className="mt-1" data-testid="text-hours-job-title">
+                {hoursEntry.jobTitle || <span className="text-muted-foreground">-</span>}
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>

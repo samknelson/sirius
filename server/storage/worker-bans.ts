@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { getClient } from './transaction-context';
 import { 
   workerBans,
   workers,
@@ -6,9 +6,15 @@ import {
   type WorkerBan, 
   type InsertWorkerBan
 } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, lt, gte, or, isNull, isNotNull } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { eventBus, EventType } from "../services/event-bus";
+import { 
+  type ValidationError,
+  createStorageValidator
+} from "./utils/validation";
+import { calculateDenormActive } from "./utils/denorm-active";
+import { normalizeToDateOnly, getTodayDateOnly } from "@shared/utils";
 
 export interface WorkerBanWithRelations extends WorkerBan {
   worker?: {
@@ -30,37 +36,64 @@ export interface WorkerBanStorage {
   create(ban: InsertWorkerBan): Promise<WorkerBan>;
   update(id: string, ban: Partial<InsertWorkerBan>): Promise<WorkerBan | undefined>;
   delete(id: string): Promise<boolean>;
+  findExpiredButActive(): Promise<WorkerBan[]>;
+  findNotExpiredButInactive(): Promise<WorkerBan[]>;
 }
 
-function calculateActive(endDate: Date | null | undefined): boolean {
-  if (!endDate) return true;
-  return new Date(endDate) >= new Date();
-}
 
-function validateDateRange(startDate: Date, endDate: Date | null | undefined): void {
-  if (endDate && new Date(endDate) < new Date(startDate)) {
-    throw new Error("End date cannot be before start date");
+/**
+ * Validator for worker bans.
+ * Use validate.validate() for ValidationResult or validate.validateOrThrow() for direct value.
+ */
+export const validate = createStorageValidator<InsertWorkerBan, WorkerBan, { denormActive: boolean }>(
+  (data, existing) => {
+    const errors: ValidationError[] = [];
+    
+    const workerId = data.workerId ?? existing?.workerId;
+    const startDate = data.startDate ?? existing?.startDate;
+    const endDate = data.endDate !== undefined ? data.endDate : existing?.endDate;
+    
+    if (!workerId) {
+      errors.push({ field: 'workerId', code: 'REQUIRED', message: 'Worker ID is required' });
+    }
+    
+    if (!startDate) {
+      errors.push({ field: 'startDate', code: 'REQUIRED', message: 'Start date is required' });
+    } else {
+      const normalizedStart = normalizeToDateOnly(startDate);
+      const today = getTodayDateOnly();
+      
+      if (normalizedStart && normalizedStart > today) {
+        errors.push({ field: 'startDate', code: 'FUTURE_DATE', message: 'Start date cannot be in the future' });
+      }
+      
+      if (endDate) {
+        const normalizedEnd = normalizeToDateOnly(endDate);
+        if (normalizedStart && normalizedEnd && normalizedStart > normalizedEnd) {
+          errors.push({ field: 'endDate', code: 'BEFORE_START', message: 'End date cannot be before start date' });
+        }
+      }
+    }
+    
+    if (errors.length > 0) {
+      return { ok: false, errors };
+    }
+    
+    const denormActive = calculateDenormActive({ endDate });
+    
+    return { ok: true, value: { denormActive } };
   }
-}
-
-function validateStartDateNotFuture(startDate: Date): void {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const start = new Date(startDate);
-  start.setHours(0, 0, 0, 0);
-  if (start > today) {
-    throw new Error("Start date cannot be in the future");
-  }
-}
+);
 
 async function getWorkerName(workerId: string): Promise<string> {
-  const [worker] = await db
+  const client = getClient();
+  const [worker] = await client
     .select({ contactId: workers.contactId, siriusId: workers.siriusId })
     .from(workers)
     .where(eq(workers.id, workerId));
   if (!worker) return 'Unknown Worker';
   
-  const [contact] = await db
+  const [contact] = await client
     .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
     .from(contacts)
     .where(eq(contacts.id, worker.contactId));
@@ -123,16 +156,19 @@ export const workerBanLoggingConfig: StorageLoggingConfig<WorkerBanStorage> = {
 export function createWorkerBanStorage(): WorkerBanStorage {
   return {
     async getAll(): Promise<WorkerBan[]> {
-      return db.select().from(workerBans).orderBy(desc(workerBans.startDate));
+      const client = getClient();
+      return client.select().from(workerBans).orderBy(desc(workerBans.startDate));
     },
 
     async get(id: string): Promise<WorkerBan | undefined> {
-      const [ban] = await db.select().from(workerBans).where(eq(workerBans.id, id));
+      const client = getClient();
+      const [ban] = await client.select().from(workerBans).where(eq(workerBans.id, id));
       return ban;
     },
 
     async getByWorker(workerId: string): Promise<WorkerBan[]> {
-      return db
+      const client = getClient();
+      return client
         .select()
         .from(workerBans)
         .where(eq(workerBans.workerId, workerId))
@@ -140,14 +176,14 @@ export function createWorkerBanStorage(): WorkerBanStorage {
     },
 
     async create(ban: InsertWorkerBan): Promise<WorkerBan> {
-      validateStartDateNotFuture(ban.startDate);
-      validateDateRange(ban.startDate, ban.endDate);
-      const active = calculateActive(ban.endDate);
-      const [created] = await db
+      const client = getClient();
+      const validated = validate.validateOrThrow(ban);
+      
+      const [created] = await client
         .insert(workerBans)
         .values({
           ...ban,
-          active
+          denormActive: validated.denormActive
         })
         .returning();
       
@@ -157,30 +193,24 @@ export function createWorkerBanStorage(): WorkerBanStorage {
         type: created.type,
         startDate: created.startDate,
         endDate: created.endDate,
-        active: created.active ?? true,
+        active: created.denormActive ?? true,
       });
       
       return created;
     },
 
     async update(id: string, ban: Partial<InsertWorkerBan>): Promise<WorkerBan | undefined> {
+      const client = getClient();
       const existing = await this.get(id);
       if (!existing) return undefined;
 
-      const startDate = ban.startDate !== undefined ? ban.startDate : existing.startDate;
-      const endDate = ban.endDate !== undefined ? ban.endDate : existing.endDate;
-      
-      if (ban.startDate !== undefined) {
-        validateStartDateNotFuture(startDate);
-      }
-      validateDateRange(startDate, endDate);
-      const active = calculateActive(endDate);
+      const validated = validate.validateOrThrow(ban, existing);
 
-      const [updated] = await db
+      const [updated] = await client
         .update(workerBans)
         .set({
           ...ban,
-          active
+          denormActive: validated.denormActive
         })
         .where(eq(workerBans.id, id))
         .returning();
@@ -192,7 +222,7 @@ export function createWorkerBanStorage(): WorkerBanStorage {
           type: updated.type,
           startDate: updated.startDate,
           endDate: updated.endDate,
-          active: updated.active ?? true,
+          active: updated.denormActive ?? true,
         });
       }
       
@@ -200,8 +230,9 @@ export function createWorkerBanStorage(): WorkerBanStorage {
     },
 
     async delete(id: string): Promise<boolean> {
+      const client = getClient();
       const existing = await this.get(id);
-      const result = await db.delete(workerBans).where(eq(workerBans.id, id));
+      const result = await client.delete(workerBans).where(eq(workerBans.id, id));
       const deleted = (result.rowCount ?? 0) > 0;
       
       if (deleted && existing) {
@@ -211,12 +242,69 @@ export function createWorkerBanStorage(): WorkerBanStorage {
           type: existing.type,
           startDate: existing.startDate,
           endDate: existing.endDate,
-          active: existing.active ?? true,
+          active: existing.denormActive ?? true,
           isDeleted: true,
         });
       }
       
       return deleted;
+    },
+
+    async findExpiredButActive(): Promise<WorkerBan[]> {
+      return composeQuery({ expired: true, active: true });
+    },
+
+    async findNotExpiredButInactive(): Promise<WorkerBan[]> {
+      return composeQuery({ expired: false, active: false });
     }
   };
+}
+
+interface QueryFilters {
+  expired?: boolean;
+  active?: boolean;
+  workerId?: string;
+  id?: string;
+}
+
+async function composeQuery(filters: QueryFilters): Promise<WorkerBan[]> {
+  const client = getClient();
+  const conditions = [];
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (filters.active !== undefined) {
+    conditions.push(eq(workerBans.denormActive, filters.active));
+  }
+
+  if (filters.expired !== undefined) {
+    if (filters.expired) {
+      conditions.push(isNotNull(workerBans.endDate));
+      conditions.push(lt(workerBans.endDate, today));
+    } else {
+      conditions.push(or(
+        isNull(workerBans.endDate),
+        gte(workerBans.endDate, today)
+      ));
+    }
+  }
+
+  if (filters.workerId) {
+    conditions.push(eq(workerBans.workerId, filters.workerId));
+  }
+
+  if (filters.id) {
+    conditions.push(eq(workerBans.id, filters.id));
+  }
+
+  if (conditions.length === 0) {
+    return client.select().from(workerBans).orderBy(desc(workerBans.startDate));
+  }
+
+  return client
+    .select()
+    .from(workerBans)
+    .where(and(...conditions))
+    .orderBy(desc(workerBans.startDate));
 }

@@ -1,4 +1,5 @@
-import { db } from "../db";
+import { createNoopValidator } from './utils/validation';
+import { getClient } from './transaction-context';
 import { 
   workerSkills,
   optionsSkills,
@@ -12,25 +13,33 @@ import { eq, and } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { eventBus, EventType } from "../services/event-bus";
 
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
+
 export interface WorkerSkillWithDetails extends WorkerSkill {
   skill?: OptionsSkill | null;
 }
 
 export interface WorkerSkillStorage {
+  getAll(): Promise<WorkerSkill[]>;
   getByWorker(workerId: string): Promise<WorkerSkillWithDetails[]>;
+  getByWorkerAndSkill(workerId: string, skillId: string): Promise<WorkerSkill | undefined>;
   get(id: string): Promise<WorkerSkill | undefined>;
   create(skill: InsertWorkerSkill & { message?: string }): Promise<WorkerSkill>;
   delete(id: string, message?: string): Promise<boolean>;
 }
 
 async function getWorkerName(workerId: string): Promise<string> {
-  const [worker] = await db
+  const client = getClient();
+  const [worker] = await client
     .select({ contactId: workers.contactId, siriusId: workers.siriusId })
     .from(workers)
     .where(eq(workers.id, workerId));
   if (!worker) return 'Unknown Worker';
   
-  const [contact] = await db
+  const [contact] = await client
     .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
     .from(contacts)
     .where(eq(contacts.id, worker.contactId));
@@ -40,7 +49,8 @@ async function getWorkerName(workerId: string): Promise<string> {
 }
 
 async function getSkillName(skillId: string): Promise<string> {
-  const [skill] = await db
+  const client = getClient();
+  const [skill] = await client
     .select({ name: optionsSkills.name })
     .from(optionsSkills)
     .where(eq(optionsSkills.id, skillId));
@@ -88,8 +98,14 @@ export const workerSkillLoggingConfig: StorageLoggingConfig<WorkerSkillStorage> 
 
 export function createWorkerSkillStorage(): WorkerSkillStorage {
   return {
+    async getAll(): Promise<WorkerSkill[]> {
+      const client = getClient();
+      return client.select().from(workerSkills);
+    },
+
     async getByWorker(workerId: string): Promise<WorkerSkillWithDetails[]> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           workerSkill: workerSkills,
           skill: optionsSkills,
@@ -105,16 +121,28 @@ export function createWorkerSkillStorage(): WorkerSkillStorage {
     },
 
     async get(id: string): Promise<WorkerSkill | undefined> {
-      const [result] = await db
+      const client = getClient();
+      const [result] = await client
         .select()
         .from(workerSkills)
         .where(eq(workerSkills.id, id));
       return result;
     },
 
+    async getByWorkerAndSkill(workerId: string, skillId: string): Promise<WorkerSkill | undefined> {
+      const client = getClient();
+      const [result] = await client
+        .select()
+        .from(workerSkills)
+        .where(and(eq(workerSkills.workerId, workerId), eq(workerSkills.skillId, skillId)));
+      return result;
+    },
+
     async create(data: InsertWorkerSkill & { message?: string }): Promise<WorkerSkill> {
+      validate.validateOrThrow(data);
+      const client = getClient();
       const { message, ...insertData } = data;
-      const [result] = await db
+      const [result] = await client
         .insert(workerSkills)
         .values(insertData)
         .returning();
@@ -131,7 +159,8 @@ export function createWorkerSkillStorage(): WorkerSkillStorage {
     },
 
     async delete(id: string, message?: string): Promise<boolean> {
-      const [deleted] = await db
+      const client = getClient();
+      const [deleted] = await client
         .delete(workerSkills)
         .where(eq(workerSkills.id, id))
         .returning();

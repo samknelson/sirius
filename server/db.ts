@@ -1,15 +1,16 @@
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
-import ws from "ws";
-import * as schema from "@shared/schema";
-
-neonConfig.webSocketConstructor = ws;
-
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
-}
-
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-export const db = drizzle({ client: pool, schema });
+/**
+ * @deprecated DO NOT import from this file directly.
+ * 
+ * ARCHITECTURE RULE: All database access must go through the storage layer.
+ * 
+ * - For route handlers and modules: use `storage` from "server/storage"
+ * - For storage modules: import from "./db" (relative within storage folder)
+ * - For infrastructure code that legitimately needs direct db access: 
+ *   import from "server/storage/db" and document the reason
+ * 
+ * This re-export exists only for backwards compatibility during migration.
+ * New code importing from this file will be flagged by ESLint.
+ * 
+ * See replit.md "Database Access Architecture" for details.
+ */
+export { db, pool } from "./storage/db";

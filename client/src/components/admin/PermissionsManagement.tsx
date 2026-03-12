@@ -6,9 +6,10 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Key, Shield, Plus, X } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Role } from '@/lib/entity-types';
 
 interface Permission {
@@ -26,7 +27,7 @@ interface RolePermission {
 
 export default function PermissionsManagement() {
   const [selectedRoleId, setSelectedRoleId] = useState('');
-  const [selectedPermissionKey, setSelectedPermissionKey] = useState('');
+  const [selectedPermissionKeys, setSelectedPermissionKeys] = useState<Set<string>>(new Set());
   const { toast } = useToast();
 
   // Fetch available permissions from registry
@@ -44,23 +45,22 @@ export default function PermissionsManagement() {
     queryKey: ['/api/admin/role-permissions'],
   });
 
-  const assignPermissionMutation = useMutation({
-    mutationFn: async ({ roleId, permissionKey }: { roleId: string; permissionKey: string }) => {
-      return await apiRequest('POST', `/api/admin/roles/${roleId}/permissions`, { permissionKey });
+  const bulkAssignMutation = useMutation({
+    mutationFn: async ({ roleId, permissionKeys }: { roleId: string; permissionKeys: string[] }) => {
+      return await apiRequest('POST', `/api/admin/roles/${roleId}/permissions/bulk`, { permissionKeys });
     },
-    onSuccess: () => {
+    onSuccess: (data: { message: string }) => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/role-permissions'] });
-      setSelectedRoleId('');
-      setSelectedPermissionKey('');
+      setSelectedPermissionKeys(new Set());
       toast({
         title: 'Success',
-        description: 'Permission assigned to role successfully',
+        description: data.message || 'Permissions assigned successfully',
       });
     },
     onError: (error) => {
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message.replace(/^\d+:\s*/, '') : 'Failed to assign permission',
+        description: error instanceof Error ? error.message.replace(/^\d+:\s*/, '') : 'Failed to assign permissions',
         variant: 'destructive',
       });
     },
@@ -87,37 +87,63 @@ export default function PermissionsManagement() {
     },
   });
 
-  const handleAssignPermission = () => {
-    if (!selectedRoleId || !selectedPermissionKey) {
+  // Get permissions already assigned to the selected role
+  const assignedPermissionKeys = useMemo(() => {
+    if (!selectedRoleId) return new Set<string>();
+    return new Set(
+      rolePermissions
+        .filter(rp => rp.roleId === selectedRoleId)
+        .map(rp => rp.permissionKey)
+    );
+  }, [selectedRoleId, rolePermissions]);
+
+  // Get available (unassigned) permissions for the selected role
+  const availablePermissions = useMemo(() => {
+    return [...permissions]
+      .filter(p => !assignedPermissionKeys.has(p.key))
+      .sort((a, b) => a.key.localeCompare(b.key));
+  }, [permissions, assignedPermissionKeys]);
+
+  const handleRoleChange = (value: string) => {
+    setSelectedRoleId(value);
+    setSelectedPermissionKeys(new Set());
+  };
+
+  const handlePermissionToggle = (permissionKey: string, checked: boolean) => {
+    const newSelected = new Set(selectedPermissionKeys);
+    if (checked) {
+      newSelected.add(permissionKey);
+    } else {
+      newSelected.delete(permissionKey);
+    }
+    setSelectedPermissionKeys(newSelected);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedPermissionKeys.size === availablePermissions.length) {
+      setSelectedPermissionKeys(new Set());
+    } else {
+      setSelectedPermissionKeys(new Set(availablePermissions.map(p => p.key)));
+    }
+  };
+
+  const handleBulkAssign = () => {
+    if (!selectedRoleId || selectedPermissionKeys.size === 0) {
       toast({
         title: 'Error',
-        description: 'Please select both a role and a permission',
+        description: 'Please select a role and at least one permission',
         variant: 'destructive',
       });
       return;
     }
-    assignPermissionMutation.mutate({ roleId: selectedRoleId, permissionKey: selectedPermissionKey });
+    bulkAssignMutation.mutate({ 
+      roleId: selectedRoleId, 
+      permissionKeys: Array.from(selectedPermissionKeys) 
+    });
   };
 
   const handleUnassignPermission = (roleId: string, permissionKey: string) => {
     unassignPermissionMutation.mutate({ roleId, permissionKey });
-  };
-
-  const getPermissionsForRole = (roleId: string): string[] => {
-    return rolePermissions
-      .filter(rp => rp.roleId === roleId)
-      .map(rp => rp.permissionKey);
-  };
-
-  const getAvailablePermissions = (): Permission[] => {
-    let available: Permission[];
-    if (!selectedRoleId) {
-      available = permissions;
-    } else {
-      const rolePermissionKeys = getPermissionsForRole(selectedRoleId);
-      available = permissions.filter(p => !rolePermissionKeys.includes(p.key));
-    }
-    return [...available].sort((a, b) => a.key.localeCompare(b.key));
   };
 
   if (permissionsLoading || rolesLoading || assignmentsLoading) {
@@ -129,9 +155,12 @@ export default function PermissionsManagement() {
     );
   }
 
+  const selectedRole = roles.find(r => r.id === selectedRoleId);
+  const allSelected = availablePermissions.length > 0 && selectedPermissionKeys.size === availablePermissions.length;
+
   return (
     <div className="space-y-6">
-      {/* Permission Assignment Section */}
+      {/* Bulk Permission Assignment Section */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -139,17 +168,14 @@ export default function PermissionsManagement() {
             Assign Permissions to Roles
           </CardTitle>
           <CardDescription>
-            Permissions are defined in code and cannot be created through the UI. Assign existing permissions to roles.
+            Select a role, then check the permissions you want to assign and click "Assign Selected Permissions".
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="space-y-2 min-w-[200px]">
               <Label>Select Role</Label>
-              <Select value={selectedRoleId} onValueChange={(value) => {
-                setSelectedRoleId(value);
-                setSelectedPermissionKey('');
-              }}>
+              <Select value={selectedRoleId} onValueChange={handleRoleChange}>
                 <SelectTrigger data-testid="select-permission-role">
                   <SelectValue placeholder="Choose a role..." />
                 </SelectTrigger>
@@ -163,63 +189,107 @@ export default function PermissionsManagement() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>Select Permission</Label>
-              <Select 
-                value={selectedPermissionKey} 
-                onValueChange={setSelectedPermissionKey}
-                disabled={!selectedRoleId}
+            {selectedRoleId && (
+              <Button 
+                onClick={handleBulkAssign}
+                disabled={bulkAssignMutation.isPending || selectedPermissionKeys.size === 0}
+                data-testid="button-bulk-assign-permissions"
               >
-                <SelectTrigger data-testid="select-permission-key">
-                  <SelectValue placeholder={selectedRoleId ? "Choose a permission..." : "Select a role first..."} />
-                </SelectTrigger>
-                <SelectContent>
-                  {getAvailablePermissions().length === 0 ? (
-                    <div className="p-2 text-sm text-muted-foreground text-center">
-                      {selectedRoleId ? "All permissions are already assigned to this role" : "Select a role first"}
-                    </div>
-                  ) : (
-                    getAvailablePermissions().map((permission: Permission) => (
-                      <SelectItem key={permission.key} value={permission.key}>
-                        {permission.key} - {permission.description}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
+                {bulkAssignMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Assigning...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Assign Selected ({selectedPermissionKeys.size})
+                  </>
+                )}
+              </Button>
+            )}
           </div>
 
-          <Button 
-            onClick={handleAssignPermission}
-            disabled={assignPermissionMutation.isPending || !selectedRoleId || !selectedPermissionKey}
-            className="w-full"
-            data-testid="button-assign-permission"
-          >
-            {assignPermissionMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Assigning...
-              </>
-            ) : (
-              <>
-                <Plus className="h-4 w-4 mr-2" />
-                Assign Permission
-              </>
-            )}
-          </Button>
+          {selectedRoleId && (
+            <div className="border rounded-md">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[50px]">
+                      <Checkbox
+                        checked={allSelected}
+                        onCheckedChange={handleSelectAll}
+                        disabled={availablePermissions.length === 0}
+                        data-testid="checkbox-select-all-permissions"
+                      />
+                    </TableHead>
+                    <TableHead>Permission Key</TableHead>
+                    <TableHead>Component</TableHead>
+                    <TableHead>Description</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {availablePermissions.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                        All permissions are already assigned to {selectedRole?.name}
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    availablePermissions.map((permission: Permission) => (
+                      <TableRow 
+                        key={permission.key} 
+                        data-testid={`row-available-permission-${permission.key}`}
+                        className="cursor-pointer"
+                        onClick={() => handlePermissionToggle(permission.key, !selectedPermissionKeys.has(permission.key))}
+                      >
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedPermissionKeys.has(permission.key)}
+                            onCheckedChange={(checked) => handlePermissionToggle(permission.key, !!checked)}
+                            data-testid={`checkbox-permission-${permission.key}`}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <Key className="h-4 w-4 text-muted-foreground" />
+                            <code className="text-xs bg-muted px-1 py-0.5 rounded">
+                              {permission.key}
+                            </code>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {permission.module ? (
+                            <Badge variant="outline">
+                              {permission.module}
+                            </Badge>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">core</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {permission.description || 'No description provided'}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Available Permissions */}
+      {/* All Permissions Overview */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Key className="h-5 w-5" />
-            Available Permissions
+            All Permissions
           </CardTitle>
           <CardDescription>
-            System permissions defined in the codebase. These cannot be modified through the UI.
+            Overview of all system permissions and their role assignments.
           </CardDescription>
         </CardHeader>
         <CardContent>

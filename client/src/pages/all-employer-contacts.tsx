@@ -81,7 +81,7 @@ export default function AllEmployerContacts() {
   });
 
   const { data: contactTypes } = useQuery<EmployerContactType[]>({
-    queryKey: ["/api/employer-contact-types"],
+    queryKey: ["/api/options/employer-contact-type"],
   });
 
   const handleClearFilters = () => {

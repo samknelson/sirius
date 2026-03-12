@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { storage } from "../storage";
+import { createUnifiedOptionsStorage } from "../storage/unified-options";
 import { insertEventSchema, insertEventOccurrenceSchema } from "@shared/schema";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
@@ -16,6 +17,8 @@ import { insertEventParticipantSchema } from "@shared/schema";
 import { executeChargePlugins, TriggerType, type ParticipantSavedContext } from "../charge-plugins";
 import { logger } from "../logger";
 import { eventBus, EventType } from "../services/event-bus";
+
+const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
 export function registerEventsRoutes(
   app: Express,
@@ -392,7 +395,7 @@ export function registerEventsRoutes(
       }
       
       // Get the event type to determine category
-      const eventType = await storage.options.eventTypes.get(event.eventTypeId);
+      const eventType = await unifiedOptionsStorage.get("event-type", event.eventTypeId);
       if (!eventType) {
         res.status(400).json({ message: "Event type not found" });
         return;
@@ -475,7 +478,7 @@ export function registerEventsRoutes(
       }
       
       // Get category for validation
-      const eventType = await storage.options.eventTypes.get(event.eventTypeId);
+      const eventType = await unifiedOptionsStorage.get("event-type", event.eventTypeId);
       const categoryId = eventType?.category || "public";
       
       const { role, status } = req.body;
@@ -630,7 +633,7 @@ export function registerEventsRoutes(
       }
       
       // Get the event type to check if it's a membership event
-      const eventType = await storage.options.eventTypes.get(event.eventTypeId);
+      const eventType = await unifiedOptionsStorage.get("event-type", event.eventTypeId);
       if (!eventType || eventType.category !== "membership") {
         res.status(400).json({ message: "Self-registration is only available for membership events" });
         return;
@@ -661,7 +664,7 @@ export function registerEventsRoutes(
       }
       
       // Get the event type to check if it's a membership event
-      const eventType = await storage.options.eventTypes.get(event.eventTypeId);
+      const eventType = await unifiedOptionsStorage.get("event-type", event.eventTypeId);
       if (!eventType || eventType.category !== "membership") {
         res.status(400).json({ message: "Self-registration is only available for membership events" });
         return;
@@ -731,7 +734,7 @@ export function registerEventsRoutes(
       }
       
       // Get the event type to check if it's a membership event
-      const eventType = await storage.options.eventTypes.get(event.eventTypeId);
+      const eventType = await unifiedOptionsStorage.get("event-type", event.eventTypeId);
       if (!eventType || eventType.category !== "membership") {
         res.status(400).json({ message: "Self-registration is only available for membership events" });
         return;

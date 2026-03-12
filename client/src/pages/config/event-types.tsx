@@ -105,7 +105,7 @@ export default function EventTypesPage() {
   const [formConfig, setFormConfig] = useState<Record<string, any>>({});
   
   const { data: eventTypes = [], isLoading } = useQuery<EventType[]>({
-    queryKey: ["/api/event-types"],
+    queryKey: ["/api/options/event-type"],
   });
 
   const { data: categories = [] } = useQuery<EventCategory[]>({
@@ -139,7 +139,7 @@ export default function EventTypesPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertEventType) => {
-      return apiRequest("POST", "/api/event-types", {
+      return apiRequest("POST", "/api/options/event-type", {
         ...data,
         category: formCategory,
         config: Object.keys(formConfig).length > 0 ? formConfig : null,
@@ -147,7 +147,7 @@ export default function EventTypesPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/event-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/event-type"] });
       setIsAddDialogOpen(false);
       addForm.reset();
       setFormIcon("Calendar");
@@ -169,7 +169,7 @@ export default function EventTypesPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; updates: InsertEventType }) => {
-      return apiRequest("PUT", `/api/event-types/${data.id}`, {
+      return apiRequest("PUT", `/api/options/event-type/${data.id}`, {
         ...data.updates,
         category: formCategory,
         config: Object.keys(formConfig).length > 0 ? formConfig : null,
@@ -177,7 +177,7 @@ export default function EventTypesPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/event-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/event-type"] });
       setEditingId(null);
       editForm.reset();
       setFormIcon("Calendar");
@@ -199,10 +199,10 @@ export default function EventTypesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/event-types/${id}`);
+      return apiRequest("DELETE", `/api/options/event-type/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/event-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/event-type"] });
       setDeleteId(null);
       toast({
         title: "Success",

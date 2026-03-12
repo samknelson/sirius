@@ -1,15 +1,34 @@
-import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
+import { formatYmd } from "@shared/utils/date";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DispatchJobLayout, useDispatchJobLayout } from "@/components/layouts/DispatchJobLayout";
 import {
   Briefcase, Truck, HardHat, Wrench, Clock, Calendar,
-  ClipboardList, Package, MapPin, Users,
+  ClipboardList, Package, MapPin, Users, Play, Square,
+  CheckCircle, XCircle, Bell, Pause, LogOut,
   type LucideIcon
 } from "lucide-react";
 import { renderIcon } from "@/components/ui/icon-picker";
 import type { OptionsSkill } from "@shared/schema";
+
+interface DispatchStatusCounts {
+  pending: number;
+  notified: number;
+  accepted: number;
+  layoff: number;
+  resigned: number;
+  declined: number;
+}
+
+const statusConfig: Record<keyof DispatchStatusCounts, { label: string; icon: LucideIcon; color: string }> = {
+  pending: { label: "Pending", icon: Clock, color: "text-yellow-600 dark:text-yellow-400" },
+  notified: { label: "Notified", icon: Bell, color: "text-blue-600 dark:text-blue-400" },
+  accepted: { label: "Accepted", icon: CheckCircle, color: "text-green-600 dark:text-green-400" },
+  declined: { label: "Declined", icon: XCircle, color: "text-red-600 dark:text-red-400" },
+  layoff: { label: "Layoff", icon: Pause, color: "text-orange-600 dark:text-orange-400" },
+  resigned: { label: "Resigned", icon: LogOut, color: "text-muted-foreground" },
+};
 
 interface ComponentConfig {
   componentId: string;
@@ -25,6 +44,15 @@ const iconMap: Record<string, LucideIcon> = {
   ClipboardList, Package, MapPin, Users,
 };
 
+function formatTime12h(time: string): string {
+  const [hStr, mStr] = time.split(":");
+  let h = parseInt(hStr, 10);
+  const ampm = h >= 12 ? "PM" : "AM";
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return `${h}:${mStr} ${ampm}`;
+}
+
 function DispatchJobDetailsContent() {
   const { job } = useDispatchJobLayout();
   const jobData = job.data as JobData | null;
@@ -38,7 +66,7 @@ function DispatchJobDetailsContent() {
   );
 
   const { data: skills = [] } = useQuery<OptionsSkill[]>({
-    queryKey: ["/api/options/skills"],
+    queryKey: ["/api/options/skill"],
     enabled: skillsComponentEnabled && !!jobData?.requiredSkills?.length,
   });
 
@@ -64,6 +92,22 @@ function DispatchJobDetailsContent() {
             <p className="text-foreground capitalize" data-testid="text-status">{job.status}</p>
           </div>
           <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-1">Running</h3>
+            <div data-testid="text-running">
+              {job.running ? (
+                <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                  <Play className="h-4 w-4" />
+                  <span>Yes</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Square className="h-4 w-4" />
+                  <span>No</span>
+                </div>
+              )}
+            </div>
+          </div>
+          <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-1">Employer</h3>
             <p className="text-foreground" data-testid="text-employer">{job.employer?.name || "Unknown"}</p>
           </div>
@@ -77,13 +121,37 @@ function DispatchJobDetailsContent() {
           <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-1">Start Date</h3>
             <p className="text-foreground" data-testid="text-startdate">
-              {format(new Date(job.startDate), "PPP")}
+              {formatYmd(job.startYmd, 'long')}
             </p>
           </div>
           <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-1">Pay Rate</h3>
+            <p className="text-foreground" data-testid="text-payrate">
+              {job.payRate != null ? `$${parseFloat(job.payRate).toFixed(2)}` : "—"}
+            </p>
+          </div>
+          {job.startTime && (
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Start Time</h3>
+              <div className="flex items-center gap-2" data-testid="text-starttime">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <p className="text-foreground">{formatTime12h(job.startTime)}</p>
+              </div>
+            </div>
+          )}
+          {job.endTime && (
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">End Time</h3>
+              <div className="flex items-center gap-2" data-testid="text-endtime">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <p className="text-foreground">{formatTime12h(job.endTime)}</p>
+              </div>
+            </div>
+          )}
+          <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-1">Created</h3>
             <p className="text-foreground" data-testid="text-created">
-              {format(new Date(job.createdAt), "PPP")}
+              {new Date(job.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
             </p>
           </div>
         </div>
@@ -93,6 +161,56 @@ function DispatchJobDetailsContent() {
             <p className="text-foreground whitespace-pre-wrap" data-testid="text-description">
               {job.description}
             </p>
+          </div>
+        )}
+        {job.workerCount != null && (
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-2">Worker Capacity</h3>
+            <div className="space-y-3" data-testid="worker-capacity">
+              <div className="flex items-center justify-between text-sm">
+                <span className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <span>Accepted Dispatches</span>
+                </span>
+                <span className="font-medium">
+                  {job.acceptedCount ?? 0} / {job.workerCount}
+                </span>
+              </div>
+              <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-primary transition-all duration-300"
+                  style={{ 
+                    width: `${Math.min(100, ((job.acceptedCount ?? 0) / job.workerCount) * 100)}%` 
+                  }}
+                  data-testid="progress-bar"
+                />
+              </div>
+              {(job.acceptedCount ?? 0) >= job.workerCount && (
+                <p className="text-sm text-green-600 dark:text-green-400 font-medium">
+                  Fully staffed
+                </p>
+              )}
+              {job.statusCounts && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t" data-testid="dispatch-status-counts">
+                  {(Object.keys(statusConfig) as Array<keyof DispatchStatusCounts>).map((status) => {
+                    const config = statusConfig[status];
+                    const count = job.statusCounts?.[status] ?? 0;
+                    const Icon = config.icon;
+                    return (
+                      <div 
+                        key={status} 
+                        className="flex items-center gap-2 text-sm"
+                        data-testid={`status-count-${status}`}
+                      >
+                        <Icon className={`h-4 w-4 ${config.color}`} />
+                        <span className="text-muted-foreground">{config.label}:</span>
+                        <span className="font-medium">{count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
         {skillsComponentEnabled && requiredSkills.length > 0 && (

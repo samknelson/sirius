@@ -85,4 +85,41 @@ export function simpleLog(message: string, source = "express") {
   logger.info(message, { source });
 }
 
+// Web Service request logging - writes to database with client ID as host_entity_id
+export interface WsRequestLogData {
+  clientId?: string | null;
+  clientName?: string | null;
+  credentialId?: string | null;
+  bundleCode?: string | null;
+  method: string;
+  path: string;
+  status: number;
+  duration: number;
+  ipAddress: string;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+}
+
+export function logWsRequest(data: WsRequestLogData): void {
+  const level = data.status >= 500 ? 'error' : data.status >= 400 ? 'warn' : 'info';
+  const message = `WS ${data.method} ${data.path} ${data.status} ${data.duration}ms`;
+  
+  storageLogger.log(level, message, {
+    source: 'ws_request',
+    module: 'webservices',
+    operation: data.errorCode ? `auth_${data.errorCode.toLowerCase()}` : 'request',
+    host_entity_id: data.clientId || null,
+    description: data.errorMessage || null,
+    ip_address: data.ipAddress,
+    method: data.method,
+    path: data.path,
+    status: data.status,
+    duration: data.duration,
+    client_name: data.clientName,
+    credential_id: data.credentialId,
+    bundle_code: data.bundleCode,
+    error_code: data.errorCode,
+  });
+}
+
 export default logger;

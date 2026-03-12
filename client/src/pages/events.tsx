@@ -44,7 +44,7 @@ export default function EventsListPage() {
   });
 
   const { data: eventTypes = [] } = useQuery<EventType[]>({
-    queryKey: ["/api/event-types"],
+    queryKey: ["/api/options/event-type"],
   });
 
   const getEventTypeName = (eventTypeId: string | null) => {

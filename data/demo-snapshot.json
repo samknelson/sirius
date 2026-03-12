@@ -1,0 +1,2464 @@
+{
+  "version": "1.3.0",
+  "createdAt": "2026-01-19T19:21:20.450Z",
+  "tables": {
+    "optionsGender": [
+      {
+        "id": "eb82091b-1ea2-4251-a23f-d083eb993923",
+        "name": "Male",
+        "code": "M",
+        "nota": false,
+        "sequence": 0,
+        "data": null
+      },
+      {
+        "id": "0832c557-85ae-4e31-9739-4a5f05e81fce",
+        "name": "Female",
+        "code": "F",
+        "nota": false,
+        "sequence": 1,
+        "data": null
+      },
+      {
+        "id": "f1ea7e78-97f5-4eb6-b544-01f2d316bbf6",
+        "name": "Non-Binary",
+        "code": "NB",
+        "nota": false,
+        "sequence": 2,
+        "data": null
+      },
+      {
+        "id": "752cab0f-72bd-40b4-b5d7-bcc273a631cc",
+        "name": "Prefer not to say",
+        "code": "X",
+        "nota": true,
+        "sequence": 3,
+        "data": null
+      }
+    ],
+    "optionsEmployerType": [
+      {
+        "id": "45a6fe85-89d6-4448-a128-6e4379e0c6d4",
+        "name": "Hotel",
+        "description": null,
+        "sequence": 0,
+        "data": {
+          "icon": "Building"
+        }
+      }
+    ],
+    "optionsEmploymentStatus": [
+      {
+        "id": "es-regular",
+        "name": "Regular",
+        "code": "REG",
+        "employed": false,
+        "description": null,
+        "sequence": 0,
+        "data": null
+      }
+    ],
+    "optionsWorkerWs": [],
+    "optionsDispatchJobType": [
+      {
+        "id": "b591cc9d-2d7c-417a-86df-b200a0a8ea6e",
+        "name": "Maintenance",
+        "description": "Ignores Worker Ban + Do Not Call",
+        "data": {
+          "icon": "Wrench",
+          "eligibility": [
+            {
+              "config": {},
+              "enabled": true,
+              "pluginId": "dispatch_status"
+            },
+            {
+              "config": {},
+              "enabled": true,
+              "pluginId": "dispatch_hfe"
+            }
+          ]
+        }
+      },
+      {
+        "id": "034c9666-a49b-420c-bba0-7223bb1965c4",
+        "name": "Housekeeping",
+        "description": "Must meet all plugin criteria.",
+        "data": {
+          "icon": "Users",
+          "eligibility": [
+            {
+              "config": {},
+              "enabled": true,
+              "pluginId": "dispatch_ban"
+            },
+            {
+              "config": {},
+              "enabled": true,
+              "pluginId": "dispatch_dnc"
+            },
+            {
+              "config": {},
+              "enabled": true,
+              "pluginId": "dispatch_hfe"
+            },
+            {
+              "config": {},
+              "enabled": true,
+              "pluginId": "dispatch_status"
+            }
+          ]
+        }
+      }
+    ],
+    "optionsEmployerContactType": [
+      {
+        "id": "2764f2ef-42ee-4496-aea9-3bd1f9755a8a",
+        "name": "Primary Contact",
+        "description": null,
+        "data": {
+          "icon": "User"
+        }
+      },
+      {
+        "id": "5d4efab1-e5b0-4880-8d48-3c94a0ca21e0",
+        "name": "Location",
+        "description": null,
+        "data": {
+          "icon": "Building"
+        }
+      },
+      {
+        "id": "83233ec8-8de1-4da7-ac42-c303c0e22c3e",
+        "name": "Manager",
+        "description": "Hotel or property manager",
+        "data": null
+      }
+    ],
+    "optionsSkills": [
+      {
+        "id": "ef9a1826-e400-4f63-8bd5-f85aa7b5b06b",
+        "name": "Food Handler",
+        "description": null,
+        "data": {
+          "icon": "ThumbsUp"
+        }
+      },
+      {
+        "id": "58d87c81-deb6-4c86-b86c-7aeda5dc858b",
+        "name": "Alcohol Handler",
+        "description": null,
+        "data": {
+          "icon": "Star"
+        }
+      }
+    ],
+    "optionsCertifications": [
+      {
+        "id": "f6eb2c23-583c-4227-a4a7-9477db8816cf",
+        "name": "RBS",
+        "siriusId": "RBS",
+        "data": {
+          "icon": "Star",
+          "skills": "58d87c81-deb6-4c86-b86c-7aeda5dc858b",
+          "defaultDuration": 12
+        }
+      },
+      {
+        "id": "d766c813-66dd-428b-8730-2632d1f1ccd2",
+        "name": "ServSafe",
+        "siriusId": "SS",
+        "data": {
+          "icon": "ThumbsUp",
+          "skills": "ef9a1826-e400-4f63-8bd5-f85aa7b5b06b",
+          "defaultDuration": 12
+        }
+      }
+    ],
+    "contacts": [
+      {
+        "id": "d6623b27-cc06-4f37-be97-1472dc198557",
+        "title": null,
+        "given": "Sam",
+        "middle": null,
+        "family": "Nelson",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Sam Nelson",
+        "email": "samknelson@gmail.com",
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "c6bda237-96e8-4672-96c0-eab929c3d18d",
+        "title": null,
+        "given": "John",
+        "middle": null,
+        "family": "Young",
+        "generational": null,
+        "credentials": null,
+        "displayName": "John Young",
+        "email": "john.young@activistcentral.net",
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "465c093a-598c-4164-b96e-60b295e372c5",
+        "title": null,
+        "given": "Mitch",
+        "middle": null,
+        "family": "Mcdermott",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Mitch McDermott",
+        "email": "mmcdermott@cgtconsultinginc.com",
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "c6f96f2a-fdc1-4000-8b7f-e21e3e326df0",
+        "title": "Manager",
+        "given": "Michael",
+        "middle": null,
+        "family": "Williams",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Manager Michael Williams",
+        "email": "michael@riversidehotel.com",
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-alicia-ramirez",
+        "title": null,
+        "given": "Alicia",
+        "middle": null,
+        "family": "Ramirez",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Alicia Ramirez",
+        "email": "alicia.ramirez@downtownsuites.example",
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-marcus-johnson",
+        "title": null,
+        "given": "Marcus",
+        "middle": null,
+        "family": "Johnson",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Marcus Johnson",
+        "email": "marcus.johnson@airportinn.example",
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "6d84d3f6-592f-4e71-923d-476d67da1455",
+        "title": null,
+        "given": "Michael",
+        "middle": null,
+        "family": "Mcdonald",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Michael McDonald",
+        "email": "manager@riverside.com",
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-emp-airport-mgr",
+        "title": null,
+        "given": "Sarah",
+        "middle": null,
+        "family": "Johnson",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Sarah Johnson",
+        "email": "sarah.johnson@airportinn.example.com",
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-emp-airport-loc",
+        "title": null,
+        "given": "Mike",
+        "middle": null,
+        "family": "Thompson",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Mike Thompson",
+        "email": "mike.thompson@airportinn.example.com",
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-emp-downtown-mgr",
+        "title": null,
+        "given": "Lisa",
+        "middle": null,
+        "family": "Garcia",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Lisa Garcia",
+        "email": "lisa.garcia@downtownsuites.example.com",
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-emp-downtown-loc",
+        "title": null,
+        "given": "Robert",
+        "middle": null,
+        "family": "Kim",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Robert Kim",
+        "email": "robert.kim@downtownsuites.example.com",
+        "birthDate": null,
+        "gender": null,
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "a0b2928b-3616-4d24-8508-294ade894a99",
+        "title": null,
+        "given": "Gary",
+        "middle": null,
+        "family": "Mcguire",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Gary McGuire",
+        "email": "gary.mcguire@example.com",
+        "birthDate": "1996-11-11",
+        "gender": "eb82091b-1ea2-4251-a23f-d083eb993923",
+        "genderNota": null,
+        "genderCalc": "Male"
+      },
+      {
+        "id": "contact-w002",
+        "title": null,
+        "given": "Carlos",
+        "middle": null,
+        "family": "Hernandez",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Carlos Hernandez",
+        "email": "carlos.hernandez@example.com",
+        "birthDate": "1987-09-02",
+        "gender": "eb82091b-1ea2-4251-a23f-d083eb993923",
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-w004",
+        "title": null,
+        "given": "DeShawn",
+        "middle": null,
+        "family": "Turner",
+        "generational": null,
+        "credentials": null,
+        "displayName": "DeShawn Turner",
+        "email": "deshawn.turner@example.com",
+        "birthDate": "1990-11-13",
+        "gender": "eb82091b-1ea2-4251-a23f-d083eb993923",
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-w006",
+        "title": null,
+        "given": "Kevin",
+        "middle": null,
+        "family": "Park",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Kevin Park",
+        "email": "kevin.park@example.com",
+        "birthDate": "1985-02-22",
+        "gender": "eb82091b-1ea2-4251-a23f-d083eb993923",
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-w008",
+        "title": null,
+        "given": "Tyler",
+        "middle": null,
+        "family": "Brooks",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Tyler Brooks",
+        "email": "tyler.brooks@example.com",
+        "birthDate": "2000-08-19",
+        "gender": "eb82091b-1ea2-4251-a23f-d083eb993923",
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-w010",
+        "title": null,
+        "given": "Jordan",
+        "middle": null,
+        "family": "Reed",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Jordan Reed",
+        "email": "jordan.reed@example.com",
+        "birthDate": "1989-07-07",
+        "gender": "eb82091b-1ea2-4251-a23f-d083eb993923",
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-w012",
+        "title": null,
+        "given": "Isaac",
+        "middle": null,
+        "family": "Watson",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Isaac Watson",
+        "email": "isaac.watson@example.com",
+        "birthDate": "1983-05-16",
+        "gender": "eb82091b-1ea2-4251-a23f-d083eb993923",
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-w014",
+        "title": null,
+        "given": "Noah",
+        "middle": null,
+        "family": "Diaz",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Noah Diaz",
+        "email": "noah.diaz@example.com",
+        "birthDate": "1999-09-14",
+        "gender": "eb82091b-1ea2-4251-a23f-d083eb993923",
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-w001",
+        "title": null,
+        "given": "Jasmine",
+        "middle": null,
+        "family": "Nguyen",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Jasmine Nguyen",
+        "email": "jasmine.nguyen@example.com",
+        "birthDate": "1992-04-18",
+        "gender": "0832c557-85ae-4e31-9739-4a5f05e81fce",
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-w003",
+        "title": null,
+        "given": "Monica",
+        "middle": null,
+        "family": "Santos",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Monica Santos",
+        "email": "monica.santos@example.com",
+        "birthDate": "1996-01-27",
+        "gender": "0832c557-85ae-4e31-9739-4a5f05e81fce",
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-w005",
+        "title": null,
+        "given": "Andrea",
+        "middle": null,
+        "family": "Lopez",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Andrea Lopez",
+        "email": "andrea.lopez@example.com",
+        "birthDate": "1998-06-05",
+        "gender": "0832c557-85ae-4e31-9739-4a5f05e81fce",
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-w007",
+        "title": null,
+        "given": "Sofia",
+        "middle": null,
+        "family": "Martinez",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Sofia Martinez",
+        "email": "sofia.martinez@example.com",
+        "birthDate": "1993-12-30",
+        "gender": "0832c557-85ae-4e31-9739-4a5f05e81fce",
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-w009",
+        "title": null,
+        "given": "Nina",
+        "middle": null,
+        "family": "Patel",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Nina Patel",
+        "email": "nina.patel@example.com",
+        "birthDate": "1991-03-11",
+        "gender": "0832c557-85ae-4e31-9739-4a5f05e81fce",
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-w011",
+        "title": null,
+        "given": "Grace",
+        "middle": null,
+        "family": "Kim",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Grace Kim",
+        "email": "grace.kim@example.com",
+        "birthDate": "1997-10-25",
+        "gender": "0832c557-85ae-4e31-9739-4a5f05e81fce",
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-w015",
+        "title": null,
+        "given": "Maya",
+        "middle": null,
+        "family": "Chen",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Maya Chen",
+        "email": "maya.chen@example.com",
+        "birthDate": "1988-12-01",
+        "gender": "0832c557-85ae-4e31-9739-4a5f05e81fce",
+        "genderNota": null,
+        "genderCalc": null
+      },
+      {
+        "id": "contact-w013",
+        "title": null,
+        "given": "Leila",
+        "middle": null,
+        "family": "Ahmed",
+        "generational": null,
+        "credentials": null,
+        "displayName": "Leila Ahmed",
+        "email": "leila.ahmed@example.com",
+        "birthDate": "1994-02-09",
+        "gender": "0832c557-85ae-4e31-9739-4a5f05e81fce",
+        "genderNota": null,
+        "genderCalc": "Female"
+      }
+    ],
+    "phoneNumbers": [
+      {
+        "id": "f6f47bc9-3193-4c2d-b1f3-0f7185d7fd3c",
+        "contactId": "c6f96f2a-fdc1-4000-8b7f-e21e3e326df0",
+        "friendlyName": "Work Phone",
+        "phoneNumber": "+14125555555",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": {
+          "type": "FIXED_LINE_OR_MOBILE",
+          "country": "US",
+          "isValid": true,
+          "e164Format": "+14125555555",
+          "nationalFormat": "(412) 555-5555",
+          "internationalFormat": "+1 412 555 5555"
+        },
+        "createdAt": "2026-01-05T19:18:21.916Z"
+      },
+      {
+        "id": "0c360c08-3d2d-479f-874d-87bd78e380e5",
+        "contactId": "contact-alicia-ramirez",
+        "friendlyName": null,
+        "phoneNumber": "(213) 555-0101",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "createdAt": "2026-01-05T19:40:54.512Z"
+      },
+      {
+        "id": "fff3969a-4578-4f82-a294-334c2ca701e9",
+        "contactId": "contact-marcus-johnson",
+        "friendlyName": null,
+        "phoneNumber": "(310) 555-0102",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "createdAt": "2026-01-05T19:40:54.512Z"
+      },
+      {
+        "id": "ca9589ca-48be-41b6-8490-580de5e3d204",
+        "contactId": "contact-w001",
+        "friendlyName": null,
+        "phoneNumber": "(213) 555-0111",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "createdAt": "2026-01-05T19:44:27.845Z"
+      },
+      {
+        "id": "0efd714c-d344-458f-9a2a-d75b45d19e5d",
+        "contactId": "contact-w002",
+        "friendlyName": null,
+        "phoneNumber": "(323) 555-0112",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "createdAt": "2026-01-05T19:44:27.845Z"
+      },
+      {
+        "id": "9af1765d-9630-4305-8363-e367c9e63612",
+        "contactId": "contact-w003",
+        "friendlyName": null,
+        "phoneNumber": "(213) 555-0113",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "createdAt": "2026-01-05T19:44:27.845Z"
+      },
+      {
+        "id": "6d97d1fc-3351-41a6-9c54-043c3a6ac9da",
+        "contactId": "contact-w004",
+        "friendlyName": null,
+        "phoneNumber": "(213) 555-0114",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "createdAt": "2026-01-05T19:44:27.845Z"
+      },
+      {
+        "id": "731ff8af-fdbf-4ba7-8369-9d922c58de05",
+        "contactId": "contact-w005",
+        "friendlyName": null,
+        "phoneNumber": "(323) 555-0115",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "createdAt": "2026-01-05T19:44:27.845Z"
+      },
+      {
+        "id": "2c15cd2d-9706-42b1-84c5-fe8106d7f540",
+        "contactId": "contact-w006",
+        "friendlyName": null,
+        "phoneNumber": "(213) 555-0116",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "createdAt": "2026-01-05T19:44:27.845Z"
+      },
+      {
+        "id": "e6ca90fc-a61b-45f5-a373-d8456436b1d5",
+        "contactId": "contact-w007",
+        "friendlyName": null,
+        "phoneNumber": "(213) 555-0117",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "createdAt": "2026-01-05T19:44:27.845Z"
+      },
+      {
+        "id": "21f31aec-0f24-4424-b156-064c8f133691",
+        "contactId": "contact-w008",
+        "friendlyName": null,
+        "phoneNumber": "(213) 555-0118",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "createdAt": "2026-01-05T19:44:27.845Z"
+      },
+      {
+        "id": "c2952771-ba8e-437e-9576-8ddd9c621c64",
+        "contactId": "contact-w009",
+        "friendlyName": null,
+        "phoneNumber": "(310) 555-0119",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "createdAt": "2026-01-05T19:44:27.845Z"
+      },
+      {
+        "id": "4b7025b8-653b-457e-8c54-b7388874ba24",
+        "contactId": "contact-w010",
+        "friendlyName": null,
+        "phoneNumber": "(213) 555-0120",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "createdAt": "2026-01-05T19:44:27.845Z"
+      },
+      {
+        "id": "6a442f34-b170-4f8d-a34e-4df4384a0b74",
+        "contactId": "contact-w011",
+        "friendlyName": null,
+        "phoneNumber": "(323) 555-0121",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "createdAt": "2026-01-05T19:44:27.845Z"
+      },
+      {
+        "id": "5c7ca8b3-153c-4d18-8f95-96ad8c3eff08",
+        "contactId": "contact-w012",
+        "friendlyName": null,
+        "phoneNumber": "(818) 555-0122",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "createdAt": "2026-01-05T19:44:27.845Z"
+      },
+      {
+        "id": "e8ff6501-6a4b-4c47-8e8b-a1c72bec57cc",
+        "contactId": "contact-w013",
+        "friendlyName": null,
+        "phoneNumber": "(213) 555-0123",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "createdAt": "2026-01-05T19:44:27.845Z"
+      },
+      {
+        "id": "4b2d9299-4bc7-471c-baa9-6f965118c4e7",
+        "contactId": "contact-w014",
+        "friendlyName": null,
+        "phoneNumber": "(323) 555-0124",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "createdAt": "2026-01-05T19:44:27.845Z"
+      },
+      {
+        "id": "e07db49c-b644-4f0d-85c8-1562c7838835",
+        "contactId": "contact-w015",
+        "friendlyName": null,
+        "phoneNumber": "(323) 555-0125",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "createdAt": "2026-01-05T19:44:27.845Z"
+      }
+    ],
+    "contactPostal": [
+      {
+        "id": "addr-w001",
+        "contactId": "contact-w001",
+        "friendlyName": "Home",
+        "street": "1234 Sunset Blvd",
+        "city": "Los Angeles",
+        "state": "CA",
+        "postalCode": "90028",
+        "country": "USA",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "latitude": null,
+        "longitude": null,
+        "accuracy": null,
+        "createdAt": "2026-01-05T21:11:05.476Z"
+      },
+      {
+        "id": "addr-w002",
+        "contactId": "contact-w002",
+        "friendlyName": "Home",
+        "street": "5678 Hollywood Blvd",
+        "city": "Los Angeles",
+        "state": "CA",
+        "postalCode": "90028",
+        "country": "USA",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "latitude": null,
+        "longitude": null,
+        "accuracy": null,
+        "createdAt": "2026-01-05T21:11:05.476Z"
+      },
+      {
+        "id": "addr-w003",
+        "contactId": "contact-w003",
+        "friendlyName": "Home",
+        "street": "910 Venice Beach Rd",
+        "city": "Los Angeles",
+        "state": "CA",
+        "postalCode": "90291",
+        "country": "USA",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "latitude": null,
+        "longitude": null,
+        "accuracy": null,
+        "createdAt": "2026-01-05T21:11:05.476Z"
+      },
+      {
+        "id": "addr-w004",
+        "contactId": "contact-w004",
+        "friendlyName": "Home",
+        "street": "222 Beverly Dr",
+        "city": "Beverly Hills",
+        "state": "CA",
+        "postalCode": "90210",
+        "country": "USA",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "latitude": null,
+        "longitude": null,
+        "accuracy": null,
+        "createdAt": "2026-01-05T21:11:05.476Z"
+      },
+      {
+        "id": "addr-w005",
+        "contactId": "contact-w005",
+        "friendlyName": "Home",
+        "street": "333 Wilshire Blvd",
+        "city": "Los Angeles",
+        "state": "CA",
+        "postalCode": "90010",
+        "country": "USA",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "latitude": null,
+        "longitude": null,
+        "accuracy": null,
+        "createdAt": "2026-01-05T21:11:05.476Z"
+      },
+      {
+        "id": "addr-w006",
+        "contactId": "contact-w006",
+        "friendlyName": "Home",
+        "street": "444 Santa Monica Blvd",
+        "city": "Santa Monica",
+        "state": "CA",
+        "postalCode": "90401",
+        "country": "USA",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "latitude": null,
+        "longitude": null,
+        "accuracy": null,
+        "createdAt": "2026-01-05T21:11:05.476Z"
+      },
+      {
+        "id": "addr-w007",
+        "contactId": "contact-w007",
+        "friendlyName": "Home",
+        "street": "555 Melrose Ave",
+        "city": "Los Angeles",
+        "state": "CA",
+        "postalCode": "90038",
+        "country": "USA",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "latitude": null,
+        "longitude": null,
+        "accuracy": null,
+        "createdAt": "2026-01-05T21:11:05.476Z"
+      },
+      {
+        "id": "addr-w008",
+        "contactId": "contact-w008",
+        "friendlyName": "Home",
+        "street": "666 La Brea Ave",
+        "city": "Los Angeles",
+        "state": "CA",
+        "postalCode": "90036",
+        "country": "USA",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "latitude": null,
+        "longitude": null,
+        "accuracy": null,
+        "createdAt": "2026-01-05T21:11:05.476Z"
+      },
+      {
+        "id": "addr-w009",
+        "contactId": "contact-w009",
+        "friendlyName": "Home",
+        "street": "777 Fairfax Ave",
+        "city": "Los Angeles",
+        "state": "CA",
+        "postalCode": "90036",
+        "country": "USA",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "latitude": null,
+        "longitude": null,
+        "accuracy": null,
+        "createdAt": "2026-01-05T21:11:05.476Z"
+      },
+      {
+        "id": "addr-w010",
+        "contactId": "contact-w010",
+        "friendlyName": "Home",
+        "street": "888 Vine St",
+        "city": "Los Angeles",
+        "state": "CA",
+        "postalCode": "90038",
+        "country": "USA",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "latitude": null,
+        "longitude": null,
+        "accuracy": null,
+        "createdAt": "2026-01-05T21:11:05.476Z"
+      },
+      {
+        "id": "addr-w011",
+        "contactId": "contact-w011",
+        "friendlyName": "Home",
+        "street": "999 Rodeo Dr",
+        "city": "Beverly Hills",
+        "state": "CA",
+        "postalCode": "90210",
+        "country": "USA",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "latitude": null,
+        "longitude": null,
+        "accuracy": null,
+        "createdAt": "2026-01-05T21:11:05.476Z"
+      },
+      {
+        "id": "addr-w012",
+        "contactId": "contact-w012",
+        "friendlyName": "Home",
+        "street": "1010 Pacific Coast Hwy",
+        "city": "Malibu",
+        "state": "CA",
+        "postalCode": "90265",
+        "country": "USA",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "latitude": null,
+        "longitude": null,
+        "accuracy": null,
+        "createdAt": "2026-01-05T21:11:05.476Z"
+      },
+      {
+        "id": "addr-w013",
+        "contactId": "contact-w013",
+        "friendlyName": "Home",
+        "street": "1111 Olympic Blvd",
+        "city": "Los Angeles",
+        "state": "CA",
+        "postalCode": "90015",
+        "country": "USA",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "latitude": null,
+        "longitude": null,
+        "accuracy": null,
+        "createdAt": "2026-01-05T21:11:05.476Z"
+      },
+      {
+        "id": "addr-w014",
+        "contactId": "contact-w014",
+        "friendlyName": "Home",
+        "street": "1212 Figueroa St",
+        "city": "Los Angeles",
+        "state": "CA",
+        "postalCode": "90015",
+        "country": "USA",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "latitude": null,
+        "longitude": null,
+        "accuracy": null,
+        "createdAt": "2026-01-05T21:11:05.476Z"
+      },
+      {
+        "id": "addr-w015",
+        "contactId": "contact-w015",
+        "friendlyName": "Home",
+        "street": "1313 Grand Ave",
+        "city": "Los Angeles",
+        "state": "CA",
+        "postalCode": "90015",
+        "country": "USA",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "latitude": null,
+        "longitude": null,
+        "accuracy": null,
+        "createdAt": "2026-01-05T21:11:05.476Z"
+      },
+      {
+        "id": "addr-gary",
+        "contactId": "a0b2928b-3616-4d24-8508-294ade894a99",
+        "friendlyName": "Home",
+        "street": "1414 Spring St",
+        "city": "Los Angeles",
+        "state": "CA",
+        "postalCode": "90012",
+        "country": "USA",
+        "isPrimary": true,
+        "isActive": true,
+        "validationResponse": null,
+        "latitude": null,
+        "longitude": null,
+        "accuracy": null,
+        "createdAt": "2026-01-05T21:11:05.476Z"
+      }
+    ],
+    "employers": [
+      {
+        "id": "6d293842-87e4-4667-a14b-3763f057a636",
+        "siriusId": 1,
+        "name": "Riverside Hotel",
+        "isActive": true,
+        "typeId": "45a6fe85-89d6-4448-a128-6e4379e0c6d4",
+        "industryId": null,
+        "stripeCustomerId": null,
+        "denormPolicyId": null
+      },
+      {
+        "id": "emp-downtown-suites",
+        "siriusId": 2,
+        "name": "Downtown Suites",
+        "isActive": true,
+        "typeId": "45a6fe85-89d6-4448-a128-6e4379e0c6d4",
+        "industryId": null,
+        "stripeCustomerId": null,
+        "denormPolicyId": null
+      },
+      {
+        "id": "emp-airport-inn",
+        "siriusId": 3,
+        "name": "Airport Inn",
+        "isActive": true,
+        "typeId": "45a6fe85-89d6-4448-a128-6e4379e0c6d4",
+        "industryId": null,
+        "stripeCustomerId": null,
+        "denormPolicyId": null
+      }
+    ],
+    "employerContacts": [
+      {
+        "id": "9f9170a4-010d-4acf-91ff-8c24cf96a67a",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "contactId": "6d84d3f6-592f-4e71-923d-476d67da1455",
+        "contactTypeId": "83233ec8-8de1-4da7-ac42-c303c0e22c3e"
+      },
+      {
+        "id": "ec-airport-mgr",
+        "employerId": "emp-airport-inn",
+        "contactId": "contact-emp-airport-mgr",
+        "contactTypeId": "83233ec8-8de1-4da7-ac42-c303c0e22c3e"
+      },
+      {
+        "id": "ec-downtown-mgr",
+        "employerId": "emp-downtown-suites",
+        "contactId": "contact-emp-downtown-mgr",
+        "contactTypeId": "83233ec8-8de1-4da7-ac42-c303c0e22c3e"
+      }
+    ],
+    "workers": [
+      {
+        "id": "worker-w001",
+        "siriusId": 2,
+        "contactId": "contact-w001",
+        "ssn": "545-23-7812",
+        "denormWsId": null,
+        "denormMsIds": null,
+        "denormJobTitle": null,
+        "denormHomeEmployerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "denormEmployerIds": null,
+        "bargainingUnitId": null
+      },
+      {
+        "id": "worker-w002",
+        "siriusId": 3,
+        "contactId": "contact-w002",
+        "ssn": "612-44-1903",
+        "denormWsId": null,
+        "denormMsIds": null,
+        "denormJobTitle": null,
+        "denormHomeEmployerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "denormEmployerIds": null,
+        "bargainingUnitId": null
+      },
+      {
+        "id": "worker-w003",
+        "siriusId": 4,
+        "contactId": "contact-w003",
+        "ssn": "589-71-4026",
+        "denormWsId": null,
+        "denormMsIds": null,
+        "denormJobTitle": null,
+        "denormHomeEmployerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "denormEmployerIds": null,
+        "bargainingUnitId": null
+      },
+      {
+        "id": "worker-w004",
+        "siriusId": 5,
+        "contactId": "contact-w004",
+        "ssn": "601-55-8934",
+        "denormWsId": null,
+        "denormMsIds": null,
+        "denormJobTitle": null,
+        "denormHomeEmployerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "denormEmployerIds": null,
+        "bargainingUnitId": null
+      },
+      {
+        "id": "worker-w005",
+        "siriusId": 6,
+        "contactId": "contact-w005",
+        "ssn": "633-82-4179",
+        "denormWsId": null,
+        "denormMsIds": null,
+        "denormJobTitle": null,
+        "denormHomeEmployerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "denormEmployerIds": null,
+        "bargainingUnitId": null
+      },
+      {
+        "id": "worker-w006",
+        "siriusId": 7,
+        "contactId": "contact-w006",
+        "ssn": "574-60-2918",
+        "denormWsId": null,
+        "denormMsIds": null,
+        "denormJobTitle": null,
+        "denormHomeEmployerId": "emp-downtown-suites",
+        "denormEmployerIds": null,
+        "bargainingUnitId": null
+      },
+      {
+        "id": "worker-w007",
+        "siriusId": 8,
+        "contactId": "contact-w007",
+        "ssn": "659-14-7632",
+        "denormWsId": null,
+        "denormMsIds": null,
+        "denormJobTitle": null,
+        "denormHomeEmployerId": "emp-downtown-suites",
+        "denormEmployerIds": null,
+        "bargainingUnitId": null
+      },
+      {
+        "id": "worker-w008",
+        "siriusId": 9,
+        "contactId": "contact-w008",
+        "ssn": "522-93-5084",
+        "denormWsId": null,
+        "denormMsIds": null,
+        "denormJobTitle": null,
+        "denormHomeEmployerId": "emp-downtown-suites",
+        "denormEmployerIds": null,
+        "bargainingUnitId": null
+      },
+      {
+        "id": "worker-w009",
+        "siriusId": 10,
+        "contactId": "contact-w009",
+        "ssn": "618-37-9501",
+        "denormWsId": null,
+        "denormMsIds": null,
+        "denormJobTitle": null,
+        "denormHomeEmployerId": "emp-downtown-suites",
+        "denormEmployerIds": null,
+        "bargainingUnitId": null
+      },
+      {
+        "id": "worker-w010",
+        "siriusId": 11,
+        "contactId": "contact-w010",
+        "ssn": "556-88-3147",
+        "denormWsId": null,
+        "denormMsIds": null,
+        "denormJobTitle": null,
+        "denormHomeEmployerId": "emp-downtown-suites",
+        "denormEmployerIds": null,
+        "bargainingUnitId": null
+      },
+      {
+        "id": "worker-w011",
+        "siriusId": 12,
+        "contactId": "contact-w011",
+        "ssn": "640-26-7815",
+        "denormWsId": null,
+        "denormMsIds": null,
+        "denormJobTitle": null,
+        "denormHomeEmployerId": "emp-airport-inn",
+        "denormEmployerIds": null,
+        "bargainingUnitId": null
+      },
+      {
+        "id": "worker-w012",
+        "siriusId": 13,
+        "contactId": "contact-w012",
+        "ssn": "503-91-6642",
+        "denormWsId": null,
+        "denormMsIds": null,
+        "denormJobTitle": null,
+        "denormHomeEmployerId": "emp-airport-inn",
+        "denormEmployerIds": null,
+        "bargainingUnitId": null
+      },
+      {
+        "id": "worker-w013",
+        "siriusId": 14,
+        "contactId": "contact-w013",
+        "ssn": "628-54-9021",
+        "denormWsId": null,
+        "denormMsIds": null,
+        "denormJobTitle": null,
+        "denormHomeEmployerId": "emp-airport-inn",
+        "denormEmployerIds": null,
+        "bargainingUnitId": null
+      },
+      {
+        "id": "worker-w014",
+        "siriusId": 15,
+        "contactId": "contact-w014",
+        "ssn": "517-69-3480",
+        "denormWsId": null,
+        "denormMsIds": null,
+        "denormJobTitle": null,
+        "denormHomeEmployerId": "emp-airport-inn",
+        "denormEmployerIds": null,
+        "bargainingUnitId": null
+      },
+      {
+        "id": "worker-w015",
+        "siriusId": 16,
+        "contactId": "contact-w015",
+        "ssn": "591-42-1768",
+        "denormWsId": null,
+        "denormMsIds": null,
+        "denormJobTitle": null,
+        "denormHomeEmployerId": "emp-airport-inn",
+        "denormEmployerIds": null,
+        "bargainingUnitId": null
+      },
+      {
+        "id": "14b0877c-d191-477f-8006-ddcd90ec485b",
+        "siriusId": 1,
+        "contactId": "a0b2928b-3616-4d24-8508-294ade894a99",
+        "ssn": "011231231",
+        "denormWsId": null,
+        "denormMsIds": null,
+        "denormJobTitle": null,
+        "denormHomeEmployerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "denormEmployerIds": [
+          "6d293842-87e4-4667-a14b-3763f057a636"
+        ],
+        "bargainingUnitId": null
+      }
+    ],
+    "workerBans": [
+      {
+        "id": "327ed2a4-78d7-4e30-93c8-ec3e2fe50fce",
+        "workerId": "worker-w004",
+        "type": "dispatch",
+        "startDate": "2026-01-05T00:00:00.000Z",
+        "endDate": "2027-01-01T00:00:00.000Z",
+        "denormActive": true,
+        "message": null,
+        "data": null
+      },
+      {
+        "id": "ban-noah-diaz",
+        "workerId": "worker-w014",
+        "type": "general",
+        "startDate": "2025-01-01T00:00:00.000Z",
+        "endDate": null,
+        "denormActive": true,
+        "message": "Demo banned worker",
+        "data": null
+      }
+    ],
+    "workerHours": [
+      {
+        "id": "3426d916-4287-40dc-b403-ba5c0fcf207d",
+        "year": 2025,
+        "month": 12,
+        "day": 1,
+        "workerId": "14b0877c-d191-477f-8006-ddcd90ec485b",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 120,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "c581cd08-d760-4f70-9afb-404c0f19b1fc",
+        "year": 2025,
+        "month": 7,
+        "day": 1,
+        "workerId": "worker-w001",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 120,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "3d8e78ab-510a-4f65-a3ba-c3e3e185539a",
+        "year": 2025,
+        "month": 8,
+        "day": 1,
+        "workerId": "worker-w001",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 135,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "b46aafbf-8d20-449d-9a2b-6e669013da69",
+        "year": 2025,
+        "month": 9,
+        "day": 1,
+        "workerId": "worker-w001",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 80,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "1414b00a-3170-45a2-9766-6f273c13ce17",
+        "year": 2025,
+        "month": 10,
+        "day": 1,
+        "workerId": "worker-w001",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 140,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "514897a9-6a4f-4981-9b8b-e85af9f80ba3",
+        "year": 2025,
+        "month": 11,
+        "day": 1,
+        "workerId": "worker-w001",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 110,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "5cdc8ef9-f583-469a-bfba-ce7d055e5dcc",
+        "year": 2025,
+        "month": 12,
+        "day": 1,
+        "workerId": "worker-w001",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 90,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "cfc9c318-fd17-480d-ac64-9ac1c5e651f0",
+        "year": 2025,
+        "month": 7,
+        "day": 1,
+        "workerId": "worker-w002",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 160,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "feca46c2-7041-4da1-bd16-248baff91c1f",
+        "year": 2025,
+        "month": 8,
+        "day": 1,
+        "workerId": "worker-w002",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 150,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "0db432e8-1a55-4384-9fdf-f61e24d90e55",
+        "year": 2025,
+        "month": 9,
+        "day": 1,
+        "workerId": "worker-w002",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 155,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "9704650f-40ce-4ab9-97fb-87a05d55cdee",
+        "year": 2025,
+        "month": 10,
+        "day": 1,
+        "workerId": "worker-w002",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 140,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "37210883-7eb5-41f3-8ef3-cf39035ea921",
+        "year": 2025,
+        "month": 11,
+        "day": 1,
+        "workerId": "worker-w002",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 165,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "111ca393-f94e-41b9-9081-673efa1162a1",
+        "year": 2025,
+        "month": 12,
+        "day": 1,
+        "workerId": "worker-w002",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 158,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "29c00cc0-2ca7-4ded-8d82-a7057bef3444",
+        "year": 2025,
+        "month": 8,
+        "day": 1,
+        "workerId": "worker-w003",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 40,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "eee95cad-a95a-45a4-b0f2-59a07d7144bd",
+        "year": 2025,
+        "month": 9,
+        "day": 1,
+        "workerId": "worker-w003",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 60,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "ba19ba57-d467-4f22-9e82-1cbb4be20e09",
+        "year": 2025,
+        "month": 10,
+        "day": 1,
+        "workerId": "worker-w003",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 20,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "0206b697-002f-41f5-86d4-0d0505eb519f",
+        "year": 2025,
+        "month": 7,
+        "day": 1,
+        "workerId": "worker-w004",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 98,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "0e1bc971-b532-4720-b17f-05a5f44259cd",
+        "year": 2025,
+        "month": 8,
+        "day": 1,
+        "workerId": "worker-w004",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 112,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "21817865-392d-48f7-b87f-03dd80ad000c",
+        "year": 2025,
+        "month": 9,
+        "day": 1,
+        "workerId": "worker-w004",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 120,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "1ffdb53d-054d-4351-b659-10e014724e6b",
+        "year": 2025,
+        "month": 10,
+        "day": 1,
+        "workerId": "worker-w004",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 126,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "b2f297a9-2e15-4e96-91c1-73093b561d5e",
+        "year": 2025,
+        "month": 11,
+        "day": 1,
+        "workerId": "worker-w004",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 134,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "8f7cee97-dc0b-436b-b64f-93f90a578886",
+        "year": 2025,
+        "month": 12,
+        "day": 1,
+        "workerId": "worker-w004",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 140,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "603747ce-b79e-47d8-8aa5-85030d775d9d",
+        "year": 2025,
+        "month": 7,
+        "day": 1,
+        "workerId": "worker-w005",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 75,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "95bddff2-2f4c-4f8f-98f0-1e1d55072a1c",
+        "year": 2025,
+        "month": 8,
+        "day": 1,
+        "workerId": "worker-w005",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 88,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "16a66f21-487a-4e87-bcf8-240f79923092",
+        "year": 2025,
+        "month": 9,
+        "day": 1,
+        "workerId": "worker-w005",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 92,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "3b02be3d-8824-43eb-8961-c93ac381705a",
+        "year": 2025,
+        "month": 10,
+        "day": 1,
+        "workerId": "worker-w005",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 110,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "0b204618-e8a9-48cf-9fdb-1b07836a2043",
+        "year": 2025,
+        "month": 11,
+        "day": 1,
+        "workerId": "worker-w005",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 84,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "ca95a868-a772-49ac-8290-d79139bda2b5",
+        "year": 2025,
+        "month": 12,
+        "day": 1,
+        "workerId": "worker-w005",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "employmentStatusId": "es-regular",
+        "hours": 96,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "7985c1f9-9b6a-425c-b702-7328f81ccfe0",
+        "year": 2025,
+        "month": 7,
+        "day": 1,
+        "workerId": "worker-w006",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 140,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "90c0e938-1e44-45de-b75c-ecd429ee66d3",
+        "year": 2025,
+        "month": 8,
+        "day": 1,
+        "workerId": "worker-w006",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 130,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "74f56ca4-3e29-4359-a516-ba9f5d49852d",
+        "year": 2025,
+        "month": 7,
+        "day": 1,
+        "workerId": "worker-w007",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 110,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "98a8adaa-4220-4b71-8483-39a3a76fe50b",
+        "year": 2025,
+        "month": 8,
+        "day": 1,
+        "workerId": "worker-w007",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 120,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "4a6ba9ed-bd55-4517-8dfc-a3ff641fd759",
+        "year": 2025,
+        "month": 9,
+        "day": 1,
+        "workerId": "worker-w007",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 115,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "f5180db5-5a7e-491e-9887-e4d1a8ca57cc",
+        "year": 2025,
+        "month": 10,
+        "day": 1,
+        "workerId": "worker-w007",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 122,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "ca240dbd-04eb-4675-8004-4f984523308f",
+        "year": 2025,
+        "month": 11,
+        "day": 1,
+        "workerId": "worker-w007",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 118,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "cf7ad0fe-e7f1-4e10-830c-1f36fcc49b8f",
+        "year": 2025,
+        "month": 12,
+        "day": 1,
+        "workerId": "worker-w007",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 125,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "dea6d843-7bbe-4a69-89dc-9a318a43c62e",
+        "year": 2025,
+        "month": 7,
+        "day": 1,
+        "workerId": "worker-w008",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 45,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "710195d6-5968-453b-bb8e-2c7cc78cadf3",
+        "year": 2025,
+        "month": 8,
+        "day": 1,
+        "workerId": "worker-w008",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 60,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "539cac5a-acbf-44a3-8b3c-a431a715c804",
+        "year": 2025,
+        "month": 9,
+        "day": 1,
+        "workerId": "worker-w008",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 72,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "b1785593-19d4-4d95-a413-1b9a1f8b4ce1",
+        "year": 2025,
+        "month": 10,
+        "day": 1,
+        "workerId": "worker-w008",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 50,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "520a0ded-e434-473f-b359-65f6c60a93df",
+        "year": 2025,
+        "month": 11,
+        "day": 1,
+        "workerId": "worker-w008",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 65,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "125b1fc2-6eff-4b93-b771-c226e650a7a6",
+        "year": 2025,
+        "month": 12,
+        "day": 1,
+        "workerId": "worker-w008",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 70,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "4b99f70d-4c69-4216-80dc-4b4997930987",
+        "year": 2025,
+        "month": 7,
+        "day": 1,
+        "workerId": "worker-w009",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 155,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "2a4f0e16-9d80-405b-918a-09b3ad058d14",
+        "year": 2025,
+        "month": 8,
+        "day": 1,
+        "workerId": "worker-w009",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 160,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "8484e921-2875-4b4e-820a-650615a64d14",
+        "year": 2025,
+        "month": 9,
+        "day": 1,
+        "workerId": "worker-w009",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 148,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "829c68f9-7033-4d5e-8f05-ce2bc6d0801a",
+        "year": 2025,
+        "month": 10,
+        "day": 1,
+        "workerId": "worker-w009",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 152,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "027efdcf-e790-4174-9ae9-a82492264c4e",
+        "year": 2025,
+        "month": 11,
+        "day": 1,
+        "workerId": "worker-w009",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 158,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "d3542736-9204-40b3-9b56-c9bed4a6963e",
+        "year": 2025,
+        "month": 12,
+        "day": 1,
+        "workerId": "worker-w009",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 162,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "e1fe2ef9-dd77-41c4-a797-993ea294364c",
+        "year": 2025,
+        "month": 7,
+        "day": 1,
+        "workerId": "worker-w010",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 90,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "efff51f2-0012-455f-8740-559f4477f28e",
+        "year": 2025,
+        "month": 10,
+        "day": 1,
+        "workerId": "worker-w010",
+        "employerId": "emp-downtown-suites",
+        "employmentStatusId": "es-regular",
+        "hours": 80,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "fc901ed7-389f-4972-a9cc-69be608d41e4",
+        "year": 2025,
+        "month": 7,
+        "day": 1,
+        "workerId": "worker-w011",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 130,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "a00bba6a-94cc-488e-9717-83b1cb164751",
+        "year": 2025,
+        "month": 8,
+        "day": 1,
+        "workerId": "worker-w011",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 128,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "b63dbae7-6fb8-4c22-928b-44d39d8807dd",
+        "year": 2025,
+        "month": 9,
+        "day": 1,
+        "workerId": "worker-w011",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 132,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "2a0c0c1b-fe16-4901-9803-719de4851b2a",
+        "year": 2025,
+        "month": 10,
+        "day": 1,
+        "workerId": "worker-w011",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 136,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "a9ca4786-00c2-49b1-a409-2831e3f8169e",
+        "year": 2025,
+        "month": 11,
+        "day": 1,
+        "workerId": "worker-w011",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 120,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "69b12865-c818-4e37-a206-208be00aa968",
+        "year": 2025,
+        "month": 12,
+        "day": 1,
+        "workerId": "worker-w011",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 124,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "cecb7094-99b9-447e-b6c2-15a79205af7a",
+        "year": 2025,
+        "month": 7,
+        "day": 1,
+        "workerId": "worker-w012",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 170,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "bfb7ad8b-2e27-4469-a74a-f9a9ec12ec93",
+        "year": 2025,
+        "month": 8,
+        "day": 1,
+        "workerId": "worker-w012",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 165,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "84c01478-dbcf-494e-bc4d-81c027665706",
+        "year": 2025,
+        "month": 9,
+        "day": 1,
+        "workerId": "worker-w012",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 160,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "e4ad4439-953b-4983-880c-00a2967391c0",
+        "year": 2025,
+        "month": 10,
+        "day": 1,
+        "workerId": "worker-w012",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 168,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "19adeb02-8266-42e6-bfbc-021e93636eff",
+        "year": 2025,
+        "month": 11,
+        "day": 1,
+        "workerId": "worker-w012",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 172,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "2d7bf15a-ea08-4044-a460-dc5b9fedcc9e",
+        "year": 2025,
+        "month": 12,
+        "day": 1,
+        "workerId": "worker-w012",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 175,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "dcc1092b-faf6-4398-82be-0437edefdbc3",
+        "year": 2025,
+        "month": 7,
+        "day": 1,
+        "workerId": "worker-w013",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 60,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "a934a886-0579-4382-a267-7b09f09852e8",
+        "year": 2025,
+        "month": 8,
+        "day": 1,
+        "workerId": "worker-w013",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 74,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "afeb2d7c-88da-4e4a-aa54-c8f7432ddfbe",
+        "year": 2025,
+        "month": 9,
+        "day": 1,
+        "workerId": "worker-w013",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 82,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "9c8792aa-b0f3-422d-9a0f-c3e38791fc48",
+        "year": 2025,
+        "month": 10,
+        "day": 1,
+        "workerId": "worker-w013",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 90,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "26a9c00a-22bb-44ba-b5d4-0fdeae499597",
+        "year": 2025,
+        "month": 11,
+        "day": 1,
+        "workerId": "worker-w013",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 88,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "2978df55-441a-40d3-a395-b21490d04639",
+        "year": 2025,
+        "month": 12,
+        "day": 1,
+        "workerId": "worker-w013",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 95,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "1fce2556-1b34-4562-9840-7f1935ab1968",
+        "year": 2025,
+        "month": 9,
+        "day": 1,
+        "workerId": "worker-w014",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 35,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "6ac6cfbc-5cac-46d4-96cd-121106af1442",
+        "year": 2025,
+        "month": 11,
+        "day": 1,
+        "workerId": "worker-w014",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 20,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "50307778-3f3f-4230-9274-d87397497206",
+        "year": 2025,
+        "month": 7,
+        "day": 1,
+        "workerId": "worker-w015",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 125,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "30125997-5f75-47a8-9add-907c1274ce6b",
+        "year": 2025,
+        "month": 8,
+        "day": 1,
+        "workerId": "worker-w015",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 140,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "c94b9763-21dc-419b-8dca-321ecbbdbd09",
+        "year": 2025,
+        "month": 9,
+        "day": 1,
+        "workerId": "worker-w015",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 135,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "49c96fe9-608e-434e-94d1-82bead3fb2e0",
+        "year": 2025,
+        "month": 10,
+        "day": 1,
+        "workerId": "worker-w015",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 120,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "e2edd01a-4d77-4ddd-9183-c9ebc11e4401",
+        "year": 2025,
+        "month": 11,
+        "day": 1,
+        "workerId": "worker-w015",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 130,
+        "home": true,
+        "jobTitle": null
+      },
+      {
+        "id": "b06f192c-e530-4f6a-94a0-2f86c0088718",
+        "year": 2025,
+        "month": 12,
+        "day": 1,
+        "workerId": "worker-w015",
+        "employerId": "emp-airport-inn",
+        "employmentStatusId": "es-regular",
+        "hours": 145,
+        "home": true,
+        "jobTitle": null
+      }
+    ],
+    "workerSkills": [
+      {
+        "id": "153c3e79-06c3-409a-bf50-536876a89422",
+        "workerId": "worker-w013",
+        "skillId": "58d87c81-deb6-4c86-b86c-7aeda5dc858b",
+        "data": null
+      },
+      {
+        "id": "d894bce5-f36c-4a79-8fda-4fc132ad5b2f",
+        "workerId": "worker-w013",
+        "skillId": "ef9a1826-e400-4f63-8bd5-f85aa7b5b06b",
+        "data": null
+      }
+    ],
+    "workerCertifications": [
+      {
+        "id": "da66f482-efb9-4ec8-af7d-9df9907741f3",
+        "workerId": "worker-w013",
+        "certificationId": "f6eb2c23-583c-4227-a4a7-9477db8816cf",
+        "startDate": "2026-01-19",
+        "endDate": "2027-01-18",
+        "status": "granted",
+        "denormActive": true,
+        "data": null
+      },
+      {
+        "id": "8d4cdb42-2c74-48d4-b29a-ae6b829c967d",
+        "workerId": "worker-w013",
+        "certificationId": "d766c813-66dd-428b-8730-2632d1f1ccd2",
+        "startDate": "2026-01-19",
+        "endDate": "2027-01-18",
+        "status": "granted",
+        "denormActive": true,
+        "data": null
+      }
+    ],
+    "workerDispatchStatus": [
+      {
+        "id": "f1cc13e7-4d6e-466c-aae1-f014e4cc5024",
+        "workerId": "14b0877c-d191-477f-8006-ddcd90ec485b",
+        "status": "available",
+        "seniorityDate": "2001-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "c9599780-4de1-4a20-b70c-35e6aa59f0b8",
+        "workerId": "worker-w001",
+        "status": "available",
+        "seniorityDate": "2025-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "99443a12-8b29-4ea4-afaa-35a75f6946c2",
+        "workerId": "worker-w002",
+        "status": "available",
+        "seniorityDate": "2024-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "c324c63f-543c-4508-95c6-59604719606b",
+        "workerId": "worker-w004",
+        "status": "available",
+        "seniorityDate": "2020-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "c0802508-0b18-483a-83f7-7424f3f76f9b",
+        "workerId": "worker-w005",
+        "status": "available",
+        "seniorityDate": "2024-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "32e38b05-dadb-47f3-ade4-ac1391056901",
+        "workerId": "worker-w006",
+        "status": "available",
+        "seniorityDate": "1999-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "8840e577-dea9-40c6-b999-e3ef86571c43",
+        "workerId": "worker-w007",
+        "status": "available",
+        "seniorityDate": "2020-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "b9d9fa03-2c32-4e16-8e72-1460f864a05b",
+        "workerId": "worker-w009",
+        "status": "available",
+        "seniorityDate": "2020-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "23ce7136-7a98-4a19-a5a4-d8ffb46868c7",
+        "workerId": "worker-w010",
+        "status": "available",
+        "seniorityDate": "2020-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "ee301c98-2ad2-41c4-8ba6-18bb49120ae5",
+        "workerId": "worker-w011",
+        "status": "available",
+        "seniorityDate": "2020-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "84660fa0-5b87-44dc-adb8-f08d75fef863",
+        "workerId": "worker-w012",
+        "status": "available",
+        "seniorityDate": "2020-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "2e57b00e-0332-4b55-b890-16026010bd8b",
+        "workerId": "worker-w014",
+        "status": "available",
+        "seniorityDate": "2020-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "d0c246eb-3e6f-4908-b98e-bdac6ae4615a",
+        "workerId": "worker-w015",
+        "status": "available",
+        "seniorityDate": "2020-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "c15a806f-9ba4-48a6-9016-817c6c2bb169",
+        "workerId": "worker-w003",
+        "status": "not_available",
+        "seniorityDate": "2023-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "2ed0e451-52e4-45bd-8847-5a345c1f2571",
+        "workerId": "worker-w008",
+        "status": "not_available",
+        "seniorityDate": "2023-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "0af17a57-d1c9-4277-bc50-8ea877283594",
+        "workerId": "worker-w013",
+        "status": "not_available",
+        "seniorityDate": "2020-01-01T00:00:00.000Z"
+      }
+    ],
+    "workerDispatchDnc": [
+      {
+        "id": "bb991521-4164-4e54-b39c-fabfc9a7f52f",
+        "workerId": "worker-w002",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "type": "employer",
+        "data": null,
+        "message": null
+      },
+      {
+        "id": "dnc-carlos-riverside",
+        "workerId": "worker-w002",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "type": "employer",
+        "data": null,
+        "message": "Do not call for this employer"
+      },
+      {
+        "id": "dnc-jordan-downtown",
+        "workerId": "worker-w010",
+        "employerId": "emp-downtown-suites",
+        "type": "employer",
+        "data": null,
+        "message": "Do not call for this employer"
+      }
+    ],
+    "workerDispatchHfe": [
+      {
+        "id": "39cf993d-f1b4-4029-9aae-2e653ca9e32c",
+        "workerId": "worker-w001",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "holdUntil": "2026-06-06"
+      },
+      {
+        "id": "hfe-kevin-downtown",
+        "workerId": "worker-w006",
+        "employerId": "emp-downtown-suites",
+        "holdUntil": "2026-12-31"
+      },
+      {
+        "id": "hfe-grace-airport",
+        "workerId": "worker-w011",
+        "employerId": "emp-airport-inn",
+        "holdUntil": "2026-12-31"
+      }
+    ],
+    "dispatchJobs": [
+      {
+        "id": "3d707ff9-b349-4895-b8f8-90c3d4b0e4e9",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "jobTypeId": "034c9666-a49b-420c-bba0-7223bb1965c4",
+        "title": "All Criteria Job",
+        "description": "",
+        "status": "archived",
+        "startDate": "2026-01-05T00:00:00.000Z",
+        "workerCount": null,
+        "data": null,
+        "createdAt": "2026-01-05T19:59:37.758Z"
+      },
+      {
+        "id": "ef15c54d-2d32-4da6-9c39-7f357ab4bb0a",
+        "employerId": "emp-downtown-suites",
+        "jobTypeId": "034c9666-a49b-420c-bba0-7223bb1965c4",
+        "title": "Downtown All Criteria Job",
+        "description": "",
+        "status": "archived",
+        "startDate": "2026-01-04T00:00:00.000Z",
+        "workerCount": null,
+        "data": null,
+        "createdAt": "2026-01-05T20:03:21.217Z"
+      },
+      {
+        "id": "229e0b99-2082-430b-b113-2d3d2fa8e28f",
+        "employerId": "6d293842-87e4-4667-a14b-3763f057a636",
+        "jobTypeId": "034c9666-a49b-420c-bba0-7223bb1965c4",
+        "title": "Housekeeping Shift @ Riverside",
+        "description": "",
+        "status": "open",
+        "startDate": "2026-01-05T12:00:00.000Z",
+        "workerCount": 10,
+        "data": null,
+        "createdAt": "2026-01-05T19:34:47.164Z"
+      },
+      {
+        "id": "f43a209e-f16a-4b81-ba52-9a0be80f24d1",
+        "employerId": "emp-airport-inn",
+        "jobTypeId": "b591cc9d-2d7c-417a-86df-b200a0a8ea6e",
+        "title": "Maintenance Shift @ Airport Inn",
+        "description": "",
+        "status": "open",
+        "startDate": "2026-01-05T12:00:00.000Z",
+        "workerCount": 20,
+        "data": null,
+        "createdAt": "2026-01-05T20:30:34.203Z"
+      }
+    ],
+    "dispatches": []
+  }
+}

@@ -211,6 +211,32 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "worker.certifications",
+    name: "Worker Certifications",
+    description: "Management of worker certifications and credentials",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/worker/certifications/schema.ts",
+      tables: ["options_certifications"]
+    }
+  },
+  {
+    id: "worker.ratings",
+    name: "Worker Ratings",
+    description: "Management of worker performance ratings",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/worker/ratings/schema.ts",
+      tables: ["options_worker_ratings"]
+    }
+  },
+  {
     id: "trust.providers.login",
     name: "Trust Provider Login",
     description: "Ability for trust provider contacts to log in",
@@ -280,7 +306,9 @@ export const componentRegistry: ComponentDefinition[] = [
     },
     permissions: [
       { key: "employer.dispatch", description: "Employer access to dispatch functionality" },
-      { key: "employer.dispatch.manage", description: "Employer access to manage dispatch functionality" }
+      { key: "employer.dispatch.manage", description: "Employer access to manage dispatch functionality" },
+      { key: "dispatch.edit", description: "Edit dispatch jobs and job types" },
+      { key: "dispatch.delete", description: "Delete dispatch job types" }
     ],
     policies: [
       {
@@ -343,8 +371,8 @@ export const componentRegistry: ComponentDefinition[] = [
   },
   {
     id: "dispatch.hfe",
-    name: "Dispatch Hold for Employer",
-    description: "Hold for Employer management for dispatch",
+    name: "Dispatch Employer Priority",
+    description: "Employer Priority management for dispatch",
     enabledByDefault: false,
     category: "dispatch",
     managesSchema: true,
@@ -362,6 +390,26 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "dispatch"
   },
   {
+    id: "dispatch.eba",
+    name: "Employed but Available",
+    description: "Tracks workers who are employed but available for dispatch",
+    enabledByDefault: false,
+    category: "dispatch",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/dispatch/eba-schema.ts",
+      tables: ["worker_dispatch_eba"]
+    }
+  },
+  {
+    id: "dispatch.singleshift",
+    name: "Single Shift Dispatch",
+    description: "Manages single-shift dispatch assignments for workers",
+    enabledByDefault: false,
+    category: "dispatch",
+  },
+  {
     id: "debug",
     name: "Debug",
     description: "Debug tools and developer utilities",
@@ -370,6 +418,33 @@ export const componentRegistry: ComponentDefinition[] = [
     permissions: [
       { key: "debug", description: "Access to debug tools and raw data viewers" }
     ]
+  },
+  {
+    id: "edls",
+    name: "Employer Day Labor Scheduler",
+    description: "Day labor scheduling functionality for employers",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/edls/schema.ts",
+      tables: ["edls_sheets"]
+    },
+    permissions: [
+      { key: "edls.manager", description: "Full EDLS management access" },
+      { key: "edls.coordinator", description: "EDLS coordination and scheduling access" },
+      { key: "edls.supervisor", description: "EDLS supervisory access" },
+      { key: "edls.reader", description: "Read-only access to EDLS data" },
+      { key: "edls.worker.advisor", description: "Worker advisor access for EDLS" }
+    ]
+  },
+  {
+    id: "sitespecific.freeman",
+    name: "Freeman Customization",
+    description: "Custom functionality for Freeman",
+    enabledByDefault: false,
+    category: "site-specific"
   }
 ];
 

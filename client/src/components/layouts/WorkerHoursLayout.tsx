@@ -20,6 +20,7 @@ interface WorkerHoursEntry {
   employmentStatusId: string;
   hours: number | null;
   home: boolean;
+  jobTitle: string | null;
   employer: Employer;
   employmentStatus: EmploymentStatus;
 }
@@ -143,7 +144,7 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
     );
   }
 
-  const hoursTitle = `${getMonthName(hoursEntry.month)} ${hoursEntry.day}, ${hoursEntry.year} - ${hoursEntry.employer?.name || "Unknown Employer"}`;
+  const headerTitle = `${getMonthName(hoursEntry.month)} ${hoursEntry.day}, ${hoursEntry.year} - ${hoursEntry.employer?.name || "Unknown Employer"}`;
 
   const contextValue: WorkerHoursLayoutContextValue = {
     hoursEntry,
@@ -162,7 +163,7 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
                   <Clock className="text-primary-foreground" size={16} />
                 </div>
                 <h1 className="text-xl font-semibold text-foreground" data-testid="text-hours-title">
-                  {hoursTitle}
+                  {headerTitle}
                 </h1>
               </div>
               <Link href={`/workers/${hoursEntry.workerId}/employment/daily`}>

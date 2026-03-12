@@ -137,9 +137,10 @@ export default function WizardView() {
         title: "Wizard Deleted",
         description: "The wizard and all associated files have been deleted successfully.",
       });
-      // Navigate back to employer wizards page or homepage
       if (wizard?.entityId && wizardType?.entityType === 'employer') {
         setLocation(`/employers/${wizard.entityId}/wizards`);
+      } else if (wizardType?.isFeed) {
+        setLocation("/imports");
       } else {
         setLocation("/");
       }

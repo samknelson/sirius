@@ -165,6 +165,26 @@ export function initializePermissions(): void {
       description: 'Administrator level access',
       module: 'core'
     },
+    {
+      key: 'users.view',
+      description: 'View user accounts and profiles',
+      module: 'core'
+    },
+    {
+      key: 'workers.comm',
+      description: 'Access worker communication features (SMS, email, postal, in-app)',
+      module: 'core'
+    },
+    {
+      key: 'worker',
+      description: 'Worker role - can view and manage their own worker profile',
+      module: 'core'
+    },
+    {
+      key: 'employer',
+      description: 'Employer role - can view and manage employer-related information',
+      module: 'core'
+    },
   ];
 
   permissionRegistry.registerMany(corePermissions);

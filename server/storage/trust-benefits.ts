@@ -1,7 +1,13 @@
-import { db } from "../db";
+import { createNoopValidator } from './utils/validation';
+import { getClient } from './transaction-context';
 import { trustBenefits, optionsTrustBenefitType, type TrustBenefit, type InsertTrustBenefit } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
+
+/**
+ * Stub validator - add validation logic here when needed
+ */
+export const validate = createNoopValidator();
 
 export interface TrustBenefitStorage {
   getAllTrustBenefits(): Promise<any[]>;
@@ -14,7 +20,8 @@ export interface TrustBenefitStorage {
 export function createTrustBenefitStorage(): TrustBenefitStorage {
   return {
     async getAllTrustBenefits(): Promise<any[]> {
-      const results = await db
+      const client = getClient();
+      const results = await client
         .select({
           id: trustBenefits.id,
           name: trustBenefits.name,
@@ -35,7 +42,8 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
     },
 
     async getTrustBenefit(id: string): Promise<any | undefined> {
-      const [result] = await db
+      const client = getClient();
+      const [result] = await client
         .select({
           id: trustBenefits.id,
           name: trustBenefits.name,
@@ -59,8 +67,10 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
     },
 
     async createTrustBenefit(benefit: InsertTrustBenefit): Promise<TrustBenefit> {
+      validate.validateOrThrow(benefit);
+      const client = getClient();
       try {
-        const [newBenefit] = await db
+        const [newBenefit] = await client
           .insert(trustBenefits)
           .values(benefit)
           .returning();
@@ -74,8 +84,10 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
     },
 
     async updateTrustBenefit(id: string, benefit: Partial<InsertTrustBenefit>): Promise<TrustBenefit | undefined> {
+      validate.validateOrThrow(id);
+      const client = getClient();
       try {
-        const [updatedBenefit] = await db
+        const [updatedBenefit] = await client
           .update(trustBenefits)
           .set(benefit)
           .where(eq(trustBenefits.id, id))
@@ -90,7 +102,8 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
     },
 
     async deleteTrustBenefit(id: string): Promise<boolean> {
-      const result = await db.delete(trustBenefits).where(eq(trustBenefits.id, id)).returning();
+      const client = getClient();
+      const result = await client.delete(trustBenefits).where(eq(trustBenefits.id, id)).returning();
       return result.length > 0;
     }
   };

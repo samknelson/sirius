@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { storage } from "../storage";
 import { insertDispatchSchema, dispatchStatusEnum } from "@shared/schema";
-import { requireAccess } from "../services/access-policy-evaluator";
+import { requireAccess, buildContext, getAccessStorage } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
 
 export function registerDispatchesRoutes(
@@ -23,12 +23,13 @@ export function registerDispatchesRoutes(
       
       const dispatches = await storage.dispatches.getByJob(jobId);
       res.json(dispatches);
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Failed to fetch dispatches by job:", error?.message || error);
       res.status(500).json({ message: "Failed to fetch dispatches" });
     }
   });
 
-  app.get("/api/dispatches/worker/:workerId", dispatchComponent, requireAccess('admin'), async (req, res) => {
+  app.get("/api/dispatches/worker/:workerId", dispatchComponent, requireAccess('worker.view', (req: any) => req.params.workerId), async (req, res) => {
     try {
       const { workerId } = req.params;
       
@@ -45,7 +46,10 @@ export function registerDispatchesRoutes(
     }
   });
 
-  app.get("/api/dispatches/:id", dispatchComponent, requireAccess('admin'), async (req, res) => {
+  app.get("/api/dispatches/:id", dispatchComponent, requireAccess('worker.view', async (req: any) => {
+    const dispatch = await storage.dispatches.get(req.params.id);
+    return dispatch?.workerId;
+  }), async (req, res) => {
     try {
       const { id } = req.params;
       const dispatch = await storage.dispatches.getWithRelations(id);
@@ -84,7 +88,8 @@ export function registerDispatchesRoutes(
       
       const dispatch = await storage.dispatches.create(parsed.data);
       res.status(201).json(dispatch);
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Failed to create dispatch:", error?.message || error);
       res.status(500).json({ message: "Failed to create dispatch" });
     }
   });
@@ -142,6 +147,78 @@ export function registerDispatchesRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete dispatch" });
+    }
+  });
+
+  const workerAllowedStatuses = ["accepted", "declined"] as const;
+
+  app.get("/api/dispatches/:id/status-options", dispatchComponent, requireAccess('worker.view', async (req: any) => {
+    const dispatch = await storage.dispatches.get(req.params.id);
+    return dispatch?.workerId;
+  }), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      
+      const dispatch = await storage.dispatches.get(id);
+      if (!dispatch) {
+        res.status(404).json({ message: "Dispatch not found" });
+        return;
+      }
+
+      const context = await buildContext(req);
+      const accessStorage = getAccessStorage();
+      const isAdmin = context.user && accessStorage ? await accessStorage.hasPermission(context.user.id, 'admin') : false;
+
+      const statusesToCheck = isAdmin ? dispatchStatusEnum : workerAllowedStatuses;
+
+      const results = await Promise.all(
+        statusesToCheck.map(async (status) => {
+          const result = await storage.dispatches.setStatusPossible(id, status);
+          return {
+            status,
+            possible: result.possible,
+            reason: result.reason,
+          };
+        })
+      );
+
+      res.json(results);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get status options" });
+    }
+  });
+
+  app.post("/api/dispatches/:id/set-status", dispatchComponent, requireAccess('worker.view', async (req: any) => {
+    const dispatch = await storage.dispatches.get(req.params.id);
+    return dispatch?.workerId;
+  }), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+
+      if (!status || !dispatchStatusEnum.includes(status)) {
+        res.status(400).json({ message: `Invalid status. Must be one of: ${dispatchStatusEnum.join(', ')}` });
+        return;
+      }
+
+      const context = await buildContext(req);
+      const accessStorage = getAccessStorage();
+      const isAdmin = context.user && accessStorage ? await accessStorage.hasPermission(context.user.id, 'admin') : false;
+      if (!isAdmin && !workerAllowedStatuses.includes(status)) {
+        res.status(403).json({ message: `Workers can only accept or decline dispatches` });
+        return;
+      }
+
+      const result = await storage.dispatches.setStatus(id, status);
+      
+      if (!result.success) {
+        res.status(400).json({ message: result.error });
+        return;
+      }
+
+      res.json(result.dispatch);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to set dispatch status" });
     }
   });
 }

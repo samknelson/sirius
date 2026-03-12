@@ -110,6 +110,15 @@ export interface ProcessResults {
   completedAt?: Date;
   benefitsSummary?: BenefitSummary[]; // Summary of benefits created by type
   chargesSummary?: ChargesSummary; // Summary of charges generated
+  inactivityScan?: {
+    ran: boolean;
+    scanned: number;
+    deactivated: number;
+    alreadyInactive: number;
+    stillActive: number;
+    errors: string[];
+    details: Array<{ workerId: string; workerName: string; action: string; reason: string }>;
+  };
 }
 
 export interface FeedField {
@@ -145,7 +154,15 @@ export abstract class FeedWizard extends BaseWizard {
    * @param mode The feed mode ('create' or 'update')
    * @returns Array of validation errors for this row
    */
+  protected isEmptyRow(row: Record<string, any>): boolean {
+    return Object.values(row).every(v => v === null || v === undefined || String(v).trim() === '');
+  }
+
   async validateRow(row: Record<string, any>, rowIndex: number, mode: 'create' | 'update'): Promise<ValidationError[]> {
+    if (this.isEmptyRow(row)) {
+      return [];
+    }
+
     const errors: ValidationError[] = [];
     const fields = this.getFields?.() || [];
 
@@ -394,7 +411,7 @@ export abstract class FeedWizard extends BaseWizard {
    * Handles: string dates (M/D/YYYY, MM/DD/YYYY, YYYY-MM-DD, etc.), 
    * Excel serial numbers (days since 1900-01-01), and Date objects
    */
-  private parseDate(dateValue: unknown): string | null {
+  protected parseDate(dateValue: unknown): string | null {
     if (dateValue === null || dateValue === undefined) {
       return null;
     }
@@ -404,9 +421,9 @@ export abstract class FeedWizard extends BaseWizard {
       if (isNaN(dateValue.getTime())) {
         throw new Error(`Invalid date value`);
       }
-      const year = dateValue.getFullYear();
-      const month = String(dateValue.getMonth() + 1).padStart(2, '0');
-      const day = String(dateValue.getDate()).padStart(2, '0');
+      const year = dateValue.getUTCFullYear();
+      const month = String(dateValue.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(dateValue.getUTCDate()).padStart(2, '0');
       return `${year}-${month}-${day}`;
     }
 
@@ -417,9 +434,9 @@ export abstract class FeedWizard extends BaseWizard {
       
       // Reasonable range for Excel dates (1900-01-01 to ~2100)
       if (serial >= 1 && serial <= 73050) {
-        // Excel epoch: January 1, 1900 = serial 1
-        // But Excel incorrectly treats 1900 as a leap year, so dates after Feb 28, 1900 need adjustment
-        const excelEpoch = new Date(Date.UTC(1899, 11, 30)); // Dec 30, 1899 (serial 0)
+        // Excel epoch: January 1, 1900 = serial 1, so serial 0 = Dec 31, 1899
+        // Excel incorrectly treats 1900 as a leap year, so dates after Feb 28, 1900 (serial > 60) need adjustment
+        const excelEpoch = new Date(Date.UTC(1899, 11, 31)); // Dec 31, 1899 (serial 0)
         const adjustedSerial = serial > 60 ? serial - 1 : serial; // Adjust for Excel's leap year bug
         const parsed = new Date(excelEpoch.getTime() + adjustedSerial * 24 * 60 * 60 * 1000);
         
@@ -450,35 +467,46 @@ export abstract class FeedWizard extends BaseWizard {
     // Try to parse common formats
     let parsed: Date | null = null;
 
-    // M/D/YYYY or MM/DD/YYYY (e.g., 6/8/1955, 01/02/2015)
-    const mdyMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    // M/D/YYYY, MM/DD/YYYY, M/D/YY, MM/DD/YY (e.g., 6/8/1955, 01/02/2015, 5/1/94)
+    const mdyMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
     if (mdyMatch) {
-      const [, month, day, year] = mdyMatch;
-      parsed = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      let [, monthStr, dayStr, yearStr] = mdyMatch;
+      let yearNum = parseInt(yearStr);
+      if (yearStr.length === 2) {
+        yearNum = yearNum >= 50 ? 1900 + yearNum : 2000 + yearNum;
+      }
+      parsed = new Date(Date.UTC(yearNum, parseInt(monthStr) - 1, parseInt(dayStr)));
     }
 
-    // M-D-YYYY or MM-DD-YYYY
-    const mdyDashMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-    if (mdyDashMatch) {
-      const [, month, day, year] = mdyDashMatch;
-      parsed = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    // M-D-YYYY, MM-DD-YYYY, M-D-YY, MM-DD-YY
+    if (!parsed) {
+      const mdyDashMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/);
+      if (mdyDashMatch) {
+        let [, monthStr, dayStr, yearStr] = mdyDashMatch;
+        let yearNum = parseInt(yearStr);
+        if (yearStr.length === 2) {
+          yearNum = yearNum >= 50 ? 1900 + yearNum : 2000 + yearNum;
+        }
+        parsed = new Date(Date.UTC(yearNum, parseInt(monthStr) - 1, parseInt(dayStr)));
+      }
     }
 
     // YYYY/MM/DD
-    const ymdMatch = trimmed.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
-    if (ymdMatch) {
-      const [, year, month, day] = ymdMatch;
-      parsed = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    if (!parsed) {
+      const ymdMatch = trimmed.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+      if (ymdMatch) {
+        const [, yearStr, monthStr, dayStr] = ymdMatch;
+        parsed = new Date(Date.UTC(parseInt(yearStr), parseInt(monthStr) - 1, parseInt(dayStr)));
+      }
     }
 
     if (!parsed || isNaN(parsed.getTime())) {
-      throw new Error(`Invalid date format: ${dateValue}. Supported formats: M/D/YYYY, MM/DD/YYYY, YYYY-MM-DD, or Excel serial number`);
+      throw new Error(`Invalid date format: ${dateValue}. Supported formats: M/D/YYYY, MM/DD/YYYY, M/D/YY, YYYY-MM-DD, or Excel serial number`);
     }
 
-    // Convert to YYYY-MM-DD
-    const year = parsed.getFullYear();
-    const month = String(parsed.getMonth() + 1).padStart(2, '0');
-    const day = String(parsed.getDate()).padStart(2, '0');
+    const year = parsed.getUTCFullYear();
+    const month = String(parsed.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getUTCDate()).padStart(2, '0');
     
     return `${year}-${month}-${day}`;
   }
@@ -501,6 +529,8 @@ export abstract class FeedWizard extends BaseWizard {
       successCount: number; 
       failureCount: number;
       currentRow?: { index: number; status: 'success' | 'error'; error?: string };
+      phase?: string;
+      phaseMessage?: string;
     }) => void
   ): Promise<ProcessResults> {
     const wizard = await storage.wizards.getById(wizardId);
@@ -584,6 +614,10 @@ export abstract class FeedWizard extends BaseWizard {
       for (let j = 0; j < batch.length; j++) {
         const rowIndex = i + j;
         const row = batch[j];
+
+        if (this.isEmptyRow(row)) {
+          continue;
+        }
         
         try {
           // Extract worker data from row

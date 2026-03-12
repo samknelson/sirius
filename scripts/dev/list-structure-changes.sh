@@ -65,11 +65,11 @@ else
     fi
 fi
 
-# Get list of changed files, excluding client/* and attached_assets/*
-changed_files=$(git --no-pager diff --name-only "$BASE_COMMIT"..HEAD -- ':!client/*' ':!attached_assets/*' 2>/dev/null)
+# Get list of changed files, excluding client/*, attached_assets/*, and data/*
+changed_files=$(git --no-pager diff --name-only "$BASE_COMMIT"..HEAD -- ':!client/*' ':!attached_assets/*' ':!data/*' 2>/dev/null)
 
 if [ -z "$changed_files" ]; then
-    echo -e "${YELLOW}No files changed since ${BASE_COMMIT:0:12} (excluding client/* and attached_assets/*).${NC}"
+    echo -e "${YELLOW}No files changed since ${BASE_COMMIT:0:12} (excluding client/*, attached_assets/*, data/*).${NC}"
     echo ""
     echo -e "${CYAN}Tip: You can specify a base commit manually:${NC}"
     echo "  ./list-structure-changes.sh <commit-hash>"
@@ -81,7 +81,7 @@ file_count=$(echo "$changed_files" | wc -l)
 echo ""
 echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
 echo -e "${BLUE}  Files Changed Since: ${BASE_COMMIT:0:12}${NC}"
-echo -e "${BLUE}  (excluding client/* and attached_assets/*)${NC}"
+echo -e "${BLUE}  (excluding client/*, attached_assets/*, data/*)${NC}"
 echo -e "${BLUE}  Total: ${file_count} file(s)${NC}"
 echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
 echo ""

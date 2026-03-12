@@ -1,6 +1,5 @@
 import { getComponentById } from "../../shared/components";
-import { db } from "../db";
-import { sql as drizzleSql } from "drizzle-orm";
+import { storage } from "../storage";
 import { tableExists } from "../storage/utils";
 
 export async function pushComponentSchema(componentId: string): Promise<void> {
@@ -27,7 +26,7 @@ export async function pushComponentSchema(componentId: string): Promise<void> {
       
       const createSql = generateCreateTableSql(tableSchema, tableName);
       console.log(`Creating table ${tableName}...`);
-      await db.execute(drizzleSql.raw(createSql));
+      await storage.rawSql.execute(createSql);
       console.log(`Table ${tableName} created successfully.`);
     } else {
       console.log(`Table ${tableName} already exists, skipping.`);
@@ -154,10 +153,7 @@ export async function dropComponentSchema(componentId: string): Promise<void> {
     throw new Error(`Component ${componentId} does not manage a schema`);
   }
 
-  const { db } = await import("../db");
-  const { sql } = await import("drizzle-orm");
-
   for (const tableName of component.schemaManifest.tables) {
-    await db.execute(sql.raw(`DROP TABLE IF EXISTS ${tableName} CASCADE`));
+    await storage.rawSql.execute(`DROP TABLE IF EXISTS ${tableName} CASCADE`);
   }
 }

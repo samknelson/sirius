@@ -58,20 +58,20 @@ export default function LedgerPaymentTypesPage() {
   const [formCategory, setFormCategory] = useState<"financial" | "adjustment">("financial");
   
   const { data: paymentTypes = [], isLoading } = useQuery<LedgerPaymentType[]>({
-    queryKey: ["/api/ledger-payment-types"],
+    queryKey: ["/api/options/ledger-payment-type"],
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; description: string | null; currencyCode: string; category: "financial" | "adjustment" }) => {
       // Find the highest sequence number
       const maxSequence = paymentTypes.reduce((max, type) => Math.max(max, type.sequence), -1);
-      return apiRequest("POST", "/api/ledger-payment-types", { 
+      return apiRequest("POST", "/api/options/ledger-payment-type", { 
         ...data, 
         sequence: maxSequence + 1 
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/ledger-payment-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/ledger-payment-type"] });
       setIsAddDialogOpen(false);
       resetForm();
       toast({
@@ -90,7 +90,7 @@ export default function LedgerPaymentTypesPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; name: string; description: string | null; currencyCode: string; category: "financial" | "adjustment" }) => {
-      return apiRequest("PUT", `/api/ledger-payment-types/${data.id}`, {
+      return apiRequest("PUT", `/api/options/ledger-payment-type/${data.id}`, {
         name: data.name,
         description: data.description,
         currencyCode: data.currencyCode,
@@ -98,7 +98,7 @@ export default function LedgerPaymentTypesPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/ledger-payment-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/ledger-payment-type"] });
       setEditingId(null);
       resetForm();
       toast({
@@ -117,10 +117,10 @@ export default function LedgerPaymentTypesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/ledger-payment-types/${id}`);
+      return apiRequest("DELETE", `/api/options/ledger-payment-type/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/ledger-payment-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/ledger-payment-type"] });
       setDeleteId(null);
       toast({
         title: "Success",
@@ -138,12 +138,12 @@ export default function LedgerPaymentTypesPage() {
 
   const updateSequenceMutation = useMutation({
     mutationFn: async (data: { id: string; sequence: number }) => {
-      return apiRequest("PUT", `/api/ledger-payment-types/${data.id}`, {
+      return apiRequest("PUT", `/api/options/ledger-payment-type/${data.id}`, {
         sequence: data.sequence,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/ledger-payment-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/options/ledger-payment-type"] });
     },
   });
 

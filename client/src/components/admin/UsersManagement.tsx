@@ -367,11 +367,6 @@ export default function UsersManagement() {
                         Inactive
                       </Badge>
                     )}
-                    {user.accountStatus === 'linked' && user.replitUserId && (
-                      <span className="text-xs text-muted-foreground font-mono">
-                        {user.replitUserId}
-                      </span>
-                    )}
                   </div>
                 </TableCell>
                 <TableCell data-testid={`text-roles-${user.id}`}>

@@ -1,7 +1,10 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
+import { createUnifiedOptionsStorage } from "../storage/unified-options";
 import { z } from "zod";
 import { requireComponent } from "./components";
+
+const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
 type RequireAccess = (policy: string, getEntityId?: (req: Request) => string | Promise<string | undefined> | undefined) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
@@ -24,7 +27,7 @@ export function registerWorkerSkillsRoutes(
 ) {
   const skillsComponent = requireComponent("worker.skills");
 
-  app.get("/api/worker-skills/worker/:workerId", requireAuth, skillsComponent, requireAccess('staff'), async (req: Request, res: Response) => {
+  app.get("/api/worker-skills/worker/:workerId", requireAuth, skillsComponent, requireAccess('worker.view', req => req.params.workerId), async (req: Request, res: Response) => {
     try {
       const skills = await storage.workerSkills.getByWorker(req.params.workerId);
       res.json(skills);
@@ -34,7 +37,10 @@ export function registerWorkerSkillsRoutes(
     }
   });
 
-  app.get("/api/worker-skills/:id", requireAuth, skillsComponent, requireAccess('staff'), async (req: Request, res: Response) => {
+  app.get("/api/worker-skills/:id", requireAuth, skillsComponent, requireAccess('worker.view', async (req) => {
+    const skill = await storage.workerSkills.get(req.params.id);
+    return skill?.workerId;
+  }), async (req: Request, res: Response) => {
     try {
       const skill = await storage.workerSkills.get(req.params.id);
       if (!skill) {
@@ -92,7 +98,7 @@ export function registerWorkerSkillsRoutes(
 
   app.get("/api/options/skills", requireAuth, skillsComponent, async (req: Request, res: Response) => {
     try {
-      const skills = await storage.options.skills.getAll();
+      const skills = await unifiedOptionsStorage.list("skill");
       res.json(skills);
     } catch (error) {
       console.error("Error fetching skill options:", error);

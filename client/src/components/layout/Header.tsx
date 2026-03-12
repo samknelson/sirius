@@ -4,6 +4,9 @@ import { useTerm } from "@/contexts/TerminologyContext";
 import { useMyEmployers } from "@/hooks/useMyEmployers";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
+import { UserButton } from "@clerk/clerk-react";
+
+const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 import {
   LogOut,
   User,
@@ -29,6 +32,7 @@ import {
   FileWarning,
   Map,
   Briefcase,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -225,6 +229,34 @@ export default function Header() {
                   </>
                 )}
 
+                {/* Employer Dispatch access - for employers with dispatch permission */}
+                {hasPermission("employer.dispatch") && hasComponent("dispatch") && !staffPolicy?.access?.granted && (
+                  <Link href="/dispatch/jobs" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location.startsWith("/dispatch") ? "default" : "ghost"}
+                      className="w-full justify-start"
+                      data-testid="mobile-nav-employer-dispatch"
+                    >
+                      <Briefcase className="h-4 w-4 mr-2" />
+                      Dispatch Jobs
+                    </Button>
+                  </Link>
+                )}
+
+                {/* Worker dispatch history - for workers */}
+                {hasPermission("worker") && hasComponent("dispatch") && user?.workerId && !staffPolicy?.access?.granted && (
+                  <Link href={`/workers/${user.workerId}/dispatch/list`} onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location.includes("/dispatch") ? "default" : "ghost"}
+                      className="w-full justify-start"
+                      data-testid="mobile-nav-my-dispatches"
+                    >
+                      <Briefcase className="h-4 w-4 mr-2" />
+                      My Dispatches
+                    </Button>
+                  </Link>
+                )}
+
                 {staffPolicy?.access?.granted && (
                   <>
                     <div className="text-sm font-medium text-muted-foreground px-4 py-2">Workers</div>
@@ -286,6 +318,30 @@ export default function Header() {
                         </Button>
                       </Link>
                     )}
+                    {hasComponent("sitespecific.hta") && (
+                      <Link href="/imports" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location === "/imports" ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-worker-import"
+                        >
+                          <FileSpreadsheet className="h-4 w-4 mr-2" />
+                          Worker Import
+                        </Button>
+                      </Link>
+                    )}
+                    {hasComponent("sitespecific.hta") && (
+                      <Link href="/inactivity-scan" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location === "/inactivity-scan" ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-inactivity-scan"
+                        >
+                          <ScanLine className="h-4 w-4 mr-2" />
+                          Inactivity Scan
+                        </Button>
+                      </Link>
+                    )}
                   </>
                 )}
 
@@ -344,6 +400,18 @@ export default function Header() {
                         >
                           <Briefcase className="h-4 w-4 mr-2" />
                           Dispatch Jobs
+                        </Button>
+                      </Link>
+                    )}
+                    {hasComponent("edls") && (
+                      <Link href="/edls/sheets" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location.startsWith("/edls") ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-edls-sheets"
+                        >
+                          <FileSpreadsheet className="h-4 w-4 mr-2" />
+                          Day Labor Sheets
                         </Button>
                       </Link>
                     )}
@@ -536,7 +604,19 @@ export default function Header() {
         {/* User menu - right side of row 1 */}
         <div className="flex items-center gap-2">
           {user && <AlertsBell />}
-          {user && (
+          {user && CLERK_ENABLED && (
+            <div className="flex items-center gap-2">
+              {(hasPermission("bookmark") || hasPermission("admin") || hasPermission("employer") || hasPermission("worker")) && (
+                <Link href="/bookmarks">
+                  <Button variant="ghost" size="icon" data-testid="menu-bookmarks">
+                    <Bookmark className="h-4 w-4" />
+                  </Button>
+                </Link>
+              )}
+              <UserButton afterSignOutUrl="/api/logout" />
+            </div>
+          )}
+          {user && !CLERK_ENABLED && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" data-testid="button-user-menu">
@@ -546,7 +626,7 @@ export default function Header() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {(hasPermission("bookmark") || hasPermission("admin")) && (
+                {(hasPermission("bookmark") || hasPermission("admin") || hasPermission("employer") || hasPermission("worker")) && (
                   <>
                     <DropdownMenuItem asChild>
                       <Link href="/bookmarks" className="w-full">
@@ -636,6 +716,34 @@ export default function Header() {
               </DropdownMenu>
             )}
 
+            {/* Employer Dispatch access - for employers with dispatch permission */}
+            {hasPermission("employer.dispatch") && hasComponent("dispatch") && !staffPolicy?.access?.granted && (
+              <Link href="/dispatch/jobs">
+                <Button
+                  variant={location.startsWith("/dispatch") ? "default" : "ghost"}
+                  size="sm"
+                  data-testid="nav-employer-dispatch"
+                >
+                  <Briefcase className="h-4 w-4 mr-2" />
+                  Dispatch Jobs
+                </Button>
+              </Link>
+            )}
+
+            {/* Worker dispatch history - for workers */}
+            {hasPermission("worker") && hasComponent("dispatch") && user?.workerId && !staffPolicy?.access?.granted && (
+              <Link href={`/workers/${user.workerId}/dispatch/list`}>
+                <Button
+                  variant={location.includes("/dispatch") ? "default" : "ghost"}
+                  size="sm"
+                  data-testid="nav-my-dispatches"
+                >
+                  <Briefcase className="h-4 w-4 mr-2" />
+                  My Dispatches
+                </Button>
+              </Link>
+            )}
+
             {staffPolicy?.access?.granted && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -698,6 +806,26 @@ export default function Header() {
                       </Link>
                     </DropdownMenuItem>
                   )}
+                  {hasComponent("sitespecific.hta") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/imports" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-worker-import">
+                          <FileSpreadsheet className="h-4 w-4 mr-2" />
+                          Worker Import
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasComponent("sitespecific.hta") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/inactivity-scan" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-inactivity-scan">
+                          <ScanLine className="h-4 w-4 mr-2" />
+                          Inactivity Scan
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
@@ -706,7 +834,7 @@ export default function Header() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    variant={location.startsWith("/employers") || location.startsWith("/employer-contacts") || location.startsWith("/dispatch") ? "default" : "ghost"}
+                    variant={location.startsWith("/employers") || location.startsWith("/employer-contacts") || location.startsWith("/dispatch") || location.startsWith("/edls") ? "default" : "ghost"}
                     size="sm"
                     data-testid="nav-employers"
                   >
@@ -756,6 +884,16 @@ export default function Header() {
                         <div className="flex items-center cursor-pointer" data-testid="menu-dispatch-jobs">
                           <Briefcase className="h-4 w-4 mr-2" />
                           Dispatch Jobs
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasComponent("edls") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/edls/sheets" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-edls-sheets">
+                          <FileSpreadsheet className="h-4 w-4 mr-2" />
+                          Day Labor Sheets
                         </div>
                       </Link>
                     </DropdownMenuItem>

@@ -355,7 +355,7 @@ function PolicyBenefitsContent() {
   });
 
   const { data: workStatuses = [] } = useQuery<WorkerWs[]>({
-    queryKey: ["/api/worker-work-statuses"],
+    queryKey: ["/api/options/worker-ws"],
   });
 
   const updateMutation = useMutation({

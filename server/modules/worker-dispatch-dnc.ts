@@ -2,10 +2,8 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { insertWorkerDispatchDncSchema } from "@shared/schema";
 import { createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "../storage/worker-dispatch-dnc";
 import { withStorageLogging } from "../storage/middleware/logging";
+import { storage as mainStorage } from "../storage";
 import { z } from "zod";
-import { db } from "../db";
-import { employers } from "@shared/schema";
-import { inArray } from "drizzle-orm";
 import { requireComponent } from "./components";
 import type { RequireAccessOptions } from "../services/access-policy-evaluator";
 
@@ -24,10 +22,7 @@ async function enrichWithEmployer(entries: any[]) {
   if (entries.length === 0) return entries;
   
   const employerIds = Array.from(new Set(entries.map(e => e.employerId)));
-  const employerRecords = await db
-    .select({ id: employers.id, name: employers.name })
-    .from(employers)
-    .where(inArray(employers.id, employerIds));
+  const employerRecords = await mainStorage.employers.getByIds(employerIds);
   
   const employerMap = new Map(employerRecords.map(e => [e.id, e]));
   

@@ -5,6 +5,7 @@ import { LobStatusHandler } from './lob';
 import type { CommStatusHandler, CommStatusUpdate } from './index';
 import { createCommStorage, createCommSmsStorage, createCommEmailStorage, createCommPostalStorage } from '../../storage/comm';
 import { storageLogger } from '../../logger';
+import { handleCommStatusForDispatches } from '../dispatch-notifications';
 
 const commStorage = createCommStorage();
 const commSmsStorage = createCommSmsStorage();
@@ -190,6 +191,10 @@ export async function handleStatusCallback(
     });
 
     res.status(200).send('OK');
+
+    handleCommStatusForDispatches(commId, statusUpdate.status).catch(err => {
+      console.error(`Error in dispatch comm status handler for ${commId}:`, err);
+    });
 
   } catch (error: any) {
     console.error(`Error handling status callback for comm ${commId}:`, error);

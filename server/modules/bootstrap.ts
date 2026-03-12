@@ -49,7 +49,6 @@ export function registerBootstrapRoutes(app: Express) {
         email,
         firstName: firstName || null,
         lastName: lastName || null,
-        replitUserId: null,
         accountStatus: 'pending',
         isActive: true
       });
