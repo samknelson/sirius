@@ -54,8 +54,8 @@ export function WorkerLoadStep({ wizardId, data }: WorkerLoadStepProps) {
       const now = new Date();
       const response = await apiRequest("POST", "/api/wizards", {
         type: "gbhet_legal_workers_monthly",
+        status: "draft",
         entityId: employerId,
-        entityType: "employer",
         data: {
           launchArguments: {
             year: now.getFullYear(),
