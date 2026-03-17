@@ -10,6 +10,11 @@ import { ResultsStep } from './report/ResultsStep';
 import { LedgerIntegrityInputsStep } from './report/LedgerIntegrityInputsStep';
 import { GbhetLegalComplianceInputsStep } from './report/GbhetLegalComplianceInputsStep';
 import { BTUWorkersInvalidCardcheckInputsStep } from './report/BTUWorkersInvalidCardcheckInputsStep';
+import { EmployerNameStep } from './employer-onboarding/EmployerNameStep';
+import { AttributesStep } from './employer-onboarding/AttributesStep';
+import { ContactsStep } from './employer-onboarding/ContactsStep';
+import { WorkerLoadStep } from './employer-onboarding/WorkerLoadStep';
+import { ReviewStep as OnboardingReviewStep } from './employer-onboarding/ReviewStep';
 
 export interface WizardStepComponent {
   (props: { wizardId: string; wizardType: string; data?: any; onDataChange?: (data: any) => void }): JSX.Element;
@@ -75,6 +80,22 @@ const evaluateValidateComplete: StepCompletionEvaluator = ({ wizard }) => {
 };
 
 const alwaysComplete: StepCompletionEvaluator = () => true;
+
+const evaluateEmployerNameComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.employerName?.trim();
+};
+
+const evaluateAttributesComplete: StepCompletionEvaluator = () => true;
+
+const evaluateContactsComplete: StepCompletionEvaluator = ({ wizard }) => {
+  const contacts = wizard?.data?.contacts || [];
+  if (contacts.length === 0) return true;
+  return contacts.every((c: any) => c.email?.trim());
+};
+
+const evaluateWorkerLoadComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.employerId;
+};
 
 const evaluateRunComplete: StepCompletionEvaluator = ({ wizard }) => {
   const progress = wizard?.data?.progress?.run;
@@ -145,6 +166,13 @@ export const stepControllerRegistry: StepControllerRegistry = {
     'process': { Component: ProcessStep, evaluateCompletion: alwaysComplete },
     'review': { Component: ReviewStep, evaluateCompletion: alwaysComplete },
   },
+  'employer_onboarding': {
+    'employer_name': { Component: EmployerNameStep, evaluateCompletion: evaluateEmployerNameComplete },
+    'attributes': { Component: AttributesStep, evaluateCompletion: evaluateAttributesComplete },
+    'contacts': { Component: ContactsStep, evaluateCompletion: evaluateContactsComplete },
+    'worker_load': { Component: WorkerLoadStep, evaluateCompletion: evaluateWorkerLoadComplete },
+    'review': { Component: OnboardingReviewStep, evaluateCompletion: alwaysComplete },
+  },
 };
 
 export const stepComponentRegistry: StepComponentRegistry = {
@@ -205,6 +233,13 @@ export const stepComponentRegistry: StepComponentRegistry = {
     'validate': ValidateStep,
     'process': ProcessStep,
     'review': ReviewStep,
+  },
+  'employer_onboarding': {
+    'employer_name': EmployerNameStep,
+    'attributes': AttributesStep,
+    'contacts': ContactsStep,
+    'worker_load': WorkerLoadStep,
+    'review': OnboardingReviewStep,
   },
 };
 

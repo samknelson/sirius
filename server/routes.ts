@@ -24,6 +24,7 @@ import { registerTrustProviderUserSettingsRoutes } from "./modules/trust-provide
 import { registerWorkerUserSettingsRoutes } from "./modules/worker-user-settings";
 import { registerWorkerUsersRoutes } from "./modules/worker-users";
 import { registerWizardRoutes } from "./modules/wizards";
+import { registerEmployerOnboardingWizardRoutes } from "./modules/employer-onboarding-wizard";
 import { registerFileRoutes } from "./modules/files";
 import { registerLedgerStripeRoutes } from "./modules/ledger/stripe";
 import { registerLedgerAccountRoutes } from "./modules/ledger/accounts";
@@ -295,6 +296,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register wizard routes
   registerWizardRoutes(app, requireAuth, requirePermission);
+  registerEmployerOnboardingWizardRoutes(app, requireAuth, requirePermission);
 
   // Register file management routes
   registerFileRoutes(app, requireAuth, requirePermission);

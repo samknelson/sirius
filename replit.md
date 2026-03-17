@@ -49,7 +49,7 @@ All database access **MUST** go through a centralized storage layer (`server/sto
 -   **Dashboard Plugin System**: Extensible architecture for customizable widgets.
 -   **Components Feature Flag System**: Centralized registry for managing application features with dependency management and access control.
 -   **Ledger System**: Manages financial transactions including accounts, payments, and integrity reports, with entity-specific access policies.
--   **Wizards**: Flexible workflow state management for multi-step processes and report generation.
+-   **Wizards**: Flexible workflow state management for multi-step processes and report generation. Includes an Employer Onboarding Wizard (`employer_onboarding` type) with 5 steps: employer name, attributes (type/industry/benefits/ledger accounts), contacts (with promote-to-user toggle for Clerk provisioning), worker load (creates employer then optionally spawns child GBHET Legal wizard), and review. Processing endpoint: `POST /api/wizards/:id/employer-onboarding/process`. Backend: `server/wizards/types/employer_onboarding.ts`, `server/modules/employer-onboarding-wizard.ts`. Frontend steps: `client/src/components/wizards/steps/employer-onboarding/`.
 -   **File Storage System**: Comprehensive file management with metadata and access control.
 -   **Worker Hours & Employment Views**: Tracks worker hours and employment history with work status auto-sync.
 -   **Trust Eligibility Plugin System**: Registry-based architecture for worker eligibility determination and benefits eligibility scans.
