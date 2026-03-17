@@ -275,21 +275,32 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
   const benefitsEnabled = isComponentEnabledSync('trust.benefits');
   const bargainingUnitsEnabled = isComponentEnabledSync('bargainingunits');
 
-  const searchCondition = search 
-    ? sql`AND (
-        LOWER(c.display_name) LIKE ${`%${search.toLowerCase()}%`}
-        OR LOWER(c.email) LIKE ${`%${search.toLowerCase()}%`}
-        OR LOWER(c.given) LIKE ${`%${search.toLowerCase()}%`}
-        OR LOWER(c.family) LIKE ${`%${search.toLowerCase()}%`}
+  const searchCondition = (() => {
+    if (!search) return sql``;
+    const terms = search.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+    if (terms.length === 0) return sql``;
+    const termConditions = terms.map(term => {
+      const pattern = `%${term}%`;
+      return sql`(
+        LOWER(c.display_name) LIKE ${pattern}
+        OR LOWER(c.email) LIKE ${pattern}
+        OR LOWER(c.given) LIKE ${pattern}
+        OR LOWER(c.family) LIKE ${pattern}
         OR EXISTS (
           SELECT 1 FROM worker_ids wid
           INNER JOIN options_worker_id_type widt ON wid.type_id = widt.id
           WHERE wid.worker_id = w.id
             AND (widt.data->>'showOnLists')::boolean = true
-            AND LOWER(wid.value) LIKE ${`%${search.toLowerCase()}%`}
+            AND LOWER(wid.value) LIKE ${pattern}
         )
-      )`
-    : sql``;
+      )`;
+    });
+    let combined = termConditions[0];
+    for (let i = 1; i < termConditions.length; i++) {
+      combined = sql`${combined} AND ${termConditions[i]}`;
+    }
+    return sql`AND (${combined})`;
+  })();
 
   const employerCondition = employerId 
     ? sql`AND ${employerId} = ANY(w.denorm_employer_ids)`
