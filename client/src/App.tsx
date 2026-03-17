@@ -82,6 +82,7 @@ const CommDetail = lazy(() => import("@/pages/comm-detail"));
 const WorkerDelete = lazy(() => import("@/pages/worker-delete"));
 const Employers = lazy(() => import("@/pages/employers"));
 const EmployersAdd = lazy(() => import("@/pages/employers-add"));
+const EmployersOnboarding = lazy(() => import("@/pages/employers-onboarding"));
 const EmployerView = lazy(() => import("@/pages/employer-view"));
 const EmployerEdit = lazy(() => import("@/pages/employer-edit"));
 const EmployerWorkers = lazy(() => import("@/pages/employer-workers"));
@@ -831,6 +832,14 @@ function Router() {
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <EmployersMonthlyUploads />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/employers/onboarding">
+        <ProtectedRoute policy="staff">
+          <AuthenticatedLayout>
+            <EmployersOnboarding />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
