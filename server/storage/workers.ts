@@ -281,6 +281,8 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
     if (terms.length === 0) return sql``;
     const termConditions = terms.map(term => {
       const pattern = `%${term}%`;
+      const digitsOnly = term.replace(/\D/g, '');
+      const phonePattern = digitsOnly.length >= 3 ? `%${digitsOnly}%` : null;
       return sql`(
         LOWER(c.display_name) LIKE ${pattern}
         OR LOWER(c.email) LIKE ${pattern}
@@ -292,6 +294,26 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
           WHERE wid.worker_id = w.id
             AND (widt.data->>'showOnLists')::boolean = true
             AND LOWER(wid.value) LIKE ${pattern}
+        )
+        OR EXISTS (
+          SELECT 1 FROM contact_phone cp
+          WHERE cp.contact_id = c.id
+            AND cp.is_active = true
+            AND (
+              LOWER(cp.phone_number) LIKE ${pattern}
+              ${phonePattern ? sql`OR REGEXP_REPLACE(cp.phone_number, '[^0-9]', '', 'g') LIKE ${phonePattern}` : sql``}
+            )
+        )
+        OR EXISTS (
+          SELECT 1 FROM contact_postal cpo
+          WHERE cpo.contact_id = c.id
+            AND cpo.is_active = true
+            AND (
+              LOWER(cpo.street) LIKE ${pattern}
+              OR LOWER(cpo.city) LIKE ${pattern}
+              OR LOWER(cpo.state) LIKE ${pattern}
+              OR cpo.postal_code LIKE ${pattern}
+            )
         )
       )`;
     });
