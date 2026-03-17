@@ -4,6 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
@@ -16,12 +18,23 @@ interface WorkerLoadStepProps {
   onDataChange?: (data: any) => void;
 }
 
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
 export function WorkerLoadStep({ wizardId, data }: WorkerLoadStepProps) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const employerId = data?.employerId;
   const processingResults = data?.processingResults;
   const childWizardId = data?.childWizardId;
+
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const [selectedYear, setSelectedYear] = useState<string>("");
+
+  const currentYear = new Date().getFullYear();
+  const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
 
   const { data: childWizard } = useQuery<any>({
     queryKey: [`/api/wizards/${childWizardId}`],
@@ -51,15 +64,19 @@ export function WorkerLoadStep({ wizardId, data }: WorkerLoadStepProps) {
 
   const createChildWizardMutation = useMutation({
     mutationFn: async () => {
-      const now = new Date();
+      const month = parseInt(selectedMonth, 10);
+      const year = parseInt(selectedYear, 10);
+      if (!month || !year) {
+        throw new Error("Please select a month and year");
+      }
       const response = await apiRequest("POST", "/api/wizards", {
         type: "gbhet_legal_workers_monthly",
         status: "draft",
         entityId: employerId,
         data: {
           launchArguments: {
-            year: now.getFullYear(),
-            month: now.getMonth() + 1,
+            year,
+            month,
           },
           mode: "create",
         },
@@ -223,23 +240,57 @@ export function WorkerLoadStep({ wizardId, data }: WorkerLoadStepProps) {
               </Button>
             </div>
           ) : (
-            <Button
-              onClick={() => createChildWizardMutation.mutate()}
-              disabled={createChildWizardMutation.isPending}
-              variant="outline"
-            >
-              {createChildWizardMutation.isPending ? (
-                <>
-                  <Loader2 size={16} className="mr-2 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Upload size={16} className="mr-2" />
-                  Launch Worker Import Wizard
-                </>
-              )}
-            </Button>
+            <div className="space-y-4">
+              <div className="flex items-end gap-4">
+                <div className="space-y-2">
+                  <Label>Month</Label>
+                  <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue placeholder="Select month" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MONTH_NAMES.map((name, i) => (
+                        <SelectItem key={i + 1} value={String(i + 1)}>
+                          {name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Year</Label>
+                  <Select value={selectedYear} onValueChange={setSelectedYear}>
+                    <SelectTrigger className="w-[120px]">
+                      <SelectValue placeholder="Select year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableYears.map((y) => (
+                        <SelectItem key={y} value={String(y)}>
+                          {y}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <Button
+                onClick={() => createChildWizardMutation.mutate()}
+                disabled={createChildWizardMutation.isPending || !selectedMonth || !selectedYear}
+                variant="outline"
+              >
+                {createChildWizardMutation.isPending ? (
+                  <>
+                    <Loader2 size={16} className="mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Upload size={16} className="mr-2" />
+                    Launch Worker Import Wizard
+                  </>
+                )}
+              </Button>
+            </div>
           )}
         </div>
       </CardContent>
