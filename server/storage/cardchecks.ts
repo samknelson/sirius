@@ -95,6 +95,7 @@ export interface CardcheckReportItem {
   buMismatch: boolean;
   currentlyTerminated30Days: boolean;
   currentTerminationDate: string | null;
+  signatureType: 'online' | 'upload' | 'offline' | null;
 }
 
 export interface SignCardcheckParams {
@@ -421,7 +422,22 @@ export function createCardcheckStorage(): CardcheckStorage {
         .from(cardcheckDefinitions);
       
       const defMap = new Map(defData.map(d => [d.id, d.name]));
-      
+
+      const esigIds = allCardchecks.map(c => c.esigId).filter(Boolean) as string[];
+      const esigTypeMap = new Map<string, 'online' | 'upload' | 'offline'>();
+      if (esigIds.length > 0) {
+        const esigData = await client
+          .select({
+            id: esigs.id,
+            type: esigs.type,
+          })
+          .from(esigs)
+          .where(inArray(esigs.id, esigIds));
+        for (const e of esigData) {
+          esigTypeMap.set(e.id, e.type);
+        }
+      }
+
       const previousCountsQuery = await client
         .select({
           workerId: cardchecks.workerId,
@@ -581,6 +597,7 @@ export function createCardcheckStorage(): CardcheckStorage {
           buMismatch,
           currentlyTerminated30Days,
           currentTerminationDate,
+          signatureType: card.esigId ? esigTypeMap.get(card.esigId) || null : null,
         });
       }
       

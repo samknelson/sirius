@@ -33,7 +33,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { FileCheck, Download, Filter, Users, Search, X, ArrowUpDown, AlertTriangle, Ban, ShieldAlert } from "lucide-react";
+import { FileCheck, Download, Filter, Users, Search, X, ArrowUpDown, AlertTriangle, Ban, ShieldAlert, Pen, Upload, FileText } from "lucide-react";
 import { format } from "date-fns";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -60,6 +60,7 @@ interface CardcheckReportItem {
   buMismatch: boolean;
   currentlyTerminated30Days: boolean;
   currentTerminationDate: string | null;
+  signatureType: 'online' | 'upload' | 'offline' | null;
 }
 
 interface BargainingUnit {
@@ -525,6 +526,7 @@ export default function CardcheckReport() {
                     <SortHeader field="bargainingUnitName">Bargaining Unit</SortHeader>
                     <SortHeader field="status">Status</SortHeader>
                     <SortHeader field="signedDate">Signed Date</SortHeader>
+                    <TableHead>Signature</TableHead>
                     <SortHeader field="hasPrevious">Previous Card Checks</SortHeader>
                     <TableHead>Alerts</TableHead>
                     <TableHead>Definition</TableHead>
@@ -585,6 +587,26 @@ export default function CardcheckReport() {
                         </TableCell>
                         <TableCell>
                           {item.signedDate ? format(new Date(item.signedDate), "MMM d, yyyy") : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell data-testid={`text-sig-type-${item.cardcheckId}`}>
+                          {item.signatureType === 'online' ? (
+                            <Badge variant="outline" className="text-xs">
+                              <Pen size={10} className="mr-1" />
+                              In-App
+                            </Badge>
+                          ) : item.signatureType === 'upload' ? (
+                            <Badge variant="outline" className="text-xs">
+                              <Upload size={10} className="mr-1" />
+                              Uploaded
+                            </Badge>
+                          ) : item.signatureType === 'offline' ? (
+                            <Badge variant="outline" className="text-xs">
+                              <FileText size={10} className="mr-1" />
+                              Offline
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           {item.hasPreviousCardcheck ? (
