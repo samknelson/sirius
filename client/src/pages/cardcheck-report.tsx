@@ -299,6 +299,68 @@ export default function CardcheckReport() {
 
   const hasActiveFilters = signedDateFrom || signedDateTo || hasPreviousFilter !== "all" || statusFilter !== "all" || bargainingUnitFilter !== "all" || definitionFilter !== "all" || validityFilter !== "all" || signatureTypeFilter !== "all";
 
+  const exportCsv = useCallback(() => {
+    if (filteredAndSortedData.length === 0) return;
+
+    const escapeCsv = (val: string) => {
+      if (val.includes(",") || val.includes('"') || val.includes("\n")) {
+        return `"${val.replace(/"/g, '""')}"`;
+      }
+      return val;
+    };
+
+    const headers: string[] = [
+      "Worker",
+      "Sirius ID",
+      ...showOnListsIdTypes.map(t => t.name),
+      "Bargaining Unit",
+      "Status",
+      "Signed Date",
+      "Signature Type",
+      "Previous Card Checks",
+      "Alerts",
+      "Definition",
+    ];
+
+    const rows = filteredAndSortedData.map(item => {
+      const alerts: string[] = [];
+      if (item.buMismatch) alerts.push("BU Mismatch");
+      if (item.currentlyTerminated30Days) alerts.push("Terminated 30+");
+      if (item.buChanged) alerts.push("BU Changed");
+      if (item.terminatedOver30Days) alerts.push("Rehire (30+ days)");
+
+      const sigLabel = item.signatureType === "online" ? "In-App"
+        : item.signatureType === "upload" ? "Uploaded"
+        : item.signatureType === "offline" ? "Offline"
+        : "";
+
+      return [
+        escapeCsv(item.workerName),
+        String(item.workerSiriusId),
+        ...showOnListsIdTypes.map(idType => {
+          const typeMap = workerIdValueMap.get(item.workerId);
+          return escapeCsv(typeMap?.get(idType.id) || "");
+        }),
+        escapeCsv(item.bargainingUnitName || ""),
+        item.status,
+        item.signedDate ? format(new Date(item.signedDate), "yyyy-MM-dd") : "",
+        sigLabel,
+        item.hasPreviousCardcheck ? String(item.previousCardcheckCount) : "0",
+        escapeCsv(alerts.join("; ")),
+        escapeCsv(item.definitionName),
+      ].join(",");
+    });
+
+    const csv = [headers.map(escapeCsv).join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `cardcheck-report-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [filteredAndSortedData, showOnListsIdTypes, workerIdValueMap]);
+
   const invalidCount = useMemo(() => {
     if (!reportData) return 0;
     return reportData.filter(item => isInvalid(item)).length;
@@ -505,6 +567,16 @@ export default function CardcheckReport() {
                   Revoke Selected ({selectedIds.size})
                 </Button>
               )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportCsv}
+                disabled={filteredAndSortedData.length === 0}
+                data-testid="button-export-csv"
+              >
+                <Download size={14} className="mr-1" />
+                Export CSV
+              </Button>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={16} />
                 <Input
