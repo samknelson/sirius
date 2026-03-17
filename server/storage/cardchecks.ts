@@ -96,6 +96,7 @@ export interface CardcheckReportItem {
   currentlyTerminated30Days: boolean;
   currentTerminationDate: string | null;
   signatureType: 'online' | 'upload' | 'offline' | null;
+  rate: number | null;
 }
 
 export interface SignCardcheckParams {
@@ -598,6 +599,7 @@ export function createCardcheckStorage(): CardcheckStorage {
           currentlyTerminated30Days,
           currentTerminationDate,
           signatureType: card.esigId ? esigTypeMap.get(card.esigId) || null : null,
+          rate: card.rate ?? null,
         });
       }
       

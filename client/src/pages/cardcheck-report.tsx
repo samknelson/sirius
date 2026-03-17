@@ -61,6 +61,7 @@ interface CardcheckReportItem {
   currentlyTerminated30Days: boolean;
   currentTerminationDate: string | null;
   signatureType: 'online' | 'upload' | 'offline' | null;
+  rate: number | null;
 }
 
 interface BargainingUnit {
@@ -317,6 +318,7 @@ export default function CardcheckReport() {
       "Status",
       "Signed Date",
       "Signature Type",
+      "Rate",
       "Previous Card Checks",
       "Alerts",
       "Definition",
@@ -345,6 +347,7 @@ export default function CardcheckReport() {
         item.status,
         item.signedDate ? format(new Date(item.signedDate), "yyyy-MM-dd") : "",
         sigLabel,
+        item.rate != null ? item.rate.toFixed(2) : "",
         item.hasPreviousCardcheck ? String(item.previousCardcheckCount) : "0",
         escapeCsv(alerts.join("; ")),
         escapeCsv(item.definitionName),
@@ -625,6 +628,7 @@ export default function CardcheckReport() {
                     <SortHeader field="status">Status</SortHeader>
                     <SortHeader field="signedDate">Signed Date</SortHeader>
                     <TableHead>Signature</TableHead>
+                    <TableHead>Rate</TableHead>
                     <SortHeader field="hasPrevious">Previous Card Checks</SortHeader>
                     <TableHead>Alerts</TableHead>
                     <TableHead>Definition</TableHead>
@@ -702,6 +706,13 @@ export default function CardcheckReport() {
                               <FileText size={10} className="mr-1" />
                               Offline
                             </Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell data-testid={`text-rate-${item.cardcheckId}`}>
+                          {item.rate != null ? (
+                            <span className="text-sm">${item.rate.toFixed(2)}</span>
                           ) : (
                             <span className="text-muted-foreground text-xs">—</span>
                           )}
