@@ -86,6 +86,7 @@ export default function CardcheckReport() {
   const [bargainingUnitFilter, setBargainingUnitFilter] = useState<string>("all");
   const [definitionFilter, setDefinitionFilter] = useState<string>("all");
   const [validityFilter, setValidityFilter] = useState<string>("all");
+  const [signatureTypeFilter, setSignatureTypeFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [sortField, setSortField] = useState<string>("workerName");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
@@ -157,8 +158,8 @@ export default function CardcheckReport() {
   }, [workerIdsForList]);
 
   const prevFilterKey = useMemo(() => {
-    return `${searchTerm}|${validityFilter}|${queryParams}`;
-  }, [searchTerm, validityFilter, queryParams]);
+    return `${searchTerm}|${validityFilter}|${signatureTypeFilter}|${queryParams}`;
+  }, [searchTerm, validityFilter, signatureTypeFilter, queryParams]);
 
   const [lastFilterKey, setLastFilterKey] = useState(prevFilterKey);
   if (prevFilterKey !== lastFilterKey) {
@@ -186,6 +187,14 @@ export default function CardcheckReport() {
     } else if (validityFilter === "valid") {
       filtered = filtered.filter(item => !isInvalid(item));
     }
+
+    if (signatureTypeFilter !== "all") {
+      if (signatureTypeFilter === "none") {
+        filtered = filtered.filter(item => !item.signatureType);
+      } else {
+        filtered = filtered.filter(item => item.signatureType === signatureTypeFilter);
+      }
+    }
     
     return filtered.sort((a, b) => {
       let comparison = 0;
@@ -212,7 +221,7 @@ export default function CardcheckReport() {
       }
       return sortDirection === "asc" ? comparison : -comparison;
     });
-  }, [reportData, searchTerm, sortField, sortDirection, validityFilter]);
+  }, [reportData, searchTerm, sortField, sortDirection, validityFilter, signatureTypeFilter]);
 
   const selectableItems = useMemo(() => {
     return filteredAndSortedData.filter(item => item.status !== "revoked");
@@ -284,10 +293,11 @@ export default function CardcheckReport() {
     setBargainingUnitFilter("all");
     setDefinitionFilter("all");
     setValidityFilter("all");
+    setSignatureTypeFilter("all");
     setSearchTerm("");
   };
 
-  const hasActiveFilters = signedDateFrom || signedDateTo || hasPreviousFilter !== "all" || statusFilter !== "all" || bargainingUnitFilter !== "all" || definitionFilter !== "all" || validityFilter !== "all";
+  const hasActiveFilters = signedDateFrom || signedDateTo || hasPreviousFilter !== "all" || statusFilter !== "all" || bargainingUnitFilter !== "all" || definitionFilter !== "all" || validityFilter !== "all" || signatureTypeFilter !== "all";
 
   const invalidCount = useMemo(() => {
     if (!reportData) return 0;
@@ -427,6 +437,22 @@ export default function CardcheckReport() {
                   <SelectItem value="all">All</SelectItem>
                   <SelectItem value="invalid">Invalid Only{invalidCount > 0 ? ` (${invalidCount})` : ""}</SelectItem>
                   <SelectItem value="valid">Valid Only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="signatureType">Signature Type</Label>
+              <Select value={signatureTypeFilter} onValueChange={setSignatureTypeFilter}>
+                <SelectTrigger id="signatureType" data-testid="select-signature-type">
+                  <SelectValue placeholder="All Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="online">In-App</SelectItem>
+                  <SelectItem value="upload">Uploaded</SelectItem>
+                  <SelectItem value="offline">Offline</SelectItem>
+                  <SelectItem value="none">No Signature</SelectItem>
                 </SelectContent>
               </Select>
             </div>
