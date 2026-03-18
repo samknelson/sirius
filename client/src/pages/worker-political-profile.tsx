@@ -199,41 +199,39 @@ function WorkerPoliticalProfileContent() {
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-lg" data-testid="text-political-title">Political Representatives</CardTitle>
           <div className="flex items-center gap-2">
-            {primaryAddressData?.address && (
-              <Button
-                size="sm"
-                onClick={() => lookupMutation.mutate(undefined)}
-                disabled={lookupMutation.isPending}
-                data-testid="button-use-primary-address"
-              >
-                {lookupMutation.isPending ? (
-                  <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Looking up...</>
-                ) : reps.length > 0 ? (
-                  <><RefreshCw className="w-4 h-4 mr-2" /> Refresh from Primary Address</>
-                ) : (
-                  <><Search className="w-4 h-4 mr-2" /> Look Up from Primary Address</>
-                )}
-              </Button>
-            )}
+            <Button
+              size="sm"
+              onClick={() => {
+                if (primaryAddressData?.address) {
+                  lookupMutation.mutate(undefined);
+                } else {
+                  setIsLookupOpen(true);
+                }
+              }}
+              disabled={lookupMutation.isPending}
+              data-testid="button-lookup-reps"
+            >
+              {lookupMutation.isPending ? (
+                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Looking up...</>
+              ) : reps.length > 0 ? (
+                <><RefreshCw className="w-4 h-4 mr-2" /> Refresh</>
+              ) : (
+                <><Search className="w-4 h-4 mr-2" /> Look Up Representatives</>
+              )}
+            </Button>
             <Dialog open={isLookupOpen} onOpenChange={(open) => {
               setIsLookupOpen(open);
-              if (open && primaryAddressData?.address && !lookupAddress) {
-                setLookupAddress(primaryAddressData.address);
+              if (open && !lookupAddress) {
+                setLookupAddress(primaryAddressData?.address || "");
               }
             }}>
               <DialogTrigger asChild>
                 <Button
                   size="sm"
-                  variant={primaryAddressData?.address ? "outline" : "default"}
-                  data-testid="button-lookup-reps"
+                  variant="outline"
+                  data-testid="button-lookup-custom-address"
                 >
-                  {primaryAddressData?.address ? (
-                    <><Search className="w-4 h-4 mr-2" /> Custom Address</>
-                  ) : reps.length > 0 ? (
-                    <><RefreshCw className="w-4 h-4 mr-2" /> Re-Lookup</>
-                  ) : (
-                    <><Search className="w-4 h-4 mr-2" /> Look Up Representatives</>
-                  )}
+                  <Search className="w-4 h-4 mr-2" /> Use Different Address
                 </Button>
               </DialogTrigger>
               <DialogContent>
