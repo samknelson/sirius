@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { requireComponent } from "./components";
 import { storage } from "../storage";
-import { lookupRepresentatives } from "../services/google-civics";
+import { lookupRepresentatives, CivicApiError } from "../services/google-civics";
 import { z } from "zod";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -140,12 +140,16 @@ export function registerBtuPoliticalRoutes(
         representatives: reps,
         count: reps.length,
       });
-    } catch (error: any) {
-      if (error.message === "COMPONENT_TABLE_NOT_FOUND") {
+    } catch (error: unknown) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      if (err.message === "COMPONENT_TABLE_NOT_FOUND") {
         return res.status(503).json({ message: "Political profile tables not found." });
       }
-      if (error.message?.includes("GOOGLE_CIVICS_API_KEY")) {
+      if (err.message?.includes("GOOGLE_CIVICS_API_KEY")) {
         return res.status(503).json({ message: "Google Civic Information API key is not configured." });
+      }
+      if (error instanceof CivicApiError) {
+        return res.status(error.statusCode).json({ message: error.message });
       }
       console.error("Failed to lookup representatives:", error);
       res.status(500).json({ message: "Failed to lookup representatives" });

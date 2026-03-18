@@ -171,7 +171,12 @@ export function createBtuPoliticalStorage(): BtuPoliticalStorage {
         WHERE pwr.official_id = ${officialId}
         ORDER BY c.display_name
       `);
-      return results.rows as any[];
+      return results.rows.map((row: Record<string, unknown>) => ({
+        workerId: row.workerId as string,
+        workerName: (row.workerName as string) || null,
+        address: (row.address as string) || null,
+        lastLookedUpAt: row.lastLookedUpAt as Date,
+      }));
     },
 
     async getAllOfficialIds(): Promise<string[]> {

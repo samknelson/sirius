@@ -17,6 +17,64 @@ export interface CivicLookupResult {
   officials: CivicOfficial[];
 }
 
+interface GoogleCivicsNormalizedInput {
+  line1?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+}
+
+interface GoogleCivicsChannel {
+  type?: string;
+  id?: string;
+}
+
+interface GoogleCivicsOfficial {
+  name?: string;
+  party?: string;
+  phones?: string[];
+  emails?: string[];
+  photoUrl?: string;
+  urls?: string[];
+  channels?: GoogleCivicsChannel[];
+}
+
+interface GoogleCivicsOffice {
+  name?: string;
+  divisionId?: string;
+  officialIndices?: number[];
+}
+
+interface GoogleCivicsDivision {
+  name?: string;
+}
+
+interface GoogleCivicsResponse {
+  normalizedInput?: GoogleCivicsNormalizedInput;
+  offices?: GoogleCivicsOffice[];
+  officials?: GoogleCivicsOfficial[];
+  divisions?: Record<string, GoogleCivicsDivision>;
+}
+
+interface GoogleCivicsError {
+  error?: {
+    code?: number;
+    message?: string;
+    errors?: { reason?: string }[];
+  };
+}
+
+export class CivicApiError extends Error {
+  constructor(
+    message: string,
+    public statusCode: number,
+    public apiErrorCode?: number
+  ) {
+    super(message);
+    this.name = "CivicApiError";
+  }
+}
+
 function classifyLevel(divisionId: string, officeName: string): string {
   const lower = officeName.toLowerCase();
   if (lower.includes("president") || lower.includes("senator") || lower.includes("representative") || lower.includes("congress")) {
@@ -42,10 +100,30 @@ export async function lookupRepresentatives(address: string): Promise<CivicLooku
   const response = await fetch(url);
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(`Google Civic API error (${response.status}): ${errorBody}`);
+    let parsed: GoogleCivicsError | null = null;
+    try {
+      parsed = JSON.parse(errorBody) as GoogleCivicsError;
+    } catch {
+      // not JSON
+    }
+
+    const apiCode = parsed?.error?.code;
+    const apiMessage = parsed?.error?.message || errorBody;
+    const reason = parsed?.error?.errors?.[0]?.reason;
+
+    if (response.status === 400 || reason === "parseError" || reason === "invalidParameter") {
+      throw new CivicApiError(`Invalid address: ${apiMessage}`, 400, apiCode);
+    }
+    if (response.status === 429 || reason === "rateLimitExceeded" || reason === "userRateLimitExceeded") {
+      throw new CivicApiError("Google Civics API rate limit exceeded. Please try again later.", 429, apiCode);
+    }
+    if (response.status === 404 || reason === "notFound") {
+      throw new CivicApiError(`No representatives found for this address: ${apiMessage}`, 404, apiCode);
+    }
+    throw new CivicApiError(`Google Civic API error (${response.status}): ${apiMessage}`, response.status, apiCode);
   }
 
-  const data = await response.json() as any;
+  const data: GoogleCivicsResponse = await response.json();
 
   const normalizedAddress = data.normalizedInput
     ? `${data.normalizedInput.line1 || ""}, ${data.normalizedInput.city || ""}, ${data.normalizedInput.state || ""} ${data.normalizedInput.zip || ""}`.trim()
@@ -78,7 +156,7 @@ export async function lookupRepresentatives(address: string): Promise<CivicLooku
         emails: rawOfficial.emails || [],
         photoUrl: rawOfficial.photoUrl || null,
         urls: rawOfficial.urls || [],
-        channels: (rawOfficial.channels || []).map((ch: any) => ({
+        channels: (rawOfficial.channels || []).map((ch) => ({
           type: ch.type || "",
           id: ch.id || "",
         })),
