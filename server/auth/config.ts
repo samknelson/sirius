@@ -164,9 +164,7 @@ function parseProviderFromEnv(type: AuthProviderType): ProviderConfig | null {
       const secretKey = isProd
         ? (process.env.CLERK_SECRET_KEY_PROD || process.env.CLERK_SECRET_KEY)
         : process.env.CLERK_SECRET_KEY;
-      console.log(`[auth-config] Clerk key resolution: isProd=${isProd}, hasPublishableKey=${!!publishableKey}, hasSecretKey=${!!secretKey}, keySource=${isProd ? (process.env.CLERK_PUBLISHABLE_KEY_PROD ? 'PROD' : process.env.CLERK_PUBLISHABLE_KEY ? 'BASE' : 'VITE') : 'DEV'}`);
       if (!publishableKey || !secretKey) {
-        console.warn(`[auth-config] Clerk provider disabled: missing ${!publishableKey ? 'publishableKey' : ''} ${!secretKey ? 'secretKey' : ''}`);
         return null;
       }
       const config: ClerkProviderConfig = {

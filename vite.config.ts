@@ -3,6 +3,8 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
+const clerkProdKey = process.env.VITE_CLERK_PUBLISHABLE_KEY_PROD;
+
 export default defineConfig({
   plugins: [
     react(),
@@ -27,13 +29,6 @@ export default defineConfig({
     },
   },
   root: path.resolve(import.meta.dirname, "client"),
-  define: {
-    'import.meta.env.VITE_CLERK_PUBLISHABLE_KEY': JSON.stringify(
-      process.env.NODE_ENV === "production"
-        ? (process.env.VITE_CLERK_PUBLISHABLE_KEY_PROD || process.env.VITE_CLERK_PUBLISHABLE_KEY)
-        : process.env.VITE_CLERK_PUBLISHABLE_KEY
-    ),
-  },
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
@@ -42,9 +37,6 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173,
     strictPort: false,
-    // Configure HMR for Replit's proxy environment
-    // When running on Replit, HMR must use wss protocol on port 443
-    // to work through the iframe proxy. Local dev uses default ws://localhost.
     ...(process.env.REPL_ID && {
       hmr: {
         clientPort: 443,
