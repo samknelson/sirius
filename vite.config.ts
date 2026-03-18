@@ -27,6 +27,13 @@ export default defineConfig({
     },
   },
   root: path.resolve(import.meta.dirname, "client"),
+  define: {
+    'import.meta.env.VITE_CLERK_PUBLISHABLE_KEY': JSON.stringify(
+      process.env.NODE_ENV === "production"
+        ? (process.env.VITE_CLERK_PUBLISHABLE_KEY_PROD || process.env.VITE_CLERK_PUBLISHABLE_KEY)
+        : process.env.VITE_CLERK_PUBLISHABLE_KEY
+    ),
+  },
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
