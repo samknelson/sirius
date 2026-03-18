@@ -76,12 +76,12 @@ export function registerBtuPoliticalRoutes(
     try {
       const worker = await storage.workers.getWorker(req.params.workerId);
       if (!worker) return res.status(404).json({ message: "Worker not found" });
-      const addresses = await storage.contacts.getContactPostalByContact(worker.contactId);
+      const addresses = await storage.contacts.addresses.getContactPostalByContact(worker.contactId);
       const primary = addresses.find(a => a.isPrimary && a.isActive) || addresses.find(a => a.isActive);
       if (!primary) return res.json({ address: null });
       const parts = [primary.street, primary.city, primary.state, primary.postalCode].filter(Boolean);
       res.json({ address: parts.join(", ") });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to fetch primary address:", error);
       res.status(500).json({ message: "Failed to fetch primary address" });
     }
@@ -103,7 +103,7 @@ export function registerBtuPoliticalRoutes(
       }
 
       if (!address || !address.trim()) {
-        const addresses = await storage.contacts.getContactPostalByContact(worker.contactId);
+        const addresses = await storage.contacts.addresses.getContactPostalByContact(worker.contactId);
         const primary = addresses.find(a => a.isPrimary && a.isActive) || addresses.find(a => a.isActive);
         if (!primary) {
           return res.status(400).json({ message: "No address provided and worker has no primary address on file." });
