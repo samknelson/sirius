@@ -136,6 +136,7 @@ export interface WorkersExportParams {
   contactStatus?: 'all' | 'has_email' | 'missing_email' | 'has_phone' | 'missing_phone' | 'has_address' | 'missing_address' | 'complete' | 'incomplete';
   jobTitle?: string;
   memberStatusId?: string;
+  representativeId?: string;
 }
 
 export interface WorkersPaginationParams {
@@ -154,6 +155,7 @@ export interface WorkersPaginationParams {
   hasMultipleEmployers?: boolean;
   jobTitle?: string;
   memberStatusId?: string;
+  representativeId?: string;
 }
 
 export interface WorkerSearchResult {
@@ -222,6 +224,7 @@ interface InternalSearchParams {
   hasMultipleEmployers?: boolean;
   jobTitle?: string;
   memberStatusId?: string;
+  representativeId?: string;
   page?: number;
   pageSize?: number;
 }
@@ -266,7 +269,7 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
   const search = params.search?.trim() ?? '';
   const sortOrder = params.sortOrder ?? 'asc';
   const sortBy = params.sortBy ?? 'lastName';
-  const { employerId, employerTypeId, bargainingUnitId, benefitId, contactStatus, hasMultipleEmployers, jobTitle, memberStatusId } = params;
+  const { employerId, employerTypeId, bargainingUnitId, benefitId, contactStatus, hasMultipleEmployers, jobTitle, memberStatusId, representativeId } = params;
 
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
@@ -274,6 +277,7 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
 
   const benefitsEnabled = isComponentEnabledSync('trust.benefits');
   const bargainingUnitsEnabled = isComponentEnabledSync('bargainingunits');
+  const politicalEnabled = isComponentEnabledSync('sitespecific.btu.political');
 
   const searchCondition = (() => {
     if (!search) return sql``;
@@ -366,7 +370,15 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
       : sql`AND ${memberStatusId} = ANY(w.denorm_ms_ids)`
     : sql``;
 
-  const allConditions = sql`${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition} ${multipleEmployersCondition} ${jobTitleCondition} ${memberStatusCondition}`;
+  const representativeCondition = (representativeId && politicalEnabled)
+    ? sql`AND EXISTS (
+        SELECT 1 FROM sitespecific_btu_political_worker_reps pwr
+        WHERE pwr.worker_id = w.id
+        AND pwr.official_id = ${representativeId}
+      )`
+    : sql``;
+
+  const allConditions = sql`${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition} ${multipleEmployersCondition} ${jobTitleCondition} ${memberStatusCondition} ${representativeCondition}`;
 
   const isPaginated = params.page !== undefined && params.pageSize !== undefined;
   let total: number | undefined;
@@ -592,6 +604,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         hasMultipleEmployers: params.hasMultipleEmployers,
         jobTitle: params.jobTitle,
         memberStatusId: params.memberStatusId,
+        representativeId: params.representativeId,
         page,
         pageSize,
       });
@@ -616,6 +629,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         contactStatus: params.contactStatus,
         jobTitle: params.jobTitle,
         memberStatusId: params.memberStatusId,
+        representativeId: params.representativeId,
       });
       return rows;
     },

@@ -83,6 +83,7 @@ import { type AuthIdentitiesStorage, createAuthIdentitiesStorage } from "./auth-
 import { type WorkerDispatchEligDenormStorage, createWorkerDispatchEligDenormStorage } from "./worker-dispatch-elig-denorm";
 import { type RawSqlStorage, createRawSqlStorage } from "./raw-sql";
 import { type ReadOnlyStorage, createReadOnlyStorage } from "./read-only";
+import { type BtuPoliticalStorage, createBtuPoliticalStorage, btuPoliticalLoggingConfig } from "./sitespecific-btu-political";
 import { type WsBundleStorage, type WsClientStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsBundleStorage, createWsClientStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "./db";
@@ -150,6 +151,7 @@ export interface IStorage {
   wsClients: WsClientStorage;
   wsClientCredentials: WsClientCredentialStorage;
   wsClientIpRules: WsClientIpRuleStorage;
+  btuPolitical: BtuPoliticalStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -213,6 +215,7 @@ export class DatabaseStorage implements IStorage {
   wsClients: WsClientStorage;
   wsClientCredentials: WsClientCredentialStorage;
   wsClientIpRules: WsClientIpRuleStorage;
+  btuPolitical: BtuPoliticalStorage;
 
   constructor() {
     this.variables = withStorageLogging(
@@ -375,6 +378,7 @@ export class DatabaseStorage implements IStorage {
     this.wsClients = createWsClientStorage();
     this.wsClientCredentials = createWsClientCredentialStorage();
     this.wsClientIpRules = createWsClientIpRuleStorage();
+    this.btuPolitical = withStorageLogging(createBtuPoliticalStorage(), btuPoliticalLoggingConfig);
   }
 }
 

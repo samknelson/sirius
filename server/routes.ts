@@ -84,6 +84,7 @@ import { registerBtuSchoolRoutes } from "./modules/sitespecific-btu-school";
 import { registerBtuSigImportRoutes } from "./modules/btu-sig-import";
 import { registerBtuScraperImportRoutes } from "./modules/btu-scraper-import";
 import { registerBtuBuildingRepImportRoutes } from "./modules/btu-building-rep-import";
+import { registerBtuPoliticalRoutes } from "./modules/sitespecific-btu-political";
 import { registerEdlsSheetsRoutes } from "./modules/edls-sheets";
 import { registerEdlsTasksRoutes } from "./modules/edls-tasks";
 import { registerWebServiceBundle } from "./modules/webservices";
@@ -434,6 +435,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const hasMultipleEmployers = req.query.hasMultipleEmployers === 'true';
       const jobTitle = typeof req.query.jobTitle === 'string' && req.query.jobTitle.trim() ? req.query.jobTitle.trim() : undefined;
       const memberStatusId = typeof req.query.memberStatusId === 'string' && req.query.memberStatusId !== 'all' ? req.query.memberStatusId : undefined;
+      const representativeId = typeof req.query.representativeId === 'string' && req.query.representativeId !== 'all' ? req.query.representativeId : undefined;
       
       const result = await storage.workers.getWorkersWithDetailsPaginated({
         page,
@@ -449,6 +451,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         hasMultipleEmployers,
         jobTitle,
         memberStatusId,
+        representativeId,
       });
       res.json(result);
     } catch (error) {
@@ -520,6 +523,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const contactStatus = validContactStatuses.includes(contactStatusParam) ? contactStatusParam as any : 'all';
       const jobTitle = typeof req.query.jobTitle === 'string' && req.query.jobTitle.trim() ? req.query.jobTitle.trim() : undefined;
       const memberStatusId = typeof req.query.memberStatusId === 'string' && req.query.memberStatusId !== 'all' ? req.query.memberStatusId : undefined;
+      const representativeId = typeof req.query.representativeId === 'string' && req.query.representativeId !== 'all' ? req.query.representativeId : undefined;
       const includeBenefits = req.query.includeBenefits === 'true';
       
       // Get all workers matching filters
@@ -533,6 +537,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         contactStatus,
         jobTitle,
         memberStatusId,
+        representativeId,
       });
       
       // Helper to format SSN
@@ -1649,6 +1654,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerBtuSigImportRoutes(app, requireAuth, requirePermission);
   registerBtuScraperImportRoutes(app, requireAuth, requirePermission);
   registerBtuBuildingRepImportRoutes(app, requireAuth, requirePermission);
+
+  // Register BTU Political Profile routes
+  registerBtuPoliticalRoutes(app, requireAuth, requirePermission);
 
   // Register EDLS routes
   registerEdlsSheetsRoutes(app, requireAuth, requirePermission);

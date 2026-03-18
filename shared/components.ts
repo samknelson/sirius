@@ -148,6 +148,22 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "sitespecific.btu.political",
+    name: "BTU Political Profile",
+    description: "Political representative lookup and tracking for workers using Google Civic Information API",
+    enabledByDefault: false,
+    category: "site-specific",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/sitespecific/btu/political-schema.ts",
+      tables: [
+        "sitespecific_btu_political_officials",
+        "sitespecific_btu_political_worker_reps"
+      ]
+    }
+  },
+  {
     id: "sitespecific.hta",
     name: "HTA Customization",
     description: "Custom functionality for Hospitality Training Academy",

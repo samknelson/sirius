@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle, Scale, Stethoscope, Smile, Eye as EyeIcon, Star, Download, GraduationCap, Heart, Laptop, ShoppingBag, Mail, Phone, FileText, Briefcase, Users, type LucideIcon } from "lucide-react";
+import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle, Scale, Stethoscope, Smile, Eye as EyeIcon, Star, Download, GraduationCap, Heart, Laptop, ShoppingBag, Mail, Phone, FileText, Briefcase, Users, Landmark, type LucideIcon } from "lucide-react";
 import { renderIcon } from "@/components/ui/icon-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -42,6 +42,7 @@ export interface WorkerFilters {
   hasMultipleEmployers?: boolean;
   jobTitle: string;
   memberStatusId: string;
+  representativeId?: string;
 }
 
 interface WorkersTableProps {
@@ -231,6 +232,7 @@ export function WorkersTable({
   });
   const trustBenefitsEnabled = componentConfigs.find(c => c.componentId === "trust.benefits")?.enabled ?? false;
   const cardcheckEnabled = componentConfigs.find(c => c.componentId === "cardcheck")?.enabled ?? false;
+  const politicalEnabled = componentConfigs.find(c => c.componentId === "sitespecific.btu.political")?.enabled ?? false;
 
   // Reset benefit filter when trust.benefits is disabled
   useEffect(() => {
@@ -245,6 +247,18 @@ export function WorkersTable({
       updateFilter("memberStatusId", "all");
     }
   }, [cardcheckEnabled, filters.memberStatusId]);
+
+  // Reset representative filter when political component is disabled
+  useEffect(() => {
+    if (!politicalEnabled && filters.representativeId && filters.representativeId !== "all") {
+      updateFilter("representativeId", "all");
+    }
+  }, [politicalEnabled, filters.representativeId]);
+
+  const { data: politicalOfficials = [] } = useQuery<{ id: string; name: string; officeName: string; level: string }[]>({
+    queryKey: ["/api/sitespecific/btu/political/officials"],
+    enabled: politicalEnabled,
+  });
 
   // Fetch worker-employer summary
   const { data: workerEmployers = [] } = useQuery<WorkerEmployerSummary[]>({
@@ -662,6 +676,7 @@ export function WorkersTable({
     const exportJobTitle = externalAppliedJobTitle ?? filters.jobTitle;
     if (exportJobTitle) params.set('jobTitle', exportJobTitle);
     if (filters.memberStatusId !== 'all') params.set('memberStatusId', filters.memberStatusId);
+    if (filters.representativeId && filters.representativeId !== 'all') params.set('representativeId', filters.representativeId);
     if (trustBenefitsEnabled) params.set('includeBenefits', 'true');
     
     // Trigger download by opening the export URL
@@ -1052,6 +1067,37 @@ export function WorkersTable({
                           </SelectItem>
                         );
                       })}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Representative Filter - only show when political component is enabled */}
+            {politicalEnabled && politicalOfficials.length > 0 && (
+              <div className="w-64">
+                <Select
+                  value={filters.representativeId || "all"}
+                  onValueChange={(value) => updateFilter("representativeId", value)}
+                >
+                  <SelectTrigger data-testid="select-representative-filter">
+                    <div className="flex items-center gap-2">
+                      <Landmark size={16} className="text-muted-foreground" />
+                      <SelectValue placeholder="All Representatives" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Representatives</SelectItem>
+                    {politicalOfficials
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((official) => (
+                        <SelectItem
+                          key={official.id}
+                          value={official.id}
+                          data-testid={`select-representative-${official.id}`}
+                        >
+                          {official.name} ({official.officeName})
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

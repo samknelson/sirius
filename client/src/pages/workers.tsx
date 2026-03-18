@@ -48,6 +48,7 @@ export default function Workers() {
         && prev.contactStatus === newFilters.contactStatus
         && prev.hasMultipleEmployers === newFilters.hasMultipleEmployers
         && prev.memberStatusId === newFilters.memberStatusId
+        && prev.representativeId === newFilters.representativeId
         && prev.jobTitle !== newFilters.jobTitle;
       if (!jobTitleOnly) {
         setPage(1);
@@ -71,6 +72,7 @@ export default function Workers() {
       hasMultipleEmployers: filters.hasMultipleEmployers,
       jobTitle: appliedJobTitle,
       memberStatusId: filters.memberStatusId,
+      representativeId: filters.representativeId,
     }],
   });
 

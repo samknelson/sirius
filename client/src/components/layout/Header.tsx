@@ -33,6 +33,7 @@ import {
   Briefcase,
   QrCode,
   FileSpreadsheet,
+  Landmark,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -638,6 +639,18 @@ export default function Header() {
                         </Button>
                       </Link>
                     )}
+                    {hasPermission("staff") && hasComponent("sitespecific.btu.political") && (
+                      <Link href="/reports/political-profiles" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location === "/reports/political-profiles" ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-political-profiles"
+                        >
+                          <Landmark className="h-4 w-4 mr-2" />
+                          Political Profiles
+                        </Button>
+                      </Link>
+                    )}
                   </>
                 )}
 
@@ -1182,6 +1195,16 @@ export default function Header() {
                         <div className="flex items-center cursor-pointer" data-testid="menu-contact-export">
                           <FileSpreadsheet className="h-4 w-4 mr-2" />
                           Contact Export
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasPermission("staff") && hasComponent("sitespecific.btu.political") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/reports/political-profiles" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-political-profiles">
+                          <Landmark className="h-4 w-4 mr-2" />
+                          Political Profiles
                         </div>
                       </Link>
                     </DropdownMenuItem>

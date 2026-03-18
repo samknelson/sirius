@@ -264,6 +264,8 @@ const BtuCardcheckImportPage = lazy(() => import("@/pages/sitespecific/btu/cardc
 const BtuCardcheckSigImportPage = lazy(() => import("@/pages/sitespecific/btu/cardcheck-sig-import"));
 const BtuCardcheckScrapeImportPage = lazy(() => import("@/pages/sitespecific/btu/cardcheck-scrape-import"));
 const BtuBuildingRepImportPage = lazy(() => import("@/pages/sitespecific/btu/building-rep-import"));
+const WorkerPoliticalProfile = lazy(() => import("@/pages/worker-political-profile"));
+const PoliticalProfilesReport = lazy(() => import("@/pages/political-profiles-report"));
 const EdlsSheetsPage = lazy(() => import("@/pages/edls/sheets"));
 const EdlsSheetDetailsPage = lazy(() => import("@/pages/edls/sheet-details"));
 const EdlsSheetAssignmentsPage = lazy(() => import("@/pages/edls/sheet-assignments"));
@@ -684,6 +686,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/workers/:id/political">
+        <ProtectedRoute tabId="political" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerPoliticalProfile />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/:id/delete">
         <ProtectedRoute tabId="delete" entityType="worker">
           <AuthenticatedLayout>
@@ -792,6 +802,14 @@ function Router() {
         <ProtectedRoute permission="staff" component="cardcheck">
           <AuthenticatedLayout>
             <CardcheckReportPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/reports/political-profiles">
+        <ProtectedRoute permission="staff" component="sitespecific.btu.political">
+          <AuthenticatedLayout>
+            <PoliticalProfilesReport />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
