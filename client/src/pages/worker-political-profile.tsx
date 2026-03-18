@@ -79,9 +79,13 @@ function WorkerPoliticalProfileContent() {
     queryKey: ["/api/workers", worker.id, "political", "reps"],
   });
 
+  const { data: primaryAddressData } = useQuery<{ address: string | null }>({
+    queryKey: ["/api/workers", worker.id, "political", "primary-address"],
+  });
+
   const lookupMutation = useMutation({
-    mutationFn: async (address: string) => {
-      const res = await apiRequest("POST", `/api/workers/${worker.id}/political/lookup`, { address });
+    mutationFn: async (address?: string) => {
+      const res = await apiRequest("POST", `/api/workers/${worker.id}/political/lookup`, address ? { address } : {});
       return res.json() as Promise<LookupResult>;
     },
     onSuccess: (data) => {
@@ -194,61 +198,87 @@ function WorkerPoliticalProfileContent() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-lg" data-testid="text-political-title">Political Representatives</CardTitle>
-          <Dialog open={isLookupOpen} onOpenChange={setIsLookupOpen}>
-            <DialogTrigger asChild>
+          <div className="flex items-center gap-2">
+            {primaryAddressData?.address && (
               <Button
                 size="sm"
-                data-testid="button-lookup-reps"
+                onClick={() => lookupMutation.mutate(undefined)}
+                disabled={lookupMutation.isPending}
+                data-testid="button-use-primary-address"
               >
-                {reps.length > 0 ? (
-                  <><RefreshCw className="w-4 h-4 mr-2" /> Re-Lookup</>
+                {lookupMutation.isPending ? (
+                  <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Looking up...</>
+                ) : reps.length > 0 ? (
+                  <><RefreshCw className="w-4 h-4 mr-2" /> Refresh from Primary Address</>
                 ) : (
-                  <><Search className="w-4 h-4 mr-2" /> Look Up Representatives</>
+                  <><Search className="w-4 h-4 mr-2" /> Look Up from Primary Address</>
                 )}
               </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Look Up Political Representatives</DialogTitle>
-                <DialogDescription>
-                  Enter the worker's home address to find their elected representatives at all levels of government.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="lookup-address">Address</Label>
-                  <Input
-                    id="lookup-address"
-                    placeholder="e.g., 123 Main St, Boston, MA 02101"
-                    value={lookupAddress}
-                    onChange={(e) => setLookupAddress(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && lookupAddress.trim()) {
-                        lookupMutation.mutate(lookupAddress.trim());
-                      }
-                    }}
-                    data-testid="input-lookup-address"
-                  />
+            )}
+            <Dialog open={isLookupOpen} onOpenChange={(open) => {
+              setIsLookupOpen(open);
+              if (open && primaryAddressData?.address && !lookupAddress) {
+                setLookupAddress(primaryAddressData.address);
+              }
+            }}>
+              <DialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant={primaryAddressData?.address ? "outline" : "default"}
+                  data-testid="button-lookup-reps"
+                >
+                  {primaryAddressData?.address ? (
+                    <><Search className="w-4 h-4 mr-2" /> Custom Address</>
+                  ) : reps.length > 0 ? (
+                    <><RefreshCw className="w-4 h-4 mr-2" /> Re-Lookup</>
+                  ) : (
+                    <><Search className="w-4 h-4 mr-2" /> Look Up Representatives</>
+                  )}
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Look Up Political Representatives</DialogTitle>
+                  <DialogDescription>
+                    Enter an address to find elected representatives at all levels of government.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="lookup-address">Address</Label>
+                    <Input
+                      id="lookup-address"
+                      placeholder="e.g., 123 Main St, Boston, MA 02101"
+                      value={lookupAddress}
+                      onChange={(e) => setLookupAddress(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && lookupAddress.trim()) {
+                          lookupMutation.mutate(lookupAddress.trim());
+                        }
+                      }}
+                      data-testid="input-lookup-address"
+                    />
+                  </div>
                 </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setIsLookupOpen(false)}
-                  data-testid="button-lookup-cancel"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => lookupMutation.mutate(lookupAddress.trim())}
-                  disabled={!lookupAddress.trim() || lookupMutation.isPending}
-                  data-testid="button-lookup-submit"
-                >
-                  {lookupMutation.isPending ? "Looking up..." : "Look Up"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsLookupOpen(false)}
+                    data-testid="button-lookup-cancel"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => lookupMutation.mutate(lookupAddress.trim())}
+                    disabled={!lookupAddress.trim() || lookupMutation.isPending}
+                    data-testid="button-lookup-submit"
+                  >
+                    {lookupMutation.isPending ? "Looking up..." : "Look Up"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (

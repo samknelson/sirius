@@ -8,7 +8,7 @@ type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void 
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
 const lookupSchema = z.object({
-  address: z.string().min(1, "Address is required"),
+  address: z.string().optional(),
   workerId: z.string().min(1, "Worker ID is required"),
 });
 
@@ -48,7 +48,7 @@ export function registerBtuPoliticalRoutes(
 
   app.get("/api/sitespecific/btu/political/officials/:id/workers", requireAuth, requirePermission("staff"), componentMiddleware, async (req, res) => {
     try {
-      const workers = await storage.btuPolitical.getWorkersByOfficialId(req.params.id);
+      const workers = await storage.btuPolitical.getWorkersWithDetailsByOfficialId(req.params.id);
       res.json(workers);
     } catch (error: any) {
       if (error.message === "COMPONENT_TABLE_NOT_FOUND") {
@@ -72,6 +72,21 @@ export function registerBtuPoliticalRoutes(
     }
   });
 
+  app.get("/api/workers/:workerId/political/primary-address", requireAuth, requirePermission("staff"), componentMiddleware, async (req, res) => {
+    try {
+      const worker = await storage.workers.getWorker(req.params.workerId);
+      if (!worker) return res.status(404).json({ message: "Worker not found" });
+      const addresses = await storage.contacts.getContactPostalByContact(worker.contactId);
+      const primary = addresses.find(a => a.isPrimary && a.isActive) || addresses.find(a => a.isActive);
+      if (!primary) return res.json({ address: null });
+      const parts = [primary.street, primary.city, primary.state, primary.postalCode].filter(Boolean);
+      res.json({ address: parts.join(", ") });
+    } catch (error: any) {
+      console.error("Failed to fetch primary address:", error);
+      res.status(500).json({ message: "Failed to fetch primary address" });
+    }
+  });
+
   app.post("/api/workers/:workerId/political/lookup", requireAuth, requirePermission("staff"), componentMiddleware, async (req, res) => {
     try {
       const parsed = lookupSchema.safeParse({ ...req.body, workerId: req.params.workerId });
@@ -79,11 +94,22 @@ export function registerBtuPoliticalRoutes(
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.errors });
       }
 
-      const { address, workerId } = parsed.data;
+      const { workerId } = parsed.data;
+      let { address } = parsed.data;
 
       const worker = await storage.workers.getWorker(workerId);
       if (!worker) {
         return res.status(404).json({ message: "Worker not found" });
+      }
+
+      if (!address || !address.trim()) {
+        const addresses = await storage.contacts.getContactPostalByContact(worker.contactId);
+        const primary = addresses.find(a => a.isPrimary && a.isActive) || addresses.find(a => a.isActive);
+        if (!primary) {
+          return res.status(400).json({ message: "No address provided and worker has no primary address on file." });
+        }
+        const parts = [primary.street, primary.city, primary.state, primary.postalCode].filter(Boolean);
+        address = parts.join(", ");
       }
 
       const result = await lookupRepresentatives(address);
@@ -155,19 +181,22 @@ export function registerBtuPoliticalRoutes(
       const { stringify } = await import("csv-stringify/sync");
       const officials = await storage.btuPolitical.getOfficials();
 
-      const rows: any[] = [];
+      const rows: Record<string, string | number>[] = [];
       for (const official of officials) {
-        const workers = await storage.btuPolitical.getWorkersByOfficialId(official.id);
-        rows.push({
-          Name: official.name,
-          Office: official.officeName,
-          Level: official.level,
-          Division: official.division || "",
-          Party: official.party || "",
-          Phone: (official.phones || []).join("; "),
-          Email: (official.emails || []).join("; "),
-          "Worker Count": workers.length,
-        });
+        const workers = await storage.btuPolitical.getWorkersWithDetailsByOfficialId(official.id);
+        for (const worker of workers) {
+          rows.push({
+            "Representative Name": official.name,
+            "Office": official.officeName,
+            "Level": official.level,
+            "Division": official.division || "",
+            "Party": official.party || "",
+            "Rep Phone": (official.phones || []).join("; "),
+            "Rep Email": (official.emails || []).join("; "),
+            "Worker Name": worker.workerName || "",
+            "Worker Address": worker.address || "",
+          });
+        }
       }
 
       const csv = stringify(rows, { header: true });

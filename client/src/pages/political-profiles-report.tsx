@@ -21,7 +21,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Download, Landmark, Search, Phone, Mail, Globe, User } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Download, Landmark, Search, Phone, Mail, Globe, User, ChevronRight } from "lucide-react";
+import { Link } from "wouter";
 
 interface OfficialReport {
   id: string;
@@ -37,6 +44,13 @@ interface OfficialReport {
   workerCount: number;
 }
 
+interface OfficialWorker {
+  workerId: string;
+  workerName: string | null;
+  address: string | null;
+  lastLookedUpAt: string;
+}
+
 function getLevelColor(level: string): string {
   switch (level) {
     case "federal": return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
@@ -46,10 +60,72 @@ function getLevelColor(level: string): string {
   }
 }
 
+function WorkersDialog({ official, open, onOpenChange }: { official: OfficialReport | null; open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { data: workers = [], isLoading } = useQuery<OfficialWorker[]>({
+    queryKey: ["/api/sitespecific/btu/political/officials", official?.id, "workers"],
+    enabled: open && !!official?.id,
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            Workers represented by {official?.name}
+            <span className="block text-sm font-normal text-muted-foreground mt-1">
+              {official?.officeName}
+            </span>
+          </DialogTitle>
+        </DialogHeader>
+        {isLoading ? (
+          <div className="space-y-3 py-4">
+            {[...Array(3)].map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
+          </div>
+        ) : workers.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            No workers found for this representative.
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Worker Name</TableHead>
+                <TableHead>Address Used</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {workers.map((w) => (
+                <TableRow key={w.workerId} data-testid={`row-drilldown-worker-${w.workerId}`}>
+                  <TableCell>
+                    <Link
+                      href={`/workers/${w.workerId}`}
+                      className="text-primary hover:underline font-medium"
+                      data-testid={`link-worker-${w.workerId}`}
+                    >
+                      {w.workerName || "Unknown"}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {w.address || "—"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function PoliticalProfilesReport() {
   const [searchQuery, setSearchQuery] = useState("");
   const [levelFilter, setLevelFilter] = useState("all");
   const [sortBy, setSortBy] = useState<"name" | "office" | "workers">("workers");
+  const [selectedOfficial, setSelectedOfficial] = useState<OfficialReport | null>(null);
+  const [drilldownOpen, setDrilldownOpen] = useState(false);
 
   const { data: officials = [], isLoading } = useQuery<OfficialReport[]>({
     queryKey: ["/api/sitespecific/btu/political/report"],
@@ -84,13 +160,13 @@ export default function PoliticalProfilesReport() {
     return result;
   }, [officials, levelFilter, searchQuery, sortBy]);
 
-  const totalWorkers = useMemo(() => {
-    const unique = new Set<string>();
-    return officials.reduce((sum, o) => sum + o.workerCount, 0);
-  }, [officials]);
-
   const handleExportCsv = () => {
     window.open("/api/sitespecific/btu/political/report/csv", "_blank");
+  };
+
+  const handleWorkerCountClick = (official: OfficialReport) => {
+    setSelectedOfficial(official);
+    setDrilldownOpen(true);
   };
 
   return (
@@ -142,7 +218,7 @@ export default function PoliticalProfilesReport() {
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
+              <Select value={sortBy} onValueChange={(v: string) => setSortBy(v as "name" | "office" | "workers")}>
                 <SelectTrigger className="w-[180px]" data-testid="select-sort">
                   <SelectValue />
                 </SelectTrigger>
@@ -214,10 +290,10 @@ export default function PoliticalProfilesReport() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {official.party || "—"}
+                        {official.party || "\u2014"}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">
-                        {official.division || "—"}
+                        {official.division || "\u2014"}
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-2">
@@ -238,8 +314,21 @@ export default function PoliticalProfilesReport() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-right font-medium" data-testid={`text-official-workers-${official.id}`}>
-                        {official.workerCount}
+                      <TableCell className="text-right" data-testid={`text-official-workers-${official.id}`}>
+                        {official.workerCount > 0 ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="font-medium text-primary hover:underline"
+                            onClick={() => handleWorkerCountClick(official)}
+                            data-testid={`button-drilldown-${official.id}`}
+                          >
+                            {official.workerCount}
+                            <ChevronRight className="w-4 h-4 ml-1" />
+                          </Button>
+                        ) : (
+                          <span className="text-muted-foreground">0</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -249,6 +338,12 @@ export default function PoliticalProfilesReport() {
           </CardContent>
         </Card>
       </main>
+
+      <WorkersDialog
+        official={selectedOfficial}
+        open={drilldownOpen}
+        onOpenChange={setDrilldownOpen}
+      />
     </div>
   );
 }

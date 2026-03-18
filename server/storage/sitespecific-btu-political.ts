@@ -26,12 +26,13 @@ export interface BtuPoliticalStorage {
   tableExists(): Promise<boolean>;
   getOfficials(): Promise<BtuPoliticalOfficial[]>;
   getOfficial(id: string): Promise<BtuPoliticalOfficial | undefined>;
-  findOfficialByNameAndOffice(name: string, officeName: string): Promise<BtuPoliticalOfficial | undefined>;
+  findOfficialByOfficeAndDivision(officeName: string, ocdDivisionId: string): Promise<BtuPoliticalOfficial | undefined>;
   upsertOfficial(record: InsertBtuPoliticalOfficial): Promise<BtuPoliticalOfficial>;
   deleteOfficial(id: string): Promise<boolean>;
   getWorkerReps(workerId: string): Promise<(BtuPoliticalWorkerRep & { official: BtuPoliticalOfficial })[]>;
   setWorkerReps(workerId: string, officialIds: string[], address: string): Promise<void>;
   getWorkersByOfficialId(officialId: string): Promise<{ workerId: string; address: string | null; lastLookedUpAt: Date }[]>;
+  getWorkersWithDetailsByOfficialId(officialId: string): Promise<{ workerId: string; workerName: string | null; address: string | null; lastLookedUpAt: Date }[]>;
   getAllOfficialIds(): Promise<string[]>;
 }
 
@@ -62,15 +63,15 @@ export function createBtuPoliticalStorage(): BtuPoliticalStorage {
       return results[0];
     },
 
-    async findOfficialByNameAndOffice(name: string, officeName: string): Promise<BtuPoliticalOfficial | undefined> {
+    async findOfficialByOfficeAndDivision(officeName: string, ocdDivisionId: string): Promise<BtuPoliticalOfficial | undefined> {
       if (!(await this.tableExists())) throw new Error("COMPONENT_TABLE_NOT_FOUND");
       const client = getClient();
       const results = await client
         .select()
         .from(sitespecificBtuPoliticalOfficials)
         .where(and(
-          eq(sitespecificBtuPoliticalOfficials.name, name),
           eq(sitespecificBtuPoliticalOfficials.officeName, officeName),
+          eq(sitespecificBtuPoliticalOfficials.ocdDivisionId, ocdDivisionId),
         ));
       return results[0];
     },
@@ -78,7 +79,9 @@ export function createBtuPoliticalStorage(): BtuPoliticalStorage {
     async upsertOfficial(record: InsertBtuPoliticalOfficial): Promise<BtuPoliticalOfficial> {
       if (!(await this.tableExists())) throw new Error("COMPONENT_TABLE_NOT_FOUND");
       const client = getClient();
-      const existing = await this.findOfficialByNameAndOffice(record.name, record.officeName);
+      const existing = record.ocdDivisionId
+        ? await this.findOfficialByOfficeAndDivision(record.officeName, record.ocdDivisionId)
+        : undefined;
       if (existing) {
         const results = await client
           .update(sitespecificBtuPoliticalOfficials)
@@ -155,6 +158,20 @@ export function createBtuPoliticalStorage(): BtuPoliticalStorage {
         .from(sitespecificBtuPoliticalWorkerReps)
         .where(eq(sitespecificBtuPoliticalWorkerReps.officialId, officialId));
       return results;
+    },
+
+    async getWorkersWithDetailsByOfficialId(officialId: string): Promise<{ workerId: string; workerName: string | null; address: string | null; lastLookedUpAt: Date }[]> {
+      if (!(await this.tableExists())) throw new Error("COMPONENT_TABLE_NOT_FOUND");
+      const client = getClient();
+      const results = await client.execute(sql`
+        SELECT pwr.worker_id as "workerId", c.display_name as "workerName", pwr.address, pwr.last_looked_up_at as "lastLookedUpAt"
+        FROM sitespecific_btu_political_worker_reps pwr
+        INNER JOIN workers w ON w.id = pwr.worker_id
+        INNER JOIN contacts c ON c.id = w.contact_id
+        WHERE pwr.official_id = ${officialId}
+        ORDER BY c.display_name
+      `);
+      return results.rows as any[];
     },
 
     async getAllOfficialIds(): Promise<string[]> {
