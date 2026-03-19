@@ -431,7 +431,7 @@ export function registerDashboardRoutes(
     "/api/dashboard-plugins/edls-summary",
     requireAuth,
     requireComponent("edls"),
-    requirePermission("edls.coordinator"),
+    requireAccess('edls.coordinator'),
     async (req, res) => {
       try {
         const { ymd } = req.query;

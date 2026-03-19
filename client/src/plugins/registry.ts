@@ -82,7 +82,7 @@ export const pluginRegistry: DashboardPlugin[] = [
     description: "Worker assignment counts by member status and sheet status for a selected day",
     order: 8,
     component: EdlsSummaryPlugin,
-    requiredPermissions: ["edls.coordinator"],
+    requiredPolicy: "edls.coordinator",
     requiredComponent: "edls",
     fullWidth: true,
     enabledByDefault: true,

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Home, AlertCircle, User, Building2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -19,6 +20,38 @@ export default function Dashboard() {
   const { data: pluginConfigs = [], isLoading: configsLoading } = useQuery<PluginConfig[]>({
     queryKey: ["/api/dashboard-plugins/config"],
   });
+
+  const allPlugins = getAllPlugins();
+  const policiesNeeded = useMemo(
+    () => [...new Set(allPlugins.filter(p => p.requiredPolicy).map(p => p.requiredPolicy!))],
+    [allPlugins]
+  );
+
+  const { data: policyResults = {}, isLoading: policiesLoading } = useQuery<Record<string, { allowed: boolean }>>({
+    queryKey: ["/api/access/policies/batch", ...policiesNeeded],
+    queryFn: async () => {
+      if (policiesNeeded.length === 0) return {};
+      const results: Record<string, { allowed: boolean }> = {};
+      await Promise.all(
+        policiesNeeded.map(async (policy) => {
+          try {
+            const response = await fetch(`/api/access/policies/${policy}`);
+            if (response.ok) {
+              const data = await response.json();
+              results[policy] = { allowed: data.allowed };
+            } else {
+              results[policy] = { allowed: false };
+            }
+          } catch {
+            results[policy] = { allowed: false };
+          }
+        })
+      );
+      return results;
+    },
+    staleTime: 30000,
+    enabled: policiesNeeded.length > 0 && !!user,
+  });
   
   // Check for linked employers (for employer role users without staff access)
   const { data: myEmployers = [] } = useQuery<{ id: string; name: string }[]>({
@@ -34,12 +67,6 @@ export default function Dashboard() {
   const showWorkerLinkageMessage = hasWorkerRole && !hasLinkedWorker && !staffPolicyGranted;
   const showEmployerLinkageMessage = hasEmployerRole && !hasLinkedEmployer && !staffPolicyGranted;
 
-  // Get all registered plugins
-  const allPlugins = getAllPlugins();
-
-  // Filter plugins based on:
-  // 1. Plugin is enabled in config (or enabled by default if no config exists)
-  // 2. User has required permissions
   const enabledPlugins = allPlugins.filter(plugin => {
     // Check if plugin is enabled
     const config = pluginConfigs.find(c => c.pluginId === plugin.id);
@@ -58,6 +85,11 @@ export default function Dashboard() {
       return false;
     }
 
+    if (plugin.requiredPolicy) {
+      const policyResult = policyResults[plugin.requiredPolicy];
+      if (!policyResult || !policyResult.allowed) return false;
+    }
+
     return true;
   });
 
@@ -68,7 +100,7 @@ export default function Dashboard() {
     <div className="bg-background text-foreground min-h-screen">
       <PageHeader title="Dashboard" icon={<Home className="text-primary-foreground" size={16} />} />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {rolesLoading || configsLoading ? (
+        {rolesLoading || configsLoading || policiesLoading ? (
           <div className="text-center text-muted-foreground py-8">
             <p>Loading dashboard...</p>
           </div>
