@@ -38,7 +38,7 @@ export default function Dashboard() {
             const response = await fetch(`/api/access/policies/${policy}`);
             if (response.ok) {
               const data = await response.json();
-              results[policy] = { allowed: data.allowed };
+              results[policy] = { allowed: data.access?.granted === true };
             } else {
               results[policy] = { allowed: false };
             }
