@@ -67,6 +67,7 @@ function getTableColumns(tableSchema: any): Map<string, any> {
 function generateCreateTableSql(tableSchema: any, tableName: string): string {
   const columns = getTableColumns(tableSchema);
   const columnDefs: string[] = [];
+  const constraints: string[] = [];
   
   for (const [colName, col] of Object.entries(columns) as [string, any][]) {
     const colDbName = col.name || colName;
@@ -84,15 +85,45 @@ function generateCreateTableSql(tableSchema: any, tableName: string): string {
         colDef += ` DEFAULT ${defaultVal}`;
       }
     }
+    if (col.isUnique && col.uniqueName) {
+      constraints.push(`CONSTRAINT "${col.uniqueName}" UNIQUE ("${colDbName}")`);
+    }
     
     columnDefs.push(colDef);
   }
-  
-  return `CREATE TABLE IF NOT EXISTS "${tableName}" (\n  ${columnDefs.join(",\n  ")}\n)`;
+
+  const extraConfigSymbol = Object.getOwnPropertySymbols(tableSchema).find(
+    s => s.description === "drizzle:ExtraConfigBuilder"
+  );
+  if (extraConfigSymbol && typeof tableSchema[extraConfigSymbol] === "function") {
+    try {
+      const extraConfig = tableSchema[extraConfigSymbol](tableSchema);
+      if (Array.isArray(extraConfig)) {
+        for (const item of extraConfig) {
+          if (item && item.constructor?.name === "UniqueConstraintBuilder") {
+            const ucName = item.name;
+            const ucColumns = item.columns;
+            if (ucName && Array.isArray(ucColumns) && ucColumns.length > 0) {
+              const colNames = ucColumns.map((c: any) => `"${c.name}"`).join(", ");
+              constraints.push(`CONSTRAINT "${ucName}" UNIQUE (${colNames})`);
+            }
+          }
+        }
+      }
+    } catch {
+    }
+  }
+
+  const allDefs = [...columnDefs, ...constraints];
+  return `CREATE TABLE IF NOT EXISTS "${tableName}" (\n  ${allDefs.join(",\n  ")}\n)`;
 }
 
 function getSqlType(col: any): string {
   const columnType = col.columnType;
+
+  if (columnType === "PgArray" && col.baseColumn) {
+    return `${getSqlType(col.baseColumn)}[]`;
+  }
   
   if (columnType?.includes("PgVarchar")) {
     return "VARCHAR";
@@ -109,8 +140,16 @@ function getSqlType(col: any): string {
   if (columnType?.includes("PgBoolean")) {
     return "BOOLEAN";
   }
+  if (columnType?.includes("PgJsonb")) {
+    return "JSONB";
+  }
+  if (columnType?.includes("PgJson")) {
+    return "JSON";
+  }
   
   const dataType = col.dataType;
+  if (dataType === "array" && col.baseColumn) return `${getSqlType(col.baseColumn)}[]`;
+  if (dataType === "json") return "JSONB";
   if (dataType === "string") return "TEXT";
   if (dataType === "number") return "INTEGER";
   if (dataType === "boolean") return "BOOLEAN";
