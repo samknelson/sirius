@@ -128,6 +128,7 @@ export async function enableComponentSchema(componentId: string): Promise<Compon
   } catch (error) {
     hasError = true;
     const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`Component schema push failed for ${componentId}:`, errorMessage, error instanceof Error ? error.stack : '');
     operations.push({
       success: false,
       tableName: component.schemaManifest.schemaPath,

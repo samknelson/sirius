@@ -1,6 +1,7 @@
 import { getComponentById } from "../../shared/components";
 import { storage } from "../storage";
 import { tableExists } from "../storage/utils";
+import * as mainSchema from "../../shared/schema";
 
 export async function pushComponentSchema(componentId: string): Promise<void> {
   const component = getComponentById(componentId);
@@ -13,13 +14,21 @@ export async function pushComponentSchema(componentId: string): Promise<void> {
     throw new Error(`Component ${componentId} does not manage a schema`);
   }
 
-  const schemaModule = await loadSchemaModule(component.schemaManifest.schemaPath);
+  let schemaModule: Record<string, unknown>;
+  try {
+    schemaModule = await loadSchemaModule(component.schemaManifest.schemaPath);
+  } catch {
+    schemaModule = mainSchema as unknown as Record<string, unknown>;
+  }
   
   for (const tableName of component.schemaManifest.tables) {
     const exists = await tableExists(tableName);
     
     if (!exists) {
-      const tableSchema = findTableInModule(schemaModule, tableName);
+      let tableSchema = findTableInModule(schemaModule, tableName);
+      if (!tableSchema) {
+        tableSchema = findTableInModule(mainSchema as unknown as Record<string, unknown>, tableName);
+      }
       if (!tableSchema) {
         throw new Error(`Table ${tableName} not found in schema module`);
       }
@@ -34,7 +43,7 @@ export async function pushComponentSchema(componentId: string): Promise<void> {
   }
 }
 
-async function loadSchemaModule(schemaPath: string): Promise<any> {
+async function loadSchemaModule(schemaPath: string): Promise<Record<string, unknown>> {
   const relativePath = schemaPath.replace(/^\.\//, "");
   const moduleUrl = new URL(`../../${relativePath}`, import.meta.url);
   return await import(moduleUrl.href);
