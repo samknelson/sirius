@@ -7,6 +7,7 @@
 # Usage:
 #   ./list-structure-changes.sh              # Auto-detects last pushed commit, shows full diffs
 #   ./list-structure-changes.sh --list       # Files only (no diffs)
+#   ./list-structure-changes.sh <file>       # Show diff for a single file
 #   ./list-structure-changes.sh <commit>     # Uses specified commit as base
 #   ./list-structure-changes.sh --list <commit>
 
@@ -20,10 +21,13 @@ NC='\033[0m' # No Color
 
 LIST_ONLY=false
 COMMIT_ARG=""
+FILE_ARG=""
 
 for arg in "$@"; do
     if [ "$arg" = "--list" ] || [ "$arg" = "-l" ]; then
         LIST_ONLY=true
+    elif [ -f "$arg" ]; then
+        FILE_ARG="$arg"
     else
         COMMIT_ARG="$arg"
     fi
@@ -76,6 +80,35 @@ else
             exit 0
         fi
     fi
+fi
+
+# Single-file mode: show diff for one specific file and exit
+if [ -n "$FILE_ARG" ]; then
+    echo ""
+    echo -e "${GREEN}────────────────────────────────────────────────────────────────${NC}"
+    echo -e "${GREEN}📄 FILE: ${YELLOW}${FILE_ARG}${NC}"
+    echo -e "${GREEN}────────────────────────────────────────────────────────────────${NC}"
+
+    stats=$(git --no-pager diff -w --numstat "$BASE_COMMIT"..HEAD -- "$FILE_ARG" 2>/dev/null)
+    insertions=$(echo "$stats" | awk '{print $1}')
+    deletions=$(echo "$stats" | awk '{print $2}')
+
+    if [ -z "$stats" ]; then
+        echo -e "${YELLOW}No changes to this file since ${BASE_COMMIT:0:12}.${NC}"
+        exit 0
+    fi
+
+    if [ "$insertions" = "-" ]; then
+        echo -e "${CYAN}📊 SUMMARY:${NC} Binary file changed"
+    else
+        echo -e "${CYAN}📊 SUMMARY:${NC} +${insertions:-0} insertions, -${deletions:-0} deletions"
+    fi
+    echo ""
+    echo -e "${CYAN}📝 DIFF:${NC}"
+    echo ""
+    git --no-pager diff -w "$BASE_COMMIT"..HEAD -- "$FILE_ARG" 2>/dev/null
+    echo ""
+    exit 0
 fi
 
 # Get list of changed files, excluding client/* and attached_assets/*
