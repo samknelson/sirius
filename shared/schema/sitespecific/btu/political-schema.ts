@@ -21,7 +21,7 @@ export const sitespecificBtuPoliticalOfficials = pgTable("sitespecific_btu_polit
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
-  unique("btu_political_officials_office_division_unique").on(table.officeName, table.ocdDivisionId),
+  unique("btu_political_officials_name_office_division_unique").on(table.name, table.officeName, table.ocdDivisionId),
 ]);
 
 export const insertBtuPoliticalOfficialSchema = createInsertSchema(sitespecificBtuPoliticalOfficials).omit({

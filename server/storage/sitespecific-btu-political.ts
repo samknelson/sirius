@@ -26,7 +26,7 @@ export interface BtuPoliticalStorage {
   tableExists(): Promise<boolean>;
   getOfficials(): Promise<BtuPoliticalOfficial[]>;
   getOfficial(id: string): Promise<BtuPoliticalOfficial | undefined>;
-  findOfficialByOfficeAndDivision(officeName: string, ocdDivisionId: string): Promise<BtuPoliticalOfficial | undefined>;
+  findOfficialByNameOfficeAndDivision(name: string, officeName: string, ocdDivisionId: string): Promise<BtuPoliticalOfficial | undefined>;
   upsertOfficial(record: InsertBtuPoliticalOfficial): Promise<BtuPoliticalOfficial>;
   deleteOfficial(id: string): Promise<boolean>;
   getWorkerReps(workerId: string): Promise<(BtuPoliticalWorkerRep & { official: BtuPoliticalOfficial })[]>;
@@ -63,13 +63,14 @@ export function createBtuPoliticalStorage(): BtuPoliticalStorage {
       return results[0];
     },
 
-    async findOfficialByOfficeAndDivision(officeName: string, ocdDivisionId: string): Promise<BtuPoliticalOfficial | undefined> {
+    async findOfficialByNameOfficeAndDivision(name: string, officeName: string, ocdDivisionId: string): Promise<BtuPoliticalOfficial | undefined> {
       if (!(await this.tableExists())) throw new Error("COMPONENT_TABLE_NOT_FOUND");
       const client = getClient();
       const results = await client
         .select()
         .from(sitespecificBtuPoliticalOfficials)
         .where(and(
+          eq(sitespecificBtuPoliticalOfficials.name, name),
           eq(sitespecificBtuPoliticalOfficials.officeName, officeName),
           eq(sitespecificBtuPoliticalOfficials.ocdDivisionId, ocdDivisionId),
         ));
@@ -80,7 +81,7 @@ export function createBtuPoliticalStorage(): BtuPoliticalStorage {
       if (!(await this.tableExists())) throw new Error("COMPONENT_TABLE_NOT_FOUND");
       const client = getClient();
       const existing = record.ocdDivisionId
-        ? await this.findOfficialByOfficeAndDivision(record.officeName, record.ocdDivisionId)
+        ? await this.findOfficialByNameOfficeAndDivision(record.name, record.officeName, record.ocdDivisionId)
         : undefined;
       if (existing) {
         const results = await client
