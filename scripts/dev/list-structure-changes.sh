@@ -5,8 +5,10 @@
 # For each file: displays filename, change summary, and diff
 #
 # Usage:
-#   ./list-structure-changes.sh              # Auto-detects last pushed commit
+#   ./list-structure-changes.sh              # Auto-detects last pushed commit, shows full diffs
+#   ./list-structure-changes.sh --list       # Files only (no diffs)
 #   ./list-structure-changes.sh <commit>     # Uses specified commit as base
+#   ./list-structure-changes.sh --list <commit>
 
 # Colors for output
 BLUE='\033[0;34m'
@@ -16,9 +18,20 @@ CYAN='\033[0;36m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+LIST_ONLY=false
+COMMIT_ARG=""
+
+for arg in "$@"; do
+    if [ "$arg" = "--list" ] || [ "$arg" = "-l" ]; then
+        LIST_ONLY=true
+    else
+        COMMIT_ARG="$arg"
+    fi
+done
+
 # Determine base commit
-if [ -n "$1" ]; then
-    BASE_COMMIT="$1"
+if [ -n "$COMMIT_ARG" ]; then
+    BASE_COMMIT="$COMMIT_ARG"
     echo -e "${CYAN}Using provided base commit: ${BASE_COMMIT}${NC}"
 else
     # Strategy 1: Try git merge-base to find common ancestor with origin/main
@@ -109,10 +122,29 @@ file_count=$(echo "$files_with_changes" | wc -w)
 echo ""
 echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
 echo -e "${BLUE}  Files Changed Since: ${BASE_COMMIT:0:12}${NC}"
-echo -e "${BLUE}  (excluding client/*, attached_assets/*, data/*.json, whitespace-only changes)${NC}"
+echo -e "${BLUE}  (excluding client/*, attached_assets/*, data/*.json,${NC}"
+echo -e "${BLUE}   database/quickstarts/*, whitespace-only changes)${NC}"
 echo -e "${BLUE}  Total: ${file_count} file(s)${NC}"
 echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
 echo ""
+
+if [ "$LIST_ONLY" = true ]; then
+    for file in $files_with_changes; do
+        stats=$(git --no-pager diff -w --numstat "$BASE_COMMIT"..HEAD -- "$file" 2>/dev/null)
+        insertions=$(echo "$stats" | awk '{print $1}')
+        deletions=$(echo "$stats" | awk '{print $2}')
+        if [ "$insertions" = "-" ]; then
+            echo -e "  ${YELLOW}${file}${NC}  ${CYAN}(binary)${NC}"
+        else
+            echo -e "  ${YELLOW}${file}${NC}  ${CYAN}(+${insertions:-0} -${deletions:-0})${NC}"
+        fi
+    done
+    echo ""
+    echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}  Tip: Run without --list to see full diffs${NC}"
+    echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
+    exit 0
+fi
 
 # Process each file with actual changes
 for file in $files_with_changes; do
