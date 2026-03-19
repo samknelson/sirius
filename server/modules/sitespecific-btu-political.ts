@@ -156,6 +156,127 @@ export function registerBtuPoliticalRoutes(
     }
   });
 
+  let activeBulkJob: { id: string; controller: AbortController } | null = null;
+
+  app.post("/api/sitespecific/btu/political/bulk-lookup", requireAuth, requirePermission("staff"), componentMiddleware, async (req, res) => {
+    if (activeBulkJob) {
+      return res.status(409).json({ message: "A bulk lookup is already in progress. Please wait for it to finish or cancel it first." });
+    }
+
+    const skipExisting = req.body.skipExisting !== false;
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    const sendEvent = (data: Record<string, unknown>) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    const jobId = `bulk-${Date.now()}`;
+    const controller = new AbortController();
+    activeBulkJob = { id: jobId, controller };
+    const signal = controller.signal;
+
+    try {
+      const allWorkers = await storage.workers.getAllWorkers();
+      const total = allWorkers.length;
+      let processed = 0;
+      let succeeded = 0;
+      let skippedNoAddress = 0;
+      let skippedExisting = 0;
+      let failed = 0;
+      const errors: { workerId: string; error: string }[] = [];
+
+      sendEvent({ type: "start", total });
+
+      for (const worker of allWorkers) {
+        if (signal.aborted) {
+          sendEvent({ type: "cancelled", processed, succeeded, skippedNoAddress, skippedExisting, failed });
+          res.end();
+          return;
+        }
+
+        processed++;
+
+        try {
+          if (skipExisting) {
+            const existingReps = await storage.btuPolitical.getWorkerReps(worker.id);
+            if (existingReps.length > 0) {
+              skippedExisting++;
+              if (processed % 10 === 0 || processed === total) {
+                sendEvent({ type: "progress", processed, total, succeeded, skippedNoAddress, skippedExisting, failed });
+              }
+              continue;
+            }
+          }
+
+          const addresses = await storage.contacts.addresses.getContactPostalByContact(worker.contactId);
+          const primary = addresses.find(a => a.isPrimary && a.isActive) || addresses.find(a => a.isActive);
+          if (!primary) {
+            skippedNoAddress++;
+            if (processed % 10 === 0 || processed === total) {
+              sendEvent({ type: "progress", processed, total, succeeded, skippedNoAddress, skippedExisting, failed });
+            }
+            continue;
+          }
+
+          const parts = [primary.street, primary.city, primary.state, primary.postalCode].filter(Boolean);
+          const address = parts.join(", ");
+
+          const result = await lookupRepresentatives(address);
+
+          const officialIds: string[] = [];
+          for (const civicOfficial of result.officials) {
+            const official = await storage.btuPolitical.upsertOfficial({
+              name: civicOfficial.name,
+              officeName: civicOfficial.officeName,
+              level: civicOfficial.level,
+              division: civicOfficial.division,
+              party: civicOfficial.party,
+              phones: civicOfficial.phones,
+              emails: civicOfficial.emails,
+              photoUrl: civicOfficial.photoUrl,
+              urls: civicOfficial.urls,
+              channels: civicOfficial.channels,
+              ocdDivisionId: civicOfficial.ocdDivisionId,
+            });
+            officialIds.push(official.id);
+          }
+
+          await storage.btuPolitical.setWorkerReps(worker.id, officialIds, result.normalizedAddress);
+          succeeded++;
+        } catch (err: unknown) {
+          failed++;
+          const msg = err instanceof Error ? err.message : String(err);
+          errors.push({ workerId: worker.id, error: msg });
+        }
+
+        sendEvent({ type: "progress", processed, total, succeeded, skippedNoAddress, skippedExisting, failed });
+
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+
+      sendEvent({ type: "complete", processed, total, succeeded, skippedNoAddress, skippedExisting, failed, errors: errors.slice(0, 50) });
+    } catch (error: unknown) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      sendEvent({ type: "error", message: err.message });
+    } finally {
+      activeBulkJob = null;
+      res.end();
+    }
+  });
+
+  app.post("/api/sitespecific/btu/political/bulk-lookup/cancel", requireAuth, requirePermission("staff"), componentMiddleware, async (_req, res) => {
+    if (activeBulkJob) {
+      activeBulkJob.controller.abort();
+      res.json({ message: "Cancellation requested" });
+    } else {
+      res.json({ message: "No bulk lookup in progress" });
+    }
+  });
+
   app.get("/api/sitespecific/btu/political/report", requireAuth, requirePermission("staff"), componentMiddleware, async (req, res) => {
     try {
       const officials = await storage.btuPolitical.getOfficials();

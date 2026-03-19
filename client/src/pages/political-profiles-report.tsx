@@ -1,11 +1,14 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -24,11 +27,14 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Download, Landmark, Search, Phone, Mail, Globe, User, ChevronRight } from "lucide-react";
+import { Download, Landmark, Search, Phone, Mail, Globe, User, ChevronRight, Users, Loader2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { Link } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 
 interface OfficialReport {
   id: string;
@@ -120,12 +126,214 @@ function WorkersDialog({ official, open, onOpenChange }: { official: OfficialRep
   );
 }
 
+interface BulkProgress {
+  type: string;
+  total?: number;
+  processed?: number;
+  succeeded?: number;
+  skippedNoAddress?: number;
+  skippedExisting?: number;
+  failed?: number;
+  errors?: { workerId: string; error: string }[];
+  message?: string;
+}
+
+function BulkLookupDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const [skipExisting, setSkipExisting] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState<BulkProgress | null>(null);
+  const [finished, setFinished] = useState(false);
+  const { toast } = useToast();
+  const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+
+  const startBulkLookup = useCallback(async () => {
+    setRunning(true);
+    setFinished(false);
+    setProgress({ type: "starting" });
+
+    try {
+      const response = await fetch("/api/sitespecific/btu/political/bulk-lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ skipExisting }),
+      });
+
+      if (!response.ok || !response.body) {
+        const errorData = await response.json().catch(() => ({ message: "Failed to start bulk lookup" }));
+        throw new Error(errorData.message || "Failed to start bulk lookup");
+      }
+
+      const reader = response.body.getReader();
+      readerRef.current = reader;
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6)) as BulkProgress;
+              setProgress(data);
+              if (data.type === "complete" || data.type === "cancelled" || data.type === "error") {
+                setFinished(true);
+                setRunning(false);
+                queryClient.invalidateQueries({ queryKey: ["/api/sitespecific/btu/political/report"] });
+              }
+            } catch { /* skip malformed JSON */ }
+          }
+        }
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      toast({ title: "Bulk lookup failed", description: msg, variant: "destructive" });
+      setRunning(false);
+      setFinished(true);
+    }
+  }, [skipExisting, toast]);
+
+  const cancelBulkLookup = useCallback(async () => {
+    try {
+      await fetch("/api/sitespecific/btu/political/bulk-lookup/cancel", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch { /* best effort */ }
+  }, []);
+
+  const handleClose = useCallback(() => {
+    if (running) return;
+    setProgress(null);
+    setFinished(false);
+    onOpenChange(false);
+  }, [running, onOpenChange]);
+
+  const pct = progress?.total && progress.processed ? Math.round((progress.processed / progress.total) * 100) : 0;
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Bulk Representative Lookup</DialogTitle>
+          <DialogDescription>
+            Look up elected representatives for all workers using their primary address on file.
+          </DialogDescription>
+        </DialogHeader>
+
+        {!running && !finished && (
+          <div className="space-y-4 py-2">
+            <div className="flex items-center gap-3">
+              <Checkbox
+                id="skip-existing"
+                checked={skipExisting}
+                onCheckedChange={(v) => setSkipExisting(!!v)}
+                data-testid="checkbox-skip-existing"
+              />
+              <label htmlFor="skip-existing" className="text-sm cursor-pointer">
+                Skip workers who already have representatives
+              </label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              This process calls external APIs for each worker and may take several minutes depending on the number of workers.
+            </p>
+          </div>
+        )}
+
+        {(running || finished) && progress && (
+          <div className="space-y-4 py-2">
+            {progress.total != null && (
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>{running ? "Processing..." : "Complete"}</span>
+                  <span>{progress.processed ?? 0} / {progress.total}</span>
+                </div>
+                <Progress value={pct} className="h-2" />
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {progress.succeeded != null && (
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-green-600" />
+                  <span>{progress.succeeded} looked up</span>
+                </div>
+              )}
+              {(progress.skippedExisting ?? 0) > 0 && (
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                  <span>{progress.skippedExisting} already had reps</span>
+                </div>
+              )}
+              {(progress.skippedNoAddress ?? 0) > 0 && (
+                <div className="flex items-center gap-2">
+                  <XCircle className="w-4 h-4 text-muted-foreground" />
+                  <span>{progress.skippedNoAddress} no address</span>
+                </div>
+              )}
+              {(progress.failed ?? 0) > 0 && (
+                <div className="flex items-center gap-2">
+                  <XCircle className="w-4 h-4 text-red-600" />
+                  <span>{progress.failed} failed</span>
+                </div>
+              )}
+            </div>
+
+            {progress.type === "error" && (
+              <div className="text-sm text-red-600 bg-red-50 dark:bg-red-950 p-3 rounded">
+                {progress.message}
+              </div>
+            )}
+
+            {progress.type === "cancelled" && (
+              <div className="text-sm text-yellow-700 bg-yellow-50 dark:bg-yellow-950 p-3 rounded">
+                Lookup was cancelled.
+              </div>
+            )}
+          </div>
+        )}
+
+        <DialogFooter>
+          {!running && !finished && (
+            <>
+              <Button variant="outline" onClick={handleClose} data-testid="button-cancel-bulk-dialog">
+                Cancel
+              </Button>
+              <Button onClick={startBulkLookup} data-testid="button-start-bulk-lookup">
+                <Users className="w-4 h-4 mr-2" />
+                Start Lookup
+              </Button>
+            </>
+          )}
+          {running && (
+            <Button variant="destructive" onClick={cancelBulkLookup} data-testid="button-cancel-bulk-lookup">
+              Stop
+            </Button>
+          )}
+          {finished && (
+            <Button onClick={handleClose} data-testid="button-close-bulk-results">
+              Close
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function PoliticalProfilesReport() {
   const [searchQuery, setSearchQuery] = useState("");
   const [levelFilter, setLevelFilter] = useState("all");
   const [sortBy, setSortBy] = useState<"name" | "office" | "workers">("workers");
   const [selectedOfficial, setSelectedOfficial] = useState<OfficialReport | null>(null);
   const [drilldownOpen, setDrilldownOpen] = useState(false);
+  const [bulkLookupOpen, setBulkLookupOpen] = useState(false);
 
   const { data: officials = [], isLoading } = useQuery<OfficialReport[]>({
     queryKey: ["/api/sitespecific/btu/political/report"],
@@ -179,6 +387,15 @@ export default function PoliticalProfilesReport() {
             <span className="text-sm text-muted-foreground" data-testid="text-official-count">
               {filtered.length} Official{filtered.length !== 1 ? "s" : ""}
             </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkLookupOpen(true)}
+              data-testid="button-bulk-lookup"
+            >
+              <Users className="w-4 h-4 mr-2" />
+              Bulk Lookup
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -343,6 +560,11 @@ export default function PoliticalProfilesReport() {
         official={selectedOfficial}
         open={drilldownOpen}
         onOpenChange={setDrilldownOpen}
+      />
+
+      <BulkLookupDialog
+        open={bulkLookupOpen}
+        onOpenChange={setBulkLookupOpen}
       />
     </div>
   );

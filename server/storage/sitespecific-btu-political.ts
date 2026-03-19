@@ -1,6 +1,6 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
-import { eq, desc, and, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, sql, inArray, isNull } from "drizzle-orm";
 import { tableExists as tableExistsUtil } from "./utils";
 import {
   sitespecificBtuPoliticalOfficials,
@@ -26,7 +26,7 @@ export interface BtuPoliticalStorage {
   tableExists(): Promise<boolean>;
   getOfficials(): Promise<BtuPoliticalOfficial[]>;
   getOfficial(id: string): Promise<BtuPoliticalOfficial | undefined>;
-  findOfficialByNameOfficeAndDivision(name: string, officeName: string, ocdDivisionId: string): Promise<BtuPoliticalOfficial | undefined>;
+  findOfficialByNameOfficeAndDivision(name: string, officeName: string, ocdDivisionId: string | null): Promise<BtuPoliticalOfficial | undefined>;
   upsertOfficial(record: InsertBtuPoliticalOfficial): Promise<BtuPoliticalOfficial>;
   deleteOfficial(id: string): Promise<boolean>;
   getWorkerReps(workerId: string): Promise<(BtuPoliticalWorkerRep & { official: BtuPoliticalOfficial })[]>;
@@ -63,16 +63,19 @@ export function createBtuPoliticalStorage(): BtuPoliticalStorage {
       return results[0];
     },
 
-    async findOfficialByNameOfficeAndDivision(name: string, officeName: string, ocdDivisionId: string): Promise<BtuPoliticalOfficial | undefined> {
+    async findOfficialByNameOfficeAndDivision(name: string, officeName: string, ocdDivisionId: string | null): Promise<BtuPoliticalOfficial | undefined> {
       if (!(await this.tableExists())) throw new Error("COMPONENT_TABLE_NOT_FOUND");
       const client = getClient();
+      const divisionCondition = ocdDivisionId
+        ? eq(sitespecificBtuPoliticalOfficials.ocdDivisionId, ocdDivisionId)
+        : isNull(sitespecificBtuPoliticalOfficials.ocdDivisionId);
       const results = await client
         .select()
         .from(sitespecificBtuPoliticalOfficials)
         .where(and(
           eq(sitespecificBtuPoliticalOfficials.name, name),
           eq(sitespecificBtuPoliticalOfficials.officeName, officeName),
-          eq(sitespecificBtuPoliticalOfficials.ocdDivisionId, ocdDivisionId),
+          divisionCondition,
         ));
       return results[0];
     },
@@ -80,9 +83,8 @@ export function createBtuPoliticalStorage(): BtuPoliticalStorage {
     async upsertOfficial(record: InsertBtuPoliticalOfficial): Promise<BtuPoliticalOfficial> {
       if (!(await this.tableExists())) throw new Error("COMPONENT_TABLE_NOT_FOUND");
       const client = getClient();
-      const existing = record.ocdDivisionId
-        ? await this.findOfficialByNameOfficeAndDivision(record.name, record.officeName, record.ocdDivisionId)
-        : undefined;
+      const divisionId = record.ocdDivisionId || null;
+      const existing = await this.findOfficialByNameOfficeAndDivision(record.name, record.officeName, divisionId);
       if (existing) {
         const results = await client
           .update(sitespecificBtuPoliticalOfficials)
