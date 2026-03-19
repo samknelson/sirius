@@ -34,10 +34,14 @@ async function upsertOfficialsAndCache(result: CivicLookupResult): Promise<strin
     officialIds.push(official.id);
   }
   if (result.districtKey && officialIds.length > 0) {
-    const parts = result.districtKey.split("|");
-    await storage.btuPolitical.setDistrictCache(
-      result.districtKey, parts[0] || "", parts[1] || "", parts[2] || "", parts[3] || "", officialIds
-    );
+    try {
+      const parts = result.districtKey.split("|");
+      await storage.btuPolitical.setDistrictCache(
+        result.districtKey, parts[0] || "", parts[1] || "", parts[2] || "", parts[3] || "", officialIds
+      );
+    } catch (err) {
+      console.warn("Failed to write district cache (table may not exist yet):", err instanceof Error ? err.message : err);
+    }
   }
   return officialIds;
 }
