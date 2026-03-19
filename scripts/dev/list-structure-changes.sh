@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # List Structure Changes Script
-# Shows files changed since last push to origin/main, excluding client/*, attached_assets/*, data/*.json, and data/quickstarts/* files
+# Shows files changed since last push to origin/main, excluding client/*, attached_assets/*, data/*.json, and database/quickstarts/* files
 # For each file: displays filename, change summary, and diff
 #
 # Usage:
@@ -67,7 +67,7 @@ fi
 
 # Get list of changed files, excluding client/* and attached_assets/*
 # Use -w to ignore whitespace-only changes
-changed_files=$(git --no-pager diff -w --name-only "$BASE_COMMIT"..HEAD -- ':!client/*' ':!attached_assets/*' ':!data/*.json' ':!data/quickstarts/*' 2>/dev/null)
+changed_files=$(git --no-pager diff -w --name-only "$BASE_COMMIT"..HEAD -- ':!client/*' ':!attached_assets/*' ':!data/*.json' ':!database/quickstarts/*' 2>/dev/null)
 
 if [ -z "$changed_files" ]; then
     echo -e "${YELLOW}No files changed since ${BASE_COMMIT:0:12} (excluding client/*, attached_assets/*, data/*.json).${NC}"
