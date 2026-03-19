@@ -155,11 +155,12 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "site-specific",
     managesSchema: true,
     schemaManifest: {
-      version: 1,
+      version: 2,
       schemaPath: "./shared/schema/sitespecific/btu/political-schema.ts",
       tables: [
         "sitespecific_btu_political_officials",
-        "sitespecific_btu_political_worker_reps"
+        "sitespecific_btu_political_worker_reps",
+        "sitespecific_btu_political_district_cache"
       ]
     }
   },

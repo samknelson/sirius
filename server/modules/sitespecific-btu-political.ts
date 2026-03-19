@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { requireComponent } from "./components";
 import { storage } from "../storage";
-import { lookupRepresentatives, CivicApiError } from "../services/google-civics";
+import { lookupRepresentatives, CivicApiError, type CivicLookupResult } from "../services/google-civics";
 import { z } from "zod";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -11,6 +11,36 @@ const lookupSchema = z.object({
   address: z.string().optional(),
   workerId: z.string().min(1, "Worker ID is required"),
 });
+
+async function upsertOfficialsAndCache(result: CivicLookupResult): Promise<string[]> {
+  if (result.cacheHit && result.cachedOfficialIds) {
+    return result.cachedOfficialIds;
+  }
+  const officialIds: string[] = [];
+  for (const civicOfficial of result.officials) {
+    const official = await storage.btuPolitical.upsertOfficial({
+      name: civicOfficial.name,
+      officeName: civicOfficial.officeName,
+      level: civicOfficial.level,
+      division: civicOfficial.division,
+      party: civicOfficial.party,
+      phones: civicOfficial.phones,
+      emails: civicOfficial.emails,
+      photoUrl: civicOfficial.photoUrl,
+      urls: civicOfficial.urls,
+      channels: civicOfficial.channels,
+      ocdDivisionId: civicOfficial.ocdDivisionId,
+    });
+    officialIds.push(official.id);
+  }
+  if (result.districtKey && officialIds.length > 0) {
+    const parts = result.districtKey.split("|");
+    await storage.btuPolitical.setDistrictCache(
+      result.districtKey, parts[0] || "", parts[1] || "", parts[2] || "", parts[3] || "", officialIds
+    );
+  }
+  return officialIds;
+}
 
 export function registerBtuPoliticalRoutes(
   app: Express,
@@ -113,35 +143,7 @@ export function registerBtuPoliticalRoutes(
       }
 
       const result = await lookupRepresentatives(address, { districtCacheStorage: storage.btuPolitical });
-
-      let officialIds: string[];
-      if (result.cacheHit && result.cachedOfficialIds) {
-        officialIds = result.cachedOfficialIds;
-      } else {
-        officialIds = [];
-        for (const civicOfficial of result.officials) {
-          const official = await storage.btuPolitical.upsertOfficial({
-            name: civicOfficial.name,
-            officeName: civicOfficial.officeName,
-            level: civicOfficial.level,
-            division: civicOfficial.division,
-            party: civicOfficial.party,
-            phones: civicOfficial.phones,
-            emails: civicOfficial.emails,
-            photoUrl: civicOfficial.photoUrl,
-            urls: civicOfficial.urls,
-            channels: civicOfficial.channels,
-            ocdDivisionId: civicOfficial.ocdDivisionId,
-          });
-          officialIds.push(official.id);
-        }
-        if (result.districtKey && officialIds.length > 0) {
-          const parts = result.districtKey.split("|");
-          await storage.btuPolitical.setDistrictCache(
-            result.districtKey, parts[0] || "", parts[1] || "", parts[2] || "", parts[3] || "", officialIds
-          );
-        }
-      }
+      const officialIds = await upsertOfficialsAndCache(result);
 
       await storage.btuPolitical.setWorkerReps(workerId, officialIds, result.normalizedAddress);
 
@@ -239,36 +241,10 @@ export function registerBtuPoliticalRoutes(
           const address = parts.join(", ");
 
           const result = await lookupRepresentatives(address, { districtCacheStorage: storage.btuPolitical });
-
-          let officialIds: string[];
-          if (result.cacheHit && result.cachedOfficialIds) {
+          if (result.cacheHit) {
             cacheHits++;
-            officialIds = result.cachedOfficialIds;
-          } else {
-            officialIds = [];
-            for (const civicOfficial of result.officials) {
-              const official = await storage.btuPolitical.upsertOfficial({
-                name: civicOfficial.name,
-                officeName: civicOfficial.officeName,
-                level: civicOfficial.level,
-                division: civicOfficial.division,
-                party: civicOfficial.party,
-                phones: civicOfficial.phones,
-                emails: civicOfficial.emails,
-                photoUrl: civicOfficial.photoUrl,
-                urls: civicOfficial.urls,
-                channels: civicOfficial.channels,
-                ocdDivisionId: civicOfficial.ocdDivisionId,
-              });
-              officialIds.push(official.id);
-            }
-            if (result.districtKey && officialIds.length > 0) {
-              const dkParts = result.districtKey.split("|");
-              await storage.btuPolitical.setDistrictCache(
-                result.districtKey, dkParts[0] || "", dkParts[1] || "", dkParts[2] || "", dkParts[3] || "", officialIds
-              );
-            }
           }
+          const officialIds = await upsertOfficialsAndCache(result);
 
           await storage.btuPolitical.setWorkerReps(worker.id, officialIds, result.normalizedAddress);
           succeeded++;
