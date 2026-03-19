@@ -1,3 +1,6 @@
+import { lookupDistricts, type CensusDistrictInfo } from "./census-geocoder";
+import type { BtuPoliticalStorage } from "../storage/sitespecific-btu-political";
+
 export interface CivicOfficial {
   name: string;
   officeName: string;
@@ -15,6 +18,9 @@ export interface CivicOfficial {
 export interface CivicLookupResult {
   normalizedAddress: string;
   officials: CivicOfficial[];
+  cacheHit: boolean;
+  districtKey: string | null;
+  cachedOfficialIds: string[] | null;
 }
 
 export class CivicApiError extends Error {
@@ -169,34 +175,15 @@ function buildOfficeName(person: OpenStatesPerson): string {
   return `${title} - ${jurisdiction}`.trim();
 }
 
-export async function lookupRepresentatives(address: string): Promise<CivicLookupResult> {
-  const openStatesKey = process.env.OPEN_STATES_API_KEY;
-  if (!openStatesKey) {
-    throw new Error("OPEN_STATES_API_KEY environment variable is not set");
-  }
+interface LookupOptions {
+  districtCacheStorage?: BtuPoliticalStorage;
+}
 
-  const geo = await geocodeAddress(address);
-
-  const url = `https://v3.openstates.org/people.geo?lat=${geo.lat}&lng=${geo.lng}&apikey=${openStatesKey}`;
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    if (response.status === 429) {
-      throw new CivicApiError("Open States API rate limit exceeded. Please try again later.", 429);
-    }
-    if (response.status === 401 || response.status === 403) {
-      throw new CivicApiError("Open States API key is invalid or unauthorized.", 403);
-    }
-    throw new CivicApiError(`Open States API error (${response.status}): ${errorBody}`, response.status);
-  }
-
-  const data: OpenStatesResponse = await response.json();
-
+function parseOpenStatesResponse(data: OpenStatesResponse): CivicOfficial[] {
   const officials: CivicOfficial[] = [];
 
   if (!data.results || data.results.length === 0) {
-    return { normalizedAddress: geo.formattedAddress, officials };
+    return officials;
   }
 
   for (const person of data.results) {
@@ -242,5 +229,90 @@ export async function lookupRepresentatives(address: string): Promise<CivicLooku
     });
   }
 
-  return { normalizedAddress: geo.formattedAddress, officials };
+  return officials;
+}
+
+async function callOpenStates(lat: number, lng: number): Promise<CivicOfficial[]> {
+  const openStatesKey = process.env.OPEN_STATES_API_KEY;
+  if (!openStatesKey) {
+    throw new Error("OPEN_STATES_API_KEY environment variable is not set");
+  }
+
+  const url = `https://v3.openstates.org/people.geo?lat=${lat}&lng=${lng}&apikey=${openStatesKey}`;
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    if (response.status === 429) {
+      throw new CivicApiError("Open States API rate limit exceeded. Please try again later.", 429);
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw new CivicApiError("Open States API key is invalid or unauthorized.", 403);
+    }
+    throw new CivicApiError(`Open States API error (${response.status}): ${errorBody}`, response.status);
+  }
+
+  const data: OpenStatesResponse = await response.json();
+  return parseOpenStatesResponse(data);
+}
+
+export async function lookupRepresentatives(address: string, options?: LookupOptions): Promise<CivicLookupResult> {
+  const geo = await geocodeAddress(address);
+  const cacheStorage = options?.districtCacheStorage;
+
+  let districtInfo: CensusDistrictInfo | null = null;
+
+  if (cacheStorage) {
+    try {
+      districtInfo = await lookupDistricts(geo.lat, geo.lng);
+
+      if (districtInfo) {
+        const cached = await cacheStorage.getDistrictCache(districtInfo.districtKey);
+
+        if (cached && cached.officialIds.length > 0) {
+          const officials: CivicOfficial[] = [];
+          for (const officialId of cached.officialIds) {
+            const official = await cacheStorage.getOfficial(officialId);
+            if (official) {
+              officials.push({
+                name: official.name,
+                officeName: official.officeName,
+                level: official.level,
+                division: official.division || "",
+                party: official.party || null,
+                phones: official.phones || [],
+                emails: official.emails || [],
+                photoUrl: official.photoUrl || null,
+                urls: official.urls || [],
+                channels: [],
+                ocdDivisionId: official.ocdDivisionId || "",
+              });
+            }
+          }
+
+          if (officials.length === cached.officialIds.length) {
+            return {
+              normalizedAddress: geo.formattedAddress,
+              officials,
+              cacheHit: true,
+              districtKey: districtInfo.districtKey,
+              cachedOfficialIds: cached.officialIds,
+            };
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("District cache lookup failed, falling back to Open States:", err instanceof Error ? err.message : err);
+    }
+  }
+
+  const officials = await callOpenStates(geo.lat, geo.lng);
+
+  return {
+    normalizedAddress: geo.formattedAddress,
+    officials,
+    cacheHit: false,
+    districtKey: districtInfo?.districtKey || null,
+    cachedOfficialIds: null,
+  };
 }

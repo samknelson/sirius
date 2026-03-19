@@ -32,7 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Download, Landmark, Search, Phone, Mail, Globe, User, ChevronRight, Users, Loader2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { Download, Landmark, Search, Phone, Mail, Globe, User, ChevronRight, Users, Loader2, CheckCircle2, XCircle, AlertTriangle, Zap } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 
@@ -133,6 +133,7 @@ interface BulkProgress {
   succeeded?: number;
   skippedNoAddress?: number;
   skippedExisting?: number;
+  cacheHits?: number;
   failed?: number;
   errors?: { workerId: string; error: string }[];
   message?: string;
@@ -263,6 +264,12 @@ function BulkLookupDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-green-600" />
                   <span>{progress.succeeded} looked up</span>
+                </div>
+              )}
+              {(progress.cacheHits ?? 0) > 0 && (
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-blue-600" />
+                  <span>{progress.cacheHits} from cache</span>
                 </div>
               )}
               {(progress.skippedExisting ?? 0) > 0 && (

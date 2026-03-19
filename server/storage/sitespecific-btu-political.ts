@@ -5,10 +5,12 @@ import { tableExists as tableExistsUtil } from "./utils";
 import {
   sitespecificBtuPoliticalOfficials,
   sitespecificBtuPoliticalWorkerReps,
+  sitespecificBtuPoliticalDistrictCache,
   type BtuPoliticalOfficial,
   type InsertBtuPoliticalOfficial,
   type BtuPoliticalWorkerRep,
   type InsertBtuPoliticalWorkerRep,
+  type BtuPoliticalDistrictCache,
 } from "../../shared/schema/sitespecific/btu/political-schema";
 import { getTableName } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
@@ -34,6 +36,8 @@ export interface BtuPoliticalStorage {
   getWorkersByOfficialId(officialId: string): Promise<{ workerId: string; address: string | null; lastLookedUpAt: Date }[]>;
   getWorkersWithDetailsByOfficialId(officialId: string): Promise<{ workerId: string; workerName: string | null; address: string | null; lastLookedUpAt: Date }[]>;
   getAllOfficialIds(): Promise<string[]>;
+  getDistrictCache(districtKey: string): Promise<BtuPoliticalDistrictCache | undefined>;
+  setDistrictCache(districtKey: string, state: string, cd: string, sldu: string, sldl: string, officialIds: string[]): Promise<BtuPoliticalDistrictCache>;
 }
 
 const officialsTableName = getTableName(sitespecificBtuPoliticalOfficials);
@@ -189,6 +193,32 @@ export function createBtuPoliticalStorage(): BtuPoliticalStorage {
         .selectDistinct({ officialId: sitespecificBtuPoliticalWorkerReps.officialId })
         .from(sitespecificBtuPoliticalWorkerReps);
       return results.map(r => r.officialId);
+    },
+
+    async getDistrictCache(districtKey: string): Promise<BtuPoliticalDistrictCache | undefined> {
+      const client = getClient();
+      try {
+        const results = await client
+          .select()
+          .from(sitespecificBtuPoliticalDistrictCache)
+          .where(eq(sitespecificBtuPoliticalDistrictCache.districtKey, districtKey));
+        return results[0];
+      } catch {
+        return undefined;
+      }
+    },
+
+    async setDistrictCache(districtKey: string, state: string, cd: string, sldu: string, sldl: string, officialIds: string[]): Promise<BtuPoliticalDistrictCache> {
+      const client = getClient();
+      const results = await client
+        .insert(sitespecificBtuPoliticalDistrictCache)
+        .values({ districtKey, state, cd, sldu, sldl, officialIds, lookedUpAt: new Date() })
+        .onConflictDoUpdate({
+          target: sitespecificBtuPoliticalDistrictCache.districtKey,
+          set: { officialIds, lookedUpAt: new Date() },
+        })
+        .returning();
+      return results[0];
     },
   };
 }

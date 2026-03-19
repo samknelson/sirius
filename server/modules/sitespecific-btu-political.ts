@@ -112,24 +112,35 @@ export function registerBtuPoliticalRoutes(
         address = parts.join(", ");
       }
 
-      const result = await lookupRepresentatives(address);
+      const result = await lookupRepresentatives(address, { districtCacheStorage: storage.btuPolitical });
 
-      const officialIds: string[] = [];
-      for (const civicOfficial of result.officials) {
-        const official = await storage.btuPolitical.upsertOfficial({
-          name: civicOfficial.name,
-          officeName: civicOfficial.officeName,
-          level: civicOfficial.level,
-          division: civicOfficial.division,
-          party: civicOfficial.party,
-          phones: civicOfficial.phones,
-          emails: civicOfficial.emails,
-          photoUrl: civicOfficial.photoUrl,
-          urls: civicOfficial.urls,
-          channels: civicOfficial.channels,
-          ocdDivisionId: civicOfficial.ocdDivisionId,
-        });
-        officialIds.push(official.id);
+      let officialIds: string[];
+      if (result.cacheHit && result.cachedOfficialIds) {
+        officialIds = result.cachedOfficialIds;
+      } else {
+        officialIds = [];
+        for (const civicOfficial of result.officials) {
+          const official = await storage.btuPolitical.upsertOfficial({
+            name: civicOfficial.name,
+            officeName: civicOfficial.officeName,
+            level: civicOfficial.level,
+            division: civicOfficial.division,
+            party: civicOfficial.party,
+            phones: civicOfficial.phones,
+            emails: civicOfficial.emails,
+            photoUrl: civicOfficial.photoUrl,
+            urls: civicOfficial.urls,
+            channels: civicOfficial.channels,
+            ocdDivisionId: civicOfficial.ocdDivisionId,
+          });
+          officialIds.push(official.id);
+        }
+        if (result.districtKey && officialIds.length > 0) {
+          const parts = result.districtKey.split("|");
+          await storage.btuPolitical.setDistrictCache(
+            result.districtKey, parts[0] || "", parts[1] || "", parts[2] || "", parts[3] || "", officialIds
+          );
+        }
       }
 
       await storage.btuPolitical.setWorkerReps(workerId, officialIds, result.normalizedAddress);
@@ -139,6 +150,7 @@ export function registerBtuPoliticalRoutes(
         normalizedAddress: result.normalizedAddress,
         representatives: reps,
         count: reps.length,
+        cacheHit: result.cacheHit,
       });
     } catch (error: unknown) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -186,6 +198,7 @@ export function registerBtuPoliticalRoutes(
       let succeeded = 0;
       let skippedNoAddress = 0;
       let skippedExisting = 0;
+      let cacheHits = 0;
       let failed = 0;
       const errors: { workerId: string; error: string }[] = [];
 
@@ -193,7 +206,7 @@ export function registerBtuPoliticalRoutes(
 
       for (const worker of allWorkers) {
         if (signal.aborted) {
-          sendEvent({ type: "cancelled", processed, succeeded, skippedNoAddress, skippedExisting, failed });
+          sendEvent({ type: "cancelled", processed, succeeded, skippedNoAddress, skippedExisting, cacheHits, failed });
           res.end();
           return;
         }
@@ -206,7 +219,7 @@ export function registerBtuPoliticalRoutes(
             if (existingReps.length > 0) {
               skippedExisting++;
               if (processed % 10 === 0 || processed === total) {
-                sendEvent({ type: "progress", processed, total, succeeded, skippedNoAddress, skippedExisting, failed });
+                sendEvent({ type: "progress", processed, total, succeeded, skippedNoAddress, skippedExisting, cacheHits, failed });
               }
               continue;
             }
@@ -217,7 +230,7 @@ export function registerBtuPoliticalRoutes(
           if (!primary) {
             skippedNoAddress++;
             if (processed % 10 === 0 || processed === total) {
-              sendEvent({ type: "progress", processed, total, succeeded, skippedNoAddress, skippedExisting, failed });
+              sendEvent({ type: "progress", processed, total, succeeded, skippedNoAddress, skippedExisting, cacheHits, failed });
             }
             continue;
           }
@@ -225,24 +238,36 @@ export function registerBtuPoliticalRoutes(
           const parts = [primary.street, primary.city, primary.state, primary.postalCode].filter(Boolean);
           const address = parts.join(", ");
 
-          const result = await lookupRepresentatives(address);
+          const result = await lookupRepresentatives(address, { districtCacheStorage: storage.btuPolitical });
 
-          const officialIds: string[] = [];
-          for (const civicOfficial of result.officials) {
-            const official = await storage.btuPolitical.upsertOfficial({
-              name: civicOfficial.name,
-              officeName: civicOfficial.officeName,
-              level: civicOfficial.level,
-              division: civicOfficial.division,
-              party: civicOfficial.party,
-              phones: civicOfficial.phones,
-              emails: civicOfficial.emails,
-              photoUrl: civicOfficial.photoUrl,
-              urls: civicOfficial.urls,
-              channels: civicOfficial.channels,
-              ocdDivisionId: civicOfficial.ocdDivisionId,
-            });
-            officialIds.push(official.id);
+          let officialIds: string[];
+          if (result.cacheHit && result.cachedOfficialIds) {
+            cacheHits++;
+            officialIds = result.cachedOfficialIds;
+          } else {
+            officialIds = [];
+            for (const civicOfficial of result.officials) {
+              const official = await storage.btuPolitical.upsertOfficial({
+                name: civicOfficial.name,
+                officeName: civicOfficial.officeName,
+                level: civicOfficial.level,
+                division: civicOfficial.division,
+                party: civicOfficial.party,
+                phones: civicOfficial.phones,
+                emails: civicOfficial.emails,
+                photoUrl: civicOfficial.photoUrl,
+                urls: civicOfficial.urls,
+                channels: civicOfficial.channels,
+                ocdDivisionId: civicOfficial.ocdDivisionId,
+              });
+              officialIds.push(official.id);
+            }
+            if (result.districtKey && officialIds.length > 0) {
+              const dkParts = result.districtKey.split("|");
+              await storage.btuPolitical.setDistrictCache(
+                result.districtKey, dkParts[0] || "", dkParts[1] || "", dkParts[2] || "", dkParts[3] || "", officialIds
+              );
+            }
           }
 
           await storage.btuPolitical.setWorkerReps(worker.id, officialIds, result.normalizedAddress);
@@ -253,12 +278,14 @@ export function registerBtuPoliticalRoutes(
           errors.push({ workerId: worker.id, error: msg });
         }
 
-        sendEvent({ type: "progress", processed, total, succeeded, skippedNoAddress, skippedExisting, failed });
+        sendEvent({ type: "progress", processed, total, succeeded, skippedNoAddress, skippedExisting, cacheHits, failed });
 
-        await new Promise(resolve => setTimeout(resolve, 250));
+        if (!signal.aborted) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
       }
 
-      sendEvent({ type: "complete", processed, total, succeeded, skippedNoAddress, skippedExisting, failed, errors: errors.slice(0, 50) });
+      sendEvent({ type: "complete", processed, total, succeeded, skippedNoAddress, skippedExisting, cacheHits, failed, errors: errors.slice(0, 50) });
     } catch (error: unknown) {
       const err = error instanceof Error ? error : new Error(String(error));
       sendEvent({ type: "error", message: err.message });

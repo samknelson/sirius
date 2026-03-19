@@ -51,3 +51,23 @@ export const insertBtuPoliticalWorkerRepSchema = createInsertSchema(sitespecific
 
 export type BtuPoliticalWorkerRep = typeof sitespecificBtuPoliticalWorkerReps.$inferSelect;
 export type InsertBtuPoliticalWorkerRep = z.infer<typeof insertBtuPoliticalWorkerRepSchema>;
+
+export const sitespecificBtuPoliticalDistrictCache = pgTable("sitespecific_btu_political_district_cache", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  districtKey: text("district_key").notNull().unique("btu_political_district_cache_key_unique"),
+  state: text("state").notNull(),
+  cd: text("cd"),
+  sldu: text("sldu"),
+  sldl: text("sldl"),
+  officialIds: text("official_ids").array().notNull(),
+  lookedUpAt: timestamp("looked_up_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertBtuPoliticalDistrictCacheSchema = createInsertSchema(sitespecificBtuPoliticalDistrictCache).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type BtuPoliticalDistrictCache = typeof sitespecificBtuPoliticalDistrictCache.$inferSelect;
+export type InsertBtuPoliticalDistrictCache = z.infer<typeof insertBtuPoliticalDistrictCacheSchema>;
