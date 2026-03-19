@@ -85,8 +85,7 @@ function WorkerPoliticalProfileContent() {
 
   const lookupMutation = useMutation({
     mutationFn: async (address?: string) => {
-      const res = await apiRequest("POST", `/api/workers/${worker.id}/political/lookup`, address ? { address } : {});
-      return res.json() as Promise<LookupResult>;
+      return await apiRequest("POST", `/api/workers/${worker.id}/political/lookup`, address ? { address } : {}) as LookupResult;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/workers", worker.id, "political", "reps"] });

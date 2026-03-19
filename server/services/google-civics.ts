@@ -128,13 +128,20 @@ async function geocodeAddress(address: string): Promise<GeocodingResult> {
   };
 }
 
-function classifyLevel(orgClassification: string, divisionId: string): string {
+function classifyLevel(orgClassification: string, divisionId: string, title: string): string {
   if (orgClassification === "government") return "federal";
 
   if (divisionId.includes("/cd:")) return "federal";
 
   const stateOnlyPattern = /^ocd-division\/country:us\/state:\w+$/;
-  if (stateOnlyPattern.test(divisionId)) return "state";
+  if (stateOnlyPattern.test(divisionId)) {
+    const lowerTitle = title.toLowerCase();
+    if (lowerTitle.includes("senator") || lowerTitle.includes("representative")) {
+      return "federal";
+    }
+    return "state";
+  }
+
   if (divisionId.includes("/sldl:") || divisionId.includes("/sldu:")) return "state";
 
   if (divisionId.includes("/place:") || divisionId.includes("/county:")) return "local";
@@ -198,7 +205,8 @@ export async function lookupRepresentatives(address: string): Promise<CivicLooku
 
     const divisionId = role.division_id || "";
     const orgClassification = role.org_classification || "";
-    const level = classifyLevel(orgClassification, divisionId);
+    const title = role.title || "";
+    const level = classifyLevel(orgClassification, divisionId, title);
 
     const partyName = person.party?.[0]?.name || null;
 
