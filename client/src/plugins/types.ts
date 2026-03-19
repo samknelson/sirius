@@ -25,6 +25,8 @@ export interface DashboardPlugin {
   order: number;
   component: ComponentType<DashboardPluginProps>;
   requiredPermissions?: string[];
+  requiredComponent?: string;
+  fullWidth?: boolean;
   enabledByDefault: boolean;
   settingsComponent?: ComponentType<PluginSettingsProps<any>>;
   settingsSchema?: z.ZodType<any>;

@@ -46,7 +46,7 @@ All database access **MUST** go through a centralized storage layer (`server/sto
 -   **Data Validation**: Extensive Zod schema validation and `libphonenumber-js`.
 -   **Employer & Policy Management**: Manages employer records, contacts, and policy assignments with historical tracking.
 -   **Bookmarks**: User-specific, entity-agnostic bookmarking.
--   **Dashboard Plugin System**: Extensible architecture for customizable widgets.
+-   **Dashboard Plugin System**: Extensible architecture for customizable widgets. Supports `fullWidth` (renders outside the 3-col grid) and `requiredComponent` (component-gated visibility) properties. The EDLS Daily Summary plugin (`edls-summary`) shows a member-status × sheet-status grid of worker assignment counts for a selected day, gated by `edls` component and `edls.coordinator` permission.
 -   **Components Feature Flag System**: Centralized registry for managing application features with dependency management and access control.
 -   **Ledger System**: Manages financial transactions including accounts, payments, and integrity reports, with entity-specific access policies.
 -   **Wizards**: Flexible workflow state management for multi-step processes and report generation.

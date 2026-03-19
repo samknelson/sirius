@@ -49,11 +49,20 @@ export default function Dashboard() {
 
     // Check permissions
     if (plugin.requiredPermissions && plugin.requiredPermissions.length > 0) {
-      return plugin.requiredPermissions.some(perm => permissions.includes(perm));
+      if (!plugin.requiredPermissions.some(perm => permissions.includes(perm))) {
+        return false;
+      }
+    }
+
+    if (plugin.requiredComponent && components && !components.includes(plugin.requiredComponent)) {
+      return false;
     }
 
     return true;
   });
+
+  const fullWidthPlugins = enabledPlugins.filter(p => p.fullWidth);
+  const gridPlugins = enabledPlugins.filter(p => !p.fullWidth);
 
   return (
     <div className="bg-background text-foreground min-h-screen">
@@ -114,8 +123,24 @@ export default function Dashboard() {
               </div>
             )}
             
+            {fullWidthPlugins.length > 0 && (
+              <div className="space-y-6 mb-6">
+                {fullWidthPlugins.map(plugin => {
+                  const PluginComponent = plugin.component;
+                  return (
+                    <PluginComponent
+                      key={plugin.id}
+                      userId={user?.id || ""}
+                      userRoles={userRoles}
+                      userPermissions={permissions}
+                      enabledComponents={components}
+                    />
+                  );
+                })}
+              </div>
+            )}
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {enabledPlugins.map(plugin => {
+              {gridPlugins.map(plugin => {
                 const PluginComponent = plugin.component;
                 return (
                   <PluginComponent

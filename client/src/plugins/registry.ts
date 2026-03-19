@@ -9,6 +9,7 @@ import { ReportsSettings } from "./reports/ReportsSettings";
 import { WmbScanStatusPlugin } from "./wmbScanStatus/WmbScanStatusPlugin";
 import { ActiveSessionsPlugin } from "./activeSessions/ActiveSessionsPlugin";
 import { MyStewardPlugin } from "./mySteward/MyStewardPlugin";
+import { EdlsSummaryPlugin } from "./edlsSummary/EdlsSummaryPlugin";
 
 export const pluginRegistry: DashboardPlugin[] = [
   {
@@ -73,6 +74,17 @@ export const pluginRegistry: DashboardPlugin[] = [
     description: "Display stewards assigned to your home employer and bargaining unit",
     order: 7,
     component: MyStewardPlugin,
+    enabledByDefault: true,
+  },
+  {
+    id: "edls-summary",
+    name: "EDLS Daily Summary",
+    description: "Worker assignment counts by member status and sheet status for a selected day",
+    order: 8,
+    component: EdlsSummaryPlugin,
+    requiredPermissions: ["edls.coordinator"],
+    requiredComponent: "edls",
+    fullWidth: true,
     enabledByDefault: true,
   },
 ];
