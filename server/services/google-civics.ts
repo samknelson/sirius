@@ -17,53 +17,6 @@ export interface CivicLookupResult {
   officials: CivicOfficial[];
 }
 
-interface GoogleCivicsNormalizedInput {
-  line1?: string;
-  city?: string;
-  state?: string;
-  zip?: string;
-}
-
-interface GoogleCivicsChannel {
-  type?: string;
-  id?: string;
-}
-
-interface GoogleCivicsOfficial {
-  name?: string;
-  party?: string;
-  phones?: string[];
-  emails?: string[];
-  photoUrl?: string;
-  urls?: string[];
-  channels?: GoogleCivicsChannel[];
-}
-
-interface GoogleCivicsOffice {
-  name?: string;
-  divisionId?: string;
-  officialIndices?: number[];
-}
-
-interface GoogleCivicsDivision {
-  name?: string;
-}
-
-interface GoogleCivicsResponse {
-  normalizedInput?: GoogleCivicsNormalizedInput;
-  offices?: GoogleCivicsOffice[];
-  officials?: GoogleCivicsOfficial[];
-  divisions?: Record<string, GoogleCivicsDivision>;
-}
-
-interface GoogleCivicsError {
-  error?: {
-    code?: number;
-    message?: string;
-    errors?: { reason?: string }[];
-  };
-}
-
 export class CivicApiError extends Error {
   constructor(
     message: string,
@@ -75,95 +28,211 @@ export class CivicApiError extends Error {
   }
 }
 
-function classifyLevel(divisionId: string, officeName: string): string {
-  const lower = officeName.toLowerCase();
-  if (lower.includes("president") || lower.includes("senator") || lower.includes("representative") || lower.includes("congress")) {
-    if (divisionId.includes("state:")) {
-      return "state";
-    }
-    return "federal";
-  }
-  if (divisionId === "ocd-division/country:us") return "federal";
-  if (divisionId.match(/\/state:\w+$/) || divisionId.includes("/state:") && !divisionId.includes("/place:") && !divisionId.includes("/county:")) return "state";
-  if (divisionId.includes("/place:") || divisionId.includes("/county:")) return "local";
-  return "other";
+interface GeocodingResult {
+  lat: number;
+  lng: number;
+  formattedAddress: string;
 }
 
-export async function lookupRepresentatives(address: string): Promise<CivicLookupResult> {
+interface GoogleGeocodingResponse {
+  status: string;
+  results?: {
+    formatted_address?: string;
+    geometry?: {
+      location?: {
+        lat?: number;
+        lng?: number;
+      };
+    };
+  }[];
+  error_message?: string;
+}
+
+interface OpenStatesLink {
+  url?: string;
+  note?: string;
+}
+
+interface OpenStatesOffice {
+  name?: string;
+  address?: string;
+  voice?: string;
+  email?: string;
+  fax?: string;
+}
+
+interface OpenStatesRole {
+  title?: string;
+  org_classification?: string;
+  district?: string;
+  division_id?: string;
+}
+
+interface OpenStatesPerson {
+  id?: string;
+  name?: string;
+  given_name?: string;
+  family_name?: string;
+  image?: string;
+  party?: { name?: string }[];
+  current_role?: OpenStatesRole;
+  jurisdiction?: {
+    id?: string;
+    name?: string;
+    classification?: string;
+  };
+  email?: string;
+  links?: OpenStatesLink[];
+  offices?: OpenStatesOffice[];
+  ids?: { identifier?: string; scheme?: string }[];
+}
+
+interface OpenStatesResponse {
+  results?: OpenStatesPerson[];
+}
+
+async function geocodeAddress(address: string): Promise<GeocodingResult> {
   const apiKey = process.env.GOOGLE_CIVICS_API_KEY;
   if (!apiKey) {
     throw new Error("GOOGLE_CIVICS_API_KEY environment variable is not set");
   }
 
-  const url = `https://www.googleapis.com/civicinfo/v2/representatives?address=${encodeURIComponent(address)}&key=${apiKey}`;
-
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
   const response = await fetch(url);
+
   if (!response.ok) {
-    const errorBody = await response.text();
-    let parsed: GoogleCivicsError | null = null;
-    try {
-      parsed = JSON.parse(errorBody) as GoogleCivicsError;
-    } catch {
-      // not JSON
-    }
-
-    const apiCode = parsed?.error?.code;
-    const apiMessage = parsed?.error?.message || errorBody;
-    const reason = parsed?.error?.errors?.[0]?.reason;
-
-    if (response.status === 400 || reason === "parseError" || reason === "invalidParameter") {
-      throw new CivicApiError(`Invalid address: ${apiMessage}`, 400, apiCode);
-    }
-    if (response.status === 429 || reason === "rateLimitExceeded" || reason === "userRateLimitExceeded") {
-      throw new CivicApiError("Google Civics API rate limit exceeded. Please try again later.", 429, apiCode);
-    }
-    if (response.status === 404 || reason === "notFound") {
-      throw new CivicApiError(`No representatives found for this address: ${apiMessage}`, 404, apiCode);
-    }
-    throw new CivicApiError(`Google Civic API error (${response.status}): ${apiMessage}`, response.status, apiCode);
+    throw new CivicApiError(`Geocoding request failed (${response.status})`, response.status);
   }
 
-  const data: GoogleCivicsResponse = await response.json();
+  const data: GoogleGeocodingResponse = await response.json();
 
-  const normalizedAddress = data.normalizedInput
-    ? `${data.normalizedInput.line1 || ""}, ${data.normalizedInput.city || ""}, ${data.normalizedInput.state || ""} ${data.normalizedInput.zip || ""}`.trim()
-    : address;
+  if (data.status === "ZERO_RESULTS") {
+    throw new CivicApiError("Could not find the specified address. Please check the address and try again.", 400);
+  }
+
+  if (data.status !== "OK") {
+    throw new CivicApiError(`Geocoding error: ${data.error_message || data.status}`, 400);
+  }
+
+  const result = data.results?.[0];
+  const location = result?.geometry?.location;
+
+  if (!location?.lat || !location?.lng) {
+    throw new CivicApiError("Could not determine coordinates for the specified address.", 400);
+  }
+
+  return {
+    lat: location.lat,
+    lng: location.lng,
+    formattedAddress: result?.formatted_address || address,
+  };
+}
+
+function classifyLevel(orgClassification: string, divisionId: string): string {
+  if (orgClassification === "government") return "federal";
+
+  if (divisionId.includes("/cd:")) return "federal";
+
+  const stateOnlyPattern = /^ocd-division\/country:us\/state:\w+$/;
+  if (stateOnlyPattern.test(divisionId)) return "state";
+  if (divisionId.includes("/sldl:") || divisionId.includes("/sldu:")) return "state";
+
+  if (divisionId.includes("/place:") || divisionId.includes("/county:")) return "local";
+
+  if (orgClassification === "legislature" || orgClassification === "upper" || orgClassification === "lower") {
+    if (divisionId.includes("/state:") && !divisionId.includes("/place:") && !divisionId.includes("/county:")) {
+      return "state";
+    }
+  }
+
+  return "other";
+}
+
+function buildOfficeName(person: OpenStatesPerson): string {
+  const role = person.current_role;
+  if (!role) return "Unknown Office";
+
+  const title = role.title || "";
+  const jurisdiction = person.jurisdiction?.name || "";
+  const district = role.district || "";
+
+  if (district) {
+    return `${title}, District ${district} - ${jurisdiction}`.trim();
+  }
+  return `${title} - ${jurisdiction}`.trim();
+}
+
+export async function lookupRepresentatives(address: string): Promise<CivicLookupResult> {
+  const openStatesKey = process.env.OPEN_STATES_API_KEY;
+  if (!openStatesKey) {
+    throw new Error("OPEN_STATES_API_KEY environment variable is not set");
+  }
+
+  const geo = await geocodeAddress(address);
+
+  const url = `https://v3.openstates.org/people.geo?lat=${geo.lat}&lng=${geo.lng}&apikey=${openStatesKey}`;
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    if (response.status === 429) {
+      throw new CivicApiError("Open States API rate limit exceeded. Please try again later.", 429);
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw new CivicApiError("Open States API key is invalid or unauthorized.", 403);
+    }
+    throw new CivicApiError(`Open States API error (${response.status}): ${errorBody}`, response.status);
+  }
+
+  const data: OpenStatesResponse = await response.json();
 
   const officials: CivicOfficial[] = [];
 
-  if (!data.offices || !data.officials) {
-    return { normalizedAddress, officials };
+  if (!data.results || data.results.length === 0) {
+    return { normalizedAddress: geo.formattedAddress, officials };
   }
 
-  for (const office of data.offices) {
-    const divisionId = office.divisionId || "";
-    const divisionName = data.divisions?.[divisionId]?.name || "";
-    const level = classifyLevel(divisionId, office.name || "");
+  for (const person of data.results) {
+    const role = person.current_role;
+    if (!role) continue;
 
-    if (!office.officialIndices) continue;
+    const divisionId = role.division_id || "";
+    const orgClassification = role.org_classification || "";
+    const level = classifyLevel(orgClassification, divisionId);
 
-    for (const idx of office.officialIndices) {
-      const rawOfficial = data.officials[idx];
-      if (!rawOfficial) continue;
+    const partyName = person.party?.[0]?.name || null;
 
-      officials.push({
-        name: rawOfficial.name || "Unknown",
-        officeName: office.name || "Unknown Office",
-        level,
-        division: divisionName,
-        party: rawOfficial.party || null,
-        phones: rawOfficial.phones || [],
-        emails: rawOfficial.emails || [],
-        photoUrl: rawOfficial.photoUrl || null,
-        urls: rawOfficial.urls || [],
-        channels: (rawOfficial.channels || []).map((ch) => ({
-          type: ch.type || "",
-          id: ch.id || "",
-        })),
-        ocdDivisionId: divisionId,
-      });
+    const phones: string[] = [];
+    const emails: string[] = [];
+    if (person.email) emails.push(person.email);
+    if (person.offices) {
+      for (const office of person.offices) {
+        if (office.voice && !phones.includes(office.voice)) phones.push(office.voice);
+        if (office.email && !emails.includes(office.email)) emails.push(office.email);
+      }
     }
+
+    const urls: string[] = [];
+    if (person.links) {
+      for (const link of person.links) {
+        if (link.url) urls.push(link.url);
+      }
+    }
+
+    officials.push({
+      name: person.name || "Unknown",
+      officeName: buildOfficeName(person),
+      level,
+      division: person.jurisdiction?.name || "",
+      party: partyName,
+      phones,
+      emails,
+      photoUrl: person.image || null,
+      urls,
+      channels: [],
+      ocdDivisionId: divisionId,
+    });
   }
 
-  return { normalizedAddress, officials };
+  return { normalizedAddress: geo.formattedAddress, officials };
 }
