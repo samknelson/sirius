@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # List Structure Changes Script
-# Shows files changed since last push to origin/main, excluding client/* files
+# Shows files changed since last push to origin/main, excluding client/*, attached_assets/*, and data/*.json files
 # For each file: displays filename, change summary, and diff
 #
 # Usage:
@@ -67,10 +67,10 @@ fi
 
 # Get list of changed files, excluding client/* and attached_assets/*
 # Use -w to ignore whitespace-only changes
-changed_files=$(git --no-pager diff -w --name-only "$BASE_COMMIT"..HEAD -- ':!client/*' ':!attached_assets/*' 2>/dev/null)
+changed_files=$(git --no-pager diff -w --name-only "$BASE_COMMIT"..HEAD -- ':!client/*' ':!attached_assets/*' ':!data/*.json' 2>/dev/null)
 
 if [ -z "$changed_files" ]; then
-    echo -e "${YELLOW}No files changed since ${BASE_COMMIT:0:12} (excluding client/* and attached_assets/*).${NC}"
+    echo -e "${YELLOW}No files changed since ${BASE_COMMIT:0:12} (excluding client/*, attached_assets/*, data/*.json).${NC}"
     echo ""
     echo -e "${CYAN}Tip: You can specify a base commit manually:${NC}"
     echo "  ./list-structure-changes.sh <commit-hash>"
@@ -100,7 +100,7 @@ done
 files_with_changes=$(echo "$files_with_changes" | xargs)
 
 if [ -z "$files_with_changes" ]; then
-    echo -e "${YELLOW}No non-whitespace changes since ${BASE_COMMIT:0:12} (excluding client/* and attached_assets/*).${NC}"
+    echo -e "${YELLOW}No non-whitespace changes since ${BASE_COMMIT:0:12} (excluding client/*, attached_assets/*, data/*.json).${NC}"
     exit 0
 fi
 
@@ -109,7 +109,7 @@ file_count=$(echo "$files_with_changes" | wc -w)
 echo ""
 echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
 echo -e "${BLUE}  Files Changed Since: ${BASE_COMMIT:0:12}${NC}"
-echo -e "${BLUE}  (excluding client/*, attached_assets/*, whitespace-only changes)${NC}"
+echo -e "${BLUE}  (excluding client/*, attached_assets/*, data/*.json, whitespace-only changes)${NC}"
 echo -e "${BLUE}  Total: ${file_count} file(s)${NC}"
 echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
 echo ""
