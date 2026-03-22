@@ -240,18 +240,15 @@ export function registerDispatchJobsRoutes(
           ) {
             const [year, month, day] = startYmd.split("-").map(Number);
             updates.startYmd = new Date(year, month - 1, day, 12, 0, 0);
-          } else {
-            updates.startYmd = new Date(startYmd);
+          } else if (startYmd !== null) {
+            const d = new Date(startYmd);
+            updates.startYmd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0);
           }
         }
 
         if (workerCount !== undefined) {
           updates.workerCount =
             workerCount === null ? null : parseInt(workerCount, 10);
-        }
-
-        if (workerCount !== undefined) {
-          updates.workerCount = workerCount;
         }
 
         if (payRate !== undefined) {
