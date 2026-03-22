@@ -64,6 +64,18 @@ const DEFAULT_CRON_JOBS: DefaultCronJob[] = [
     schedule: '0 7 * * *', // Daily at 7 AM
     isEnabled: true,
   },
+  {
+    name: 'dispatch-eba-cleanup',
+    description: 'Cleans up expired EBA (Employed but Available) dispatch entries',
+    schedule: '0 4 * * *', // Daily at 4 AM
+    isEnabled: true,
+  },
+  {
+    name: 'dispatch-job-poll',
+    description: 'Polls active dispatch jobs and processes pending phases',
+    schedule: '*/5 * * * *', // Every 5 minutes
+    isEnabled: true,
+  },
 ];
 
 export async function bootstrapCronJobs(): Promise<void> {

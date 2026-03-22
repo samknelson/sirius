@@ -9,7 +9,8 @@ import { setupAuth } from "./auth";
 import { initAccessControl, registerEntityLoader } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
-import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler, deleteExpiredHfeHandler, sweepExpiredBanEligHandler, workerBanActiveScanHandler, workerCertificationActiveScanHandler, logCleanupHandler } from "./cron";
+import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler, deleteExpiredHfeHandler, sweepExpiredBanEligHandler, workerBanActiveScanHandler, workerCertificationActiveScanHandler, logCleanupHandler, dispatchEbaCleanupHandler, dispatchJobPollHandler } from "./cron";
+import { initDispatchSeniorityReset } from "./services/dispatch-seniority-reset";
 import { memberStatusScanHandler } from "./cron/jobs/memberStatusScan";
 import { loadComponentCache } from "./services/component-cache";
 import { syncComponentPermissions } from "./services/component-permissions";
@@ -213,11 +214,20 @@ server.listen({
   logger.info("Access control system initialized", { source: "startup" });
   
   // Register entity loaders for policies that use cacheKeyFields
+  registerEntityLoader('dispatch', async (id: string, injectedStorage: any) => {
+    const dispatch = await injectedStorage.dispatches?.get?.(id);
+    return dispatch || null;
+  });
+
   registerEntityLoader('edls_sheet', async (id: string, injectedStorage: any) => {
     const sheet = await injectedStorage.edlsSheets?.get?.(id);
     return sheet || null;
   });
   
+  // Initialize dispatch seniority reset
+  initDispatchSeniorityReset();
+  logger.info("Dispatch seniority reset initialized", { source: "startup" });
+
   // Initialize address validation service (loads or creates config)
   await addressValidationService.getConfig();
   logger.info("Address validation service initialized", { source: "startup" });
@@ -276,6 +286,8 @@ server.listen({
   registerCronJob('worker-certification-active-scan', workerCertificationActiveScanHandler);
   registerCronJob('log-cleanup', logCleanupHandler);
   registerCronJob('member-status-scan', memberStatusScanHandler);
+  registerCronJob('dispatch-eba-cleanup', dispatchEbaCleanupHandler);
+  registerCronJob('dispatch-job-poll', dispatchJobPollHandler);
   logger.info("Cron job handlers registered", { source: "startup" });
 
   // Register flood events

@@ -52,7 +52,7 @@ function WorkerDispatchesContent() {
             </p>
           </div>
         ) : (
-          <DispatchListTable dispatches={dispatches} showJob />
+          <DispatchListTable dispatches={dispatches} showJob dispatchLinkMode="manage" />
         )}
       </CardContent>
     </Card>

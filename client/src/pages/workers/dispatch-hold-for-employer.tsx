@@ -46,7 +46,7 @@ function DispatchHoldForEmployerContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/worker-dispatch-hfe/worker", worker.id] });
       toast({
         title: "Entry added",
-        description: "The Hold for Employer entry has been added.",
+        description: "The Employer Priority entry has been added.",
       });
       setIsAdding(false);
       setNewEmployerId("");
@@ -78,7 +78,7 @@ function DispatchHoldForEmployerContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/worker-dispatch-hfe/worker", worker.id] });
       toast({
         title: "Entry removed",
-        description: "The Hold for Employer entry has been removed.",
+        description: "The Employer Priority entry has been removed.",
       });
     },
     onError: () => {
@@ -152,7 +152,7 @@ function DispatchHoldForEmployerContent() {
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <Clock className="h-5 w-5" />
-              <CardTitle>Hold for Employer</CardTitle>
+              <CardTitle>Employer Priority</CardTitle>
             </div>
             {!isAdding && (
               <Button onClick={() => setIsAdding(true)} data-testid="button-add-hfe">
@@ -211,7 +211,7 @@ function DispatchHoldForEmployerContent() {
 
           {hfeEntries.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground" data-testid="text-no-hfe-entries">
-              No Hold for Employer entries for this worker.
+              No Employer Priority entries for this worker.
             </div>
           ) : (
             <Table>
@@ -245,7 +245,7 @@ function DispatchHoldForEmployerContent() {
                           <AlertDialogHeader>
                             <AlertDialogTitle>Remove Entry</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Are you sure you want to remove this Hold for Employer entry for {entry.employer?.name}?
+                              Are you sure you want to remove this Employer Priority entry for {entry.employer?.name}?
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>

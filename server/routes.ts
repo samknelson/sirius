@@ -60,6 +60,7 @@ import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
 import { registerStaffAlertRoutes } from "./modules/staff-alerts";
 import { registerDispatchDncConfigRoutes } from "./modules/dispatch-dnc-config";
+import { registerDispatchEbaConfigRoutes } from "./modules/dispatch-eba-config";
 import { registerWorkerBanConfigRoutes } from "./modules/worker-ban-config";
 import { registerCardcheckDefinitionsRoutes } from "./modules/cardcheck-definitions";
 import { registerCardchecksRoutes } from "./modules/cardchecks";
@@ -72,6 +73,7 @@ import { registerDispatchesRoutes } from "./modules/dispatches";
 import { registerWorkerDispatchStatusRoutes } from "./modules/worker-dispatch-status";
 import { registerWorkerDispatchDncRoutes } from "./modules/worker-dispatch-dnc";
 import { registerWorkerDispatchHfeRoutes } from "./modules/worker-dispatch-hfe";
+import { registerWorkerDispatchEbaRoutes } from "./modules/worker-dispatch-eba";
 import { registerWorkerBansRoutes } from "./modules/worker-bans";
 import { registerWorkerSkillsRoutes } from "./modules/worker-skills";
 import { registerWorkerCertificationsRoutes } from "./modules/worker-certifications";
@@ -79,6 +81,7 @@ import { registerWorkerRatingsRoutes } from "./modules/worker-ratings";
 import { requireComponent } from "./modules/components";
 import { registerWorkerStewardAssignmentRoutes } from "./modules/worker-steward-assignments";
 import { registerBtuCsgRoutes } from "./modules/sitespecific-btu-csg";
+import { registerHtaRoutes } from "./modules/hta";
 import { registerBtuTerritoriesRoutes } from "./modules/btu-territories";
 import { registerBtuSchoolRoutes } from "./modules/sitespecific-btu-school";
 import { registerBtuSigImportRoutes } from "./modules/btu-sig-import";
@@ -379,6 +382,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   
   // Register dispatch DNC configuration routes
   registerDispatchDncConfigRoutes(app, requireAuth, requireAccess, storage);
+  
+  // Register dispatch EBA configuration routes
+  registerDispatchEbaConfigRoutes(app, requireAuth, requireAccess, storage);
   
   // Register worker ban configuration routes
   registerWorkerBanConfigRoutes(app, requireAuth, requireAccess, storage);
@@ -1635,6 +1641,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register worker dispatch HFE routes (handles all access control internally)
   registerWorkerDispatchHfeRoutes(app, requireAuth, requireAccess);
 
+  // Register worker dispatch EBA routes (handles all access control internally)
+  registerWorkerDispatchEbaRoutes(app, requireAuth, requireAccess);
+
   // Register worker bans routes (handles all access control internally)
   registerWorkerBansRoutes(app, requireAuth, requireAccess);
 
@@ -1657,6 +1666,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register BTU Political Profile routes
   registerBtuPoliticalRoutes(app, requireAuth, requirePermission);
+
+  // Register HTA routes
+  registerHtaRoutes(app, requireAuth, requirePermission);
 
   // Register EDLS routes
   registerEdlsSheetsRoutes(app, requireAuth, requirePermission);

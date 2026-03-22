@@ -49,14 +49,25 @@ export {
 } from "./schema/dispatch/hfe-schema";
 
 export {
+  workerDispatchEba,
+  insertWorkerDispatchEbaSchema,
+  type InsertWorkerDispatchEba,
+  type WorkerDispatchEba,
+} from "./schema/dispatch/eba-schema";
+
+export {
   eligibilityPluginConfigSchema,
   jobTypeEligibilitySchema,
   type EligibilityPluginConfig,
   type JobTypeEligibility,
   type EligibilityPluginMetadata,
   type JobTypeData,
+  type DispatchJobData,
   type PluginConfigField,
   type NotificationMedia,
+  type PollPhaseStatus,
+  type PollPhaseResult,
+  type PollResult,
 } from "./schema/dispatch/eligibility-config";
 
 export {
@@ -113,6 +124,7 @@ export const authProviderTypeEnum = pgEnum("auth_provider_type", [
   "saml",
   "oauth",
   "local",
+  "clerk",
 ]);
 
 export const authIdentities = pgTable(

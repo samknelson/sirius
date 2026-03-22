@@ -20,8 +20,8 @@ export interface DispatchJobFilters {
   employerId?: string;
   status?: string;
   jobTypeId?: string;
-  startDateFrom?: Date;
-  startDateTo?: Date;
+  startYmdFrom?: string;
+  startYmdTo?: string;
   running?: boolean;
 }
 
@@ -174,11 +174,11 @@ export function createDispatchJobStorage(): DispatchJobStorage {
       if (filters?.jobTypeId) {
         conditions.push(eq(dispatchJobs.jobTypeId, filters.jobTypeId));
       }
-      if (filters?.startDateFrom) {
-        conditions.push(gte(dispatchJobs.startDate, filters.startDateFrom));
+      if (filters?.startYmdFrom) {
+        conditions.push(gte(dispatchJobs.startYmd, filters.startYmdFrom));
       }
-      if (filters?.startDateTo) {
-        conditions.push(lte(dispatchJobs.startDate, filters.startDateTo));
+      if (filters?.startYmdTo) {
+        conditions.push(lte(dispatchJobs.startYmd, filters.startYmdTo));
       }
       if (filters?.running !== undefined) {
         conditions.push(eq(dispatchJobs.running, filters.running));
@@ -215,8 +215,8 @@ export function createDispatchJobStorage(): DispatchJobStorage {
         .leftJoin(optionsDispatchJobType, eq(dispatchJobs.jobTypeId, optionsDispatchJobType.id));
       
       const rows = hasFilters
-        ? await baseQuery.where(whereClause!).orderBy(desc(dispatchJobs.startDate)).limit(limit).offset(page * limit)
-        : await baseQuery.orderBy(desc(dispatchJobs.startDate)).limit(limit).offset(page * limit);
+        ? await baseQuery.where(whereClause!).orderBy(desc(dispatchJobs.startYmd)).limit(limit).offset(page * limit)
+        : await baseQuery.orderBy(desc(dispatchJobs.startYmd)).limit(limit).offset(page * limit);
       
       const jobIds = rows.map(r => r.job.id);
       
@@ -311,7 +311,7 @@ export function createDispatchJobStorage(): DispatchJobStorage {
       const client = getClient();
       return client.select().from(dispatchJobs)
         .where(eq(dispatchJobs.employerId, employerId))
-        .orderBy(desc(dispatchJobs.startDate));
+        .orderBy(desc(dispatchJobs.startYmd));
     },
 
     async create(insertJob: InsertDispatchJob): Promise<DispatchJob> {

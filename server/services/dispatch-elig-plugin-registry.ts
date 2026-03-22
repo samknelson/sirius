@@ -17,12 +17,19 @@ export interface EligibilityCondition {
    * - "exists_or_none": Worker must either have no rows with this category, OR have one matching the value
    * - "not_exists_category": Worker must NOT have ANY row with this category (value is ignored in query but used for documentation)
    * - "exists_all": Worker must have rows with this category for ALL values in the array
+   * - "not_exists_unless_exists": Worker must NOT have a row with this category+value, UNLESS they have a row with unlessCategory+unlessValue.
+   *   This allows a blocking condition to be overridden by a separate "exemption" entry.
+   *   Example: singleshift blocks workers with an accepted dispatch on the same date, but exempts the worker if they already accepted THIS specific job.
    */
-  type: "exists" | "not_exists" | "exists_or_none" | "not_exists_category" | "exists_all";
+  type: "exists" | "not_exists" | "exists_or_none" | "not_exists_category" | "exists_all" | "not_exists_unless_exists";
   /** The value to check. Can be a static value or derived from job context. For not_exists_category, this is informational only. For exists_all, this is a comma-separated list of values. */
   value: string;
   /** For exists_all: array of values that must all exist. */
   values?: string[];
+  /** For not_exists_unless_exists: the category that provides the exemption override */
+  unlessCategory?: string;
+  /** For not_exists_unless_exists: the value in the unless category that grants exemption */
+  unlessValue?: string;
 }
 
 /**
@@ -70,7 +77,9 @@ export interface DispatchEligPlugin {
   id: string;
   name: string;
   description: string;
-  componentId: string;
+  componentId?: string;
+  /** If true, this plugin is hidden from the job type configuration UI. Useful for infrastructure plugins that maintain denorm data but don't contribute conditions. */
+  hidden?: boolean;
   /** Optional event handlers this plugin wants to subscribe to */
   eventHandlers?: PluginEventHandler[];
   /** Optional configuration fields that can be set per job type */
@@ -122,7 +131,7 @@ class DispatchEligPluginRegistry {
           return;
         }
 
-        if (!isComponentEnabledSync(plugin.componentId)) {
+        if (plugin.componentId && !isComponentEnabledSync(plugin.componentId)) {
           logger.debug(`${plugin.componentId} component not enabled, skipping recompute`, {
             service: "dispatch-elig-registry",
             pluginId: plugin.id,
@@ -203,7 +212,7 @@ class DispatchEligPluginRegistry {
     const enabledPlugins: DispatchEligPlugin[] = [];
     const allPlugins = Array.from(this.plugins.values());
     for (const plugin of allPlugins) {
-      const enabled = isComponentEnabledSync(plugin.componentId);
+      const enabled = !plugin.componentId || isComponentEnabledSync(plugin.componentId);
       if (enabled) {
         enabledPlugins.push(plugin);
       }
@@ -232,14 +241,16 @@ class DispatchEligPluginRegistry {
   }
 
   getAllPluginsMetadata(): EligibilityPluginMetadata[] {
-    return Array.from(this.plugins.values()).map(plugin => ({
-      id: plugin.id,
-      name: plugin.name,
-      description: plugin.description,
-      componentId: plugin.componentId,
-      componentEnabled: isComponentEnabledSync(plugin.componentId),
-      configFields: plugin.configFields,
-    }));
+    return Array.from(this.plugins.values())
+      .filter(plugin => !plugin.hidden)
+      .map(plugin => ({
+        id: plugin.id,
+        name: plugin.name,
+        description: plugin.description,
+        componentId: plugin.componentId ?? "",
+        componentEnabled: !plugin.componentId || isComponentEnabledSync(plugin.componentId),
+        configFields: plugin.configFields,
+      }));
   }
 }
 

@@ -329,7 +329,9 @@ export const componentRegistry: ComponentDefinition[] = [
     },
     permissions: [
       { key: "employer.dispatch", description: "Employer access to dispatch functionality" },
-      { key: "employer.dispatch.manage", description: "Employer access to manage dispatch functionality" }
+      { key: "employer.dispatch.manage", description: "Employer access to manage dispatch functionality" },
+      { key: "dispatch.edit", description: "Edit dispatch jobs and job types" },
+      { key: "dispatch.delete", description: "Delete dispatch job types" }
     ],
     policies: [
       {
@@ -392,8 +394,8 @@ export const componentRegistry: ComponentDefinition[] = [
   },
   {
     id: "dispatch.hfe",
-    name: "Dispatch Hold for Employer",
-    description: "Hold for Employer management for dispatch",
+    name: "Dispatch Employer Priority",
+    description: "Employer Priority management for dispatch",
     enabledByDefault: false,
     category: "dispatch",
     managesSchema: true,
@@ -409,6 +411,26 @@ export const componentRegistry: ComponentDefinition[] = [
     description: "Excludes workers with active dispatch bans from dispatch eligibility",
     enabledByDefault: false,
     category: "dispatch"
+  },
+  {
+    id: "dispatch.eba",
+    name: "Employed but Available",
+    description: "Tracks workers who are employed but available for dispatch",
+    enabledByDefault: false,
+    category: "dispatch",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/dispatch/eba-schema.ts",
+      tables: ["worker_dispatch_eba"]
+    }
+  },
+  {
+    id: "dispatch.singleshift",
+    name: "Single Shift Dispatch",
+    description: "Manages single-shift dispatch assignments for workers",
+    enabledByDefault: false,
+    category: "dispatch",
   },
   {
     id: "debug",

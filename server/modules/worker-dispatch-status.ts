@@ -1,5 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { insertWorkerDispatchStatusSchema } from "@shared/schema";
+import { insertWorkerDispatchStatusSchema, workerDispatchStatusEnum } from "@shared/schema";
 import { createWorkerDispatchStatusStorage, workerDispatchStatusLoggingConfig } from "../storage/worker-dispatch-status";
 import { withStorageLogging } from "../storage/middleware/logging";
 import { requireComponent } from "./components";
@@ -66,6 +66,36 @@ export function registerWorkerDispatchStatusRoutes(
       }
       console.error("Error creating worker dispatch status:", error);
       res.status(500).json({ error: "Failed to create worker dispatch status" });
+    }
+  });
+
+  app.put("/api/worker-dispatch-status/worker/:workerId/status", requireAuth, dispatchComponent, requireAccess('worker.mine', req => req.params.workerId), async (req: Request, res: Response) => {
+    try {
+      const schema = z.object({ status: z.enum(workerDispatchStatusEnum) });
+      const { status: newStatus } = schema.parse(req.body);
+      const result = await storage.upsertByWorker(req.params.workerId, { status: newStatus });
+      res.json(result);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid data", details: error.errors });
+      }
+      console.error("Error updating worker dispatch status:", error);
+      res.status(500).json({ error: "Failed to update worker dispatch status" });
+    }
+  });
+
+  app.put("/api/worker-dispatch-status/worker/:workerId/seniority-date", requireAuth, dispatchComponent, requireAccess('staff'), async (req: Request, res: Response) => {
+    try {
+      const schema = z.object({ seniorityDate: z.coerce.date().nullable() });
+      const { seniorityDate } = schema.parse(req.body);
+      const result = await storage.upsertByWorker(req.params.workerId, { seniorityDate });
+      res.json(result);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid data", details: error.errors });
+      }
+      console.error("Error updating worker dispatch seniority date:", error);
+      res.status(500).json({ error: "Failed to update worker dispatch seniority date" });
     }
   });
 

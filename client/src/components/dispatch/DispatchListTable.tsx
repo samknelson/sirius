@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
-import { Eye, User, Briefcase, Mail, MessageSquare, Bell, ExternalLink, Filter } from "lucide-react";
+import { Eye, User, Briefcase, Mail, MessageSquare, Bell, ExternalLink, Filter, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -129,6 +129,15 @@ function getJobTitle(dispatch: DispatchWithRelations): string {
   return dispatch.job?.title || 'Unknown Job';
 }
 
+function formatTime12h(time: string): string {
+  const [hStr, mStr] = time.split(":");
+  let h = parseInt(hStr, 10);
+  const ampm = h >= 12 ? "PM" : "AM";
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return `${h}:${mStr} ${ampm}`;
+}
+
 const statusOptions = [
   { value: "all", label: "All Statuses" },
   { value: "pending", label: "Pending" },
@@ -143,12 +152,14 @@ export interface DispatchListTableProps {
   dispatches: DispatchWithRelations[];
   showWorker?: boolean;
   showJob?: boolean;
+  dispatchLinkMode?: "details" | "manage";
 }
 
 export function DispatchListTable({ 
   dispatches, 
   showWorker = false,
   showJob = false,
+  dispatchLinkMode = "details",
 }: DispatchListTableProps) {
   const [statusFilter, setStatusFilter] = useState("all");
 
@@ -222,6 +233,16 @@ export function DispatchListTable({
                       </span>
                     </Link>
                   )}
+                  {(dispatch.job?.startTime || dispatch.job?.endTime) && (
+                    <span className="text-muted-foreground text-xs flex items-center gap-1 mt-0.5" data-testid={`text-job-time-${dispatch.id}`}>
+                      <Clock className="h-3 w-3" />
+                      {dispatch.job.startTime && dispatch.job.endTime
+                        ? `${formatTime12h(dispatch.job.startTime)} – ${formatTime12h(dispatch.job.endTime)}`
+                        : dispatch.job.startTime
+                          ? formatTime12h(dispatch.job.startTime)
+                          : formatTime12h(dispatch.job.endTime!)}
+                    </span>
+                  )}
                 </div>
               </TableCell>
             )}
@@ -271,13 +292,13 @@ export function DispatchListTable({
                 )}
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Link href={`/dispatch/${dispatch.id}`}>
+                    <Link href={dispatchLinkMode === "manage" ? `/dispatch/${dispatch.id}/manage` : `/dispatch/${dispatch.id}`}>
                       <Button variant="ghost" size="icon" data-testid={`button-view-${dispatch.id}`}>
                         <Eye className="h-4 w-4" />
                       </Button>
                     </Link>
                   </TooltipTrigger>
-                  <TooltipContent>View Dispatch</TooltipContent>
+                  <TooltipContent>{dispatchLinkMode === "manage" ? "Manage Dispatch" : "View Dispatch"}</TooltipContent>
                 </Tooltip>
               </div>
             </TableCell>

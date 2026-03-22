@@ -18,6 +18,7 @@ interface EligibleWorker {
   id: string;
   siriusId: number;
   displayName: string;
+  seniorityDate: string | null;
 }
 
 interface EligibleWorkersResponse {
@@ -309,6 +310,7 @@ function EligibleWorkersContent() {
                 <TableHead className="w-16">#</TableHead>
                 <TableHead className="w-32">ID</TableHead>
                 <TableHead>Name</TableHead>
+                <TableHead className="w-40">Last Offer Date</TableHead>
                 <TableHead className="w-24 text-right">View</TableHead>
               </TableRow>
             </TableHeader>
@@ -323,6 +325,9 @@ function EligibleWorkersContent() {
                   </TableCell>
                   <TableCell className="font-medium" data-testid={`text-worker-name-${worker.id}`}>
                     {worker.displayName || "Unnamed Worker"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground" data-testid={`text-worker-seniority-${worker.id}`}>
+                    {worker.seniorityDate ? new Date(worker.seniorityDate).toLocaleString() : "\u2014"}
                   </TableCell>
                   <TableCell className="text-right">
                     <Link href={`/workers/${worker.id}`}>

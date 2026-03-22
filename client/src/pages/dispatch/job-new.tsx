@@ -28,9 +28,14 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Save, ArrowLeft, X } from "lucide-react";
-import { format } from "date-fns";
 import { Link } from "wouter";
-import { dispatchJobStatusEnum, type Employer, type DispatchJobType, type OptionsSkill } from "@shared/schema";
+import {
+  dispatchJobStatusEnum,
+  type Employer,
+  type DispatchJobType,
+  type OptionsSkill,
+} from "@shared/schema";
+import { getTodayYmd } from "@shared/utils/date";
 import { renderIcon } from "@/components/ui/icon-picker";
 
 interface ComponentConfig {
@@ -44,7 +49,11 @@ const formSchema = z.object({
   employerId: z.string().min(1, "Employer is required"),
   jobTypeId: z.string().min(1, "Job type is required"),
   status: z.enum(dispatchJobStatusEnum),
-  startDate: z.string().min(1, "Start date is required"),
+  startYmd: z.string().min(1, "Start date is required"),
+  workerCount: z.string().optional(),
+  payRate: z.string().optional(),
+  startTime: z.string().optional(),
+  endTime: z.string().optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -67,7 +76,7 @@ export default function DispatchJobNewPage() {
   });
 
   const skillsComponentEnabled = componentConfigs.some(
-    (c) => c.componentId === "worker.skills" && c.enabled
+    (c) => c.componentId === "worker.skills" && c.enabled,
   );
 
   const { data: skills = [] } = useQuery<OptionsSkill[]>({
@@ -83,17 +92,39 @@ export default function DispatchJobNewPage() {
       employerId: "",
       jobTypeId: "",
       status: "draft",
-      startDate: format(new Date(), "yyyy-MM-dd"),
+      startYmd: getTodayYmd(),
+      workerCount: "",
+      payRate: "",
+      startTime: "",
+      endTime: "",
     },
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: FormData) => {
+      const workerCountNum =
+        data.workerCount && data.workerCount.trim() !== ""
+          ? parseInt(data.workerCount, 10)
+          : null;
+      const payRateVal =
+        data.payRate && data.payRate.trim() !== ""
+          ? data.payRate.trim()
+          : null;
       return apiRequest("POST", "/api/dispatch-jobs", {
-        ...data,
+        title: data.title,
+        description: data.description,
+        employerId: data.employerId,
         jobTypeId: data.jobTypeId || null,
-        startDate: new Date(data.startDate).toISOString(),
-        data: selectedSkills.length > 0 ? { requiredSkills: selectedSkills } : undefined,
+        status: data.status,
+        startYmd: data.startYmd,
+        workerCount: workerCountNum,
+        payRate: payRateVal,
+        startTime: data.startTime?.trim() || null,
+        endTime: data.endTime?.trim() || null,
+        data:
+          selectedSkills.length > 0
+            ? { requiredSkills: selectedSkills }
+            : undefined,
       });
     },
     onSuccess: (newJob) => {
@@ -142,7 +173,11 @@ export default function DispatchJobNewPage() {
                   <FormItem>
                     <FormLabel>Title *</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="Job title" data-testid="input-title" />
+                      <Input
+                        {...field}
+                        placeholder="Job title"
+                        data-testid="input-title"
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -175,7 +210,10 @@ export default function DispatchJobNewPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Employer *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                      >
                         <FormControl>
                           <SelectTrigger data-testid="select-employer">
                             <SelectValue placeholder="Select employer" />
@@ -200,7 +238,10 @@ export default function DispatchJobNewPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Job Type *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                      >
                         <FormControl>
                           <SelectTrigger data-testid="select-jobtype">
                             <SelectValue placeholder="Select job type" />
@@ -220,14 +261,17 @@ export default function DispatchJobNewPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <FormField
                   control={form.control}
                   name="status"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Status *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                      >
                         <FormControl>
                           <SelectTrigger data-testid="select-status">
                             <SelectValue placeholder="Select status" />
@@ -248,7 +292,7 @@ export default function DispatchJobNewPage() {
 
                 <FormField
                   control={form.control}
-                  name="startDate"
+                  name="startYmd"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Start Date *</FormLabel>
@@ -263,6 +307,87 @@ export default function DispatchJobNewPage() {
                     </FormItem>
                   )}
                 />
+
+                <FormField
+                  control={form.control}
+                  name="workerCount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Worker Count</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          min={1}
+                          placeholder="Number of workers needed"
+                          data-testid="input-workercount"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="payRate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Pay Rate</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                          <Input
+                            {...field}
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            className="pl-7"
+                            data-testid="input-payrate"
+                          />
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="startTime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Start Time</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="time"
+                          data-testid="input-starttime"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="endTime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>End Time</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="time"
+                          data-testid="input-endtime"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
 
               {skillsComponentEnabled && skills.length > 0 && (
@@ -270,12 +395,16 @@ export default function DispatchJobNewPage() {
                   <FormLabel>Required Skills</FormLabel>
                   <div className="flex flex-wrap gap-2 min-h-[36px] p-2 border rounded-md bg-muted/30">
                     {selectedSkills.length === 0 ? (
-                      <span className="text-muted-foreground text-sm">No skills required</span>
+                      <span className="text-muted-foreground text-sm">
+                        No skills required
+                      </span>
                     ) : (
                       selectedSkills.map((skillId) => {
                         const skill = skills.find((s) => s.id === skillId);
                         if (!skill) return null;
-                        const skillData = skill.data as { icon?: string } | null;
+                        const skillData = skill.data as {
+                          icon?: string;
+                        } | null;
                         return (
                           <Badge
                             key={skillId}
@@ -283,14 +412,19 @@ export default function DispatchJobNewPage() {
                             className="gap-1"
                             data-testid={`badge-skill-${skillId}`}
                           >
-                            {skillData?.icon && renderIcon(skillData.icon, "h-3 w-3")}
+                            {skillData?.icon &&
+                              renderIcon(skillData.icon, "h-3 w-3")}
                             {skill.name}
                             <Button
                               type="button"
                               variant="ghost"
                               size="icon"
                               className="h-4 w-4 p-0 ml-1"
-                              onClick={() => setSelectedSkills(selectedSkills.filter((id) => id !== skillId))}
+                              onClick={() =>
+                                setSelectedSkills(
+                                  selectedSkills.filter((id) => id !== skillId),
+                                )
+                              }
                               data-testid={`button-remove-skill-${skillId}`}
                             >
                               <X className="h-3 w-3" />
@@ -304,19 +438,29 @@ export default function DispatchJobNewPage() {
                     {skills
                       .filter((skill) => !selectedSkills.includes(skill.id))
                       .map((skill) => {
-                        const skillData = skill.data as { icon?: string } | null;
+                        const skillData = skill.data as {
+                          icon?: string;
+                        } | null;
                         return (
                           <div
                             key={skill.id}
                             className="flex items-center gap-2 p-2 rounded-md border hover-elevate cursor-pointer"
-                            onClick={() => setSelectedSkills([...selectedSkills, skill.id])}
+                            onClick={() =>
+                              setSelectedSkills([...selectedSkills, skill.id])
+                            }
                             data-testid={`option-skill-${skill.id}`}
                           >
                             <Checkbox
                               checked={false}
-                              onCheckedChange={() => setSelectedSkills([...selectedSkills, skill.id])}
+                              onCheckedChange={() =>
+                                setSelectedSkills([...selectedSkills, skill.id])
+                              }
                             />
-                            {skillData?.icon && renderIcon(skillData.icon, "h-4 w-4 text-muted-foreground")}
+                            {skillData?.icon &&
+                              renderIcon(
+                                skillData.icon,
+                                "h-4 w-4 text-muted-foreground",
+                              )}
                             <span className="text-sm">{skill.name}</span>
                           </div>
                         );

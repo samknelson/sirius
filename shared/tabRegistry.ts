@@ -155,7 +155,8 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'dispatch-status', label: 'Status', hrefTemplate: '/workers/{id}/dispatch/status', policyId: 'worker.view', component: 'dispatch' },
       { id: 'dispatch-list', label: 'List', hrefTemplate: '/workers/{id}/dispatch/list', policyId: 'worker.view', component: 'dispatch' },
       { id: 'dispatch-dnc', label: 'Do Not Call', hrefTemplate: '/workers/{id}/dispatch/do-not-call', policyId: 'worker.view', component: 'dispatch.dnc' },
-      { id: 'dispatch-hfe', label: 'Hold for Employer', hrefTemplate: '/workers/{id}/dispatch/hold-for-employer', policyId: 'worker.view', component: 'dispatch.hfe' },
+      { id: 'dispatch-hfe', label: 'Employer Priority', hrefTemplate: '/workers/{id}/dispatch/hold-for-employer', policyId: 'worker.view', component: 'dispatch.hfe' },
+      { id: 'dispatch-eba', label: 'Availability Dates', hrefTemplate: '/workers/{id}/dispatch/eba', policyId: 'worker.mine', component: 'dispatch.eba' },
     ]
   },
   { id: 'political', label: 'Political', hrefTemplate: '/workers/{id}/political', permission: 'staff', component: 'sitespecific.btu.political' },
@@ -257,7 +258,7 @@ export const cronJobTabTree: HierarchicalTab[] = [
 export const dispatchTabTree: HierarchicalTab[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/dispatch/{id}', permission: 'staff', component: 'dispatch' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/dispatch/{id}/edit', permission: 'staff', component: 'dispatch' },
-  { id: 'manage', label: 'Manage', hrefTemplate: '/dispatch/{id}/manage', permission: 'staff', component: 'dispatch' },
+  { id: 'manage', label: 'Manage', hrefTemplate: '/dispatch/{id}/manage', policyId: 'dispatch.manage', component: 'dispatch' },
 ];
 
 /**
@@ -265,7 +266,17 @@ export const dispatchTabTree: HierarchicalTab[] = [
  */
 export const dispatchJobTabTree: HierarchicalTab[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/dispatch/job/{id}', permission: 'staff', component: 'dispatch' },
-  { id: 'run', label: 'Run', hrefTemplate: '/dispatch/job/{id}/run', permission: 'staff', component: 'dispatch' },
+  { 
+    id: 'run', 
+    label: 'Run', 
+    hrefTemplate: '/dispatch/job/{id}/run/control', 
+    component: 'dispatch',
+    children: [
+      { id: 'run-control', label: 'Run', hrefTemplate: '/dispatch/job/{id}/run/control', permission: 'staff', component: 'dispatch' },
+      { id: 'run-batch', label: 'Batch', hrefTemplate: '/dispatch/job/{id}/run/batch', permission: 'staff', component: 'dispatch' },
+      { id: 'run-settings', label: 'Settings', hrefTemplate: '/dispatch/job/{id}/run/settings', permission: 'staff', component: 'dispatch' },
+    ]
+  },
   { 
     id: 'dispatches', 
     label: 'Dispatches', 
@@ -299,6 +310,7 @@ export const dispatchJobTypeTabTree: HierarchicalTab[] = [
   { id: 'edit', label: 'Edit', hrefTemplate: '/config/dispatch-job-type/{id}/edit', permission: 'staff', component: 'dispatch' },
   { id: 'plugins', label: 'Plugins', hrefTemplate: '/config/dispatch-job-type/{id}/plugins', permission: 'staff', component: 'dispatch' },
   { id: 'notifications', label: 'Notifications', hrefTemplate: '/config/dispatch-job-type/{id}/notifications', permission: 'staff', component: 'dispatch' },
+  { id: 'run-settings', label: 'Run Settings', hrefTemplate: '/config/dispatch-job-type/{id}/run-settings', permission: 'staff', component: 'dispatch' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/config/dispatch-job-type/{id}/delete', permission: 'staff', component: 'dispatch' },
 ];
 

@@ -12,7 +12,7 @@ import {
   type DispatchStatus,
   type Comm
 } from "@shared/schema";
-import { eq, desc, and, inArray, ne } from "drizzle-orm";
+import { eq, desc, and, inArray, ne, arrayContains } from "drizzle-orm";
 import { eventBus, EventType } from "../services/event-bus";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
@@ -43,6 +43,9 @@ export interface DispatchWithRelations extends Dispatch {
     id: string;
     title: string;
     employerId: string;
+    payRate: string | null;
+    startTime: string | null;
+    endTime: string | null;
     employer?: {
       id: string;
       name: string;
@@ -67,6 +70,8 @@ export interface DispatchStorage {
   delete(id: string): Promise<boolean>;
   setStatusPossible(dispatchId: string, newStatus: DispatchStatus): Promise<SetStatusResult>;
   setStatus(dispatchId: string, newStatus: DispatchStatus): Promise<{ success: boolean; dispatch?: Dispatch; error?: string }>;
+  findByCommId(commId: string): Promise<Dispatch | undefined>;
+  expireRemainingIfJobFull(jobId: string): Promise<void>;
 }
 
 async function getWorkerName(workerId: string): Promise<string> {
@@ -141,6 +146,9 @@ async function searchDispatches(criteria: SearchDispatchesCriteria): Promise<Dis
         id: dispatchJobs.id,
         title: dispatchJobs.title,
         employerId: dispatchJobs.employerId,
+        payRate: dispatchJobs.payRate,
+        startTime: dispatchJobs.startTime,
+        endTime: dispatchJobs.endTime,
       },
       employer: {
         id: employers.id,
@@ -312,6 +320,9 @@ export function createDispatchStorage(): DispatchStorage {
             id: dispatchJobs.id,
             title: dispatchJobs.title,
             employerId: dispatchJobs.employerId,
+            payRate: dispatchJobs.payRate,
+            startTime: dispatchJobs.startTime,
+            endTime: dispatchJobs.endTime,
           },
         })
         .from(dispatches)
@@ -364,10 +375,31 @@ export function createDispatchStorage(): DispatchStorage {
       return searchDispatches({ workerId });
     },
 
+    async findByCommId(commId: string): Promise<Dispatch | undefined> {
+      const client = getClient();
+      const [dispatch] = await client
+        .select()
+        .from(dispatches)
+        .where(arrayContains(dispatches.commIds, [commId]))
+        .limit(1);
+      return dispatch || undefined;
+    },
+
     async create(insertDispatch: InsertDispatch): Promise<Dispatch> {
       validate.validateOrThrow(insertDispatch);
       const client = getClient();
       const [dispatch] = await client.insert(dispatches).values(insertDispatch).returning();
+
+      eventBus.emit(EventType.DISPATCH_SAVED, {
+        dispatchId: dispatch.id,
+        workerId: dispatch.workerId,
+        jobId: dispatch.jobId,
+        status: dispatch.status,
+        previousStatus: undefined,
+      }).catch(err => {
+        console.error("Failed to emit DISPATCH_SAVED event from create:", err);
+      });
+
       return dispatch;
     },
 
@@ -504,7 +536,58 @@ export function createDispatchStorage(): DispatchStorage {
         console.error("Failed to emit DISPATCH_SAVED event:", err);
       });
 
+      if (newStatus === "accepted") {
+        this.expireRemainingIfJobFull(updatedDispatch.jobId).catch(err => {
+          console.error("Failed to expire remaining dispatches after accept:", err);
+        });
+      }
+
       return { success: true, dispatch: updatedDispatch };
+    },
+
+    async expireRemainingIfJobFull(jobId: string): Promise<void> {
+      const client = getClient();
+
+      const [job] = await client.select().from(dispatchJobs).where(eq(dispatchJobs.id, jobId));
+      if (!job) return;
+
+      const workerCount = job.workerCount;
+      if (workerCount == null || workerCount <= 0) return;
+
+      const acceptedDispatches = await client
+        .select()
+        .from(dispatches)
+        .where(and(
+          eq(dispatches.jobId, jobId),
+          eq(dispatches.status, "accepted")
+        ));
+
+      if (acceptedDispatches.length < workerCount) return;
+
+      const remaining = await client
+        .select()
+        .from(dispatches)
+        .where(and(
+          eq(dispatches.jobId, jobId),
+          inArray(dispatches.status, ["pending", "notified"])
+        ));
+
+      for (const d of remaining) {
+        await client
+          .update(dispatches)
+          .set({ status: "declined" })
+          .where(eq(dispatches.id, d.id));
+
+        eventBus.emit(EventType.DISPATCH_SAVED, {
+          dispatchId: d.id,
+          workerId: d.workerId,
+          jobId: d.jobId,
+          status: "declined",
+          previousStatus: d.status,
+        }).catch(err => {
+          console.error("Failed to emit DISPATCH_SAVED event for auto-declined dispatch:", err);
+        });
+      }
     }
   };
 }

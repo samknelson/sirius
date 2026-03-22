@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, varchar, jsonb, index, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, varchar, jsonb, index, integer, boolean, date, numeric, time } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -22,8 +22,11 @@ export const dispatchJobs = pgTable("dispatch_jobs", {
   description: text("description"),
   status: varchar("status").notNull().default("draft"),
   running: boolean("running").notNull().default(false),
-  startDate: timestamp("start_date").notNull(),
+  startYmd: date("start_ymd").notNull(),
   workerCount: integer("worker_count"),
+  payRate: numeric("pay_rate", { precision: 10, scale: 2 }),
+  startTime: time("start_time"),
+  endTime: time("end_time"),
   data: jsonb("data"),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
@@ -36,7 +39,7 @@ export const insertDispatchJobSchema = createInsertSchema(dispatchJobs).omit({
   id: true,
   createdAt: true,
 }).extend({
-  startDate: z.coerce.date(),
+  startYmd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD format"),
 });
 
 export type InsertDispatchJobType = z.infer<typeof insertDispatchJobTypeSchema>;
@@ -65,10 +68,12 @@ export const dispatches = pgTable("dispatches", {
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   commIds: varchar("comm_ids").array(),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const insertDispatchSchema = createInsertSchema(dispatches).omit({
   id: true,
+  createdAt: true,
 }).extend({
   startDate: z.coerce.date().optional().nullable(),
   endDate: z.coerce.date().optional().nullable(),
@@ -85,7 +90,7 @@ export const workerDispatchStatus = pgTable("worker_dispatch_status", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   workerId: varchar("worker_id").notNull().unique().references(() => workers.id, { onDelete: 'cascade' }),
   status: varchar("status").notNull().default("available"),
-  seniorityDate: timestamp("seniority_date"),
+  seniorityDate: timestamp("seniority_date", { withTimezone: true }),
 });
 
 export const insertWorkerDispatchStatusSchema = createInsertSchema(workerDispatchStatus).omit({

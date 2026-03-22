@@ -1,7 +1,7 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import type { db } from './db';
-import { workers, contacts, workerDispatchEligDenorm, dispatches, type EligibilityPluginConfig, type JobTypeData } from "@shared/schema";
+import { workers, contacts, workerDispatchEligDenorm, dispatches, workerDispatchStatus, type EligibilityPluginConfig, type JobTypeData } from "@shared/schema";
 import { sql, eq, and, exists, notExists, or, ilike, inArray } from "drizzle-orm";
 import { logger } from "../logger";
 import { 
@@ -10,7 +10,7 @@ import {
   type EligibilityQueryContext 
 } from "../services/dispatch-elig-plugin-registry";
 import { createDispatchJobStorage } from "./dispatch-jobs";
-import { createUnifiedOptionsStorage } from "./unified-options";
+import { createUnifiedOptionsStorage, type OptionsTypeName } from "./unified-options";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -21,6 +21,7 @@ export interface EligibleWorker {
   id: string;
   siriusId: number;
   displayName: string;
+  seniorityDate: Date | null;
 }
 
 export interface EligibleWorkersFilters {
@@ -143,9 +144,11 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
       id: workers.id,
       siriusId: workers.siriusId,
       displayName: contacts.displayName,
+      seniorityDate: workerDispatchStatus.seniorityDate,
     })
     .from(workers)
     .innerJoin(contacts, eq(workers.contactId, contacts.id))
+    .leftJoin(workerDispatchStatus, eq(workerDispatchStatus.workerId, workers.id))
     .$dynamic();
 
   const whereConditions = appliedConditions.flatMap(({ condition }) => {
@@ -238,6 +241,29 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
             ));
           return exists(subquery);
         });
+      }
+
+      case "not_exists_unless_exists": {
+        const blockingSubquery = client
+          .select({ one: sql`1` })
+          .from(workerDispatchEligDenorm)
+          .where(and(
+            eq(workerDispatchEligDenorm.workerId, workers.id),
+            eq(workerDispatchEligDenorm.category, condition.category),
+            eq(workerDispatchEligDenorm.value, condition.value)
+          ));
+        const unlessSubquery = client
+          .select({ one: sql`1` })
+          .from(workerDispatchEligDenorm)
+          .where(and(
+            eq(workerDispatchEligDenorm.workerId, workers.id),
+            eq(workerDispatchEligDenorm.category, condition.unlessCategory!),
+            eq(workerDispatchEligDenorm.value, condition.unlessValue!)
+          ));
+        return [or(
+          notExists(blockingSubquery),
+          exists(unlessSubquery)
+        )];
       }
       
       default:
@@ -363,6 +389,28 @@ async function checkConditionForWorker(
         explanation: `Missing ${condition.category} entries: ${missingValues.join(", ")}` 
       };
     }
+
+    case "not_exists_unless_exists": {
+      const hasBlocking = entryValues.includes(condition.value);
+      if (!hasBlocking) {
+        return { passed: true, explanation: `No blocking ${condition.category} entry found` };
+      }
+      const unlessEntries = await client
+        .select()
+        .from(workerDispatchEligDenorm)
+        .where(and(
+          eq(workerDispatchEligDenorm.workerId, workerId),
+          eq(workerDispatchEligDenorm.category, condition.unlessCategory!),
+          eq(workerDispatchEligDenorm.value, condition.unlessValue!)
+        ));
+      if (unlessEntries.length > 0) {
+        return { passed: true, explanation: `Has blocking ${condition.category} entry but exempted by ${condition.unlessCategory} override` };
+      }
+      return {
+        passed: false,
+        explanation: `Has blocking ${condition.category} entry: ${condition.value}`,
+      };
+    }
     
     default:
       return { passed: true, explanation: "Unknown condition type (passed by default)" };
@@ -389,7 +437,7 @@ export function createDispatchEligibleWorkersStorage(): DispatchEligibleWorkersS
       const total = countResult[0]?.count || 0;
 
       const eligibleWorkers = await finalQuery
-        .orderBy(contacts.displayName)
+        .orderBy(sql`${workerDispatchStatus.seniorityDate} ASC NULLS LAST`, contacts.displayName)
         .limit(limit)
         .offset(offset) as unknown as EligibleWorker[];
 
@@ -418,7 +466,7 @@ export function createDispatchEligibleWorkersStorage(): DispatchEligibleWorkersS
       const { finalQuery, appliedConditions } = result;
 
       const paginatedQuery = finalQuery
-        .orderBy(contacts.displayName)
+        .orderBy(sql`${workerDispatchStatus.seniorityDate} ASC NULLS LAST`, contacts.displayName)
         .limit(limit)
         .offset(offset);
 
@@ -517,6 +565,50 @@ export function createDispatchEligibleWorkersStorage(): DispatchEligibleWorkersS
           explanation: checkResult.explanation,
           condition,
         });
+      }
+
+      const categoryOptionsTypeMap: Record<string, OptionsTypeName> = {
+        skill: "skill",
+      };
+
+      const idsToResolve: string[] = [];
+      for (const result of pluginResults) {
+        if (!result.passed && result.condition) {
+          const optionsType = categoryOptionsTypeMap[result.condition.category];
+          if (optionsType) {
+            const allValues = result.condition.values || (result.condition.value ? [result.condition.value] : []);
+            for (const v of allValues) {
+              if (v && v.match(/^[0-9a-f-]{36}$/i) && idsToResolve.indexOf(v) === -1) {
+                idsToResolve.push(v);
+              }
+            }
+          }
+        }
+      }
+
+      if (idsToResolve.length > 0) {
+        const idToName: Record<string, string> = {};
+        for (const optionsType of Object.values(categoryOptionsTypeMap)) {
+          for (const id of idsToResolve) {
+            try {
+              const option = await unifiedOptionsStorage.get(optionsType, id);
+              if (option?.name) {
+                idToName[id] = option.name;
+              }
+            } catch {
+            }
+          }
+        }
+
+        if (Object.keys(idToName).length > 0) {
+          for (const result of pluginResults) {
+            let explanation = result.explanation;
+            for (const id of Object.keys(idToName)) {
+              explanation = explanation.split(id).join(idToName[id]);
+            }
+            result.explanation = explanation;
+          }
+        }
       }
 
       const isEligible = pluginResults.every(r => r.passed);

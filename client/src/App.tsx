@@ -46,6 +46,7 @@ const WorkerSteward = lazy(() => import("@/pages/worker-steward"));
 const WorkerDispatchStatus = lazy(() => import("@/pages/workers/dispatch-status"));
 const WorkerDispatchDoNotCall = lazy(() => import("@/pages/workers/dispatch-do-not-call"));
 const WorkerDispatchHoldForEmployer = lazy(() => import("@/pages/workers/dispatch-hold-for-employer"));
+const WorkerDispatchEba = lazy(() => import("@/pages/workers/dispatch-eba"));
 const WorkerBans = lazy(() => import("@/pages/workers/bans"));
 const WorkerSkills = lazy(() => import("@/pages/worker-skills"));
 const WorkerCertifications = lazy(() => import("@/pages/worker-certifications"));
@@ -181,6 +182,8 @@ const DispatchJobTypeDeletePage = lazy(() => import("@/pages/config/dispatch-job
 const DispatchJobTypePluginsPage = lazy(() => import("@/pages/config/dispatch-job-type-plugins"));
 const DispatchJobTypeNotificationsPage = lazy(() => import("@/pages/config/dispatch-job-type-notifications"));
 const DispatchDncConfigPage = lazy(() => import("@/pages/config/dispatch-dnc"));
+const DispatchJobTypeRunSettingsPage = lazy(() => import("@/pages/config/dispatch-job-type-run-settings"));
+const DispatchEbaSettingsPage = lazy(() => import("@/pages/config/dispatch-eba-settings"));
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
 const WsBundlesPage = lazy(() => import("@/pages/config/ws/bundles"));
@@ -200,6 +203,8 @@ const DispatchJobEligibleWorkersPage = lazy(() => import("@/pages/dispatch/job-e
 const DispatchJobEligibleWorkersCheckPage = lazy(() => import("@/pages/dispatch/job-eligible-check"));
 const DispatchJobNewPage = lazy(() => import("@/pages/dispatch/job-new"));
 const DispatchJobRunPage = lazy(() => import("@/pages/dispatch/job-run"));
+const DispatchJobRunSettingsPage = lazy(() => import("@/pages/dispatch/job-run-settings"));
+const DispatchJobRunBatchPage = lazy(() => import("@/pages/dispatch/job-run-batch"));
 const DispatchDetailsPage = lazy(() => import("@/pages/dispatch/dispatch-details"));
 const DispatchEditPage = lazy(() => import("@/pages/dispatch/dispatch-edit"));
 const DispatchManagePage = lazy(() => import("@/pages/dispatch/dispatch-manage"));
@@ -600,6 +605,14 @@ function Router() {
         <ProtectedRoute tabId="dispatch-hfe" entityType="worker">
           <AuthenticatedLayout>
             <WorkerDispatchHoldForEmployer />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/dispatch/eba">
+        <ProtectedRoute tabId="dispatch-eba" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerDispatchEba />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1824,6 +1837,26 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/dispatch/eba">
+        <ProtectedRoute permission="admin" component="dispatch.eba">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DispatchEbaSettingsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/dispatch-job-type/:id/run-settings">
+        <ProtectedRoute tabId="run-settings" entityType="dispatch_job_type">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DispatchJobTypeRunSettingsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/edls/settings">
         <ProtectedRoute permission="admin" component="edls">
           <AuthenticatedLayout>
@@ -1915,7 +1948,7 @@ function Router() {
       </Route>
 
       <Route path="/dispatch/jobs">
-        <ProtectedRoute permission="admin" component="dispatch">
+        <ProtectedRoute policy="staff" component="dispatch">
           <AuthenticatedLayout>
             <DispatchJobsPage />
           </AuthenticatedLayout>
@@ -1923,7 +1956,7 @@ function Router() {
       </Route>
 
       <Route path="/dispatch/job/new">
-        <ProtectedRoute permission="admin" component="dispatch">
+        <ProtectedRoute policy="staff" component="dispatch">
           <AuthenticatedLayout>
             <DispatchJobNewPage />
           </AuthenticatedLayout>
@@ -1946,10 +1979,26 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/dispatch/job/:id/run">
-        <ProtectedRoute tabId="run" entityType="dispatch_job">
+      <Route path="/dispatch/job/:id/run/control">
+        <ProtectedRoute tabId="run-control" entityType="dispatch_job">
           <AuthenticatedLayout>
             <DispatchJobRunPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job/:id/run/batch">
+        <ProtectedRoute tabId="run-batch" entityType="dispatch_job">
+          <AuthenticatedLayout>
+            <DispatchJobRunBatchPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job/:id/run/settings">
+        <ProtectedRoute tabId="run-settings" entityType="dispatch_job">
+          <AuthenticatedLayout>
+            <DispatchJobRunSettingsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

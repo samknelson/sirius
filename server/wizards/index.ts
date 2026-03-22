@@ -14,6 +14,7 @@ import { btuCardcheckImport } from './types/btu_cardcheck_import.js';
 import { btuCardcheckSigImport } from './types/btu_cardcheck_sig_import.js';
 import { btuCardcheckScrapeImport } from './types/btu_cardcheck_scrape_import.js';
 import { btuBuildingRepImport } from './types/btu_building_rep_import.js';
+import { htaUnionImport } from './types/hta_union_import.js';
 
 wizardRegistry.register(gbhetLegalWorkersMonthly);
 wizardRegistry.register(gbhetLegalWorkersCorrections);
@@ -30,6 +31,7 @@ wizardRegistry.register(btuCardcheckImport);
 wizardRegistry.register(btuCardcheckSigImport);
 wizardRegistry.register(btuCardcheckScrapeImport);
 wizardRegistry.register(btuBuildingRepImport);
+wizardRegistry.register(htaUnionImport);
 
 export { wizardRegistry, getWizardType, getAllWizardTypes, registerWizardType } from './registry.js';
 export { BaseWizard, type WizardTypeDefinition, type WizardStep, type WizardStatus } from './base.js';

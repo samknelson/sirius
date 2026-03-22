@@ -3,9 +3,11 @@ import { createWorkerDispatchStatusStorage } from "../../storage/worker-dispatch
 import { createWorkerDispatchEligDenormStorage } from "../../storage/worker-dispatch-elig-denorm";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../dispatch-elig-plugin-registry";
 import { EventType } from "../event-bus";
+import { isComponentEnabledSync, isCacheInitialized } from "../component-cache";
 
 const DISPSTATUS_CATEGORY = "dispstatus";
 const AVAILABLE_VALUE = "Available";
+const COMPONENT_ID = "dispatch";
 
 export const dispatchStatusPlugin: DispatchEligPlugin = {
   id: "dispatch_status",
@@ -63,3 +65,59 @@ export const dispatchStatusPlugin: DispatchEligPlugin = {
     });
   },
 };
+
+export async function backfillDispatchStatusEligibility(): Promise<{ workersProcessed: number; entriesCreated: number }> {
+  if (!isCacheInitialized()) {
+    logger.warn("Component cache not initialized, skipping dispatch status eligibility backfill", {
+      service: "dispatch-elig-status",
+    });
+    return { workersProcessed: 0, entriesCreated: 0 };
+  }
+
+  if (!isComponentEnabledSync(COMPONENT_ID)) {
+    logger.debug("dispatch component not enabled, skipping dispatch status backfill", {
+      service: "dispatch-elig-status",
+    });
+    return { workersProcessed: 0, entriesCreated: 0 };
+  }
+
+  const statusStorage = createWorkerDispatchStatusStorage();
+  const eligStorage = createWorkerDispatchEligDenormStorage();
+
+  const allStatuses = await statusStorage.getAll();
+  const availableWorkers = allStatuses.filter(s => s.status === "available");
+  
+  if (availableWorkers.length === 0) {
+    logger.info("No workers with available dispatch status found for backfill", {
+      service: "dispatch-elig-status",
+    });
+    return { workersProcessed: 0, entriesCreated: 0 };
+  }
+
+  logger.info("Backfilling dispatch status eligibility for workers", {
+    service: "dispatch-elig-status",
+    workerCount: availableWorkers.length,
+  });
+
+  let entriesCreated = 0;
+
+  for (const workerStatus of availableWorkers) {
+    const existing = await eligStorage.getByWorkerAndCategory(workerStatus.workerId, DISPSTATUS_CATEGORY);
+    if (existing.length === 0) {
+      await eligStorage.create({
+        workerId: workerStatus.workerId,
+        category: DISPSTATUS_CATEGORY,
+        value: AVAILABLE_VALUE,
+      });
+      entriesCreated++;
+    }
+  }
+
+  logger.info("Completed dispatch status eligibility backfill", {
+    service: "dispatch-elig-status",
+    workersProcessed: availableWorkers.length,
+    entriesCreated,
+  });
+
+  return { workersProcessed: availableWorkers.length, entriesCreated };
+}

@@ -110,6 +110,15 @@ export interface ProcessResults {
   completedAt?: Date;
   benefitsSummary?: BenefitSummary[]; // Summary of benefits created by type
   chargesSummary?: ChargesSummary; // Summary of charges generated
+  inactivityScan?: {
+    ran: boolean;
+    scanned: number;
+    deactivated: number;
+    alreadyInactive: number;
+    stillActive: number;
+    errors: string[];
+    details: unknown[];
+  };
 }
 
 export interface FeedField {

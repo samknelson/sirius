@@ -13,3 +13,5 @@ export { workerCertificationActiveScanHandler } from './jobs/workerCertification
 export { logCleanupHandler } from './jobs/logCleanup';
 export type { RetentionPolicy, LogCleanupSettings } from './jobs/logCleanup';
 export { memberStatusScanHandler } from './jobs/memberStatusScan';
+export { dispatchEbaCleanupHandler } from './jobs/dispatchEbaCleanup';
+export { dispatchJobPollHandler } from './jobs/dispatchJobPoll';
