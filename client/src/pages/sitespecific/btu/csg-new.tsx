@@ -122,7 +122,7 @@ export default function BtuCsgNewPage() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-page-title">
+          <h1 className="text-xl md:text-2xl font-bold" data-testid="text-page-title">
             New Class Size Grievance
           </h1>
         </div>

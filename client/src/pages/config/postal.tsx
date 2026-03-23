@@ -267,7 +267,7 @@ export default function PostalConfigPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold" data-testid="heading-postal-config">Postal Configuration</h2>
+        <h2 className="text-xl md:text-2xl font-bold" data-testid="heading-postal-config">Postal Configuration</h2>
         <p className="text-muted-foreground mt-1">
           Manage your postal provider for sending letters and verifying addresses
         </p>

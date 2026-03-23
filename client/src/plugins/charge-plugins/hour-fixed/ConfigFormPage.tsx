@@ -236,7 +236,7 @@ export default function HourFixedConfigFormPage() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-3xl font-bold">
+          <h1 className="text-2xl md:text-3xl font-bold">
             {isEditMode ? "Edit Configuration" : "New Configuration"}
           </h1>
           <p className="text-muted-foreground mt-2">

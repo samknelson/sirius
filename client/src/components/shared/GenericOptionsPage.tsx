@@ -565,7 +565,7 @@ export function GenericOptionsPage({ optionsType }: GenericOptionsPageProps) {
   return (
     <div className="container mx-auto py-8 max-w-6xl">
       <div className="flex justify-between items-center mb-6 gap-4 flex-wrap">
-        <h1 className="text-3xl font-bold" data-testid={`heading-${optionsType}-options`}>
+        <h1 className="text-2xl md:text-3xl font-bold" data-testid={`heading-${optionsType}-options`}>
           {definition.displayName}
         </h1>
         <Button onClick={() => { resetForm(); setIsAddDialogOpen(true); }} data-testid={`button-add-${optionsType}-option`}>

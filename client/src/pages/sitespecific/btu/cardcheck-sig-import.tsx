@@ -69,7 +69,7 @@ export default function BtuCardcheckSigImportPage() {
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="page-title">Signature Import</h1>
+          <h1 className="text-xl md:text-2xl font-bold" data-testid="page-title">Signature Import</h1>
           <p className="text-muted-foreground">Import signed card check signature images from ZIP files</p>
         </div>
         <Button

@@ -114,7 +114,7 @@ export default function ContactExportPage() {
   return (
     <div className="container mx-auto py-6 max-w-2xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold" data-testid="text-page-title">Contact Export</h1>
+        <h1 className="text-xl md:text-2xl font-bold" data-testid="text-page-title">Contact Export</h1>
         <p className="text-muted-foreground mt-1" data-testid="text-page-description">
           Upload a list of worker IDs to export their contact, employment, and membership data as a spreadsheet.
         </p>

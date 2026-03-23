@@ -209,7 +209,7 @@ export default function EmployersMonthlyUploads() {
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2" data-testid="text-page-title">
+        <h1 className="text-2xl md:text-3xl font-bold mb-2" data-testid="text-page-title">
           Monthly Uploads
         </h1>
         <p className="text-muted-foreground" data-testid="text-page-description">

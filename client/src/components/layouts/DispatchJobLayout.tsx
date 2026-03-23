@@ -117,7 +117,7 @@ export function DispatchJobLayout({ activeTab, children }: DispatchJobLayoutProp
             </Link>
             <div className="flex-1">
               <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-2xl font-bold text-foreground" data-testid="title-job">
+                <h1 className="text-xl md:text-2xl font-bold text-foreground" data-testid="title-job">
                   {job.title}
                 </h1>
                 <Badge className={statusColors[job.status]} data-testid="badge-status">

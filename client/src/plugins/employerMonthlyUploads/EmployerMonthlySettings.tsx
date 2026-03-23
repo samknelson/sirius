@@ -91,7 +91,7 @@ export function EmployerMonthlySettings({ plugin, queryClient, onConfigSaved, lo
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100">
             Employer Monthly Plugin
           </h1>
           <p className="text-muted-foreground mt-2">Loading...</p>
@@ -103,7 +103,7 @@ export function EmployerMonthlySettings({ plugin, queryClient, onConfigSaved, lo
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100">
           Employer Monthly Plugin
         </h1>
         <p className="text-muted-foreground mt-2">

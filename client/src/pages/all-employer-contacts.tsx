@@ -92,7 +92,7 @@ export default function AllEmployerContacts() {
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100" data-testid="text-page-title">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-gray-100" data-testid="text-page-title">
             Employer Contacts
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">

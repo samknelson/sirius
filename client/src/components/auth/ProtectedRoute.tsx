@@ -220,7 +220,7 @@ export default function ProtectedRoute({ children, permission, policy, component
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="text-center max-w-md p-6">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Feature Not Available</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Feature Not Available</h1>
           <p className="text-gray-600 dark:text-gray-400">
             This feature is not currently enabled for this application.
           </p>
@@ -239,7 +239,7 @@ export default function ProtectedRoute({ children, permission, policy, component
       return (
         <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
           <div className="text-center max-w-md p-6">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Feature Not Available</h1>
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Feature Not Available</h1>
             <p className="text-gray-600 dark:text-gray-400">
               This feature is not currently enabled for this application.
             </p>
@@ -363,7 +363,7 @@ export default function ProtectedRoute({ children, permission, policy, component
       return (
         <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
           <div className="text-center max-w-md p-6">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Access Denied</h1>
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Access Denied</h1>
             <p className="text-gray-600 dark:text-gray-400">
               Unable to verify access permissions.
             </p>

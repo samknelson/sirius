@@ -184,7 +184,7 @@ export default function BtuStewardAttendanceConfigFormPage() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-page-title">
+          <h1 className="text-xl md:text-2xl font-bold" data-testid="text-page-title">
             {isEditMode ? "Edit" : "New"} BTU Steward Attendance Configuration
           </h1>
         </div>

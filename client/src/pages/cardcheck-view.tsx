@@ -297,7 +297,7 @@ export default function CardcheckViewPage() {
               </Link>
             )}
             <div>
-              <h1 className="text-2xl font-bold text-foreground" data-testid="heading-cardcheck">
+              <h1 className="text-xl md:text-2xl font-bold text-foreground" data-testid="heading-cardcheck">
                 Cardcheck
               </h1>
               <p className="text-muted-foreground text-sm">

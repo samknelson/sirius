@@ -139,7 +139,7 @@ export default function GbhetLegalHourlyConfigList({ pluginId }: ChargePluginCon
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold" data-testid="text-page-title">GBHET Legal Hourly Configurations</h1>
+          <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-page-title">GBHET Legal Hourly Configurations</h1>
           <p className="text-muted-foreground mt-2">
             Manage hourly rate configurations for GBHET Legal benefit charges
           </p>

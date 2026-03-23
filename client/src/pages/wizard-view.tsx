@@ -210,7 +210,7 @@ export default function WizardView() {
               <Wand2 className="text-primary-foreground" size={20} />
             </div>
             <div>
-              <h1 className="text-2xl font-semibold text-foreground" data-testid="text-wizard-title">
+              <h1 className="text-xl md:text-2xl font-semibold text-foreground" data-testid="text-wizard-title">
                 {wizardType?.displayName || wizard.type}
               </h1>
               <p className="text-sm text-muted-foreground">

@@ -1290,7 +1290,7 @@ export default function EmployersOrganizing() {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
         <div className="text-center max-w-md p-6">
-          <h1 className="text-2xl font-bold mb-2">Feature Not Available</h1>
+          <h1 className="text-xl md:text-2xl font-bold mb-2">Feature Not Available</h1>
           <p className="text-muted-foreground">
             This feature requires either the BTU or cardcheck component to be enabled.
           </p>

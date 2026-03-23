@@ -170,7 +170,7 @@ export default function CardcheckDefinitionEditPage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-foreground" data-testid="heading-edit">
+            <h1 className="text-xl md:text-2xl font-bold text-foreground" data-testid="heading-edit">
               Edit Cardcheck Definition
             </h1>
             <p className="text-muted-foreground font-mono text-sm">

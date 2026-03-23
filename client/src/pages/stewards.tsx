@@ -202,7 +202,7 @@ export default function Stewards() {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" data-testid="text-page-title">
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100" data-testid="text-page-title">
           {term("steward", { plural: true })}
         </h1>
         <p className="text-muted-foreground mt-1">

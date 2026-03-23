@@ -104,7 +104,7 @@ export function EdlsSheetLayout({ activeTab, children }: EdlsSheetLayoutProps) {
               </Button>
             </Link>
             <div className="flex-1">
-              <h1 className="text-2xl font-bold text-foreground" data-testid="title-sheet">
+              <h1 className="text-xl md:text-2xl font-bold text-foreground" data-testid="title-sheet">
                 {sheet.title}
               </h1>
               <div className="flex items-center gap-4 mt-1 text-muted-foreground flex-wrap">

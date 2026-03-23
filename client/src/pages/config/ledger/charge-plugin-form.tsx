@@ -49,7 +49,7 @@ export default function ChargePluginFormPage() {
           </Link>
         </div>
         <div className="text-center py-12">
-          <h2 className="text-2xl font-bold text-foreground">Plugin Not Available</h2>
+          <h2 className="text-xl md:text-2xl font-bold text-foreground">Plugin Not Available</h2>
           <p className="text-muted-foreground mt-2">
             The plugin "{pluginId}" is not available. It may be disabled or not installed.
           </p>
@@ -75,7 +75,7 @@ export default function ChargePluginFormPage() {
     default:
       return (
         <div className="p-8 text-center">
-          <h2 className="text-2xl font-bold mb-4">Form Not Available</h2>
+          <h2 className="text-xl md:text-2xl font-bold mb-4">Form Not Available</h2>
           <p className="text-muted-foreground">
             No form configuration is available for plugin "{pluginId}".
           </p>

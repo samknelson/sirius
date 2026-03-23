@@ -72,7 +72,7 @@ export default function ConfigurationLandingPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold" data-testid="heading-configuration">
+        <h1 className="text-2xl md:text-3xl font-bold" data-testid="heading-configuration">
           Configuration
         </h1>
         <p className="text-muted-foreground mt-2">

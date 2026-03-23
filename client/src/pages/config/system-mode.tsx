@@ -62,7 +62,7 @@ export default function SystemModePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold" data-testid="heading-system-mode">System Mode</h2>
+        <h2 className="text-xl md:text-2xl font-bold" data-testid="heading-system-mode">System Mode</h2>
         <p className="text-muted-foreground mt-1">
           Control the application's operating mode to manage behavior across different environments
         </p>

@@ -112,7 +112,7 @@ export default function PaymentSimpleAllocationConfigList({ pluginId }: ChargePl
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold" data-testid="text-page-title">Payment Simple Allocation Configurations</h1>
+          <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-page-title">Payment Simple Allocation Configurations</h1>
           <p className="text-muted-foreground mt-2">
             Automatically create ledger entries when payments are saved on configured accounts
           </p>

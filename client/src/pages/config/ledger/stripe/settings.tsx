@@ -99,7 +99,7 @@ export default function StripeSettingsPage() {
 
   return (
     <div className="container mx-auto py-8 max-w-4xl">
-      <h1 className="text-3xl font-bold mb-6" data-testid="heading-stripe-settings">
+      <h1 className="text-2xl md:text-3xl font-bold mb-6" data-testid="heading-stripe-settings">
         Stripe Settings
       </h1>
 

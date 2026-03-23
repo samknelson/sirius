@@ -190,7 +190,7 @@ export default function CommDetail() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center gap-4">
-        <h1 className="text-2xl font-bold" data-testid="text-page-title">Communication Details</h1>
+        <h1 className="text-xl md:text-2xl font-bold" data-testid="text-page-title">Communication Details</h1>
       </div>
 
       <Card>
