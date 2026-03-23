@@ -174,7 +174,7 @@ export default function TrustProviderLayout({ children, activeTab }: TrustProvid
         {/* Main Tab Navigation - rendered dynamically from registry */}
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center space-x-2 py-3">
+            <div className="flex flex-wrap items-center gap-2 py-3">
               {mainTabs.map((tab) => {
                 const isActive = tab.id === activeRoot?.id;
                 return isActive ? (
@@ -206,7 +206,7 @@ export default function TrustProviderLayout({ children, activeTab }: TrustProvid
         {subTabs && subTabs.length > 0 && (
           <div className="bg-muted/30 border-b border-border">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex items-center space-x-2 py-2 pl-4">
+              <div className="flex flex-wrap items-center gap-2 py-2 pl-4">
                 {subTabs.map((tab) => (
                   tab.id === activeTab ? (
                     <Button
