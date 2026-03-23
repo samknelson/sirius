@@ -1110,11 +1110,6 @@ export function WorkersTable({
           <table className="w-full">
             <thead className="bg-muted/20">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  <div className="flex items-center space-x-2">
-                    <span>Sirius ID</span>
-                  </div>
-                </th>
                 <th 
                   className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground transition-colors"
                   onClick={toggleSort}
@@ -1154,26 +1149,23 @@ export function WorkersTable({
             <tbody className="bg-background divide-y divide-border">
               {sortedWorkers.map((worker, index) => (
                 <tr key={worker.id} className="hover:bg-muted/30 transition-colors" data-testid={`row-worker-${worker.id}`}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-muted-foreground">
-                    {worker.siriusId}
-                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center space-x-3">
                       <div className={`w-8 h-8 ${avatarColors[index % avatarColors.length]} rounded-full flex items-center justify-center`}>
                         <User size={12} />
                       </div>
                       <div>
-                        <span 
-                          className="text-sm font-medium text-foreground"
-                          data-testid={`text-worker-name-${worker.id}`}
-                        >
-                          {worker.contactName}
-                        </span>
-                        {worker.denormJobTitle && (
-                          <p className="text-xs text-muted-foreground" data-testid={`text-job-title-${worker.id}`}>
-                            {worker.denormJobTitle}
-                          </p>
-                        )}
+                        <Link href={`/workers/${worker.id}`}>
+                          <span 
+                            className="text-sm font-medium text-foreground hover:text-primary hover:underline cursor-pointer"
+                            data-testid={`text-worker-name-${worker.id}`}
+                          >
+                            {worker.contactName}
+                          </span>
+                        </Link>
+                        <p className="text-xs text-muted-foreground" data-testid={`text-job-title-${worker.id}`}>
+                          {worker.siriusId}{worker.denormJobTitle ? ` · ${worker.denormJobTitle}` : ""}
+                        </p>
                       </div>
                     </div>
                   </td>
