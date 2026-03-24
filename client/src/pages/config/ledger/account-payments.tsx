@@ -7,13 +7,51 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
-import { useQuery } from "@tanstack/react-query";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Textarea } from "@/components/ui/textarea";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import type { LedgerPaymentWithEntity, LedgerPaymentType } from "@shared/schema";
-import { Download, ArrowUpDown, Filter, X } from "lucide-react";
+import { insertLedgerPaymentSchema } from "@shared/schema";
+import { Download, ArrowUpDown, Filter, X, Plus, Trash2 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { stringify } from "csv-stringify/browser/esm/sync";
+import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/contexts/AuthContext";
+
+type PaymentCategory = "financial" | "adjustment";
+
+type AllocationRow = {
+  ledgerEaId: string;
+  amount: string;
+};
+
+interface AccountParticipant {
+  eaId: string;
+  entityType: string;
+  entityId: string;
+  entityName: string | null;
+  totalBalance: number;
+}
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+type EAListItem = {
+  id: string;
+  accountId: string;
+  entityType: string;
+  entityId: string;
+  entityName: string | null;
+  data: unknown;
+};
 
 const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
 const ITEMS_PER_PAGE = 100;
@@ -21,11 +59,30 @@ const ITEMS_PER_PAGE = 100;
 type SortField = "amount" | "dateCreated" | "dateReceived" | "dateCleared" | "entityName";
 type SortDirection = "asc" | "desc";
 
+interface LedgerNotification {
+  type: string;
+  amount: string;
+  description: string;
+}
+
 function AccountPaymentsContent() {
   usePageTitle("Account Payments");
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
-  
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedEaId, setSelectedEaId] = useState<string>("");
+  const [merchant, setMerchant] = useState("");
+  const [checkTransactionNumber, setCheckTransactionNumber] = useState("");
+  const [adjustmentUser, setAdjustmentUser] = useState("");
+  const [dateEntered, setDateEntered] = useState("");
+  const [effectiveDate, setEffectiveDate] = useState("");
+  const [statementMonth, setStatementMonth] = useState<string>("");
+  const [statementYear, setStatementYear] = useState<string>("");
+  const [allocations, setAllocations] = useState<AllocationRow[]>([]);
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   
@@ -55,6 +112,191 @@ function AccountPaymentsContent() {
 
   const { data: paymentTypes = [] } = useQuery<LedgerPaymentType[]>({
     queryKey: ["/api/ledger/payment-types"],
+  });
+
+  const { data: participantsData } = useQuery<{ data: AccountParticipant[]; total: number }>({
+    queryKey: ["/api/ledger/accounts", id, "participants"],
+    enabled: dialogOpen,
+  });
+  const participants = participantsData?.data ?? [];
+
+  const { data: allEAs = [] } = useQuery<EAListItem[]>({
+    queryKey: ["/api/ledger/ea"],
+    enabled: dialogOpen,
+  });
+
+  const getTodayString = () => new Date().toISOString().split("T")[0];
+  const getEffectiveUserName = () => {
+    if (!user) return "";
+    const parts = [user.firstName, user.lastName].filter(Boolean);
+    return parts.join(" ") || user.email || "";
+  };
+
+  const showLedgerNotifications = (notifications: LedgerNotification[] | undefined) => {
+    if (!notifications || notifications.length === 0) return;
+    for (const notification of notifications) {
+      const typeLabel = notification.type === "created" ? "Ledger Entry Created" :
+        notification.type === "updated" ? "Ledger Entry Updated" :
+          notification.type === "deleted" ? "Ledger Entry Deleted" : "Ledger Entry";
+      toast({
+        title: typeLabel,
+        description: `${notification.amount} - ${notification.description}`,
+      });
+    }
+  };
+
+  const form = useForm<z.infer<typeof insertLedgerPaymentSchema>>({
+    resolver: zodResolver(insertLedgerPaymentSchema),
+    defaultValues: {
+      status: "draft",
+      allocated: false,
+      amount: "0.00",
+      paymentType: paymentTypes[0]?.id || "",
+      ledgerEaId: "",
+      details: null,
+      dateReceived: null,
+      dateCleared: null,
+      memo: null,
+    },
+  });
+
+  const watchedPaymentType = form.watch("paymentType");
+  const selectedPaymentType = paymentTypes.find(pt => pt.id === watchedPaymentType);
+  const category: PaymentCategory = (selectedPaymentType?.category as PaymentCategory) || "financial";
+
+  useEffect(() => {
+    if (dialogOpen && category === "adjustment") {
+      if (!adjustmentUser) {
+        setAdjustmentUser(getEffectiveUserName());
+      }
+      if (!dateEntered) {
+        setDateEntered(getTodayString());
+      }
+      if (!effectiveDate) {
+        setEffectiveDate(getTodayString());
+      }
+    }
+  }, [dialogOpen, category, user]);
+
+  const resetCreateForm = () => {
+    setSelectedEaId("");
+    setMerchant("");
+    setCheckTransactionNumber("");
+    setAdjustmentUser("");
+    setDateEntered("");
+    setEffectiveDate("");
+    setStatementMonth("");
+    setStatementYear("");
+    setAllocations([]);
+    form.reset({
+      status: "draft",
+      allocated: false,
+      amount: "0.00",
+      paymentType: paymentTypes[0]?.id || "",
+      ledgerEaId: "",
+      details: null,
+      dateReceived: null,
+      dateCleared: null,
+      memo: null,
+    });
+  };
+
+  const createPaymentMutation = useMutation({
+    mutationFn: async (data: Record<string, unknown>) => {
+      return await apiRequest("POST", "/api/ledger/payments", data);
+    },
+    onSuccess: (data: Record<string, unknown>) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ledger/accounts", id, "payments"] });
+      setDialogOpen(false);
+      resetCreateForm();
+      toast({
+        title: "Payment created",
+        description: "The payment has been created successfully.",
+      });
+      showLedgerNotifications(data?.ledgerNotifications as LedgerNotification[] | undefined);
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to create payment. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const onCreateSubmit = form.handleSubmit((data) => {
+    if (!selectedEaId) {
+      toast({
+        title: "Participant required",
+        description: "Please select a participant for this payment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const existingDetails = (data.details || {}) as Record<string, unknown>;
+    const details: Record<string, unknown> = { ...existingDetails };
+
+    if (category === "financial") {
+      if (merchant) {
+        details.merchant = merchant;
+      } else {
+        delete details.merchant;
+      }
+      if (checkTransactionNumber) {
+        details.checkTransactionNumber = checkTransactionNumber;
+      } else {
+        delete details.checkTransactionNumber;
+      }
+      delete details.adjustmentUser;
+      delete details.dateEntered;
+      delete details.effectiveDate;
+    } else {
+      if (adjustmentUser) {
+        details.adjustmentUser = adjustmentUser;
+      } else {
+        delete details.adjustmentUser;
+      }
+      if (dateEntered) {
+        details.dateEntered = dateEntered;
+      } else {
+        delete details.dateEntered;
+      }
+      if (effectiveDate) {
+        details.effectiveDate = effectiveDate;
+      } else {
+        delete details.effectiveDate;
+      }
+      delete details.merchant;
+      delete details.checkTransactionNumber;
+    }
+
+    const filteredAllocations = allocations.filter(a => a.ledgerEaId && a.amount);
+
+    if (filteredAllocations.length > 0) {
+      const total = filteredAllocations.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+      const paymentAmount = parseFloat(data.amount) || 0;
+      if (Math.abs(paymentAmount - total) > 0.01) {
+        toast({
+          title: "Allocation mismatch",
+          description: "Allocation amounts must equal the payment amount.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    const submissionData: Record<string, unknown> = {
+      ...data,
+      ledgerEaId: selectedEaId,
+      details: Object.keys(details).length > 0 ? details : null,
+      status: category === "adjustment" ? "cleared" : data.status,
+      statementMonth: statementMonth ? parseInt(statementMonth, 10) : undefined,
+      statementYear: statementYear ? parseInt(statementYear, 10) : undefined,
+      allocations: filteredAllocations.length > 0 ? filteredAllocations : undefined,
+    };
+
+    createPaymentMutation.mutate(submissionData);
   });
 
   const getStatusBadgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
@@ -406,6 +648,327 @@ function AccountPaymentsContent() {
             </CardDescription>
           </div>
           <div className="flex gap-2">
+            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetCreateForm(); }}>
+              <DialogTrigger asChild>
+                <Button size="sm" data-testid="button-record-payment">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Record Payment
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Record Payment</DialogTitle>
+                  <DialogDescription>
+                    Create a new payment for a participant in this account.
+                  </DialogDescription>
+                </DialogHeader>
+                <Form {...form}>
+                  <form onSubmit={onCreateSubmit} className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Participant</label>
+                      <Select value={selectedEaId} onValueChange={(val) => { setSelectedEaId(val); form.setValue("ledgerEaId", val); }}>
+                        <SelectTrigger data-testid="select-participant">
+                          <SelectValue placeholder="Select a participant..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {participants.map((p) => (
+                            <SelectItem key={p.eaId} value={p.eaId}>
+                              {p.entityName || p.entityId} ({p.entityType})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <FormField
+                      control={form.control}
+                      name="paymentType"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Payment Type</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value || ""}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-payment-type">
+                                <SelectValue placeholder="Select payment type" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {paymentTypes.map((type) => (
+                                <SelectItem key={type.id} value={type.id}>
+                                  {type.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="amount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Amount</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0.00"
+                              data-testid="input-amount"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {category === "financial" ? (
+                      <>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Merchant</label>
+                          <Input
+                            value={merchant}
+                            onChange={(e) => setMerchant(e.target.value)}
+                            placeholder="Merchant name"
+                            data-testid="input-merchant"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Check/Transaction Number</label>
+                          <Input
+                            value={checkTransactionNumber}
+                            onChange={(e) => setCheckTransactionNumber(e.target.value)}
+                            placeholder="Check or transaction number"
+                            data-testid="input-check-number"
+                          />
+                        </div>
+                        <FormField
+                          control={form.control}
+                          name="status"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Status</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {paymentStatuses.map((status) => (
+                                    <SelectItem key={status} value={status}>
+                                      {status.charAt(0).toUpperCase() + status.slice(1)}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Adjustment User</label>
+                          <Input
+                            value={adjustmentUser}
+                            onChange={(e) => setAdjustmentUser(e.target.value)}
+                            placeholder="User making adjustment"
+                            data-testid="input-adjustment-user"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Date Entered</label>
+                            <Input
+                              type="date"
+                              value={dateEntered}
+                              onChange={(e) => setDateEntered(e.target.value)}
+                              data-testid="input-date-entered"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Effective Date</label>
+                            <Input
+                              type="date"
+                              value={effectiveDate}
+                              onChange={(e) => setEffectiveDate(e.target.value)}
+                              data-testid="input-effective-date"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Statement Month</label>
+                        <Select value={statementMonth} onValueChange={setStatementMonth}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Month (optional)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {MONTH_NAMES.map((name, idx) => (
+                              <SelectItem key={idx + 1} value={String(idx + 1)}>
+                                {name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Statement Year</label>
+                        <Input
+                          type="number"
+                          min="2000"
+                          max="2099"
+                          placeholder="Year (optional)"
+                          value={statementYear}
+                          onChange={(e) => setStatementYear(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <FormField
+                      control={form.control}
+                      name="dateReceived"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Date Received</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="date"
+                              value={field.value ? new Date(field.value).toISOString().split("T")[0] : ""}
+                              onChange={(e) => field.onChange(e.target.value || null)}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="dateCleared"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Date Cleared</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="date"
+                              value={field.value ? new Date(field.value).toISOString().split("T")[0] : ""}
+                              onChange={(e) => field.onChange(e.target.value || null)}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="memo"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Memo</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              placeholder="Optional memo"
+                              value={field.value || ""}
+                              onChange={(e) => field.onChange(e.target.value || null)}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium">Multi-Account Allocations</label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setAllocations([...allocations, { ledgerEaId: "", amount: "" }])}
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Add Allocation
+                        </Button>
+                      </div>
+                      {allocations.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Split this payment across multiple participant accounts. Allocation totals must equal the payment amount.
+                        </p>
+                      )}
+                      {allocations.map((alloc, idx) => (
+                        <div key={idx} className="flex gap-2 items-end">
+                          <div className="flex-1 space-y-1">
+                            <label className="text-xs text-muted-foreground">Account</label>
+                            <Select
+                              value={alloc.ledgerEaId}
+                              onValueChange={(val) => {
+                                const updated = [...allocations];
+                                updated[idx] = { ...updated[idx], ledgerEaId: val };
+                                setAllocations(updated);
+                              }}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select account..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {allEAs.map((ea) => (
+                                  <SelectItem key={ea.id} value={ea.id}>
+                                    {ea.entityName || ea.entityId} ({ea.entityType})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="w-32 space-y-1">
+                            <label className="text-xs text-muted-foreground">Amount</label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0.00"
+                              value={alloc.amount}
+                              onChange={(e) => {
+                                const updated = [...allocations];
+                                updated[idx] = { ...updated[idx], amount: e.target.value };
+                                setAllocations(updated);
+                              }}
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setAllocations(allocations.filter((_, i) => i !== idx))}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-4">
+                      <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); resetCreateForm(); }}>
+                        Cancel
+                      </Button>
+                      <Button type="submit" disabled={createPaymentMutation.isPending || !selectedEaId}>
+                        {createPaymentMutation.isPending ? "Creating..." : "Create Payment"}
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
+              </DialogContent>
+            </Dialog>
             <Button
               variant="outline"
               size="sm"
