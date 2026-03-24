@@ -83,6 +83,7 @@ const WorkerDelete = lazy(() => import("@/pages/worker-delete"));
 const Companies = lazy(() => import("@/pages/companies"));
 const CompanyView = lazy(() => import("@/pages/company-view"));
 const CompanyEdit = lazy(() => import("@/pages/company-edit"));
+const CompanyLogs = lazy(() => import("@/pages/company-logs"));
 const CompanyAdd = lazy(() => import("@/pages/company-add"));
 const Employers = lazy(() => import("@/pages/employers"));
 const EmployersAdd = lazy(() => import("@/pages/employers-add"));
@@ -1115,6 +1116,14 @@ function Router() {
         <ProtectedRoute policy="staff" component="employer.company">
           <AuthenticatedLayout>
             <CompanyEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/companies/:id/logs">
+        <ProtectedRoute policy="staff" component="employer.company">
+          <AuthenticatedLayout>
+            <CompanyLogs />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

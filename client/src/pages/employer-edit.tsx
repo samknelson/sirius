@@ -80,6 +80,7 @@ function EmployerEditContent() {
     }
   }, [employerCompanyData, companyInitialized]);
 
+
   const updateEmployerMutation = useMutation({
     mutationFn: async (data: { name: string; isActive: boolean; typeId: string | null; industryId: string | null; companyId?: string | null }) => {
       return await apiRequest("PUT", `/api/employers/${employer.id}`, data);
