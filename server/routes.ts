@@ -721,6 +721,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const employers = includeInactive 
         ? allEmployers 
         : allEmployers.filter(emp => emp.isActive);
+
+      const companyEnabled = await isComponentEnabled("employer.company");
+      if (companyEnabled) {
+        try {
+          const companyMap = await storage.employerCompanies.getAllWithCompanyName();
+          const enriched = employers.map(emp => ({
+            ...emp,
+            companyName: companyMap.get(emp.id) || null,
+          }));
+          return res.json(enriched);
+        } catch {
+          return res.json(employers);
+        }
+      }
       
       res.json(employers);
     } catch (error) {
