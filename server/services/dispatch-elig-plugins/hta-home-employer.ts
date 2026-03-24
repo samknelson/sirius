@@ -54,6 +54,7 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
   name: "HTA Home Employer",
   description: "Prevents workers from being dispatched to their home employer",
   componentId: COMPONENT_ID,
+  backfill: () => backfillHtaHomeEmployerEligibility(),
 
   eventHandlers: [
     {

@@ -12,6 +12,8 @@ export const dispatchAcceptedPlugin: DispatchEligPlugin = {
   name: "Accepted Dispatch Tracker",
   description: "Maintains denormalized records of which jobs each worker has accepted. Used by other plugins for exemption logic.",
   hidden: true,
+  backfill: () => backfillDispatchAcceptedEligibility(),
+  backfillOrder: -10,
 
   eventHandlers: [
     {

@@ -94,6 +94,8 @@ export interface DispatchEligPlugin {
    *          Can return a single condition or an array of conditions (all ANDed together).
    */
   getEligibilityCondition(context: EligibilityQueryContext, config: EligibilityPluginConfig["config"]): EligibilityCondition | EligibilityCondition[] | null | Promise<EligibilityCondition | EligibilityCondition[] | null>;
+  backfill?(): Promise<{ workersProcessed: number; entriesCreated: number }>;
+  backfillOrder?: number;
 }
 
 class DispatchEligPluginRegistry {
@@ -239,6 +241,10 @@ class DispatchEligPluginRegistry {
 
   getAllPluginIds(): string[] {
     return Array.from(this.plugins.keys());
+  }
+
+  getAllPlugins(): DispatchEligPlugin[] {
+    return Array.from(this.plugins.values());
   }
 
   getAllPluginsMetadata(): EligibilityPluginMetadata[] {
