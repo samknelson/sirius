@@ -735,7 +735,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             };
           });
           return res.json(enriched);
-        } catch {
+        } catch (enrichError: any) {
+          const isTableMissing = enrichError?.message?.includes('relation') && enrichError?.message?.includes('does not exist');
+          if (!isTableMissing) {
+            console.error("Error enriching employers with company data:", enrichError);
+          }
           return res.json(employers);
         }
       }
