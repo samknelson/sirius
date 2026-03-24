@@ -403,6 +403,16 @@ export function registerLedgerPaymentRoutes(app: Express) {
           res.status(400).json({ message: "Allocation amounts must equal the payment amount" });
           return;
         }
+      } else if (rawAllocations === undefined && validatedData.amount) {
+        const existingAllocations = await storage.ledger.paymentAllocations.getByPaymentId(id);
+        if (existingAllocations.length > 0) {
+          const allocationTotal = existingAllocations.reduce((sum, a) => sum + parseFloat(a.amount), 0);
+          const newPaymentAmount = parseFloat(validatedData.amount);
+          if (Math.abs(newPaymentAmount - allocationTotal) > 0.01) {
+            res.status(400).json({ message: "Cannot change payment amount: existing allocations no longer match. Please update allocations." });
+            return;
+          }
+        }
       }
       
       const payment = await storage.ledger.payments.update(id, validatedData);
