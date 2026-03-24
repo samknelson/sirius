@@ -20,13 +20,45 @@ async function confirm(message: string): Promise<boolean> {
   });
 }
 
+async function getCount(tableName: string): Promise<number> {
+  const result = await db.execute(sql.raw(`SELECT COUNT(*) as c FROM ${tableName}`));
+  return parseInt(String((result.rows[0] as any)?.c || '0'), 10);
+}
+
+async function truncateAndReport(tables: string[], groupLabel: string): Promise<void> {
+  const counts: Record<string, number> = {};
+  for (const table of tables) {
+    try {
+      counts[table] = await getCount(table);
+    } catch {
+      counts[table] = 0;
+    }
+  }
+
+  await db.execute(sql.raw(
+    `TRUNCATE TABLE ${tables.join(', ')} RESTART IDENTITY CASCADE`
+  ));
+
+  const details = tables
+    .filter(t => counts[t] > 0)
+    .map(t => `${t}: ${counts[t]}`)
+    .join(', ');
+
+  const totalDeleted = Object.values(counts).reduce((sum, c) => sum + c, 0);
+  if (details) {
+    console.log(`  [OK] ${groupLabel} cleared (${totalDeleted} rows: ${details})`);
+  } else {
+    console.log(`  [OK] ${groupLabel} cleared (0 rows)`);
+  }
+}
+
 async function resetProductionData(): Promise<void> {
   console.log("=== PRODUCTION DATA RESET ===");
   console.log("");
   console.log("This script will DELETE the following data:");
   console.log("  - Workers (and all related: hours, bans, certs, skills, ratings, IDs, WSH, MSH)");
   console.log("  - Contacts (and phone numbers, postal addresses)");
-  console.log("  - Employer contacts & policy history");
+  console.log("  - Employer contacts, policy history, policies, bargaining units");
   console.log("  - Dispatch data (jobs, dispatches, status, DNC, HFE, EBA, eligibility denorm)");
   console.log("  - EDLS data (sheets, crews, assignments)");
   console.log("  - Ledger entries (ledger, payments, EA links, stripe payment methods)");
@@ -36,7 +68,6 @@ async function resetProductionData(): Promise<void> {
   console.log("  - Files & E-signatures");
   console.log("  - Logs (winston logs, cron job runs)");
   console.log("  - WMB data (trust_wmb, scan status, scan queue)");
-  console.log("  - Charge plugin configs");
   console.log("  - Cardchecks & definitions");
   console.log("  - BTU site-specific data (CSG, employer map, territories)");
   console.log("  - Worker steward assignments");
@@ -49,7 +80,7 @@ async function resetProductionData(): Promise<void> {
   console.log("  - Variables");
   console.log("  - Trust providers, trust provider contacts, trust benefits");
   console.log("  - Ledger accounts (the account definitions)");
-  console.log("  - Policies, bargaining units");
+  console.log("  - Charge plugin configs");
   console.log("  - All options/* tables (gender, types, departments, classifications, etc.)");
   console.log("  - Cron job definitions (but runs are cleared)");
   console.log("  - Web service bundles & clients");
@@ -67,162 +98,115 @@ async function resetProductionData(): Promise<void> {
   console.log("\nStarting reset...\n");
 
   try {
-    await db.execute(sql`
-      TRUNCATE TABLE
-        comm_inapp,
-        comm_postal_optin,
-        comm_postal,
-        comm_email_optin,
-        comm_email,
-        comm_sms_optin,
-        comm_sms,
-        comm
-      RESTART IDENTITY CASCADE
-    `);
-    console.log("  [OK] Communications cleared");
+    await truncateAndReport([
+      "comm_inapp",
+      "comm_postal_optin",
+      "comm_postal",
+      "comm_email_optin",
+      "comm_email",
+      "comm_sms_optin",
+      "comm_sms",
+      "comm",
+    ], "Communications");
 
-    await db.execute(sql`
-      TRUNCATE TABLE
-        edls_assignments,
-        edls_crews,
-        edls_sheets
-      RESTART IDENTITY CASCADE
-    `);
-    console.log("  [OK] EDLS data cleared");
+    await truncateAndReport([
+      "edls_assignments",
+      "edls_crews",
+      "edls_sheets",
+    ], "EDLS data");
 
-    await db.execute(sql`
-      TRUNCATE TABLE
-        dispatches,
-        dispatch_jobs,
-        worker_dispatch_elig_denorm,
-        worker_dispatch_status,
-        worker_dispatch_dnc,
-        worker_dispatch_hfe,
-        worker_dispatch_eba
-      RESTART IDENTITY CASCADE
-    `);
-    console.log("  [OK] Dispatch data cleared");
+    await truncateAndReport([
+      "dispatches",
+      "dispatch_jobs",
+      "worker_dispatch_elig_denorm",
+      "worker_dispatch_status",
+      "worker_dispatch_dnc",
+      "worker_dispatch_hfe",
+      "worker_dispatch_eba",
+    ], "Dispatch data");
 
-    await db.execute(sql`
-      TRUNCATE TABLE
-        wizard_report_data,
-        wizard_feed_mappings,
-        wizard_employer_monthly,
-        wizards
-      RESTART IDENTITY CASCADE
-    `);
-    console.log("  [OK] Wizards cleared");
+    await truncateAndReport([
+      "wizard_report_data",
+      "wizard_feed_mappings",
+      "wizard_employer_monthly",
+      "wizards",
+    ], "Wizards");
 
-    await db.execute(sql`
-      TRUNCATE TABLE
-        ledger,
-        ledger_payments,
-        ledger_ea,
-        ledger_stripe_paymentmethods
-      RESTART IDENTITY CASCADE
-    `);
-    console.log("  [OK] Ledger entries cleared");
+    await truncateAndReport([
+      "ledger",
+      "ledger_payments",
+      "ledger_ea",
+      "ledger_stripe_paymentmethods",
+    ], "Ledger entries");
 
-    await db.execute(sql`
-      TRUNCATE TABLE
-        event_participants,
-        event_occurrences,
-        events
-      RESTART IDENTITY CASCADE
-    `);
-    console.log("  [OK] Events cleared");
+    await truncateAndReport([
+      "event_participants",
+      "event_occurrences",
+      "events",
+    ], "Events");
 
-    await db.execute(sql`
-      TRUNCATE TABLE
-        worker_steward_assignments,
-        worker_certifications,
-        worker_skills,
-        worker_ratings,
-        worker_ids,
-        worker_wsh,
-        worker_msh,
-        worker_hours,
-        worker_bans,
-        workers
-      RESTART IDENTITY CASCADE
-    `);
-    console.log("  [OK] Workers and related data cleared");
+    await truncateAndReport([
+      "worker_steward_assignments",
+      "worker_certifications",
+      "worker_skills",
+      "worker_ratings",
+      "worker_ids",
+      "worker_wsh",
+      "worker_msh",
+      "worker_hours",
+      "worker_bans",
+      "workers",
+    ], "Workers and related data");
 
-    await db.execute(sql`
-      TRUNCATE TABLE
-        employer_policy_history,
-        employer_contacts
-      RESTART IDENTITY CASCADE
-    `);
-    console.log("  [OK] Employer contacts and policy history cleared");
+    await truncateAndReport([
+      "employer_policy_history",
+      "employer_contacts",
+    ], "Employer contacts and policy history");
 
-    await db.execute(sql`
-      TRUNCATE TABLE
-        contact_postal,
-        contact_phone,
-        contacts
-      RESTART IDENTITY CASCADE
-    `);
-    console.log("  [OK] Contacts cleared");
+    await truncateAndReport([
+      "policies",
+      "bargaining_units",
+    ], "Policies and bargaining units");
 
-    await db.execute(sql`
-      TRUNCATE TABLE
-        trust_wmb_scan_queue,
-        trust_wmb_scan_status,
-        trust_wmb
-      RESTART IDENTITY CASCADE
-    `);
-    console.log("  [OK] WMB data cleared");
+    await truncateAndReport([
+      "contact_postal",
+      "contact_phone",
+      "contacts",
+    ], "Contacts");
 
-    await db.execute(sql`
-      TRUNCATE TABLE
-        charge_plugin_configs
-      RESTART IDENTITY CASCADE
-    `);
-    console.log("  [OK] Charge plugin configs cleared");
+    await truncateAndReport([
+      "trust_wmb_scan_queue",
+      "trust_wmb_scan_status",
+      "trust_wmb",
+    ], "WMB data");
 
-    await db.execute(sql`
-      TRUNCATE TABLE
-        cardchecks,
-        cardcheck_definitions
-      RESTART IDENTITY CASCADE
-    `);
-    console.log("  [OK] Cardchecks cleared");
+    await truncateAndReport([
+      "cardchecks",
+      "cardcheck_definitions",
+    ], "Cardchecks");
 
-    await db.execute(sql`
-      TRUNCATE TABLE
-        btu_territory_workers,
-        btu_territory_reps,
-        btu_territories,
-        sitespecific_btu_employer_map,
-        sitespecific_btu_csg
-      RESTART IDENTITY CASCADE
-    `);
-    console.log("  [OK] BTU site-specific data cleared");
+    await truncateAndReport([
+      "btu_territory_workers",
+      "btu_territory_reps",
+      "btu_territories",
+      "sitespecific_btu_employer_map",
+      "sitespecific_btu_csg",
+    ], "BTU site-specific data");
 
-    await db.execute(sql`
-      TRUNCATE TABLE
-        esigs,
-        files
-      RESTART IDENTITY CASCADE
-    `);
-    console.log("  [OK] Files and e-signatures cleared");
+    await truncateAndReport([
+      "esigs",
+      "files",
+    ], "Files and e-signatures");
 
-    await db.execute(sql`
-      TRUNCATE TABLE
-        winston_logs,
-        cron_job_runs
-      RESTART IDENTITY CASCADE
-    `);
-    console.log("  [OK] Logs and cron runs cleared");
+    await truncateAndReport([
+      "winston_logs",
+      "cron_job_runs",
+    ], "Logs and cron runs");
 
-    await db.execute(sql`
-      TRUNCATE TABLE
-        bookmarks,
-        flood
-      RESTART IDENTITY CASCADE
-    `);
-    console.log("  [OK] Bookmarks and flood events cleared");
+    await truncateAndReport([
+      "bookmarks",
+      "flood",
+    ], "Bookmarks and flood events");
 
     console.log("\nResetting sequences...");
     await db.execute(sql`SELECT setval('employers_sirius_id_seq', COALESCE((SELECT MAX(sirius_id) FROM employers), 0) + 1, false)`);
