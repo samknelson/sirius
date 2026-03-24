@@ -248,6 +248,10 @@ async function resetProductionData(): Promise<void> {
     const grandTotal = Object.values(counts).reduce((sum, c) => sum + c, 0);
     console.log(`\n  Total rows to delete: ${grandTotal}`);
 
+    console.log("\nClearing FK references from preserved tables...");
+    await db.execute(sql`UPDATE employers SET denorm_policy_id = NULL WHERE denorm_policy_id IS NOT NULL`);
+    console.log("  [OK] Cleared employers.denorm_policy_id");
+
     console.log("\nExecuting TRUNCATE...");
     await db.execute(sql.raw(
       `TRUNCATE TABLE ${allTables.join(', ')} RESTART IDENTITY`
