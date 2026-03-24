@@ -7,8 +7,10 @@ import { Input } from "@/components/ui/input";
 import { useQuery } from "@tanstack/react-query";
 import { type Company } from "@shared/schema/employer/company-schema";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { usePageTitle } from "@/contexts/PageTitleContext";
 
 export default function Companies() {
+  usePageTitle("Companies");
   const [searchQuery, setSearchQuery] = useState("");
 
   const { data: companies = [], isLoading } = useQuery<Company[]>({
