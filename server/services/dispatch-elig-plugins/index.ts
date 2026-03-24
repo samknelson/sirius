@@ -18,7 +18,10 @@ import {
   dispatchAcceptedPlugin,
   backfillDispatchAcceptedEligibility,
 } from "./accepted";
-import { dispatchHtaHomeEmployerPlugin } from "./hta-home-employer";
+import {
+  dispatchHtaHomeEmployerPlugin,
+  backfillHtaHomeEmployerEligibility,
+} from "./hta-home-employer";
 
 /**
  * Registers all dispatch eligibility plugins.
@@ -151,6 +154,23 @@ export async function initializeDispatchEligSystem(): Promise<void> {
     }
   } catch (error) {
     logger.error("Failed to backfill singleshift eligibility during startup", {
+      service: "dispatch-elig-plugins",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  // Backfill eligibility data for HTA home employer exclusions
+  try {
+    const result = await backfillHtaHomeEmployerEligibility();
+    if (result.workersProcessed > 0) {
+      logger.info("HTA home employer eligibility backfill completed during startup", {
+        service: "dispatch-elig-plugins",
+        workersProcessed: result.workersProcessed,
+        entriesCreated: result.entriesCreated,
+      });
+    }
+  } catch (error) {
+    logger.error("Failed to backfill HTA home employer eligibility during startup", {
       service: "dispatch-elig-plugins",
       error: error instanceof Error ? error.message : String(error),
     });
