@@ -135,6 +135,7 @@ const TABLE_GROUPS: TableGroup[] = [
   {
     label: "Contacts",
     tables: [
+      "trust_provider_contacts",
       "contact_postal",
       "contact_phone",
       "contacts",
@@ -197,7 +198,7 @@ async function resetProductionData(): Promise<void> {
   console.log("  - Roles, user roles, role permissions");
   console.log("  - Employers (the employer records themselves)");
   console.log("  - Variables");
-  console.log("  - Trust providers, trust provider contacts, trust benefits");
+  console.log("  - Trust providers, trust benefits (trust provider contacts are deleted with contacts)");
   console.log("  - Ledger accounts (the account definitions)");
   console.log("  - Charge plugin configs");
   console.log("  - All options/* tables (gender, types, departments, classifications, etc.)");
