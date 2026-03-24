@@ -36,11 +36,15 @@ async function getConfiguredStatusIds(): Promise<string[]> {
   const variableStorage = createVariableStorage();
   const variable = await variableStorage.getByName(VARIABLE_NAME);
   if (!variable || !variable.value) return [];
-  try {
-    const parsed = JSON.parse(variable.value);
-    if (Array.isArray(parsed)) return parsed.filter((v: unknown) => typeof v === "string" && v.length > 0);
-  } catch {
-    // not valid JSON
+  const val = variable.value;
+  if (Array.isArray(val)) return val.filter((v: unknown) => typeof v === "string" && v.length > 0);
+  if (typeof val === "string") {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return parsed.filter((v: unknown) => typeof v === "string" && v.length > 0);
+    } catch {
+      // not valid JSON string
+    }
   }
   return [];
 }
