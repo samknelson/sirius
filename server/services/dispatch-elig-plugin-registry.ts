@@ -86,13 +86,14 @@ export interface DispatchEligPlugin {
   configFields?: PluginConfigField[];
   recomputeWorker(workerId: string): Promise<void>;
   /**
-   * Returns the eligibility condition this plugin contributes to the query.
+   * Returns the eligibility condition(s) this plugin contributes to the query.
    * Called when building the eligible workers query for a job.
    * @param context - Information about the job being queried
    * @param config - Per-plugin configuration from the job type
-   * @returns The condition to add to the query, or null if no condition needed
+   * @returns The condition(s) to add to the query, or null if no condition needed.
+   *          Can return a single condition or an array of conditions (all ANDed together).
    */
-  getEligibilityCondition(context: EligibilityQueryContext, config: EligibilityPluginConfig["config"]): EligibilityCondition | null | Promise<EligibilityCondition | null>;
+  getEligibilityCondition(context: EligibilityQueryContext, config: EligibilityPluginConfig["config"]): EligibilityCondition | EligibilityCondition[] | null | Promise<EligibilityCondition | EligibilityCondition[] | null>;
 }
 
 class DispatchEligPluginRegistry {

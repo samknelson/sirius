@@ -122,9 +122,12 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
       continue;
     }
 
-    const condition = await Promise.resolve(plugin.getEligibilityCondition(context, pluginConfig.config));
-    if (condition) {
-      appliedConditions.push({ pluginId: pluginConfig.pluginId, condition });
+    const conditionResult = await Promise.resolve(plugin.getEligibilityCondition(context, pluginConfig.config));
+    if (conditionResult) {
+      const conditions = Array.isArray(conditionResult) ? conditionResult : [conditionResult];
+      for (const condition of conditions) {
+        appliedConditions.push({ pluginId: pluginConfig.pluginId, condition });
+      }
     }
   }
 

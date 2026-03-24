@@ -11,6 +11,7 @@ import { workerHours } from "@shared/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
 
 const HTA_HOME_EMPLOYER_CATEGORY = "sitespecific:hta:home-employer";
+const HTA_HOME_COMPANY_CATEGORY = "sitespecific:hta:home-company";
 const VARIABLE_NAME = "sitespecific_hta_home_employment_statuses";
 const COMPONENT_ID = "sitespecific.hta";
 
@@ -57,7 +58,7 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
     },
   ],
 
-  async getEligibilityCondition(context: EligibilityQueryContext, _config: Record<string, unknown>): Promise<EligibilityCondition | null> {
+  async getEligibilityCondition(context: EligibilityQueryContext, _config: Record<string, unknown>): Promise<EligibilityCondition | EligibilityCondition[] | null> {
     const jobStorage = createDispatchJobStorage();
     const job = await jobStorage.getWithRelations(context.jobId);
 
@@ -84,28 +85,29 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
     }
 
     const window = getThreeMonthWindow(year, month);
-    const values: string[] = [];
+    const conditions: EligibilityCondition[] = [];
 
-    for (const { ym } of window) {
-      values.push(`${ym}:${job.employerId}`);
-    }
+    const employerValues = window.map(({ ym }) => `${ym}:${job.employerId}`);
+    conditions.push({
+      category: HTA_HOME_EMPLOYER_CATEGORY,
+      type: "not_exists",
+      value: employerValues[0],
+      values: employerValues,
+    });
 
     const ecStorage = createEmployerCompanyStorage();
     const ec = await ecStorage.getByEmployerId(job.employerId);
     if (ec) {
-      for (const { ym } of window) {
-        values.push(`co:${ym}:${ec.companyId}`);
-      }
+      const companyValues = window.map(({ ym }) => `${ym}:${ec.companyId}`);
+      conditions.push({
+        category: HTA_HOME_COMPANY_CATEGORY,
+        type: "not_exists",
+        value: companyValues[0],
+        values: companyValues,
+      });
     }
 
-    if (values.length === 0) return null;
-
-    return {
-      category: HTA_HOME_EMPLOYER_CATEGORY,
-      type: "not_exists",
-      value: values[0],
-      values,
-    };
+    return conditions.length === 1 ? conditions[0] : conditions;
   },
 
   async recomputeWorker(workerId: string): Promise<void> {
@@ -117,6 +119,7 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
     });
 
     await eligStorage.deleteByWorkerAndCategory(workerId, HTA_HOME_EMPLOYER_CATEGORY);
+    await eligStorage.deleteByWorkerAndCategory(workerId, HTA_HOME_COMPANY_CATEGORY);
 
     if (!isCacheInitialized() || !isComponentEnabledSync(COMPONENT_ID)) {
       logger.debug(`sitespecific.hta component disabled, cleared entries for worker ${workerId}`, {
@@ -176,12 +179,13 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
     const ecStorage = createEmployerCompanyStorage();
     const employerCompanyMap = await ecStorage.getAllWithCompanyName();
 
-    const entries: Array<{ workerId: string; category: string; value: string }> = [];
-    const companyEntries = new Set<string>();
+    const employerEntries: Array<{ workerId: string; category: string; value: string }> = [];
+    const companyEntries: Array<{ workerId: string; category: string; value: string }> = [];
+    const seenCompanyKeys = new Set<string>();
 
     for (const [, { year, month, employerId }] of uniquePairs) {
       const ym = `${year}-${String(month).padStart(2, "0")}`;
-      entries.push({
+      employerEntries.push({
         workerId,
         category: HTA_HOME_EMPLOYER_CATEGORY,
         value: `${ym}:${employerId}`,
@@ -189,26 +193,28 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
 
       const ec = employerCompanyMap.get(employerId);
       if (ec) {
-        const coKey = `co:${ym}:${ec.companyId}`;
-        if (!companyEntries.has(coKey)) {
-          companyEntries.add(coKey);
-          entries.push({
+        const coKey = `${ym}:${ec.companyId}`;
+        if (!seenCompanyKeys.has(coKey)) {
+          seenCompanyKeys.add(coKey);
+          companyEntries.push({
             workerId,
-            category: HTA_HOME_EMPLOYER_CATEGORY,
+            category: HTA_HOME_COMPANY_CATEGORY,
             value: coKey,
           });
         }
       }
     }
 
-    if (entries.length > 0) {
-      await eligStorage.createMany(entries);
+    const allEntries = [...employerEntries, ...companyEntries];
+    if (allEntries.length > 0) {
+      await eligStorage.createMany(allEntries);
     }
 
-    logger.debug(`Created ${entries.length} HTA home employer eligibility entries for worker ${workerId}`, {
+    logger.debug(`Created ${allEntries.length} HTA home employer eligibility entries for worker ${workerId}`, {
       service: "dispatch-elig-hta-home-employer",
       workerId,
-      entryCount: entries.length,
+      employerEntries: employerEntries.length,
+      companyEntries: companyEntries.length,
     });
   },
 };
@@ -271,8 +277,9 @@ export async function backfillHtaHomeEmployerEligibility(): Promise<{ workersPro
   for (const workerId of workerIds) {
     await dispatchHtaHomeEmployerPlugin.recomputeWorker(workerId);
     const eligStorage = createWorkerDispatchEligDenormStorage();
-    const entries = await eligStorage.getByWorkerAndCategory(workerId, HTA_HOME_EMPLOYER_CATEGORY);
-    entriesCreated += entries.length;
+    const employerEntries = await eligStorage.getByWorkerAndCategory(workerId, HTA_HOME_EMPLOYER_CATEGORY);
+    const companyEntries = await eligStorage.getByWorkerAndCategory(workerId, HTA_HOME_COMPANY_CATEGORY);
+    entriesCreated += employerEntries.length + companyEntries.length;
   }
 
   logger.info(`Completed HTA home employer eligibility backfill`, {
