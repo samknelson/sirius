@@ -45,6 +45,26 @@ export function registerCompaniesRoutes(
     }
   );
 
+  app.get(
+    "/api/companies/:id/employers",
+    requireAuth,
+    requireComponent("employer.company"),
+    requireAccess("staff"),
+    async (req, res) => {
+      try {
+        const company = await storage.companies.get(req.params.id);
+        if (!company) {
+          return res.status(404).json({ message: "Company not found" });
+        }
+        const employers = await storage.employerCompanies.getEmployersByCompanyId(req.params.id);
+        res.json(employers);
+      } catch (error) {
+        console.error("Error fetching employers for company:", error);
+        res.status(500).json({ message: "Failed to fetch employers for company" });
+      }
+    }
+  );
+
   app.post(
     "/api/companies",
     requireAuth,
