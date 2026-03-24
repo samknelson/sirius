@@ -271,6 +271,17 @@ export function registerLedgerPaymentRoutes(app: Express) {
       };
       
       const validatedData = insertLedgerPaymentSchema.parse(processedBody);
+
+      let validatedAllocations: { ledgerEaId: string; amount: string }[] | undefined;
+      if (rawAllocations && Array.isArray(rawAllocations) && rawAllocations.length > 0) {
+        validatedAllocations = allocationSchema.parse(rawAllocations);
+        const allocationTotal = validatedAllocations.reduce((sum, a) => sum + parseFloat(a.amount), 0);
+        const paymentAmount = parseFloat(validatedData.amount);
+        if (Math.abs(paymentAmount - allocationTotal) > 0.01) {
+          res.status(400).json({ message: "Allocation amounts must equal the payment amount" });
+          return;
+        }
+      }
       
       const ea = await storage.ledger.ea.get(validatedData.ledgerEaId);
       if (!ea) {
@@ -281,14 +292,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
       const payment = await storage.ledger.payments.create(validatedData);
 
       let savedAllocations: LedgerPaymentAllocation[] | undefined;
-      if (rawAllocations && Array.isArray(rawAllocations) && rawAllocations.length > 0) {
-        const validatedAllocations = allocationSchema.parse(rawAllocations);
-        const allocationTotal = validatedAllocations.reduce((sum, a) => sum + parseFloat(a.amount), 0);
-        const paymentAmount = parseFloat(payment.amount);
-        if (Math.abs(paymentAmount - allocationTotal) > 0.01) {
-          res.status(400).json({ message: "Allocation amounts must equal the payment amount" });
-          return;
-        }
+      if (validatedAllocations && validatedAllocations.length > 0) {
         savedAllocations = await storage.ledger.paymentAllocations.replaceForPayment(
           payment.id,
           validatedAllocations
@@ -338,6 +342,17 @@ export function registerLedgerPaymentRoutes(app: Express) {
       };
       
       const validatedData = insertLedgerPaymentSchema.partial().parse(processedBody);
+
+      let validatedAllocationsForUpdate: { ledgerEaId: string; amount: string }[] | undefined;
+      if (rawAllocations !== undefined && Array.isArray(rawAllocations) && rawAllocations.length > 0) {
+        validatedAllocationsForUpdate = allocationSchema.parse(rawAllocations);
+        const allocationTotal = validatedAllocationsForUpdate.reduce((sum, a) => sum + parseFloat(a.amount), 0);
+        const paymentAmount = parseFloat(validatedData.amount ?? existingPayment.amount);
+        if (Math.abs(paymentAmount - allocationTotal) > 0.01) {
+          res.status(400).json({ message: "Allocation amounts must equal the payment amount" });
+          return;
+        }
+      }
       
       const payment = await storage.ledger.payments.update(id, validatedData);
       
@@ -348,17 +363,10 @@ export function registerLedgerPaymentRoutes(app: Express) {
 
       let savedAllocations: LedgerPaymentAllocation[] | undefined;
       if (rawAllocations !== undefined) {
-        if (Array.isArray(rawAllocations) && rawAllocations.length > 0) {
-          const validatedAllocations = allocationSchema.parse(rawAllocations);
-          const allocationTotal = validatedAllocations.reduce((sum, a) => sum + parseFloat(a.amount), 0);
-          const paymentAmount = parseFloat(payment.amount);
-          if (Math.abs(paymentAmount - allocationTotal) > 0.01) {
-            res.status(400).json({ message: "Allocation amounts must equal the payment amount" });
-            return;
-          }
+        if (validatedAllocationsForUpdate && validatedAllocationsForUpdate.length > 0) {
           savedAllocations = await storage.ledger.paymentAllocations.replaceForPayment(
             id,
-            validatedAllocations
+            validatedAllocationsForUpdate
           );
         } else {
           await storage.ledger.paymentAllocations.deleteByPaymentId(id);
