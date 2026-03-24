@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, ApiError } from "@/lib/queryClient";
 import { Save, Briefcase } from "lucide-react";
 
 interface EmploymentStatus {
@@ -36,13 +36,15 @@ export default function HtaHomeEmploymentStatusesPage() {
     queryKey: ["/api/options/employment-status"],
   });
 
-  const { data: variable, isLoading: variableLoading } = useQuery<Variable>({
+  const { data: variable, isLoading: variableLoading } = useQuery<Variable | null>({
     queryKey: ["/api/variables/by-name", VARIABLE_NAME],
     queryFn: async () => {
-      const res = await fetch(`/api/variables/by-name/${VARIABLE_NAME}`, { credentials: "include" });
-      if (res.status === 404) return null;
-      if (!res.ok) throw new Error("Failed to load saved selection");
-      return res.json();
+      try {
+        return await apiRequest("GET", `/api/variables/by-name/${VARIABLE_NAME}`);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
+      }
     },
   });
 
