@@ -1,4 +1,4 @@
-backfillHtaHomeEmployerEligibilityimport { logger } from "../../logger";
+import { logger } from "../../logger";
 import { createWorkerDispatchEligDenormStorage } from "../../storage/worker-dispatch-elig-denorm";
 import { createVariableStorage } from "../../storage/variables";
 import { createDispatchJobStorage } from "../../storage/dispatch-jobs";
@@ -43,7 +43,6 @@ async function getConfiguredStatusIds(): Promise<string[]> {
       const parsed = JSON.parse(val);
       if (Array.isArray(parsed)) return parsed.filter((v: unknown) => typeof v === "string" && v.length > 0);
     } catch {
-      // not valid JSON string
     }
   }
   return [];
@@ -54,7 +53,87 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
   name: "HTA Home Employer",
   description: "Prevents workers from being dispatched to their home employer",
   componentId: COMPONENT_ID,
-  backfill: () => backfillHtaHomeEmployerEligibility(),
+
+  async backfill(): Promise<{ workersProcessed: number; entriesCreated: number }> {
+    if (!isCacheInitialized()) {
+      logger.warn("Component cache not initialized, skipping HTA home employer eligibility backfill", {
+        service: "dispatch-elig-hta-home-employer",
+      });
+      return { workersProcessed: 0, entriesCreated: 0 };
+    }
+
+    if (!isComponentEnabledSync(COMPONENT_ID)) {
+      logger.debug("sitespecific.hta component not enabled, skipping HTA home employer backfill", {
+        service: "dispatch-elig-hta-home-employer",
+      });
+      return { workersProcessed: 0, entriesCreated: 0 };
+    }
+
+    const eligStorage = createWorkerDispatchEligDenormStorage();
+    const deletedEmployer = await eligStorage.deleteAllByCategory(HTA_HOME_EMPLOYER_CATEGORY);
+    const deletedCompany = await eligStorage.deleteAllByCategory(HTA_HOME_COMPANY_CATEGORY);
+    logger.info("Cleared existing HTA home employer eligibility entries before backfill", {
+      service: "dispatch-elig-hta-home-employer",
+      deletedEmployer,
+      deletedCompany,
+    });
+
+    const statusIds = await getConfiguredStatusIds();
+    if (statusIds.length === 0) {
+      logger.info("No home employment statuses configured, skipping HTA home employer backfill", {
+        service: "dispatch-elig-hta-home-employer",
+      });
+      return { workersProcessed: 0, entriesCreated: 0 };
+    }
+
+    const window = getCurrentThreeMonthWindow();
+    const client = getClient();
+
+    const monthConditions = window.map(
+      ({ year, month }) => sql`(${workerHours.year} = ${year} AND ${workerHours.month} = ${month})`
+    );
+
+    const workerRows = await client
+      .selectDistinct({ workerId: workerHours.workerId })
+      .from(workerHours)
+      .where(
+        and(
+          inArray(workerHours.employmentStatusId, statusIds),
+          sql`(${sql.join(monthConditions, sql` OR `)})`
+        )
+      );
+
+    const workerIds = workerRows.map((r) => r.workerId);
+
+    if (workerIds.length === 0) {
+      logger.info("No workers with qualifying hours found for HTA home employer backfill", {
+        service: "dispatch-elig-hta-home-employer",
+      });
+      return { workersProcessed: 0, entriesCreated: 0 };
+    }
+
+    logger.info(`Backfilling HTA home employer eligibility for ${workerIds.length} workers`, {
+      service: "dispatch-elig-hta-home-employer",
+      workerCount: workerIds.length,
+    });
+
+    let entriesCreated = 0;
+    for (const workerId of workerIds) {
+      await this.recomputeWorker(workerId);
+      const es = createWorkerDispatchEligDenormStorage();
+      const employerEntries = await es.getByWorkerAndCategory(workerId, HTA_HOME_EMPLOYER_CATEGORY);
+      const companyEntries = await es.getByWorkerAndCategory(workerId, HTA_HOME_COMPANY_CATEGORY);
+      entriesCreated += employerEntries.length + companyEntries.length;
+    }
+
+    logger.info(`Completed HTA home employer eligibility backfill`, {
+      service: "dispatch-elig-hta-home-employer",
+      workersProcessed: workerIds.length,
+      entriesCreated,
+    });
+
+    return { workersProcessed: workerIds.length, entriesCreated };
+  },
 
   eventHandlers: [
     {
@@ -223,84 +302,3 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
     });
   },
 };
-
-export async function backfillHtaHomeEmployerEligibility(): Promise<{ workersProcessed: number; entriesCreated: number }> {
-  if (!isCacheInitialized()) {
-    logger.warn("Component cache not initialized, skipping HTA home employer eligibility backfill", {
-      service: "dispatch-elig-hta-home-employer",
-    });
-    return { workersProcessed: 0, entriesCreated: 0 };
-  }
-
-  if (!isComponentEnabledSync(COMPONENT_ID)) {
-    logger.debug("sitespecific.hta component not enabled, skipping HTA home employer backfill", {
-      service: "dispatch-elig-hta-home-employer",
-    });
-    return { workersProcessed: 0, entriesCreated: 0 };
-  }
-
-  const eligStorage = createWorkerDispatchEligDenormStorage();
-  const deletedEmployer = await eligStorage.deleteAllByCategory(HTA_HOME_EMPLOYER_CATEGORY);
-  const deletedCompany = await eligStorage.deleteAllByCategory(HTA_HOME_COMPANY_CATEGORY);
-  logger.info("Cleared existing HTA home employer eligibility entries before backfill", {
-    service: "dispatch-elig-hta-home-employer",
-    deletedEmployer,
-    deletedCompany,
-  });
-
-  const statusIds = await getConfiguredStatusIds();
-  if (statusIds.length === 0) {
-    logger.info("No home employment statuses configured, skipping HTA home employer backfill", {
-      service: "dispatch-elig-hta-home-employer",
-    });
-    return { workersProcessed: 0, entriesCreated: 0 };
-  }
-
-  const window = getCurrentThreeMonthWindow();
-  const client = getClient();
-
-  const monthConditions = window.map(
-    ({ year, month }) => sql`(${workerHours.year} = ${year} AND ${workerHours.month} = ${month})`
-  );
-
-  const workerRows = await client
-    .selectDistinct({ workerId: workerHours.workerId })
-    .from(workerHours)
-    .where(
-      and(
-        inArray(workerHours.employmentStatusId, statusIds),
-        sql`(${sql.join(monthConditions, sql` OR `)})`
-      )
-    );
-
-  const workerIds = workerRows.map((r) => r.workerId);
-
-  if (workerIds.length === 0) {
-    logger.info("No workers with qualifying hours found for HTA home employer backfill", {
-      service: "dispatch-elig-hta-home-employer",
-    });
-    return { workersProcessed: 0, entriesCreated: 0 };
-  }
-
-  logger.info(`Backfilling HTA home employer eligibility for ${workerIds.length} workers`, {
-    service: "dispatch-elig-hta-home-employer",
-    workerCount: workerIds.length,
-  });
-
-  let entriesCreated = 0;
-  for (const workerId of workerIds) {
-    await dispatchHtaHomeEmployerPlugin.recomputeWorker(workerId);
-    const eligStorage = createWorkerDispatchEligDenormStorage();
-    const employerEntries = await eligStorage.getByWorkerAndCategory(workerId, HTA_HOME_EMPLOYER_CATEGORY);
-    const companyEntries = await eligStorage.getByWorkerAndCategory(workerId, HTA_HOME_COMPANY_CATEGORY);
-    entriesCreated += employerEntries.length + companyEntries.length;
-  }
-
-  logger.info(`Completed HTA home employer eligibility backfill`, {
-    service: "dispatch-elig-hta-home-employer",
-    workersProcessed: workerIds.length,
-    entriesCreated,
-  });
-
-  return { workersProcessed: workerIds.length, entriesCreated };
-}
