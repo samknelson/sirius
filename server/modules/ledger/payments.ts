@@ -75,7 +75,7 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment, allocations?:
       try {
         const allExistingEntries = await storage.ledger.entries.getByReference("payment", payment.id);
         for (const entry of allExistingEntries) {
-          if (entry.chargePlugin && entry.chargePluginKey) {
+          if (entry.chargePlugin === "payment-simple-allocation" && entry.chargePluginKey) {
             const keyParts = entry.chargePluginKey.split(":");
             const eaIdInKey = keyParts.length >= 3 ? keyParts[keyParts.length - 1] : null;
             if (eaIdInKey && !currentEaIds.has(eaIdInKey)) {
