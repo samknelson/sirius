@@ -18,7 +18,7 @@ import { registerAddressValidationRoutes } from "./modules/address-validation";
 import { registerMasqueradeRoutes, getEffectiveUser } from "./modules/masquerade";
 import { registerDashboardRoutes } from "./modules/dashboard";
 import { registerBookmarkRoutes } from "./modules/bookmarks";
-import { registerComponentRoutes, getEnabledComponentIds } from "./modules/components";
+import { registerComponentRoutes, getEnabledComponentIds, isComponentEnabled } from "./modules/components";
 import { registerEmployerUserSettingsRoutes } from "./modules/employer-user-settings";
 import { registerTrustProviderUserSettingsRoutes } from "./modules/trust-provider-user-settings";
 import { registerWorkerUserSettingsRoutes } from "./modules/worker-user-settings";
@@ -786,11 +786,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/employers/:id/company - Get employer's company association
+  app.get("/api/employers/:id/company", requireAuth, requirePermission("staff"), async (req, res) => {
+    try {
+      const companyEnabled = await isComponentEnabled("employer.company");
+      if (!companyEnabled) {
+        return res.status(403).json({ message: "employer.company component is not enabled" });
+      }
+      const { id } = req.params;
+      const ec = await storage.employerCompanies.getByEmployerId(id);
+      if (!ec) {
+        return res.json({ companyId: null, companyName: null });
+      }
+      const company = await storage.companies.get(ec.companyId);
+      res.json({ companyId: ec.companyId, companyName: company?.name || null, employerCompanyId: ec.id });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch employer company" });
+    }
+  });
+
   // PUT /api/employers/:id - Update an employer (requires workers.manage permission)
   app.put("/api/employers/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, isActive, typeId, industryId } = req.body;
+      const { name, isActive, typeId, industryId, companyId } = req.body;
       
       const updates: Partial<InsertEmployer> = {};
       
@@ -816,15 +835,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.industryId = industryId === null || industryId === "" ? null : industryId;
       }
       
-      if (Object.keys(updates).length === 0) {
+      if (Object.keys(updates).length === 0 && companyId === undefined) {
         return res.status(400).json({ message: "No fields to update" });
       }
       
-      const employer = await storage.employers.updateEmployer(id, updates);
-      
-      if (!employer) {
-        res.status(404).json({ message: "Employer not found" });
-        return;
+      let employer = null;
+      if (Object.keys(updates).length > 0) {
+        employer = await storage.employers.updateEmployer(id, updates);
+        if (!employer) {
+          res.status(404).json({ message: "Employer not found" });
+          return;
+        }
+      } else {
+        employer = await storage.employers.getEmployer(id);
+        if (!employer) {
+          res.status(404).json({ message: "Employer not found" });
+          return;
+        }
+      }
+
+      if (companyId !== undefined) {
+        const companyEnabled = await isComponentEnabled("employer.company");
+        if (!companyEnabled) {
+          return res.status(403).json({ message: "employer.company component is not enabled" });
+        }
+        const existing = await storage.employerCompanies.getByEmployerId(id);
+        if (existing) {
+          await storage.employerCompanies.delete(existing.id);
+        }
+        if (companyId !== null && companyId !== "") {
+          await storage.employerCompanies.create({ employerId: id, companyId });
+        }
       }
       
       res.json(employer);

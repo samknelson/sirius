@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital } from "lucide-react";
 import { EmployerLayout, useEmployerLayout } from "@/components/layouts/EmployerLayout";
 import { EmployerType } from "@shared/schema";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Industry {
   id: string;
@@ -23,8 +24,15 @@ const iconMap: Record<string, React.ComponentType<{ className?: string; size?: n
   Hospital,
 };
 
+interface EmployerCompanyInfo {
+  companyId: string | null;
+  companyName: string | null;
+}
+
 function EmployerDetailsContent() {
   const { employer } = useEmployerLayout();
+  const { hasComponent } = useAuth();
+  const showCompany = hasComponent("employer.company");
 
   const { data: employerTypes = [], isLoading: isLoadingTypes } = useQuery<EmployerType[]>({
     queryKey: ["/api/options/employer-type"],
@@ -32,6 +40,11 @@ function EmployerDetailsContent() {
 
   const { data: industries = [], isLoading: isLoadingIndustries } = useQuery<Industry[]>({
     queryKey: ["/api/options/industry"],
+  });
+
+  const { data: employerCompany, isLoading: isLoadingCompany } = useQuery<EmployerCompanyInfo>({
+    queryKey: ["/api/employers", employer.id, "company"],
+    enabled: showCompany,
   });
 
   const employerType = employer.typeId 
@@ -98,6 +111,18 @@ function EmployerDetailsContent() {
                 )}
               </p>
             </div>
+            {showCompany && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground">Company</label>
+                <p className="text-foreground" data-testid="text-employer-company">
+                  {isLoadingCompany ? (
+                    <span className="text-muted-foreground">Loading...</span>
+                  ) : (
+                    employerCompany?.companyName || "Not specified"
+                  )}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
