@@ -175,7 +175,7 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/employer/company-schema.ts",
-      tables: ["companies"]
+      tables: ["companies", "employer_companies"]
     }
   },
   {
