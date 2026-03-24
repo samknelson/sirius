@@ -3,10 +3,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "wouter";
-import type { LedgerPayment } from "@shared/schema";
+import type { LedgerPayment, LedgerPaymentAllocation } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LedgerTransactionsView } from "@/components/ledger/LedgerTransactionsView";
 import { formatAmount } from "@shared/currency";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
 
 function PaymentViewContent() {
   const { id } = useParams<{ id: string }>();
@@ -14,6 +20,11 @@ function PaymentViewContent() {
 
   const { data: payment, isLoading } = useQuery<LedgerPayment>({
     queryKey: ["/api/ledger/payments", id],
+  });
+
+  const { data: allocations = [] } = useQuery<LedgerPaymentAllocation[]>({
+    queryKey: [`/api/ledger/payments/${id}/allocations`],
+    enabled: !!id,
   });
   
   const currencyCode = paymentType?.currencyCode || 'USD';
@@ -111,6 +122,18 @@ function PaymentViewContent() {
                 <p className="mt-1" data-testid="text-check-transaction-number">{(payment.details as any).checkTransactionNumber}</p>
               </div>
             )}
+
+            {((payment as any).statementMonth || (payment as any).statementYear) && (
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Statement Period</label>
+                <p className="mt-1" data-testid="text-statement-period">
+                  {(payment as any).statementMonth
+                    ? MONTH_NAMES[(payment as any).statementMonth - 1]
+                    : ""}{" "}
+                  {(payment as any).statementYear || ""}
+                </p>
+              </div>
+            )}
           </div>
 
           <div>
@@ -141,6 +164,32 @@ function PaymentViewContent() {
             <div>
               <label className="text-sm font-medium text-muted-foreground">Memo</label>
               <p className="mt-1 whitespace-pre-wrap" data-testid="text-memo">{payment.memo}</p>
+            </div>
+          )}
+
+          {allocations.length > 0 && (
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Payment Allocations</label>
+              <div className="mt-2 rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Entity Account</TableHead>
+                      <TableHead>Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {allocations.map((alloc) => (
+                      <TableRow key={alloc.id}>
+                        <TableCell className="text-sm">{alloc.ledgerEaId}</TableCell>
+                        <TableCell className="font-mono">
+                          {formatAmount(parseFloat(alloc.amount), currencyCode)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
           )}
         </CardContent>

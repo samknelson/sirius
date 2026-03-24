@@ -61,8 +61,12 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
     
     const description = `${currencyLabel} Adjustment: ${paymentTypeName}`;
 
+    const keySuffix = paymentContext.allocationId
+      ? `${paymentContext.paymentId}:${paymentContext.ledgerEaId}`
+      : paymentContext.paymentId;
+
     return {
-      chargePluginKey: `${configId}:${paymentContext.paymentId}`,
+      chargePluginKey: `${configId}:${keySuffix}`,
       amount: allocatedAmount.toFixed(2),
       description,
       transactionDate,
@@ -75,6 +79,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
         paymentId: paymentContext.paymentId,
         originalAmount: paymentContext.amount,
         ledgerEaId: paymentContext.ledgerEaId,
+        allocationId: paymentContext.allocationId || null,
       },
     };
   }

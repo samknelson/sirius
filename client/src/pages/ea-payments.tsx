@@ -14,7 +14,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertLedgerPaymentSchema, type LedgerPayment, type LedgerPaymentType } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, DollarSign, Download, ArrowUpDown, Filter, X, ChevronDown } from "lucide-react";
+import { Plus, DollarSign, Download, ArrowUpDown, Filter, X, ChevronDown, Trash2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useState, useMemo, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -22,6 +22,24 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { z } from "zod";
 import { stringify } from "csv-stringify/browser/esm/sync";
 import { formatAmount } from "@shared/currency";
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+type AllocationRow = {
+  ledgerEaId: string;
+  amount: string;
+};
+
+type EAListItem = {
+  id: string;
+  accountId: string;
+  entityType: string;
+  entityId: string;
+  data: unknown;
+};
 
 const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
 
@@ -46,6 +64,9 @@ function EAPaymentsContent() {
   const [adjustmentUser, setAdjustmentUser] = useState("");
   const [dateEntered, setDateEntered] = useState("");
   const [effectiveDate, setEffectiveDate] = useState("");
+  const [statementMonth, setStatementMonth] = useState<string>("");
+  const [statementYear, setStatementYear] = useState<string>("");
+  const [allocations, setAllocations] = useState<AllocationRow[]>([]);
   const { toast } = useToast();
   
   const getTodayString = () => new Date().toISOString().split('T')[0];
@@ -96,6 +117,11 @@ function EAPaymentsContent() {
     queryKey: ["/api/ledger/payment-types"],
   });
 
+  const { data: allEAs = [] } = useQuery<EAListItem[]>({
+    queryKey: ["/api/ledger/ea"],
+    enabled: isStaff,
+  });
+
   const form = useForm<z.infer<typeof insertLedgerPaymentSchema>>({
     resolver: zodResolver(insertLedgerPaymentSchema),
     defaultValues: {
@@ -130,7 +156,7 @@ function EAPaymentsContent() {
   }, [dialogOpen, category, user]);
 
   const createPaymentMutation = useMutation({
-    mutationFn: async (data: z.infer<typeof insertLedgerPaymentSchema>) => {
+    mutationFn: async (data: any) => {
       return await apiRequest("POST", "/api/ledger/payments", data);
     },
     onSuccess: (data: any) => {
@@ -141,6 +167,9 @@ function EAPaymentsContent() {
       setAdjustmentUser("");
       setDateEntered("");
       setEffectiveDate("");
+      setStatementMonth("");
+      setStatementYear("");
+      setAllocations([]);
       form.reset({
         status: "draft",
         allocated: false,
@@ -208,11 +237,22 @@ function EAPaymentsContent() {
       delete details.checkTransactionNumber;
     }
     
-    const submissionData = {
+    const submissionData: any = {
       ...data,
       details: Object.keys(details).length > 0 ? details : null,
       status: category === "adjustment" ? "cleared" as const : data.status,
     };
+
+    if (statementMonth) {
+      submissionData.statementMonth = parseInt(statementMonth, 10);
+    }
+    if (statementYear) {
+      submissionData.statementYear = parseInt(statementYear, 10);
+    }
+
+    if (allocations.length > 0) {
+      submissionData.allocations = allocations.filter(a => a.ledgerEaId && a.amount);
+    }
     
     createPaymentMutation.mutate(submissionData);
   });
@@ -410,10 +450,13 @@ function EAPaymentsContent() {
       const paymentType = paymentTypes.find(t => t.id === payment.paymentType);
       const details = payment.details as any;
       
+      const p = payment as any;
       return {
         Amount: formatAmount(parseFloat(payment.amount), currencyCode),
         "Payment Type": paymentType?.name || "",
         Status: payment.status,
+        "Statement Month": p.statementMonth && p.statementYear
+          ? `${MONTH_NAMES[p.statementMonth - 1]} ${p.statementYear}` : "",
         Merchant: details?.merchant || "",
         "Check/Transaction Number": details?.checkTransactionNumber || "",
         "Date Created": payment.dateCreated ? new Date(payment.dateCreated).toLocaleDateString() : "",
@@ -430,6 +473,7 @@ function EAPaymentsContent() {
         "Amount",
         "Payment Type",
         "Status",
+        "Statement Month",
         "Merchant",
         "Check/Transaction Number",
         "Date Created",
@@ -680,6 +724,113 @@ function EAPaymentsContent() {
                     </>
                   )}
 
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium leading-none">Statement Month</label>
+                      <Select value={statementMonth} onValueChange={setStatementMonth}>
+                        <SelectTrigger className="mt-2" data-testid="select-statement-month">
+                          <SelectValue placeholder="Select month" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MONTH_NAMES.map((name, idx) => (
+                            <SelectItem key={idx + 1} value={String(idx + 1)}>
+                              {name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium leading-none">Statement Year</label>
+                      <Input
+                        type="number"
+                        min="2000"
+                        max="2099"
+                        placeholder="e.g. 2026"
+                        className="mt-2"
+                        data-testid="input-statement-year"
+                        value={statementYear}
+                        onChange={(e) => setStatementYear(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium leading-none">Payment Allocations</label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setAllocations([...allocations, { ledgerEaId: "", amount: "" }])}
+                        data-testid="button-add-allocation"
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        Add
+                      </Button>
+                    </div>
+                    {allocations.length > 0 && (
+                      <div className="mt-2 space-y-2">
+                        {allocations.map((alloc, idx) => (
+                          <div key={idx} className="flex gap-2 items-start">
+                            <Select
+                              value={alloc.ledgerEaId}
+                              onValueChange={(val) => {
+                                const updated = [...allocations];
+                                updated[idx] = { ...updated[idx], ledgerEaId: val };
+                                setAllocations(updated);
+                              }}
+                            >
+                              <SelectTrigger className="flex-1" data-testid={`select-allocation-ea-${idx}`}>
+                                <SelectValue placeholder="Select EA" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {allEAs.map((ea) => (
+                                  <SelectItem key={ea.id} value={ea.id}>
+                                    {ea.entityType}: {ea.entityId}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              placeholder="Amount"
+                              className="w-28"
+                              data-testid={`input-allocation-amount-${idx}`}
+                              value={alloc.amount}
+                              onChange={(e) => {
+                                const updated = [...allocations];
+                                updated[idx] = { ...updated[idx], amount: e.target.value };
+                                setAllocations(updated);
+                              }}
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setAllocations(allocations.filter((_, i) => i !== idx))}
+                              data-testid={`button-remove-allocation-${idx}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                        {allocations.length > 0 && (() => {
+                          const total = allocations.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+                          const paymentAmount = parseFloat(form.getValues("amount")) || 0;
+                          const diff = paymentAmount - total;
+                          return (
+                            <p className={`text-xs mt-1 ${Math.abs(diff) > 0.01 ? "text-destructive" : "text-muted-foreground"}`}>
+                              Allocated: {formatAmount(total, currencyCode)} / {formatAmount(paymentAmount, currencyCode)}
+                              {Math.abs(diff) > 0.01 && ` (${diff > 0 ? "under" : "over"} by ${formatAmount(Math.abs(diff), currencyCode)})`}
+                            </p>
+                          );
+                        })()}
+                      </div>
+                    )}
+                  </div>
+
                   <FormField
                     control={form.control}
                     name="memo"
@@ -901,6 +1052,7 @@ function EAPaymentsContent() {
                   </TableHead>
                   <TableHead>Payment Type</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Statement</TableHead>
                   <TableHead>Merchant</TableHead>
                   <TableHead>
                     <Button
@@ -957,6 +1109,11 @@ function EAPaymentsContent() {
                         <Badge variant={getStatusBadgeVariant(payment.status)} data-testid={`badge-status-${payment.id}`}>
                           {payment.status}
                         </Badge>
+                      </TableCell>
+                      <TableCell data-testid={`text-statement-${payment.id}`}>
+                        {(payment as any).statementMonth && (payment as any).statementYear
+                          ? `${MONTH_NAMES[(payment as any).statementMonth - 1]} ${(payment as any).statementYear}`
+                          : "-"}
                       </TableCell>
                       <TableCell data-testid={`text-merchant-${payment.id}`}>
                         {details?.merchant || "-"}

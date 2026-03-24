@@ -1,7 +1,7 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { db } from './db';
-import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
+import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledgerPaymentAllocations, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
 import type { 
   LedgerAccount, 
   InsertLedgerAccount,
@@ -11,6 +11,8 @@ import type {
   InsertLedgerEa,
   LedgerPayment,
   InsertLedgerPayment,
+  LedgerPaymentAllocation,
+  InsertLedgerPaymentAllocation,
   LedgerPaymentWithEntity,
   Ledger,
   InsertLedger
@@ -60,6 +62,13 @@ export interface LedgerPaymentStorage {
   create(payment: InsertLedgerPayment): Promise<LedgerPayment>;
   update(id: string, payment: Partial<InsertLedgerPayment>): Promise<LedgerPayment | undefined>;
   delete(id: string): Promise<boolean>;
+}
+
+export interface LedgerPaymentAllocationStorage {
+  getByPaymentId(paymentId: string): Promise<LedgerPaymentAllocation[]>;
+  create(allocation: InsertLedgerPaymentAllocation): Promise<LedgerPaymentAllocation>;
+  deleteByPaymentId(paymentId: string): Promise<number>;
+  replaceForPayment(paymentId: string, allocations: Omit<InsertLedgerPaymentAllocation, 'paymentId'>[]): Promise<LedgerPaymentAllocation[]>;
 }
 
 export type TransactionFilter = 
@@ -145,6 +154,7 @@ export interface LedgerStorage {
   stripePaymentMethods: StripePaymentMethodStorage;
   ea: LedgerEaStorage;
   payments: LedgerPaymentStorage;
+  paymentAllocations: LedgerPaymentAllocationStorage;
   entries: LedgerEntryStorage;
   invoices: LedgerInvoiceStorage;
 }
@@ -653,6 +663,50 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
   };
 }
 
+export function createLedgerPaymentAllocationStorage(): LedgerPaymentAllocationStorage {
+  return {
+    async getByPaymentId(paymentId: string): Promise<LedgerPaymentAllocation[]> {
+      const client = getClient();
+      return await client.select().from(ledgerPaymentAllocations)
+        .where(eq(ledgerPaymentAllocations.paymentId, paymentId));
+    },
+
+    async create(allocation: InsertLedgerPaymentAllocation): Promise<LedgerPaymentAllocation> {
+      const client = getClient();
+      const [result] = await client.insert(ledgerPaymentAllocations)
+        .values(allocation as any)
+        .returning();
+      return result;
+    },
+
+    async deleteByPaymentId(paymentId: string): Promise<number> {
+      const client = getClient();
+      const result = await client.delete(ledgerPaymentAllocations)
+        .where(eq(ledgerPaymentAllocations.paymentId, paymentId));
+      return result.rowCount || 0;
+    },
+
+    async replaceForPayment(paymentId: string, allocations: Omit<InsertLedgerPaymentAllocation, 'paymentId'>[]): Promise<LedgerPaymentAllocation[]> {
+      const client = getClient();
+      await client.delete(ledgerPaymentAllocations)
+        .where(eq(ledgerPaymentAllocations.paymentId, paymentId));
+
+      if (allocations.length === 0) return [];
+
+      const rows = allocations.map(a => ({
+        paymentId,
+        ledgerEaId: a.ledgerEaId,
+        amount: a.amount,
+      }));
+
+      const results = await client.insert(ledgerPaymentAllocations)
+        .values(rows as any)
+        .returning();
+      return results;
+    },
+  };
+}
+
 export function createLedgerEntryStorage(): LedgerEntryStorage {
   return {
     async getAll(): Promise<Ledger[]> {
@@ -1157,6 +1211,8 @@ export function createLedgerStorage(
     ? withStorageLogging(createLedgerPaymentStorage(), paymentLoggingConfig)
     : createLedgerPaymentStorage();
 
+  const paymentAllocationStorage = createLedgerPaymentAllocationStorage();
+
   const entryStorage = entryLoggingConfig
     ? withStorageLogging(createLedgerEntryStorage(), entryLoggingConfig)
     : createLedgerEntryStorage();
@@ -1168,6 +1224,7 @@ export function createLedgerStorage(
     stripePaymentMethods: stripePaymentMethodStorage,
     ea: eaStorage,
     payments: paymentStorage,
+    paymentAllocations: paymentAllocationStorage,
     entries: entryStorage,
     invoices: invoiceStorage
   };

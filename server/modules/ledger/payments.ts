@@ -1,12 +1,13 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../../storage";
 import { createUnifiedOptionsStorage } from "../../storage/unified-options";
-import { insertLedgerPaymentSchema, LedgerPayment } from "@shared/schema";
+import { insertLedgerPaymentSchema, LedgerPayment, type LedgerPaymentAllocation } from "@shared/schema";
 import { requireAccess, checkAccessInline } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { executeChargePlugins, TriggerType, PaymentSavedContext, LedgerNotification } from "../../charge-plugins";
 import { logger } from "../../logger";
 import { eventBus, EventType } from "../../services/event-bus";
+import { z } from "zod";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
@@ -20,8 +21,57 @@ async function checkPaymentEaAccessInline(req: Request, res: Response, ea: { ent
   return true;
 }
 
-async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<LedgerNotification[]> {
+async function triggerPaymentChargePlugins(payment: LedgerPayment, allocations?: LedgerPaymentAllocation[]): Promise<LedgerNotification[]> {
   try {
+    const allNotifications: LedgerNotification[] = [];
+
+    if (allocations && allocations.length > 0) {
+      for (const allocation of allocations) {
+        const ea = await storage.ledger.ea.get(allocation.ledgerEaId);
+        if (!ea) {
+          logger.warn("Cannot trigger charge plugins - allocation EA not found", {
+            service: "ledger-payments",
+            paymentId: payment.id,
+            allocationId: allocation.id,
+            ledgerEaId: allocation.ledgerEaId,
+          });
+          continue;
+        }
+
+        const payload = {
+          paymentId: payment.id,
+          amount: allocation.amount,
+          status: payment.status,
+          ledgerEaId: allocation.ledgerEaId,
+          accountId: ea.accountId,
+          entityType: ea.entityType,
+          entityId: ea.entityId,
+          dateCleared: payment.dateCleared,
+          memo: payment.memo,
+          paymentTypeId: payment.paymentType,
+          allocationId: allocation.id,
+        };
+
+        eventBus.emit(EventType.PAYMENT_SAVED, payload).catch(err => {
+          logger.error("Failed to emit PAYMENT_SAVED event for allocation", {
+            service: "ledger-payments",
+            paymentId: payment.id,
+            allocationId: allocation.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+
+        const context: PaymentSavedContext = {
+          trigger: TriggerType.PAYMENT_SAVED,
+          ...payload,
+        };
+
+        const result = await executeChargePlugins(context);
+        allNotifications.push(...result.notifications);
+      }
+      return allNotifications;
+    }
+
     const ea = await storage.ledger.ea.get(payment.ledgerEaId);
     if (!ea) {
       logger.warn("Cannot trigger charge plugins - EA not found", {
@@ -45,7 +95,6 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<Ledg
       paymentTypeId: payment.paymentType,
     };
 
-    // Emit event for any listeners (future notification plugins, etc.)
     eventBus.emit(EventType.PAYMENT_SAVED, payload).catch(err => {
       logger.error("Failed to emit PAYMENT_SAVED event", {
         service: "ledger-payments",
@@ -54,7 +103,6 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<Ledg
       });
     });
 
-    // Execute charge plugins directly (for backwards compatibility with notifications)
     const context: PaymentSavedContext = {
       trigger: TriggerType.PAYMENT_SAVED,
       ...payload,
@@ -183,19 +231,47 @@ export function registerLedgerPaymentRoutes(app: Express) {
     }
   });
 
+  const allocationSchema = z.array(z.object({
+    ledgerEaId: z.string().uuid(),
+    amount: z.string(),
+  }));
+
+  // GET /api/ledger/payments/:id/allocations - Get allocations for a payment
+  app.get("/api/ledger/payments/:id/allocations", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const payment = await storage.ledger.payments.get(id);
+      if (!payment) {
+        res.status(404).json({ message: "Payment not found" });
+        return;
+      }
+      const ea = await storage.ledger.ea.get(payment.ledgerEaId);
+      if (!ea) {
+        res.status(404).json({ message: "EA entry not found" });
+        return;
+      }
+      if (!await checkPaymentEaAccessInline(req, res, ea, 'ledger.ea.view')) return;
+
+      const allocations = await storage.ledger.paymentAllocations.getByPaymentId(id);
+      res.json(allocations);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch payment allocations" });
+    }
+  });
+
   // POST /api/ledger/payments - Create a new payment (staff only)
   app.post("/api/ledger/payments", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
-      // Convert date strings to Date objects
+      const { allocations: rawAllocations, ...rawBody } = req.body;
+
       const processedBody = {
-        ...req.body,
-        dateReceived: req.body.dateReceived ? new Date(req.body.dateReceived) : undefined,
-        dateCleared: req.body.dateCleared ? new Date(req.body.dateCleared) : undefined,
+        ...rawBody,
+        dateReceived: rawBody.dateReceived ? new Date(rawBody.dateReceived) : undefined,
+        dateCleared: rawBody.dateCleared ? new Date(rawBody.dateCleared) : undefined,
       };
       
       const validatedData = insertLedgerPaymentSchema.parse(processedBody);
       
-      // Verify EA exists
       const ea = await storage.ledger.ea.get(validatedData.ledgerEaId);
       if (!ea) {
         res.status(404).json({ message: "EA entry not found" });
@@ -203,12 +279,21 @@ export function registerLedgerPaymentRoutes(app: Express) {
       }
       
       const payment = await storage.ledger.payments.create(validatedData);
+
+      let savedAllocations: LedgerPaymentAllocation[] | undefined;
+      if (rawAllocations && Array.isArray(rawAllocations) && rawAllocations.length > 0) {
+        const validatedAllocations = allocationSchema.parse(rawAllocations);
+        savedAllocations = await storage.ledger.paymentAllocations.replaceForPayment(
+          payment.id,
+          validatedAllocations
+        );
+      }
       
-      // Trigger charge plugins - they handle their own reconciliation
-      const notifications = await triggerPaymentChargePlugins(payment);
+      const notifications = await triggerPaymentChargePlugins(payment, savedAllocations);
       
       res.status(201).json({
         ...payment,
+        allocations: savedAllocations || [],
         ledgerNotifications: notifications,
       });
     } catch (error) {
@@ -232,18 +317,18 @@ export function registerLedgerPaymentRoutes(app: Express) {
     try {
       const { id } = req.params;
       
-      // First get the existing payment
       const existingPayment = await storage.ledger.payments.get(id);
       if (!existingPayment) {
         res.status(404).json({ message: "Payment not found" });
         return;
       }
       
-      // Convert date strings to Date objects
+      const { allocations: rawAllocations, ...rawBody } = req.body;
+
       const processedBody = {
-        ...req.body,
-        dateReceived: req.body.dateReceived ? new Date(req.body.dateReceived) : undefined,
-        dateCleared: req.body.dateCleared ? new Date(req.body.dateCleared) : undefined,
+        ...rawBody,
+        dateReceived: rawBody.dateReceived ? new Date(rawBody.dateReceived) : undefined,
+        dateCleared: rawBody.dateCleared ? new Date(rawBody.dateCleared) : undefined,
       };
       
       const validatedData = insertLedgerPaymentSchema.partial().parse(processedBody);
@@ -254,12 +339,31 @@ export function registerLedgerPaymentRoutes(app: Express) {
         res.status(404).json({ message: "Payment not found" });
         return;
       }
+
+      let savedAllocations: LedgerPaymentAllocation[] | undefined;
+      if (rawAllocations !== undefined) {
+        if (Array.isArray(rawAllocations) && rawAllocations.length > 0) {
+          const validatedAllocations = allocationSchema.parse(rawAllocations);
+          savedAllocations = await storage.ledger.paymentAllocations.replaceForPayment(
+            id,
+            validatedAllocations
+          );
+        } else {
+          await storage.ledger.paymentAllocations.deleteByPaymentId(id);
+          savedAllocations = [];
+        }
+      } else {
+        const existing = await storage.ledger.paymentAllocations.getByPaymentId(id);
+        if (existing.length > 0) {
+          savedAllocations = existing;
+        }
+      }
       
-      // Trigger charge plugins - they handle their own reconciliation
-      const notifications = await triggerPaymentChargePlugins(payment);
+      const notifications = await triggerPaymentChargePlugins(payment, savedAllocations);
       
       res.json({
         ...payment,
+        allocations: savedAllocations,
         ledgerNotifications: notifications,
       });
     } catch (error) {
