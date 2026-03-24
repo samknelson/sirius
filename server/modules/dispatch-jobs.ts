@@ -9,6 +9,7 @@ import { dispatchEligPluginRegistry } from "../services/dispatch-elig-plugin-reg
 import { createDispatchEligibleWorkersStorage } from "../storage/dispatch-eligible-workers";
 import { isComponentEnabledSync } from "../services/component-cache";
 import { runPoll } from "../services/dispatch-poll";
+import { logger } from "../logger";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
@@ -349,6 +350,41 @@ export function registerDispatchJobsRoutes(
         res
           .status(500)
           .json({ message: "Failed to fetch eligibility plugins" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/admin/dispatch-elig-plugins/:pluginId/backfill",
+    dispatchComponent,
+    requireAccess("admin"),
+    async (req, res) => {
+      try {
+        const { pluginId } = req.params;
+        const plugin = dispatchEligPluginRegistry.getPlugin(pluginId);
+        if (!plugin) {
+          res.status(404).json({ message: "Dispatch eligibility plugin not found" });
+          return;
+        }
+        if (!plugin.backfill) {
+          res.status(400).json({ message: "This plugin does not support backfill" });
+          return;
+        }
+        const result = await plugin.backfill();
+        logger.info(`Admin-triggered backfill for plugin ${pluginId}`, {
+          service: "dispatch-elig-plugins",
+          pluginId,
+          workersProcessed: result.workersProcessed,
+          entriesCreated: result.entriesCreated,
+        });
+        res.json(result);
+      } catch (error) {
+        logger.error(`Failed admin-triggered backfill for plugin ${req.params.pluginId}`, {
+          service: "dispatch-elig-plugins",
+          pluginId: req.params.pluginId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res.status(500).json({ message: "Failed to run backfill" });
       }
     },
   );

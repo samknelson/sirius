@@ -74,6 +74,7 @@ export default function HtaHomeEmploymentStatusesPage() {
         description: "Home employment statuses have been updated.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/variables/by-name", VARIABLE_NAME] });
+      apiRequest("POST", "/api/admin/dispatch-elig-plugins/dispatch_hta_home_employer/backfill").catch(() => {});
     },
     onError: (error: Error) => {
       toast({
