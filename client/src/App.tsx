@@ -80,6 +80,7 @@ const WorkerSendPostal = lazy(() => import("@/pages/worker-send-postal"));
 const WorkerSendInApp = lazy(() => import("@/pages/worker-send-inapp"));
 const CommDetail = lazy(() => import("@/pages/comm-detail"));
 const WorkerDelete = lazy(() => import("@/pages/worker-delete"));
+const Companies = lazy(() => import("@/pages/companies"));
 const Employers = lazy(() => import("@/pages/employers"));
 const EmployersAdd = lazy(() => import("@/pages/employers-add"));
 const EmployerView = lazy(() => import("@/pages/employer-view"));
@@ -1095,6 +1096,22 @@ function Router() {
         <ProtectedRoute tabId="details" entityType="employer">
           <AuthenticatedLayout>
             <EmployerView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/companies/:id">
+        <ProtectedRoute policy="staff" component="employer.company">
+          <AuthenticatedLayout>
+            <Companies />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/companies">
+        <ProtectedRoute policy="staff" component="employer.company">
+          <AuthenticatedLayout>
+            <Companies />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

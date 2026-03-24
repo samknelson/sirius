@@ -78,6 +78,7 @@ import { registerWebServiceBundle } from "./modules/webservices";
 import { setupEdlsRoutes, EDLS_BUNDLE_CODE } from "./modules/webservices/edls";
 import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
 import { registerTerminologyRoutes } from "./modules/terminology";
+import { registerCompaniesRoutes } from "./modules/companies";
 import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
 import { addressValidationService } from "./services/address-validation";
@@ -1174,6 +1175,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register Web Service admin routes (for managing bundles, clients, credentials)
   registerWebServiceAdminRoutes(app, requireAuth, requirePermission);
+
+  // Register companies routes
+  registerCompaniesRoutes(app, requireAuth);
 
   const httpServer = createServer(app);
   return httpServer;

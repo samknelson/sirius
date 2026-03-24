@@ -48,6 +48,7 @@ import { type WorkerDispatchEligDenormStorage, createWorkerDispatchEligDenormSto
 import { type RawSqlStorage, createRawSqlStorage } from "./raw-sql";
 import { type ReadOnlyStorage, createReadOnlyStorage } from "./read-only";
 import { type WsBundleStorage, type WsClientStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsBundleStorage, createWsClientStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
+import { type CompanyStorage, createCompanyStorage, type EmployerCompanyStorage, createEmployerCompanyStorage } from "./companies";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "./db";
 import { employers, workers, contacts } from "@shared/schema";
@@ -110,6 +111,8 @@ export interface IStorage {
   wsClients: WsClientStorage;
   wsClientCredentials: WsClientCredentialStorage;
   wsClientIpRules: WsClientIpRuleStorage;
+  companies: CompanyStorage;
+  employerCompanies: EmployerCompanyStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -169,6 +172,8 @@ export class DatabaseStorage implements IStorage {
   wsClients: WsClientStorage;
   wsClientCredentials: WsClientCredentialStorage;
   wsClientIpRules: WsClientIpRuleStorage;
+  companies: CompanyStorage;
+  employerCompanies: EmployerCompanyStorage;
 
   constructor() {
     this.variables = withStorageLogging(createVariableStorage(), variableLoggingConfig);
@@ -300,6 +305,8 @@ export class DatabaseStorage implements IStorage {
     this.wsClients = createWsClientStorage();
     this.wsClientCredentials = createWsClientCredentialStorage();
     this.wsClientIpRules = createWsClientIpRuleStorage();
+    this.companies = createCompanyStorage();
+    this.employerCompanies = createEmployerCompanyStorage();
   }
 }
 

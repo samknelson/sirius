@@ -358,6 +358,19 @@ export default function Header() {
                       </Button>
                     </Link>
 
+                    {hasComponent("employer.company") && (
+                      <Link href="/companies" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location.startsWith("/companies") ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-companies"
+                        >
+                          <Building2 className="h-4 w-4 mr-2" />
+                          Companies
+                        </Button>
+                      </Link>
+                    )}
+
                     <Link href="/employer-contacts/all" onClick={() => setMobileMenuOpen(false)}>
                       <Button
                         variant={location.startsWith("/employer-contacts") ? "default" : "ghost"}
@@ -834,7 +847,7 @@ export default function Header() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    variant={location.startsWith("/employers") || location.startsWith("/employer-contacts") || location.startsWith("/dispatch") || location.startsWith("/edls") ? "default" : "ghost"}
+                    variant={location.startsWith("/employers") || location.startsWith("/employer-contacts") || location.startsWith("/companies") || location.startsWith("/dispatch") || location.startsWith("/edls") ? "default" : "ghost"}
                     size="sm"
                     data-testid="nav-employers"
                   >
@@ -852,6 +865,16 @@ export default function Header() {
                       </div>
                     </Link>
                   </DropdownMenuItem>
+                  {hasComponent("employer.company") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/companies" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-companies">
+                          <Building2 className="h-4 w-4 mr-2" />
+                          Companies
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem asChild>
                     <Link href="/employer-contacts/all" className="w-full">
                       <div className="flex items-center cursor-pointer" data-testid="menu-employer-contacts-all">
