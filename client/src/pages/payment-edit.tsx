@@ -35,6 +35,7 @@ type EAListItem = {
   accountId: string;
   entityType: string;
   entityId: string;
+  entityName: string | null;
   data: unknown;
 };
 
@@ -531,7 +532,7 @@ function PaymentEditContent() {
                         <SelectContent>
                           {allEAs.map((ea) => (
                             <SelectItem key={ea.id} value={ea.id}>
-                              {ea.entityType}: {ea.entityId}
+                              {ea.entityName || ea.entityId} ({ea.entityType})
                             </SelectItem>
                           ))}
                         </SelectContent>

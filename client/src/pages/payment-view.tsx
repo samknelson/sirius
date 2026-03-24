@@ -26,6 +26,13 @@ function PaymentViewContent() {
     queryKey: [`/api/ledger/payments/${id}/allocations`],
     enabled: !!id,
   });
+
+  const { data: allEAs = [] } = useQuery<{ id: string; entityType: string; entityId: string; entityName: string | null }[]>({
+    queryKey: ["/api/ledger/ea"],
+    enabled: allocations.length > 0,
+  });
+
+  const eaNameMap = new Map(allEAs.map(ea => [ea.id, ea.entityName || ea.entityId]));
   
   const currencyCode = paymentType?.currencyCode || 'USD';
 
@@ -181,7 +188,7 @@ function PaymentViewContent() {
                   <TableBody>
                     {allocations.map((alloc) => (
                       <TableRow key={alloc.id}>
-                        <TableCell className="text-sm">{alloc.ledgerEaId}</TableCell>
+                        <TableCell className="text-sm">{eaNameMap.get(alloc.ledgerEaId) || alloc.ledgerEaId}</TableCell>
                         <TableCell className="font-mono">
                           {formatAmount(parseFloat(alloc.amount), currencyCode)}
                         </TableCell>

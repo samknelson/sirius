@@ -19,7 +19,43 @@ export function registerLedgerEaRoutes(app: Express) {
   app.get("/api/ledger/ea", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const entries = await storage.ledger.ea.getAll();
-      res.json(entries);
+
+      const employerIds = entries.filter(e => e.entityType === "employer").map(e => e.entityId);
+      const workerIds = entries.filter(e => e.entityType === "worker").map(e => e.entityId);
+      const tpIds = entries.filter(e => e.entityType === "trustProvider" || e.entityType === "trust_provider").map(e => e.entityId);
+
+      const nameMap = new Map<string, string>();
+
+      if (employerIds.length > 0) {
+        for (const eid of employerIds) {
+          const emp = await storage.employers.get(eid);
+          if (emp) nameMap.set(eid, emp.name);
+        }
+      }
+      if (workerIds.length > 0) {
+        for (const wid of workerIds) {
+          const worker = await storage.workers.get(wid);
+          if (worker) {
+            const contact = await storage.contacts.get(worker.contactId);
+            if (contact) {
+              nameMap.set(wid, `${contact.given || ""} ${contact.family || ""}`.trim());
+            }
+          }
+        }
+      }
+      if (tpIds.length > 0) {
+        for (const tid of tpIds) {
+          const tp = await storage.trustProviders.get(tid);
+          if (tp) nameMap.set(tid, tp.name);
+        }
+      }
+
+      const enriched = entries.map(e => ({
+        ...e,
+        entityName: nameMap.get(e.entityId) || null,
+      }));
+
+      res.json(enriched);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch ledger EA entries" });
     }
