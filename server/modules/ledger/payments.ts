@@ -74,17 +74,29 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment, allocations?:
 
       try {
         const allExistingEntries = await storage.ledger.entries.getByReference("payment", payment.id);
+        const currentAllocationKeys = new Set(
+          allocations.map(a => `${payment.id}:${a.ledgerEaId}`)
+        );
         for (const entry of allExistingEntries) {
           if (entry.chargePlugin === "payment-simple-allocation" && entry.chargePluginKey) {
             const keyParts = entry.chargePluginKey.split(":");
-            const eaIdInKey = keyParts.length >= 3 ? keyParts[keyParts.length - 1] : null;
-            if (eaIdInKey && !currentEaIds.has(eaIdInKey)) {
+            if (keyParts.length >= 3) {
+              const keySuffix = keyParts.slice(-2).join(":");
+              if (!currentAllocationKeys.has(keySuffix)) {
+                await storage.ledger.entries.delete(entry.id);
+                logger.info("Deleted stale allocation ledger entry for removed EA", {
+                  service: "ledger-payments",
+                  paymentId: payment.id,
+                  deletedEntryId: entry.id,
+                  chargePluginKey: entry.chargePluginKey,
+                });
+              }
+            } else {
               await storage.ledger.entries.delete(entry.id);
-              logger.info("Deleted stale allocation ledger entry for removed EA", {
+              logger.info("Deleted legacy single-EA ledger entry replaced by allocations", {
                 service: "ledger-payments",
                 paymentId: payment.id,
                 deletedEntryId: entry.id,
-                staleEaId: eaIdInKey,
                 chargePluginKey: entry.chargePluginKey,
               });
             }
