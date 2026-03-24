@@ -124,18 +124,10 @@ const TABLE_GROUPS: TableGroup[] = [
     ],
   },
   {
-    label: "Employer operational data",
-    tables: [
-      "employer_policy_history",
-      "employer_contacts",
-      "policies",
-      "bargaining_units",
-    ],
-  },
-  {
     label: "Contacts",
     tables: [
       "trust_provider_contacts",
+      "employer_contacts",
       "contact_postal",
       "contact_phone",
       "contacts",
@@ -178,7 +170,7 @@ async function resetProductionData(): Promise<void> {
   console.log("This script will DELETE the following data:");
   console.log("  - Workers (and all related: hours, bans, certs, skills, ratings, IDs, WSH, MSH)");
   console.log("  - Contacts (and phone numbers, postal addresses)");
-  console.log("  - Employer contacts, policy history, policies, bargaining units");
+  console.log("  - Employer contacts");
   console.log("  - Dispatch data (jobs, dispatches, status, DNC, HFE, EBA, eligibility denorm)");
   console.log("  - EDLS data (sheets, crews, assignments)");
   console.log("  - Ledger entries (ledger, payments, EA links, stripe payment methods)");
@@ -197,6 +189,7 @@ async function resetProductionData(): Promise<void> {
   console.log("  - Users, auth identities, sessions");
   console.log("  - Roles, user roles, role permissions");
   console.log("  - Employers (the employer records themselves)");
+  console.log("  - Policies, bargaining units, employer policy history");
   console.log("  - Variables");
   console.log("  - Trust providers, trust benefits (trust provider contacts are deleted with contacts)");
   console.log("  - Ledger accounts (the account definitions)");
@@ -253,10 +246,6 @@ async function resetProductionData(): Promise<void> {
 
     const grandTotal = Object.values(counts).reduce((sum, c) => sum + c, 0);
     console.log(`\n  Total rows to delete: ${grandTotal}`);
-
-    console.log("\nClearing FK references from preserved tables...");
-    await db.execute(sql`UPDATE employers SET denorm_policy_id = NULL WHERE denorm_policy_id IS NOT NULL`);
-    console.log("  [OK] Cleared employers.denorm_policy_id");
 
     console.log("\nExecuting TRUNCATE...");
     await db.execute(sql.raw(
