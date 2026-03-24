@@ -191,6 +191,7 @@ const DispatchJobTypeNotificationsPage = lazy(() => import("@/pages/config/dispa
 const DispatchJobTypeRunSettingsPage = lazy(() => import("@/pages/config/dispatch-job-type-run-settings"));
 const DispatchDncConfigPage = lazy(() => import("@/pages/config/dispatch-dnc"));
 const DispatchEbaSettingsPage = lazy(() => import("@/pages/config/dispatch-eba-settings"));
+const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home-employment-statuses"));
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
 const WsBundlesPage = lazy(() => import("@/pages/config/ws/bundles"));
@@ -1753,6 +1754,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <DispatchEbaSettingsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sitespecific/hta/home-employment-statuses">
+        <ProtectedRoute policy="staff" component="sitespecific.hta">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <HtaHomeEmploymentStatusesPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
