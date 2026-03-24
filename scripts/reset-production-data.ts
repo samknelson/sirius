@@ -26,34 +26,12 @@ async function getCount(tableName: string): Promise<number> {
   return Number(row?.count ?? 0);
 }
 
-async function truncateAndReport(tables: string[], groupLabel: string): Promise<void> {
-  const counts: Record<string, number> = {};
-  for (const table of tables) {
-    try {
-      counts[table] = await getCount(table);
-    } catch {
-      counts[table] = 0;
-    }
-  }
-
-  await db.execute(sql.raw(
-    `TRUNCATE TABLE ${tables.join(', ')} RESTART IDENTITY`
-  ));
-
-  const details = tables
-    .filter(t => counts[t] > 0)
-    .map(t => `${t}: ${counts[t]}`)
-    .join(', ');
-
-  const totalDeleted = Object.values(counts).reduce((sum, c) => sum + c, 0);
-  if (details) {
-    console.log(`  [OK] ${groupLabel} (${totalDeleted} rows: ${details})`);
-  } else {
-    console.log(`  [OK] ${groupLabel} (0 rows)`);
-  }
+interface TableGroup {
+  label: string;
+  tables: string[];
 }
 
-const ALL_TABLES_IN_DELETE_ORDER: Array<{ tables: string[]; label: string }> = [
+const TABLE_GROUPS: TableGroup[] = [
   {
     label: "Communications",
     tables: [
@@ -146,15 +124,10 @@ const ALL_TABLES_IN_DELETE_ORDER: Array<{ tables: string[]; label: string }> = [
     ],
   },
   {
-    label: "Employer contacts and policy history",
+    label: "Employer operational data",
     tables: [
       "employer_policy_history",
       "employer_contacts",
-    ],
-  },
-  {
-    label: "Policies and bargaining units",
-    tables: [
       "policies",
       "bargaining_units",
     ],
@@ -241,12 +214,44 @@ async function resetProductionData(): Promise<void> {
     process.exit(0);
   }
 
-  console.log("\nStarting reset...\n");
+  console.log("\nCollecting row counts...\n");
 
   try {
-    for (const group of ALL_TABLES_IN_DELETE_ORDER) {
-      await truncateAndReport(group.tables, group.label);
+    const allTables: string[] = [];
+    const counts: Record<string, number> = {};
+
+    for (const group of TABLE_GROUPS) {
+      for (const table of group.tables) {
+        allTables.push(table);
+        try {
+          counts[table] = await getCount(table);
+        } catch {
+          counts[table] = 0;
+        }
+      }
     }
+
+    for (const group of TABLE_GROUPS) {
+      const details = group.tables
+        .filter(t => counts[t] > 0)
+        .map(t => `${t}: ${counts[t]}`)
+        .join(', ');
+      const totalInGroup = group.tables.reduce((sum, t) => sum + counts[t], 0);
+      if (details) {
+        console.log(`  ${group.label}: ${totalInGroup} rows (${details})`);
+      } else {
+        console.log(`  ${group.label}: 0 rows`);
+      }
+    }
+
+    const grandTotal = Object.values(counts).reduce((sum, c) => sum + c, 0);
+    console.log(`\n  Total rows to delete: ${grandTotal}`);
+
+    console.log("\nExecuting TRUNCATE...");
+    await db.execute(sql.raw(
+      `TRUNCATE TABLE ${allTables.join(', ')} RESTART IDENTITY`
+    ));
+    console.log("  [OK] All operational tables truncated");
 
     console.log("\nResetting sequences...");
     await db.execute(sql`SELECT setval('employers_sirius_id_seq', COALESCE((SELECT MAX(sirius_id) FROM employers), 0) + 1, false)`);
