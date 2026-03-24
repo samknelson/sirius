@@ -856,15 +856,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (companyId !== undefined) {
         const companyEnabled = await isComponentEnabled("employer.company");
-        if (!companyEnabled) {
-          return res.status(403).json({ message: "employer.company component is not enabled" });
-        }
-        const existing = await storage.employerCompanies.getByEmployerId(id);
-        if (existing) {
-          await storage.employerCompanies.delete(existing.id);
-        }
-        if (companyId !== null && companyId !== "") {
-          await storage.employerCompanies.create({ employerId: id, companyId });
+        if (companyEnabled) {
+          const existing = await storage.employerCompanies.getByEmployerId(id);
+          if (existing) {
+            await storage.employerCompanies.delete(existing.id);
+          }
+          if (companyId !== null && companyId !== "") {
+            await storage.employerCompanies.create({ employerId: id, companyId });
+          }
         }
       }
       
