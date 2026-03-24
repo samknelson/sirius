@@ -26,6 +26,8 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment, allocations?:
     const allNotifications: LedgerNotification[] = [];
 
     if (allocations && allocations.length > 0) {
+      const currentEaIds = new Set(allocations.map(a => a.ledgerEaId));
+
       for (const allocation of allocations) {
         const ea = await storage.ledger.ea.get(allocation.ledgerEaId);
         if (!ea) {
@@ -69,6 +71,33 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment, allocations?:
         const result = await executeChargePlugins(context);
         allNotifications.push(...result.notifications);
       }
+
+      try {
+        const allExistingEntries = await storage.ledger.entries.getByReference("payment", payment.id);
+        for (const entry of allExistingEntries) {
+          if (entry.chargePlugin && entry.chargePluginKey) {
+            const keyParts = entry.chargePluginKey.split(":");
+            const eaIdInKey = keyParts.length >= 3 ? keyParts[keyParts.length - 1] : null;
+            if (eaIdInKey && !currentEaIds.has(eaIdInKey)) {
+              await storage.ledger.entries.delete(entry.id);
+              logger.info("Deleted stale allocation ledger entry for removed EA", {
+                service: "ledger-payments",
+                paymentId: payment.id,
+                deletedEntryId: entry.id,
+                staleEaId: eaIdInKey,
+                chargePluginKey: entry.chargePluginKey,
+              });
+            }
+          }
+        }
+      } catch (cleanupErr) {
+        logger.error("Failed to clean up stale allocation entries", {
+          service: "ledger-payments",
+          paymentId: payment.id,
+          error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+        });
+      }
+
       return allNotifications;
     }
 
@@ -237,7 +266,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
   }));
 
   // GET /api/ledger/payments/:id/allocations - Get allocations for a payment
-  app.get("/api/ledger/payments/:id/allocations", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
+  app.get("/api/ledger/payments/:id/allocations", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
       const payment = await storage.ledger.payments.get(id);
@@ -275,6 +304,11 @@ export function registerLedgerPaymentRoutes(app: Express) {
       let validatedAllocations: { ledgerEaId: string; amount: string }[] | undefined;
       if (rawAllocations && Array.isArray(rawAllocations) && rawAllocations.length > 0) {
         validatedAllocations = allocationSchema.parse(rawAllocations);
+        const eaIds = validatedAllocations.map(a => a.ledgerEaId);
+        if (new Set(eaIds).size !== eaIds.length) {
+          res.status(400).json({ message: "Duplicate EA allocations are not allowed" });
+          return;
+        }
         const allocationTotal = validatedAllocations.reduce((sum, a) => sum + parseFloat(a.amount), 0);
         const paymentAmount = parseFloat(validatedData.amount);
         if (Math.abs(paymentAmount - allocationTotal) > 0.01) {
@@ -346,6 +380,11 @@ export function registerLedgerPaymentRoutes(app: Express) {
       let validatedAllocationsForUpdate: { ledgerEaId: string; amount: string }[] | undefined;
       if (rawAllocations !== undefined && Array.isArray(rawAllocations) && rawAllocations.length > 0) {
         validatedAllocationsForUpdate = allocationSchema.parse(rawAllocations);
+        const eaIds = validatedAllocationsForUpdate.map(a => a.ledgerEaId);
+        if (new Set(eaIds).size !== eaIds.length) {
+          res.status(400).json({ message: "Duplicate EA allocations are not allowed" });
+          return;
+        }
         const allocationTotal = validatedAllocationsForUpdate.reduce((sum, a) => sum + parseFloat(a.amount), 0);
         const paymentAmount = parseFloat(validatedData.amount ?? existingPayment.amount);
         if (Math.abs(paymentAmount - allocationTotal) > 0.01) {
