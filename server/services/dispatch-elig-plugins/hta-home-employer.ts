@@ -238,6 +238,15 @@ export async function backfillHtaHomeEmployerEligibility(): Promise<{ workersPro
     return { workersProcessed: 0, entriesCreated: 0 };
   }
 
+  const eligStorage = createWorkerDispatchEligDenormStorage();
+  const deletedEmployer = await eligStorage.deleteAllByCategory(HTA_HOME_EMPLOYER_CATEGORY);
+  const deletedCompany = await eligStorage.deleteAllByCategory(HTA_HOME_COMPANY_CATEGORY);
+  logger.info("Cleared existing HTA home employer eligibility entries before backfill", {
+    service: "dispatch-elig-hta-home-employer",
+    deletedEmployer,
+    deletedCompany,
+  });
+
   const statusIds = await getConfiguredStatusIds();
   if (statusIds.length === 0) {
     logger.info("No home employment statuses configured, skipping HTA home employer backfill", {
