@@ -283,6 +283,12 @@ export function registerLedgerPaymentRoutes(app: Express) {
       let savedAllocations: LedgerPaymentAllocation[] | undefined;
       if (rawAllocations && Array.isArray(rawAllocations) && rawAllocations.length > 0) {
         const validatedAllocations = allocationSchema.parse(rawAllocations);
+        const allocationTotal = validatedAllocations.reduce((sum, a) => sum + parseFloat(a.amount), 0);
+        const paymentAmount = parseFloat(payment.amount);
+        if (Math.abs(paymentAmount - allocationTotal) > 0.01) {
+          res.status(400).json({ message: "Allocation amounts must equal the payment amount" });
+          return;
+        }
         savedAllocations = await storage.ledger.paymentAllocations.replaceForPayment(
           payment.id,
           validatedAllocations
@@ -344,6 +350,12 @@ export function registerLedgerPaymentRoutes(app: Express) {
       if (rawAllocations !== undefined) {
         if (Array.isArray(rawAllocations) && rawAllocations.length > 0) {
           const validatedAllocations = allocationSchema.parse(rawAllocations);
+          const allocationTotal = validatedAllocations.reduce((sum, a) => sum + parseFloat(a.amount), 0);
+          const paymentAmount = parseFloat(payment.amount);
+          if (Math.abs(paymentAmount - allocationTotal) > 0.01) {
+            res.status(400).json({ message: "Allocation amounts must equal the payment amount" });
+            return;
+          }
           savedAllocations = await storage.ledger.paymentAllocations.replaceForPayment(
             id,
             validatedAllocations

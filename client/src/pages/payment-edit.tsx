@@ -173,7 +173,7 @@ function PaymentEditContent() {
   }, [payment, category, user]);
 
   const updatePaymentMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       return await apiRequest("PUT", `/api/ledger/payments/${id}`, data);
     },
     onSuccess: (data: any) => {
@@ -238,24 +238,29 @@ function PaymentEditContent() {
       delete details.checkTransactionNumber;
     }
     
-    const submissionData: any = {
+    const filteredAllocations = allocations.filter(a => a.ledgerEaId && a.amount);
+
+    if (filteredAllocations.length > 0) {
+      const total = filteredAllocations.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+      const paymentAmount = parseFloat(data.amount) || 0;
+      if (Math.abs(paymentAmount - total) > 0.01) {
+        toast({
+          title: "Allocation mismatch",
+          description: "Allocation amounts must equal the payment amount.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    const submissionData: Record<string, unknown> = {
       ...data,
       details: Object.keys(details).length > 0 ? details : null,
-      status: category === "adjustment" ? "cleared" as const : data.status,
+      status: category === "adjustment" ? "cleared" : data.status,
+      statementMonth: statementMonth ? parseInt(statementMonth, 10) : null,
+      statementYear: statementYear ? parseInt(statementYear, 10) : null,
+      allocations: filteredAllocations,
     };
-
-    if (statementMonth) {
-      submissionData.statementMonth = parseInt(statementMonth, 10);
-    } else {
-      submissionData.statementMonth = null;
-    }
-    if (statementYear) {
-      submissionData.statementYear = parseInt(statementYear, 10);
-    } else {
-      submissionData.statementYear = null;
-    }
-
-    submissionData.allocations = allocations.filter(a => a.ledgerEaId && a.amount);
     
     updatePaymentMutation.mutate(submissionData);
   });

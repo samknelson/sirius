@@ -156,7 +156,7 @@ function EAPaymentsContent() {
   }, [dialogOpen, category, user]);
 
   const createPaymentMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       return await apiRequest("POST", "/api/ledger/payments", data);
     },
     onSuccess: (data: any) => {
@@ -237,22 +237,29 @@ function EAPaymentsContent() {
       delete details.checkTransactionNumber;
     }
     
-    const submissionData: any = {
+    const filteredAllocations = allocations.filter(a => a.ledgerEaId && a.amount);
+
+    if (filteredAllocations.length > 0) {
+      const total = filteredAllocations.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+      const paymentAmount = parseFloat(data.amount) || 0;
+      if (Math.abs(paymentAmount - total) > 0.01) {
+        toast({
+          title: "Allocation mismatch",
+          description: "Allocation amounts must equal the payment amount.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    const submissionData: Record<string, unknown> = {
       ...data,
       details: Object.keys(details).length > 0 ? details : null,
-      status: category === "adjustment" ? "cleared" as const : data.status,
+      status: category === "adjustment" ? "cleared" : data.status,
+      statementMonth: statementMonth ? parseInt(statementMonth, 10) : undefined,
+      statementYear: statementYear ? parseInt(statementYear, 10) : undefined,
+      allocations: filteredAllocations.length > 0 ? filteredAllocations : undefined,
     };
-
-    if (statementMonth) {
-      submissionData.statementMonth = parseInt(statementMonth, 10);
-    }
-    if (statementYear) {
-      submissionData.statementYear = parseInt(statementYear, 10);
-    }
-
-    if (allocations.length > 0) {
-      submissionData.allocations = allocations.filter(a => a.ledgerEaId && a.amount);
-    }
     
     createPaymentMutation.mutate(submissionData);
   });
