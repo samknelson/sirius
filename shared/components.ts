@@ -170,7 +170,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Employer Companies",
     description: "Allows related employers to be grouped together in companies",
     enabledByDefault: false,
-    category: "core"
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/employer/company-schema.ts",
+      tables: ["companies"]
+    }
   },
   {
     id: "worker.login",
