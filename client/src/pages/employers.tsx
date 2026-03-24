@@ -9,7 +9,7 @@ import { Company } from "@shared/schema/employer/company-schema";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useAuth } from "@/contexts/AuthContext";
 
-type EmployerWithCompany = Employer & { companyName?: string | null };
+type EmployerWithCompany = Employer & { companyId?: string | null; companyName?: string | null };
 
 export default function Employers() {
   const [location] = useLocation();

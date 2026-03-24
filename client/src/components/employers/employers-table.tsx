@@ -11,7 +11,7 @@ import { Employer } from "@shared/schema";
 import { Company } from "@shared/schema/employer/company-schema";
 import { Link } from "wouter";
 
-type EmployerWithCompany = Employer & { companyName?: string | null };
+type EmployerWithCompany = Employer & { companyId?: string | null; companyName?: string | null };
 
 interface EmployersTableProps {
   employers: EmployerWithCompany[];
@@ -50,9 +50,9 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
 
     if (showCompany && companyFilter !== "all") {
       if (companyFilter === "none") {
-        result = result.filter(emp => !emp.companyName);
+        result = result.filter(emp => !emp.companyId);
       } else {
-        result = result.filter(emp => emp.companyName === companyFilter);
+        result = result.filter(emp => emp.companyId === companyFilter);
       }
     }
 
@@ -139,7 +139,7 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
             </div>
 
             {/* Company Filter */}
-            {showCompany && companies.length > 0 && (
+            {showCompany && (
               <div className="flex items-center space-x-2">
                 <Label className="text-sm text-muted-foreground whitespace-nowrap">Company:</Label>
                 <Select value={companyFilter} onValueChange={setCompanyFilter}>
@@ -150,7 +150,7 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                     <SelectItem value="all" data-testid="select-company-all">All</SelectItem>
                     <SelectItem value="none" data-testid="select-company-none">No company</SelectItem>
                     {companies.map((c) => (
-                      <SelectItem key={c.id} value={c.name} data-testid={`select-company-${c.id}`}>
+                      <SelectItem key={c.id} value={c.id} data-testid={`select-company-${c.id}`}>
                         {c.name}
                       </SelectItem>
                     ))}

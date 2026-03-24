@@ -16,7 +16,7 @@ export interface EmployerCompanyStorage {
   get(id: string): Promise<EmployerCompany | undefined>;
   getByCompanyId(companyId: string): Promise<EmployerCompany[]>;
   getByEmployerId(employerId: string): Promise<EmployerCompany | undefined>;
-  getAllWithCompanyName(): Promise<Map<string, string>>;
+  getAllWithCompanyName(): Promise<Map<string, { companyId: string; companyName: string }>>;
   create(ec: InsertEmployerCompany): Promise<EmployerCompany>;
   delete(id: string): Promise<boolean>;
 }
@@ -73,18 +73,19 @@ export function createEmployerCompanyStorage(): EmployerCompanyStorage {
       return ec || undefined;
     },
 
-    async getAllWithCompanyName(): Promise<Map<string, string>> {
+    async getAllWithCompanyName(): Promise<Map<string, { companyId: string; companyName: string }>> {
       const client = getClient();
       const rows = await client
         .select({
           employerId: employerCompanies.employerId,
+          companyId: employerCompanies.companyId,
           companyName: companies.name,
         })
         .from(employerCompanies)
         .innerJoin(companies, eq(employerCompanies.companyId, companies.id));
-      const map = new Map<string, string>();
+      const map = new Map<string, { companyId: string; companyName: string }>();
       for (const row of rows) {
-        map.set(row.employerId, row.companyName);
+        map.set(row.employerId, { companyId: row.companyId, companyName: row.companyName });
       }
       return map;
     },

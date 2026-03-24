@@ -726,10 +726,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (companyEnabled) {
         try {
           const companyMap = await storage.employerCompanies.getAllWithCompanyName();
-          const enriched = employers.map(emp => ({
-            ...emp,
-            companyName: companyMap.get(emp.id) || null,
-          }));
+          const enriched = employers.map(emp => {
+            const entry = companyMap.get(emp.id);
+            return {
+              ...emp,
+              companyId: entry?.companyId || null,
+              companyName: entry?.companyName || null,
+            };
+          });
           return res.json(enriched);
         } catch {
           return res.json(employers);
