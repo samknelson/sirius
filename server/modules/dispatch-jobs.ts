@@ -9,6 +9,7 @@ import { dispatchEligPluginRegistry } from "../services/dispatch-elig-plugin-reg
 import { createDispatchEligibleWorkersStorage } from "../storage/dispatch-eligible-workers";
 import { isComponentEnabledSync } from "../services/component-cache";
 import { runPoll } from "../services/dispatch-poll";
+import { sendInapp } from "../services/inapp-sender";
 import { logger } from "../logger";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
@@ -370,21 +371,72 @@ export function registerDispatchJobsRoutes(
           res.status(400).json({ message: "This plugin does not support backfill" });
           return;
         }
-        const result = await plugin.backfill();
-        logger.info(`Admin-triggered backfill for plugin ${pluginId}`, {
-          service: "dispatch-elig-plugins",
-          pluginId,
-          workersProcessed: result.workersProcessed,
-          entriesCreated: result.entriesCreated,
+
+        const user = (req as any).user;
+        const userId = user?.dbUser?.id as string | undefined;
+        const userEmail = user?.dbUser?.email as string | undefined;
+        let contactId: string | null = null;
+        if (userEmail) {
+          const contact = await storage.contacts.getContactByEmail(userEmail);
+          contactId = contact?.id || null;
+        }
+
+        if (contactId && userId) {
+          await sendInapp({
+            contactId,
+            userId,
+            title: "Backfill Started",
+            body: `Backfill started for plugin "${plugin.name}". You will be notified when it completes.`,
+            initiatedBy: "system",
+          });
+        }
+
+        res.status(202).json({ message: "Backfill started" });
+
+        const backfillPluginId = pluginId;
+        const backfillPlugin = plugin;
+        setImmediate(async () => {
+          try {
+            const result = await backfillPlugin.backfill!();
+            logger.info(`Admin-triggered backfill for plugin ${backfillPluginId}`, {
+              service: "dispatch-elig-plugins",
+              pluginId: backfillPluginId,
+              workersProcessed: result.workersProcessed,
+              entriesCreated: result.entriesCreated,
+            });
+            if (contactId && userId) {
+              await sendInapp({
+                contactId,
+                userId,
+                title: "Backfill Complete",
+                body: `Backfill for "${backfillPlugin.name}" finished: ${result.workersProcessed} workers processed, ${result.entriesCreated} entries created.`,
+                initiatedBy: "system",
+              });
+            }
+          } catch (error) {
+            logger.error(`Failed admin-triggered backfill for plugin ${backfillPluginId}`, {
+              service: "dispatch-elig-plugins",
+              pluginId: backfillPluginId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            if (contactId && userId) {
+              await sendInapp({
+                contactId,
+                userId,
+                title: "Backfill Failed",
+                body: `Backfill for "${backfillPlugin.name}" failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+                initiatedBy: "system",
+              });
+            }
+          }
         });
-        res.json(result);
       } catch (error) {
-        logger.error(`Failed admin-triggered backfill for plugin ${req.params.pluginId}`, {
+        logger.error(`Failed to initiate backfill for plugin ${req.params.pluginId}`, {
           service: "dispatch-elig-plugins",
           pluginId: req.params.pluginId,
           error: error instanceof Error ? error.message : String(error),
         });
-        res.status(500).json({ message: "Failed to run backfill" });
+        res.status(500).json({ message: "Failed to start backfill" });
       }
     },
   );

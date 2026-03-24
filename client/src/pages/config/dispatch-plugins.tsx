@@ -24,10 +24,10 @@ export default function DispatchPluginsPage() {
       setBackfillingPlugin(pluginId);
       return apiRequest("POST", `/api/admin/dispatch-elig-plugins/${pluginId}/backfill`);
     },
-    onSuccess: (data: { workersProcessed: number; entriesCreated: number }, pluginId: string) => {
+    onSuccess: (_data: { message: string }, _pluginId: string) => {
       toast({
-        title: "Backfill complete",
-        description: `Processed ${data.workersProcessed} workers, created ${data.entriesCreated} entries.`,
+        title: "Backfill started",
+        description: "You'll be notified when it completes.",
       });
       setBackfillingPlugin(null);
     },
