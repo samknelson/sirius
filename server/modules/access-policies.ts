@@ -234,6 +234,7 @@ export function registerAccessPolicyRoutes(app: Express) {
         worker: 'worker.view',
         employer: 'employer.view',
         provider: 'trust.provider.mine',
+        company: 'staff',
         employer_contact: 'employer.manage',
         provider_contact: 'trust.provider.mine',
         policy: 'authenticated',

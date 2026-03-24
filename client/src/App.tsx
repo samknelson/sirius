@@ -81,6 +81,9 @@ const WorkerSendInApp = lazy(() => import("@/pages/worker-send-inapp"));
 const CommDetail = lazy(() => import("@/pages/comm-detail"));
 const WorkerDelete = lazy(() => import("@/pages/worker-delete"));
 const Companies = lazy(() => import("@/pages/companies"));
+const CompanyView = lazy(() => import("@/pages/company-view"));
+const CompanyEdit = lazy(() => import("@/pages/company-edit"));
+const CompanyAdd = lazy(() => import("@/pages/company-add"));
 const Employers = lazy(() => import("@/pages/employers"));
 const EmployersAdd = lazy(() => import("@/pages/employers-add"));
 const EmployerView = lazy(() => import("@/pages/employer-view"));
@@ -1100,10 +1103,26 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/companies/add">
+        <ProtectedRoute policy="staff" component="employer.company">
+          <AuthenticatedLayout>
+            <CompanyAdd />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/companies/:id/edit">
+        <ProtectedRoute policy="staff" component="employer.company">
+          <AuthenticatedLayout>
+            <CompanyEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/companies/:id">
         <ProtectedRoute policy="staff" component="employer.company">
           <AuthenticatedLayout>
-            <Companies />
+            <CompanyView />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

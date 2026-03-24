@@ -46,6 +46,7 @@ export type TabEntityType =
   | 'worker' 
   | 'employer' 
   | 'employer_contact' 
+  | 'company'
   | 'provider' 
   | 'provider_contact' 
   | 'policy' 
@@ -190,6 +191,14 @@ export const employerTabTree: HierarchicalTab[] = [
     ]
   },
   { id: 'dispatch', label: 'Dispatch', hrefTemplate: '/employers/{id}/dispatch', permission: 'staff', component: 'dispatch' },
+];
+
+/**
+ * Company entity tab tree
+ */
+export const companyTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/companies/{id}', permission: 'staff', component: 'employer.company' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/companies/{id}/edit', permission: 'staff', component: 'employer.company' },
 ];
 
 /**
@@ -462,6 +471,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   worker: workerTabTree,
   employer: employerTabTree,
   employer_contact: employerContactTabTree,
+  company: companyTabTree,
   provider: providerTabTree,
   provider_contact: providerContactTabTree,
   policy: policyTabTree,
@@ -668,6 +678,7 @@ export const tabRegistry: Record<TabEntityType, TabDefinition[]> = {
   worker: allWorkerTabs,
   employer: allEmployerTabs,
   employer_contact: [],
+  company: flattenTabTree(companyTabTree),
   provider: allProviderTabs,
   provider_contact: [],
   policy: flattenTabTree(policyTabTree),

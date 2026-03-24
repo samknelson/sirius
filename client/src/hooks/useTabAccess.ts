@@ -193,6 +193,17 @@ export function useEmployerTabAccess(employerId: string | undefined, enabled = t
 }
 
 /**
+ * Hook specifically for company entity tabs
+ */
+export function useCompanyTabAccess(companyId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'company', 
+    entityId: companyId, 
+    enabled 
+  });
+}
+
+/**
  * Hook specifically for provider entity tabs
  */
 export function useProviderTabAccess(providerId: string | undefined, enabled = true) {
