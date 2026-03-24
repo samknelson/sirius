@@ -21,8 +21,9 @@ async function confirm(message: string): Promise<boolean> {
 }
 
 async function getCount(tableName: string): Promise<number> {
-  const result = await db.execute(sql.raw(`SELECT COUNT(*) as c FROM ${tableName}`));
-  return parseInt(String((result.rows[0] as any)?.c || '0'), 10);
+  const result = await db.execute(sql.raw(`SELECT COUNT(*)::int as count FROM ${tableName}`));
+  const row = result.rows[0] as Record<string, unknown> | undefined;
+  return Number(row?.count ?? 0);
 }
 
 async function truncateAndReport(tables: string[], groupLabel: string): Promise<void> {
@@ -36,7 +37,7 @@ async function truncateAndReport(tables: string[], groupLabel: string): Promise<
   }
 
   await db.execute(sql.raw(
-    `TRUNCATE TABLE ${tables.join(', ')} RESTART IDENTITY CASCADE`
+    `TRUNCATE TABLE ${tables.join(', ')} RESTART IDENTITY`
   ));
 
   const details = tables
@@ -46,11 +47,156 @@ async function truncateAndReport(tables: string[], groupLabel: string): Promise<
 
   const totalDeleted = Object.values(counts).reduce((sum, c) => sum + c, 0);
   if (details) {
-    console.log(`  [OK] ${groupLabel} cleared (${totalDeleted} rows: ${details})`);
+    console.log(`  [OK] ${groupLabel} (${totalDeleted} rows: ${details})`);
   } else {
-    console.log(`  [OK] ${groupLabel} cleared (0 rows)`);
+    console.log(`  [OK] ${groupLabel} (0 rows)`);
   }
 }
+
+const ALL_TABLES_IN_DELETE_ORDER: Array<{ tables: string[]; label: string }> = [
+  {
+    label: "Communications",
+    tables: [
+      "comm_inapp",
+      "comm_postal_optin",
+      "comm_postal",
+      "comm_email_optin",
+      "comm_email",
+      "comm_sms_optin",
+      "comm_sms",
+      "comm",
+    ],
+  },
+  {
+    label: "EDLS data",
+    tables: [
+      "edls_assignments",
+      "edls_crews",
+      "edls_sheets",
+    ],
+  },
+  {
+    label: "Dispatch data",
+    tables: [
+      "dispatches",
+      "dispatch_jobs",
+      "worker_dispatch_elig_denorm",
+      "worker_dispatch_status",
+      "worker_dispatch_dnc",
+      "worker_dispatch_hfe",
+      "worker_dispatch_eba",
+    ],
+  },
+  {
+    label: "Wizards",
+    tables: [
+      "wizard_report_data",
+      "wizard_feed_mappings",
+      "wizard_employer_monthly",
+      "wizards",
+    ],
+  },
+  {
+    label: "Ledger entries",
+    tables: [
+      "ledger",
+      "ledger_payments",
+      "ledger_ea",
+      "ledger_stripe_paymentmethods",
+    ],
+  },
+  {
+    label: "Events",
+    tables: [
+      "event_participants",
+      "event_occurrences",
+      "events",
+    ],
+  },
+  {
+    label: "Cardchecks",
+    tables: [
+      "cardchecks",
+      "cardcheck_definitions",
+    ],
+  },
+  {
+    label: "BTU site-specific data",
+    tables: [
+      "btu_territory_workers",
+      "btu_territory_reps",
+      "btu_territories",
+      "sitespecific_btu_employer_map",
+      "sitespecific_btu_csg",
+    ],
+  },
+  {
+    label: "Worker data",
+    tables: [
+      "worker_steward_assignments",
+      "worker_certifications",
+      "worker_skills",
+      "worker_ratings",
+      "worker_ids",
+      "worker_wsh",
+      "worker_msh",
+      "worker_hours",
+      "worker_bans",
+      "workers",
+    ],
+  },
+  {
+    label: "Employer contacts and policy history",
+    tables: [
+      "employer_policy_history",
+      "employer_contacts",
+    ],
+  },
+  {
+    label: "Policies and bargaining units",
+    tables: [
+      "policies",
+      "bargaining_units",
+    ],
+  },
+  {
+    label: "Contacts",
+    tables: [
+      "contact_postal",
+      "contact_phone",
+      "contacts",
+    ],
+  },
+  {
+    label: "WMB data",
+    tables: [
+      "trust_wmb_scan_queue",
+      "trust_wmb_scan_status",
+      "trust_wmb",
+    ],
+  },
+  {
+    label: "Files and e-signatures",
+    tables: [
+      "esigs",
+      "files",
+    ],
+  },
+  {
+    label: "Logs and cron runs",
+    tables: [
+      "winston_logs",
+      "cron_job_runs",
+    ],
+  },
+  {
+    label: "Bookmarks and flood events",
+    tables: [
+      "bookmarks",
+      "flood",
+    ],
+  },
+];
 
 async function resetProductionData(): Promise<void> {
   console.log("=== PRODUCTION DATA RESET ===");
@@ -98,115 +244,9 @@ async function resetProductionData(): Promise<void> {
   console.log("\nStarting reset...\n");
 
   try {
-    await truncateAndReport([
-      "comm_inapp",
-      "comm_postal_optin",
-      "comm_postal",
-      "comm_email_optin",
-      "comm_email",
-      "comm_sms_optin",
-      "comm_sms",
-      "comm",
-    ], "Communications");
-
-    await truncateAndReport([
-      "edls_assignments",
-      "edls_crews",
-      "edls_sheets",
-    ], "EDLS data");
-
-    await truncateAndReport([
-      "dispatches",
-      "dispatch_jobs",
-      "worker_dispatch_elig_denorm",
-      "worker_dispatch_status",
-      "worker_dispatch_dnc",
-      "worker_dispatch_hfe",
-      "worker_dispatch_eba",
-    ], "Dispatch data");
-
-    await truncateAndReport([
-      "wizard_report_data",
-      "wizard_feed_mappings",
-      "wizard_employer_monthly",
-      "wizards",
-    ], "Wizards");
-
-    await truncateAndReport([
-      "ledger",
-      "ledger_payments",
-      "ledger_ea",
-      "ledger_stripe_paymentmethods",
-    ], "Ledger entries");
-
-    await truncateAndReport([
-      "event_participants",
-      "event_occurrences",
-      "events",
-    ], "Events");
-
-    await truncateAndReport([
-      "worker_steward_assignments",
-      "worker_certifications",
-      "worker_skills",
-      "worker_ratings",
-      "worker_ids",
-      "worker_wsh",
-      "worker_msh",
-      "worker_hours",
-      "worker_bans",
-      "workers",
-    ], "Workers and related data");
-
-    await truncateAndReport([
-      "employer_policy_history",
-      "employer_contacts",
-    ], "Employer contacts and policy history");
-
-    await truncateAndReport([
-      "policies",
-      "bargaining_units",
-    ], "Policies and bargaining units");
-
-    await truncateAndReport([
-      "contact_postal",
-      "contact_phone",
-      "contacts",
-    ], "Contacts");
-
-    await truncateAndReport([
-      "trust_wmb_scan_queue",
-      "trust_wmb_scan_status",
-      "trust_wmb",
-    ], "WMB data");
-
-    await truncateAndReport([
-      "cardchecks",
-      "cardcheck_definitions",
-    ], "Cardchecks");
-
-    await truncateAndReport([
-      "btu_territory_workers",
-      "btu_territory_reps",
-      "btu_territories",
-      "sitespecific_btu_employer_map",
-      "sitespecific_btu_csg",
-    ], "BTU site-specific data");
-
-    await truncateAndReport([
-      "esigs",
-      "files",
-    ], "Files and e-signatures");
-
-    await truncateAndReport([
-      "winston_logs",
-      "cron_job_runs",
-    ], "Logs and cron runs");
-
-    await truncateAndReport([
-      "bookmarks",
-      "flood",
-    ], "Bookmarks and flood events");
+    for (const group of ALL_TABLES_IN_DELETE_ORDER) {
+      await truncateAndReport(group.tables, group.label);
+    }
 
     console.log("\nResetting sequences...");
     await db.execute(sql`SELECT setval('employers_sirius_id_seq', COALESCE((SELECT MAX(sirius_id) FROM employers), 0) + 1, false)`);
