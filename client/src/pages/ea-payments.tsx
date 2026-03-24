@@ -1118,8 +1118,8 @@ function EAPaymentsContent() {
                         </Badge>
                       </TableCell>
                       <TableCell data-testid={`text-statement-${payment.id}`}>
-                        {(payment as any).statementMonth && (payment as any).statementYear
-                          ? `${MONTH_NAMES[(payment as any).statementMonth - 1]} ${(payment as any).statementYear}`
+                        {payment.statementMonth && payment.statementYear
+                          ? `${MONTH_NAMES[payment.statementMonth - 1]} ${payment.statementYear}`
                           : "-"}
                       </TableCell>
                       <TableCell data-testid={`text-merchant-${payment.id}`}>

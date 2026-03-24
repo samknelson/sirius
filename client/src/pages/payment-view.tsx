@@ -123,14 +123,14 @@ function PaymentViewContent() {
               </div>
             )}
 
-            {((payment as any).statementMonth || (payment as any).statementYear) && (
+            {(payment.statementMonth || payment.statementYear) && (
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Statement Period</label>
                 <p className="mt-1" data-testid="text-statement-period">
-                  {(payment as any).statementMonth
-                    ? MONTH_NAMES[(payment as any).statementMonth - 1]
+                  {payment.statementMonth
+                    ? MONTH_NAMES[payment.statementMonth - 1]
                     : ""}{" "}
-                  {(payment as any).statementYear || ""}
+                  {payment.statementYear || ""}
                 </p>
               </div>
             )}
