@@ -18,6 +18,7 @@ import {
   dispatchAcceptedPlugin,
   backfillDispatchAcceptedEligibility,
 } from "./accepted";
+import { dispatchHtaHomeEmployerPlugin } from "./hta-home-employer";
 
 /**
  * Registers all dispatch eligibility plugins.
@@ -34,6 +35,7 @@ export function registerDispatchEligPlugins(): void {
   dispatchEligPluginRegistry.register(dispatchWsPlugin);
   dispatchEligPluginRegistry.register(dispatchSingleshiftPlugin);
   dispatchEligPluginRegistry.register(dispatchAcceptedPlugin);
+  dispatchEligPluginRegistry.register(dispatchHtaHomeEmployerPlugin);
   logger.info("Dispatch eligibility plugins registered", {
     service: "dispatch-elig-plugins",
     plugins: dispatchEligPluginRegistry.getAllPluginIds(),
