@@ -1,5 +1,6 @@
 import { getClient } from './transaction-context';
 import { companies, type Company, type InsertCompany, employerCompanies, type EmployerCompany, type InsertEmployerCompany } from "@shared/schema/employer/company-schema";
+import { employers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
@@ -12,6 +13,7 @@ export interface CompanyStorage {
 }
 
 export interface EmployerCompanyStorage {
+  get(id: string): Promise<EmployerCompany | undefined>;
   getByCompanyId(companyId: string): Promise<EmployerCompany[]>;
   getByEmployerId(employerId: string): Promise<EmployerCompany | undefined>;
   create(ec: InsertEmployerCompany): Promise<EmployerCompany>;
@@ -53,6 +55,12 @@ export function createCompanyStorage(): CompanyStorage {
 
 export function createEmployerCompanyStorage(): EmployerCompanyStorage {
   return {
+    async get(id: string): Promise<EmployerCompany | undefined> {
+      const client = getClient();
+      const [ec] = await client.select().from(employerCompanies).where(eq(employerCompanies.id, id));
+      return ec || undefined;
+    },
+
     async getByCompanyId(companyId: string): Promise<EmployerCompany[]> {
       const client = getClient();
       return await client.select().from(employerCompanies).where(eq(employerCompanies.companyId, companyId));
@@ -75,6 +83,16 @@ export function createEmployerCompanyStorage(): EmployerCompanyStorage {
       const result = await client.delete(employerCompanies).where(eq(employerCompanies.id, id)).returning();
       return result.length > 0;
     },
+  };
+}
+
+async function lookupNames(employerId: string, companyId: string): Promise<{ employerName: string; companyName: string }> {
+  const client = getClient();
+  const [employer] = await client.select({ name: employers.name }).from(employers).where(eq(employers.id, employerId));
+  const [company] = await client.select({ name: companies.name }).from(companies).where(eq(companies.id, companyId));
+  return {
+    employerName: employer?.name || 'Unknown Employer',
+    companyName: company?.name || 'Unknown Company',
   };
 }
 
@@ -111,12 +129,23 @@ export const employerCompanyLoggingConfig: StorageLoggingConfig<EmployerCompanyS
       getEntityId: (args, result) => result?.id || 'new employer-company',
       getHostEntityId: (args, result) => result?.employerId || args[0]?.employerId,
       after: async (args, result) => result,
+      getDescription: async (args, result) => {
+        const employerId = result?.employerId || args[0]?.employerId;
+        const companyId = result?.companyId || args[0]?.companyId;
+        if (!employerId || !companyId) return 'Created employer-company association';
+        const { employerName, companyName } = await lookupNames(employerId, companyId);
+        return `Associated employer '${employerName}' with company '${companyName}'`;
+      },
     },
     delete: {
       enabled: true,
       getEntityId: (args) => args[0],
-      before: async (args, storage) => {
-        return undefined;
+      getHostEntityId: (args, result, beforeState) => beforeState?.employerId,
+      before: async (args, storage) => await storage.get(args[0]),
+      getDescription: async (args, result, beforeState) => {
+        if (!beforeState?.employerId || !beforeState?.companyId) return 'Removed employer-company association';
+        const { employerName, companyName } = await lookupNames(beforeState.employerId, beforeState.companyId);
+        return `Removed employer '${employerName}' from company '${companyName}'`;
       },
     },
   },
