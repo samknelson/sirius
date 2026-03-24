@@ -219,25 +219,31 @@ async function resetProductionData(): Promise<void> {
 
   try {
     const allTables: string[] = [];
+    const skippedTables: string[] = [];
     const counts: Record<string, number> = {};
 
     for (const group of TABLE_GROUPS) {
       for (const table of group.tables) {
-        allTables.push(table);
         try {
           counts[table] = await getCount(table);
+          allTables.push(table);
         } catch {
-          counts[table] = 0;
+          skippedTables.push(table);
         }
       }
     }
 
+    if (skippedTables.length > 0) {
+      console.log(`\n  Skipping ${skippedTables.length} table(s) not found in database: ${skippedTables.join(', ')}`);
+    }
+
     for (const group of TABLE_GROUPS) {
-      const details = group.tables
+      const existingInGroup = group.tables.filter(t => t in counts);
+      const details = existingInGroup
         .filter(t => counts[t] > 0)
         .map(t => `${t}: ${counts[t]}`)
         .join(', ');
-      const totalInGroup = group.tables.reduce((sum, t) => sum + counts[t], 0);
+      const totalInGroup = existingInGroup.reduce((sum, t) => sum + counts[t], 0);
       if (details) {
         console.log(`  ${group.label}: ${totalInGroup} rows (${details})`);
       } else {
