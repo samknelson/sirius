@@ -138,18 +138,84 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
 
       const expectedEntry = this.computeExpectedEntry(paymentContext, config.id, currencyLabel, paymentTypeName);
       
-      // Find ALL existing entries for this payment + config combination
-      // This catches entries with any chargePluginKey format (including legacy formats)
+      const notifications: LedgerNotification[] = [];
+
+      if (paymentContext.allocationId) {
+        const matchingKey = expectedEntry?.chargePluginKey;
+        let existingEntry: Ledger | undefined;
+        
+        if (matchingKey) {
+          const allEntries = await storage.ledger.entries.getByReferenceAndConfig(
+            paymentContext.paymentId,
+            config.id
+          );
+          existingEntry = allEntries.find(
+            e => e.chargePlugin === this.metadata.id && e.chargePluginKey === matchingKey
+          );
+        }
+
+        if (existingEntry) {
+          await storage.ledger.entries.delete(existingEntry.id);
+          logger.info("Deleted existing allocation entry for replacement", {
+            service: "charge-plugin-payment-simple-allocation",
+            paymentId: paymentContext.paymentId,
+            deletedEntryId: existingEntry.id,
+            chargePluginKey: matchingKey,
+          });
+        }
+
+        if (!expectedEntry) {
+          if (existingEntry) {
+            notifications.push({
+              type: "deleted",
+              amount: existingEntry.amount,
+              description: `Deleted allocation ledger entry: -$${Math.abs(parseFloat(existingEntry.amount)).toFixed(2)}`,
+            });
+          }
+          return {
+            success: true,
+            transactions: [],
+            notifications,
+            message: `Payment status is ${paymentContext.status}, no entry needed for this allocation`,
+          };
+        }
+
+        const transaction: LedgerTransaction = {
+          chargePlugin: this.metadata.id,
+          chargePluginKey: expectedEntry.chargePluginKey,
+          chargePluginConfigId: config.id,
+          accountId: paymentContext.accountId,
+          entityType: paymentContext.entityType,
+          entityId: paymentContext.entityId,
+          amount: expectedEntry.amount,
+          description: expectedEntry.description,
+          transactionDate: expectedEntry.transactionDate,
+          referenceType: expectedEntry.referenceType,
+          referenceId: expectedEntry.referenceId,
+          metadata: expectedEntry.metadata,
+        };
+
+        const actionType = existingEntry ? "updated" : "created";
+        notifications.push({
+          type: actionType,
+          amount: expectedEntry.amount,
+          description: `Ledger entry ${actionType}: -$${Math.abs(parseFloat(expectedEntry.amount)).toFixed(2)}`,
+        });
+
+        return {
+          success: true,
+          transactions: [transaction],
+          notifications,
+          message: `${actionType === "updated" ? "Replaced" : "Created"} entry for allocation $${Math.abs(parseFloat(expectedEntry.amount)).toFixed(2)}`,
+        };
+      }
+
       const existingEntries = await storage.ledger.entries.getByReferenceAndConfig(
         paymentContext.paymentId,
         config.id
       );
-      
-      // Filter to only entries from this plugin
       const ourEntries = existingEntries.filter(e => e.chargePlugin === this.metadata.id);
       
-      // Delete all stale entries first
-      const notifications: LedgerNotification[] = [];
       for (const staleEntry of ourEntries) {
         await storage.ledger.entries.delete(staleEntry.id);
         logger.info("Deleted stale ledger entry", {
@@ -161,7 +227,6 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
         });
       }
 
-      // If no entry is expected, we're done (already deleted any stale entries)
       if (!expectedEntry) {
         if (ourEntries.length > 0) {
           const totalDeleted = ourEntries.reduce((sum, e) => sum + Math.abs(parseFloat(e.amount)), 0);
@@ -171,13 +236,6 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
             description: `Deleted ${ourEntries.length} ledger entry(s): -$${totalDeleted.toFixed(2)}`,
           });
         }
-        
-        logger.debug("No entry expected for payment", {
-          service: "charge-plugin-payment-simple-allocation",
-          paymentId: paymentContext.paymentId,
-          status: paymentContext.status,
-          deletedCount: ourEntries.length,
-        });
         
         return {
           success: true,
@@ -189,7 +247,6 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
         };
       }
 
-      // Create the new entry with the correct key format
       const transaction: LedgerTransaction = {
         chargePlugin: this.metadata.id,
         chargePluginKey: expectedEntry.chargePluginKey,
