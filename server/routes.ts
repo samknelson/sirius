@@ -801,6 +801,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const company = await storage.companies.get(ec.companyId);
       res.json({ companyId: ec.companyId, companyName: company?.name || null, employerCompanyId: ec.id });
     } catch (error) {
+      console.error("Error fetching employer company:", error);
       res.status(500).json({ message: "Failed to fetch employer company" });
     }
   });
@@ -869,6 +870,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(employer);
     } catch (error) {
+      console.error("Error updating employer:", error);
       res.status(500).json({ message: "Failed to update employer" });
     }
   });
