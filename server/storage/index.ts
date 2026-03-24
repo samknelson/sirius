@@ -7,4 +7,4 @@ export { type CommStorage, type CommSmsStorage, type CommSmsOptinStorage, type C
 export { type LogsStorage, type LogsQueryParams, type LogsResult, type LogFilters, type HostEntityLogsParams, createLogsStorage } from "./logs";
 export { type WorkerBanStorage, createWorkerBanStorage } from "./worker-bans";
 export { type WsBundleStorage, type WsClientStorage, type WsClientWithBundle, type WsClientCredentialStorage, type CredentialCreateResult, type WsClientIpRuleStorage, createWsBundleStorage, createWsClientStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
-export { type CompanyStorage, createCompanyStorage, type EmployerCompanyStorage, createEmployerCompanyStorage } from "./companies";
+export { type CompanyStorage, createCompanyStorage, companyLoggingConfig, type EmployerCompanyStorage, createEmployerCompanyStorage, employerCompanyLoggingConfig } from "./companies";

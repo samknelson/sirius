@@ -1,6 +1,7 @@
 import { getClient } from './transaction-context';
 import { companies, type Company, type InsertCompany, employerCompanies, type EmployerCompany, type InsertEmployerCompany } from "@shared/schema/employer/company-schema";
 import { eq } from "drizzle-orm";
+import { type StorageLoggingConfig } from "./middleware/logging";
 
 export interface CompanyStorage {
   getAll(): Promise<Company[]>;
@@ -76,3 +77,47 @@ export function createEmployerCompanyStorage(): EmployerCompanyStorage {
     },
   };
 }
+
+export const companyLoggingConfig: StorageLoggingConfig<CompanyStorage> = {
+  module: 'companies',
+  methods: {
+    create: {
+      enabled: true,
+      getEntityId: (args, result) => result?.id || args[0]?.name || 'new company',
+      getHostEntityId: (args, result) => result?.id,
+      after: async (args, result) => result,
+    },
+    update: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      before: async (args, storage) => await storage.get(args[0]),
+      after: async (args, result) => result,
+    },
+    delete: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args, result, beforeState) => beforeState?.id || args[0],
+      before: async (args, storage) => await storage.get(args[0]),
+    },
+  },
+};
+
+export const employerCompanyLoggingConfig: StorageLoggingConfig<EmployerCompanyStorage> = {
+  module: 'employer-companies',
+  methods: {
+    create: {
+      enabled: true,
+      getEntityId: (args, result) => result?.id || 'new employer-company',
+      getHostEntityId: (args, result) => result?.employerId || args[0]?.employerId,
+      after: async (args, result) => result,
+    },
+    delete: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      before: async (args, storage) => {
+        return undefined;
+      },
+    },
+  },
+};
