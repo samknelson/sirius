@@ -166,6 +166,13 @@ export const componentRegistry: ComponentDefinition[] = [
     ]
   },
   {
+    id: "employer.company",
+    name: "Employer Companies",
+    description: "Allows related employers to be grouped together in companies",
+    enabledByDefault: false,
+    category: "core"
+  },
+  {
     id: "worker.login",
     name: "Worker Login",
     description: "Ability for workers to log in",
