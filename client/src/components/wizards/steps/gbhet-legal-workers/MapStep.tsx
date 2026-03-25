@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertCircle, FileSpreadsheet, CheckCircle2, ArrowRight } from "lucide-react";
+import { AlertCircle, FileSpreadsheet, CheckCircle2, ArrowLeft } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface MapStepProps {
@@ -50,6 +50,19 @@ interface ParsedFileData {
   columnCount: number;
 }
 
+function convertOldMapping(mapping: Record<string, string>): Record<string, string> {
+  const keys = Object.keys(mapping);
+  const isOldFormat = keys.length > 0 && keys.every(k => k.startsWith('col_'));
+  if (!isOldFormat) return mapping;
+  const converted: Record<string, string> = {};
+  Object.entries(mapping).forEach(([colKey, fieldId]) => {
+    if (fieldId && fieldId !== '_unmapped') {
+      converted[fieldId] = colKey;
+    }
+  });
+  return converted;
+}
+
 export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepProps) {
   const { toast } = useToast();
   const [headerHash, setHeaderHash] = useState<string | undefined>();
@@ -82,12 +95,14 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
     columnMapping: z.record(z.string(), z.string().optional())
   });
 
+  const existingMapping = data?.columnMapping ? convertOldMapping(data.columnMapping) : {};
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       mode: data?.mode || 'create',
       hasHeaders: data?.hasHeaders ?? true,
-      columnMapping: data?.columnMapping || {}
+      columnMapping: existingMapping
     },
   });
 
@@ -95,30 +110,28 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
   const hasHeaders = form.watch("hasHeaders");
   const columnMapping = form.watch("columnMapping");
 
-  // Track which fields are mapped to which columns (for duplicate detection)
-  const fieldUsage = useMemo(() => {
+  const columnUsage = useMemo(() => {
     const usage: Record<string, string[]> = {};
-    Object.entries(columnMapping).forEach(([colKey, fieldId]) => {
-      if (fieldId && fieldId !== '_unmapped') {
-        if (!usage[fieldId]) {
-          usage[fieldId] = [];
+    Object.entries(columnMapping).forEach(([fieldId, colKey]) => {
+      if (colKey && colKey !== '_unmapped') {
+        if (!usage[colKey]) {
+          usage[colKey] = [];
         }
-        usage[fieldId].push(colKey);
+        usage[colKey].push(fieldId);
       }
     });
     return usage;
   }, [columnMapping]);
 
-  // Detect duplicate field mappings
-  const duplicateFields = useMemo(() => {
+  const duplicateColumns = useMemo(() => {
     const duplicates: Set<string> = new Set();
-    Object.entries(fieldUsage).forEach(([fieldId, columns]) => {
-      if (columns.length > 1) {
-        duplicates.add(fieldId);
+    Object.entries(columnUsage).forEach(([colKey, fieldIds]) => {
+      if (fieldIds.length > 1) {
+        duplicates.add(colKey);
       }
     });
     return duplicates;
-  }, [fieldUsage]);
+  }, [columnUsage]);
 
   const getRequiredFields = (currentMode: 'create' | 'update'): FeedField[] => {
     return fields.filter(f => {
@@ -138,7 +151,6 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
 
   const updateMutation = useMutation({
     mutationFn: async (values: z.infer<typeof formSchema>) => {
-      // Save wizard data - only send the fields being updated, let server merge
       const updatedWizard = await apiRequest("PATCH", `/api/wizards/${wizardId}`, {
         data: {
           mode: values.mode,
@@ -147,7 +159,6 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
         }
       });
 
-      // Also save the mapping for future use if we have a headerHash
       if (headerHash && values.columnMapping && Object.keys(values.columnMapping).length > 0) {
         try {
           await apiRequest("POST", `/api/wizards/${wizardId}/save-mapping`, {
@@ -156,7 +167,6 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
           });
         } catch (mappingError) {
           console.error("Failed to save mapping for future use:", mappingError);
-          // Don't fail the whole operation if mapping save fails
         }
       }
 
@@ -181,18 +191,17 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
     },
   });
 
-  // Apply suggested mapping when available and set header hash
   useEffect(() => {
     if (suggestedMappingData?.headerHash) {
       setHeaderHash(suggestedMappingData.headerHash);
     }
     
     if (suggestedMappingData?.mapping && !data?.columnMapping) {
-      // Reset the form with the suggested mapping to ensure proper rendering
+      const converted = convertOldMapping(suggestedMappingData.mapping);
       form.reset({
         mode: form.getValues("mode"),
         hasHeaders: form.getValues("hasHeaders"),
-        columnMapping: suggestedMappingData.mapping
+        columnMapping: converted
       });
       toast({
         title: "Suggested Mapping Applied",
@@ -216,12 +225,23 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
 
   const requiredFields = getRequiredFields(mode);
   const mappedRequiredFields = requiredFields.filter(f => {
-    const mappedValues = Object.values(columnMapping).filter(v => v && v !== '_unmapped');
-    return mappedValues.includes(f.id);
+    const mappedCol = columnMapping[f.id];
+    return mappedCol && mappedCol !== '_unmapped';
   });
   const isMappingComplete = requiredFields.length === mappedRequiredFields.length;
 
   const sortedFields = [...fields].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+
+  const getPreviewForColumn = (colKey: string | undefined): string => {
+    if (!colKey || colKey === '_unmapped') return '-';
+    const colIndex = parseInt(colKey.replace('col_', ''));
+    if (isNaN(colIndex)) return '-';
+    return previewData
+      .slice(0, 3)
+      .map(row => row?.[colIndex])
+      .filter(val => val !== undefined && val !== '')
+      .join(', ') || '-';
+  };
 
   if (!uploadedFile) {
     return (
@@ -262,7 +282,7 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
       <CardHeader>
         <CardTitle>Map Columns</CardTitle>
         <CardDescription>
-          Map columns from your uploaded file to the required feed fields
+          Map your file columns to the required system fields
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -335,13 +355,12 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
               )}
             </div>
             
-            {duplicateFields.size > 0 && (
+            {duplicateColumns.size > 0 && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Duplicate Field Mappings Detected</AlertTitle>
+                <AlertTitle>Duplicate Column Mappings Detected</AlertTitle>
                 <AlertDescription>
-                  The following fields are mapped to multiple columns: {Array.from(duplicateFields).map(fieldId => fields.find(f => f.id === fieldId)?.name || fieldId).join(', ')}. 
-                  Each field can only be mapped once. Change one of the duplicate mappings to a different field or "Do not map" to fix this issue.
+                  The same file column has been mapped to multiple fields. Each file column should only be used once.
                 </AlertDescription>
               </Alert>
             )}
@@ -374,34 +393,37 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-1/4">File Column</TableHead>
+                      <TableHead className="w-1/4">System Field</TableHead>
                       <TableHead className="w-12 text-center"></TableHead>
-                      <TableHead className="w-1/4">Feed Field</TableHead>
+                      <TableHead className="w-1/4">File Column</TableHead>
                       <TableHead>Preview Data</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {Array.from({ length: columnCount }, (_, i) => {
-                      const columnName = getColumnName(i);
-                      const columnKey = `col_${i}`;
-                      const mappedFieldId = columnMapping[columnKey];
-                      const mappedField = fields.find(f => f.id === mappedFieldId);
+                    {sortedFields.map((feedField) => {
+                      const required = isFieldRequired(feedField, mode);
+                      const selectedCol = columnMapping[feedField.id];
 
                       return (
-                        <TableRow key={i} data-testid={`row-column-mapping-${i}`}>
+                        <TableRow key={feedField.id} data-testid={`row-field-mapping-${feedField.id}`}>
                           <TableCell>
-                            <div className="font-medium text-sm">{columnName}</div>
-                            <div className="text-xs text-muted-foreground">
-                              Column {i + 1}
+                            <div className="font-medium text-sm">
+                              {feedField.name}
+                              {required && <span className="text-destructive ml-1">*</span>}
                             </div>
+                            {feedField.description && (
+                              <div className="text-xs text-muted-foreground">
+                                {feedField.description}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className="text-center">
-                            <ArrowRight size={16} className="text-muted-foreground" />
+                            <ArrowLeft size={16} className="text-muted-foreground" />
                           </TableCell>
                           <TableCell>
                             <FormField
                               control={form.control}
-                              name={`columnMapping.${columnKey}`}
+                              name={`columnMapping.${feedField.id}`}
                               render={({ field }) => (
                                 <FormItem>
                                   <Select
@@ -409,26 +431,27 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
                                     value={field.value}
                                   >
                                     <FormControl>
-                                      <SelectTrigger data-testid={`select-field-${i}`}>
-                                        <SelectValue placeholder="Select field..." />
+                                      <SelectTrigger data-testid={`select-column-${feedField.id}`}>
+                                        <SelectValue placeholder="Select column..." />
                                       </SelectTrigger>
                                     </FormControl>
                                     <SelectContent>
                                       <SelectItem value="_unmapped" data-testid="option-unmapped">
                                         (Do not map)
                                       </SelectItem>
-                                      {sortedFields.map(feedField => {
-                                        const isRequired = isFieldRequired(feedField, mode);
-                                        const isUsedByOtherColumn = fieldUsage[feedField.id]?.some(col => col !== columnKey);
+                                      {Array.from({ length: columnCount }, (_, i) => {
+                                        const colKey = `col_${i}`;
+                                        const colName = getColumnName(i);
+                                        const isUsedByOtherField = columnUsage[colKey]?.some(fId => fId !== feedField.id);
                                         return (
-                                          <SelectItem 
-                                            key={feedField.id} 
-                                            value={feedField.id} 
-                                            data-testid={`option-field-${feedField.id}`}
-                                            disabled={isUsedByOtherColumn}
+                                          <SelectItem
+                                            key={colKey}
+                                            value={colKey}
+                                            data-testid={`option-col-${i}`}
+                                            disabled={isUsedByOtherField}
                                           >
-                                            {feedField.name} {isRequired && <span className="text-destructive">*</span>}
-                                            {isUsedByOtherColumn && <span className="text-muted-foreground text-xs"> (already mapped)</span>}
+                                            {colName}
+                                            {isUsedByOtherField && <span className="text-muted-foreground text-xs"> (already mapped)</span>}
                                           </SelectItem>
                                         );
                                       })}
@@ -438,19 +461,10 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
                                 </FormItem>
                               )}
                             />
-                            {mappedField && (
-                              <div className="text-xs text-muted-foreground mt-1">
-                                {mappedField.description}
-                              </div>
-                            )}
                           </TableCell>
                           <TableCell>
                             <div className="text-xs text-muted-foreground font-mono max-w-xs truncate">
-                              {previewData
-                                .slice(0, 3)
-                                .map(row => row?.[i])
-                                .filter(val => val !== undefined && val !== '')
-                                .join(', ') || '-'}
+                              {getPreviewForColumn(selectedCol)}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -486,7 +500,7 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
                     <TableBody>
                       {previewData.map((row, rowIndex) => (
                         <TableRow key={rowIndex}>
-                          {row.map((cell, cellIndex) => (
+                          {row.map((cell: any, cellIndex: number) => (
                             <TableCell key={cellIndex} className="text-xs font-mono">
                               {cell || '-'}
                             </TableCell>

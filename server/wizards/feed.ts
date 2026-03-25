@@ -30,6 +30,41 @@ function filterEmptyColumns(rows: any[][]): any[][] {
   return rows.map(row => nonEmptyColIndices.map(colIdx => row[colIdx] ?? ''));
 }
 
+function isOldMappingFormat(mapping: Record<string, string>): boolean {
+  const keys = Object.keys(mapping);
+  return keys.length > 0 && keys.every(k => k.startsWith('col_'));
+}
+
+function normalizeColumnMapping(mapping: Record<string, string>): Record<string, string> {
+  if (isOldMappingFormat(mapping)) {
+    return mapping;
+  }
+  const converted: Record<string, string> = {};
+  Object.entries(mapping).forEach(([fieldId, colKey]) => {
+    if (colKey && colKey !== '_unmapped') {
+      converted[colKey] = fieldId;
+    }
+  });
+  return converted;
+}
+
+function validateMappingDuplicates(rawMapping: Record<string, string>): void {
+  if (isOldMappingFormat(rawMapping)) {
+    const fieldIds = Object.values(rawMapping).filter(id => id && id !== '_unmapped');
+    const duplicates = fieldIds.filter((id, index) => fieldIds.indexOf(id) !== index);
+    if (duplicates.length > 0) {
+      const uniqueDuplicates = Array.from(new Set(duplicates));
+      throw new Error(`Column mapping contains duplicate field assignments: ${uniqueDuplicates.join(', ')}. Please return to the Map step and ensure each field is mapped only once.`);
+    }
+  } else {
+    const colKeys = Object.values(rawMapping).filter(v => v && v !== '_unmapped');
+    const duplicates = colKeys.filter((col, index) => colKeys.indexOf(col) !== index);
+    if (duplicates.length > 0) {
+      throw new Error(`Column mapping contains duplicate column assignments. The same file column has been mapped to multiple fields. Please return to the Map step and fix the duplicates.`);
+    }
+  }
+}
+
 export interface FeedConfig {
   outputFormat?: 'csv' | 'json' | 'excel';
   includeHeaders?: boolean;
@@ -273,32 +308,23 @@ export abstract class FeedWizard extends BaseWizard {
 
     const wizardData = wizard.data as any;
     const fileId = wizardData?.uploadedFileId;
-    const columnMapping: Record<string, string> = wizardData?.columnMapping || {};
+    const rawColumnMapping: Record<string, string> = wizardData?.columnMapping || {};
+    validateMappingDuplicates(rawColumnMapping);
+    const columnMapping = normalizeColumnMapping(rawColumnMapping);
     const hasHeaders = wizardData?.hasHeaders ?? true;
     const mode = wizardData?.mode || 'create';
-
-    // Validate column mapping for duplicate field IDs (catch legacy data)
-    const fieldIds = Object.values(columnMapping).filter(id => id && id !== '_unmapped');
-    const duplicates = fieldIds.filter((id, index) => fieldIds.indexOf(id) !== index);
-    if (duplicates.length > 0) {
-      const uniqueDuplicates = Array.from(new Set(duplicates));
-      throw new Error(`Column mapping contains duplicate field assignments: ${uniqueDuplicates.join(', ')}. Please return to the Map step and ensure each field is mapped only once.`);
-    }
 
     if (!fileId) {
       throw new Error('No uploaded file found');
     }
 
-    // Load file from object storage
     const file = await storage.files.getById(fileId);
     if (!file) {
       throw new Error('File not found');
     }
 
-    // Download file content
     const buffer = await objectStorageService.downloadFile(file.storagePath);
 
-    // Parse file based on type
     let rawRows: any[] = [];
     if (file.mimeType === 'text/csv') {
       rawRows = parseCSV(buffer, {
@@ -314,18 +340,14 @@ export abstract class FeedWizard extends BaseWizard {
       throw new Error('Unsupported file type');
     }
 
-    // Filter out completely empty columns (must match preview endpoint logic)
     rawRows = filterEmptyColumns(rawRows);
 
-    // Skip header row if present
     const dataRows = hasHeaders ? rawRows.slice(1) : rawRows;
 
-    // Map columns to fields
     const mappedRows = dataRows.map((row: any[]) => {
       const mapped: Record<string, any> = {};
       Object.entries(columnMapping).forEach(([sourceCol, fieldId]) => {
         if (fieldId && fieldId !== '_unmapped') {
-          // Extract numeric index from "col_0", "col_1", etc.
           const colIndex = parseInt(sourceCol.replace('col_', ''));
           mapped[fieldId] = row[colIndex];
         }
@@ -333,7 +355,6 @@ export abstract class FeedWizard extends BaseWizard {
       return mapped;
     });
 
-    // Process in batches
     const totalRows = mappedRows.length;
     let validRows = 0;
     let invalidRows = 0;
@@ -540,7 +561,9 @@ export abstract class FeedWizard extends BaseWizard {
 
     const wizardData = wizard.data as any;
     const fileId = wizardData?.uploadedFileId;
-    const columnMapping: Record<string, string> = wizardData?.columnMapping || {};
+    const rawColumnMapping: Record<string, string> = wizardData?.columnMapping || {};
+    validateMappingDuplicates(rawColumnMapping);
+    const columnMapping = normalizeColumnMapping(rawColumnMapping);
     const hasHeaders = wizardData?.hasHeaders ?? true;
     const mode = wizardData?.mode || 'create';
     const validationResults = wizardData?.validationResults;
@@ -553,16 +576,13 @@ export abstract class FeedWizard extends BaseWizard {
       throw new Error('No uploaded file found');
     }
 
-    // Load file from object storage
     const file = await storage.files.getById(fileId);
     if (!file) {
       throw new Error('File not found');
     }
 
-    // Download file content
     const buffer = await objectStorageService.downloadFile(file.storagePath);
 
-    // Parse file based on type
     let rawRows: any[] = [];
     if (file.mimeType === 'text/csv') {
       rawRows = parseCSV(buffer, {
@@ -578,13 +598,10 @@ export abstract class FeedWizard extends BaseWizard {
       throw new Error('Unsupported file type');
     }
 
-    // Filter out completely empty columns (must match preview endpoint logic)
     rawRows = filterEmptyColumns(rawRows);
 
-    // Skip header row if present
     const dataRows = hasHeaders ? rawRows.slice(1) : rawRows;
 
-    // Map columns to fields
     const mappedRows = dataRows.map((row: any[]) => {
       const mapped: Record<string, any> = {};
       Object.entries(columnMapping).forEach(([sourceCol, fieldId]) => {
