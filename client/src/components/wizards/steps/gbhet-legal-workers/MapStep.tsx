@@ -403,13 +403,24 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
                     {sortedFields.map((feedField) => {
                       const required = isFieldRequired(feedField, mode);
                       const selectedCol = columnMapping[feedField.id];
+                      const isMapped = selectedCol && selectedCol !== '_unmapped';
+                      const isUnmappedRequired = required && !isMapped;
 
                       return (
-                        <TableRow key={feedField.id} data-testid={`row-field-mapping-${feedField.id}`}>
+                        <TableRow
+                          key={feedField.id}
+                          data-testid={`row-field-mapping-${feedField.id}`}
+                          className={isUnmappedRequired ? "bg-amber-50 dark:bg-amber-950/30" : ""}
+                        >
                           <TableCell>
                             <div className="font-medium text-sm">
                               {feedField.name}
                               {required && <span className="text-destructive ml-1">*</span>}
+                              {isUnmappedRequired && (
+                                <Badge variant="outline" className="ml-2 text-xs border-amber-500 text-amber-600 dark:text-amber-400">
+                                  unmapped
+                                </Badge>
+                              )}
                             </div>
                             {feedField.description && (
                               <div className="text-xs text-muted-foreground">
@@ -500,9 +511,9 @@ export function MapStep({ wizardId, wizardType, data, onDataChange }: MapStepPro
                     <TableBody>
                       {previewData.map((row, rowIndex) => (
                         <TableRow key={rowIndex}>
-                          {row.map((cell: any, cellIndex: number) => (
+                          {row.map((cell: unknown, cellIndex: number) => (
                             <TableCell key={cellIndex} className="text-xs font-mono">
-                              {cell || '-'}
+                              {cell != null && cell !== '' ? String(cell) : '-'}
                             </TableCell>
                           ))}
                         </TableRow>
