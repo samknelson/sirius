@@ -101,9 +101,9 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         id: 'dateOfBirth', 
         name: 'Date of Birth', 
         type: 'date', 
-        required: false, // Not always required
-        requiredForCreate: true, // Required only when creating new records
-        description: 'Worker date of birth',
+        required: false,
+        requiredForCreate: false,
+        description: 'Worker date of birth (optional)',
         format: 'date',
         displayOrder: 5
       },
