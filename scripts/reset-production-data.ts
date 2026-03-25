@@ -78,6 +78,7 @@ const TABLE_GROUPS: TableGroup[] = [
     label: "Ledger entries",
     tables: [
       "ledger",
+      "ledger_payment_allocations",
       "ledger_payments",
       "ledger_ea",
       "ledger_stripe_paymentmethods",
