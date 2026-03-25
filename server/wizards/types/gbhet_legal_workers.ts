@@ -47,11 +47,6 @@ function normalizeForComparison(value: string): string {
 export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   entityType = 'employer';
   
-  // Cache for employment status options to avoid repeated DB queries
-  private employmentStatusCache: Array<{ id: string; name: string; code: string; employed: boolean }> | null = null;
-  
-  // Cache for work status options to avoid repeated DB queries
-  private workStatusCache: Array<{ id: string; name: string }> | null = null;
 
   /**
    * Get the field definitions for the GBHET Legal Workers feed
@@ -317,25 +312,19 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   }
 
   /**
-   * Get employment status options (cached to avoid repeated DB queries)
+   * Get employment status options from the database
    */
   private async getEmploymentStatusOptions(): Promise<Array<{ id: string; name: string; code: string; employed: boolean }>> {
-    if (!this.employmentStatusCache) {
-      const statuses = await unifiedOptionsStorage.list("employment-status");
-      this.employmentStatusCache = statuses.map(s => ({ id: s.id, name: s.name, code: s.code, employed: s.employed }));
-    }
-    return this.employmentStatusCache;
+    const statuses = await unifiedOptionsStorage.list("employment-status");
+    return statuses.map(s => ({ id: s.id, name: s.name, code: s.code, employed: s.employed }));
   }
 
   /**
-   * Get work status options (cached)
+   * Get work status options from the database
    */
   private async getWorkStatusOptions(): Promise<Array<{ id: string; name: string }>> {
-    if (!this.workStatusCache) {
-      const statuses = await unifiedOptionsStorage.list("worker-ws");
-      this.workStatusCache = statuses.map(s => ({ id: s.id, name: s.name }));
-    }
-    return this.workStatusCache;
+    const statuses = await unifiedOptionsStorage.list("worker-ws");
+    return statuses.map(s => ({ id: s.id, name: s.name }));
   }
 
   /**
