@@ -123,6 +123,15 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         description: 'Number of hours worked',
         displayOrder: 7
       },
+      { 
+        id: 'jobTitle', 
+        name: 'Job Title', 
+        type: 'string', 
+        required: false,
+        description: 'Worker job title at this employer (optional)',
+        maxLength: 255,
+        displayOrder: 7.5
+      },
       // Optional contact information fields
       { 
         id: 'email', 
@@ -586,14 +595,16 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
       throw new Error(`Employment status "${employmentStatusValue}" not found; verify name, code, or ID`);
     }
 
-    // Upsert worker hours using the matched employment status ID
+    const jobTitle = row.jobTitle?.toString().trim() || null;
+
     await storage.workerHours.upsertWorkerHours({
       workerId,
       employerId,
       employmentStatusId: matchingOption.id,
       year,
       month,
-      hours
+      hours,
+      jobTitle
     });
 
     // Sync work status from employment status
