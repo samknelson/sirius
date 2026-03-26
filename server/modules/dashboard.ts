@@ -436,12 +436,23 @@ export function registerDashboardRoutes(
       const session = req.session as any;
       const { dbUser } = await getEffectiveUser(session, user);
 
-      if (!dbUser?.email) {
+      if (!dbUser) {
         res.json([]);
         return;
       }
 
-      const contact = await storage.contacts?.getContactByEmail?.(dbUser.email);
+      const hasEmployerPerm = await storage.hasPermission(dbUser.id, 'employer');
+      if (!hasEmployerPerm) {
+        res.status(403).json({ message: "Access denied" });
+        return;
+      }
+
+      if (!dbUser.email) {
+        res.json([]);
+        return;
+      }
+
+      const contact = await storage.contacts.getContactByEmail(dbUser.email);
       if (!contact) {
         res.json([]);
         return;
@@ -459,7 +470,7 @@ export function registerDashboardRoutes(
         employerIds.map(id => storage.employers.getEmployer(id))
       );
       const activeEmployers = employersList
-        .filter((emp): emp is NonNullable<typeof emp> => emp !== null && emp !== undefined && emp.isActive);
+        .filter((emp): emp is NonNullable<typeof emp> => emp !== null && emp !== undefined);
 
       if (activeEmployers.length === 0) {
         res.json([]);
