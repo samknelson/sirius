@@ -469,23 +469,25 @@ export function registerDashboardRoutes(
       const client = getClient();
       const activeIds = activeEmployers.map(e => e.id);
 
+      const gbhetLegalTypes = ["gbhet_legal_workers_monthly", "gbhet_legal_workers_corrections"];
+
       const latestWizards = await client
         .select({
           employerId: wizardEmployerMonthly.employerId,
           year: wizardEmployerMonthly.year,
           month: wizardEmployerMonthly.month,
           wizardType: wizards.type,
-          completedAt: wizards.date,
         })
         .from(wizardEmployerMonthly)
         .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
         .where(
           and(
             inArray(wizardEmployerMonthly.employerId, activeIds),
-            or(eq(wizards.status, "complete"), eq(wizards.status, "completed"))
+            or(eq(wizards.status, "complete"), eq(wizards.status, "completed")),
+            inArray(wizards.type, gbhetLegalTypes)
           )
         )
-        .orderBy(desc(wizards.date));
+        .orderBy(desc(wizardEmployerMonthly.year), desc(wizardEmployerMonthly.month), desc(wizards.date));
 
       const latestByEmployer = new Map<string, typeof latestWizards[0]>();
       for (const row of latestWizards) {
@@ -545,7 +547,6 @@ export function registerDashboardRoutes(
                 type: latestWiz.wizardType,
                 year: latestWiz.year,
                 month: latestWiz.month,
-                completedAt: latestWiz.completedAt?.toISOString() ?? null,
               }
             : null,
           accounts: empEaRows.map(ea => ({

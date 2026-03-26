@@ -13,7 +13,6 @@ interface ShopSummary {
     type: string;
     year: number;
     month: number;
-    completedAt: string;
   } | null;
   accounts: Array<{
     accountId: string;
@@ -104,9 +103,6 @@ export function MyShopsPlugin({ userPermissions }: DashboardPluginProps) {
                         <span className="text-muted-foreground">Last upload: </span>
                         <span>
                           {monthNames[shop.latestWizard.month - 1]} {shop.latestWizard.year}
-                        </span>
-                        <span className="text-muted-foreground ml-1">
-                          ({new Date(shop.latestWizard.completedAt).toLocaleDateString()})
                         </span>
                       </div>
                     ) : (
