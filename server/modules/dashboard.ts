@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
-import { requireAccess } from "../services/access-policy-evaluator";
+import { requireAccess, getAccessStorage } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
 import { employerMonthlyPluginConfigSchema } from "@shared/schema";
 import { getPluginMetadata } from "@shared/pluginMetadata";
@@ -441,7 +441,7 @@ export function registerDashboardRoutes(
         return;
       }
 
-      const hasEmployerPerm = await storage.hasPermission(dbUser.id, 'employer');
+      const hasEmployerPerm = await getAccessStorage()!.hasPermission(dbUser.id, 'employer');
       if (!hasEmployerPerm) {
         res.status(403).json({ message: "Access denied" });
         return;

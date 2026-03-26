@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import multer from "multer";
 import { storage } from "../storage";
 import { insertWizardSchema, wizardDataSchema, type WizardData } from "@shared/schema";
-import { requireAccess, buildContext, checkAccess } from "../services/access-policy-evaluator";
+import { requireAccess, buildContext, checkAccess, getAccessStorage } from "../services/access-policy-evaluator";
 import { wizardRegistry } from "../wizards/index.js";
 import { FeedWizard } from "../wizards/feed.js";
 import { objectStorageService } from "../services/objectStorage.js";
@@ -39,7 +39,8 @@ export function registerWizardRoutes(
       const adminAccess = await checkAccess('admin', context.user);
 
       if (!adminAccess.granted) {
-        if (!context.user || !await storage.hasPermission(context.user.id, 'employer')) {
+        const accessStorage = getAccessStorage();
+        if (!context.user || !accessStorage || !await accessStorage.hasPermission(context.user.id, 'employer')) {
           res.status(403).json({ message: "Access denied" });
           return;
         }
@@ -79,7 +80,7 @@ export function registerWizardRoutes(
       const ctx = await buildContext(req as any);
       const isAdmin = await checkAccess('admin', ctx.user);
       if (!isAdmin.granted) {
-        if (!ctx.user || !await storage.hasPermission(ctx.user.id, 'employer')) {
+        if (!ctx.user || !await getAccessStorage()!.hasPermission(ctx.user.id, 'employer')) {
           return res.status(403).json({ message: "Access denied" });
         }
       }
@@ -96,7 +97,7 @@ export function registerWizardRoutes(
       const ctx = await buildContext(req as any);
       const isAdmin = await checkAccess('admin', ctx.user);
       if (!isAdmin.granted) {
-        if (!ctx.user || !await storage.hasPermission(ctx.user.id, 'employer')) {
+        if (!ctx.user || !await getAccessStorage()!.hasPermission(ctx.user.id, 'employer')) {
           return res.status(403).json({ message: "Access denied" });
         }
       }
@@ -113,7 +114,7 @@ export function registerWizardRoutes(
       const ctx = await buildContext(req as any);
       const isAdmin = await checkAccess('admin', ctx.user);
       if (!isAdmin.granted) {
-        if (!ctx.user || !await storage.hasPermission(ctx.user.id, 'employer')) {
+        if (!ctx.user || !await getAccessStorage()!.hasPermission(ctx.user.id, 'employer')) {
           return res.status(403).json({ message: "Access denied" });
         }
       }
@@ -133,7 +134,7 @@ export function registerWizardRoutes(
       const laCtx = await buildContext(req as any);
       const laAdmin = await checkAccess('admin', laCtx.user);
       if (!laAdmin.granted) {
-        if (!laCtx.user || !await storage.hasPermission(laCtx.user.id, 'employer')) {
+        if (!laCtx.user || !await getAccessStorage()!.hasPermission(laCtx.user.id, 'employer')) {
           res.status(403).json({ message: "Access denied" });
           return;
         }
