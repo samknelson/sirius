@@ -477,6 +477,7 @@ export function registerDashboardRoutes(
           year: wizardEmployerMonthly.year,
           month: wizardEmployerMonthly.month,
           wizardType: wizards.type,
+          wizardDate: wizards.date,
         })
         .from(wizardEmployerMonthly)
         .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
@@ -547,6 +548,7 @@ export function registerDashboardRoutes(
                 type: latestWiz.wizardType,
                 year: latestWiz.year,
                 month: latestWiz.month,
+                completedAt: latestWiz.wizardDate?.toISOString() ?? null,
               }
             : null,
           accounts: empEaRows.map(ea => ({
