@@ -885,7 +885,7 @@ function Router() {
       </Route>
 
       <Route path="/wizards/:id">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute>
           <AuthenticatedLayout>
             <WizardView />
           </AuthenticatedLayout>

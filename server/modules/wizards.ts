@@ -33,8 +33,18 @@ export function registerWizardRoutes(
   requireAuth: AuthMiddleware, 
   requirePermission: PermissionMiddleware
 ) {
-  app.get("/api/wizard-types", requireAccess('admin'), async (req, res) => {
+  app.get("/api/wizard-types", requireAuth, async (req, res) => {
     try {
+      const context = await buildContext(req as any);
+      const adminAccess = await checkAccess('admin', context.user);
+
+      if (!adminAccess.granted) {
+        if (!context.user || !await storage.hasPermission(context.user.id, 'employer')) {
+          res.status(403).json({ message: "Access denied" });
+          return;
+        }
+      }
+
       const { isComponentEnabled } = await import('./components.js');
       const allTypes = wizardRegistry.getAll();
       
@@ -64,8 +74,15 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizard-types/:typeName/steps", requireAccess('admin'), async (req, res) => {
+  app.get("/api/wizard-types/:typeName/steps", requireAuth, async (req, res) => {
     try {
+      const ctx = await buildContext(req as any);
+      const isAdmin = await checkAccess('admin', ctx.user);
+      if (!isAdmin.granted) {
+        if (!ctx.user || !await storage.hasPermission(ctx.user.id, 'employer')) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
       const { typeName } = req.params;
       const steps = await wizardRegistry.getStepsForType(typeName);
       res.json(steps);
@@ -74,8 +91,15 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizard-types/:typeName/statuses", requireAccess('admin'), async (req, res) => {
+  app.get("/api/wizard-types/:typeName/statuses", requireAuth, async (req, res) => {
     try {
+      const ctx = await buildContext(req as any);
+      const isAdmin = await checkAccess('admin', ctx.user);
+      if (!isAdmin.granted) {
+        if (!ctx.user || !await storage.hasPermission(ctx.user.id, 'employer')) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
       const { typeName } = req.params;
       const statuses = await wizardRegistry.getStatusesForType(typeName);
       res.json(statuses);
@@ -84,8 +108,15 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizard-types/:typeName/fields", requireAccess('admin'), async (req, res) => {
+  app.get("/api/wizard-types/:typeName/fields", requireAuth, async (req, res) => {
     try {
+      const ctx = await buildContext(req as any);
+      const isAdmin = await checkAccess('admin', ctx.user);
+      if (!isAdmin.granted) {
+        if (!ctx.user || !await storage.hasPermission(ctx.user.id, 'employer')) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
       const { typeName } = req.params;
       const fields = await wizardRegistry.getFieldsForType(typeName);
       res.json(fields);
@@ -97,8 +128,17 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizard-types/:typeName/launch-arguments", requireAccess('admin'), async (req, res) => {
+  app.get("/api/wizard-types/:typeName/launch-arguments", requireAuth, async (req, res) => {
     try {
+      const laCtx = await buildContext(req as any);
+      const laAdmin = await checkAccess('admin', laCtx.user);
+      if (!laAdmin.granted) {
+        if (!laCtx.user || !await storage.hasPermission(laCtx.user.id, 'employer')) {
+          res.status(403).json({ message: "Access denied" });
+          return;
+        }
+      }
+
       const { typeName } = req.params;
       const launchArguments = await wizardRegistry.getLaunchArgumentsForType(typeName);
       res.json(launchArguments);
@@ -107,10 +147,25 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizards", requireAccess('admin'), async (req, res) => {
+  app.get("/api/wizards", requireAuth, async (req, res) => {
     try {
       const { type, status, entityId } = req.query;
       
+      const context = await buildContext(req as any);
+      const adminAccess = await checkAccess('admin', context.user);
+
+      if (!adminAccess.granted) {
+        if (!entityId) {
+          res.status(403).json({ message: "Access denied" });
+          return;
+        }
+        const employerAccess = await checkAccess('employer.mine', context.user, entityId as string);
+        if (!employerAccess.granted) {
+          res.status(403).json({ message: "Access denied" });
+          return;
+        }
+      }
+
       const filters: { type?: string; status?: string; entityId?: string } = {};
       if (type) filters.type = type as string;
       if (status) filters.status = status as string;
@@ -177,7 +232,7 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizards/:id", requireAccess('admin'), async (req, res) => {
+  app.get("/api/wizards/:id", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const wizard = await storage.wizards.getById(id);
@@ -186,15 +241,41 @@ export function registerWizardRoutes(
         return res.status(404).json({ message: "Wizard not found" });
       }
 
+      const context = await buildContext(req as any);
+      const adminAccess = await checkAccess('admin', context.user);
+
+      if (!adminAccess.granted) {
+        if (!wizard.entityId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+        const employerAccess = await checkAccess('employer.mine', context.user, wizard.entityId);
+        if (!employerAccess.granted) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+
       res.json(wizard);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch wizard" });
     }
   });
 
-  app.post("/api/wizards", requireAccess('admin'), async (req, res) => {
+  app.post("/api/wizards", requireAuth, async (req, res) => {
     try {
       const validatedData = insertWizardSchema.parse(req.body);
+
+      const context = await buildContext(req as any);
+      const adminAccess = await checkAccess('admin', context.user);
+
+      if (!adminAccess.granted) {
+        if (!validatedData.entityId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+        const employerAccess = await checkAccess('employer.mine', context.user, validatedData.entityId);
+        if (!employerAccess.granted) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
       
       const typeValidation = await wizardRegistry.validateType(validatedData.type);
       if (!typeValidation.valid) {
@@ -385,13 +466,25 @@ export function registerWizardRoutes(
     }
   });
 
-  app.patch("/api/wizards/:id", requireAccess('admin'), async (req, res) => {
+  app.patch("/api/wizards/:id", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       
       const existing = await storage.wizards.getById(id);
       if (!existing) {
         return res.status(404).json({ message: "Wizard not found" });
+      }
+
+      const patchCtx = await buildContext(req as any);
+      const patchAdmin = await checkAccess('admin', patchCtx.user);
+      if (!patchAdmin.granted) {
+        if (!existing.entityId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+        const empAccess = await checkAccess('employer.mine', patchCtx.user, existing.entityId);
+        if (!empAccess.granted) {
+          return res.status(403).json({ message: "Access denied" });
+        }
       }
 
       const validatedData = insertWizardSchema.partial().parse(req.body);
@@ -495,13 +588,25 @@ export function registerWizardRoutes(
     }
   });
 
-  app.delete("/api/wizards/:id", requireAccess('admin'), async (req, res) => {
+  app.delete("/api/wizards/:id", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       
       const existing = await storage.wizards.getById(id);
       if (!existing) {
         return res.status(404).json({ message: "Wizard not found" });
+      }
+
+      const delCtx = await buildContext(req as any);
+      const delAdmin = await checkAccess('admin', delCtx.user);
+      if (!delAdmin.granted) {
+        if (!existing.entityId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+        const empAccess = await checkAccess('employer.mine', delCtx.user, existing.entityId);
+        if (!empAccess.granted) {
+          return res.status(403).json({ message: "Access denied" });
+        }
       }
 
       // Delete all associated files from object storage
@@ -589,7 +694,7 @@ export function registerWizardRoutes(
     return true;
   }
 
-  app.post("/api/wizards/:id/steps/next", requireAccess('admin'), async (req, res) => {
+  app.post("/api/wizards/:id/steps/next", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const { payload } = req.body;
@@ -597,6 +702,18 @@ export function registerWizardRoutes(
       const wizard = await storage.wizards.getById(id);
       if (!wizard) {
         return res.status(404).json({ message: "Wizard not found" });
+      }
+
+      const nextCtx = await buildContext(req as any);
+      const nextAdmin = await checkAccess('admin', nextCtx.user);
+      if (!nextAdmin.granted) {
+        if (!wizard.entityId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+        const empAccess = await checkAccess('employer.mine', nextCtx.user, wizard.entityId);
+        if (!empAccess.granted) {
+          return res.status(403).json({ message: "Access denied" });
+        }
       }
 
       const steps = await wizardRegistry.getStepsForType(wizard.type);
@@ -650,13 +767,25 @@ export function registerWizardRoutes(
     }
   });
 
-  app.post("/api/wizards/:id/steps/previous", requireAccess('admin'), async (req, res) => {
+  app.post("/api/wizards/:id/steps/previous", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       
       const wizard = await storage.wizards.getById(id);
       if (!wizard) {
         return res.status(404).json({ message: "Wizard not found" });
+      }
+
+      const prevCtx = await buildContext(req as any);
+      const prevAdmin = await checkAccess('admin', prevCtx.user);
+      if (!prevAdmin.granted) {
+        if (!wizard.entityId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+        const empAccess = await checkAccess('employer.mine', prevCtx.user, wizard.entityId);
+        if (!empAccess.granted) {
+          return res.status(403).json({ message: "Access denied" });
+        }
       }
 
       const steps = await wizardRegistry.getStepsForType(wizard.type);

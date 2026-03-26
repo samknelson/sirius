@@ -9,6 +9,7 @@ import { ReportsSettings } from "./reports/ReportsSettings";
 import { WmbScanStatusPlugin } from "./wmbScanStatus/WmbScanStatusPlugin";
 import { ActiveSessionsPlugin } from "./activeSessions/ActiveSessionsPlugin";
 import { MyStewardPlugin } from "./mySteward/MyStewardPlugin";
+import { MyShopsPlugin } from "./myShops/MyShopsPlugin";
 
 export const pluginRegistry: DashboardPlugin[] = [
   {
@@ -73,6 +74,15 @@ export const pluginRegistry: DashboardPlugin[] = [
     description: "Display stewards assigned to your home employer and bargaining unit",
     order: 7,
     component: MyStewardPlugin,
+    enabledByDefault: true,
+  },
+  {
+    id: "my-shops",
+    name: "My Shops",
+    description: "Display linked employers with latest upload and account balance",
+    order: 8,
+    component: MyShopsPlugin,
+    requiredPermissions: ["employer"],
     enabledByDefault: true,
   },
 ];

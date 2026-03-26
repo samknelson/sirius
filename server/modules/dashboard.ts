@@ -5,6 +5,10 @@ import { requireComponent } from "./components";
 import { employerMonthlyPluginConfigSchema } from "@shared/schema";
 import { getPluginMetadata } from "@shared/pluginMetadata";
 import { getEffectiveUser } from "./masquerade";
+import { wizardEmployerMonthly, wizards, ledgerEa, ledger, ledgerAccounts } from "@shared/schema";
+import { eq, and, desc, sql, sum, inArray } from "drizzle-orm";
+import { getClient } from "../storage/transaction-context";
+import { isComponentEnabledSync } from "../services/component-cache";
 
 // Content resolver context passed to each plugin's content resolver
 interface ContentResolverContext {
@@ -423,6 +427,139 @@ export function registerDashboardRoutes(
     } catch (error) {
       console.error("Error fetching my steward data:", error);
       res.status(500).json({ message: "Failed to fetch steward data" });
+    }
+  });
+
+  app.get("/api/dashboard-plugins/my-shops", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const session = req.session as any;
+      const { dbUser } = await getEffectiveUser(session, user);
+
+      if (!dbUser?.email) {
+        res.json([]);
+        return;
+      }
+
+      const contact = await storage.contacts?.getContactByEmail?.(dbUser.email);
+      if (!contact) {
+        res.json([]);
+        return;
+      }
+
+      const employerContactRecords = await storage.employerContacts.listByContactId(contact.id);
+      const employerIds = Array.from(new Set(employerContactRecords.map(ec => ec.employerId)));
+
+      if (employerIds.length === 0) {
+        res.json([]);
+        return;
+      }
+
+      const employersList = await Promise.all(
+        employerIds.map(id => storage.employers.getEmployer(id))
+      );
+      const activeEmployers = employersList
+        .filter((emp): emp is NonNullable<typeof emp> => emp !== null && emp !== undefined && emp.isActive);
+
+      if (activeEmployers.length === 0) {
+        res.json([]);
+        return;
+      }
+
+      const client = getClient();
+      const activeIds = activeEmployers.map(e => e.id);
+
+      const latestWizards = await client
+        .select({
+          employerId: wizardEmployerMonthly.employerId,
+          year: wizardEmployerMonthly.year,
+          month: wizardEmployerMonthly.month,
+          wizardType: wizards.type,
+          completedAt: wizards.date,
+        })
+        .from(wizardEmployerMonthly)
+        .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
+        .where(
+          and(
+            inArray(wizardEmployerMonthly.employerId, activeIds),
+            eq(wizards.status, "complete")
+          )
+        )
+        .orderBy(desc(wizards.date));
+
+      const latestByEmployer = new Map<string, typeof latestWizards[0]>();
+      for (const row of latestWizards) {
+        if (!latestByEmployer.has(row.employerId)) {
+          latestByEmployer.set(row.employerId, row);
+        }
+      }
+
+      const ledgerEnabled = isComponentEnabledSync("ledger");
+      let eaRows: Array<{ eaId: string; entityId: string; accountId: string; accountName: string | null }> = [];
+      let balanceMap = new Map<string, string>();
+
+      if (ledgerEnabled) {
+        eaRows = await client
+          .select({
+            eaId: ledgerEa.id,
+            entityId: ledgerEa.entityId,
+            accountId: ledgerEa.accountId,
+            accountName: ledgerAccounts.name,
+          })
+          .from(ledgerEa)
+          .innerJoin(ledgerAccounts, eq(ledgerEa.accountId, ledgerAccounts.id))
+          .where(
+            and(
+              eq(ledgerEa.entityType, "employer"),
+              inArray(ledgerEa.entityId, activeIds)
+            )
+          );
+
+        const eaIds = eaRows.map(r => r.eaId);
+
+        if (eaIds.length > 0) {
+          const balances = await client
+            .select({
+              eaId: ledger.eaId,
+              total: sum(ledger.amount),
+            })
+            .from(ledger)
+            .where(inArray(ledger.eaId, eaIds))
+            .groupBy(ledger.eaId);
+
+          for (const b of balances) {
+            balanceMap.set(b.eaId, b.total ?? "0.00");
+          }
+        }
+      }
+
+      const result = activeEmployers.map(emp => {
+        const latestWiz = latestByEmployer.get(emp.id);
+        const empEaRows = eaRows.filter(r => r.entityId === emp.id);
+
+        return {
+          employerId: emp.id,
+          employerName: emp.name,
+          latestWizard: latestWiz
+            ? {
+                type: latestWiz.wizardType,
+                year: latestWiz.year,
+                month: latestWiz.month,
+                completedAt: latestWiz.completedAt?.toISOString() ?? null,
+              }
+            : null,
+          accounts: empEaRows.map(ea => ({
+            accountId: ea.accountId,
+            accountName: ea.accountName ?? "Account",
+            balance: balanceMap.get(ea.eaId) ?? "0.00",
+          })),
+        };
+      });
+
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching my shops data:", error);
+      res.status(500).json({ message: "Failed to fetch shop data" });
     }
   });
 
