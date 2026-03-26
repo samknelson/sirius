@@ -473,15 +473,17 @@ export function registerEmployerContactRoutes(
         return res.status(400).json({ message: "Contact must have an email to be linked to an employer" });
       }
 
+      const contactData: InsertContact & { email: string } = {
+        email: employerContact.contact.email,
+        displayName: employerContact.contact.displayName,
+        given: employerContact.contact.given,
+        middle: employerContact.contact.middle,
+        family: employerContact.contact.family,
+      };
+
       const result = await storage.employerContacts.createOrLink({
         employerId: parsed.data.employerId,
-        contactData: {
-          email: employerContact.contact.email,
-          displayName: employerContact.contact.displayName,
-          given: employerContact.contact.given,
-          middle: employerContact.contact.middle,
-          family: employerContact.contact.family,
-        } as any,
+        contactData,
         contactTypeId: parsed.data.contactTypeId || null,
       });
 
@@ -511,10 +513,6 @@ export function registerEmployerContactRoutes(
       const linkToDelete = allLinks.find(l => l.id === linkId);
       if (!linkToDelete) {
         return res.status(404).json({ message: "Employer link not found" });
-      }
-
-      if (linkId === ecId) {
-        return res.status(400).json({ message: "Cannot remove the current employer association from this view. Navigate to the contact from a different employer to remove this link." });
       }
 
       const deleted = await storage.employerContacts.delete(linkId);
