@@ -436,6 +436,98 @@ export function registerEmployerContactRoutes(
     }
   });
 
+  // GET /api/employer-contacts/:id/employers - Get all employers linked to this contact (staff only - cross-employer view)
+  app.get("/api/employer-contacts/:id/employers", requireAuth, requireAccess('staff'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const employerContact = await storage.employerContacts.get(id);
+      if (!employerContact) {
+        return res.status(404).json({ message: "Employer contact not found" });
+      }
+      const links = await storage.employerContacts.listByContactId(employerContact.contactId);
+      res.json(links);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch employer links" });
+    }
+  });
+
+  // POST /api/employer-contacts/:id/employers - Link this contact to another employer (staff only)
+  app.post("/api/employer-contacts/:id/employers", requireAuth, requireAccess('staff'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const parsed = z.object({
+        employerId: z.string().uuid(),
+        contactTypeId: z.string().uuid().nullable().optional(),
+      }).safeParse(req.body);
+
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      }
+
+      const employerContact = await storage.employerContacts.get(id);
+      if (!employerContact) {
+        return res.status(404).json({ message: "Employer contact not found" });
+      }
+
+      if (!employerContact.contact.email) {
+        return res.status(400).json({ message: "Contact must have an email to be linked to an employer" });
+      }
+
+      const result = await storage.employerContacts.createOrLink({
+        employerId: parsed.data.employerId,
+        contactData: {
+          email: employerContact.contact.email,
+          displayName: employerContact.contact.displayName,
+          given: employerContact.contact.given,
+          middle: employerContact.contact.middle,
+          family: employerContact.contact.family,
+        } as any,
+        contactTypeId: parsed.data.contactTypeId || null,
+      });
+
+      res.status(201).json(result);
+    } catch (error: any) {
+      if (error.message === "This contact is already linked to this employer") {
+        return res.status(409).json({ message: error.message });
+      }
+      res.status(500).json({ message: "Failed to link contact to employer" });
+    }
+  });
+
+  // DELETE /api/employer-contacts/:ecId/employers/:linkId - Remove an employer link (staff only)
+  app.delete("/api/employer-contacts/:ecId/employers/:linkId", requireAuth, requireAccess('staff'), async (req, res) => {
+    try {
+      const { ecId, linkId } = req.params;
+      const sourceContact = await storage.employerContacts.get(ecId);
+      if (!sourceContact) {
+        return res.status(404).json({ message: "Employer contact not found" });
+      }
+
+      const allLinks = await storage.employerContacts.listByContactId(sourceContact.contactId);
+      if (allLinks.length <= 1) {
+        return res.status(400).json({ message: "Cannot remove the last employer association. A contact must be linked to at least one employer." });
+      }
+
+      const linkToDelete = allLinks.find(l => l.id === linkId);
+      if (!linkToDelete) {
+        return res.status(404).json({ message: "Employer link not found" });
+      }
+
+      if (linkId === ecId) {
+        return res.status(400).json({ message: "Cannot remove the current employer association from this view. Navigate to the contact from a different employer to remove this link." });
+      }
+
+      const deleted = await storage.employerContacts.delete(linkId);
+      if (!deleted) {
+        return res.status(404).json({ message: "Employer link not found" });
+      }
+
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to remove employer link" });
+    }
+  });
+
   // POST /api/employer-contacts/user-status - Batch fetch user account status for multiple employer contacts
   app.post("/api/employer-contacts/user-status", requireAuth, requireAccess('staff'), async (req, res) => {
     try {

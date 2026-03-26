@@ -370,6 +370,7 @@ export const employerContactTabTree: HierarchicalTab[] = [
   { id: 'email', label: 'Email', hrefTemplate: '/employer-contacts/{id}/email', policyId: 'employer.manage' },
   { id: 'phone-numbers', label: 'Phone Numbers', hrefTemplate: '/employer-contacts/{id}/phone-numbers', policyId: 'employer.manage' },
   { id: 'addresses', label: 'Addresses', hrefTemplate: '/employer-contacts/{id}/addresses', policyId: 'employer.manage' },
+  { id: 'employers', label: 'Employers', hrefTemplate: '/employer-contacts/{id}/employers', permission: 'staff' },
   { 
     id: 'comm', 
     label: 'Comm', 

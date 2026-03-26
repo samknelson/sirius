@@ -96,6 +96,7 @@ const EmployerContactName = lazy(() => import("@/pages/employer-contact-name"));
 const EmployerContactEmail = lazy(() => import("@/pages/employer-contact-email"));
 const EmployerContactPhoneNumbers = lazy(() => import("@/pages/employer-contact-phone-numbers"));
 const EmployerContactAddresses = lazy(() => import("@/pages/employer-contact-addresses"));
+const EmployerContactEmployers = lazy(() => import("@/pages/employer-contact-employers"));
 const EmployerContactUser = lazy(() => import("@/pages/employer-contact-user"));
 const EmployerContactCommHistory = lazy(() => import("@/pages/employer-contact-comm-history"));
 const EmployerContactSendSms = lazy(() => import("@/pages/employer-contact-send-sms"));
@@ -992,6 +993,14 @@ function Router() {
         <ProtectedRoute policy="employer.manage">
           <AuthenticatedLayout>
             <EmployerContactAddresses />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/employer-contacts/:id/employers">
+        <ProtectedRoute permission="staff">
+          <AuthenticatedLayout>
+            <EmployerContactEmployers />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

@@ -34,7 +34,7 @@ export interface EmployerContactStorage {
   create(data: { employerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }>;
   createOrLink(data: { employerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact; linked?: boolean }>;
   listByEmployer(employerId: string): Promise<Array<EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>>;
-  listByContactId(contactId: string): Promise<Array<EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>>;
+  listByContactId(contactId: string): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null } | null }>>;
   getAll(filters?: { employerId?: string; contactName?: string; contactTypeId?: string }): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null } | null }>>;
   get(id: string): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
   update(id: string, data: { contactTypeId?: string | null }): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
@@ -152,22 +152,25 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
       }));
     },
 
-    async listByContactId(contactId: string): Promise<Array<EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>> {
+    async listByContactId(contactId: string): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null } | null }>> {
       const client = getClient();
       const results = await client
         .select({
           employerContact: employerContacts,
           contact: contacts,
+          employer: employers,
           contactType: optionsEmployerContactType,
         })
         .from(employerContacts)
         .innerJoin(contacts, eq(employerContacts.contactId, contacts.id))
+        .innerJoin(employers, eq(employerContacts.employerId, employers.id))
         .leftJoin(optionsEmployerContactType, eq(employerContacts.contactTypeId, optionsEmployerContactType.id))
         .where(eq(employerContacts.contactId, contactId));
 
       return results.map(row => ({
         ...row.employerContact,
         contact: row.contact,
+        employer: row.employer,
         contactType: row.contactType,
       }));
     },
