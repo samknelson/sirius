@@ -503,6 +503,10 @@ export function registerEmployerContactRoutes(
         return res.status(404).json({ message: "Employer link not found" });
       }
 
+      if (linkId === ecId) {
+        return res.status(400).json({ message: "Cannot remove the current employer association from this view. Navigate to the contact from a different employer to remove this link." });
+      }
+
       const deleted = await storage.employerContacts.delete(linkId);
       if (!deleted) {
         return res.status(404).json({ message: "Employer link not found" });

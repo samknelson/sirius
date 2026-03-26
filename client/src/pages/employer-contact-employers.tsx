@@ -228,7 +228,7 @@ function EmployerContactEmployersContent() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {employerLinks.length > 1 && (
+                        {!isCurrent && employerLinks.length > 1 && (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button
