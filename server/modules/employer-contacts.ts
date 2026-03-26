@@ -59,7 +59,7 @@ export function registerEmployerContactRoutes(
     }
   });
 
-  // POST /api/employers/:employerId/contacts - Create a new contact for an employer
+  // POST /api/employers/:employerId/contacts - Create or link a contact for an employer
   app.post("/api/employers/:employerId/contacts", requireAuth, requireAccess('employer.manage', (req) => req.params.employerId), async (req, res) => {
     try {
       const { employerId } = req.params;
@@ -74,7 +74,7 @@ export function registerEmployerContactRoutes(
 
       const { contactTypeId, ...contactData } = parsed.data;
       
-      const result = await storage.employerContacts.create({
+      const result = await storage.employerContacts.createOrLink({
         employerId,
         contactData: contactData as InsertContact & { email: string },
         contactTypeId: contactTypeId || null,
@@ -85,9 +85,8 @@ export function registerEmployerContactRoutes(
       if (error.message === "Email is required for employer contacts") {
         return res.status(400).json({ message: error.message });
       }
-      // Handle duplicate email constraint violation
-      if (error.code === '23505' && error.constraint === 'contacts_email_unique') {
-        return res.status(409).json({ message: "A contact with this email already exists. Employers cannot add existing contacts, only create new ones." });
+      if (error.message === "This contact is already linked to this employer") {
+        return res.status(409).json({ message: error.message });
       }
       res.status(500).json({ message: "Failed to create employer contact" });
     }

@@ -32,6 +32,7 @@ export const employerContactEmailValidate = createStorageValidator<{ email: stri
 
 export interface EmployerContactStorage {
   create(data: { employerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }>;
+  createOrLink(data: { employerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact; linked?: boolean }>;
   listByEmployer(employerId: string): Promise<Array<EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>>;
   listByContactId(contactId: string): Promise<Array<EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>>;
   getAll(filters?: { employerId?: string; contactName?: string; contactTypeId?: string }): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null } | null }>>;
@@ -63,6 +64,62 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
       });
 
       // Create the employer contact relationship
+      const [employerContact] = await client
+        .insert(employerContacts)
+        .values({
+          employerId: data.employerId,
+          contactId: contact.id,
+          contactTypeId: data.contactTypeId || null,
+        })
+        .returning();
+
+      return { employerContact, contact };
+    },
+
+    async createOrLink(data: { employerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact; linked?: boolean }> {
+      const client = getClient();
+      
+      const validated = employerContactEmailValidate.validateOrThrow({ email: data.contactData.email });
+
+      const [existingContact] = await client
+        .select()
+        .from(contacts)
+        .where(eq(contacts.email, validated.email))
+        .limit(1);
+
+      if (existingContact) {
+        const [existingLink] = await client
+          .select()
+          .from(employerContacts)
+          .where(
+            and(
+              eq(employerContacts.employerId, data.employerId),
+              eq(employerContacts.contactId, existingContact.id)
+            )
+          )
+          .limit(1);
+
+        if (existingLink) {
+          throw new Error("This contact is already linked to this employer");
+        }
+
+        const [employerContact] = await client
+          .insert(employerContacts)
+          .values({
+            employerId: data.employerId,
+            contactId: existingContact.id,
+            contactTypeId: data.contactTypeId || null,
+          })
+          .returning();
+
+        return { employerContact, contact: existingContact, linked: true };
+      }
+
+      const contact = await contactsStorage.createContact({
+        ...data.contactData,
+        email: validated.email
+      });
+
       const [employerContact] = await client
         .insert(employerContacts)
         .values({
