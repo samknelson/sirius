@@ -672,10 +672,19 @@ export function registerWizardRoutes(
         // If no required fields, step is complete
         if (requiredFields.length === 0) return true;
         
-        // Check if all required fields are mapped
-        const mappedValues = Object.values(columnMapping).filter(v => v && v !== '_unmapped');
-        const mappedRequiredFields = requiredFields.filter((f: any) => mappedValues.includes(f.id));
-        
+        const keys = Object.keys(columnMapping);
+        const isOldFormat = keys.length > 0 && keys.every((k: string) => k.startsWith('col_'));
+
+        if (isOldFormat) {
+          const mappedFieldIds = Object.values(columnMapping).filter((v: any) => v && v !== '_unmapped');
+          const mappedRequiredFields = requiredFields.filter((f: any) => mappedFieldIds.includes(f.id));
+          return requiredFields.length === mappedRequiredFields.length;
+        }
+
+        const mappedRequiredFields = requiredFields.filter((f: any) => {
+          const colValue = columnMapping[f.id];
+          return colValue && colValue !== '_unmapped';
+        });
         return requiredFields.length === mappedRequiredFields.length;
       } catch (error) {
         // If fields aren't available (not a feed wizard), consider step complete
