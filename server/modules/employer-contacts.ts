@@ -469,21 +469,9 @@ export function registerEmployerContactRoutes(
         return res.status(404).json({ message: "Employer contact not found" });
       }
 
-      if (!employerContact.contact.email) {
-        return res.status(400).json({ message: "Contact must have an email to be linked to an employer" });
-      }
-
-      const contactData: InsertContact & { email: string } = {
-        email: employerContact.contact.email,
-        displayName: employerContact.contact.displayName,
-        given: employerContact.contact.given,
-        middle: employerContact.contact.middle,
-        family: employerContact.contact.family,
-      };
-
-      const result = await storage.employerContacts.createOrLink({
+      const result = await storage.employerContacts.linkToEmployer({
+        contactId: employerContact.contactId,
         employerId: parsed.data.employerId,
-        contactData,
         contactTypeId: parsed.data.contactTypeId || null,
       });
 

@@ -47,6 +47,7 @@ export interface EmployerContactStorage {
     generational?: string;
     credentials?: string;
   }): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
+  linkToEmployer(data: { contactId: string; employerId: string; contactTypeId?: string | null }): Promise<EmployerContact>;
   delete(id: string): Promise<boolean>;
   getUserAccountStatuses(employerContactIds: string[]): Promise<Array<{ employerContactId: string; userId: string | null; hasUser: boolean; accountStatus: string | null }>>;
 }
@@ -306,6 +307,35 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
       await contactsStorage.updateNameComponents(employerContact.contactId, components);
 
       return this.get(id);
+    },
+
+    async linkToEmployer(data: { contactId: string; employerId: string; contactTypeId?: string | null }): Promise<EmployerContact> {
+      const client = getClient();
+      const [existingLink] = await client
+        .select()
+        .from(employerContacts)
+        .where(
+          and(
+            eq(employerContacts.employerId, data.employerId),
+            eq(employerContacts.contactId, data.contactId)
+          )
+        )
+        .limit(1);
+
+      if (existingLink) {
+        throw new Error("This contact is already linked to this employer");
+      }
+
+      const [employerContact] = await client
+        .insert(employerContacts)
+        .values({
+          employerId: data.employerId,
+          contactId: data.contactId,
+          contactTypeId: data.contactTypeId || null,
+        })
+        .returning();
+
+      return employerContact;
     },
 
     async delete(id: string): Promise<boolean> {
