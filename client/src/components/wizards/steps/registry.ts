@@ -51,7 +51,6 @@ const evaluateMapComplete: StepCompletionEvaluator = ({ wizard, fields }) => {
   
   if (!fields || fields.length === 0) return false;
   
-  // Get required fields based on mode
   const requiredFields = fields.filter((f: any) => {
     if (f.required) return true;
     if (mode === 'create' && f.requiredForCreate) return true;
@@ -59,13 +58,21 @@ const evaluateMapComplete: StepCompletionEvaluator = ({ wizard, fields }) => {
     return false;
   });
   
-  // If no required fields, consider the step complete (edge case)
   if (requiredFields.length === 0) return true;
   
-  // Check if all required fields are mapped
-  const mappedValues = Object.values(columnMapping).filter(v => v && v !== '_unmapped');
-  const mappedRequiredFields = requiredFields.filter((f: any) => mappedValues.includes(f.id));
-  
+  const keys = Object.keys(columnMapping);
+  const isOldFormat = keys.length > 0 && keys.every(k => k.startsWith('col_'));
+
+  if (isOldFormat) {
+    const mappedFieldIds = Object.values(columnMapping).filter(v => v && v !== '_unmapped');
+    const mappedRequiredFields = requiredFields.filter((f: any) => mappedFieldIds.includes(f.id));
+    return requiredFields.length === mappedRequiredFields.length;
+  }
+
+  const mappedRequiredFields = requiredFields.filter((f: any) => {
+    const colValue = columnMapping[f.id];
+    return colValue && colValue !== '_unmapped';
+  });
   return requiredFields.length === mappedRequiredFields.length;
 };
 
