@@ -48,11 +48,15 @@ export function BenefitsStep({ wizardId, wizardType, data, onDataChange }: Benef
   const columnMapping = data?.columnMapping || {};
 
   const mappedBenefitFields = useMemo(() => {
-    const mappedValues = Object.values(columnMapping).filter(v => v && v !== '_unmapped');
+    const keys = Object.keys(columnMapping);
+    const isOldFormat = keys.length > 0 && keys.every(k => k.startsWith('col_'));
+    const mappedFieldIds = isOldFormat
+      ? Object.values(columnMapping).filter((v: any) => v && v !== '_unmapped')
+      : keys.filter(k => columnMapping[k] && columnMapping[k] !== '_unmapped');
     return fields.filter(f => 
       f.type === 'benefit' && 
       f.isBenefitEligibility && 
-      mappedValues.includes(f.id)
+      mappedFieldIds.includes(f.id)
     );
   }, [fields, columnMapping]);
 

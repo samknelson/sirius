@@ -519,15 +519,27 @@ export function registerWizardRoutes(
         const existingData = (existing.data || {}) as any;
         const incomingData = validatedData.data as any;
         
-        // Validate column mapping for duplicate field IDs
         if (incomingData.columnMapping) {
-          const fieldIds = Object.values(incomingData.columnMapping).filter(id => id && id !== '_unmapped');
-          const duplicates = fieldIds.filter((id, index) => fieldIds.indexOf(id) !== index);
-          if (duplicates.length > 0) {
-            const uniqueDuplicates = Array.from(new Set(duplicates));
-            return res.status(400).json({ 
-              message: `Duplicate field mappings detected: ${uniqueDuplicates.join(', ')}. Each field can only be mapped once.` 
-            });
+          const cmKeys = Object.keys(incomingData.columnMapping);
+          const isOldFormat = cmKeys.length > 0 && cmKeys.every((k: string) => k.startsWith('col_'));
+          if (isOldFormat) {
+            const fieldIds = Object.values(incomingData.columnMapping).filter((id: any) => id && id !== '_unmapped');
+            const duplicates = fieldIds.filter((id: any, index: number) => fieldIds.indexOf(id) !== index);
+            if (duplicates.length > 0) {
+              const uniqueDuplicates = Array.from(new Set(duplicates));
+              return res.status(400).json({ 
+                message: `Duplicate field mappings detected: ${uniqueDuplicates.join(', ')}. Each field can only be mapped once.` 
+              });
+            }
+          } else {
+            const colValues = Object.values(incomingData.columnMapping).filter((v: any) => v && v !== '_unmapped');
+            const duplicates = colValues.filter((v: any, index: number) => colValues.indexOf(v) !== index);
+            if (duplicates.length > 0) {
+              const uniqueDuplicates = Array.from(new Set(duplicates));
+              return res.status(400).json({ 
+                message: `Duplicate column mappings detected: ${uniqueDuplicates.join(', ')}. Each column can only be mapped once.` 
+              });
+            }
           }
         }
         
