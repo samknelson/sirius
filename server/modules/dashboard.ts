@@ -6,7 +6,7 @@ import { employerMonthlyPluginConfigSchema } from "@shared/schema";
 import { getPluginMetadata } from "@shared/pluginMetadata";
 import { getEffectiveUser } from "./masquerade";
 import { wizardEmployerMonthly, wizards, ledgerEa, ledger, ledgerAccounts } from "@shared/schema";
-import { eq, and, desc, sql, sum, inArray } from "drizzle-orm";
+import { eq, and, or, desc, sql, sum, inArray } from "drizzle-orm";
 import { getClient } from "../storage/transaction-context";
 import { isComponentEnabledSync } from "../services/component-cache";
 
@@ -482,7 +482,7 @@ export function registerDashboardRoutes(
         .where(
           and(
             inArray(wizardEmployerMonthly.employerId, activeIds),
-            eq(wizards.status, "complete")
+            or(eq(wizards.status, "complete"), eq(wizards.status, "completed"))
           )
         )
         .orderBy(desc(wizards.date));
