@@ -275,6 +275,10 @@ export function registerWizardRoutes(
         if (!employerAccess.granted) {
           return res.status(403).json({ message: "Access denied" });
         }
+        const wizardType = wizardRegistry.get(validatedData.type);
+        if (!wizardType || wizardType.entityType !== 'employer') {
+          return res.status(403).json({ message: "Access denied: wizard type not available" });
+        }
       }
       
       const typeValidation = await wizardRegistry.validateType(validatedData.type);
