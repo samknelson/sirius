@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
-    "build": "npm run db:push && tsx scripts/migrate/seed-production.ts && VITE_CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY_PROD:-$VITE_CLERK_PUBLISHABLE_KEY} vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
+    "build": "npm run db:push && VITE_CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY_PROD:-$VITE_CLERK_PUBLISHABLE_KEY} vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc",
     "check:storage": "tsx scripts/dev/check-storage-encapsulation.ts",
@@ -96,7 +96,6 @@
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
     "pdfmake": "^0.2.20",
-    "pg": "^8.20.0",
     "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
