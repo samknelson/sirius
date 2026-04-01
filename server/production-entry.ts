@@ -1,3 +1,15 @@
+/**
+ * Production entry point for deployed environments.
+ *
+ * Referenced by package.json "build" and "start" scripts:
+ *   - build: esbuild bundles this file into dist/production-entry.js
+ *   - start: node dist/production-entry.js
+ *
+ * This file starts an Express server immediately with a health check endpoint
+ * and a "starting..." placeholder page, then lazy-loads the full application
+ * via app-init.ts. This allows the deployment health check to pass while the
+ * application is still initializing (loading plugins, running migrations, etc).
+ */
 import express from "express";
 import { createServer } from "http";
 
