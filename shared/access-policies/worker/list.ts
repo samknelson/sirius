@@ -2,7 +2,7 @@ import { anyPermissionPolicy, registerPolicy } from '../index';
 
 const policy = anyPermissionPolicy(
   'worker.list',
-  ['staff', 'trust.provider'],
+  ['staff', 'provider', 'trust.provider'],
   'View the worker list'
 );
 
