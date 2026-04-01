@@ -397,6 +397,7 @@ export const providerContactTabTree: HierarchicalTab[] = [
   { id: 'email', label: 'Email', hrefTemplate: '/trust-provider-contacts/{id}/email', permission: 'providers.edit' },
   { id: 'phone-numbers', label: 'Phone Numbers', hrefTemplate: '/trust-provider-contacts/{id}/phone-numbers', permission: 'providers.edit' },
   { id: 'addresses', label: 'Addresses', hrefTemplate: '/trust-provider-contacts/{id}/addresses', permission: 'providers.edit' },
+  { id: 'providers', label: 'Providers', hrefTemplate: '/trust-provider-contacts/{id}/providers', permission: 'staff' },
   { 
     id: 'comm', 
     label: 'Comm', 

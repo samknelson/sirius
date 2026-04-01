@@ -131,6 +131,7 @@ const TrustProviderContactName = lazy(() => import("@/pages/trust-provider-conta
 const TrustProviderContactEmail = lazy(() => import("@/pages/trust-provider-contact-email"));
 const TrustProviderContactPhoneNumbers = lazy(() => import("@/pages/trust-provider-contact-phone-numbers"));
 const TrustProviderContactAddresses = lazy(() => import("@/pages/trust-provider-contact-addresses"));
+const TrustProviderContactProviders = lazy(() => import("@/pages/trust-provider-contact-providers"));
 const TrustProviderContactUser = lazy(() => import("@/pages/trust-provider-contact-user"));
 const TrustProviderContactCommHistory = lazy(() => import("@/pages/trust-provider-contact-comm-history"));
 const TrustProviderContactSendSms = lazy(() => import("@/pages/trust-provider-contact-send-sms"));
@@ -1322,6 +1323,14 @@ function Router() {
         <ProtectedRoute policy="trustProviderUserManage" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderContactUser />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust-provider-contacts/:id/providers">
+        <ProtectedRoute policy="staff" component="trust.providers">
+          <AuthenticatedLayout>
+            <TrustProviderContactProviders />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

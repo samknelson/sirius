@@ -51,7 +51,7 @@ export function registerTrustProviderContactRoutes(
     }
   });
 
-  // POST /api/trust-providers/:providerId/contacts - Create a new contact for a provider (requires admin policy)
+  // POST /api/trust-providers/:providerId/contacts - Create or link a contact for a provider (requires admin policy)
   app.post("/api/trust-providers/:providerId/contacts", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
       const { providerId } = req.params;
@@ -66,7 +66,7 @@ export function registerTrustProviderContactRoutes(
 
       const { contactTypeId, ...contactData } = parsed.data;
       
-      const result = await storage.trustProviderContacts.create({
+      const result = await storage.trustProviderContacts.createOrLink({
         providerId,
         contactData: contactData as InsertContact & { email: string },
         contactTypeId: contactTypeId || null,
@@ -77,9 +77,8 @@ export function registerTrustProviderContactRoutes(
       if (error.message === "Email is required for provider contacts") {
         return res.status(400).json({ message: error.message });
       }
-      // Handle duplicate email constraint violation
-      if (error.code === '23505' && error.constraint === 'contacts_email_unique') {
-        return res.status(409).json({ message: "A contact with this email already exists. Providers cannot add existing contacts, only create new ones." });
+      if (error.message === "This contact is already linked to this provider") {
+        return res.status(409).json({ message: error.message });
       }
       res.status(500).json({ message: "Failed to create provider contact" });
     }
@@ -475,6 +474,89 @@ export function registerTrustProviderContactRoutes(
     } catch (error) {
       console.error("Error saving provider contact user:", error);
       res.status(500).json({ message: "Failed to save user account" });
+    }
+  });
+
+  // GET /api/trust-provider-contacts/:id/providers - Get all providers linked to this contact (staff only)
+  app.get("/api/trust-provider-contacts/:id/providers", requireAuth, requireAccess('staff'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const providerContact = await storage.trustProviderContacts.get(id);
+      if (!providerContact) {
+        return res.status(404).json({ message: "Provider contact not found" });
+      }
+      const links = await storage.trustProviderContacts.listByContactId(providerContact.contactId);
+      res.json(links);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch provider links" });
+    }
+  });
+
+  // POST /api/trust-provider-contacts/:id/providers - Link this contact to another provider (staff only)
+  app.post("/api/trust-provider-contacts/:id/providers", requireAuth, requireAccess('staff'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const parsed = z.object({
+        providerId: z.string().uuid(),
+        contactTypeId: z.string().uuid().nullable().optional(),
+      }).safeParse(req.body);
+
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      }
+
+      const providerContact = await storage.trustProviderContacts.get(id);
+      if (!providerContact) {
+        return res.status(404).json({ message: "Provider contact not found" });
+      }
+
+      const result = await storage.trustProviderContacts.linkToProvider({
+        contactId: providerContact.contactId,
+        providerId: parsed.data.providerId,
+        contactTypeId: parsed.data.contactTypeId || null,
+      });
+
+      res.status(201).json(result);
+    } catch (error: any) {
+      if (error.message === "This contact is already linked to this provider") {
+        return res.status(409).json({ message: error.message });
+      }
+      res.status(500).json({ message: "Failed to link contact to provider" });
+    }
+  });
+
+  // DELETE /api/trust-provider-contacts/:pcId/providers/:linkId - Remove a provider link (staff only)
+  app.delete("/api/trust-provider-contacts/:pcId/providers/:linkId", requireAuth, requireAccess('staff'), async (req, res) => {
+    try {
+      const { pcId, linkId } = req.params;
+      const sourceContact = await storage.trustProviderContacts.get(pcId);
+      if (!sourceContact) {
+        return res.status(404).json({ message: "Provider contact not found" });
+      }
+
+      const allLinks = await storage.trustProviderContacts.listByContactId(sourceContact.contactId);
+
+      const linkToDelete = allLinks.find(l => l.id === linkId);
+      if (!linkToDelete) {
+        return res.status(404).json({ message: "Provider link not found for this contact" });
+      }
+
+      if (allLinks.length <= 1) {
+        return res.status(400).json({ message: "Cannot remove the last provider association. A contact must be linked to at least one provider." });
+      }
+
+      if (linkId === pcId) {
+        return res.status(400).json({ message: "Cannot remove the current provider-contact link. Navigate to a different provider's view of this contact to remove this association." });
+      }
+
+      const deleted = await storage.trustProviderContacts.delete(linkId);
+      if (!deleted) {
+        return res.status(404).json({ message: "Provider link not found" });
+      }
+
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to remove provider link" });
     }
   });
 
