@@ -102,8 +102,8 @@ export function registerComponentRoutes(
   requireAuth: AuthMiddleware,
   requirePermission: PermissionMiddleware
 ) {
-  // GET /api/components/config - Get component configuration states
-  app.get("/api/components/config", requireAccess('admin'), async (req, res) => {
+  // GET /api/components/config - Get component configuration states (read-only for all authenticated users)
+  app.get("/api/components/config", requireAuth, async (req, res) => {
     try {
       const configs = await getComponentConfigs();
       res.json(configs);
