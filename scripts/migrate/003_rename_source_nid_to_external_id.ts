@@ -16,9 +16,15 @@ async function up(): Promise<void> {
   const hasOldColumn = columnCheck.rows[0]?.exists === true || columnCheck.rows[0]?.exists === 't';
 
   if (!hasOldColumn) {
-    logger.info("Column source_nid already renamed or does not exist, skipping", {
+    logger.info("Column source_nid already renamed or does not exist, skipping rename", {
       service: "migration-003",
     });
+
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_cardchecks_external_id 
+      ON cardchecks (external_id) 
+      WHERE external_id IS NOT NULL
+    `);
     return;
   }
 
