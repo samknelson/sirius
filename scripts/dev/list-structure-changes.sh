@@ -17,6 +17,13 @@
 #                                            # List files approved at current HEAD
 #   ./list-structure-changes.sh --clear-approvals
 #                                            # Remove all stored approvals
+#   ./list-structure-changes.sh --reject <file-or-pattern> <reason>
+#                                            # Mark file(s) as rejected with a reason at current HEAD
+#                                            # Supports wildcards, e.g. --reject 'server/*.ts' "breaks API"
+#   ./list-structure-changes.sh --show-rejected
+#                                            # List files rejected at current HEAD with reasons
+#   ./list-structure-changes.sh --clear-rejections
+#                                            # Remove all stored rejections
 
 # Colors for output
 BLUE='\033[0;34m'
@@ -28,13 +35,18 @@ NC='\033[0m' # No Color
 
 APPROVALS_DIR="/tmp/list-structure-changes-approvals"
 APPROVALS_FILE="$APPROVALS_DIR/approvals"
+REJECTIONS_FILE="$APPROVALS_DIR/rejections"
 
 LIST_ONLY=false
 COMMIT_ARG=""
 FILE_ARG=""
 APPROVE_ARG=""
+REJECT_ARG=""
+REJECT_REASON=""
 SHOW_APPROVED=false
 CLEAR_APPROVALS=false
+SHOW_REJECTED=false
+CLEAR_REJECTIONS=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -49,12 +61,40 @@ while [ $# -gt 0 ]; do
             APPROVE_ARG="$2"
             shift 2
             ;;
+        --reject)
+            if [ -z "$2" ] || [[ "$2" == --* ]]; then
+                echo -e "${RED}Usage: $0 --reject <file-or-pattern> <reason>${NC}"
+                echo -e "${CYAN}Examples:${NC}"
+                echo "  $0 --reject server/routes.ts \"breaks API contract\""
+                echo "  $0 --reject 'server/*.ts' \"needs refactoring\""
+                exit 1
+            fi
+            if [ -z "$3" ] || [[ "$3" == --* ]]; then
+                echo -e "${RED}Error: --reject requires a reason.${NC}"
+                echo -e "${RED}Usage: $0 --reject <file-or-pattern> <reason>${NC}"
+                echo -e "${CYAN}Examples:${NC}"
+                echo "  $0 --reject server/routes.ts \"breaks API contract\""
+                echo "  $0 --reject 'server/*.ts' \"needs refactoring\""
+                exit 1
+            fi
+            REJECT_ARG="$2"
+            REJECT_REASON="$3"
+            shift 3
+            ;;
         --show-approved)
             SHOW_APPROVED=true
             shift
             ;;
         --clear-approvals)
             CLEAR_APPROVALS=true
+            shift
+            ;;
+        --show-rejected)
+            SHOW_REJECTED=true
+            shift
+            ;;
+        --clear-rejections)
+            CLEAR_REJECTIONS=true
             shift
             ;;
         --list|-l)
@@ -82,6 +122,16 @@ if [ "$CLEAR_APPROVALS" = true ]; then
     exit 0
 fi
 
+if [ "$CLEAR_REJECTIONS" = true ]; then
+    if [ -f "$REJECTIONS_FILE" ]; then
+        rm "$REJECTIONS_FILE"
+        echo -e "${GREEN}All rejections cleared.${NC}"
+    else
+        echo -e "${YELLOW}No rejections to clear.${NC}"
+    fi
+    exit 0
+fi
+
 HEAD_COMMIT=$(git rev-parse HEAD 2>/dev/null)
 
 if [ "$SHOW_APPROVED" = true ]; then
@@ -101,6 +151,27 @@ if [ "$SHOW_APPROVED" = true ]; then
     done < "$APPROVALS_FILE"
     if [ "$found" = false ]; then
         echo -e "${YELLOW}No approvals for current HEAD (${HEAD_COMMIT:0:7}).${NC}"
+    fi
+    exit 0
+fi
+
+if [ "$SHOW_REJECTED" = true ]; then
+    if [ ! -f "$REJECTIONS_FILE" ]; then
+        echo -e "${YELLOW}No rejections recorded.${NC}"
+        exit 0
+    fi
+    found=false
+    while IFS=$'\t' read -r commit filepath reason; do
+        if [ "$commit" = "$HEAD_COMMIT" ]; then
+            if [ "$found" = false ]; then
+                echo -e "${BLUE}Rejected files at HEAD (${HEAD_COMMIT:0:7}):${NC}"
+                found=true
+            fi
+            echo -e "  ${RED}${filepath}${NC}  ${CYAN}Reason: ${reason}${NC}"
+        fi
+    done < "$REJECTIONS_FILE"
+    if [ "$found" = false ]; then
+        echo -e "${YELLOW}No rejections for current HEAD (${HEAD_COMMIT:0:7}).${NC}"
     fi
     exit 0
 fi
@@ -192,12 +263,70 @@ if [ -n "$APPROVE_ARG" ]; then
     exit 0
 fi
 
+if [ -n "$REJECT_ARG" ]; then
+    mkdir -p "$APPROVALS_DIR"
+    changed_for_reject=$(git --no-pager diff -w --name-only "$BASE_COMMIT"..HEAD -- ':!client/*' ':!attached_assets/*' ':!data/*.json' ':!database/quickstarts/*' 2>/dev/null)
+    matched_files=""
+    for file in $changed_for_reject; do
+        # shellcheck disable=SC2254
+        case "$file" in
+            $REJECT_ARG)
+                matched_files="$matched_files $file"
+                ;;
+        esac
+    done
+    matched_files=$(echo "$matched_files" | xargs)
+
+    if [ -z "$matched_files" ]; then
+        echo -e "${RED}No changed files match '${REJECT_ARG}'.${NC}"
+        echo -e "${CYAN}Usage: $0 --reject <file-or-pattern> <reason>${NC}"
+        echo -e "${CYAN}The pattern is matched against files changed since the base commit.${NC}"
+        echo -e "${CYAN}Use --list to see currently changed files.${NC}"
+        exit 1
+    fi
+
+    rejected_count=0
+    for file in $matched_files; do
+        if awk -F'\t' -v c="$HEAD_COMMIT" -v f="$file" '$1 == c && $2 == f { found=1; exit } END { exit !found }' "$REJECTIONS_FILE" 2>/dev/null; then
+            echo -e "${YELLOW}Already rejected: ${file}${NC}"
+        else
+            printf '%s\t%s\t%s\n' "$HEAD_COMMIT" "$file" "$REJECT_REASON" >> "$REJECTIONS_FILE"
+            echo -e "${RED}Rejected: ${file} (at ${HEAD_COMMIT:0:7})${NC}"
+            echo -e "${CYAN}  Reason: ${REJECT_REASON}${NC}"
+            rejected_count=$((rejected_count + 1))
+        fi
+    done
+    if [ "$rejected_count" -gt 0 ]; then
+        echo -e "${CYAN}${rejected_count} file(s) rejected.${NC}"
+    fi
+    exit 0
+fi
+
+# Helper: get rejection reason for a file at current HEAD
+get_rejection_reason() {
+    local check_file="$1"
+    if [ -f "$REJECTIONS_FILE" ]; then
+        while IFS=$'\t' read -r commit filepath reason; do
+            if [ "$commit" = "$HEAD_COMMIT" ] && [ "$filepath" = "$check_file" ]; then
+                echo "$reason"
+                return 0
+            fi
+        done < "$REJECTIONS_FILE"
+    fi
+    return 1
+}
+
 # Single-file mode: show diff for one specific file and exit
 if [ -n "$FILE_ARG" ]; then
     echo ""
     echo -e "${GREEN}────────────────────────────────────────────────────────────────${NC}"
     echo -e "${GREEN}📄 FILE: ${YELLOW}${FILE_ARG}${NC}"
     echo -e "${GREEN}────────────────────────────────────────────────────────────────${NC}"
+
+    rejection_reason=$(get_rejection_reason "$FILE_ARG")
+    if [ -n "$rejection_reason" ]; then
+        echo -e "${RED}❌ REJECTED: ${rejection_reason}${NC}"
+    fi
 
     stats=$(git --no-pager diff -w --numstat "$BASE_COMMIT"..HEAD -- "$FILE_ARG" 2>/dev/null)
     insertions=$(echo "$stats" | awk '{print $1}')
@@ -260,11 +389,15 @@ if [ -z "$files_with_changes" ]; then
     exit 0
 fi
 
-# Filter out approved files
+# Filter out approved files (but keep rejected files visible — rejection overrides approval)
 if [ -f "$APPROVALS_FILE" ]; then
     filtered_files=""
     for file in $files_with_changes; do
-        if ! grep -qFx "$HEAD_COMMIT $file" "$APPROVALS_FILE" 2>/dev/null; then
+        if grep -qFx "$HEAD_COMMIT $file" "$APPROVALS_FILE" 2>/dev/null; then
+            if get_rejection_reason "$file" > /dev/null 2>&1; then
+                filtered_files="$filtered_files $file"
+            fi
+        else
             filtered_files="$filtered_files $file"
         fi
     done
@@ -293,10 +426,19 @@ if [ "$LIST_ONLY" = true ]; then
         stats=$(git --no-pager diff -w --numstat "$BASE_COMMIT"..HEAD -- "$file" 2>/dev/null)
         insertions=$(echo "$stats" | awk '{print $1}')
         deletions=$(echo "$stats" | awk '{print $2}')
-        if [ "$insertions" = "-" ]; then
-            echo -e "  ${YELLOW}${file}${NC}  ${CYAN}(binary)${NC}"
+        rejection_reason=$(get_rejection_reason "$file")
+        if [ -n "$rejection_reason" ]; then
+            if [ "$insertions" = "-" ]; then
+                echo -e "  ${RED}${file}${NC}  ${CYAN}(binary)${NC}  ${RED}❌ REJECTED: ${rejection_reason}${NC}"
+            else
+                echo -e "  ${RED}${file}${NC}  ${CYAN}(+${insertions:-0} -${deletions:-0})${NC}  ${RED}❌ REJECTED: ${rejection_reason}${NC}"
+            fi
         else
-            echo -e "  ${YELLOW}${file}${NC}  ${CYAN}(+${insertions:-0} -${deletions:-0})${NC}"
+            if [ "$insertions" = "-" ]; then
+                echo -e "  ${YELLOW}${file}${NC}  ${CYAN}(binary)${NC}"
+            else
+                echo -e "  ${YELLOW}${file}${NC}  ${CYAN}(+${insertions:-0} -${deletions:-0})${NC}"
+            fi
         fi
     done
     echo ""
@@ -308,9 +450,17 @@ fi
 
 # Process each file with actual changes
 for file in $files_with_changes; do
-    echo -e "${GREEN}────────────────────────────────────────────────────────────────${NC}"
-    echo -e "${GREEN}📄 FILE: ${YELLOW}${file}${NC}"
-    echo -e "${GREEN}────────────────────────────────────────────────────────────────${NC}"
+    rejection_reason=$(get_rejection_reason "$file")
+    if [ -n "$rejection_reason" ]; then
+        echo -e "${RED}────────────────────────────────────────────────────────────────${NC}"
+        echo -e "${RED}📄 FILE: ${file}${NC}"
+        echo -e "${RED}❌ REJECTED: ${rejection_reason}${NC}"
+        echo -e "${RED}────────────────────────────────────────────────────────────────${NC}"
+    else
+        echo -e "${GREEN}────────────────────────────────────────────────────────────────${NC}"
+        echo -e "${GREEN}📄 FILE: ${YELLOW}${file}${NC}"
+        echo -e "${GREEN}────────────────────────────────────────────────────────────────${NC}"
+    fi
     
     # Get insertions and deletions count (ignoring whitespace)
     stats=$(git --no-pager diff -w --numstat "$BASE_COMMIT"..HEAD -- "$file" 2>/dev/null)
