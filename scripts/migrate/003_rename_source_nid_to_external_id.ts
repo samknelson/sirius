@@ -13,7 +13,7 @@ async function up(): Promise<void> {
     ) AS exists
   `);
 
-  const hasOldColumn = columnCheck.rows[0]?.exists === true;
+  const hasOldColumn = columnCheck.rows[0]?.exists === true || columnCheck.rows[0]?.exists === 't';
 
   if (!hasOldColumn) {
     logger.info("Column source_nid already renamed or does not exist, skipping", {
