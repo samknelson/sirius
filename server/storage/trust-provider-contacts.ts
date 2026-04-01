@@ -1,7 +1,7 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { trustProviderContacts, contacts, optionsEmployerContactType, optionsTrustProviderType, trustProviders, type TrustProviderContact, type InsertTrustProviderContact, type Contact, type InsertContact, type TrustProvider } from "@shared/schema";
-import { eq, and, or, ilike } from "drizzle-orm";
+import { eq, and, or, ilike, sql } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import type { ContactsStorage } from "./contacts";
 
@@ -28,6 +28,7 @@ export interface TrustProviderContactStorage {
     credentials?: string;
   }): Promise<(TrustProviderContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
   linkToProvider(data: { contactId: string; providerId: string; contactTypeId?: string | null }): Promise<TrustProviderContact>;
+  getByUserEmail(email: string): Promise<TrustProviderContact | null>;
   delete(id: string): Promise<boolean>;
 }
 
@@ -314,6 +315,17 @@ export function createTrustProviderContactStorage(contactsStorage: ContactsStora
         .returning();
 
       return providerContact;
+    },
+
+    async getByUserEmail(email: string): Promise<TrustProviderContact | null> {
+      const client = getClient();
+      const [result] = await client
+        .select({ id: trustProviderContacts.id })
+        .from(trustProviderContacts)
+        .innerJoin(contacts, eq(trustProviderContacts.contactId, contacts.id))
+        .where(sql`LOWER(${contacts.email}) = LOWER(${email})`)
+        .limit(1);
+      return result ? { id: result.id } as TrustProviderContact : null;
     },
 
     async delete(id: string): Promise<boolean> {

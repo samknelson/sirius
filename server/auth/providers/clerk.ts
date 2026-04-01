@@ -36,6 +36,69 @@ function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
   });
 }
 
+async function ensureRequiredRoles(userId: string): Promise<void> {
+  try {
+    const user = await storage.users.getUser(userId);
+    if (!user?.email) return;
+
+    const currentRoles = await storage.users.getUserRoles(userId);
+    const currentRoleIds = currentRoles.map(r => r.id);
+
+    const settingsToCheck: { settingName: string; check: () => Promise<boolean> }[] = [
+      {
+        settingName: 'worker_user_roles_required',
+        check: async () => !!(await storage.workers.getWorkerByContactEmail(user.email!)),
+      },
+      {
+        settingName: 'trust_provider_user_roles_required',
+        check: async () => !!(await storage.trustProviderContacts.getByUserEmail(user.email!)),
+      },
+      {
+        settingName: 'employer_user_roles_required',
+        check: async () => !!(await storage.employerContacts.getByUserEmail(user.email!)),
+      },
+    ];
+
+    for (const { settingName, check } of settingsToCheck) {
+      let isApplicable = false;
+      try {
+        isApplicable = await check();
+      } catch {
+        continue;
+      }
+      if (!isApplicable) continue;
+
+      const variable = await storage.variables.getByName(settingName);
+      const requiredRoleIds: string[] = (Array.isArray(variable?.value) ? variable.value : []) as string[];
+      for (const roleId of requiredRoleIds) {
+        if (!currentRoleIds.includes(roleId)) {
+          try {
+            await storage.users.assignRoleToUser({ userId, roleId });
+            currentRoleIds.push(roleId);
+            logger.info("Auto-assigned required role on login", {
+              userId,
+              roleId,
+              source: settingName,
+            });
+          } catch (assignErr) {
+            logger.warn("Failed to auto-assign required role", {
+              userId,
+              roleId,
+              source: settingName,
+              error: (assignErr as Error).message,
+            });
+          }
+        }
+      }
+    }
+  } catch (error) {
+    logger.warn("Failed to ensure required roles on login", {
+      userId,
+      error: (error as Error).message,
+    });
+  }
+}
+
 async function resolveClerkUser(
   clerkUserId: string,
   clerkUserData: {
@@ -108,6 +171,8 @@ async function resolveClerkUser(
       }
     }
 
+    await ensureRequiredRoles(user.id);
+
     await storage.users.updateUserLastLogin(user.id);
     logLoginEvent(updatedUser, clerkUserId, false);
 
@@ -158,6 +223,8 @@ async function resolveClerkUser(
     profileImageUrl: profileImageUrl || undefined,
     accountStatus: "linked",
   });
+
+  await ensureRequiredRoles(user.id);
 
   await storage.users.updateUserLastLogin(user.id);
   logLoginEvent(linkedUser, clerkUserId, true);
@@ -214,6 +281,10 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
             if (user && user.isActive) {
               await storage.authIdentities.updateLastUsed(identity.id);
               await storage.users.updateUserLastLogin(user.id);
+
+              ensureRequiredRoles(user.id).catch(err =>
+                logger.warn("Background role sync failed", { userId: user.id, error: (err as Error).message })
+              );
 
               const sessionUser: AuthenticatedUser = {
                 claims: {

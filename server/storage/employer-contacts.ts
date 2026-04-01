@@ -48,6 +48,7 @@ export interface EmployerContactStorage {
     credentials?: string;
   }): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
   linkToEmployer(data: { contactId: string; employerId: string; contactTypeId?: string | null }): Promise<EmployerContact>;
+  getByUserEmail(email: string): Promise<EmployerContact | null>;
   delete(id: string): Promise<boolean>;
   getUserAccountStatuses(employerContactIds: string[]): Promise<Array<{ employerContactId: string; userId: string | null; hasUser: boolean; accountStatus: string | null }>>;
 }
@@ -336,6 +337,17 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
         .returning();
 
       return employerContact;
+    },
+
+    async getByUserEmail(email: string): Promise<EmployerContact | null> {
+      const client = getClient();
+      const [result] = await client
+        .select({ id: employerContacts.id })
+        .from(employerContacts)
+        .innerJoin(contacts, eq(employerContacts.contactId, contacts.id))
+        .where(sql`LOWER(${contacts.email}) = LOWER(${email})`)
+        .limit(1);
+      return result ? { id: result.id } as EmployerContact : null;
     },
 
     async delete(id: string): Promise<boolean> {
