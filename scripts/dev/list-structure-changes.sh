@@ -37,7 +37,9 @@ CYAN='\033[0;36m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-APPROVALS_DIR="/tmp/list-structure-changes-approvals"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+APPROVALS_DIR="$PROJECT_ROOT/.local/review-state"
 APPROVALS_FILE="$APPROVALS_DIR/approvals"
 REJECTIONS_FILE="$APPROVALS_DIR/rejections"
 
