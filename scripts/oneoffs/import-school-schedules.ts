@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { db } from '../server/db';
-import { employers } from '../shared/schema';
-import { sitespecificBtuSchoolAttributes } from '../shared/schema/sitespecific/btu/schema';
+import { db } from '../../server/db';
+import { employers } from '../../shared/schema';
+import { sitespecificBtuSchoolAttributes } from '../../shared/schema/sitespecific/btu/schema';
 import { eq, ilike } from 'drizzle-orm';
 
 interface ScheduleEntry {
@@ -193,7 +193,7 @@ async function main() {
   
   if (dryRun && (created.length > 0 || updated.length > 0)) {
     console.log('\n\nTo execute the import, run:');
-    console.log('  npx tsx scripts/import-school-schedules.ts --execute\n');
+    console.log('  npx tsx scripts/oneoffs/import-school-schedules.ts --execute\n');
   }
   
   process.exit(0);

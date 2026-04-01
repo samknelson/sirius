@@ -1,5 +1,5 @@
-import { db } from "../server/db";
-import { employers, contacts, employerContacts, contactPostal } from "../shared/schema";
+import { db } from "../../server/db";
+import { employers, contacts, employerContacts, contactPostal } from "../../shared/schema";
 import { eq } from "drizzle-orm";
 import { parse } from "csv-parse/sync";
 import * as fs from "fs";

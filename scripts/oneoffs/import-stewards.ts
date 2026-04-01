@@ -1,4 +1,4 @@
-import { db } from "../server/db";
+import { db } from "../../server/db";
 import { sql } from "drizzle-orm";
 import * as fs from "fs";
 import * as path from "path";
@@ -19,7 +19,7 @@ async function importStewards() {
   console.log("Starting steward import...");
 
   // Read the CSV file
-  const csvPath = path.join(__dirname, "../attached_assets/Steward_List_with_Email_Only_1768524382071.csv");
+  const csvPath = path.join(__dirname, "../../attached_assets/Steward_List_with_Email_Only_1768524382071.csv");
   const csvContent = fs.readFileSync(csvPath, "utf-8");
 
   const records: StewardRow[] = parse(csvContent, {

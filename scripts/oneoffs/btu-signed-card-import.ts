@@ -15,15 +15,15 @@
  * 4. Create signed cardcheck records using "Dues" definition (BTU_DUES)
  * 5. Generate detailed reports
  * 
- * Usage: npx tsx scripts/btu-signed-card-import.ts <excel-file-path>
+ * Usage: npx tsx scripts/oneoffs/btu-signed-card-import.ts <excel-file-path>
  * 
- * Example: npx tsx scripts/btu-signed-card-import.ts attached_assets/Signed_Card_Checks_from_Sirius_2026-01-15_1768504464672.xlsx
+ * Example: npx tsx scripts/oneoffs/btu-signed-card-import.ts attached_assets/Signed_Card_Checks_from_Sirius_2026-01-15_1768504464672.xlsx
  */
 
 import xlsx from 'xlsx';
-import { db } from '../server/db';
-import { cardchecks } from '../shared/schema/cardcheck/schema';
-import { workers, workerIds } from '../shared/schema';
+import { db } from '../../server/db';
+import { cardchecks } from '../../shared/schema/cardcheck/schema';
+import { workers, workerIds } from '../../shared/schema';
 import { eq, and, inArray } from 'drizzle-orm';
 import fs from 'fs';
 
@@ -55,7 +55,7 @@ async function main() {
   const filePath = process.argv[2];
   
   if (!filePath) {
-    console.error('Usage: npx tsx scripts/btu-signed-card-import.ts <excel-file-path>');
+    console.error('Usage: npx tsx scripts/oneoffs/btu-signed-card-import.ts <excel-file-path>');
     process.exit(1);
   }
   
