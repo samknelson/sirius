@@ -389,11 +389,57 @@ if [ -z "$files_with_changes" ]; then
     exit 0
 fi
 
-# Filter out approved files (but keep rejected files visible — rejection overrides approval)
+# Helper: check if a file is approved at current HEAD
+is_approved() {
+    local check_file="$1"
+    if [ -f "$APPROVALS_FILE" ]; then
+        grep -qFx "$HEAD_COMMIT $check_file" "$APPROVALS_FILE" 2>/dev/null
+        return $?
+    fi
+    return 1
+}
+
+# In --list mode, show ALL files (approved, rejected, and unreviewed) with status badges
+if [ "$LIST_ONLY" = true ]; then
+    file_count=$(echo "$files_with_changes" | wc -w)
+    echo ""
+    echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}  Files Changed Since: ${BASE_COMMIT:0:12}${NC}"
+    echo -e "${BLUE}  (excluding client/*, attached_assets/*, data/*.json,${NC}"
+    echo -e "${BLUE}   database/quickstarts/*, whitespace-only changes)${NC}"
+    echo -e "${BLUE}  Total: ${file_count} file(s)${NC}"
+    echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    for file in $files_with_changes; do
+        stats=$(git --no-pager diff -w --numstat "$BASE_COMMIT"..HEAD -- "$file" 2>/dev/null)
+        insertions=$(echo "$stats" | awk '{print $1}')
+        deletions=$(echo "$stats" | awk '{print $2}')
+        if [ "$insertions" = "-" ]; then
+            stat_label="${CYAN}(binary)${NC}"
+        else
+            stat_label="${CYAN}(+${insertions:-0} -${deletions:-0})${NC}"
+        fi
+        rejection_reason=$(get_rejection_reason "$file")
+        if [ -n "$rejection_reason" ]; then
+            echo -e "  ${RED}${file}${NC}  ${stat_label}  ${RED}❌ REJECTED: ${rejection_reason}${NC}"
+        elif is_approved "$file"; then
+            echo -e "  ${GREEN}${file}${NC}  ${stat_label}  ${GREEN}✔ APPROVED${NC}"
+        else
+            echo -e "  ${YELLOW}${file}${NC}  ${stat_label}"
+        fi
+    done
+    echo ""
+    echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}  Tip: Run without --list to see full diffs${NC}"
+    echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
+    exit 0
+fi
+
+# For full-diff mode, filter out approved files (but keep rejected files visible — rejection overrides approval)
 if [ -f "$APPROVALS_FILE" ]; then
     filtered_files=""
     for file in $files_with_changes; do
-        if grep -qFx "$HEAD_COMMIT $file" "$APPROVALS_FILE" 2>/dev/null; then
+        if is_approved "$file"; then
             if get_rejection_reason "$file" > /dev/null 2>&1; then
                 filtered_files="$filtered_files $file"
             fi
@@ -420,33 +466,6 @@ echo -e "${BLUE}   database/quickstarts/*, whitespace-only changes)${NC}"
 echo -e "${BLUE}  Total: ${file_count} file(s)${NC}"
 echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
 echo ""
-
-if [ "$LIST_ONLY" = true ]; then
-    for file in $files_with_changes; do
-        stats=$(git --no-pager diff -w --numstat "$BASE_COMMIT"..HEAD -- "$file" 2>/dev/null)
-        insertions=$(echo "$stats" | awk '{print $1}')
-        deletions=$(echo "$stats" | awk '{print $2}')
-        rejection_reason=$(get_rejection_reason "$file")
-        if [ -n "$rejection_reason" ]; then
-            if [ "$insertions" = "-" ]; then
-                echo -e "  ${RED}${file}${NC}  ${CYAN}(binary)${NC}  ${RED}❌ REJECTED: ${rejection_reason}${NC}"
-            else
-                echo -e "  ${RED}${file}${NC}  ${CYAN}(+${insertions:-0} -${deletions:-0})${NC}  ${RED}❌ REJECTED: ${rejection_reason}${NC}"
-            fi
-        else
-            if [ "$insertions" = "-" ]; then
-                echo -e "  ${YELLOW}${file}${NC}  ${CYAN}(binary)${NC}"
-            else
-                echo -e "  ${YELLOW}${file}${NC}  ${CYAN}(+${insertions:-0} -${deletions:-0})${NC}"
-            fi
-        fi
-    done
-    echo ""
-    echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
-    echo -e "${BLUE}  Tip: Run without --list to see full diffs${NC}"
-    echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
-    exit 0
-fi
 
 # Process each file with actual changes
 for file in $files_with_changes; do
