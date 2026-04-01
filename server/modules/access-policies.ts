@@ -13,6 +13,7 @@ import {
   TabDefinition 
 } from '@shared/tabRegistry';
 import { storage } from '../storage';
+import { logger } from '../logger';
 
 /**
  * Check if a tab's component requirement is met
@@ -163,6 +164,16 @@ export function registerAccessPolicyRoutes(app: Express) {
         resolvedEntityId,
         entityData
       );
+
+      logger.info(`Policy check: ${policyId}`, {
+        service: 'access-policies',
+        policyId,
+        userId: context.user?.id,
+        userEmail: context.user?.email,
+        granted: result.granted,
+        reason: result.reason,
+        isModular,
+      });
       
       res.json({
         policy: {
