@@ -1320,7 +1320,7 @@ function Router() {
       </Route>
 
       <Route path="/trust-provider-contacts/:id/user">
-        <ProtectedRoute policy="trustProviderUserManage" component="trust.providers">
+        <ProtectedRoute policy="trust.provider.manage" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderContactUser />
           </AuthenticatedLayout>
