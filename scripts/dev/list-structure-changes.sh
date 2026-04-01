@@ -10,16 +10,20 @@
 #   ./list-structure-changes.sh <file>       # Show diff for a single file
 #   ./list-structure-changes.sh <commit>     # Uses specified commit as base
 #   ./list-structure-changes.sh --list <commit>
-#   ./list-structure-changes.sh --approve <file-or-pattern>
-#                                            # Mark file(s) as reviewed at current HEAD
-#                                            # Supports wildcards, e.g. --approve 'dist/assets/*.jpg'
+#   ./list-structure-changes.sh --approve <file-or-pattern> [more files...]
+#                                            # Mark file(s) as reviewed
+#                                            # Supports wildcards and shell-expanded globs
+#                                            # e.g. --approve 'dist/assets/*.jpg'
+#                                            # e.g. --approve server/wizards/types/btu*
 #   ./list-structure-changes.sh --show-approved
 #                                            # List files approved at current HEAD
 #   ./list-structure-changes.sh --clear-approvals
 #                                            # Remove all stored approvals
-#   ./list-structure-changes.sh --reject <file-or-pattern> <reason>
-#                                            # Mark file(s) as rejected with a reason at current HEAD
-#                                            # Supports wildcards, e.g. --reject 'server/*.ts' "breaks API"
+#   ./list-structure-changes.sh --reject <file-or-pattern> [more files...] <reason>
+#                                            # Mark file(s) as rejected with a reason (last arg)
+#                                            # Supports wildcards and shell-expanded globs
+#                                            # e.g. --reject 'server/*.ts' "breaks API"
+#                                            # e.g. --reject server/wizards/types/btu* "needs review"
 #   ./list-structure-changes.sh --show-rejected
 #                                            # List files rejected at current HEAD with reasons
 #   ./list-structure-changes.sh --clear-rejections
@@ -40,8 +44,8 @@ REJECTIONS_FILE="$APPROVALS_DIR/rejections"
 LIST_ONLY=false
 COMMIT_ARG=""
 FILE_ARG=""
-APPROVE_ARG=""
-REJECT_ARG=""
+APPROVE_ARGS=()
+REJECT_ARGS=()
 REJECT_REASON=""
 SHOW_APPROVED=false
 CLEAR_APPROVALS=false
@@ -51,35 +55,44 @@ CLEAR_REJECTIONS=false
 while [ $# -gt 0 ]; do
     case "$1" in
         --approve)
-            if [ -z "$2" ] || [[ "$2" == --* ]]; then
-                echo -e "${RED}Usage: $0 --approve <file-or-pattern>${NC}"
+            shift
+            if [ $# -eq 0 ] || [[ "$1" == --* ]]; then
+                echo -e "${RED}Usage: $0 --approve <file-or-pattern> [more files...]${NC}"
                 echo -e "${CYAN}Examples:${NC}"
                 echo "  $0 --approve dist/assets/image.jpg"
                 echo "  $0 --approve 'dist/assets/*.jpg'"
+                echo "  $0 --approve server/wizards/types/btu*"
                 exit 1
             fi
-            APPROVE_ARG="$2"
-            shift 2
+            while [ $# -gt 0 ] && [[ "$1" != --* ]]; do
+                APPROVE_ARGS+=("$1")
+                shift
+            done
             ;;
         --reject)
-            if [ -z "$2" ] || [[ "$2" == --* ]]; then
-                echo -e "${RED}Usage: $0 --reject <file-or-pattern> <reason>${NC}"
+            shift
+            if [ $# -lt 2 ] || [[ "$1" == --* ]]; then
+                echo -e "${RED}Usage: $0 --reject <file-or-pattern> [more files...] <reason>${NC}"
+                echo -e "${CYAN}The last argument is always the reason.${NC}"
                 echo -e "${CYAN}Examples:${NC}"
                 echo "  $0 --reject server/routes.ts \"breaks API contract\""
                 echo "  $0 --reject 'server/*.ts' \"needs refactoring\""
+                echo "  $0 --reject server/wizards/types/btu* \"needs review\""
                 exit 1
             fi
-            if [ -z "$3" ] || [[ "$3" == --* ]]; then
-                echo -e "${RED}Error: --reject requires a reason.${NC}"
-                echo -e "${RED}Usage: $0 --reject <file-or-pattern> <reason>${NC}"
-                echo -e "${CYAN}Examples:${NC}"
-                echo "  $0 --reject server/routes.ts \"breaks API contract\""
-                echo "  $0 --reject 'server/*.ts' \"needs refactoring\""
+            local_args=()
+            while [ $# -gt 0 ] && [[ "$1" != --* ]]; do
+                local_args+=("$1")
+                shift
+            done
+            if [ ${#local_args[@]} -lt 2 ]; then
+                echo -e "${RED}Error: --reject requires at least a file pattern and a reason.${NC}"
+                echo -e "${RED}Usage: $0 --reject <file-or-pattern> [more files...] <reason>${NC}"
+                echo -e "${CYAN}The last argument is always the reason.${NC}"
                 exit 1
             fi
-            REJECT_ARG="$2"
-            REJECT_REASON="$3"
-            shift 3
+            REJECT_REASON="${local_args[${#local_args[@]}-1]}"
+            REJECT_ARGS=("${local_args[@]:0:${#local_args[@]}-1}")
             ;;
         --show-approved)
             SHOW_APPROVED=true
@@ -223,23 +236,37 @@ if [ "$SHOW_REJECTED" = true ]; then
     exit 0
 fi
 
-if [ -n "$APPROVE_ARG" ]; then
+match_files_by_patterns() {
+    local changed_files_list="$1"
+    shift
+    local patterns=("$@")
+    local matched=""
+    for file in $changed_files_list; do
+        for pattern in "${patterns[@]}"; do
+            if [ "$file" = "$pattern" ]; then
+                matched="$matched $file"
+                break
+            fi
+            # shellcheck disable=SC2254
+            case "$file" in
+                $pattern)
+                    matched="$matched $file"
+                    break
+                    ;;
+            esac
+        done
+    done
+    echo "$matched" | xargs
+}
+
+if [ ${#APPROVE_ARGS[@]} -gt 0 ]; then
     mkdir -p "$APPROVALS_DIR"
     changed_for_approve=$(git --no-pager diff -w --name-only "$BASE_COMMIT"..HEAD -- ':!client/*' ':!attached_assets/*' ':!data/*.json' ':!database/quickstarts/*' 2>/dev/null)
-    matched_files=""
-    for file in $changed_for_approve; do
-        # shellcheck disable=SC2254
-        case "$file" in
-            $APPROVE_ARG)
-                matched_files="$matched_files $file"
-                ;;
-        esac
-    done
-    matched_files=$(echo "$matched_files" | xargs)
+    matched_files=$(match_files_by_patterns "$changed_for_approve" "${APPROVE_ARGS[@]}")
 
     if [ -z "$matched_files" ]; then
-        echo -e "${RED}No changed files match '${APPROVE_ARG}'.${NC}"
-        echo -e "${CYAN}Usage: $0 --approve <file-or-pattern>${NC}"
+        echo -e "${RED}No changed files match the given pattern(s).${NC}"
+        echo -e "${CYAN}Usage: $0 --approve <file-or-pattern> [more files...]${NC}"
         echo -e "${CYAN}The pattern is matched against files changed since the base commit.${NC}"
         echo -e "${CYAN}Use --list to see currently changed files.${NC}"
         exit 1
@@ -261,23 +288,14 @@ if [ -n "$APPROVE_ARG" ]; then
     exit 0
 fi
 
-if [ -n "$REJECT_ARG" ]; then
+if [ ${#REJECT_ARGS[@]} -gt 0 ]; then
     mkdir -p "$APPROVALS_DIR"
     changed_for_reject=$(git --no-pager diff -w --name-only "$BASE_COMMIT"..HEAD -- ':!client/*' ':!attached_assets/*' ':!data/*.json' ':!database/quickstarts/*' 2>/dev/null)
-    matched_files=""
-    for file in $changed_for_reject; do
-        # shellcheck disable=SC2254
-        case "$file" in
-            $REJECT_ARG)
-                matched_files="$matched_files $file"
-                ;;
-        esac
-    done
-    matched_files=$(echo "$matched_files" | xargs)
+    matched_files=$(match_files_by_patterns "$changed_for_reject" "${REJECT_ARGS[@]}")
 
     if [ -z "$matched_files" ]; then
-        echo -e "${RED}No changed files match '${REJECT_ARG}'.${NC}"
-        echo -e "${CYAN}Usage: $0 --reject <file-or-pattern> <reason>${NC}"
+        echo -e "${RED}No changed files match the given pattern(s).${NC}"
+        echo -e "${CYAN}Usage: $0 --reject <file-or-pattern> [more files...] <reason>${NC}"
         echo -e "${CYAN}The pattern is matched against files changed since the base commit.${NC}"
         echo -e "${CYAN}Use --list to see currently changed files.${NC}"
         exit 1
