@@ -78,12 +78,14 @@ export default function Header() {
     staleTime: 30000,
   });
 
-  // Check staff policy for Workers and Employers navigation
-  // Note: We use 'staff' instead of 'worker' or 'employer.view' because those
-  // policies require entity context. For top-level navigation,
-  // staff permission is what grants access to these sections.
+  // Check staff policy for Employers navigation
   const { data: staffPolicy } = useQuery<PolicyAccessResponse>({
     queryKey: ["/api/access/policies/staff"],
+    staleTime: 30000,
+  });
+
+  const { data: workerListPolicy } = useQuery<PolicyAccessResponse>({
+    queryKey: ["/api/access/policies/worker.list"],
     staleTime: 30000,
   });
 
@@ -257,7 +259,7 @@ export default function Header() {
                   </Link>
                 )}
 
-                {staffPolicy?.access?.granted && (
+                {(workerListPolicy?.access?.granted || staffPolicy?.access?.granted) && (
                   <>
                     <div className="text-sm font-medium text-muted-foreground px-4 py-2">Workers</div>
                     <Link href="/workers" onClick={() => setMobileMenuOpen(false)}>
@@ -270,7 +272,7 @@ export default function Header() {
                         List
                       </Button>
                     </Link>
-                    {hasComponent("cardcheck") && (
+                    {staffPolicy?.access?.granted && hasComponent("cardcheck") && (
                       <Link href="/cardcheck-definitions" onClick={() => setMobileMenuOpen(false)}>
                         <Button
                           variant={location.startsWith("/cardcheck") ? "default" : "ghost"}
@@ -282,7 +284,7 @@ export default function Header() {
                         </Button>
                       </Link>
                     )}
-                    {hasComponent("bargainingunits") && (
+                    {staffPolicy?.access?.granted && hasComponent("bargainingunits") && (
                       <Link href="/bargaining-units" onClick={() => setMobileMenuOpen(false)}>
                         <Button
                           variant={location.startsWith("/bargaining-units") ? "default" : "ghost"}
@@ -294,7 +296,7 @@ export default function Header() {
                         </Button>
                       </Link>
                     )}
-                    {hasComponent("worker.steward") && (
+                    {staffPolicy?.access?.granted && hasComponent("worker.steward") && (
                       <Link href="/stewards" onClick={() => setMobileMenuOpen(false)}>
                         <Button
                           variant={location === "/stewards" ? "default" : "ghost"}
@@ -306,7 +308,7 @@ export default function Header() {
                         </Button>
                       </Link>
                     )}
-                    {hasComponent("sitespecific.btu") && (
+                    {staffPolicy?.access?.granted && hasComponent("sitespecific.btu") && (
                       <Link href="/sitespecific/btu/csgs" onClick={() => setMobileMenuOpen(false)}>
                         <Button
                           variant={location.startsWith("/sitespecific/btu/csg") ? "default" : "ghost"}
@@ -318,7 +320,7 @@ export default function Header() {
                         </Button>
                       </Link>
                     )}
-                    {hasComponent("sitespecific.hta") && (
+                    {staffPolicy?.access?.granted && hasComponent("sitespecific.hta") && (
                       <Link href="/imports" onClick={() => setMobileMenuOpen(false)}>
                         <Button
                           variant={location === "/imports" ? "default" : "ghost"}
@@ -330,7 +332,7 @@ export default function Header() {
                         </Button>
                       </Link>
                     )}
-                    {hasComponent("sitespecific.hta") && (
+                    {staffPolicy?.access?.granted && hasComponent("sitespecific.hta") && (
                       <Link href="/inactivity-scan" onClick={() => setMobileMenuOpen(false)}>
                         <Button
                           variant={location === "/inactivity-scan" ? "default" : "ghost"}
@@ -744,7 +746,7 @@ export default function Header() {
               </Link>
             )}
 
-            {staffPolicy?.access?.granted && (
+            {(workerListPolicy?.access?.granted || staffPolicy?.access?.granted) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -766,7 +768,7 @@ export default function Header() {
                       </div>
                     </Link>
                   </DropdownMenuItem>
-                  {hasComponent("cardcheck") && (
+                  {staffPolicy?.access?.granted && hasComponent("cardcheck") && (
                     <DropdownMenuItem asChild>
                       <Link href="/cardcheck-definitions" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-cardcheck-definitions">
@@ -776,7 +778,7 @@ export default function Header() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {hasComponent("bargainingunits") && (
+                  {staffPolicy?.access?.granted && hasComponent("bargainingunits") && (
                     <DropdownMenuItem asChild>
                       <Link href="/bargaining-units" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-bargaining-units">
@@ -786,7 +788,7 @@ export default function Header() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {hasComponent("worker.steward") && (
+                  {staffPolicy?.access?.granted && hasComponent("worker.steward") && (
                     <DropdownMenuItem asChild>
                       <Link href="/stewards" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-stewards">
@@ -796,7 +798,7 @@ export default function Header() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {hasComponent("sitespecific.btu") && (
+                  {staffPolicy?.access?.granted && hasComponent("sitespecific.btu") && (
                     <DropdownMenuItem asChild>
                       <Link href="/sitespecific/btu/csgs" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-class-size-grievances">
@@ -806,7 +808,7 @@ export default function Header() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {hasComponent("sitespecific.hta") && (
+                  {staffPolicy?.access?.granted && hasComponent("sitespecific.hta") && (
                     <DropdownMenuItem asChild>
                       <Link href="/imports" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-worker-import">
@@ -816,7 +818,7 @@ export default function Header() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {hasComponent("sitespecific.hta") && (
+                  {staffPolicy?.access?.granted && hasComponent("sitespecific.hta") && (
                     <DropdownMenuItem asChild>
                       <Link href="/inactivity-scan" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-inactivity-scan">

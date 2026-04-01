@@ -395,7 +395,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Worker routes (protected with authentication and permissions)
   
   // GET /api/workers/with-details - Get all workers with contact and phone data (optimized for list view)
-  app.get("/api/workers/with-details", requireAuth, requirePermission("staff"), async (req, res) => {
+  app.get("/api/workers/with-details", requireAuth, requireAccess("worker.list"), async (req, res) => {
     try {
       const workers = await storage.workers.getWorkersWithDetails();
       res.json(workers);
@@ -405,8 +405,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // GET /api/workers - Get all workers (requires workers.view permission)
-  app.get("/api/workers", requireAuth, requirePermission("staff"), async (req, res) => {
+  // GET /api/workers - Get all workers
+  app.get("/api/workers", requireAuth, requireAccess("worker.list"), async (req, res) => {
     try {
       const workers = await storage.workers.getAllWorkers();
       res.json(workers);
@@ -415,8 +415,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/workers/search - Search workers by name or ID (requires workers.view permission)
-  app.get("/api/workers/search", requireAuth, requirePermission("staff"), async (req, res) => {
+  // GET /api/workers/search - Search workers by name or ID
+  app.get("/api/workers/search", requireAuth, requireAccess("worker.list"), async (req, res) => {
     try {
       const { q, limit: limitParam } = req.query;
       const query = typeof q === 'string' ? q.trim() : '';
@@ -435,8 +435,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/workers/employers/summary - Get employer summary for all workers (requires workers.view permission)
-  app.get("/api/workers/employers/summary", requireAuth, requirePermission("staff"), async (req, res) => {
+  // GET /api/workers/employers/summary - Get employer summary for all workers
+  app.get("/api/workers/employers/summary", requireAuth, requireAccess("worker.list"), async (req, res) => {
     try {
       const workerEmployers = await storage.workers.getWorkersEmployersSummary();
       res.json(workerEmployers);
@@ -446,8 +446,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/workers/benefits/current - Get current month benefits for all workers (requires workers.view permission)
-  app.get("/api/workers/benefits/current", requireAuth, requirePermission("staff"), async (req, res) => {
+  // GET /api/workers/benefits/current - Get current month benefits for all workers
+  app.get("/api/workers/benefits/current", requireAuth, requireAccess("worker.list"), async (req, res) => {
     try {
       const workerBenefits = await storage.workers.getWorkersCurrentBenefits();
       res.json(workerBenefits);

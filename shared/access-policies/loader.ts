@@ -20,6 +20,7 @@ import './employer/view';
 import './employer/mine';
 import './employer/ledger';
 
+import './worker/list';
 import './worker/view';
 import './worker/edit';
 import './worker/mine';

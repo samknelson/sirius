@@ -711,7 +711,7 @@ function Router() {
       </Route>
 
       <Route path="/workers">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute policy="worker.list">
           <AuthenticatedLayout>
             <Workers />
           </AuthenticatedLayout>

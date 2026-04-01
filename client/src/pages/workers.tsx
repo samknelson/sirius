@@ -5,16 +5,18 @@ import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { Worker } from "@shared/schema";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function Workers() {
   const [location] = useLocation();
+  const { hasPermission } = useAuth();
   const { data: workers = [], isLoading } = useQuery<Worker[]>({
     queryKey: ["/api/workers/with-details"],
   });
 
   const tabs = [
     { id: "list", label: "List", href: "/workers" },
-    { id: "add", label: "Add", href: "/workers/add" },
+    ...(hasPermission("staff") ? [{ id: "add", label: "Add", href: "/workers/add" }] : []),
   ];
 
   return (
