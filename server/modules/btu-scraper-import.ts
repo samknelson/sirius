@@ -79,13 +79,13 @@ export function registerBtuScraperImportRoutes(
     async (req: Request, res: Response) => {
       try {
         const cardcheckDefinitionId = req.query.cardcheckDefinitionId as string | undefined;
-        const pending = await storage.cardchecks.getCardchecksWithSourceNidMissingEsig(cardcheckDefinitionId);
+        const pending = await storage.cardchecks.getCardchecksWithExternalIdMissingEsig(cardcheckDefinitionId);
         res.json({
           count: pending.length,
           cardchecks: pending.map(cc => ({
             id: cc.id,
             workerId: cc.workerId,
-            sourceNid: cc.sourceNid,
+            externalId: cc.externalId,
             status: cc.status,
             cardcheckDefinitionId: cc.cardcheckDefinitionId,
           })),
@@ -135,7 +135,7 @@ export function registerBtuScraperImportRoutes(
           return res.status(409).json({ message: "This wizard is already being processed" });
         }
 
-        const pendingCardchecks = await storage.cardchecks.getCardchecksWithSourceNidMissingEsig(cardcheckDefinitionId);
+        const pendingCardchecks = await storage.cardchecks.getCardchecksWithExternalIdMissingEsig(cardcheckDefinitionId);
 
         if (pendingCardchecks.length === 0) {
           const emptyResults = {
@@ -195,10 +195,10 @@ export function registerBtuScraperImportRoutes(
               total: pendingCardchecks.length,
               created: 0,
               skipped: 0,
-              errors: [] as Array<{ cardcheckId: string; sourceNid: string; error: string }>,
+              errors: [] as Array<{ cardcheckId: string; externalId: string; error: string }>,
               processedRows: [] as Array<{
                 cardcheckId: string;
-                sourceNid: string;
+                externalId: string;
                 workerId: string;
                 action: string;
                 esigId?: string;
@@ -207,7 +207,7 @@ export function registerBtuScraperImportRoutes(
 
             for (let i = 0; i < pendingCardchecks.length; i++) {
               const cardcheck = pendingCardchecks[i];
-              const nid = cardcheck.sourceNid!;
+              const nid = cardcheck.externalId!;
 
               if (i % 3 === 0) {
                 try {
@@ -370,7 +370,7 @@ export function registerBtuScraperImportRoutes(
                 results.created++;
                 results.processedRows.push({
                   cardcheckId: cardcheck.id,
-                  sourceNid: nid,
+                  externalId: nid,
                   workerId: cardcheck.workerId,
                   action: 'linked',
                   esigId: esig.id,
@@ -380,7 +380,7 @@ export function registerBtuScraperImportRoutes(
                 logger.error(`Scraper error for NID ${nid}`, { error: err, cardcheckId: cardcheck.id });
                 results.errors.push({
                   cardcheckId: cardcheck.id,
-                  sourceNid: nid,
+                  externalId: nid,
                   error: errorMessage,
                 });
               }
@@ -472,7 +472,7 @@ export function registerBtuScraperImportRoutes(
                       total: 0,
                       created: 0,
                       skipped: 0,
-                      errors: [{ cardcheckId: '', sourceNid: '', error: error instanceof Error ? error.message : 'Unknown error' }],
+                      errors: [{ cardcheckId: '', externalId: '', error: error instanceof Error ? error.message : 'Unknown error' }],
                       processedRows: [],
                     },
                   },

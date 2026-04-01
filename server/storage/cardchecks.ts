@@ -127,9 +127,9 @@ export interface CardcheckStorage {
   getCardcheckByEsigId(esigId: string): Promise<Cardcheck | undefined>;
   getCardchecksByWorkerId(workerId: string): Promise<Cardcheck[]>;
   getCardchecksByDefinitionId(definitionId: string): Promise<Cardcheck[]>;
-  getCardcheckBySourceNid(sourceNid: string): Promise<Cardcheck | undefined>;
-  getCardchecksBySourceNids(sourceNids: string[]): Promise<Cardcheck[]>;
-  getCardchecksWithSourceNidMissingEsig(cardcheckDefinitionId?: string): Promise<Cardcheck[]>;
+  getCardcheckByExternalId(externalId: string): Promise<Cardcheck | undefined>;
+  getCardchecksByExternalIds(externalIds: string[]): Promise<Cardcheck[]>;
+  getCardchecksWithExternalIdMissingEsig(cardcheckDefinitionId?: string): Promise<Cardcheck[]>;
   getCardcheckStatusSummary(): Promise<CardcheckStatusSummary[]>;
   getAllSignedCardchecksWithDetails(): Promise<SignedCardcheckWithDetails[]>;
   getCardcheckReport(filters: CardcheckReportFilters): Promise<CardcheckReportItem[]>;
@@ -186,28 +186,28 @@ export function createCardcheckStorage(): CardcheckStorage {
         .where(eq(cardchecks.cardcheckDefinitionId, definitionId));
     },
 
-    async getCardcheckBySourceNid(sourceNid: string): Promise<Cardcheck | undefined> {
+    async getCardcheckByExternalId(externalId: string): Promise<Cardcheck | undefined> {
       const client = getClient();
       const [cardcheck] = await client
         .select()
         .from(cardchecks)
-        .where(eq(cardchecks.sourceNid, sourceNid));
+        .where(eq(cardchecks.externalId, externalId));
       return cardcheck || undefined;
     },
 
-    async getCardchecksBySourceNids(sourceNids: string[]): Promise<Cardcheck[]> {
-      if (sourceNids.length === 0) return [];
+    async getCardchecksByExternalIds(externalIds: string[]): Promise<Cardcheck[]> {
+      if (externalIds.length === 0) return [];
       const client = getClient();
       return await client
         .select()
         .from(cardchecks)
-        .where(inArray(cardchecks.sourceNid, sourceNids));
+        .where(inArray(cardchecks.externalId, externalIds));
     },
 
-    async getCardchecksWithSourceNidMissingEsig(cardcheckDefinitionId?: string): Promise<Cardcheck[]> {
+    async getCardchecksWithExternalIdMissingEsig(cardcheckDefinitionId?: string): Promise<Cardcheck[]> {
       const client = getClient();
       const conditions = [
-        isNotNull(cardchecks.sourceNid),
+        isNotNull(cardchecks.externalId),
         isNull(cardchecks.esigId),
       ];
       if (cardcheckDefinitionId) {

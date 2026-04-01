@@ -13,7 +13,7 @@ export interface CardcheckImportWorkerInfo {
   signedDate: string;
   bargainingUnitName?: string;
   status?: string;
-  sourceNid?: string;
+  externalId?: string;
 }
 
 export interface BtuCardcheckImportResults extends ProcessResults {
@@ -325,7 +325,7 @@ export class BtuCardcheckImportWizard extends FeedWizard {
 
           const cardcheckStatus = normalizeCardcheckStatus(row.status) || 'signed';
 
-          const sourceNid = row.nid ? String(row.nid).trim() : undefined;
+          const externalId = row.nid ? String(row.nid).trim() : undefined;
 
           let bargainingUnitId = worker.bargainingUnitId;
           if (row.bargainingUnit) {
@@ -350,18 +350,18 @@ export class BtuCardcheckImportWizard extends FeedWizard {
             signedDate: signedDate.toISOString().split('T')[0],
             bargainingUnitName: buMatch?.name,
             status: cardcheckStatus,
-            sourceNid,
+            externalId,
           };
 
-          if (sourceNid) {
-            const existingByNid = await storage.cardchecks.getCardcheckBySourceNid(sourceNid);
-            if (existingByNid) {
+          if (externalId) {
+            const existingByExternalId = await storage.cardchecks.getCardcheckByExternalId(externalId);
+            if (existingByExternalId) {
               skippedDuplicate.push(workerInfo);
               updatedCount++;
               rowResults.push({
                 rowIndex,
                 status: 'success',
-                message: `Skipped duplicate card check (NID ${sourceNid} already exists) for ${workerName} (BPS ID: ${bpsEmployeeId})`,
+                message: `Skipped duplicate card check (external ID ${externalId} already exists) for ${workerName} (BPS ID: ${bpsEmployeeId})`,
               });
               continue;
             }
@@ -374,7 +374,7 @@ export class BtuCardcheckImportWizard extends FeedWizard {
               status: cardcheckStatus,
               signedDate,
               bargainingUnitId,
-              sourceNid: sourceNid || undefined,
+              externalId: externalId || undefined,
             });
 
             createdCount++;

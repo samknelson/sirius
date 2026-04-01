@@ -218,7 +218,7 @@ export function ProcessStep({ wizardId, wizardType, data, onDataChange }: Proces
                         <div key={idx} className="flex items-start gap-2 text-sm" data-testid={`error-item-${idx}`}>
                           <XCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
                           <div>
-                            <span className="font-medium font-mono">NID {error.sourceNid || error.cardcheckId}:</span>{' '}
+                            <span className="font-medium font-mono">NID {error.externalId || error.cardcheckId}:</span>{' '}
                             <span className="text-muted-foreground">{error.error}</span>
                           </div>
                         </div>

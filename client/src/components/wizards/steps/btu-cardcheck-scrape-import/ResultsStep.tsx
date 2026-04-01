@@ -20,10 +20,10 @@ interface ProcessResults {
   total: number;
   created: number;
   skipped: number;
-  errors: Array<{ cardcheckId: string; sourceNid: string; error: string }>;
+  errors: Array<{ cardcheckId: string; externalId: string; error: string }>;
   processedRows: Array<{
     cardcheckId: string;
-    sourceNid: string;
+    externalId: string;
     workerId: string;
     action: string;
     esigId?: string;
@@ -50,10 +50,10 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
     if (!processResults) return;
     const lines = ['Card Check ID,Source NID,Worker ID,Action,E-Sig ID'];
     for (const r of processResults.processedRows) {
-      lines.push(`"${r.cardcheckId}","${r.sourceNid}","${r.workerId}","${r.action}","${r.esigId || ''}"`);
+      lines.push(`"${r.cardcheckId}","${r.externalId}","${r.workerId}","${r.action}","${r.esigId || ''}"`);
     }
     for (const e of processResults.errors) {
-      lines.push(`"${e.cardcheckId}","${e.sourceNid}","","error: ${e.error}",""`);
+      lines.push(`"${e.cardcheckId}","${e.externalId}","","error: ${e.error}",""`);
     }
     downloadCsv(lines.join('\n'), `scrape-import-results-${format(new Date(), 'yyyy-MM-dd')}.csv`);
   };
@@ -146,7 +146,7 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                         {linked.map((row, idx) => (
                           <TableRow key={idx} data-testid={`row-linked-${idx}`}>
                             <TableCell className="font-mono text-sm">{row.cardcheckId}</TableCell>
-                            <TableCell className="font-mono text-sm text-muted-foreground">{row.sourceNid}</TableCell>
+                            <TableCell className="font-mono text-sm text-muted-foreground">{row.externalId}</TableCell>
                             <TableCell>
                               <Link href={`/workers/${row.workerId}`} className="text-primary hover:underline">
                                 {row.workerId}
@@ -183,7 +183,7 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                         {skipped.map((row, idx) => (
                           <TableRow key={idx} data-testid={`row-skipped-${idx}`}>
                             <TableCell className="font-mono text-sm">{row.cardcheckId}</TableCell>
-                            <TableCell className="font-mono text-sm text-muted-foreground">{row.sourceNid}</TableCell>
+                            <TableCell className="font-mono text-sm text-muted-foreground">{row.externalId}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -216,7 +216,7 @@ export function ResultsStep({ wizardId, wizardType, data, onDataChange }: Result
                         {processResults.errors.map((error, idx) => (
                           <TableRow key={idx} data-testid={`row-error-${idx}`}>
                             <TableCell className="font-mono text-sm">{error.cardcheckId}</TableCell>
-                            <TableCell className="font-mono text-sm text-muted-foreground">{error.sourceNid}</TableCell>
+                            <TableCell className="font-mono text-sm text-muted-foreground">{error.externalId}</TableCell>
                             <TableCell className="text-sm text-muted-foreground">{error.error}</TableCell>
                           </TableRow>
                         ))}
