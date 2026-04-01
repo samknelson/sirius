@@ -10,6 +10,13 @@
 #   ./list-structure-changes.sh <file>       # Show diff for a single file
 #   ./list-structure-changes.sh <commit>     # Uses specified commit as base
 #   ./list-structure-changes.sh --list <commit>
+#   ./list-structure-changes.sh --approve <file-or-pattern>
+#                                            # Mark file(s) as reviewed at current HEAD
+#                                            # Supports wildcards, e.g. --approve 'dist/assets/*.jpg'
+#   ./list-structure-changes.sh --show-approved
+#                                            # List files approved at current HEAD
+#   ./list-structure-changes.sh --clear-approvals
+#                                            # Remove all stored approvals
 
 # Colors for output
 BLUE='\033[0;34m'
@@ -19,19 +26,84 @@ CYAN='\033[0;36m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+APPROVALS_DIR="/tmp/list-structure-changes-approvals"
+APPROVALS_FILE="$APPROVALS_DIR/approvals"
+
 LIST_ONLY=false
 COMMIT_ARG=""
 FILE_ARG=""
+APPROVE_ARG=""
+SHOW_APPROVED=false
+CLEAR_APPROVALS=false
 
-for arg in "$@"; do
-    if [ "$arg" = "--list" ] || [ "$arg" = "-l" ]; then
-        LIST_ONLY=true
-    elif [ -f "$arg" ]; then
-        FILE_ARG="$arg"
-    else
-        COMMIT_ARG="$arg"
-    fi
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --approve)
+            if [ -z "$2" ] || [[ "$2" == --* ]]; then
+                echo -e "${RED}Usage: $0 --approve <file-or-pattern>${NC}"
+                echo -e "${CYAN}Examples:${NC}"
+                echo "  $0 --approve dist/assets/image.jpg"
+                echo "  $0 --approve 'dist/assets/*.jpg'"
+                exit 1
+            fi
+            APPROVE_ARG="$2"
+            shift 2
+            ;;
+        --show-approved)
+            SHOW_APPROVED=true
+            shift
+            ;;
+        --clear-approvals)
+            CLEAR_APPROVALS=true
+            shift
+            ;;
+        --list|-l)
+            LIST_ONLY=true
+            shift
+            ;;
+        *)
+            if [ -f "$1" ]; then
+                FILE_ARG="$1"
+            else
+                COMMIT_ARG="$1"
+            fi
+            shift
+            ;;
+    esac
 done
+
+if [ "$CLEAR_APPROVALS" = true ]; then
+    if [ -f "$APPROVALS_FILE" ]; then
+        rm "$APPROVALS_FILE"
+        echo -e "${GREEN}All approvals cleared.${NC}"
+    else
+        echo -e "${YELLOW}No approvals to clear.${NC}"
+    fi
+    exit 0
+fi
+
+HEAD_COMMIT=$(git rev-parse HEAD 2>/dev/null)
+
+if [ "$SHOW_APPROVED" = true ]; then
+    if [ ! -f "$APPROVALS_FILE" ]; then
+        echo -e "${YELLOW}No approvals recorded.${NC}"
+        exit 0
+    fi
+    found=false
+    while IFS=' ' read -r commit filepath; do
+        if [ "$commit" = "$HEAD_COMMIT" ]; then
+            if [ "$found" = false ]; then
+                echo -e "${BLUE}Approved files at HEAD (${HEAD_COMMIT:0:7}):${NC}"
+                found=true
+            fi
+            echo -e "  ${YELLOW}${filepath}${NC}"
+        fi
+    done < "$APPROVALS_FILE"
+    if [ "$found" = false ]; then
+        echo -e "${YELLOW}No approvals for current HEAD (${HEAD_COMMIT:0:7}).${NC}"
+    fi
+    exit 0
+fi
 
 # Determine base commit
 if [ -n "$COMMIT_ARG" ]; then
@@ -80,6 +152,44 @@ else
             exit 0
         fi
     fi
+fi
+
+if [ -n "$APPROVE_ARG" ]; then
+    mkdir -p "$APPROVALS_DIR"
+    changed_for_approve=$(git --no-pager diff -w --name-only "$BASE_COMMIT"..HEAD -- ':!client/*' ':!attached_assets/*' ':!data/*.json' ':!database/quickstarts/*' 2>/dev/null)
+    matched_files=""
+    for file in $changed_for_approve; do
+        # shellcheck disable=SC2254
+        case "$file" in
+            $APPROVE_ARG)
+                matched_files="$matched_files $file"
+                ;;
+        esac
+    done
+    matched_files=$(echo "$matched_files" | xargs)
+
+    if [ -z "$matched_files" ]; then
+        echo -e "${RED}No changed files match '${APPROVE_ARG}'.${NC}"
+        echo -e "${CYAN}Usage: $0 --approve <file-or-pattern>${NC}"
+        echo -e "${CYAN}The pattern is matched against files changed since the base commit.${NC}"
+        echo -e "${CYAN}Use --list to see currently changed files.${NC}"
+        exit 1
+    fi
+
+    approved_count=0
+    for file in $matched_files; do
+        if grep -qFx "$HEAD_COMMIT $file" "$APPROVALS_FILE" 2>/dev/null; then
+            echo -e "${YELLOW}Already approved: ${file}${NC}"
+        else
+            echo "$HEAD_COMMIT $file" >> "$APPROVALS_FILE"
+            echo -e "${GREEN}Approved: ${file} (at ${HEAD_COMMIT:0:7})${NC}"
+            approved_count=$((approved_count + 1))
+        fi
+    done
+    if [ "$approved_count" -gt 0 ]; then
+        echo -e "${CYAN}${approved_count} file(s) approved.${NC}"
+    fi
+    exit 0
 fi
 
 # Single-file mode: show diff for one specific file and exit
@@ -147,6 +257,23 @@ files_with_changes=$(echo "$files_with_changes" | xargs)
 
 if [ -z "$files_with_changes" ]; then
     echo -e "${YELLOW}No non-whitespace changes since ${BASE_COMMIT:0:12} (excluding client/*, attached_assets/*, data/*.json).${NC}"
+    exit 0
+fi
+
+# Filter out approved files
+if [ -f "$APPROVALS_FILE" ]; then
+    filtered_files=""
+    for file in $files_with_changes; do
+        if ! grep -qFx "$HEAD_COMMIT $file" "$APPROVALS_FILE" 2>/dev/null; then
+            filtered_files="$filtered_files $file"
+        fi
+    done
+    files_with_changes=$(echo "$filtered_files" | xargs)
+fi
+
+if [ -z "$files_with_changes" ]; then
+    echo -e "${YELLOW}All changed files have been approved at current HEAD (${HEAD_COMMIT:0:7}).${NC}"
+    echo -e "${CYAN}Use --show-approved to see approved files, or --clear-approvals to reset.${NC}"
     exit 0
 fi
 
