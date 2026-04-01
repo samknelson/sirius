@@ -1,7 +1,12 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
 import { User } from '@/lib/user-types';
+
+let _clerkSignOut: ((opts?: { redirectUrl?: string }) => Promise<void>) | null = null;
+export function registerClerkSignOut(fn: typeof _clerkSignOut) {
+  _clerkSignOut = fn;
+}
 
 interface MasqueradeInfo {
   isMasquerading: boolean;
@@ -85,9 +90,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = '/api/login';
   };
 
-  const logout = () => {
-    window.location.href = '/api/logout';
-  };
+  const logout = useCallback(async () => {
+    if (_clerkSignOut) {
+      await _clerkSignOut({ redirectUrl: '/api/logout' });
+    } else {
+      window.location.href = '/api/logout';
+    }
+  }, []);
 
   const stopMasquerade = async () => {
     try {
@@ -98,8 +107,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!response.ok) {
         throw new Error('Failed to stop masquerade');
       }
-      // Refresh auth data
-      queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
+      await queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
+      await queryClient.invalidateQueries({ queryKey: ['/api/access/policies/staff'] });
+      await queryClient.invalidateQueries({ queryKey: ['/api/my-employers'] });
+      queryClient.invalidateQueries({ predicate: (query) => {
+        const key = query.queryKey[0];
+        return typeof key === 'string' && (
+          key.includes('/api/users/') && key.includes('/roles') ||
+          key.includes('/api/access/')
+        );
+      }});
     } catch (error) {
       throw error;
     }

@@ -14,7 +14,7 @@ The frontend utilizes React 18 with TypeScript, Vite, Shadcn/ui (built on Radix 
 ## Technical Implementations
 -   **Frontend**: Wouter for routing, TanStack Query for server state management, and React Hook Form with Zod for robust form handling. Pages are lazy-loaded for optimized performance.
 -   **Backend**: Express.js with TypeScript, implementing a RESTful API with a feature-based module structure.
--   **Authentication**: Supports multi-provider authentication (Replit Auth, Okta, SAML/OAuth, local username/password) with environment-driven configuration. Includes masquerade support for administrators and a centralized user resolution mechanism.
+-   **Authentication**: Supports multi-provider authentication (Replit Auth, Okta, SAML/OAuth, local username/password, Clerk) with environment-driven configuration. Includes masquerade support for administrators and a centralized user resolution mechanism. Clerk auth requires `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `VITE_CLERK_PUBLISHABLE_KEY` env vars and `AUTH_PROVIDER=clerk`. Provider loading uses dynamic imports via `server/auth/provider-loader.ts`. Clerk enables worker self-registration flow (`/register` page).
 -   **Access Control**: Modular, entity-based policy architecture with server-side LRU caching for efficient access management. **Note:** When adding new employer tabs, consider whether shop stewards should have view-only access and use `policyId: 'employer.steward.view'` instead of `permission: 'staff'` for view-only tabs.
 -   **Logging**: Winston logging integrated with a PostgreSQL backend for comprehensive audit trails.
 -   **Data Storage**: PostgreSQL (Neon Database) managed with Drizzle ORM.

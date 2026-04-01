@@ -12,14 +12,7 @@ import type {
 } from "./types";
 import type { AuthProviderType } from "@shared/schema";
 import { logger } from "../logger";
-import * as replitProvider from "./providers/replit";
-import * as samlProvider from "./providers/saml";
-
-// Each provider has its own specific config type, so we use any here
-const providerModules: Record<string, { createProvider: (config: any) => AuthProvider }> = {
-  replit: replitProvider,
-  saml: samlProvider,
-};
+import { loadProvider } from "./provider-loader";
 
 const getStorage = () => require("../storage").storage;
 
@@ -117,7 +110,7 @@ export async function setupAuth(app: Express): Promise<void> {
     cb(null, user);
   });
 
-  const validProviderTypes = ["replit", "okta", "saml", "oauth", "local"] as const;
+  const validProviderTypes = ["replit", "okta", "saml", "oauth", "local", "clerk"] as const;
   
   for (const providerConfig of config.providers) {
     if (!providerConfig.enabled) continue;
@@ -127,11 +120,7 @@ export async function setupAuth(app: Express): Promise<void> {
     }
 
     try {
-      const providerModule = providerModules[providerConfig.type];
-      if (!providerModule) {
-        throw new Error(`No provider module found for type: ${providerConfig.type}`);
-      }
-      const provider: AuthProvider = providerModule.createProvider(providerConfig);
+      const provider = await loadProvider(providerConfig);
 
       await provider.setup(app);
       providerRegistry.register(provider);

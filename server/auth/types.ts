@@ -79,12 +79,19 @@ export interface LocalProviderConfig extends AuthProviderConfig {
   pepper?: string;
 }
 
+export interface ClerkProviderConfig extends AuthProviderConfig {
+  type: "clerk";
+  publishableKey: string;
+  secretKey: string;
+}
+
 export type ProviderConfig =
   | ReplitProviderConfig
   | OktaProviderConfig
   | SamlProviderConfig
   | OAuthProviderConfig
-  | LocalProviderConfig;
+  | LocalProviderConfig
+  | ClerkProviderConfig;
 
 export interface AuthConfig {
   sessionSecret: string;

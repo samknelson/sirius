@@ -7,6 +7,7 @@ import type {
   SamlProviderConfig,
   OAuthProviderConfig,
   LocalProviderConfig,
+  ClerkProviderConfig,
 } from "./types";
 import type { AuthProviderType } from "@shared/schema";
 
@@ -53,19 +54,26 @@ const localProviderSchema = baseProviderSchema.extend({
   pepper: z.string().optional(),
 });
 
+const clerkProviderSchema = baseProviderSchema.extend({
+  type: z.literal("clerk"),
+  publishableKey: z.string(),
+  secretKey: z.string(),
+});
+
 const providerConfigSchema = z.discriminatedUnion("type", [
   replitProviderSchema,
   oktaProviderSchema,
   samlProviderSchema,
   oauthProviderSchema,
   localProviderSchema,
+  clerkProviderSchema,
 ]);
 
 const authConfigSchema = z.object({
   sessionSecret: z.string().min(32),
   sessionTtl: z.number().positive().optional(),
   providers: z.array(providerConfigSchema).min(1),
-  defaultProvider: z.enum(["replit", "okta", "saml", "oauth", "local"]).optional(),
+  defaultProvider: z.enum(["replit", "okta", "saml", "oauth", "local", "clerk"]).optional(),
 });
 
 function parseProviderFromEnv(type: AuthProviderType): ProviderConfig | null {
@@ -146,6 +154,21 @@ function parseProviderFromEnv(type: AuthProviderType): ProviderConfig | null {
         pepper: process.env.AUTH_LOCAL_PEPPER,
       };
       return config.enabled ? config : null;
+    }
+
+    case "clerk": {
+      const publishableKey = process.env.CLERK_PUBLISHABLE_KEY;
+      const secretKey = process.env.CLERK_SECRET_KEY;
+      if (!publishableKey || !secretKey) {
+        return null;
+      }
+      const config: ClerkProviderConfig = {
+        type: "clerk",
+        enabled: true,
+        publishableKey,
+        secretKey,
+      };
+      return config;
     }
 
     default:
