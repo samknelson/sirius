@@ -44,6 +44,7 @@ export interface UserStorage {
   // Role operations
   getAllRoles(): Promise<Role[]>;
   getRole(id: string): Promise<Role | undefined>;
+  getRoleByName(name: string): Promise<Role | undefined>;
   createRole(role: InsertRole): Promise<Role>;
   updateRole(id: string, role: Partial<InsertRole>): Promise<Role | undefined>;
   deleteRole(id: string): Promise<boolean>;
@@ -62,6 +63,7 @@ export interface UserStorage {
   
   // Role-Permission assignment operations
   assignPermissionToRole(assignment: AssignPermission): Promise<RolePermission>;
+  assignPermissionsToRoleBulk(roleId: string, permissionKeys: string[]): Promise<RolePermission[]>;
   unassignPermissionFromRole(roleId: string, permissionKey: string): Promise<boolean>;
   getRolePermissions(roleId: string): Promise<PermissionDefinition[]>;
   getRolesWithPermission(permissionKey: string): Promise<Role[]>;
@@ -240,6 +242,12 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
       return role || undefined;
     },
 
+    async getRoleByName(name: string): Promise<Role | undefined> {
+      const client = getClient();
+      const [role] = await client.select().from(roles).where(eq(roles.name, name));
+      return role || undefined;
+    },
+
     async createRole(insertRole: InsertRole): Promise<Role> {
       const client = getClient();
       const [role] = await client
@@ -358,6 +366,43 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
         .values(assignment)
         .returning();
       return rolePermission;
+    },
+
+    async assignPermissionsToRoleBulk(roleId: string, permissionKeys: string[]): Promise<RolePermission[]> {
+      const client = getClient();
+      if (permissionKeys.length === 0) {
+        return [];
+      }
+
+      const uniqueKeys = Array.from(new Set(permissionKeys));
+
+      const invalidKeys = uniqueKeys.filter(key => !permissionRegistry.exists(key));
+      if (invalidKeys.length > 0) {
+        throw new Error(`Permissions do not exist in the registry: ${invalidKeys.join(', ')}`);
+      }
+
+      const existing = await client
+        .select({ permissionKey: rolePermissions.permissionKey })
+        .from(rolePermissions)
+        .where(eq(rolePermissions.roleId, roleId));
+      
+      const existingKeys = new Set(existing.map(e => e.permissionKey));
+      const newKeys = uniqueKeys.filter(key => !existingKeys.has(key));
+
+      if (newKeys.length === 0) {
+        return [];
+      }
+
+      const values = newKeys.map(permissionKey => ({
+        roleId,
+        permissionKey,
+      }));
+
+      const result = await client
+        .insert(rolePermissions)
+        .values(values)
+        .returning();
+      return result;
     },
 
     async unassignPermissionFromRole(roleId: string, permissionKey: string): Promise<boolean> {

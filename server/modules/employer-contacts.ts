@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { insertContactSchema, type InsertContact } from "@shared/schema";
 import { requireAccess } from "../services/access-policy-evaluator";
+import { checkClerkConflict, provisionClerkAccount } from "../services/clerk-provisioning";
 import { z } from "zod";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -318,11 +319,16 @@ export function registerEmployerContactRoutes(
         });
       }
       
-      // Check if user exists
       let user = await storage.users.getUserByEmail(email);
       
       if (!user) {
-        // Create new user
+        const clerkCheck = await checkClerkConflict(email);
+        if (clerkCheck.conflict) {
+          return res.status(409).json({ 
+            message: "This email is already associated with a Clerk account linked to another user." 
+          });
+        }
+
         user = await storage.users.createUser({
           email,
           firstName: firstName || null,
@@ -330,6 +336,18 @@ export function registerEmployerContactRoutes(
           isActive: isActive !== undefined ? isActive : true,
           accountStatus: 'active',
         });
+
+        const clerkResult = await provisionClerkAccount({
+          userId: user.id,
+          email,
+          firstName: firstName || null,
+          lastName: lastName || null,
+          existingClerkUserId: clerkCheck.existingClerkUserId,
+        });
+
+        if (clerkResult.success) {
+          user = await storage.users.getUser(user.id) || user;
+        }
       } else {
         // Update existing user
         user = await storage.users.updateUser(user.id, {
@@ -346,6 +364,16 @@ export function registerEmployerContactRoutes(
       // Get user's current roles
       const currentRoles = await storage.users.getUserRoles(user.id);
       const currentRoleIds = currentRoles.map(r => r.id);
+      
+      // Automatically assign the "employer" role if it exists
+      const employerRole = await storage.users.getRoleByName('employer');
+      if (employerRole && !currentRoleIds.includes(employerRole.id)) {
+        await storage.users.assignRoleToUser({
+          userId: user.id,
+          roleId: employerRole.id,
+        });
+        currentRoleIds.push(employerRole.id);
+      }
       
       // Assign all required roles (idempotent)
       for (const roleId of requiredRoleIds) {
@@ -369,7 +397,11 @@ export function registerEmployerContactRoutes(
       }
       
       // Remove optional roles that are no longer selected
+      // Include auto-assigned employer role in desired roles to prevent removal
       const allDesiredRoleIds = [...requiredRoleIds, ...optionalRoleIds];
+      if (employerRole) {
+        allDesiredRoleIds.push(employerRole.id);
+      }
       for (const roleId of currentRoleIds) {
         if (!allDesiredRoleIds.includes(roleId)) {
           // Only remove if it's not a required role

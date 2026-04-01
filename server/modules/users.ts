@@ -7,6 +7,7 @@ import {
   assignPermissionSchema
 } from "@shared/schema";
 import { requireAccess, clearAccessCache } from "../services/access-policy-evaluator";
+import { checkClerkConflict, provisionClerkAccount } from "../services/clerk-provisioning";
 
 // Type for middleware functions that we'll accept from the main routes
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -108,28 +109,48 @@ export function registerUserRoutes(
   });
 
   // POST /api/admin/users - Create user (admin only, email-based provisioning)
-  // MIGRATED to new access control system
+  // Automatically creates a Clerk account and links auth identity
   app.post("/api/admin/users", requireAccess('admin'), async (req, res) => {
     try {
       const userData = createUserSchema.parse(req.body);
       
-      // Check if user with this email already exists
       const existingUser = await storage.users.getUserByEmail(userData.email);
       if (existingUser) {
         return res.status(409).json({ message: "User with this email already exists" });
       }
 
+      const clerkCheck = await checkClerkConflict(userData.email);
+      if (clerkCheck.conflict) {
+        return res.status(409).json({ 
+          message: "This email is already associated with a Clerk account linked to another user." 
+        });
+      }
+
       const user = await storage.users.createUser(userData);
 
-      res.status(201).json({ 
-        id: user.id, 
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        accountStatus: user.accountStatus,
-        isActive: user.isActive, 
-        createdAt: user.createdAt 
+      const clerkResult = await provisionClerkAccount({
+        userId: user.id,
+        email: userData.email,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        existingClerkUserId: clerkCheck.existingClerkUserId,
       });
+
+      const updatedUser = await storage.users.getUser(user.id);
+
+      const responseData: Record<string, unknown> = { 
+        id: updatedUser?.id || user.id, 
+        email: updatedUser?.email || user.email,
+        firstName: updatedUser?.firstName || user.firstName,
+        lastName: updatedUser?.lastName || user.lastName,
+        accountStatus: updatedUser?.accountStatus || user.accountStatus,
+        isActive: updatedUser?.isActive ?? user.isActive, 
+        createdAt: updatedUser?.createdAt || user.createdAt 
+      };
+      if (clerkResult.warning) {
+        responseData.clerkWarning = clerkResult.warning;
+      }
+      res.status(201).json(responseData);
     } catch (error) {
       if (error instanceof Error && error.name === "ZodError") {
         res.status(400).json({ message: "Invalid user data" });
@@ -387,6 +408,31 @@ export function registerUserRoutes(
         res.status(409).json({ message: "This permission is already assigned to this role" });
       } else {
         res.status(500).json({ message: "Failed to assign permission" });
+      }
+    }
+  });
+
+  // POST /api/admin/roles/:roleId/permissions/bulk - Bulk assign permissions to role (admin only)
+  app.post("/api/admin/roles/:roleId/permissions/bulk", requireAccess('admin'), async (req, res) => {
+    try {
+      const { roleId } = req.params;
+      const { permissionKeys } = req.body;
+      
+      if (!Array.isArray(permissionKeys) || permissionKeys.length === 0) {
+        return res.status(400).json({ message: "permissionKeys must be a non-empty array" });
+      }
+      
+      const assignments = await storage.users.assignPermissionsToRoleBulk(roleId, permissionKeys);
+      clearAccessCache();
+      res.status(201).json({ 
+        message: `${assignments.length} permission(s) assigned successfully`,
+        assignments 
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("does not exist in the registry")) {
+        res.status(400).json({ message: error.message });
+      } else {
+        res.status(500).json({ message: "Failed to assign permissions" });
       }
     }
   });
