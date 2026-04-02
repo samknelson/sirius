@@ -5,6 +5,7 @@ import { insertWizardSchema, wizardDataSchema, type WizardData } from "@shared/s
 import { requireAccess, buildContext, checkAccess, getAccessStorage } from "../services/access-policy-evaluator";
 import { wizardRegistry } from "../wizards/index.js";
 import { FeedWizard } from "../wizards/feed.js";
+import { createUnifiedOptionsStorage } from "../storage/unified-options.js";
 import { objectStorageService } from "../services/objectStorage.js";
 import { hashHeaderRow } from "../utils/hash.js";
 import { getEffectiveUser } from "./masquerade";
@@ -1253,6 +1254,69 @@ export function registerWizardRoutes(
       } catch (error) {
         console.error("Error saving mapping:", error);
         res.status(500).json({ message: error instanceof Error ? error.message : "Failed to save mapping" });
+      }
+    }
+  );
+
+  app.post("/api/wizards/:id/status-mappings",
+    requireAuth,
+    checkWizardAccess,
+    async (req, res) => {
+      try {
+        const wizard = (req as any).wizard;
+        const employerId = wizard.entityId;
+        if (!employerId) {
+          return res.status(400).json({ message: "Wizard is not linked to an employer" });
+        }
+
+        const { mappings } = req.body;
+        if (!Array.isArray(mappings) || mappings.length === 0) {
+          return res.status(400).json({ message: "mappings array is required" });
+        }
+
+        for (const m of mappings) {
+          if (!m.sourceStatus || !m.targetStatusId) {
+            return res.status(400).json({ message: "Each mapping must have sourceStatus and targetStatusId" });
+          }
+        }
+
+        const results = await storage.wizardEmploymentStatusMappings.upsertBatch(employerId, mappings);
+        res.json({ saved: results.length, mappings: results });
+      } catch (error) {
+        console.error("Error saving status mappings:", error);
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to save status mappings" });
+      }
+    }
+  );
+
+  app.get("/api/wizards/:id/status-mappings",
+    checkWizardAccess,
+    async (req, res) => {
+      try {
+        const wizard = (req as any).wizard;
+        const employerId = wizard.entityId;
+        if (!employerId) {
+          return res.status(400).json({ message: "Wizard is not linked to an employer" });
+        }
+        const mappings = await storage.wizardEmploymentStatusMappings.getByEmployer(employerId);
+        res.json(mappings);
+      } catch (error) {
+        console.error("Error fetching status mappings:", error);
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to fetch status mappings" });
+      }
+    }
+  );
+
+  const optionsStorage = createUnifiedOptionsStorage();
+  app.get("/api/employment-status-options",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const statuses = await optionsStorage.list("employment-status");
+        res.json(statuses.map((s: any) => ({ id: s.id, name: s.name, code: s.code, employed: s.employed })));
+      } catch (error) {
+        console.error("Error fetching employment status options:", error);
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to fetch employment status options" });
       }
     }
   );

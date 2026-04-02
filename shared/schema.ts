@@ -679,6 +679,18 @@ export const wizardFeedMappings = pgTable("wizard_feed_mappings", {
   index("idx_wizard_feed_mappings_user_type_hash").on(table.userId, table.type, table.firstRowHash),
 ]);
 
+export const wizardEmploymentStatusMappings = pgTable("wizard_employment_status_mappings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
+  sourceStatus: text("source_status").notNull(),
+  targetStatusId: varchar("target_status_id").notNull().references(() => optionsEmploymentStatus.id, { onDelete: 'cascade' }),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+}, (table) => [
+  unique("idx_wizard_esm_employer_source").on(table.employerId, table.sourceStatus),
+  index("idx_wizard_esm_employer").on(table.employerId),
+]);
+
 export const wizardReportData = pgTable("wizard_report_data", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   wizardId: varchar("wizard_id").notNull().references(() => wizards.id, { onDelete: 'cascade' }),
@@ -1011,6 +1023,12 @@ export const insertWizardFeedMappingSchema = createInsertSchema(wizardFeedMappin
   updatedAt: true,
 });
 
+export const insertWizardEmploymentStatusMappingSchema = createInsertSchema(wizardEmploymentStatusMappings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertWizardReportDataSchema = createInsertSchema(wizardReportData).omit({
   id: true,
   createdAt: true,
@@ -1207,6 +1225,9 @@ export type Wizard = typeof wizards.$inferSelect;
 
 export type InsertWizardFeedMapping = z.infer<typeof insertWizardFeedMappingSchema>;
 export type WizardFeedMapping = typeof wizardFeedMappings.$inferSelect;
+
+export type InsertWizardEmploymentStatusMapping = z.infer<typeof insertWizardEmploymentStatusMappingSchema>;
+export type WizardEmploymentStatusMapping = typeof wizardEmploymentStatusMappings.$inferSelect;
 
 export type InsertWizardReportData = z.infer<typeof insertWizardReportDataSchema>;
 export type WizardReportData = typeof wizardReportData.$inferSelect;

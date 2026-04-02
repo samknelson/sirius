@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +8,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CheckCircle2, XCircle, AlertCircle, Play, Loader2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CheckCircle2, XCircle, AlertCircle, Play, Loader2, ArrowRightLeft, Save } from "lucide-react";
 
 interface ValidateStepProps {
   wizardId: string;
@@ -30,7 +31,15 @@ interface ValidationResults {
   invalidRows: number;
   errors: ValidationError[];
   errorSummary: Record<string, number>;
+  unmappedStatuses?: string[];
   completedAt?: string;
+}
+
+interface EmploymentStatusOption {
+  id: string;
+  name: string;
+  code: string;
+  employed: boolean;
 }
 
 export function ValidateStep({ wizardId, wizardType, data, onDataChange }: ValidateStepProps) {
@@ -38,14 +47,23 @@ export function ValidateStep({ wizardId, wizardType, data, onDataChange }: Valid
   const [progress, setProgress] = useState({ processed: 0, total: 0, validRows: 0, invalidRows: 0 });
   const [results, setResults] = useState<ValidationResults | null>(data?.validationResults || null);
   const [error, setError] = useState<string | null>(null);
+  const [statusMappings, setStatusMappings] = useState<Record<string, string>>({});
+  const [isSavingMappings, setIsSavingMappings] = useState(false);
+  const [mappingSaveSuccess, setMappingSaveSuccess] = useState(false);
 
   const { data: wizard } = useQuery<any>({
     queryKey: [`/api/wizards/${wizardId}`],
   });
 
+  const { data: employmentStatusOptions } = useQuery<EmploymentStatusOption[]>({
+    queryKey: ['/api/employment-status-options'],
+    enabled: !!(results?.unmappedStatuses && results.unmappedStatuses.length > 0),
+  });
+
   const startValidation = async () => {
     setIsValidating(true);
     setError(null);
+    setMappingSaveSuccess(false);
     setProgress({ processed: 0, total: 0, validRows: 0, invalidRows: 0 });
 
     try {
@@ -66,8 +84,8 @@ export function ValidateStep({ wizardId, wizardType, data, onDataChange }: Valid
         } else if (data.type === 'complete') {
           setResults(data.results);
           setIsValidating(false);
+          setStatusMappings({});
           eventSource.close();
-          // Invalidate wizard query to refresh step completion status
           queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
         } else if (data.type === 'error') {
           setError(data.message);
@@ -87,9 +105,37 @@ export function ValidateStep({ wizardId, wizardType, data, onDataChange }: Valid
     }
   };
 
+  const handleSaveMappings = async () => {
+    const mappingsToSave = Object.entries(statusMappings)
+      .filter(([_, targetId]) => targetId)
+      .map(([sourceStatus, targetStatusId]) => ({ sourceStatus, targetStatusId }));
+
+    if (mappingsToSave.length === 0) return;
+
+    setIsSavingMappings(true);
+    try {
+      const response = await fetch(`/api/wizards/${wizardId}/status-mappings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ mappings: mappingsToSave }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || 'Failed to save mappings');
+      }
+
+      setMappingSaveSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save mappings');
+    } finally {
+      setIsSavingMappings(false);
+    }
+  };
+
   const progressPercentage = progress.total > 0 ? (progress.processed / progress.total) * 100 : 0;
 
-  // Group errors by type for display
   const groupedErrors = results?.errors.reduce((acc, error) => {
     const key = `${error.field}: ${error.message}`;
     if (!acc[key]) {
@@ -98,6 +144,9 @@ export function ValidateStep({ wizardId, wizardType, data, onDataChange }: Valid
     acc[key].push(error);
     return acc;
   }, {} as Record<string, ValidationError[]>) || {};
+
+  const hasUnmappedStatuses = results?.unmappedStatuses && results.unmappedStatuses.length > 0;
+  const allMapped = hasUnmappedStatuses && results.unmappedStatuses!.every(s => statusMappings[s]);
 
   return (
     <div className="space-y-6">
@@ -220,6 +269,87 @@ export function ValidateStep({ wizardId, wizardType, data, onDataChange }: Valid
                 </Card>
               </div>
 
+              {hasUnmappedStatuses && (
+                <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <ArrowRightLeft className="h-4 w-4 text-amber-600" />
+                      Unrecognized Employment Statuses
+                    </CardTitle>
+                    <CardDescription>
+                      The following employment statuses from your file don't match any configured options. 
+                      Map each one to an existing status, save, then re-validate.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {results.unmappedStatuses!.map((sourceStatus) => (
+                      <div key={sourceStatus} className="flex items-center gap-4">
+                        <div className="flex-1 min-w-0">
+                          <Badge variant="outline" className="font-mono text-sm">
+                            {sourceStatus}
+                          </Badge>
+                        </div>
+                        <ArrowRightLeft className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <div className="flex-1">
+                          <Select
+                            value={statusMappings[sourceStatus] || ""}
+                            onValueChange={(value) => {
+                              setStatusMappings(prev => ({ ...prev, [sourceStatus]: value }));
+                              setMappingSaveSuccess(false);
+                            }}
+                          >
+                            <SelectTrigger data-testid={`select-mapping-${sourceStatus}`}>
+                              <SelectValue placeholder="Select status..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {employmentStatusOptions?.map((option) => (
+                                <SelectItem key={option.id} value={option.id}>
+                                  {option.name} ({option.code})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    ))}
+
+                    <Separator />
+
+                    <div className="flex items-center gap-3">
+                      <Button
+                        onClick={handleSaveMappings}
+                        disabled={!allMapped || isSavingMappings}
+                        data-testid="button-save-mappings"
+                      >
+                        {isSavingMappings ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="mr-2 h-4 w-4" />
+                        )}
+                        Save Mappings
+                      </Button>
+
+                      {mappingSaveSuccess && (
+                        <Button
+                          onClick={startValidation}
+                          variant="outline"
+                          data-testid="button-revalidate-after-mapping"
+                        >
+                          <Play className="mr-2 h-4 w-4" />
+                          Re-validate with Mappings
+                        </Button>
+                      )}
+
+                      {mappingSaveSuccess && (
+                        <span className="text-sm text-green-600 flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3" /> Saved
+                        </span>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {results.invalidRows > 0 && (
                 <Card>
                   <CardHeader>
@@ -269,7 +399,7 @@ export function ValidateStep({ wizardId, wizardType, data, onDataChange }: Valid
                 </Card>
               )}
 
-              {results.invalidRows === 0 && (
+              {results.invalidRows === 0 && !hasUnmappedStatuses && (
                 <Alert>
                   <CheckCircle2 className="h-4 w-4" />
                   <AlertTitle>All Data Valid</AlertTitle>

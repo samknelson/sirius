@@ -79,10 +79,12 @@ const evaluateMapComplete: StepCompletionEvaluator = ({ wizard, fields }) => {
 const evaluateValidateComplete: StepCompletionEvaluator = ({ wizard }) => {
   const validationResults = wizard?.data?.validationResults;
   
-  // Validation must have been run
   if (!validationResults) return false;
   
-  // All rows must be valid (no invalid rows)
+  if (validationResults.unmappedStatuses && validationResults.unmappedStatuses.length > 0) {
+    return false;
+  }
+  
   return validationResults.invalidRows === 0;
 };
 

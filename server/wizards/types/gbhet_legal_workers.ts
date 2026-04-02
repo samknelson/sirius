@@ -1,4 +1,4 @@
-import { FeedWizard, FeedField, ValidationError } from '../feed.js';
+import { FeedWizard, FeedField, ValidationError, type ValidationResults } from '../feed.js';
 import { WizardStatus, WizardStep, LaunchArgument } from '../base.js';
 import { storage } from '../../storage/index.js';
 import { createUnifiedOptionsStorage } from '../../storage/unified-options.js';
@@ -44,8 +44,14 @@ function normalizeForComparison(value: string): string {
   return String(value).toLowerCase().replace(/\s+/g, '');
 }
 
+interface RunContext {
+  employerId: string;
+  mappings: Array<{ sourceStatus: string; targetStatusId: string }> | null;
+}
+
 export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   entityType = 'employer';
+  private _runCtx: RunContext | null = null;
   
 
   /**
@@ -319,6 +325,14 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     return statuses.map(s => ({ id: s.id, name: s.name, code: s.code, employed: s.employed }));
   }
 
+  private async getEmployerStatusMappings(): Promise<Array<{ sourceStatus: string; targetStatusId: string }>> {
+    if (!this._runCtx) return [];
+    if (this._runCtx.mappings) return this._runCtx.mappings;
+    const mappings = await storage.wizardEmploymentStatusMappings.getByEmployer(this._runCtx.employerId);
+    this._runCtx.mappings = mappings.map(m => ({ sourceStatus: m.sourceStatus, targetStatusId: m.targetStatusId }));
+    return this._runCtx.mappings;
+  }
+
   /**
    * Get work status options from the database
    */
@@ -431,9 +445,49 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     });
   }
 
-  /**
-   * Override validateRow to preprocess SSN and add worker existence check for update mode
-   */
+  async validateFeedData(
+    wizardId: string,
+    batchSize: number = 100,
+    onProgress?: (progress: { processed: number; total: number; validRows: number; invalidRows: number }) => void
+  ): Promise<ValidationResults> {
+    const wizard = await storage.wizards.getById(wizardId);
+    if (wizard?.entityId) {
+      this._runCtx = { employerId: wizard.entityId, mappings: null };
+    }
+
+    const results = await super.validateFeedData(wizardId, batchSize, onProgress);
+
+    const unmappedSet = new Set<string>();
+    for (const error of results.errors) {
+      if (error.field === 'employmentStatus' && error.message === 'unmapped_employment_status' && error.value) {
+        unmappedSet.add(String(error.value));
+      }
+    }
+
+    if (unmappedSet.size > 0) {
+      results.unmappedStatuses = Array.from(unmappedSet);
+      results.errors = results.errors.filter(
+        e => !(e.field === 'employmentStatus' && e.message === 'unmapped_employment_status')
+      );
+      for (const key of Object.keys(results.errorSummary)) {
+        if (key.includes('unmapped_employment_status')) {
+          delete results.errorSummary[key];
+        }
+      }
+
+      const wizardObj = await storage.wizards.getById(wizardId);
+      if (wizardObj) {
+        const wizardData = wizardObj.data as any;
+        await storage.wizards.update(wizardId, {
+          data: { ...wizardData, validationResults: results }
+        });
+      }
+    }
+
+    this._runCtx = null;
+    return results;
+  }
+
   async validateRow(row: Record<string, any>, rowIndex: number, mode: 'create' | 'update'): Promise<ValidationError[]> {
     // Preprocess SSN if present
     if (row.ssn !== undefined && row.ssn !== null) {
@@ -448,44 +502,41 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     // Call parent validation to get standard field validation errors
     const errors = await super.validateRow(row, rowIndex, mode);
     
-    // Validate employment status against options table
     if (row.employmentStatus !== undefined && row.employmentStatus !== null && row.employmentStatus !== '') {
       const employmentStatusOptions = await this.getEmploymentStatusOptions();
       const normalizedInput = normalizeForComparison(String(row.employmentStatus));
       
-      // Check if input matches any option (by name or code)
-      const matchFound = employmentStatusOptions.some(option => {
-        // Always check name
-        if (normalizeForComparison(option.name) === normalizedInput) {
-          return true;
-        }
-        // Only check code if it exists (avoid matching "null" or "undefined" literals)
-        if (option.code && normalizeForComparison(option.code) === normalizedInput) {
-          return true;
-        }
+      const matchingOption = employmentStatusOptions.find(option => {
+        if (normalizeForComparison(option.name) === normalizedInput) return true;
+        if (option.code && normalizeForComparison(option.code) === normalizedInput) return true;
         return false;
       });
       
-      if (!matchFound) {
-        errors.push({
-          rowIndex,
-          field: 'employmentStatus',
-          message: 'Employment status must match one of the configured options',
-          value: row.employmentStatus
-        });
+      if (matchingOption) {
+        row.employmentStatus = matchingOption.name;
       } else {
-        // Replace with the canonical name from the options table
-        const matchingOption = employmentStatusOptions.find(option => {
-          if (normalizeForComparison(option.name) === normalizedInput) {
-            return true;
+        const mappings = await this.getEmployerStatusMappings();
+        const mappedEntry = mappings.find(m => normalizeForComparison(m.sourceStatus) === normalizedInput);
+        
+        if (mappedEntry) {
+          const targetOption = employmentStatusOptions.find(o => o.id === mappedEntry.targetStatusId);
+          if (targetOption) {
+            row.employmentStatus = targetOption.name;
+          } else {
+            errors.push({
+              rowIndex,
+              field: 'employmentStatus',
+              message: 'Mapped employment status target no longer exists',
+              value: row.employmentStatus
+            });
           }
-          if (option.code && normalizeForComparison(option.code) === normalizedInput) {
-            return true;
-          }
-          return false;
-        });
-        if (matchingOption) {
-          row.employmentStatus = matchingOption.name;
+        } else {
+          errors.push({
+            rowIndex,
+            field: 'employmentStatus',
+            message: 'unmapped_employment_status',
+            value: row.employmentStatus
+          });
         }
       }
     }
@@ -517,7 +568,10 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
    * This method is called by the processFeedData method when processing each worker
    */
   protected async processWorkerHours(workerId: string, row: Record<string, any>, wizard: any): Promise<void> {
-    // Extract hours and employment status from row
+    if (wizard?.entityId && !this._runCtx) {
+      this._runCtx = { employerId: wizard.entityId, mappings: null };
+    }
+
     const rawHours = row.numberOfHours;
     const employmentStatusValue = row.employmentStatus;
 
@@ -578,6 +632,15 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         }
         return false;
       });
+    }
+
+    if (!matchingOption) {
+      const mappings = await this.getEmployerStatusMappings();
+      const normalizedInput2 = normalizeForComparison(String(employmentStatusValue));
+      const mappedEntry = mappings.find(m => normalizeForComparison(m.sourceStatus) === normalizedInput2);
+      if (mappedEntry) {
+        matchingOption = employmentStatusOptions.find(o => o.id === mappedEntry.targetStatusId);
+      }
     }
 
     if (!matchingOption) {

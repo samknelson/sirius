@@ -106,7 +106,8 @@ export interface ValidationResults {
   validRows: number;
   invalidRows: number;
   errors: ValidationError[];
-  errorSummary: Record<string, number>; // Count of each error type
+  errorSummary: Record<string, number>;
+  unmappedStatuses?: string[];
   completedAt?: Date;
 }
 

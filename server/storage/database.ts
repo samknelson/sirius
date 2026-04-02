@@ -13,6 +13,7 @@ import { type EmployerContactStorage, createEmployerContactStorage, employerCont
 import { type WizardStorage, createWizardStorage, wizardLoggingConfig } from "./wizards";
 import { type WizardFeedMappingStorage, createWizardFeedMappingStorage } from "./wizard_feed_mappings";
 import { type WizardEmployerMonthlyStorage, createWizardEmployerMonthlyStorage } from "./wizard_employer_monthly";
+import { type WizardEmploymentStatusMappingStorage, createWizardEmploymentStatusMappingStorage } from "./wizard-employment-status-mappings";
 import { type FileStorage, createFileStorage, fileLoggingConfig } from "./files";
 import { type CronJobStorage, createCronJobStorage, type CronJobRunStorage, createCronJobRunStorage } from "./cron_jobs";
 import { type ChargePluginConfigStorage, createChargePluginConfigStorage } from "./charge-plugins";
@@ -69,6 +70,7 @@ export interface IStorage {
   wizards: WizardStorage;
   wizardFeedMappings: WizardFeedMappingStorage;
   wizardEmployerMonthly: WizardEmployerMonthlyStorage;
+  wizardEmploymentStatusMappings: WizardEmploymentStatusMappingStorage;
   files: FileStorage;
   cronJobs: CronJobStorage;
   cronJobRuns: CronJobRunStorage;
@@ -128,6 +130,7 @@ export class DatabaseStorage implements IStorage {
   wizards: WizardStorage;
   wizardFeedMappings: WizardFeedMappingStorage;
   wizardEmployerMonthly: WizardEmployerMonthlyStorage;
+  wizardEmploymentStatusMappings: WizardEmploymentStatusMappingStorage;
   files: FileStorage;
   cronJobs: CronJobStorage;
   cronJobRuns: CronJobRunStorage;
@@ -196,6 +199,7 @@ export class DatabaseStorage implements IStorage {
     this.wizards = withStorageLogging(createWizardStorage(), wizardLoggingConfig);
     this.wizardFeedMappings = createWizardFeedMappingStorage();
     this.wizardEmployerMonthly = createWizardEmployerMonthlyStorage();
+    this.wizardEmploymentStatusMappings = createWizardEmploymentStatusMappingStorage();
     this.files = withStorageLogging(createFileStorage(), fileLoggingConfig);
     this.cronJobs = createCronJobStorage();
     this.cronJobRuns = createCronJobRunStorage();
