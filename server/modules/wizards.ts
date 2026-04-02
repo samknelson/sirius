@@ -1300,6 +1300,7 @@ export function registerWizardRoutes(
   );
 
   app.get("/api/wizards/:id/status-mappings",
+    requireAuth,
     checkWizardAccess,
     async (req, res) => {
       try {
