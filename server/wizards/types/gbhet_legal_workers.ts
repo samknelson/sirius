@@ -468,9 +468,32 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
 
       if (unmappedSet.size > 0) {
         results.unmappedStatuses = Array.from(unmappedSet);
+
+        const unmappedRowIndices = new Set<number>();
+        for (const error of results.errors) {
+          if (error.field === 'employmentStatus' && error.message === 'unmapped_employment_status') {
+            unmappedRowIndices.add(error.row);
+          }
+        }
+
         results.errors = results.errors.filter(
           e => !(e.field === 'employmentStatus' && e.message === 'unmapped_employment_status')
         );
+
+        const rowsWithRemainingErrors = new Set<number>();
+        for (const error of results.errors) {
+          rowsWithRemainingErrors.add(error.row);
+        }
+
+        let reclassifiedCount = 0;
+        for (const rowIdx of unmappedRowIndices) {
+          if (!rowsWithRemainingErrors.has(rowIdx)) {
+            reclassifiedCount++;
+          }
+        }
+        results.invalidRows -= reclassifiedCount;
+        results.validRows += reclassifiedCount;
+
         for (const key of Object.keys(results.errorSummary)) {
           if (key.includes('unmapped_employment_status')) {
             delete results.errorSummary[key];

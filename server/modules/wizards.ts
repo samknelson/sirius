@@ -1313,7 +1313,7 @@ export function registerWizardRoutes(
     async (req, res) => {
       try {
         const statuses = await optionsStorage.list("employment-status");
-        res.json(statuses.map((s: any) => ({ id: s.id, name: s.name, code: s.code, employed: s.employed })));
+        res.json(statuses.map(s => ({ id: s.id, name: s.name, code: s.code, employed: s.employed })));
       } catch (error) {
         console.error("Error fetching employment status options:", error);
         res.status(500).json({ message: error instanceof Error ? error.message : "Failed to fetch employment status options" });
