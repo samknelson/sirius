@@ -713,8 +713,10 @@ export function registerWizardRoutes(
       // Validation must have been run
       if (!validationResults) return false;
       
-      // All rows must be valid (no invalid rows)
-      return validationResults.invalidRows === 0;
+      // All rows must be valid (no invalid rows) and no unmapped statuses pending
+      if (validationResults.invalidRows !== 0) return false;
+      if (validationResults.unmappedStatuses && validationResults.unmappedStatuses.length > 0) return false;
+      return true;
     }
     
     // Other steps are always considered complete
