@@ -1282,6 +1282,14 @@ export function registerWizardRoutes(
           }
         }
 
+        const validStatuses = await optionsStorage.list("employment-status");
+        const validStatusIds = new Set(validStatuses.map(s => s.id));
+        for (const m of mappings) {
+          if (!validStatusIds.has(m.targetStatusId)) {
+            return res.status(400).json({ message: `Invalid target status ID: ${m.targetStatusId}` });
+          }
+        }
+
         const results = await storage.wizardEmploymentStatusMappings.upsertBatch(employerId, mappings);
         res.json({ saved: results.length, mappings: results });
       } catch (error) {
