@@ -1,4 +1,5 @@
-import { FeedWizard, FeedField, ValidationError, type ValidationResults } from '../feed.js';
+import { AsyncLocalStorage } from 'async_hooks';
+import { FeedWizard, FeedField, ValidationError, type ValidationResults, type ProcessResults } from '../feed.js';
 import { WizardStatus, WizardStep, LaunchArgument } from '../base.js';
 import { storage } from '../../storage/index.js';
 import { createUnifiedOptionsStorage } from '../../storage/unified-options.js';
@@ -49,9 +50,10 @@ interface RunContext {
   mappings: Array<{ sourceStatus: string; targetStatusId: string }> | null;
 }
 
+const runContextStorage = new AsyncLocalStorage<RunContext>();
+
 export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   entityType = 'employer';
-  private _runCtx: RunContext | null = null;
   
 
   /**
@@ -326,11 +328,12 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   }
 
   private async getEmployerStatusMappings(): Promise<Array<{ sourceStatus: string; targetStatusId: string }>> {
-    if (!this._runCtx) return [];
-    if (this._runCtx.mappings) return this._runCtx.mappings;
-    const mappings = await storage.wizardEmploymentStatusMappings.getByEmployer(this._runCtx.employerId);
-    this._runCtx.mappings = mappings.map(m => ({ sourceStatus: m.sourceStatus, targetStatusId: m.targetStatusId }));
-    return this._runCtx.mappings;
+    const ctx = runContextStorage.getStore();
+    if (!ctx) return [];
+    if (ctx.mappings) return ctx.mappings;
+    const mappings = await storage.wizardEmploymentStatusMappings.getByEmployer(ctx.employerId);
+    ctx.mappings = mappings.map(m => ({ sourceStatus: m.sourceStatus, targetStatusId: m.targetStatusId }));
+    return ctx.mappings;
   }
 
   /**
@@ -451,41 +454,60 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     onProgress?: (progress: { processed: number; total: number; validRows: number; invalidRows: number }) => void
   ): Promise<ValidationResults> {
     const wizard = await storage.wizards.getById(wizardId);
-    if (wizard?.entityId) {
-      this._runCtx = { employerId: wizard.entityId, mappings: null };
-    }
+    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null };
 
-    const results = await super.validateFeedData(wizardId, batchSize, onProgress);
+    return runContextStorage.run(ctx, async () => {
+      const results = await super.validateFeedData(wizardId, batchSize, onProgress);
 
-    const unmappedSet = new Set<string>();
-    for (const error of results.errors) {
-      if (error.field === 'employmentStatus' && error.message === 'unmapped_employment_status' && error.value) {
-        unmappedSet.add(String(error.value));
-      }
-    }
-
-    if (unmappedSet.size > 0) {
-      results.unmappedStatuses = Array.from(unmappedSet);
-      results.errors = results.errors.filter(
-        e => !(e.field === 'employmentStatus' && e.message === 'unmapped_employment_status')
-      );
-      for (const key of Object.keys(results.errorSummary)) {
-        if (key.includes('unmapped_employment_status')) {
-          delete results.errorSummary[key];
+      const unmappedSet = new Set<string>();
+      for (const error of results.errors) {
+        if (error.field === 'employmentStatus' && error.message === 'unmapped_employment_status' && error.value) {
+          unmappedSet.add(String(error.value));
         }
       }
 
-      const wizardObj = await storage.wizards.getById(wizardId);
-      if (wizardObj) {
-        const wizardData = wizardObj.data as any;
-        await storage.wizards.update(wizardId, {
-          data: { ...wizardData, validationResults: results }
-        });
-      }
-    }
+      if (unmappedSet.size > 0) {
+        results.unmappedStatuses = Array.from(unmappedSet);
+        results.errors = results.errors.filter(
+          e => !(e.field === 'employmentStatus' && e.message === 'unmapped_employment_status')
+        );
+        for (const key of Object.keys(results.errorSummary)) {
+          if (key.includes('unmapped_employment_status')) {
+            delete results.errorSummary[key];
+          }
+        }
 
-    this._runCtx = null;
-    return results;
+        const wizardObj = await storage.wizards.getById(wizardId);
+        if (wizardObj) {
+          const wizardData = wizardObj.data as any;
+          await storage.wizards.update(wizardId, {
+            data: { ...wizardData, validationResults: results }
+          });
+        }
+      }
+
+      return results;
+    });
+  }
+
+  async processFeedData(
+    wizardId: string,
+    batchSize: number = 100,
+    onProgress?: (progress: {
+      processed: number;
+      total: number;
+      createdCount: number;
+      updatedCount: number;
+      successCount: number;
+      failureCount: number;
+      currentRow?: { index: number; status: 'success' | 'error'; error?: string };
+      phase?: string;
+      phaseMessage?: string;
+    }) => void
+  ): Promise<ProcessResults> {
+    const wizard = await storage.wizards.getById(wizardId);
+    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null };
+    return runContextStorage.run(ctx, () => super.processFeedData(wizardId, batchSize, onProgress));
   }
 
   async validateRow(row: Record<string, any>, rowIndex: number, mode: 'create' | 'update'): Promise<ValidationError[]> {
@@ -568,9 +590,6 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
    * This method is called by the processFeedData method when processing each worker
    */
   protected async processWorkerHours(workerId: string, row: Record<string, any>, wizard: any): Promise<void> {
-    if (wizard?.entityId && !this._runCtx) {
-      this._runCtx = { employerId: wizard.entityId, mappings: null };
-    }
 
     const rawHours = row.numberOfHours;
     const employmentStatusValue = row.employmentStatus;
