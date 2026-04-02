@@ -472,7 +472,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         const unmappedRowIndices = new Set<number>();
         for (const error of results.errors) {
           if (error.field === 'employmentStatus' && error.message === 'unmapped_employment_status') {
-            unmappedRowIndices.add(error.row);
+            unmappedRowIndices.add(error.rowIndex);
           }
         }
 
@@ -482,7 +482,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
 
         const rowsWithRemainingErrors = new Set<number>();
         for (const error of results.errors) {
-          rowsWithRemainingErrors.add(error.row);
+          rowsWithRemainingErrors.add(error.rowIndex);
         }
 
         let reclassifiedCount = 0;
