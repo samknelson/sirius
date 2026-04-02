@@ -48,6 +48,9 @@ function normalizeForComparison(value: string): string {
 interface RunContext {
   employerId: string;
   mappings: Array<{ sourceStatus: string; targetStatusId: string }> | null;
+  unmappedValues: Set<string>;
+  unmappedOnlyRows: Set<number>;
+  rowsWithOtherErrors: Set<number>;
 }
 
 const runContextStorage = new AsyncLocalStorage<RunContext>();
@@ -454,43 +457,19 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     onProgress?: (progress: { processed: number; total: number; validRows: number; invalidRows: number }) => void
   ): Promise<ValidationResults> {
     const wizard = await storage.wizards.getById(wizardId);
-    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null };
+    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set(), rowsWithOtherErrors: new Set() };
 
     return runContextStorage.run(ctx, async () => {
       const results = await super.validateFeedData(wizardId, batchSize, onProgress);
 
-      const unmappedSet = new Set<string>();
-      for (const error of results.errors) {
-        if (error.field === 'employmentStatus' && error.message === 'unmapped_employment_status' && error.value) {
-          unmappedSet.add(String(error.value));
-        }
-      }
-
-      if (unmappedSet.size > 0) {
-        results.unmappedStatuses = Array.from(unmappedSet);
-
-        const unmappedRowIndices = new Set<number>();
-        for (const error of results.errors) {
-          if (error.field === 'employmentStatus' && error.message === 'unmapped_employment_status') {
-            unmappedRowIndices.add(error.rowIndex);
-          }
-        }
+      if (ctx.unmappedValues.size > 0) {
+        results.unmappedStatuses = Array.from(ctx.unmappedValues);
 
         results.errors = results.errors.filter(
           e => !(e.field === 'employmentStatus' && e.message === 'unmapped_employment_status')
         );
 
-        const rowsWithRemainingErrors = new Set<number>();
-        for (const error of results.errors) {
-          rowsWithRemainingErrors.add(error.rowIndex);
-        }
-
-        let reclassifiedCount = 0;
-        for (const rowIdx of unmappedRowIndices) {
-          if (!rowsWithRemainingErrors.has(rowIdx)) {
-            reclassifiedCount++;
-          }
-        }
+        const reclassifiedCount = ctx.unmappedOnlyRows.size;
         results.invalidRows -= reclassifiedCount;
         results.validRows += reclassifiedCount;
 
@@ -529,7 +508,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     }) => void
   ): Promise<ProcessResults> {
     const wizard = await storage.wizards.getById(wizardId);
-    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null };
+    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set(), rowsWithOtherErrors: new Set() };
     return runContextStorage.run(ctx, () => super.processFeedData(wizardId, batchSize, onProgress));
   }
 
@@ -576,6 +555,10 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
             });
           }
         } else {
+          const ctx = runContextStorage.getStore();
+          if (ctx) {
+            ctx.unmappedValues.add(String(row.employmentStatus));
+          }
           errors.push({
             rowIndex,
             field: 'employmentStatus',
@@ -605,6 +588,17 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
       }
     }
     
+    const ctx = runContextStorage.getStore();
+    if (ctx && errors.length > 0) {
+      const hasUnmapped = errors.some(e => e.message === 'unmapped_employment_status');
+      const hasOtherErrors = errors.some(e => e.message !== 'unmapped_employment_status');
+      if (hasUnmapped && !hasOtherErrors) {
+        ctx.unmappedOnlyRows.add(rowIndex);
+      } else if (hasOtherErrors) {
+        ctx.rowsWithOtherErrors.add(rowIndex);
+      }
+    }
+
     return errors;
   }
 
