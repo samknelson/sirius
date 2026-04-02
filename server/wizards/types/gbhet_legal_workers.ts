@@ -50,7 +50,6 @@ interface RunContext {
   mappings: Array<{ sourceStatus: string; targetStatusId: string }> | null;
   unmappedValues: Set<string>;
   unmappedOnlyRows: Set<number>;
-  rowsWithOtherErrors: Set<number>;
 }
 
 const runContextStorage = new AsyncLocalStorage<RunContext>();
@@ -457,7 +456,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     onProgress?: (progress: { processed: number; total: number; validRows: number; invalidRows: number }) => void
   ): Promise<ValidationResults> {
     const wizard = await storage.wizards.getById(wizardId);
-    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set(), rowsWithOtherErrors: new Set() };
+    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set() };
 
     return runContextStorage.run(ctx, async () => {
       const results = await super.validateFeedData(wizardId, batchSize, onProgress);
@@ -508,7 +507,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     }) => void
   ): Promise<ProcessResults> {
     const wizard = await storage.wizards.getById(wizardId);
-    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set(), rowsWithOtherErrors: new Set() };
+    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set() };
     return runContextStorage.run(ctx, () => super.processFeedData(wizardId, batchSize, onProgress));
   }
 
@@ -594,8 +593,6 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
       const hasOtherErrors = errors.some(e => e.message !== 'unmapped_employment_status');
       if (hasUnmapped && !hasOtherErrors) {
         ctx.unmappedOnlyRows.add(rowIndex);
-      } else if (hasOtherErrors) {
-        ctx.rowsWithOtherErrors.add(rowIndex);
       }
     }
 
