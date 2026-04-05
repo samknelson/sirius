@@ -40,14 +40,17 @@ function logTestOperation(
 ): void {
   const ctx = getRequestContext();
   const level = result.success ? "info" : "warn";
-  const msg = `SFTP test ${operation} ${result.success ? "succeeded" : "failed"} (${result.duration}ms)`;
+  const outcome = result.success ? "succeeded" : "failed";
+  const desc = result.success
+    ? `${description} — ${outcome} in ${result.duration}ms`
+    : `${description} — ${outcome} in ${result.duration}ms: ${result.error}`;
 
-  storageLogger.log(level, msg, {
+  storageLogger.log(level, `SFTP test ${operation} ${outcome} (${result.duration}ms)`, {
     source: "sftp_test",
     module: "sftpClientDestinations",
     operation: `test_${operation}`,
     host_entity_id: destinationId,
-    description: result.success ? description : result.error || description,
+    description: desc,
     duration: result.duration,
     user_id: ctx?.userId || null,
     user_email: ctx?.userEmail || null,
@@ -122,7 +125,7 @@ export async function testConnect(conn: ConnectionData, destinationId: string): 
       };
     });
   });
-  logTestOperation("connect", destinationId, result, `Connected to ${conn.host}:${conn.port} via ${conn.protocol.toUpperCase()}`);
+  logTestOperation("connect", destinationId, result, `Connect to ${conn.host}:${conn.port} via ${conn.protocol.toUpperCase()}`);
   return result;
 }
 
@@ -149,7 +152,8 @@ export async function testList(conn: ConnectionData, remotePath: string, destina
       }));
     });
   });
-  logTestOperation("list", destinationId, result, `Listed directory ${remotePath || "/"}`);
+  const itemCount = result.success && result.data ? result.data.length : 0;
+  logTestOperation("list", destinationId, result, `List ${remotePath || "/"} (${itemCount} items)`);
   return result;
 }
 
@@ -170,7 +174,7 @@ export async function testCd(conn: ConnectionData, remotePath: string, destinati
       return { path: pwd };
     });
   });
-  logTestOperation("cd", destinationId, result, `Changed directory to ${remotePath}`);
+  logTestOperation("cd", destinationId, result, `Change directory to ${remotePath}`);
   return result;
 }
 
@@ -201,7 +205,8 @@ export async function testUpload(
       return { bytesWritten: content.length };
     });
   });
-  logTestOperation("upload", destinationId, result, `Uploaded ${fileName} (${content.length} bytes) to ${remotePath}`);
+  const bytesWritten = result.success && result.data ? result.data.bytesWritten : content.length;
+  logTestOperation("upload", destinationId, result, `Upload ${fileName} (${bytesWritten} bytes) to ${remotePath}`);
   return result;
 }
 
@@ -246,6 +251,7 @@ export async function testDownload(
       return { size: buffer.length, contentBase64: buffer.toString("base64") };
     });
   });
-  logTestOperation("download", destinationId, result, `Downloaded ${remoteFilePath}`);
+  const downloadSize = result.success && result.data ? result.data.size : 0;
+  logTestOperation("download", destinationId, result, `Download ${remoteFilePath} (${downloadSize} bytes)`);
   return result;
 }
