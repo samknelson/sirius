@@ -3,11 +3,20 @@ import { IStorage } from "../storage";
 import { insertSftpClientDestinationSchema, connectionDataSchema } from "../../shared/schema/system/sftp-client-schema";
 import { requireComponent } from "./components";
 import { z } from "zod";
+import * as fileTransfer from "../services/file-transfer-client";
 
 type RequireAccess = (policy: any) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
 const updateSchema = insertSftpClientDestinationSchema.partial();
+
+const testPathBody = z.object({ path: z.string().min(1, "path is required") });
+const testOptionalPathBody = z.object({ path: z.string().optional() });
+const testUploadBody = z.object({
+  path: z.string().optional(),
+  fileName: z.string().min(1, "fileName is required"),
+  contentBase64: z.string().min(1, "contentBase64 is required"),
+});
 
 export function registerSftpClientDestinationRoutes(
   app: Express,
@@ -106,6 +115,62 @@ export function registerSftpClientDestinationRoutes(
         return res.status(400).json({ message: "Validation error", errors: error.errors });
       }
       res.status(500).json({ message: error.message || "Failed to update connection data" });
+    }
+  });
+
+  app.post("/api/sftp/client-destinations/:id/test/:action", requireAuth, requireAccess('admin'), sftpComponent, async (req, res) => {
+    try {
+      const { id, action } = req.params;
+      const dest = await storage.sftpClientDestinations.getById(id);
+      if (!dest) {
+        return res.status(404).json({ message: "SFTP client destination not found" });
+      }
+
+      const parsed = connectionDataSchema.safeParse(dest.data);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "No valid connection data configured for this destination" });
+      }
+      const conn = parsed.data;
+
+      switch (action) {
+        case "connect": {
+          const result = await fileTransfer.testConnect(conn);
+          return res.json(result);
+        }
+        case "list": {
+          const body = testOptionalPathBody.parse(req.body);
+          const remotePath = body.path || conn.homeDir || "/";
+          const result = await fileTransfer.testList(conn, remotePath);
+          return res.json(result);
+        }
+        case "cd": {
+          const body = testPathBody.parse(req.body);
+          const result = await fileTransfer.testCd(conn, body.path);
+          return res.json(result);
+        }
+        case "upload": {
+          const body = testUploadBody.parse(req.body);
+          const buffer = Buffer.from(body.contentBase64, "base64");
+          if (buffer.length > 1024 * 1024) {
+            return res.status(400).json({ message: "File size must be under 1 MB" });
+          }
+          const result = await fileTransfer.testUpload(conn, body.path || conn.homeDir || "/", body.fileName, buffer);
+          return res.json(result);
+        }
+        case "download": {
+          const body = testPathBody.parse(req.body);
+          const result = await fileTransfer.testDownload(conn, body.path);
+          return res.json(result);
+        }
+        default:
+          return res.status(400).json({ message: `Unknown test action: ${action}` });
+      }
+    } catch (error: unknown) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      const message = error instanceof Error ? error.message : "Test operation failed";
+      res.status(500).json({ message });
     }
   });
 

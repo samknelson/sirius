@@ -61,7 +61,7 @@ All database access must exclusively use a centralized storage layer (`server/st
 -   **Worker Certifications**: Manages worker certifications with automatic skill synchronization based on active certification status.
 -   **EDLS (Employer Day Labor Scheduler)**: Manages day labor scheduling with sheets, crews, department-based task assignment, supervisor tracking, and audit logging. EDLS-specific worker queries are isolated to `edls-assignments` storage. Features include hierarchical rating filters and grouping available workers by member status.
 -   **Web Services Framework**: Server-side API framework for exposing services to external clients, featuring bundle-based organization, client credential authentication, and optional IP allowlisting.
--   **SFTP Client Destinations**: Manages SFTP client destination configurations, including full CRUD API and UI, using a discriminated-union Zod schema for connection data.
+-   **SFTP Client Destinations**: Manages SFTP client destination configurations, including full CRUD API and UI, using a discriminated-union Zod schema for connection data. Includes a Test tab for interactive connection diagnostics (connect, list, cd, upload, download) via `server/services/file-transfer-client.ts` abstraction over `ssh2-sftp-client` and `basic-ftp`.
 
 # External Dependencies
 
@@ -78,6 +78,10 @@ All database access must exclusively use a centralized storage layer (`server/st
 -   **TypeScript**: Static type checking.
 -   **Drizzle Zod**: Drizzle ORM and Zod integration.
 -   **libphonenumber-js**: Phone number parsing, validation, and formatting.
+
+## File Transfer
+-   **ssh2-sftp-client**: SFTP client library for SSH File Transfer Protocol connections.
+-   **basic-ftp**: FTP client library supporting plain FTP, explicit TLS, and implicit TLS.
 
 ## Third-Party Integrations
 -   **Twilio**: Phone number lookup, validation, and SMS messaging.
