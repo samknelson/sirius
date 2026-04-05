@@ -49,11 +49,13 @@ The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI),
 -   **Terminology Framework**: Provides site-specific terminology customization.
 -   **Dispatch System**: Manages dispatch jobs, types, listings, and detail pages. Features a plugin system to filter eligible workers based on configurable criteria using denormalized eligibility data.
 -   **Worker Bans**: Tracks worker restrictions and dynamically calculates active status.
--   **Worker Member Status History**: Tracks worker member statuses per industry over time.
--   **Worker Certifications**: Manages worker certifications, automatically syncing skills based on active certification status.
--   **EDLS (Employer Day Labor Scheduler)**: Manages day labor scheduling, including sheets, crews, task assignment, supervisor tracking, and audit logging.
--   **Web Services Framework**: Server-side API framework for exposing services to external clients.
--   **SFTP Client Destinations**: Manages SFTP client destination configurations, including CRUD API and UI.
+-   **Worker Member Status History**: Tracks worker member statuses per industry over time, with `denormMsIds` on workers for quick lookup.
+-   **HTA Union/Apprentice Import**: Site-specific feed wizard for importing worker data from spreadsheets, including SSN, names, work status, employer, and contact info, with validation and inactivity scans.
+-   **Worker Certifications**: Manages worker certifications with automatic skill synchronization based on active certification status.
+-   **EDLS (Employer Day Labor Scheduler)**: Manages day labor scheduling with sheets, crews, department-based task assignment, supervisor tracking, and audit logging. EDLS-specific worker queries are isolated to `edls-assignments` storage. Features include hierarchical rating filters and grouping available workers by member status.
+-   **Web Services Framework**: Server-side API framework for exposing services to external clients, featuring bundle-based organization, client credential authentication, and optional IP allowlisting.
+-   **SFTP Client Destinations**: Manages SFTP client destination configurations, including full CRUD API and UI, using a discriminated-union Zod schema for connection data. Includes a Test tab for interactive connection diagnostics (connect, list, cd, upload, download) via `server/services/file-transfer-client.ts` abstraction over `ssh2-sftp-client` and `basic-ftp`. Downloads use streaming via `stream.pipeline` (no size limit); uploads remain base64 JSON (1 MB cap).
+-   **Trust Provider EDI**: Component-managed table (`trust.providers.edi`) for trust provider data interchange records, with FK reference to `sftp_client_destinations`. Full CRUD API at `/api/trust-provider-edi` (supports `?providerId=` filter). EDI tab on provider pages at `/trust/provider/{id}/edi`. EDI detail pages at `/trust/provider-edi/{id}` with Details/Edit/Logs tabs, following `SftpClientLayout` pattern (`TrustProviderEdiLayout` + `useTrustProviderEdiLayout` hook). Admin-only access.
 
 # External Dependencies
 

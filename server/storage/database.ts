@@ -55,6 +55,7 @@ import { type WorkerHoursStorage, createWorkerHoursStorage, workerHoursLoggingCo
 import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./policies";
 import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnitLoggingConfig } from "./bargaining-units";
 import { type SftpClientDestinationStorage, createSftpClientDestinationStorage, sftpClientDestinationLoggingConfig } from "./sftp-client-destinations";
+import { type TrustProviderEdiStorage, createTrustProviderEdiStorage, trustProviderEdiLoggingConfig } from "./trust-provider-edi";
 import { type EmployerPolicyHistoryStorage, createEmployerPolicyHistoryStorage, employerPolicyHistoryLoggingConfig } from "./employer-policy-history";
 import { type WmbScanQueueStorage, createWmbScanQueueStorage } from "./wmb-scan-queue";
 import { type CardcheckDefinitionStorage, createCardcheckDefinitionStorage, cardcheckDefinitionLoggingConfig } from "./cardcheck-definitions";
@@ -157,6 +158,7 @@ export interface IStorage {
   companies: CompanyStorage;
   employerCompanies: EmployerCompanyStorage;
   sftpClientDestinations: SftpClientDestinationStorage;
+  trustProviderEdi: TrustProviderEdiStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -224,6 +226,7 @@ export class DatabaseStorage implements IStorage {
   companies: CompanyStorage;
   employerCompanies: EmployerCompanyStorage;
   sftpClientDestinations: SftpClientDestinationStorage;
+  trustProviderEdi: TrustProviderEdiStorage;
 
   constructor() {
     this.variables = withStorageLogging(
@@ -392,6 +395,10 @@ export class DatabaseStorage implements IStorage {
     this.sftpClientDestinations = withStorageLogging(
       createSftpClientDestinationStorage(),
       sftpClientDestinationLoggingConfig
+    );
+    this.trustProviderEdi = withStorageLogging(
+      createTrustProviderEdiStorage(),
+      trustProviderEdiLoggingConfig
     );
   }
 }

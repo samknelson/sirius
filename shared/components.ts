@@ -305,7 +305,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Provider Data Interchange",
     description: "Data interchange functionality for trust providers",
     enabledByDefault: false,
-    category: "trust.providers"
+    category: "trust.providers",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/trust/provider-edi-schema.ts",
+      tables: ["trust_provider_edi"]
+    }
   },
   {
     id: "trust.benefits",
