@@ -258,9 +258,6 @@ export async function streamDownload(
     logTestOperation("download", destinationId, {
       success: false, duration, error: message,
     }, `Download ${remoteFilePath} (${bytesTransferred} bytes)`);
-    if (!output.destroyed) {
-      output.destroy(err instanceof Error ? err : new Error(message));
-    }
     throw err;
   }
 }

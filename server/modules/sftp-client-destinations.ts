@@ -198,6 +198,8 @@ export function registerSftpClientDestinationRoutes(
       if (!res.headersSent) {
         const message = error instanceof Error ? error.message : "Download failed";
         res.status(500).json({ message });
+      } else if (!res.writableEnded) {
+        res.destroy(error instanceof Error ? error : new Error(String(error)));
       }
     }
   });
