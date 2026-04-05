@@ -14,9 +14,12 @@ export function registerTrustProviderEdiRoutes(
 ) {
   const ediComponent = requireComponent("trust.providers.edi");
 
-  app.get("/api/trust-provider-edi", requireAuth, requireAccess('admin'), ediComponent, async (_req, res) => {
+  app.get("/api/trust-provider-edi", requireAuth, requireAccess('admin'), ediComponent, async (req, res) => {
     try {
-      const items = await storage.trustProviderEdi.getAll();
+      const providerId = req.query.providerId as string | undefined;
+      const items = providerId
+        ? await storage.trustProviderEdi.getByProviderId(providerId)
+        : await storage.trustProviderEdi.getAll();
       res.json(items);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to fetch trust provider EDI records";

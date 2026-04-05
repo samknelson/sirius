@@ -140,6 +140,10 @@ const TrustProviderContactSendSms = lazy(() => import("@/pages/trust-provider-co
 const TrustProviderContactSendEmail = lazy(() => import("@/pages/trust-provider-contact-send-email"));
 const TrustProviderContactSendPostal = lazy(() => import("@/pages/trust-provider-contact-send-postal"));
 const TrustProviderContactSendInApp = lazy(() => import("@/pages/trust-provider-contact-send-inapp"));
+const TrustProviderEdiPage = lazy(() => import("@/pages/trust-provider-edi"));
+const TrustProviderEdiDetailsPage = lazy(() => import("@/pages/trust-provider-edi-details"));
+const TrustProviderEdiEditPage = lazy(() => import("@/pages/trust-provider-edi-edit"));
+const TrustProviderEdiLogsPage = lazy(() => import("@/pages/trust-provider-edi-logs"));
 const TrustProviderLogsPage = lazy(() => import("@/pages/trust-provider-logs"));
 const BargainingUnitsPage = lazy(() => import("@/pages/bargaining-units"));
 const BargainingUnitViewPage = lazy(() => import("@/pages/bargaining-unit-view"));
@@ -1587,6 +1591,38 @@ function Router() {
         <ProtectedRoute tabId="contacts" entityType="provider">
           <AuthenticatedLayout>
             <TrustProviderContactsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/provider/:id/edi">
+        <ProtectedRoute permission="admin" component="trust.providers.edi">
+          <AuthenticatedLayout>
+            <TrustProviderEdiPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/provider-edi/:id/edit">
+        <ProtectedRoute permission="admin" component="trust.providers.edi">
+          <AuthenticatedLayout>
+            <TrustProviderEdiEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/provider-edi/:id/logs">
+        <ProtectedRoute permission="admin" component="trust.providers.edi">
+          <AuthenticatedLayout>
+            <TrustProviderEdiLogsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/provider-edi/:id">
+        <ProtectedRoute permission="admin" component="trust.providers.edi">
+          <AuthenticatedLayout>
+            <TrustProviderEdiDetailsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

@@ -10,6 +10,7 @@ export interface TrustProviderEdiStorage {
   getAll(): Promise<TrustProviderEdi[]>;
   getById(id: string): Promise<TrustProviderEdi | undefined>;
   getBySiriusId(siriusId: string): Promise<TrustProviderEdi | undefined>;
+  getByProviderId(providerId: string): Promise<TrustProviderEdi[]>;
   create(data: InsertTrustProviderEdi): Promise<TrustProviderEdi>;
   update(id: string, data: Partial<InsertTrustProviderEdi>): Promise<TrustProviderEdi | undefined>;
   delete(id: string): Promise<boolean>;
@@ -38,6 +39,14 @@ export function createTrustProviderEdiStorage(): TrustProviderEdiStorage {
         .from(trustProviderEdi)
         .where(eq(trustProviderEdi.siriusId, siriusId));
       return row || undefined;
+    },
+
+    async getByProviderId(providerId: string): Promise<TrustProviderEdi[]> {
+      const client = getClient();
+      return await client
+        .select()
+        .from(trustProviderEdi)
+        .where(eq(trustProviderEdi.providerId, providerId));
     },
 
     async create(data: InsertTrustProviderEdi): Promise<TrustProviderEdi> {

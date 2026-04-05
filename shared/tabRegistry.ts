@@ -64,7 +64,8 @@ export type TabEntityType =
   | 'worker_hours'
   | 'user'
   | 'ws_client'
-  | 'sftp_client_destination';
+  | 'sftp_client_destination'
+  | 'trust_provider_edi';
 
 /**
  * Tab check request for batch access evaluation
@@ -212,6 +213,7 @@ export const providerTabTree: HierarchicalTab[] = [
   { id: 'view', label: 'View', hrefTemplate: '/trust/provider/{id}', policyId: 'trust.provider.mine' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/trust/provider/{id}/edit', permission: 'staff' },
   { id: 'contacts', label: 'Contacts', hrefTemplate: '/trust/provider/{id}/contacts', policyId: 'trust.provider.mine' },
+  { id: 'edi', label: 'EDI', hrefTemplate: '/trust/provider/{id}/edi', permission: 'admin', component: 'trust.providers.edi' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/trust/provider/{id}/logs', permission: 'staff' },
 ];
 
@@ -477,6 +479,15 @@ export const sftpClientDestinationTabTree: HierarchicalTab[] = [
 ];
 
 /**
+ * Trust Provider EDI entity tab tree
+ */
+export const trustProviderEdiTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/trust/provider-edi/{id}', permission: 'admin', component: 'trust.providers.edi' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/trust/provider-edi/{id}/edit', permission: 'admin', component: 'trust.providers.edi' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/trust/provider-edi/{id}/logs', permission: 'admin', component: 'trust.providers.edi' },
+];
+
+/**
  * Entity tab trees by type
  */
 export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
@@ -502,6 +513,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   user: userTabTree,
   ws_client: wsClientTabTree,
   sftp_client_destination: sftpClientDestinationTabTree,
+  trust_provider_edi: trustProviderEdiTabTree,
 };
 
 /**
