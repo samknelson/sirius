@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { IStorage } from "../storage";
-import { insertSftpClientDestinationSchema } from "../../shared/schema/system/sftp-client-schema";
+import { insertSftpClientDestinationSchema, connectionDataSchema } from "../../shared/schema/system/sftp-client-schema";
 import { requireComponent } from "./components";
 import { z } from "zod";
 
@@ -85,6 +85,27 @@ export function registerSftpClientDestinationRoutes(
         return res.status(400).json({ message: "Validation error", errors: error.errors });
       }
       res.status(500).json({ message: error.message || "Failed to update SFTP client destination" });
+    }
+  });
+
+  app.put("/api/sftp/client-destinations/:id/connection", requireAuth, requireAccess('admin'), sftpComponent, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const existing = await storage.sftpClientDestinations.getById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "SFTP client destination not found" });
+      }
+
+      const validated = connectionDataSchema.parse(req.body);
+
+      const updated = await storage.sftpClientDestinations.update(id, { data: validated });
+      res.json(updated);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message || "Failed to update connection data" });
     }
   });
 

@@ -204,6 +204,7 @@ const WsClientTestPage = lazy(() => import("@/pages/config/ws/client-test"));
 const WsClientLogsPage = lazy(() => import("@/pages/config/ws/client-logs"));
 const SftpClientsPage = lazy(() => import("@/pages/config/sftp/clients"));
 const SftpClientDetailsPage = lazy(() => import("@/pages/config/sftp/client-details"));
+const SftpClientConnectionPage = lazy(() => import("@/pages/config/sftp/client-connection"));
 const SftpClientEditPage = lazy(() => import("@/pages/config/sftp/client-edit"));
 const WorkerBanConfigPage = lazy(() => import("@/pages/config/workers-ban"));
 const DispatchJobsPage = lazy(() => import("@/pages/dispatch/jobs"));
@@ -1859,6 +1860,14 @@ function Router() {
             <ConfigurationLayout>
               <WsClientsPage />
             </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sftp/client/:id/connection">
+        <ProtectedRoute permission="admin" component="system.sftp.client">
+          <AuthenticatedLayout>
+            <SftpClientConnectionPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
