@@ -61,7 +61,7 @@ All database access must exclusively use a centralized storage layer (`server/st
 -   **Worker Certifications**: Manages worker certifications with automatic skill synchronization based on active certification status.
 -   **EDLS (Employer Day Labor Scheduler)**: Manages day labor scheduling with sheets, crews, department-based task assignment, supervisor tracking, and audit logging. EDLS-specific worker queries are isolated to `edls-assignments` storage. Features include hierarchical rating filters and grouping available workers by member status.
 -   **Web Services Framework**: Server-side API framework for exposing services to external clients, featuring bundle-based organization, client credential authentication, and optional IP allowlisting.
--   **SFTP Client Destinations**: Manages SFTP client destination configurations, including full CRUD API and UI, using a discriminated-union Zod schema for connection data. Includes a Test tab for interactive connection diagnostics (connect, list, cd, upload, download) via `server/services/file-transfer-client.ts` abstraction over `ssh2-sftp-client` and `basic-ftp`.
+-   **SFTP Client Destinations**: Manages SFTP client destination configurations, including full CRUD API and UI, using a discriminated-union Zod schema for connection data. Includes a Test tab for interactive connection diagnostics (connect, list, cd, upload, download) via `server/services/file-transfer-client.ts` abstraction over `ssh2-sftp-client` and `basic-ftp`. Downloads use streaming via `stream.pipeline` (no size limit); uploads remain base64 JSON (1 MB cap).
 
 # External Dependencies
 

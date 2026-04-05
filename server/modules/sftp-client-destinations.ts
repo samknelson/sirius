@@ -157,11 +157,6 @@ export function registerSftpClientDestinationRoutes(
           const result = await fileTransfer.testUpload(conn, body.path || conn.homeDir || "/", body.fileName, buffer, id);
           return res.json(result);
         }
-        case "download": {
-          const body = testPathBody.parse(req.body);
-          const result = await fileTransfer.testDownload(conn, body.path, id);
-          return res.json(result);
-        }
         default:
           return res.status(400).json({ message: `Unknown test action: ${action}` });
       }
@@ -171,6 +166,39 @@ export function registerSftpClientDestinationRoutes(
       }
       const message = error instanceof Error ? error.message : "Test operation failed";
       res.status(500).json({ message });
+    }
+  });
+
+  app.get("/api/sftp/client-destinations/:id/test/download", requireAuth, requireAccess('admin'), sftpComponent, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const filePath = req.query.path as string;
+      if (!filePath) {
+        return res.status(400).json({ message: "path query parameter is required" });
+      }
+
+      const dest = await storage.sftpClientDestinations.getById(id);
+      if (!dest) {
+        return res.status(404).json({ message: "SFTP client destination not found" });
+      }
+
+      const parsed = connectionDataSchema.safeParse(dest.data);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "No valid connection data configured for this destination" });
+      }
+
+      const pathLib = await import("path");
+      const fileName = pathLib.basename(filePath);
+
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
+      res.setHeader("Content-Type", "application/octet-stream");
+
+      await fileTransfer.streamDownload(parsed.data, filePath, id, res);
+    } catch (error: unknown) {
+      if (!res.headersSent) {
+        const message = error instanceof Error ? error.message : "Download failed";
+        res.status(500).json({ message });
+      }
     }
   });
 

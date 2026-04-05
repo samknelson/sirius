@@ -210,48 +210,57 @@ export async function testUpload(
   return result;
 }
 
-const MAX_DOWNLOAD_BYTES = 1024 * 1024;
-
-export async function testDownload(
+export async function streamDownload(
   conn: ConnectionData,
   remoteFilePath: string,
-  destinationId: string
-): Promise<TransferResult<{ size: number; contentBase64: string }>> {
-  const result = await timedResult(async () => {
+  destinationId: string,
+  output: import("stream").Writable
+): Promise<void> {
+  const { pipeline } = await import("stream/promises");
+  const { PassThrough } = await import("stream");
+  const start = Date.now();
+  let bytesTransferred = 0;
+
+  const counter = new PassThrough();
+  counter.on("data", (chunk: Buffer) => {
+    bytesTransferred += chunk.length;
+  });
+
+  try {
     if (conn.protocol === "sftp") {
-      return withSftpClient(conn, async (client) => {
-        const stat = await client.stat(remoteFilePath);
-        if (stat.size > MAX_DOWNLOAD_BYTES) {
-          throw new Error(`File too large (${stat.size} bytes). Maximum download size is ${MAX_DOWNLOAD_BYTES} bytes.`);
+      await withSftpClient(conn, async (client) => {
+        const readStream = client.createReadStream(remoteFilePath);
+        await pipeline(readStream, counter, output);
+      });
+    } else {
+      await withFtpClient(conn, async (client) => {
+        const ftpPass = new PassThrough();
+        const pipelinePromise = pipeline(ftpPass, counter, output);
+        try {
+          await client.downloadTo(ftpPass, remoteFilePath);
+          ftpPass.end();
+        } catch (downloadErr) {
+          ftpPass.destroy(downloadErr instanceof Error ? downloadErr : new Error(String(downloadErr)));
+          await pipelinePromise.catch(() => {});
+          throw downloadErr;
         }
-        const stream = client.createReadStream(remoteFilePath);
-        const chunks: Buffer[] = [];
-        for await (const chunk of stream) {
-          chunks.push(Buffer.from(chunk as Buffer));
-        }
-        const buffer = Buffer.concat(chunks);
-        return { size: buffer.length, contentBase64: buffer.toString("base64") };
+        await pipelinePromise;
       });
     }
-    return withFtpClient(conn, async (client) => {
-      const { PassThrough } = await import("stream");
-      const pass = new PassThrough();
-      const chunks: Buffer[] = [];
-      let totalSize = 0;
-      pass.on("data", (chunk: Buffer) => {
-        totalSize += chunk.length;
-        if (totalSize > MAX_DOWNLOAD_BYTES) {
-          pass.destroy(new Error(`File too large. Maximum download size is ${MAX_DOWNLOAD_BYTES} bytes.`));
-          return;
-        }
-        chunks.push(chunk);
-      });
-      await client.downloadTo(pass, remoteFilePath);
-      const buffer = Buffer.concat(chunks);
-      return { size: buffer.length, contentBase64: buffer.toString("base64") };
-    });
-  });
-  const downloadSize = result.success && result.data ? result.data.size : 0;
-  logTestOperation("download", destinationId, result, `Download ${remoteFilePath} (${downloadSize} bytes)`);
-  return result;
+
+    const duration = Date.now() - start;
+    logTestOperation("download", destinationId, {
+      success: true, duration, data: { size: bytesTransferred },
+    }, `Download ${remoteFilePath} (${bytesTransferred} bytes)`);
+  } catch (err: unknown) {
+    const duration = Date.now() - start;
+    const message = err instanceof Error ? err.message : String(err);
+    logTestOperation("download", destinationId, {
+      success: false, duration, error: message,
+    }, `Download ${remoteFilePath} (${bytesTransferred} bytes)`);
+    if (!output.destroyed) {
+      output.destroy(err instanceof Error ? err : new Error(message));
+    }
+    throw err;
+  }
 }

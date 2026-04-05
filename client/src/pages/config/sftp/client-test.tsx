@@ -178,41 +178,48 @@ function TestContent() {
     },
   });
 
-  const downloadMutation = useMutation({
-    mutationFn: (filePath: string) => callTestApi("download", { path: filePath }),
-    onSuccess: (result) => {
-      const data = result.data as { size: number; contentBase64: string } | undefined;
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const triggerDownload = useCallback(async (filePath: string) => {
+    setIsDownloading(true);
+    const start = Date.now();
+    try {
+      const url = `/api/sftp/client-destinations/${destination.id}/test/download?path=${encodeURIComponent(filePath)}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(body.message || `Download failed (${response.status})`);
+      }
+
+      const contentDisposition = response.headers.get("Content-Disposition") || "";
+      const filenameMatch = contentDisposition.match(/filename="?([^";\n]+)"?/);
+      const fileName = filenameMatch ? decodeURIComponent(filenameMatch[1]) : (selectedFile || "downloaded-file");
+
+      const blob = await response.blob();
+      const duration = Date.now() - start;
+
       addLog({
         action: "Download",
-        success: result.success,
-        duration: result.duration,
-        message: result.success
-          ? `Downloaded ${data?.size ?? 0} bytes`
-          : `Download failed: ${result.error}`,
+        success: true,
+        duration,
+        message: `Downloaded ${formatBytes(blob.size)}`,
       });
-      if (result.success && data?.contentBase64) {
-        try {
-          const binary = atob(data.contentBase64);
-          const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-          const blob = new Blob([bytes]);
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = selectedFile || "downloaded-file";
-          a.click();
-          URL.revokeObjectURL(url);
-        } catch {
-          toast({ title: "Download error", description: "Could not process file data", variant: "destructive" });
-        }
-      } else if (!result.success) {
-        toast({ title: "Download failed", description: result.error, variant: "destructive" });
-      }
-    },
-    onError: (error: Error) => {
-      addLog({ action: "Download", success: false, duration: 0, message: error.message });
-    },
-  });
+
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch (error: unknown) {
+      const duration = Date.now() - start;
+      const message = error instanceof Error ? error.message : "Download failed";
+      addLog({ action: "Download", success: false, duration, message });
+      toast({ title: "Download failed", description: message, variant: "destructive" });
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [destination.id, selectedFile, addLog, toast]);
 
   const handleCd = () => {
     const target = cdInput.trim();
@@ -232,12 +239,12 @@ function TestContent() {
     const filePath = currentPath.endsWith("/")
       ? `${currentPath}${selectedFile}`
       : `${currentPath}/${selectedFile}`;
-    downloadMutation.mutate(filePath);
+    triggerDownload(filePath);
   };
 
   const isAnyPending =
     connectMutation.isPending || listMutation.isPending || cdMutation.isPending ||
-    uploadMutation.isPending || downloadMutation.isPending;
+    uploadMutation.isPending || isDownloading;
 
   if (!hasConnection) {
     return (
@@ -369,10 +376,10 @@ function TestContent() {
                 size="sm"
                 variant="outline"
                 onClick={handleDownload}
-                disabled={downloadMutation.isPending || !selectedFile}
+                disabled={isDownloading || !selectedFile}
                 data-testid="button-download"
               >
-                {downloadMutation.isPending ? (
+                {isDownloading ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
                   <Download className="h-4 w-4 mr-2" />
