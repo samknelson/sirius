@@ -470,6 +470,7 @@ export const sftpClientDestinationTabTree: HierarchicalTab[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/config/sftp/client/{id}', permission: 'admin', component: 'system.sftp.client' },
   { id: 'connection', label: 'Connection', hrefTemplate: '/config/sftp/client/{id}/connection', permission: 'admin', component: 'system.sftp.client' },
   { id: 'test', label: 'Test', hrefTemplate: '/config/sftp/client/{id}/test', permission: 'admin', component: 'system.sftp.client' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/config/sftp/client/{id}/logs', permission: 'admin', component: 'system.sftp.client' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/config/sftp/client/{id}/edit', permission: 'admin', component: 'system.sftp.client' },
 ];
 

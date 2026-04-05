@@ -1,4 +1,6 @@
 import type { ConnectionData, SftpConnectionData, FtpConnectionData } from "../../shared/schema/system/sftp-client-schema";
+import { storageLogger } from "../logger";
+import { getRequestContext } from "../middleware/request-context";
 
 export interface FileEntry {
   name: string;
@@ -28,6 +30,29 @@ async function timedResult<T>(fn: () => Promise<T>): Promise<TransferResult<T>> 
     const message = err instanceof Error ? err.message : String(err);
     return { success: false, duration: Date.now() - start, error: message };
   }
+}
+
+function logTestOperation(
+  operation: string,
+  destinationId: string,
+  result: TransferResult<unknown>,
+  description: string
+): void {
+  const ctx = getRequestContext();
+  const level = result.success ? "info" : "warn";
+  const msg = `SFTP test ${operation} ${result.success ? "succeeded" : "failed"} (${result.duration}ms)`;
+
+  storageLogger.log(level, msg, {
+    source: "sftp_test",
+    module: "sftpClientDestinations",
+    operation: `test_${operation}`,
+    host_entity_id: destinationId,
+    description: result.success ? description : result.error || description,
+    duration: result.duration,
+    user_id: ctx?.userId || null,
+    user_email: ctx?.userEmail || null,
+    ip_address: ctx?.ipAddress || null,
+  });
 }
 
 async function withSftpClient<T>(
@@ -78,8 +103,8 @@ async function withFtpClient<T>(
   }
 }
 
-export async function testConnect(conn: ConnectionData): Promise<TransferResult<ConnectInfo>> {
-  return timedResult(async () => {
+export async function testConnect(conn: ConnectionData, destinationId: string): Promise<TransferResult<ConnectInfo>> {
+  const result = await timedResult(async () => {
     if (conn.protocol === "sftp") {
       return withSftpClient(conn, async (client) => {
         const cwd = await client.cwd();
@@ -97,10 +122,12 @@ export async function testConnect(conn: ConnectionData): Promise<TransferResult<
       };
     });
   });
+  logTestOperation("connect", destinationId, result, `Connected to ${conn.host}:${conn.port} via ${conn.protocol.toUpperCase()}`);
+  return result;
 }
 
-export async function testList(conn: ConnectionData, remotePath: string): Promise<TransferResult<FileEntry[]>> {
-  return timedResult(async () => {
+export async function testList(conn: ConnectionData, remotePath: string, destinationId: string): Promise<TransferResult<FileEntry[]>> {
+  const result = await timedResult(async () => {
     if (conn.protocol === "sftp") {
       return withSftpClient(conn, async (client) => {
         const items = await client.list(remotePath || "/");
@@ -122,10 +149,12 @@ export async function testList(conn: ConnectionData, remotePath: string): Promis
       }));
     });
   });
+  logTestOperation("list", destinationId, result, `Listed directory ${remotePath || "/"}`);
+  return result;
 }
 
-export async function testCd(conn: ConnectionData, remotePath: string): Promise<TransferResult<{ path: string }>> {
-  return timedResult(async () => {
+export async function testCd(conn: ConnectionData, remotePath: string, destinationId: string): Promise<TransferResult<{ path: string }>> {
+  const result = await timedResult(async () => {
     if (conn.protocol === "sftp") {
       return withSftpClient(conn, async (client) => {
         const exists = await client.exists(remotePath);
@@ -141,15 +170,18 @@ export async function testCd(conn: ConnectionData, remotePath: string): Promise<
       return { path: pwd };
     });
   });
+  logTestOperation("cd", destinationId, result, `Changed directory to ${remotePath}`);
+  return result;
 }
 
 export async function testUpload(
   conn: ConnectionData,
   remotePath: string,
   fileName: string,
-  content: Buffer
+  content: Buffer,
+  destinationId: string
 ): Promise<TransferResult<{ bytesWritten: number }>> {
-  return timedResult(async () => {
+  const result = await timedResult(async () => {
     if (conn.protocol === "sftp") {
       return withSftpClient(conn, async (client) => {
         const fullPath = remotePath.endsWith("/")
@@ -169,15 +201,18 @@ export async function testUpload(
       return { bytesWritten: content.length };
     });
   });
+  logTestOperation("upload", destinationId, result, `Uploaded ${fileName} (${content.length} bytes) to ${remotePath}`);
+  return result;
 }
 
 const MAX_DOWNLOAD_BYTES = 1024 * 1024;
 
 export async function testDownload(
   conn: ConnectionData,
-  remoteFilePath: string
+  remoteFilePath: string,
+  destinationId: string
 ): Promise<TransferResult<{ size: number; contentBase64: string }>> {
-  return timedResult(async () => {
+  const result = await timedResult(async () => {
     if (conn.protocol === "sftp") {
       return withSftpClient(conn, async (client) => {
         const stat = await client.stat(remoteFilePath);
@@ -211,4 +246,6 @@ export async function testDownload(
       return { size: buffer.length, contentBase64: buffer.toString("base64") };
     });
   });
+  logTestOperation("download", destinationId, result, `Downloaded ${remoteFilePath}`);
+  return result;
 }

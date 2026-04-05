@@ -134,18 +134,18 @@ export function registerSftpClientDestinationRoutes(
 
       switch (action) {
         case "connect": {
-          const result = await fileTransfer.testConnect(conn);
+          const result = await fileTransfer.testConnect(conn, id);
           return res.json(result);
         }
         case "list": {
           const body = testOptionalPathBody.parse(req.body);
           const remotePath = body.path || conn.homeDir || "/";
-          const result = await fileTransfer.testList(conn, remotePath);
+          const result = await fileTransfer.testList(conn, remotePath, id);
           return res.json(result);
         }
         case "cd": {
           const body = testPathBody.parse(req.body);
-          const result = await fileTransfer.testCd(conn, body.path);
+          const result = await fileTransfer.testCd(conn, body.path, id);
           return res.json(result);
         }
         case "upload": {
@@ -154,12 +154,12 @@ export function registerSftpClientDestinationRoutes(
           if (buffer.length > 1024 * 1024) {
             return res.status(400).json({ message: "File size must be under 1 MB" });
           }
-          const result = await fileTransfer.testUpload(conn, body.path || conn.homeDir || "/", body.fileName, buffer);
+          const result = await fileTransfer.testUpload(conn, body.path || conn.homeDir || "/", body.fileName, buffer, id);
           return res.json(result);
         }
         case "download": {
           const body = testPathBody.parse(req.body);
-          const result = await fileTransfer.testDownload(conn, body.path);
+          const result = await fileTransfer.testDownload(conn, body.path, id);
           return res.json(result);
         }
         default:
