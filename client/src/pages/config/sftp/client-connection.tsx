@@ -10,8 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Eye, EyeOff } from "lucide-react";
+import { connectionDataSchema, PROTOCOL_DEFAULTS } from "@shared/schema/system/sftp-client-schema";
 import type { ConnectionData } from "@shared/schema/system/sftp-client-schema";
-import { PROTOCOL_DEFAULTS } from "@shared/schema/system/sftp-client-schema";
 
 type Protocol = "sftp" | "ftp";
 
@@ -68,20 +68,32 @@ function formToPayload(form: FormState): ConnectionData {
   };
 }
 
-function dataToForm(data: any): FormState {
-  const protocol: Protocol = data?.protocol === "ftp" ? "ftp" : "sftp";
-  return {
-    protocol,
-    host: data?.host ?? "",
-    port: data?.port ?? PROTOCOL_DEFAULTS[protocol]?.port ?? 22,
-    username: data?.username ?? "",
-    homeDir: data?.homeDir ?? "",
-    password: data?.password ?? "",
-    privateKey: data?.privateKey ?? "",
-    publicKey: data?.publicKey ?? "",
-    passphrase: data?.passphrase ?? "",
-    tlsMode: data?.tlsMode ?? "none",
+function parseConnectionData(raw: unknown): ConnectionData | null {
+  const result = connectionDataSchema.safeParse(raw);
+  return result.success ? result.data : null;
+}
+
+function connectionToForm(data: ConnectionData): FormState {
+  const base: FormState = {
+    protocol: data.protocol,
+    host: data.host,
+    port: data.port,
+    username: data.username ?? "",
+    homeDir: data.homeDir ?? "",
+    password: data.password ?? "",
+    privateKey: "",
+    publicKey: "",
+    passphrase: "",
+    tlsMode: "none",
   };
+  if (data.protocol === "sftp") {
+    base.privateKey = data.privateKey ?? "";
+    base.publicKey = data.publicKey ?? "";
+    base.passphrase = data.passphrase ?? "";
+  } else {
+    base.tlsMode = data.tlsMode ?? "none";
+  }
+  return base;
 }
 
 function ConnectionContent() {
@@ -91,15 +103,16 @@ function ConnectionContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [showPassphrase, setShowPassphrase] = useState(false);
 
-  const hasExistingData = !!destination.data && typeof destination.data === "object" && "protocol" in (destination.data as any);
+  const parsed = parseConnectionData(destination.data);
 
   const [form, setForm] = useState<FormState>(() =>
-    hasExistingData ? dataToForm(destination.data) : getDefaultForm("sftp")
+    parsed ? connectionToForm(parsed) : getDefaultForm("sftp")
   );
 
   useEffect(() => {
-    if (hasExistingData) {
-      setForm(dataToForm(destination.data));
+    const reparsed = parseConnectionData(destination.data);
+    if (reparsed) {
+      setForm(connectionToForm(reparsed));
     }
   }, [destination.data]);
 
@@ -110,8 +123,8 @@ function ConnectionContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/sftp/client-destinations", destination.id] });
       toast({ title: "Connection saved", description: "Connection settings have been updated." });
     },
-    onError: (error: any) => {
-      toast({ title: "Failed to save connection", description: error?.message || "An error occurred", variant: "destructive" });
+    onError: (error: Error) => {
+      toast({ title: "Failed to save connection", description: error.message || "An error occurred", variant: "destructive" });
     },
   });
 

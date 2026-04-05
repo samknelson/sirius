@@ -1,9 +1,11 @@
 import { SftpClientLayout, useSftpClientLayout } from "@/components/layouts/SftpClientLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PROTOCOL_DEFAULTS } from "@shared/schema/system/sftp-client-schema";
+import { connectionDataSchema, PROTOCOL_DEFAULTS } from "@shared/schema/system/sftp-client-schema";
+import type { ConnectionData } from "@shared/schema/system/sftp-client-schema";
 
-function ConnectionSummary({ data }: { data: any }) {
-  if (!data || typeof data !== "object" || !("protocol" in data)) {
+function ConnectionSummary({ rawData }: { rawData: unknown }) {
+  const result = connectionDataSchema.safeParse(rawData);
+  if (!result.success) {
     return (
       <p className="text-sm text-muted-foreground italic" data-testid="text-no-connection">
         No connection configured
@@ -11,12 +13,12 @@ function ConnectionSummary({ data }: { data: any }) {
     );
   }
 
-  const protocol = data.protocol as string;
-  const protocolLabel = PROTOCOL_DEFAULTS[protocol]?.label ?? protocol.toUpperCase();
+  const data: ConnectionData = result.data;
+  const protocolLabel = PROTOCOL_DEFAULTS[data.protocol]?.label ?? data.protocol.toUpperCase();
   const hasPassword = !!data.password;
-  const hasPrivateKey = !!data.privateKey;
-  const hasPublicKey = !!data.publicKey;
-  const hasPassphrase = !!data.passphrase;
+  const hasPrivateKey = data.protocol === "sftp" && !!data.privateKey;
+  const hasPublicKey = data.protocol === "sftp" && !!data.publicKey;
+  const hasPassphrase = data.protocol === "sftp" && !!data.passphrase;
 
   return (
     <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
@@ -52,7 +54,7 @@ function ConnectionSummary({ data }: { data: any }) {
           {hasPassword ? "••••••••" : <span className="text-muted-foreground">Not set</span>}
         </dd>
       </div>
-      {protocol === "sftp" && (
+      {data.protocol === "sftp" && (
         <>
           <div>
             <dt className="text-sm font-medium text-muted-foreground">Private Key</dt>
@@ -74,7 +76,7 @@ function ConnectionSummary({ data }: { data: any }) {
           </div>
         </>
       )}
-      {protocol === "ftp" && (
+      {data.protocol === "ftp" && (
         <div>
           <dt className="text-sm font-medium text-muted-foreground">TLS Mode</dt>
           <dd className="mt-1 text-sm" data-testid="text-conn-tls">
@@ -128,7 +130,7 @@ function DetailsContent() {
           <CardTitle>Connection</CardTitle>
         </CardHeader>
         <CardContent>
-          <ConnectionSummary data={destination.data} />
+          <ConnectionSummary rawData={destination.data} />
         </CardContent>
       </Card>
     </div>
