@@ -29,7 +29,6 @@ export default function SftpClientsPage() {
     description: "",
     siriusId: "",
     active: true,
-    data: "",
   });
 
   const { data: destinations = [], isLoading, error } = useQuery<SftpClientDestination[]>({
@@ -44,20 +43,13 @@ export default function SftpClientsPage() {
       };
       if (data.siriusId) payload.siriusId = data.siriusId;
       if (data.description) payload.description = data.description;
-      if (data.data.trim()) {
-        try {
-          payload.data = JSON.parse(data.data);
-        } catch {
-          throw new Error("Data must be valid JSON");
-        }
-      }
       return apiRequest("POST", "/api/sftp/client-destinations", payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sftp/client-destinations"] });
       toast({ title: "Destination created", description: "The new SFTP client destination has been created." });
       setIsCreateOpen(false);
-      setFormData({ name: "", description: "", siriusId: "", active: true, data: "" });
+      setFormData({ name: "", description: "", siriusId: "", active: true });
     },
     onError: (error: any) => {
       toast({ title: "Failed to create destination", description: error?.message || "An error occurred", variant: "destructive" });
@@ -237,17 +229,6 @@ export default function SftpClientsPage() {
                 data-testid="switch-active"
               />
               <Label htmlFor="active">Active</Label>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="data">Data (JSON, optional)</Label>
-              <Textarea
-                id="data"
-                value={formData.data}
-                onChange={(e) => setFormData((prev) => ({ ...prev, data: e.target.value }))}
-                placeholder='{"key": "value"}'
-                className="font-mono text-sm"
-                data-testid="input-data"
-              />
             </div>
           </div>
           <DialogFooter>

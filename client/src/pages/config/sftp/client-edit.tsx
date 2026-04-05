@@ -23,7 +23,6 @@ function EditContent() {
     siriusId: "",
     description: "",
     active: true,
-    data: "",
   });
 
   useEffect(() => {
@@ -33,7 +32,6 @@ function EditContent() {
         siriusId: destination.siriusId || "",
         description: destination.description || "",
         active: destination.active,
-        data: destination.data ? JSON.stringify(destination.data, null, 2) : "",
       });
     }
   }, [destination]);
@@ -53,15 +51,6 @@ function EditContent() {
         payload.description = data.description;
       } else {
         payload.description = null;
-      }
-      if (data.data.trim()) {
-        try {
-          payload.data = JSON.parse(data.data);
-        } catch {
-          throw new Error("Data must be valid JSON");
-        }
-      } else {
-        payload.data = null;
       }
       return apiRequest("PUT", `/api/sftp/client-destinations/${destination.id}`, payload);
     },
@@ -130,17 +119,6 @@ function EditContent() {
                 data-testid="switch-edit-active"
               />
               <Label htmlFor="active">Active</Label>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="data">Data (JSON)</Label>
-              <Textarea
-                id="data"
-                value={formData.data}
-                onChange={(e) => setFormData((prev) => ({ ...prev, data: e.target.value }))}
-                placeholder='{"key": "value"}'
-                className="font-mono text-sm min-h-[120px]"
-                data-testid="input-edit-data"
-              />
             </div>
             <div className="flex gap-3 pt-4">
               <Button
