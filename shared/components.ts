@@ -472,6 +472,13 @@ export const componentRegistry: ComponentDefinition[] = [
     description: "Custom functionality for Unite Here Local 11 Health Benefits Administration",
     enabledByDefault: false,
     category: "site-specific"
+  },
+  {
+    id: "system.sftp.client",
+    name: "SFTP Client",
+    description: "SFTP client for secure file transfers",
+    enabledByDefault: false,
+    category: "core"
   }
 ];
 
