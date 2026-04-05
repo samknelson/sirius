@@ -154,7 +154,7 @@ function EditContent() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setLocation(`/config/sftp/clients/${destination.id}`)}
+                onClick={() => setLocation(`/config/sftp/client/${destination.id}`)}
                 data-testid="button-cancel-edit"
               >
                 Cancel
