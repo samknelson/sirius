@@ -111,9 +111,7 @@ function ConnectionContent() {
 
   useEffect(() => {
     const reparsed = parseConnectionData(destination.data);
-    if (reparsed) {
-      setForm(connectionToForm(reparsed));
-    }
+    setForm(reparsed ? connectionToForm(reparsed) : getDefaultForm("sftp"));
   }, [destination.data]);
 
   const saveMutation = useMutation({
@@ -189,7 +187,14 @@ function ConnectionContent() {
                   min={1}
                   max={65535}
                   value={form.port}
-                  onChange={(e) => updateField("port", parseInt(e.target.value, 10) || 0)}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val) && val >= 1 && val <= 65535) {
+                      updateField("port", val);
+                    } else if (e.target.value === "") {
+                      updateField("port", PROTOCOL_DEFAULTS[form.protocol]?.port ?? 22);
+                    }
+                  }}
                   data-testid="input-port"
                 />
               </div>
