@@ -458,6 +458,13 @@ export const componentRegistry: ComponentDefinition[] = [
     description: "Custom functionality for Freeman",
     enabledByDefault: false,
     category: "site-specific"
+  },
+  {
+    id: "sitespecific.bao",
+    name: "BAO Customization",
+    description: "Custom functionality for Unite Here Local 11 Health Benefits Administration",
+    enabledByDefault: false,
+    category: "site-specific"
   }
 ];
 
