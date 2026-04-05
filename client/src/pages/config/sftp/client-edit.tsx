@@ -17,7 +17,6 @@ function EditContent() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
-
   const [formData, setFormData] = useState({
     name: "",
     siriusId: "",
@@ -58,7 +57,6 @@ function EditContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/sftp/client-destinations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sftp/client-destinations", destination.id] });
       toast({ title: "Destination updated", description: "The SFTP client destination has been updated." });
-      setLocation(`/config/sftp/client/${destination.id}`);
     },
     onError: (error: any) => {
       toast({ title: "Failed to update destination", description: error?.message || "An error occurred", variant: "destructive" });
