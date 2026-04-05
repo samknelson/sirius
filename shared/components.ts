@@ -278,6 +278,13 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "core"
   },
   {
+    id: "trust.providers.edi",
+    name: "Provider Data Interchange",
+    description: "Data interchange functionality for trust providers",
+    enabledByDefault: false,
+    category: "trust.providers"
+  },
+  {
     id: "trust.benefits",
     name: "Trust Benefits",
     description: "Management of trust benefits and eligibility",
