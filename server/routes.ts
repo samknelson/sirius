@@ -45,6 +45,7 @@ import { registerSiteSettingsRoutes } from "./modules/site-settings";
 import { registerSystemModeRoutes } from "./modules/system-mode";
 import { registerBootstrapRoutes } from "./modules/bootstrap";
 import { registerBargainingUnitsRoutes } from "./modules/bargaining-units";
+import { registerSftpClientDestinationRoutes } from "./modules/sftp-client-destinations";
 import { registerEmployerRoutes } from "./modules/employers";
 import { registerEmployerPolicyHistoryRoutes } from "./modules/employer-policy-history";
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
@@ -358,6 +359,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register bargaining units configuration routes
   registerBargainingUnitsRoutes(app, requireAuth, requireAccess, storage);
+
+  // Register SFTP client destination routes
+  registerSftpClientDestinationRoutes(app, requireAuth, requireAccess, storage);
 
   // Register worker steward assignments routes
   registerWorkerStewardAssignmentRoutes(app, requireAuth, requireAccess, storage);

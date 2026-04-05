@@ -22,6 +22,7 @@ import { type WorkerMshStorage, createWorkerMshStorage, workerMshLoggingConfig }
 import { type WorkerHoursStorage, createWorkerHoursStorage, workerHoursLoggingConfig } from "./worker-hours";
 import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./policies";
 import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnitLoggingConfig } from "./bargaining-units";
+import { type SftpClientDestinationStorage, createSftpClientDestinationStorage, sftpClientDestinationLoggingConfig } from "./sftp-client-destinations";
 import { type EmployerPolicyHistoryStorage, createEmployerPolicyHistoryStorage, employerPolicyHistoryLoggingConfig } from "./employer-policy-history";
 import { type WmbScanQueueStorage, createWmbScanQueueStorage } from "./wmb-scan-queue";
 import { type CardcheckDefinitionStorage, createCardcheckDefinitionStorage, cardcheckDefinitionLoggingConfig } from "./cardcheck-definitions";
@@ -113,6 +114,7 @@ export interface IStorage {
   wsClientIpRules: WsClientIpRuleStorage;
   companies: CompanyStorage;
   employerCompanies: EmployerCompanyStorage;
+  sftpClientDestinations: SftpClientDestinationStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -174,6 +176,7 @@ export class DatabaseStorage implements IStorage {
   wsClientIpRules: WsClientIpRuleStorage;
   companies: CompanyStorage;
   employerCompanies: EmployerCompanyStorage;
+  sftpClientDestinations: SftpClientDestinationStorage;
 
   constructor() {
     this.variables = withStorageLogging(createVariableStorage(), variableLoggingConfig);
@@ -307,6 +310,10 @@ export class DatabaseStorage implements IStorage {
     this.wsClientIpRules = createWsClientIpRuleStorage();
     this.companies = withStorageLogging(createCompanyStorage(), companyLoggingConfig);
     this.employerCompanies = withStorageLogging(createEmployerCompanyStorage(), employerCompanyLoggingConfig);
+    this.sftpClientDestinations = withStorageLogging(
+      createSftpClientDestinationStorage(),
+      sftpClientDestinationLoggingConfig
+    );
   }
 }
 

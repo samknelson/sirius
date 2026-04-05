@@ -180,6 +180,15 @@ export const configSections: NavSection[] = [
       { path: "/config/ws/clients", label: "Clients", icon: Key, testId: "nav-config-ws-clients", permission: "admin" },
     ],
   },
+  {
+    id: "sftp",
+    title: "SFTP",
+    description: "SFTP client destination management",
+    icon: Server,
+    items: [
+      { path: "/config/sftp/clients", label: "Client Destinations", icon: Server, testId: "nav-config-sftp-clients", permission: "admin", requiresComponent: "system.sftp.client" },
+    ],
+  },
 ];
 
 export interface AccessContext {

@@ -63,7 +63,8 @@ export type TabEntityType =
   | 'trust_benefit'
   | 'worker_hours'
   | 'user'
-  | 'ws_client';
+  | 'ws_client'
+  | 'sftp_client_destination';
 
 /**
  * Tab check request for batch access evaluation
@@ -465,6 +466,11 @@ export const wsClientTabTree: HierarchicalTab[] = [
   { id: 'logs', label: 'Logs', hrefTemplate: '/config/ws/clients/{id}/logs', permission: 'admin' },
 ];
 
+export const sftpClientDestinationTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/config/sftp/clients/{id}', permission: 'admin', component: 'system.sftp.client' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/config/sftp/clients/{id}/edit', permission: 'admin', component: 'system.sftp.client' },
+];
+
 /**
  * Entity tab trees by type
  */
@@ -490,6 +496,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   worker_hours: workerHoursTabTree,
   user: userTabTree,
   ws_client: wsClientTabTree,
+  sftp_client_destination: sftpClientDestinationTabTree,
 };
 
 /**
