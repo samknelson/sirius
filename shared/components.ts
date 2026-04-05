@@ -478,7 +478,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "SFTP Client",
     description: "SFTP client for secure file transfers",
     enabledByDefault: false,
-    category: "core"
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/system/sftp-client-schema.ts",
+      tables: ["sftp_client_destinations"]
+    }
   }
 ];
 
