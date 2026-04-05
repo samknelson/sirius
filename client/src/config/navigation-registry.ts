@@ -48,6 +48,7 @@ export const configSections: NavSection[] = [
       { path: "/config/logs", label: "System Logs", icon: FileText, testId: "nav-config-logs", permission: "admin" },
       { path: "/admin/quickstarts", label: "Quickstarts", icon: Database, testId: "nav-config-quickstarts", permission: "admin" },
       { path: "/admin/cron-jobs", label: "Cron Jobs", icon: Clock, testId: "nav-config-cron-jobs", permission: "admin" },
+      { path: "/config/sftp/clients", label: "SFTP Clients", icon: Server, testId: "nav-config-sftp-clients", permission: "admin", requiresComponent: "system.sftp.client" },
     ],
   },
   {
@@ -178,15 +179,6 @@ export const configSections: NavSection[] = [
     items: [
       { path: "/config/ws/bundles", label: "Bundles", icon: Package, testId: "nav-config-ws-bundles", permission: "admin" },
       { path: "/config/ws/clients", label: "Clients", icon: Key, testId: "nav-config-ws-clients", permission: "admin" },
-    ],
-  },
-  {
-    id: "sftp",
-    title: "SFTP",
-    description: "SFTP client destination management",
-    icon: Server,
-    items: [
-      { path: "/config/sftp/clients", label: "Client Destinations", icon: Server, testId: "nav-config-sftp-clients", permission: "admin", requiresComponent: "system.sftp.client" },
     ],
   },
 ];

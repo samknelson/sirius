@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Plus, Eye, Trash2, Server } from "lucide-react";
@@ -28,6 +29,7 @@ export default function SftpClientsPage() {
     description: "",
     siriusId: "",
     active: true,
+    data: "",
   });
 
   const { data: destinations = [], isLoading, error } = useQuery<SftpClientDestination[]>({
@@ -36,16 +38,26 @@ export default function SftpClientsPage() {
 
   const createMutation = useMutation({
     mutationFn: (data: typeof formData) => {
-      const payload: Record<string, unknown> = { ...data };
-      if (!payload.siriusId) delete payload.siriusId;
-      if (!payload.description) delete payload.description;
+      const payload: Record<string, unknown> = {
+        name: data.name,
+        active: data.active,
+      };
+      if (data.siriusId) payload.siriusId = data.siriusId;
+      if (data.description) payload.description = data.description;
+      if (data.data.trim()) {
+        try {
+          payload.data = JSON.parse(data.data);
+        } catch {
+          throw new Error("Data must be valid JSON");
+        }
+      }
       return apiRequest("POST", "/api/sftp/client-destinations", payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sftp/client-destinations"] });
       toast({ title: "Destination created", description: "The new SFTP client destination has been created." });
       setIsCreateOpen(false);
-      setFormData({ name: "", description: "", siriusId: "", active: true });
+      setFormData({ name: "", description: "", siriusId: "", active: true, data: "" });
     },
     onError: (error: any) => {
       toast({ title: "Failed to create destination", description: error?.message || "An error occurred", variant: "destructive" });
@@ -155,7 +167,7 @@ export default function SftpClientsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <Link href={`/config/sftp/clients/${dest.id}`}>
+                        <Link href={`/config/sftp/client/${dest.id}`}>
                           <Button variant="ghost" size="icon" data-testid={`button-view-${dest.id}`}>
                             <Eye className="h-4 w-4" />
                           </Button>
@@ -215,6 +227,26 @@ export default function SftpClientsPage() {
                 onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
                 placeholder="Optional description"
                 data-testid="input-description"
+              />
+            </div>
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="active"
+                checked={formData.active}
+                onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, active: checked }))}
+                data-testid="switch-active"
+              />
+              <Label htmlFor="active">Active</Label>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="data">Data (JSON, optional)</Label>
+              <Textarea
+                id="data"
+                value={formData.data}
+                onChange={(e) => setFormData((prev) => ({ ...prev, data: e.target.value }))}
+                placeholder='{"key": "value"}'
+                className="font-mono text-sm"
+                data-testid="input-data"
               />
             </div>
           </div>

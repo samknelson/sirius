@@ -467,8 +467,8 @@ export const wsClientTabTree: HierarchicalTab[] = [
 ];
 
 export const sftpClientDestinationTabTree: HierarchicalTab[] = [
-  { id: 'details', label: 'Details', hrefTemplate: '/config/sftp/clients/{id}', permission: 'admin', component: 'system.sftp.client' },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/config/sftp/clients/{id}/edit', permission: 'admin', component: 'system.sftp.client' },
+  { id: 'details', label: 'Details', hrefTemplate: '/config/sftp/client/{id}', permission: 'admin', component: 'system.sftp.client' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/config/sftp/client/{id}/edit', permission: 'admin', component: 'system.sftp.client' },
 ];
 
 /**

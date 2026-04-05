@@ -1863,7 +1863,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/sftp/clients/:id/edit">
+      <Route path="/config/sftp/client/:id/edit">
         <ProtectedRoute permission="admin" component="system.sftp.client">
           <AuthenticatedLayout>
             <SftpClientEditPage />
@@ -1871,7 +1871,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/sftp/clients/:id">
+      <Route path="/config/sftp/client/:id">
         <ProtectedRoute permission="admin" component="system.sftp.client">
           <AuthenticatedLayout>
             <SftpClientDetailsPage />

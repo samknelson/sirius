@@ -58,7 +58,7 @@ export function SftpClientLayout({ activeTab, children }: SftpClientLayoutProps)
           <Link href="/config/sftp/clients">
             <Button variant="outline">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Destinations
+              Back to SFTP Clients
             </Button>
           </Link>
         </div>
@@ -71,7 +71,7 @@ export function SftpClientLayout({ activeTab, children }: SftpClientLayoutProps)
       <div className="flex items-center justify-between mb-6">
         <nav className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="breadcrumb">
           <Link href="/config/sftp/clients" className="hover:text-foreground transition-colors">
-            SFTP Client Destinations
+            SFTP Clients
           </Link>
           <ChevronRight size={16} />
           <span className="text-foreground font-medium">
@@ -81,7 +81,7 @@ export function SftpClientLayout({ activeTab, children }: SftpClientLayoutProps)
         <Link href="/config/sftp/clients">
           <Button variant="ghost" size="sm" data-testid="button-back">
             <ArrowLeft size={16} className="mr-2" />
-            Back to Destinations
+            Back to SFTP Clients
           </Button>
         </Link>
       </div>

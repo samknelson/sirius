@@ -23,6 +23,7 @@ function EditContent() {
     siriusId: "",
     description: "",
     active: true,
+    data: "",
   });
 
   useEffect(() => {
@@ -32,22 +33,43 @@ function EditContent() {
         siriusId: destination.siriusId || "",
         description: destination.description || "",
         active: destination.active,
+        data: destination.data ? JSON.stringify(destination.data, null, 2) : "",
       });
     }
   }, [destination]);
 
   const updateMutation = useMutation({
     mutationFn: (data: typeof formData) => {
-      const payload: Record<string, unknown> = { ...data };
-      if (!payload.siriusId) payload.siriusId = null;
-      if (!payload.description) payload.description = null;
+      const payload: Record<string, unknown> = {
+        name: data.name,
+        active: data.active,
+      };
+      if (data.siriusId) {
+        payload.siriusId = data.siriusId;
+      } else {
+        payload.siriusId = null;
+      }
+      if (data.description) {
+        payload.description = data.description;
+      } else {
+        payload.description = null;
+      }
+      if (data.data.trim()) {
+        try {
+          payload.data = JSON.parse(data.data);
+        } catch {
+          throw new Error("Data must be valid JSON");
+        }
+      } else {
+        payload.data = null;
+      }
       return apiRequest("PUT", `/api/sftp/client-destinations/${destination.id}`, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sftp/client-destinations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sftp/client-destinations", destination.id] });
       toast({ title: "Destination updated", description: "The SFTP client destination has been updated." });
-      setLocation(`/config/sftp/clients/${destination.id}`);
+      setLocation(`/config/sftp/client/${destination.id}`);
     },
     onError: (error: any) => {
       toast({ title: "Failed to update destination", description: error?.message || "An error occurred", variant: "destructive" });
@@ -108,6 +130,17 @@ function EditContent() {
                 data-testid="switch-edit-active"
               />
               <Label htmlFor="active">Active</Label>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="data">Data (JSON)</Label>
+              <Textarea
+                id="data"
+                value={formData.data}
+                onChange={(e) => setFormData((prev) => ({ ...prev, data: e.target.value }))}
+                placeholder='{"key": "value"}'
+                className="font-mono text-sm min-h-[120px]"
+                data-testid="input-edit-data"
+              />
             </div>
             <div className="flex gap-3 pt-4">
               <Button
