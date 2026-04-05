@@ -79,6 +79,7 @@ export const sftpClientDestinationLoggingConfig: StorageLoggingConfig<SftpClient
     create: {
       enabled: true,
       getEntityId: (args, result) => result?.id || 'new sftp client',
+      getHostEntityId: (args, result) => result?.id,
       getDescription: async (args, result) => {
         const name = result?.name || args[0]?.name || 'Unnamed';
         return `Created SFTP Client Destination "${name}"`;
@@ -97,6 +98,7 @@ export const sftpClientDestinationLoggingConfig: StorageLoggingConfig<SftpClient
     update: {
       enabled: true,
       getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
       getDescription: async (args, result, beforeState) => {
         const oldName = beforeState?.sftpClientDestination?.name || 'Unknown';
         const newName = result?.name || oldName;
@@ -124,6 +126,7 @@ export const sftpClientDestinationLoggingConfig: StorageLoggingConfig<SftpClient
     delete: {
       enabled: true,
       getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
       getDescription: async (args, result, beforeState) => {
         const name = beforeState?.sftpClientDestination?.name || 'Unknown';
         return `Deleted SFTP Client Destination "${name}"`;
