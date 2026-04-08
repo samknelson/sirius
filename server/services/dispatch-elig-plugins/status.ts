@@ -14,6 +14,7 @@ export const dispatchStatusPlugin: DispatchEligPlugin = {
   name: "Dispatch Availability",
   description: "Only includes workers whose dispatch status is set to Available",
   componentId: "dispatch",
+  backfill: () => backfillDispatchStatusEligibility(),
 
   eventHandlers: [
     {

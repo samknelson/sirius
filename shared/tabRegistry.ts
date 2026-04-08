@@ -46,6 +46,7 @@ export type TabEntityType =
   | 'worker' 
   | 'employer' 
   | 'employer_contact' 
+  | 'company'
   | 'provider' 
   | 'provider_contact' 
   | 'policy' 
@@ -62,7 +63,8 @@ export type TabEntityType =
   | 'trust_benefit'
   | 'worker_hours'
   | 'user'
-  | 'ws_client';
+  | 'ws_client'
+  | 'sftp_client_destination';
 
 /**
  * Tab check request for batch access evaluation
@@ -192,6 +194,15 @@ export const employerTabTree: HierarchicalTab[] = [
   },
   { id: 'dispatch', label: 'Dispatch', hrefTemplate: '/employers/{id}/dispatch', permission: 'staff', component: 'dispatch' },
   { id: 'school-attributes', label: 'School Attributes', hrefTemplate: '/employers/{id}/school-attributes', policyId: 'employer.steward.view', component: 'sitespecific.btu' },
+];
+
+/**
+ * Company entity tab tree
+ */
+export const companyTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/companies/{id}', permission: 'staff', component: 'employer.company' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/companies/{id}/edit', permission: 'staff', component: 'employer.company' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/companies/{id}/logs', permission: 'staff', component: 'employer.company' },
 ];
 
 /**
@@ -457,6 +468,14 @@ export const wsClientTabTree: HierarchicalTab[] = [
   { id: 'logs', label: 'Logs', hrefTemplate: '/config/ws/clients/{id}/logs', permission: 'admin' },
 ];
 
+export const sftpClientDestinationTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/config/sftp/client/{id}', permission: 'admin', component: 'system.sftp.client' },
+  { id: 'connection', label: 'Connection', hrefTemplate: '/config/sftp/client/{id}/connection', permission: 'admin', component: 'system.sftp.client' },
+  { id: 'test', label: 'Test', hrefTemplate: '/config/sftp/client/{id}/test', permission: 'admin', component: 'system.sftp.client' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/config/sftp/client/{id}/logs', permission: 'admin', component: 'system.sftp.client' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/config/sftp/client/{id}/edit', permission: 'admin', component: 'system.sftp.client' },
+];
+
 /**
  * Entity tab trees by type
  */
@@ -464,6 +483,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   worker: workerTabTree,
   employer: employerTabTree,
   employer_contact: employerContactTabTree,
+  company: companyTabTree,
   provider: providerTabTree,
   provider_contact: providerContactTabTree,
   policy: policyTabTree,
@@ -481,6 +501,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   worker_hours: workerHoursTabTree,
   user: userTabTree,
   ws_client: wsClientTabTree,
+  sftp_client_destination: sftpClientDestinationTabTree,
 };
 
 /**
@@ -614,77 +635,3 @@ export function getTabForEntity(
   if (!tree) return undefined;
   return findTabById(tabId, tree);
 }
-
-/**
- * Helper to extract root-level tabs from a tree (without children, for flat rendering)
- */
-function getRootTabs(tree: HierarchicalTab[]): TabDefinition[] {
-  return tree.map(({ children, ...rest }) => rest);
-}
-
-/**
- * Helper to extract children of a specific parent tab.
- * Note: The current architecture supports exactly ONE level of nesting (parent -> children).
- * If deeper nesting is ever needed, the hierarchical API (getTabTreeForEntity) should be used
- * instead of these legacy flat exports. This guard validates the constraint.
- */
-function getChildTabs(tree: HierarchicalTab[], parentId: string): TabDefinition[] {
-  const parent = tree.find(t => t.id === parentId);
-  if (!parent?.children) return [];
-  
-  // Guard: ensure no grandchildren exist in the tree
-  for (const child of parent.children) {
-    if (child.children && child.children.length > 0) {
-      console.warn(
-        `[tabRegistry] Tab "${child.id}" has nested children. ` +
-        `The flat export API only supports one level of nesting. ` +
-        `Use getTabTreeForEntity() for hierarchical access.`
-      );
-    }
-  }
-  
-  return parent.children.map(({ children, ...c }) => ({ ...c, parent: parentId }));
-}
-
-// Legacy flat exports - derived programmatically from the canonical tree
-// These maintain backwards compatibility for any code still using the flat structure
-export const workerTabs: TabDefinition[] = getRootTabs(workerTabTree);
-export const workerIdentitySubTabs: TabDefinition[] = getChildTabs(workerTabTree, 'identity');
-export const workerContactSubTabs: TabDefinition[] = getChildTabs(workerTabTree, 'contact');
-export const workerCommSubTabs: TabDefinition[] = getChildTabs(workerTabTree, 'comm');
-export const workerEmploymentSubTabs: TabDefinition[] = getChildTabs(workerTabTree, 'employment');
-export const workerBenefitsSubTabs: TabDefinition[] = getChildTabs(workerTabTree, 'benefits');
-export const workerUnionSubTabs: TabDefinition[] = getChildTabs(workerTabTree, 'union');
-export const workerDispatchSubTabs: TabDefinition[] = getChildTabs(workerTabTree, 'dispatch');
-export const allWorkerTabs: TabDefinition[] = flattenTabTree(workerTabTree);
-
-export const employerTabs: TabDefinition[] = getRootTabs(employerTabTree);
-export const employerAccountingSubTabs: TabDefinition[] = getChildTabs(employerTabTree, 'accounting');
-export const employerUnionSubTabs: TabDefinition[] = getChildTabs(employerTabTree, 'union');
-export const allEmployerTabs: TabDefinition[] = flattenTabTree(employerTabTree);
-
-export const providerTabs: TabDefinition[] = getRootTabs(providerTabTree);
-export const allProviderTabs: TabDefinition[] = flattenTabTree(providerTabTree);
-
-export const tabRegistry: Record<TabEntityType, TabDefinition[]> = {
-  worker: allWorkerTabs,
-  employer: allEmployerTabs,
-  employer_contact: [],
-  provider: allProviderTabs,
-  provider_contact: [],
-  policy: flattenTabTree(policyTabTree),
-  event: flattenTabTree(eventTabTree),
-  bargaining_unit: flattenTabTree(bargainingUnitTabTree),
-  btu_csg: flattenTabTree(btuCsgTabTree),
-  cron_job: flattenTabTree(cronJobTabTree),
-  dispatch: flattenTabTree(dispatchTabTree),
-  dispatch_job: flattenTabTree(dispatchJobTabTree),
-  dispatch_job_type: flattenTabTree(dispatchJobTypeTabTree),
-  edls_sheet: flattenTabTree(edlsSheetTabTree),
-  ledger_account: flattenTabTree(ledgerAccountTabTree),
-  ledger_payment: flattenTabTree(ledgerPaymentTabTree),
-  trust_benefit: flattenTabTree(trustBenefitTabTree),
-  worker_hours: flattenTabTree(workerHoursTabTree),
-  user: flattenTabTree(userTabTree),
-  ws_client: flattenTabTree(wsClientTabTree),
-};

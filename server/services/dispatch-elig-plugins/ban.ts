@@ -29,6 +29,7 @@ export const dispatchBanPlugin: DispatchEligPlugin = {
   name: "Worker Ban",
   description: "Excludes workers who have an active dispatch ban",
   componentId: "dispatch.ban",
+  backfill: () => backfillDispatchBanEligibility(),
 
   eventHandlers: [
     {

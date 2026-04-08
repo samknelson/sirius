@@ -436,6 +436,180 @@ export default function Header() {
                   </Link>
                 )}
 
+                {staffPolicy?.access?.granted && (
+                  <>
+                    <div className="text-sm font-medium text-muted-foreground px-4 py-2">Workers</div>
+                    <Link href="/workers" onClick={() => setMobileMenuOpen(false)}>
+                      <Button
+                        variant={location === "/workers" ? "default" : "ghost"}
+                        className="w-full justify-start pl-8"
+                        data-testid="mobile-nav-workers-list"
+                      >
+                        <List className="h-4 w-4 mr-2" />
+                        List
+                      </Button>
+                    </Link>
+                    {hasComponent("cardcheck") && (
+                      <Link href="/cardcheck-definitions" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location.startsWith("/cardcheck") ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-cardcheck-definitions"
+                        >
+                          <ClipboardCheck className="h-4 w-4 mr-2" />
+                          Cardchecks
+                        </Button>
+                      </Link>
+                    )}
+                    {hasComponent("bargainingunits") && (
+                      <Link href="/bargaining-units" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location.startsWith("/bargaining-units") ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-bargaining-units"
+                        >
+                          <Users className="h-4 w-4 mr-2" />
+                          Bargaining Units
+                        </Button>
+                      </Link>
+                    )}
+                    {hasComponent("worker.steward") && (
+                      <Link href="/stewards" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location === "/stewards" ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-stewards"
+                        >
+                          <Shield className="h-4 w-4 mr-2" />
+                          {term("steward", { plural: true })}
+                        </Button>
+                      </Link>
+                    )}
+                    {hasComponent("sitespecific.btu") && (
+                      <Link href="/sitespecific/btu/csgs" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location.startsWith("/sitespecific/btu/csg") ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-class-size-grievances"
+                        >
+                          <FileWarning className="h-4 w-4 mr-2" />
+                          Class Size Grievances
+                        </Button>
+                      </Link>
+                    )}
+                    {hasComponent("sitespecific.hta") && (
+                      <Link href="/imports" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location === "/imports" ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-worker-import"
+                        >
+                          <FileSpreadsheet className="h-4 w-4 mr-2" />
+                          Worker Import
+                        </Button>
+                      </Link>
+                    )}
+                    {hasComponent("sitespecific.hta") && (
+                      <Link href="/inactivity-scan" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location === "/inactivity-scan" ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-inactivity-scan"
+                        >
+                          <ScanLine className="h-4 w-4 mr-2" />
+                          Inactivity Scan
+                        </Button>
+                      </Link>
+                    )}
+                  </>
+                )}
+
+                {staffPolicy?.access?.granted && (
+                  <>
+                    <Link href="/employers" onClick={() => setMobileMenuOpen(false)}>
+                      <Button
+                        variant={location.startsWith("/employers") ? "default" : "ghost"}
+                        className="w-full justify-start"
+                        data-testid="mobile-nav-employers"
+                      >
+                        <Building2 className="h-4 w-4 mr-2" />
+                        Employers
+                      </Button>
+                    </Link>
+
+                    {hasComponent("employer.company") && (
+                      <Link href="/companies" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location.startsWith("/companies") ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-companies"
+                        >
+                          <Building2 className="h-4 w-4 mr-2" />
+                          Companies
+                        </Button>
+                      </Link>
+                    )}
+
+                    <Link href="/employer-contacts/all" onClick={() => setMobileMenuOpen(false)}>
+                      <Button
+                        variant={location.startsWith("/employer-contacts") ? "default" : "ghost"}
+                        className="w-full justify-start pl-8"
+                        data-testid="mobile-nav-employer-contacts"
+                      >
+                        <Users className="h-4 w-4 mr-2" />
+                        Employer Contacts
+                      </Button>
+                    </Link>
+
+                    <Link href="/employers/monthly-uploads" onClick={() => setMobileMenuOpen(false)}>
+                      <Button
+                        variant={location === "/employers/monthly-uploads" ? "default" : "ghost"}
+                        className="w-full justify-start pl-8"
+                        data-testid="mobile-nav-monthly-uploads"
+                      >
+                        <Calendar className="h-4 w-4 mr-2" />
+                        Monthly Uploads
+                      </Button>
+                    </Link>
+                    {hasComponent("sitespecific.btu") && (
+                      <Link href="/sitespecific/btu/employer-map" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location === "/sitespecific/btu/employer-map" ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-employer-map"
+                        >
+                          <Map className="h-4 w-4 mr-2" />
+                          Employer Map
+                        </Button>
+                      </Link>
+                    )}
+                    {hasComponent("dispatch") && (
+                      <Link href="/dispatch/jobs" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location.startsWith("/dispatch") ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-dispatch-jobs"
+                        >
+                          <Briefcase className="h-4 w-4 mr-2" />
+                          Dispatch Jobs
+                        </Button>
+                      </Link>
+                    )}
+                    {hasComponent("edls") && (
+                      <Link href="/edls/sheets" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location.startsWith("/edls") ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-edls-sheets"
+                        >
+                          <FileSpreadsheet className="h-4 w-4 mr-2" />
+                          Day Labor Sheets
+                        </Button>
+                      </Link>
+                    )}
+                  </>
+                )}
+
                 {((hasComponent("trust.providers") && hasPermission("staff")) || (hasPermission("admin") && hasComponent("trust.benefits.scan"))) && (
                   <>
                     <div className="border-t border-gray-100 dark:border-gray-800 my-2" />
@@ -1034,7 +1208,7 @@ export default function Header() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    variant={location.startsWith("/employers") || location.startsWith("/employer-contacts") || location.startsWith("/dispatch") || location.startsWith("/edls") ? "default" : "ghost"}
+                    variant={location.startsWith("/employers") || location.startsWith("/employer-contacts") || location.startsWith("/companies") || location.startsWith("/dispatch") || location.startsWith("/edls") ? "default" : "ghost"}
                     size="sm"
                     data-testid="nav-employers"
                   >
@@ -1052,6 +1226,16 @@ export default function Header() {
                       </div>
                     </Link>
                   </DropdownMenuItem>
+                  {hasComponent("employer.company") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/companies" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-companies">
+                          <Building2 className="h-4 w-4 mr-2" />
+                          Companies
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem asChild>
                     <Link href="/employer-contacts/all" className="w-full">
                       <div className="flex items-center cursor-pointer" data-testid="menu-employer-contacts-all">

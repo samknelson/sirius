@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Save, Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital, CircleHelp } from "lucide-react";
 import { EmployerLayout, useEmployerLayout } from "@/components/layouts/EmployerLayout";
 import { EmployerType } from "@shared/schema";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Industry {
   id: string;
@@ -30,15 +31,30 @@ const iconMap: Record<string, React.ComponentType<{ className?: string; size?: n
   CircleHelp,
 };
 
+interface Company {
+  id: string;
+  name: string;
+}
+
+interface EmployerCompanyInfo {
+  companyId: string | null;
+  companyName: string | null;
+}
+
 function EmployerEditContent() {
   const { employer } = useEmployerLayout();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { hasComponent } = useAuth();
+
+  const showCompany = hasComponent("employer.company");
 
   const [editName, setEditName] = useState(employer.name);
   const [editIsActive, setEditIsActive] = useState(employer.isActive);
   const [editTypeId, setEditTypeId] = useState<string | null>(employer.typeId || null);
   const [editIndustryId, setEditIndustryId] = useState<string | null>(employer.industryId || null);
+  const [editCompanyId, setEditCompanyId] = useState<string | null>(null);
+  const [companyInitialized, setCompanyInitialized] = useState(false);
 
   const { data: employerTypes = [] } = useQuery<EmployerType[]>({
     queryKey: ["/api/options/employer-type"],
@@ -48,13 +64,32 @@ function EmployerEditContent() {
     queryKey: ["/api/options/industry"],
   });
 
+  const { data: companiesList = [] } = useQuery<Company[]>({
+    queryKey: ["/api/companies"],
+    enabled: showCompany,
+  });
+
+  const { data: employerCompanyData } = useQuery<EmployerCompanyInfo>({
+    queryKey: ["/api/employers", employer.id, "company"],
+    enabled: showCompany,
+  });
+
+  useEffect(() => {
+    if (employerCompanyData && !companyInitialized) {
+      setEditCompanyId(employerCompanyData.companyId);
+      setCompanyInitialized(true);
+    }
+  }, [employerCompanyData, companyInitialized]);
+
+
   const updateEmployerMutation = useMutation({
-    mutationFn: async (data: { name: string; isActive: boolean; typeId: string | null; industryId: string | null }) => {
+    mutationFn: async (data: { name: string; isActive: boolean; typeId: string | null; industryId: string | null; companyId?: string | null }) => {
       return await apiRequest("PUT", `/api/employers/${employer.id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employers", employer.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/employers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/employers", employer.id, "company"] });
       toast({
         title: "Success",
         description: "Employer updated successfully!",
@@ -72,7 +107,16 @@ function EmployerEditContent() {
 
   const handleSaveEdit = () => {
     if (editName.trim()) {
-      updateEmployerMutation.mutate({ name: editName.trim(), isActive: editIsActive, typeId: editTypeId, industryId: editIndustryId });
+      const payload: { name: string; isActive: boolean; typeId: string | null; industryId: string | null; companyId?: string | null } = {
+        name: editName.trim(),
+        isActive: editIsActive,
+        typeId: editTypeId,
+        industryId: editIndustryId,
+      };
+      if (showCompany) {
+        payload.companyId = editCompanyId;
+      }
+      updateEmployerMutation.mutate(payload);
     }
   };
 
@@ -149,6 +193,31 @@ function EmployerEditContent() {
                 </SelectContent>
               </Select>
             </div>
+            {showCompany && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-employer-company" className="text-sm font-medium text-foreground">
+                  Company
+                </Label>
+                <Select
+                  value={editCompanyId || "__none__"}
+                  onValueChange={(value) => setEditCompanyId(value === "__none__" ? null : value)}
+                >
+                  <SelectTrigger className="w-full" data-testid="select-edit-employer-company">
+                    <SelectValue placeholder="Select company (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__" data-testid="select-item-edit-company-none">
+                      <span className="text-muted-foreground">None</span>
+                    </SelectItem>
+                    {companiesList.map((company) => (
+                      <SelectItem key={company.id} value={company.id} data-testid={`select-item-edit-company-${company.id}`}>
+                        {company.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="edit-employer-active"

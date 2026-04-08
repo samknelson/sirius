@@ -189,6 +189,19 @@ export const componentRegistry: ComponentDefinition[] = [
     ]
   },
   {
+    id: "employer.company",
+    name: "Employer Companies",
+    description: "Allows related employers to be grouped together in companies",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/employer/company-schema.ts",
+      tables: ["companies", "employer_companies"]
+    }
+  },
+  {
     id: "worker.login",
     name: "Worker Login",
     description: "Ability for workers to log in",
@@ -286,6 +299,13 @@ export const componentRegistry: ComponentDefinition[] = [
     description: "Management and tracking of trust providers",
     enabledByDefault: false,
     category: "core"
+  },
+  {
+    id: "trust.providers.edi",
+    name: "Provider Data Interchange",
+    description: "Data interchange functionality for trust providers",
+    enabledByDefault: false,
+    category: "trust.providers"
   },
   {
     id: "trust.benefits",
@@ -468,6 +488,26 @@ export const componentRegistry: ComponentDefinition[] = [
     description: "Custom functionality for Freeman",
     enabledByDefault: false,
     category: "site-specific"
+  },
+  {
+    id: "sitespecific.bao",
+    name: "BAO Customization",
+    description: "Custom functionality for Unite Here Local 11 Health Benefits Administration",
+    enabledByDefault: false,
+    category: "site-specific"
+  },
+  {
+    id: "system.sftp.client",
+    name: "SFTP Client",
+    description: "SFTP client for secure file transfers",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/system/sftp-client-schema.ts",
+      tables: ["sftp_client_destinations"]
+    }
   }
 ];
 

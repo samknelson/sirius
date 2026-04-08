@@ -11,6 +11,7 @@ import { ActiveSessionsPlugin } from "./activeSessions/ActiveSessionsPlugin";
 import { MyStewardPlugin } from "./mySteward/MyStewardPlugin";
 import { BtuDuesStatusPlugin } from "./btuDuesStatus/BtuDuesStatusPlugin";
 import { BtuBuSummaryPlugin } from "./btuBuSummary/BtuBuSummaryPlugin";
+import { EdlsSummaryPlugin } from "./edlsSummary/EdlsSummaryPlugin";
 
 export const pluginRegistry: DashboardPlugin[] = [
   {
@@ -93,6 +94,14 @@ export const pluginRegistry: DashboardPlugin[] = [
     order: 9,
     component: BtuBuSummaryPlugin,
     requiredPermissions: ["admin"],
+    id: "edls-summary",
+    name: "EDLS Daily Summary",
+    description: "Worker assignment counts by member status and sheet status for a selected day",
+    order: 8,
+    component: EdlsSummaryPlugin,
+    requiredPolicy: "edls.coordinator",
+    requiredComponent: "edls",
+    fullWidth: true,
     enabledByDefault: true,
   },
 ];

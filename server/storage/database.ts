@@ -54,6 +54,7 @@ import { type WorkerMshStorage, createWorkerMshStorage, workerMshLoggingConfig }
 import { type WorkerHoursStorage, createWorkerHoursStorage, workerHoursLoggingConfig } from "./worker-hours";
 import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./policies";
 import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnitLoggingConfig } from "./bargaining-units";
+import { type SftpClientDestinationStorage, createSftpClientDestinationStorage, sftpClientDestinationLoggingConfig } from "./sftp-client-destinations";
 import { type EmployerPolicyHistoryStorage, createEmployerPolicyHistoryStorage, employerPolicyHistoryLoggingConfig } from "./employer-policy-history";
 import { type WmbScanQueueStorage, createWmbScanQueueStorage } from "./wmb-scan-queue";
 import { type CardcheckDefinitionStorage, createCardcheckDefinitionStorage, cardcheckDefinitionLoggingConfig } from "./cardcheck-definitions";
@@ -85,6 +86,7 @@ import { type RawSqlStorage, createRawSqlStorage } from "./raw-sql";
 import { type ReadOnlyStorage, createReadOnlyStorage } from "./read-only";
 import { type BtuPoliticalStorage, createBtuPoliticalStorage, btuPoliticalLoggingConfig } from "./sitespecific-btu-political";
 import { type WsBundleStorage, type WsClientStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsBundleStorage, createWsClientStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
+import { type CompanyStorage, createCompanyStorage, companyLoggingConfig, type EmployerCompanyStorage, createEmployerCompanyStorage, employerCompanyLoggingConfig } from "./companies";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "./db";
 import { employers, workers, contacts } from "@shared/schema";
@@ -152,6 +154,9 @@ export interface IStorage {
   wsClientCredentials: WsClientCredentialStorage;
   wsClientIpRules: WsClientIpRuleStorage;
   btuPolitical: BtuPoliticalStorage;
+  companies: CompanyStorage;
+  employerCompanies: EmployerCompanyStorage;
+  sftpClientDestinations: SftpClientDestinationStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -216,6 +221,9 @@ export class DatabaseStorage implements IStorage {
   wsClientCredentials: WsClientCredentialStorage;
   wsClientIpRules: WsClientIpRuleStorage;
   btuPolitical: BtuPoliticalStorage;
+  companies: CompanyStorage;
+  employerCompanies: EmployerCompanyStorage;
+  sftpClientDestinations: SftpClientDestinationStorage;
 
   constructor() {
     this.variables = withStorageLogging(
@@ -379,6 +387,12 @@ export class DatabaseStorage implements IStorage {
     this.wsClientCredentials = createWsClientCredentialStorage();
     this.wsClientIpRules = createWsClientIpRuleStorage();
     this.btuPolitical = withStorageLogging(createBtuPoliticalStorage(), btuPoliticalLoggingConfig);
+    this.companies = withStorageLogging(createCompanyStorage(), companyLoggingConfig);
+    this.employerCompanies = withStorageLogging(createEmployerCompanyStorage(), employerCompanyLoggingConfig);
+    this.sftpClientDestinations = withStorageLogging(
+      createSftpClientDestinationStorage(),
+      sftpClientDestinationLoggingConfig
+    );
   }
 }
 

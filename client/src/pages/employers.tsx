@@ -5,13 +5,19 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { Employer } from "@shared/schema";
+import { Company } from "@shared/schema/employer/company-schema";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { useAuth } from "@/contexts/AuthContext";
+
+type EmployerWithCompany = Employer & { companyId?: string | null; companyName?: string | null };
 
 export default function Employers() {
   const [location] = useLocation();
   const [includeInactive, setIncludeInactive] = useState(false);
+  const { hasComponent } = useAuth();
+  const showCompany = hasComponent("employer.company");
   
-  const { data: employers = [], isLoading } = useQuery<Employer[]>({
+  const { data: employers = [], isLoading } = useQuery<EmployerWithCompany[]>({
     queryKey: ["/api/employers", includeInactive],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -24,6 +30,11 @@ export default function Employers() {
       }
       return response.json();
     },
+  });
+
+  const { data: companiesList = [] } = useQuery<Company[]>({
+    queryKey: ["/api/companies"],
+    enabled: showCompany,
   });
 
   const tabs = [
@@ -68,6 +79,8 @@ export default function Employers() {
           isLoading={isLoading} 
           includeInactive={includeInactive}
           onToggleInactive={() => setIncludeInactive(!includeInactive)}
+          showCompany={showCompany}
+          companies={companiesList}
         />
       </main>
     </div>

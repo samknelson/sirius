@@ -4,7 +4,7 @@ import { stringify } from "csv-stringify/sync";
 import { sql } from "drizzle-orm";
 import multer from "multer";
 import { storage } from "./storage";
-import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type InsertEmployer, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
+import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
 import { z } from "zod";
 import { registerUserRoutes } from "./modules/users";
 import { registerVariableRoutes } from "./modules/variables";
@@ -55,6 +55,8 @@ import { registerSiteSettingsRoutes } from "./modules/site-settings";
 import { registerSystemModeRoutes } from "./modules/system-mode";
 import { registerBootstrapRoutes } from "./modules/bootstrap";
 import { registerBargainingUnitsRoutes } from "./modules/bargaining-units";
+import { registerSftpClientDestinationRoutes } from "./modules/sftp-client-destinations";
+import { registerEmployerRoutes } from "./modules/employers";
 import { registerEmployerPolicyHistoryRoutes } from "./modules/employer-policy-history";
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
@@ -94,6 +96,7 @@ import { registerWebServiceBundle } from "./modules/webservices";
 import { setupEdlsRoutes, EDLS_BUNDLE_CODE } from "./modules/webservices/edls";
 import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
 import { registerTerminologyRoutes } from "./modules/terminology";
+import { registerCompaniesRoutes } from "./modules/companies";
 import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
 import { addressValidationService } from "./services/address-validation";
@@ -364,6 +367,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register bargaining units configuration routes
   registerBargainingUnitsRoutes(app, requireAuth, requireAccess, storage);
+
+  // Register SFTP client destination routes
+  registerSftpClientDestinationRoutes(app, requireAuth, requireAccess, storage);
 
   // Register worker steward assignments routes
   registerWorkerStewardAssignmentRoutes(app, requireAuth, requireAccess, storage);
@@ -1312,6 +1318,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       res.status(500).json({ message: "Failed to delete employer" });
     }
   });
+  // Register employer routes
+  registerEmployerRoutes(app, requireAuth, requirePermission, requireAccess);
 
   // GET /api/contacts/by-email/:email - Get a contact by email (requires staff permission)
   app.get("/api/contacts/by-email/:email", requireAuth, requirePermission("staff"), async (req, res) => {
@@ -1683,7 +1691,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register Web Service admin routes (for managing bundles, clients, credentials)
   registerWebServiceAdminRoutes(app, requireAuth, requirePermission);
 
-  // Use existing server if provided, otherwise create new one
+  // Register companies routes
+  registerCompaniesRoutes(app, requireAuth);
+
   const httpServer = existingServer || createServer(app);
   return httpServer;
 }

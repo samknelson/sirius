@@ -193,6 +193,17 @@ export function useEmployerTabAccess(employerId: string | undefined, enabled = t
 }
 
 /**
+ * Hook specifically for company entity tabs
+ */
+export function useCompanyTabAccess(companyId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'company', 
+    entityId: companyId, 
+    enabled 
+  });
+}
+
+/**
  * Hook specifically for provider entity tabs
  */
 export function useProviderTabAccess(providerId: string | undefined, enabled = true) {
@@ -386,6 +397,17 @@ export function useWsClientTabAccess(clientId: string | undefined, enabled = tru
   return useTabAccess({ 
     entityType: 'ws_client', 
     entityId: clientId, 
+    enabled 
+  });
+}
+
+/**
+ * Hook specifically for SFTP client destination entity tabs
+ */
+export function useSftpClientDestinationTabAccess(destinationId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'sftp_client_destination', 
+    entityId: destinationId, 
     enabled 
   });
 }

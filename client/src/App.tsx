@@ -77,6 +77,11 @@ const WorkerSendPostal = lazy(() => import("@/pages/worker-send-postal"));
 const WorkerSendInApp = lazy(() => import("@/pages/worker-send-inapp"));
 const CommDetail = lazy(() => import("@/pages/comm-detail"));
 const WorkerDelete = lazy(() => import("@/pages/worker-delete"));
+const Companies = lazy(() => import("@/pages/companies"));
+const CompanyView = lazy(() => import("@/pages/company-view"));
+const CompanyEdit = lazy(() => import("@/pages/company-edit"));
+const CompanyLogs = lazy(() => import("@/pages/company-logs"));
+const CompanyAdd = lazy(() => import("@/pages/company-add"));
 const Employers = lazy(() => import("@/pages/employers"));
 const EmployersAdd = lazy(() => import("@/pages/employers-add"));
 const EmployersOrganizing = lazy(() => import("@/pages/employers-organizing"));
@@ -186,6 +191,8 @@ const DispatchJobTypeNotificationsPage = lazy(() => import("@/pages/config/dispa
 const DispatchDncConfigPage = lazy(() => import("@/pages/config/dispatch-dnc"));
 const DispatchJobTypeRunSettingsPage = lazy(() => import("@/pages/config/dispatch-job-type-run-settings"));
 const DispatchEbaSettingsPage = lazy(() => import("@/pages/config/dispatch-eba-settings"));
+const DispatchPluginsPage = lazy(() => import("@/pages/config/dispatch-plugins"));
+const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home-employment-statuses"));
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
 const WsBundlesPage = lazy(() => import("@/pages/config/ws/bundles"));
@@ -195,6 +202,12 @@ const WsClientCredentialsPage = lazy(() => import("@/pages/config/ws/client-cred
 const WsClientIpRulesPage = lazy(() => import("@/pages/config/ws/client-ip-rules"));
 const WsClientTestPage = lazy(() => import("@/pages/config/ws/client-test"));
 const WsClientLogsPage = lazy(() => import("@/pages/config/ws/client-logs"));
+const SftpClientsPage = lazy(() => import("@/pages/config/sftp/clients"));
+const SftpClientDetailsPage = lazy(() => import("@/pages/config/sftp/client-details"));
+const SftpClientConnectionPage = lazy(() => import("@/pages/config/sftp/client-connection"));
+const SftpClientTestPage = lazy(() => import("@/pages/config/sftp/client-test"));
+const SftpClientLogsPage = lazy(() => import("@/pages/config/sftp/client-logs"));
+const SftpClientEditPage = lazy(() => import("@/pages/config/sftp/client-edit"));
 const WorkerBanConfigPage = lazy(() => import("@/pages/config/workers-ban"));
 const DispatchJobsPage = lazy(() => import("@/pages/dispatch/jobs"));
 const DispatchJobDetailsPage = lazy(() => import("@/pages/dispatch/job-details"));
@@ -1151,6 +1164,46 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/companies/add">
+        <ProtectedRoute policy="staff" component="employer.company">
+          <AuthenticatedLayout>
+            <CompanyAdd />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/companies/:id/edit">
+        <ProtectedRoute policy="staff" component="employer.company">
+          <AuthenticatedLayout>
+            <CompanyEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/companies/:id/logs">
+        <ProtectedRoute policy="staff" component="employer.company">
+          <AuthenticatedLayout>
+            <CompanyLogs />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/companies/:id">
+        <ProtectedRoute policy="staff" component="employer.company">
+          <AuthenticatedLayout>
+            <CompanyView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/companies">
+        <ProtectedRoute policy="staff" component="employer.company">
+          <AuthenticatedLayout>
+            <Companies />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/employers">
         <ProtectedRoute policy="staff">
           <AuthenticatedLayout>
@@ -1856,6 +1909,21 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <DispatchJobTypeRunSettingsPage />
+      <Route path="/config/dispatch/plugins">
+        <ProtectedRoute permission="admin" component="dispatch">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DispatchPluginsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sitespecific/hta/home-employment-statuses">
+        <ProtectedRoute policy="staff" component="sitespecific.hta">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <HtaHomeEmploymentStatusesPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -1936,6 +2004,56 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <WsClientsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sftp/client/:id/connection">
+        <ProtectedRoute permission="admin" component="system.sftp.client">
+          <AuthenticatedLayout>
+            <SftpClientConnectionPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sftp/client/:id/test">
+        <ProtectedRoute permission="admin" component="system.sftp.client">
+          <AuthenticatedLayout>
+            <SftpClientTestPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sftp/client/:id/logs">
+        <ProtectedRoute permission="admin" component="system.sftp.client">
+          <AuthenticatedLayout>
+            <SftpClientLogsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sftp/client/:id/edit">
+        <ProtectedRoute permission="admin" component="system.sftp.client">
+          <AuthenticatedLayout>
+            <SftpClientEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sftp/client/:id">
+        <ProtectedRoute permission="admin" component="system.sftp.client">
+          <AuthenticatedLayout>
+            <SftpClientDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sftp/clients">
+        <ProtectedRoute permission="admin" component="system.sftp.client">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <SftpClientsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
