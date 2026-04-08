@@ -32,15 +32,15 @@ export function registerLedgerEaRoutes(app: Express) {
 
       if (employerIds.length > 0) {
         for (const eid of employerIds) {
-          const emp = await storage.employers.get(eid);
+          const emp = await storage.employers.getEmployer(eid);
           if (emp) nameMap.set(eid, emp.name);
         }
       }
       if (workerIds.length > 0) {
         for (const wid of workerIds) {
-          const worker = await storage.workers.get(wid);
+          const worker = await storage.workers.getWorker(wid);
           if (worker) {
-            const contact = await storage.contacts.get(worker.contactId);
+            const contact = await storage.contacts.getContact(worker.contactId);
             if (contact) {
               nameMap.set(wid, `${contact.given || ""} ${contact.family || ""}`.trim());
             }
@@ -49,7 +49,7 @@ export function registerLedgerEaRoutes(app: Express) {
       }
       if (tpIds.length > 0) {
         for (const tid of tpIds) {
-          const tp = await storage.trustProviders.get(tid);
+          const tp = await storage.trustProviders.getTrustProvider(tid);
           if (tp) nameMap.set(tid, tp.name);
         }
       }
@@ -61,6 +61,7 @@ export function registerLedgerEaRoutes(app: Express) {
 
       res.json(enriched);
     } catch (error) {
+      console.error("Failed to fetch ledger EA entries:", error);
       res.status(500).json({ message: "Failed to fetch ledger EA entries" });
     }
   });
