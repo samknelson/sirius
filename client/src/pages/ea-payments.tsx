@@ -56,7 +56,7 @@ interface LedgerNotification {
 
 function EAPaymentsContent() {
   const { id } = useParams<{ id: string }>();
-  const { currencyCode } = useEALayout();
+  const { currencyCode, ea } = useEALayout();
   const { user, hasPermission } = useAuth();
   const isStaff = hasPermission('staff');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -118,9 +118,23 @@ function EAPaymentsContent() {
     queryKey: ["/api/ledger/payment-types"],
   });
 
+  const accountId = ea?.accountId;
   const { data: allEAs = [] } = useQuery<EAListItem[]>({
-    queryKey: ["/api/ledger/ea"],
-    enabled: isStaff,
+    queryKey: ["/api/ledger/accounts", accountId, "ea-list"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/ledger/accounts/${accountId}/participants?limit=9999`);
+      const data = await res.json();
+      const items: Array<{ eaId: string; entityType: string; entityId: string; entityName: string | null }> = data.data ?? [];
+      return items.map((p) => ({
+        id: p.eaId,
+        accountId: accountId!,
+        entityType: p.entityType,
+        entityId: p.entityId,
+        entityName: p.entityName,
+        data: null,
+      }));
+    },
+    enabled: isStaff && dialogOpen && !!accountId,
   });
 
   const form = useForm<z.infer<typeof insertLedgerPaymentSchema>>({

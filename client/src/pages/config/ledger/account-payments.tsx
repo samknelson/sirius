@@ -120,9 +120,22 @@ function AccountPaymentsContent() {
   });
   const participants = participantsData?.data ?? [];
 
-  const { data: allEAs = [] } = useQuery<EAListItem[]>({
-    queryKey: ["/api/ledger/ea"],
-    enabled: dialogOpen,
+  const { data: accountEAs = [] } = useQuery<EAListItem[]>({
+    queryKey: ["/api/ledger/accounts", id, "ea-list"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/ledger/accounts/${id}/participants?limit=9999`);
+      const data = await res.json();
+      const items: AccountParticipant[] = data.data ?? [];
+      return items.map((p) => ({
+        id: p.eaId,
+        accountId: id!,
+        entityType: p.entityType,
+        entityId: p.entityId,
+        entityName: p.entityName,
+        data: null,
+      }));
+    },
+    enabled: dialogOpen && !!id,
   });
 
   const getTodayString = () => new Date().toISOString().split("T")[0];
@@ -922,7 +935,7 @@ function AccountPaymentsContent() {
                                 <SelectValue placeholder="Select account..." />
                               </SelectTrigger>
                               <SelectContent>
-                                {allEAs.map((ea) => (
+                                {accountEAs.map((ea) => (
                                   <SelectItem key={ea.id} value={ea.id}>
                                     {ea.entityName || ea.entityId} ({ea.entityType})
                                   </SelectItem>
