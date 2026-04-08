@@ -961,7 +961,7 @@ function AccountPaymentsContent() {
                             <Input
                               type="date"
                               value={field.value ? new Date(field.value).toISOString().split("T")[0] : ""}
-                              onChange={(e) => field.onChange(e.target.value || null)}
+                              onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
                             />
                           </FormControl>
                           <FormMessage />
@@ -979,7 +979,7 @@ function AccountPaymentsContent() {
                             <Input
                               type="date"
                               value={field.value ? new Date(field.value).toISOString().split("T")[0] : ""}
-                              onChange={(e) => field.onChange(e.target.value || null)}
+                              onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
                             />
                           </FormControl>
                           <FormMessage />
