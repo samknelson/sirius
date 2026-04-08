@@ -121,19 +121,10 @@ function AccountPaymentsContent() {
   const participants = participantsData?.data ?? [];
 
   const { data: accountEAs = [] } = useQuery<EAListItem[]>({
-    queryKey: ["/api/ledger/accounts", id, "ea-list"],
+    queryKey: ["/api/ledger/ea", { accountId: id }],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/ledger/accounts/${id}/participants?limit=9999`);
-      const data = await res.json();
-      const items: AccountParticipant[] = data.data ?? [];
-      return items.map((p) => ({
-        id: p.eaId,
-        accountId: id!,
-        entityType: p.entityType,
-        entityId: p.entityId,
-        entityName: p.entityName,
-        data: null,
-      }));
+      const res = await apiRequest("GET", `/api/ledger/ea?accountId=${id}`);
+      return await res.json();
     },
     enabled: dialogOpen && !!id,
   });

@@ -15,10 +15,14 @@ async function checkEaAccessInline(req: Request, res: Response, ea: { entityType
 }
 
 export function registerLedgerEaRoutes(app: Express) {
-  // GET /api/ledger/ea - Get all ledger EA entries (staff only)
+  // GET /api/ledger/ea - Get all ledger EA entries (staff only), optionally filtered by accountId
   app.get("/api/ledger/ea", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
-      const entries = await storage.ledger.ea.getAll();
+      const accountIdFilter = req.query.accountId as string | undefined;
+      let entries = await storage.ledger.ea.getAll();
+      if (accountIdFilter) {
+        entries = entries.filter(e => e.accountId === accountIdFilter);
+      }
 
       const employerIds = entries.filter(e => e.entityType === "employer").map(e => e.entityId);
       const workerIds = entries.filter(e => e.entityType === "worker").map(e => e.entityId);
