@@ -15,10 +15,16 @@
 #                                            # Supports wildcards and shell-expanded globs
 #                                            # e.g. --approve 'dist/assets/*.jpg'
 #                                            # e.g. --approve server/wizards/types/btu*
-#   ./list-structure-changes.sh --show-approved
-#                                            # List files approved at current HEAD
+#   ./list-structure-changes.sh --list-approved
+#                                            # List only approved files
+#   ./list-structure-changes.sh --list-rejected
+#                                            # List only rejected files with reasons
+#   ./list-structure-changes.sh --list-none
+#                                            # List only unreviewed files (neither approved nor rejected)
 #   ./list-structure-changes.sh --clear-approvals
 #                                            # Remove all stored approvals
+#   ./list-structure-changes.sh --clear-rejections
+#                                            # Remove all stored rejections
 #   ./list-structure-changes.sh --reject <file-or-pattern> [more files...] <reason>
 #                                            # Mark file(s) as rejected with a reason (last arg)
 #                                            # Supports wildcards and shell-expanded globs
@@ -28,10 +34,6 @@
 #                                            # Interactive file-by-file review session
 #                                            # For each unreviewed file: shows diff, then
 #                                            # prompts to [a]pprove, [r]eject, [s]kip, or [q]uit
-#   ./list-structure-changes.sh --show-rejected
-#                                            # List files rejected at current HEAD with reasons
-#   ./list-structure-changes.sh --clear-rejections
-#                                            # Remove all stored rejections
 
 # Colors for output
 BLUE='\033[0;34m'
@@ -53,9 +55,10 @@ FILE_ARG=""
 APPROVE_ARGS=()
 REJECT_ARGS=()
 REJECT_REASON=""
-SHOW_APPROVED=false
+LIST_APPROVED=false
+LIST_REJECTED=false
+LIST_NONE=false
 CLEAR_APPROVALS=false
-SHOW_REJECTED=false
 CLEAR_REJECTIONS=false
 INTERACTIVE_MODE=false
 
@@ -101,16 +104,20 @@ while [ $# -gt 0 ]; do
             REJECT_REASON="${local_args[${#local_args[@]}-1]}"
             REJECT_ARGS=("${local_args[@]:0:${#local_args[@]}-1}")
             ;;
-        --show-approved)
-            SHOW_APPROVED=true
+        --list-approved)
+            LIST_APPROVED=true
+            shift
+            ;;
+        --list-rejected)
+            LIST_REJECTED=true
+            shift
+            ;;
+        --list-none)
+            LIST_NONE=true
             shift
             ;;
         --clear-approvals)
             CLEAR_APPROVALS=true
-            shift
-            ;;
-        --show-rejected)
-            SHOW_REJECTED=true
             shift
             ;;
         --clear-rejections)
@@ -205,46 +212,9 @@ else
     fi
 fi
 
-if [ "$SHOW_APPROVED" = true ]; then
-    if [ ! -f "$APPROVALS_FILE" ]; then
-        echo -e "${YELLOW}No approvals recorded.${NC}"
-        exit 0
-    fi
-    found=false
-    while IFS=' ' read -r commit filepath; do
-        if [ "$commit" = "$BASE_COMMIT" ]; then
-            if [ "$found" = false ]; then
-                echo -e "${BLUE}Approved files (base ${BASE_COMMIT:0:7}):${NC}"
-                found=true
-            fi
-            echo -e "  ${YELLOW}${filepath}${NC}"
-        fi
-    done < "$APPROVALS_FILE"
-    if [ "$found" = false ]; then
-        echo -e "${YELLOW}No approvals for current base (${BASE_COMMIT:0:7}).${NC}"
-    fi
-    exit 0
-fi
-
-if [ "$SHOW_REJECTED" = true ]; then
-    if [ ! -f "$REJECTIONS_FILE" ]; then
-        echo -e "${YELLOW}No rejections recorded.${NC}"
-        exit 0
-    fi
-    found=false
-    while IFS=$'\t' read -r commit filepath reason; do
-        if [ "$commit" = "$BASE_COMMIT" ]; then
-            if [ "$found" = false ]; then
-                echo -e "${BLUE}Rejected files (base ${BASE_COMMIT:0:7}):${NC}"
-                found=true
-            fi
-            echo -e "  ${RED}${filepath}${NC}  ${CYAN}Reason: ${reason}${NC}"
-        fi
-    done < "$REJECTIONS_FILE"
-    if [ "$found" = false ]; then
-        echo -e "${YELLOW}No rejections for current base (${BASE_COMMIT:0:7}).${NC}"
-    fi
-    exit 0
+FILTERED_LIST=false
+if [ "$LIST_APPROVED" = true ] || [ "$LIST_REJECTED" = true ] || [ "$LIST_NONE" = true ]; then
+    FILTERED_LIST=true
 fi
 
 match_files_by_patterns() {
@@ -477,6 +447,74 @@ if [ "$LIST_ONLY" = true ]; then
     exit 0
 fi
 
+# Filtered list modes: --list-approved, --list-rejected, --list-none
+if [ "$FILTERED_LIST" = true ]; then
+    if [ "$LIST_APPROVED" = true ]; then
+        filter_label="Approved"
+        filter_color="$GREEN"
+    elif [ "$LIST_REJECTED" = true ]; then
+        filter_label="Rejected"
+        filter_color="$RED"
+    else
+        filter_label="Unreviewed"
+        filter_color="$YELLOW"
+    fi
+
+    filtered_files=""
+    for file in $files_with_changes; do
+        rejection_reason=$(get_rejection_reason "$file")
+        file_is_rejected=false
+        file_is_approved=false
+        if [ -n "$rejection_reason" ]; then
+            file_is_rejected=true
+        elif is_approved "$file"; then
+            file_is_approved=true
+        fi
+
+        if [ "$LIST_APPROVED" = true ] && [ "$file_is_approved" = true ]; then
+            filtered_files="$filtered_files $file"
+        elif [ "$LIST_REJECTED" = true ] && [ "$file_is_rejected" = true ]; then
+            filtered_files="$filtered_files $file"
+        elif [ "$LIST_NONE" = true ] && [ "$file_is_approved" = false ] && [ "$file_is_rejected" = false ]; then
+            filtered_files="$filtered_files $file"
+        fi
+    done
+    filtered_files=$(echo "$filtered_files" | xargs)
+
+    if [ -z "$filtered_files" ]; then
+        echo -e "${YELLOW}No ${filter_label,,} files for current base (${BASE_COMMIT:0:7}).${NC}"
+        exit 0
+    fi
+
+    file_count=$(echo "$filtered_files" | wc -w)
+    echo ""
+    echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}  ${filter_label} Files (base ${BASE_COMMIT:0:12})${NC}"
+    echo -e "${BLUE}  Total: ${file_count} file(s)${NC}"
+    echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    for file in $filtered_files; do
+        stats=$(git --no-pager diff -w --numstat "$BASE_COMMIT"..HEAD -- "$file" 2>/dev/null)
+        insertions=$(echo "$stats" | awk '{print $1}')
+        deletions=$(echo "$stats" | awk '{print $2}')
+        if [ "$insertions" = "-" ]; then
+            stat_label="${CYAN}(binary)${NC}"
+        else
+            stat_label="${CYAN}(+${insertions:-0} -${deletions:-0})${NC}"
+        fi
+        rejection_reason=$(get_rejection_reason "$file")
+        if [ -n "$rejection_reason" ]; then
+            echo -e "  ${RED}${file}${NC}  ${stat_label}  ${RED}❌ ${rejection_reason}${NC}"
+        elif is_approved "$file"; then
+            echo -e "  ${GREEN}${file}${NC}  ${stat_label}  ${GREEN}✔ APPROVED${NC}"
+        else
+            echo -e "  ${YELLOW}${file}${NC}  ${stat_label}"
+        fi
+    done
+    echo ""
+    exit 0
+fi
+
 # For full-diff mode, filter out approved files (but keep rejected files visible — rejection overrides approval)
 if [ -f "$APPROVALS_FILE" ]; then
     filtered_files=""
@@ -494,7 +532,7 @@ fi
 
 if [ -z "$files_with_changes" ]; then
     echo -e "${YELLOW}All changed files have been approved (base ${BASE_COMMIT:0:7}).${NC}"
-    echo -e "${CYAN}Use --show-approved to see approved files, or --clear-approvals to reset.${NC}"
+    echo -e "${CYAN}Use --list-approved to see approved files, or --clear-approvals to reset.${NC}"
     exit 0
 fi
 
