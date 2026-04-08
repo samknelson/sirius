@@ -1909,6 +1909,11 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <DispatchJobTypeRunSettingsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/dispatch/plugins">
         <ProtectedRoute permission="admin" component="dispatch">
           <AuthenticatedLayout>

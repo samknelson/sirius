@@ -40,7 +40,7 @@ interface EmployerType {
   data?: { icon?: string } | null;
 }
 
-export function EmployersTable({ employers, isLoading, includeInactive, onToggleInactive }: EmployersTableProps) {
+export function EmployersTable({ employers, isLoading, includeInactive, onToggleInactive, showCompany, companies = [] }: EmployersTableProps) {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTypeId, setSelectedTypeId] = useState<string>("all");
@@ -157,8 +157,6 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
           </div>
           
           {/* Filters Row */}
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-
           <div className="flex items-center gap-4 flex-wrap">
             {/* Include Inactive Toggle */}
             <div className="flex items-center space-x-2">
