@@ -24,6 +24,10 @@
 #                                            # Supports wildcards and shell-expanded globs
 #                                            # e.g. --reject 'server/*.ts' "breaks API"
 #                                            # e.g. --reject server/wizards/types/btu* "needs review"
+#   ./list-structure-changes.sh --review
+#                                            # Interactive file-by-file review session
+#                                            # For each unreviewed file: shows diff, then
+#                                            # prompts to [a]pprove, [r]eject, [s]kip, or [q]uit
 #   ./list-structure-changes.sh --show-rejected
 #                                            # List files rejected at current HEAD with reasons
 #   ./list-structure-changes.sh --clear-rejections
@@ -53,6 +57,7 @@ SHOW_APPROVED=false
 CLEAR_APPROVALS=false
 SHOW_REJECTED=false
 CLEAR_REJECTIONS=false
+INTERACTIVE_MODE=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -114,6 +119,10 @@ while [ $# -gt 0 ]; do
             ;;
         --list|-l)
             LIST_ONLY=true
+            shift
+            ;;
+        --review)
+            INTERACTIVE_MODE=true
             shift
             ;;
         *)
@@ -276,6 +285,14 @@ if [ ${#APPROVE_ARGS[@]} -gt 0 ]; then
 
     approved_count=0
     for file in $matched_files; do
+        # Remove any prior rejection for this file
+        if [ -f "$REJECTIONS_FILE" ]; then
+            if awk -F'\t' -v c="$BASE_COMMIT" -v f="$file" '$1 == c && $2 == f { found=1; exit } END { exit !found }' "$REJECTIONS_FILE" 2>/dev/null; then
+                tmp=$(mktemp)
+                awk -F'\t' -v c="$BASE_COMMIT" -v f="$file" '!($1 == c && $2 == f)' "$REJECTIONS_FILE" > "$tmp" && mv "$tmp" "$REJECTIONS_FILE"
+                echo -e "${CYAN}Cleared previous rejection for: ${file}${NC}"
+            fi
+        fi
         if grep -qFx "$BASE_COMMIT $file" "$APPROVALS_FILE" 2>/dev/null; then
             echo -e "${YELLOW}Already approved: ${file}${NC}"
         else
@@ -305,6 +322,14 @@ if [ ${#REJECT_ARGS[@]} -gt 0 ]; then
 
     rejected_count=0
     for file in $matched_files; do
+        # Remove any prior approval for this file
+        if [ -f "$APPROVALS_FILE" ]; then
+            if grep -qFx "$BASE_COMMIT $file" "$APPROVALS_FILE" 2>/dev/null; then
+                tmp=$(mktemp)
+                grep -vFx "$BASE_COMMIT $file" "$APPROVALS_FILE" > "$tmp" && mv "$tmp" "$APPROVALS_FILE"
+                echo -e "${CYAN}Cleared previous approval for: ${file}${NC}"
+            fi
+        fi
         if awk -F'\t' -v c="$BASE_COMMIT" -v f="$file" '$1 == c && $2 == f { found=1; exit } END { exit !found }' "$REJECTIONS_FILE" 2>/dev/null; then
             echo -e "${YELLOW}Already rejected: ${file}${NC}"
         else
@@ -470,6 +495,122 @@ fi
 if [ -z "$files_with_changes" ]; then
     echo -e "${YELLOW}All changed files have been approved (base ${BASE_COMMIT:0:7}).${NC}"
     echo -e "${CYAN}Use --show-approved to see approved files, or --clear-approvals to reset.${NC}"
+    exit 0
+fi
+
+print_session_summary() {
+    local approved=$1 rejected=$2 skipped=$3 remaining=$4
+    echo ""
+    echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}  Session: ${GREEN}${approved} approved${BLUE}, ${RED}${rejected} rejected${BLUE}, ${YELLOW}${skipped} skipped${BLUE} (${remaining} remaining)${NC}"
+    echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
+}
+
+if [ "$INTERACTIVE_MODE" = true ]; then
+    mkdir -p "$APPROVALS_DIR"
+    file_count=$(echo "$files_with_changes" | wc -w)
+    file_index=0
+    session_approved=0
+    session_rejected=0
+    session_skipped=0
+
+    echo ""
+    echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}  Interactive Review — ${file_count} file(s) to review${NC}"
+    echo -e "${BLUE}  Base: ${BASE_COMMIT:0:12}${NC}"
+    echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
+
+    for file in $files_with_changes; do
+        file_index=$((file_index + 1))
+        echo ""
+        echo -e "${GREEN}────────────────────────────────────────────────────────────────${NC}"
+        echo -e "${CYAN}  File ${file_index} of ${file_count}${NC}"
+
+        rejection_reason=$(get_rejection_reason "$file")
+        if [ -n "$rejection_reason" ]; then
+            echo -e "${RED}📄 FILE: ${file}${NC}"
+            echo -e "${RED}❌ Previously rejected: ${rejection_reason}${NC}"
+        else
+            echo -e "${GREEN}📄 FILE: ${YELLOW}${file}${NC}"
+        fi
+        echo -e "${GREEN}────────────────────────────────────────────────────────────────${NC}"
+
+        stats=$(git --no-pager diff -w --numstat "$BASE_COMMIT"..HEAD -- "$file" 2>/dev/null)
+        insertions=$(echo "$stats" | awk '{print $1}')
+        deletions=$(echo "$stats" | awk '{print $2}')
+        if [ "$insertions" = "-" ]; then
+            echo -e "${CYAN}📊 SUMMARY:${NC} Binary file changed"
+        else
+            echo -e "${CYAN}📊 SUMMARY:${NC} +${insertions:-0} insertions, -${deletions:-0} deletions"
+        fi
+        echo ""
+        echo -e "${CYAN}📝 DIFF:${NC}"
+        echo ""
+        git --no-pager diff -w "$BASE_COMMIT"..HEAD -- "$file" 2>/dev/null
+        echo ""
+
+        while true; do
+            echo -e "${BLUE}───────────────────────────────────────────────────────────${NC}"
+            echo -en "  ${GREEN}[a]${NC}pprove  ${RED}[r]${NC}eject  ${YELLOW}[s]${NC}kip  [q]uit  > "
+            read -r choice </dev/tty
+            case "$choice" in
+                a|A)
+                    # Clear any prior rejection
+                    if [ -f "$REJECTIONS_FILE" ]; then
+                        if awk -F'\t' -v c="$BASE_COMMIT" -v f="$file" '$1 == c && $2 == f { found=1; exit } END { exit !found }' "$REJECTIONS_FILE" 2>/dev/null; then
+                            tmp=$(mktemp)
+                            awk -F'\t' -v c="$BASE_COMMIT" -v f="$file" '!($1 == c && $2 == f)' "$REJECTIONS_FILE" > "$tmp" && mv "$tmp" "$REJECTIONS_FILE"
+                        fi
+                    fi
+                    if ! grep -qFx "$BASE_COMMIT $file" "$APPROVALS_FILE" 2>/dev/null; then
+                        echo "$BASE_COMMIT $file" >> "$APPROVALS_FILE"
+                    fi
+                    echo -e "  ${GREEN}✔ Approved: ${file}${NC}"
+                    session_approved=$((session_approved + 1))
+                    break
+                    ;;
+                r|R)
+                    echo -en "  ${RED}Reason: ${NC}"
+                    read -r reason </dev/tty
+                    if [ -z "$reason" ]; then
+                        echo -e "  ${YELLOW}Rejection requires a reason. Try again.${NC}"
+                        continue
+                    fi
+                    # Clear any prior approval
+                    if [ -f "$APPROVALS_FILE" ]; then
+                        if grep -qFx "$BASE_COMMIT $file" "$APPROVALS_FILE" 2>/dev/null; then
+                            tmp=$(mktemp)
+                            grep -vFx "$BASE_COMMIT $file" "$APPROVALS_FILE" > "$tmp" && mv "$tmp" "$APPROVALS_FILE"
+                        fi
+                    fi
+                    if [ -f "$REJECTIONS_FILE" ]; then
+                        tmp_rej=$(awk -F'\t' -v c="$BASE_COMMIT" -v f="$file" '!($1 == c && $2 == f)' "$REJECTIONS_FILE")
+                        echo "$tmp_rej" > "$REJECTIONS_FILE"
+                    fi
+                    printf '%s\t%s\t%s\n' "$BASE_COMMIT" "$file" "$reason" >> "$REJECTIONS_FILE"
+                    echo -e "  ${RED}✘ Rejected: ${file}${NC}"
+                    echo -e "  ${CYAN}  Reason: ${reason}${NC}"
+                    session_rejected=$((session_rejected + 1))
+                    break
+                    ;;
+                s|S)
+                    echo -e "  ${YELLOW}⏭ Skipped: ${file}${NC}"
+                    session_skipped=$((session_skipped + 1))
+                    break
+                    ;;
+                q|Q)
+                    remaining=$((file_count - file_index + 1))
+                    print_session_summary $session_approved $session_rejected $session_skipped $remaining
+                    exit 0
+                    ;;
+                *)
+                    echo -e "  ${YELLOW}Invalid choice. Use a/r/s/q.${NC}"
+                    ;;
+            esac
+        done
+    done
+
+    print_session_summary $session_approved $session_rejected $session_skipped 0
     exit 0
 fi
 
