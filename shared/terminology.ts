@@ -46,42 +46,6 @@ export const TERM_REGISTRY: Record<string, TermDefinition> = {
       plural: "Employers",
     },
   },
-  bargainingUnit: {
-    key: "bargainingUnit",
-    label: "Bargaining Unit",
-    description: "Groups of workers represented together (e.g., Bargaining Unit, Department, Division)",
-    defaults: {
-      singular: "Bargaining Unit",
-      plural: "Bargaining Units",
-    },
-  },
-  benefit: {
-    key: "benefit",
-    label: "Benefit",
-    description: "Worker benefits and entitlements (e.g., Benefit, Coverage, Plan)",
-    defaults: {
-      singular: "Benefit",
-      plural: "Benefits",
-    },
-  },
-  event: {
-    key: "event",
-    label: "Event",
-    description: "Scheduled gatherings or meetings (e.g., Event, Meeting, Session)",
-    defaults: {
-      singular: "Event",
-      plural: "Events",
-    },
-  },
-  dispatch: {
-    key: "dispatch",
-    label: "Dispatch",
-    description: "Job assignments or referrals (e.g., Dispatch, Referral, Assignment)",
-    defaults: {
-      singular: "Dispatch",
-      plural: "Dispatches",
-    },
-  },
 };
 
 export const TERMINOLOGY_VARIABLE_NAME = "site_terminology";
