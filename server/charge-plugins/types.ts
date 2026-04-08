@@ -76,6 +76,7 @@ export interface LedgerTransaction {
   entityId: string;
   amount: string; // Numeric string, e.g., "15.50"
   description: string;
+  memo?: string | null;
   transactionDate: Date;
   referenceType?: string;
   referenceId?: string;

@@ -873,9 +873,9 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
             const formattedAmount = formatAmount(parseFloat(row.payment.amount), currencyCode);
             
             if (row.payment.memo) {
-              referenceName = `${currencyLabel} Adjustment: ${formattedAmount} - ${row.payment.memo}`;
+              referenceName = `${currencyLabel} Payment: ${formattedAmount} - ${row.payment.memo}`;
             } else {
-              referenceName = `${currencyLabel} Adjustment: ${formattedAmount}`;
+              referenceName = `${currencyLabel} Payment: ${formattedAmount}`;
             }
           } else if (row.entry.referenceType === 'employer' && row.refEmployer) {
             referenceName = `Employer: ${row.refEmployer.name}`;

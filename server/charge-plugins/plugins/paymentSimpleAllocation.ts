@@ -28,6 +28,7 @@ interface ExpectedEntry {
   chargePluginKey: string;
   amount: string;
   description: string;
+  memo: string | null;
   transactionDate: Date;
   eaId: string;
   referenceType: string;
@@ -59,7 +60,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
     const allocatedAmount = -paymentAmount;
     const transactionDate = paymentContext.dateCleared || new Date();
     
-    const description = `${currencyLabel} Adjustment: ${paymentTypeName}`;
+    const description = `${currencyLabel} Payment: ${paymentTypeName}`;
 
     const keySuffix = paymentContext.allocationId
       ? `${paymentContext.paymentId}:${paymentContext.ledgerEaId}`
@@ -69,6 +70,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
       chargePluginKey: `${configId}:${keySuffix}`,
       amount: allocatedAmount.toFixed(2),
       description,
+      memo: paymentContext.memo || null,
       transactionDate,
       eaId: paymentContext.ledgerEaId,
       referenceType: "payment",
@@ -189,6 +191,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
           entityId: paymentContext.entityId,
           amount: expectedEntry.amount,
           description: expectedEntry.description,
+          memo: expectedEntry.memo,
           transactionDate: expectedEntry.transactionDate,
           referenceType: expectedEntry.referenceType,
           referenceId: expectedEntry.referenceId,
@@ -256,6 +259,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
         entityId: paymentContext.entityId,
         amount: expectedEntry.amount,
         description: expectedEntry.description,
+        memo: expectedEntry.memo,
         transactionDate: expectedEntry.transactionDate,
         referenceType: expectedEntry.referenceType,
         referenceId: expectedEntry.referenceId,

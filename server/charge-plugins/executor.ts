@@ -176,7 +176,7 @@ async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<v
         referenceType: transaction.referenceType || "charge_plugin",
         referenceId: transaction.referenceId,
         date: transaction.transactionDate,
-        memo: transaction.description,
+        memo: transaction.memo !== undefined ? transaction.memo : transaction.description,
         data: transaction.metadata,
       });
 
