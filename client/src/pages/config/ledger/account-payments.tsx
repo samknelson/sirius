@@ -123,8 +123,7 @@ function AccountPaymentsContent() {
   const { data: accountEAs = [] } = useQuery<EAListItem[]>({
     queryKey: ["/api/ledger/ea", { accountId: id }],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/ledger/ea?accountId=${id}`);
-      return await res.json();
+      return await apiRequest("GET", `/api/ledger/ea?accountId=${id}`);
     },
     enabled: dialogOpen && !!id,
   });
@@ -276,8 +275,28 @@ function AccountPaymentsContent() {
     }
 
     const filteredAllocations = allocations.filter(a => a.ledgerEaId && a.amount);
+    const isMultiple = selectedEaId === "__multiple__";
 
-    if (filteredAllocations.length > 0) {
+    if (isMultiple) {
+      if (filteredAllocations.length === 0) {
+        toast({
+          title: "No allocations",
+          description: "Please add at least one allocation when using multiple participants.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const total = filteredAllocations.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+      const paymentAmount = parseFloat(data.amount) || 0;
+      if (Math.abs(paymentAmount - total) > 0.01) {
+        toast({
+          title: "Allocation mismatch",
+          description: "Allocation amounts must equal the payment amount.",
+          variant: "destructive",
+        });
+        return;
+      }
+    } else if (filteredAllocations.length > 0) {
       const total = filteredAllocations.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
       const paymentAmount = parseFloat(data.amount) || 0;
       if (Math.abs(paymentAmount - total) > 0.01) {
@@ -290,9 +309,11 @@ function AccountPaymentsContent() {
       }
     }
 
+    const primaryEaId = isMultiple ? filteredAllocations[0].ledgerEaId : selectedEaId;
+
     const submissionData: Record<string, unknown> = {
       ...data,
-      ledgerEaId: selectedEaId,
+      ledgerEaId: primaryEaId,
       details: Object.keys(details).length > 0 ? details : null,
       status: category === "adjustment" ? "cleared" : data.status,
       statementMonth: statementMonth ? parseInt(statementMonth, 10) : undefined,
@@ -670,18 +691,110 @@ function AccountPaymentsContent() {
                   <form onSubmit={onCreateSubmit} className="space-y-4">
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Participant</label>
-                      <Select value={selectedEaId} onValueChange={(val) => { setSelectedEaId(val); form.setValue("ledgerEaId", val); }}>
+                      <Select value={selectedEaId} onValueChange={(val) => {
+                        setSelectedEaId(val);
+                        if (val === "__multiple__") {
+                          form.setValue("ledgerEaId", "");
+                          if (allocations.length === 0) {
+                            setAllocations([{ ledgerEaId: "", amount: "" }]);
+                          }
+                        } else {
+                          form.setValue("ledgerEaId", val);
+                          setAllocations([]);
+                        }
+                      }}>
                         <SelectTrigger data-testid="select-participant">
                           <SelectValue placeholder="Select a participant..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {participants.map((p) => (
-                            <SelectItem key={p.eaId} value={p.eaId}>
-                              {p.entityName || p.entityId} ({p.entityType})
+                          {accountEAs.map((ea) => (
+                            <SelectItem key={ea.id} value={ea.id}>
+                              {ea.entityName || ea.entityId} ({ea.entityType})
                             </SelectItem>
                           ))}
+                          {accountEAs.length > 1 && (
+                            <SelectItem value="__multiple__">Multiple participants...</SelectItem>
+                          )}
                         </SelectContent>
                       </Select>
+                      {selectedEaId === "__multiple__" && (
+                        <div className="space-y-2 pl-4 border-l-2 border-muted mt-2">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs text-muted-foreground">
+                              Split this payment across multiple participant accounts. Totals must equal the payment amount.
+                            </p>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setAllocations([...allocations, { ledgerEaId: "", amount: "" }])}
+                            >
+                              <Plus className="h-3 w-3 mr-1" />
+                              Add
+                            </Button>
+                          </div>
+                          {allocations.map((alloc, idx) => (
+                            <div key={idx} className="flex gap-2 items-end">
+                              <div className="flex-1 space-y-1">
+                                <label className="text-xs text-muted-foreground">Account</label>
+                                <Select
+                                  value={alloc.ledgerEaId}
+                                  onValueChange={(val) => {
+                                    const updated = [...allocations];
+                                    updated[idx] = { ...updated[idx], ledgerEaId: val };
+                                    setAllocations(updated);
+                                  }}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select account..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {accountEAs.map((ea) => (
+                                      <SelectItem key={ea.id} value={ea.id}>
+                                        {ea.entityName || ea.entityId} ({ea.entityType})
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="w-32 space-y-1">
+                                <label className="text-xs text-muted-foreground">Amount</label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  placeholder="0.00"
+                                  value={alloc.amount}
+                                  onChange={(e) => {
+                                    const updated = [...allocations];
+                                    updated[idx] = { ...updated[idx], amount: e.target.value };
+                                    setAllocations(updated);
+                                  }}
+                                />
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setAllocations(allocations.filter((_, i) => i !== idx))}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                          {allocations.length > 0 && (() => {
+                            const total = allocations.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+                            const paymentAmount = parseFloat(form.getValues("amount")) || 0;
+                            const diff = paymentAmount - total;
+                            return (
+                              <p className={`text-xs ${Math.abs(diff) > 0.01 ? "text-destructive" : "text-muted-foreground"}`}>
+                                Allocated: {total.toFixed(2)} / {paymentAmount.toFixed(2)}
+                                {Math.abs(diff) > 0.01 && ` (${diff > 0 ? "under" : "over"} by ${Math.abs(diff).toFixed(2)})`}
+                              </p>
+                            );
+                          })()}
+                        </div>
+                      )}
                     </div>
 
                     <FormField
@@ -892,74 +1005,6 @@ function AccountPaymentsContent() {
                       )}
                     />
 
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium">Multi-Account Allocations</label>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setAllocations([...allocations, { ledgerEaId: "", amount: "" }])}
-                        >
-                          <Plus className="h-3 w-3 mr-1" />
-                          Add Allocation
-                        </Button>
-                      </div>
-                      {allocations.length > 0 && (
-                        <p className="text-xs text-muted-foreground">
-                          Split this payment across multiple participant accounts. Allocation totals must equal the payment amount.
-                        </p>
-                      )}
-                      {allocations.map((alloc, idx) => (
-                        <div key={idx} className="flex gap-2 items-end">
-                          <div className="flex-1 space-y-1">
-                            <label className="text-xs text-muted-foreground">Account</label>
-                            <Select
-                              value={alloc.ledgerEaId}
-                              onValueChange={(val) => {
-                                const updated = [...allocations];
-                                updated[idx] = { ...updated[idx], ledgerEaId: val };
-                                setAllocations(updated);
-                              }}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select account..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {accountEAs.map((ea) => (
-                                  <SelectItem key={ea.id} value={ea.id}>
-                                    {ea.entityName || ea.entityId} ({ea.entityType})
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="w-32 space-y-1">
-                            <label className="text-xs text-muted-foreground">Amount</label>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              placeholder="0.00"
-                              value={alloc.amount}
-                              onChange={(e) => {
-                                const updated = [...allocations];
-                                updated[idx] = { ...updated[idx], amount: e.target.value };
-                                setAllocations(updated);
-                              }}
-                            />
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setAllocations(allocations.filter((_, i) => i !== idx))}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
 
                     <div className="flex justify-end gap-2 pt-4">
                       <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); resetCreateForm(); }}>

@@ -122,8 +122,7 @@ function EAPaymentsContent() {
   const { data: allEAs = [] } = useQuery<EAListItem[]>({
     queryKey: ["/api/ledger/ea", { accountId }],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/ledger/ea?accountId=${accountId}`);
-      return await res.json();
+      return await apiRequest("GET", `/api/ledger/ea?accountId=${accountId}`);
     },
     enabled: isStaff && dialogOpen && !!accountId,
   });
