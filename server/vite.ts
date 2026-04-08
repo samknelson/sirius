@@ -32,6 +32,10 @@ export async function setupVite(app: Express, server: Server) {
     customLogger: {
       ...viteLogger,
       error: (msg, options) => {
+        if (msg.includes("Cannot set headers after they are sent")) {
+          viteLogger.warn(msg, options);
+          return;
+        }
         viteLogger.error(msg, options);
         process.exit(1);
       },
