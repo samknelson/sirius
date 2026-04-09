@@ -288,9 +288,12 @@ function EAPaymentsContent() {
         });
         return;
       }
-      finalStatementMonth = statementSelections[0].month;
-      finalStatementYear = statementSelections[0].year;
-      details.statementAllocations = statementSelections.map((s) => ({
+      const sorted = [...statementSelections].sort(
+        (a, b) => a.year - b.year || a.month - b.month
+      );
+      finalStatementMonth = sorted[0].month;
+      finalStatementYear = sorted[0].year;
+      details.statementAllocations = sorted.map((s) => ({
         month: s.month,
         year: s.year,
         amount: String(parseFloat(s.amount!).toFixed(2)),

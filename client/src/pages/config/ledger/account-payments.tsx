@@ -108,6 +108,11 @@ function AccountPaymentsContent() {
   const [sortField, setSortField] = useState<SortField>("dateCleared");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
+  const { data: accountData } = useQuery<{ id: string; currencyCode?: string }>({
+    queryKey: ["/api/ledger/accounts", id],
+  });
+  const accountCurrencyCode = accountData?.currencyCode || "USD";
+
   const { data: payments, isLoading } = useQuery<LedgerPaymentWithEntity[]>({
     queryKey: ["/api/ledger/accounts", id, "payments"],
   });
@@ -343,9 +348,12 @@ function AccountPaymentsContent() {
         });
         return;
       }
-      finalStatementMonth = statementSelections[0].month;
-      finalStatementYear = statementSelections[0].year;
-      statementAllocationsForDetails = statementSelections.map((s) => ({
+      const sorted = [...statementSelections].sort(
+        (a, b) => a.year - b.year || a.month - b.month
+      );
+      finalStatementMonth = sorted[0].month;
+      finalStatementYear = sorted[0].year;
+      statementAllocationsForDetails = sorted.map((s) => ({
         month: s.month,
         year: s.year,
         amount: String(parseFloat(s.amount!).toFixed(2)),
@@ -975,7 +983,7 @@ function AccountPaymentsContent() {
 
                     <StatementPicker
                       eaId={selectedEaId && selectedEaId !== "__multiple__" ? selectedEaId : null}
-                      currencyCode="USD"
+                      currencyCode={accountCurrencyCode}
                       paymentAmount={form.watch("amount") || "0"}
                       selections={statementSelections}
                       onSelectionsChange={setStatementSelections}
