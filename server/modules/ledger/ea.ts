@@ -1,9 +1,11 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../../storage";
-import { insertLedgerEaSchema } from "@shared/schema";
+import { insertLedgerEaSchema, ledger as ledgerTable, ledgerPayments, optionsLedgerPaymentType } from "@shared/schema";
 import { requireAccess, checkAccessInline } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { generateInvoicePdf } from "../../utils/pdfGenerator";
+import { getClient } from "../../storage/transaction-context";
+import { eq, and, asc, inArray } from "drizzle-orm";
 
 async function checkEaAccessInline(req: Request, res: Response, ea: { entityType: string; entityId: string }, policyId: string): Promise<boolean> {
   const result = await checkAccessInline(req, policyId, ea.entityId, { entityType: ea.entityType, entityId: ea.entityId });
@@ -343,6 +345,249 @@ export function registerLedgerEaRoutes(app: Express) {
     } catch (error) {
       console.error("PDF generation error:", error);
       res.status(500).json({ message: "Failed to generate PDF" });
+    }
+  });
+
+  app.get("/api/ledger/ea/:id/account-summary", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const rawMonths = parseInt(req.query.months as string, 10);
+      const monthsParam = Math.min(Math.max(isNaN(rawMonths) ? 6 : rawMonths, 1), 36);
+
+      const ea = await storage.ledger.ea.get(id);
+      if (!ea) {
+        res.status(404).json({ message: "Ledger EA entry not found" });
+        return;
+      }
+
+      if (!await checkEaAccessInline(req, res, ea, 'ledger.ea.view')) return;
+
+      const client = getClient();
+
+      const entries = await client.select({
+        id: ledgerTable.id,
+        amount: ledgerTable.amount,
+        date: ledgerTable.date,
+        chargePlugin: ledgerTable.chargePlugin,
+        referenceType: ledgerTable.referenceType,
+        referenceId: ledgerTable.referenceId,
+        memo: ledgerTable.memo,
+        data: ledgerTable.data,
+      })
+      .from(ledgerTable)
+      .where(eq(ledgerTable.eaId, id))
+      .orderBy(asc(ledgerTable.date));
+
+      const payments = await storage.ledger.payments.getByLedgerEaId(id);
+
+      const paymentTypeIds = [...new Set(payments.map(p => p.paymentType))];
+      let paymentTypeMap = new Map<string, { name: string; category: string }>();
+      if (paymentTypeIds.length > 0) {
+        const ptRows = await client.select({
+          id: optionsLedgerPaymentType.id,
+          name: optionsLedgerPaymentType.name,
+          category: optionsLedgerPaymentType.category,
+        })
+        .from(optionsLedgerPaymentType)
+        .where(inArray(optionsLedgerPaymentType.id, paymentTypeIds));
+        for (const pt of ptRows) {
+          paymentTypeMap.set(pt.id, { name: pt.name, category: pt.category });
+        }
+      }
+
+      const now = new Date();
+      const currentMonth = now.getMonth() + 1;
+      const currentYear = now.getFullYear();
+
+      let endMonth = currentMonth;
+      let endYear = currentYear;
+      if (entries.length > 0 || payments.length > 0) {
+        for (const e of entries) {
+          if (e.date) {
+            const d = new Date(e.date);
+            const m = d.getMonth() + 1;
+            const y = d.getFullYear();
+            if (y > endYear || (y === endYear && m > endMonth)) {
+              endMonth = m;
+              endYear = y;
+            }
+          }
+        }
+        for (const p of payments) {
+          if (p.statementMonth != null && p.statementYear != null) {
+            if (p.statementYear > endYear || (p.statementYear === endYear && p.statementMonth > endMonth)) {
+              endMonth = p.statementMonth;
+              endYear = p.statementYear;
+            }
+          }
+        }
+      }
+
+      const periods: { month: number; year: number }[] = [];
+      let m = endMonth;
+      let y = endYear;
+      for (let i = 0; i < monthsParam; i++) {
+        periods.unshift({ month: m, year: y });
+        m--;
+        if (m < 1) { m = 12; y--; }
+      }
+
+      const toCents = (amount: string) => BigInt(Math.round(parseFloat(amount) * 100));
+      const fromCents = (cents: bigint) => (Number(cents) / 100).toFixed(2);
+
+      interface MonthData {
+        charges: bigint;
+        chargeEntryCount: number;
+        chargeWorkerIds: Set<string>;
+        adjustments: bigint;
+        adjustmentEntryCount: number;
+        adjustmentWorkerIds: Set<string>;
+        interestPenalties: bigint;
+        paymentsCredited: bigint;
+        paymentDetails: string[];
+        allEntriesSum: bigint;
+      }
+
+      const monthDataMap = new Map<string, MonthData>();
+      const getKey = (month: number, year: number) => `${year}-${month}`;
+
+      for (const period of periods) {
+        monthDataMap.set(getKey(period.month, period.year), {
+          charges: BigInt(0),
+          chargeEntryCount: 0,
+          chargeWorkerIds: new Set(),
+          adjustments: BigInt(0),
+          adjustmentEntryCount: 0,
+          adjustmentWorkerIds: new Set(),
+          interestPenalties: BigInt(0),
+          paymentsCredited: BigInt(0),
+          paymentDetails: [],
+          allEntriesSum: BigInt(0),
+        });
+      }
+
+      let preIncomingCents = BigInt(0);
+      const firstPeriod = periods[0];
+      const firstPeriodKey = firstPeriod ? getKey(firstPeriod.month, firstPeriod.year) : null;
+
+      const paymentMap = new Map<string, typeof payments[0]>();
+      for (const p of payments) {
+        paymentMap.set(p.id, p);
+      }
+
+      for (const entry of entries) {
+        if (!entry.date) continue;
+        const d = new Date(entry.date);
+        const em = d.getMonth() + 1;
+        const ey = d.getFullYear();
+        const key = getKey(em, ey);
+        const amountCents = toCents(entry.amount);
+
+        const data = monthDataMap.get(key);
+        if (data) {
+          data.allEntriesSum += amountCents;
+
+          if (entry.chargePlugin === "payment-simple-allocation") {
+            const payment = entry.referenceId ? paymentMap.get(entry.referenceId) : undefined;
+            const pt = payment ? paymentTypeMap.get(payment.paymentType) : undefined;
+            const category = pt?.category || "financial";
+
+            if (category === "adjustment") {
+              data.adjustments += amountCents;
+              data.adjustmentEntryCount++;
+            } else {
+              data.paymentsCredited += amountCents;
+
+              if (payment) {
+                const details = (payment.details || {}) as Record<string, unknown>;
+                const checkNum = (details.checkTransactionNumber as string) || null;
+                const dateReceived = payment.dateReceived
+                  ? new Date(payment.dateReceived).toLocaleDateString("en-US", { month: "numeric", day: "numeric" })
+                  : null;
+                let detailStr = "";
+                if (checkNum) {
+                  detailStr = `CK # ${checkNum}`;
+                  if (dateReceived) detailStr += ` Rec'd ${dateReceived}`;
+                } else if (dateReceived) {
+                  detailStr = `Rec'd ${dateReceived}`;
+                }
+                if (detailStr) data.paymentDetails.push(detailStr);
+              }
+            }
+          } else if (entry.chargePlugin === "interest" || entry.chargePlugin === "penalty") {
+            data.interestPenalties += amountCents;
+          } else {
+            data.charges += amountCents;
+            data.chargeEntryCount++;
+            if (entry.referenceId) {
+              data.chargeWorkerIds.add(entry.referenceId);
+            }
+          }
+        } else {
+          if (firstPeriodKey && (ey < firstPeriod.year || (ey === firstPeriod.year && em < firstPeriod.month))) {
+            preIncomingCents += amountCents;
+          }
+        }
+      }
+
+      let runningBalanceCents = preIncomingCents;
+
+      const monthColumns = periods.map(period => {
+        const key = getKey(period.month, period.year);
+        const data = monthDataMap.get(key)!;
+
+        const incomingBalance = fromCents(runningBalanceCents);
+        runningBalanceCents += data.allEntriesSum;
+        const statementBalance = fromCents(runningBalanceCents);
+
+        const chargesAmount = fromCents(data.charges);
+        const adjustmentsAmount = fromCents(data.adjustments);
+        const interestPenaltiesAmount = fromCents(data.interestPenalties);
+        const paymentsCreditedAmount = fromCents(data.paymentsCredited);
+
+        const unpaidCents = data.charges + data.adjustments + data.interestPenalties + data.paymentsCredited;
+        const unpaidStatementAmount = fromCents(unpaidCents);
+
+        let chargeDetail = "";
+        if (data.chargeWorkerIds.size > 0) {
+          chargeDetail = `${data.chargeWorkerIds.size} worker${data.chargeWorkerIds.size !== 1 ? "s" : ""}`;
+        } else if (data.chargeEntryCount > 0) {
+          chargeDetail = `${data.chargeEntryCount} entr${data.chargeEntryCount !== 1 ? "ies" : "y"}`;
+        }
+
+        let adjustmentDetail = "";
+        if (data.adjustmentEntryCount > 0) {
+          adjustmentDetail = `${data.adjustmentEntryCount} adjustment${data.adjustmentEntryCount !== 1 ? "s" : ""}`;
+        }
+
+        const paymentDetail = [...new Set(data.paymentDetails)].join(", ");
+
+        return {
+          month: period.month,
+          year: period.year,
+          charges: chargesAmount,
+          chargeDetail,
+          adjustments: adjustmentsAmount,
+          adjustmentDetail,
+          interestPenalties: interestPenaltiesAmount,
+          interestPenaltyDetail: "",
+          paymentsCredited: paymentsCreditedAmount,
+          paymentDetail,
+          unpaidStatementAmount,
+          statementBalance,
+          incomingBalance,
+        };
+      });
+
+      const overallIncomingBalance = monthColumns.length > 0 ? monthColumns[0].incomingBalance : "0.00";
+
+      res.json({
+        incomingBalance: overallIncomingBalance,
+        months: monthColumns,
+      });
+    } catch (error) {
+      console.error("Failed to fetch account summary:", error);
+      res.status(500).json({ message: "Failed to fetch account summary" });
     }
   });
 }

@@ -206,6 +206,17 @@ export function EALayout({ activeTab, children }: EALayoutProps) {
           >
             Transactions
           </Link>
+          <Link
+            href={`/ea/${id}/summary`}
+            className={`pb-3 border-b-2 transition-colors ${
+              activeTab === "summary"
+                ? "border-primary text-primary font-medium"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+            data-testid="tab-summary"
+          >
+            Account Summary
+          </Link>
         </nav>
       </div>
 
