@@ -423,31 +423,12 @@ export function registerLedgerEaRoutes(app: Express) {
       const currentMonth = now.getMonth() + 1;
       const currentYear = now.getFullYear();
 
-      let endMonth = currentMonth;
-      let endYear = currentYear;
-      for (const e of entries) {
-        if (e.date) {
-          const d = new Date(e.date);
-          const m = d.getMonth() + 1;
-          const yy = d.getFullYear();
-          if (yy > endYear || (yy === endYear && m > endMonth)) {
-            endMonth = m;
-            endYear = yy;
-          }
-        }
-      }
-      for (const p of paymentMap.values()) {
-        if (p.statementMonth != null && p.statementYear != null) {
-          if (p.statementYear > endYear || (p.statementYear === endYear && p.statementMonth > endMonth)) {
-            endMonth = p.statementMonth;
-            endYear = p.statementYear;
-          }
-        }
-      }
+      const currentPeriod = { month: currentMonth, year: currentYear };
 
       const periods: { month: number; year: number }[] = [];
-      let m = endMonth;
-      let y = endYear;
+      let m = currentMonth - 1;
+      let y = currentYear;
+      if (m < 1) { m = 12; y--; }
       for (let i = 0; i < monthsParam; i++) {
         periods.unshift({ month: m, year: y });
         m--;
@@ -473,9 +454,11 @@ export function registerLedgerEaRoutes(app: Express) {
         charges: bigint;
         chargeEntryCount: number;
         chargeWorkerIds: Set<string>;
+        chargeHours: number;
         adjustments: bigint;
         adjustmentEntryCount: number;
         interestPenalties: bigint;
+        interestPenaltyEntryCount: number;
         paymentsCredited: bigint;
         paymentDetails: string[];
         allEntriesSum: bigint;
@@ -488,9 +471,11 @@ export function registerLedgerEaRoutes(app: Express) {
         charges: BigInt(0),
         chargeEntryCount: 0,
         chargeWorkerIds: new Set(),
+        chargeHours: 0,
         adjustments: BigInt(0),
         adjustmentEntryCount: 0,
         interestPenalties: BigInt(0),
+        interestPenaltyEntryCount: 0,
         paymentsCredited: BigInt(0),
         paymentDetails: [],
         allEntriesSum: BigInt(0),
@@ -499,10 +484,11 @@ export function registerLedgerEaRoutes(app: Express) {
       for (const period of periods) {
         monthDataMap.set(getKey(period.month, period.year), initMonthData());
       }
+      const currentKey = getKey(currentPeriod.month, currentPeriod.year);
+      monthDataMap.set(currentKey, initMonthData());
 
       let preIncomingCents = BigInt(0);
       const firstPeriod = periods[0];
-      const lastPeriod = periods[periods.length - 1];
       const getVisibleMonth = (month: number, year: number): MonthData | null => {
         const key = getKey(month, year);
         const data = monthDataMap.get(key);
@@ -510,10 +496,7 @@ export function registerLedgerEaRoutes(app: Express) {
         if (firstPeriod && (year < firstPeriod.year || (year === firstPeriod.year && month < firstPeriod.month))) {
           return null;
         }
-        if (lastPeriod) {
-          return monthDataMap.get(getKey(lastPeriod.month, lastPeriod.year)) || null;
-        }
-        return null;
+        return monthDataMap.get(currentKey) || null;
       };
 
       for (const entry of entries) {
@@ -567,6 +550,7 @@ export function registerLedgerEaRoutes(app: Express) {
         } else if (entry.chargePlugin === "interest" || entry.chargePlugin === "penalty") {
           if (dateData) {
             dateData.interestPenalties += amountCents;
+            dateData.interestPenaltyEntryCount++;
           }
         } else {
           const positiveAmount = amountCents > BigInt(0) ? amountCents : BigInt(0);
@@ -576,16 +560,17 @@ export function registerLedgerEaRoutes(app: Express) {
             if (entry.referenceId) {
               dateData.chargeWorkerIds.add(entry.referenceId);
             }
+            const meta = entry.data as Record<string, unknown> | null;
+            if (meta && typeof meta.hours === "number") {
+              dateData.chargeHours += meta.hours;
+            }
           }
         }
       }
 
       let runningBalanceCents = preIncomingCents;
 
-      const monthColumns = periods.map(period => {
-        const key = getKey(period.month, period.year);
-        const data = monthDataMap.get(key)!;
-
+      const buildColumn = (data: MonthData, period: { month: number; year: number }) => {
         const incomingBalance = fromCents(runningBalanceCents);
         runningBalanceCents += data.allEntriesSum;
         const statementBalance = fromCents(runningBalanceCents);
@@ -598,16 +583,26 @@ export function registerLedgerEaRoutes(app: Express) {
         const unpaidCents = data.charges + data.adjustments + data.interestPenalties + data.paymentsCredited;
         const unpaidStatementAmount = fromCents(unpaidCents);
 
-        let chargeDetail = "";
+        const detailParts: string[] = [];
         if (data.chargeWorkerIds.size > 0) {
-          chargeDetail = `${data.chargeWorkerIds.size} worker${data.chargeWorkerIds.size !== 1 ? "s" : ""}`;
-        } else if (data.chargeEntryCount > 0) {
-          chargeDetail = `${data.chargeEntryCount} entr${data.chargeEntryCount !== 1 ? "ies" : "y"}`;
+          detailParts.push(`${data.chargeWorkerIds.size} worker${data.chargeWorkerIds.size !== 1 ? "s" : ""}`);
         }
+        if (data.chargeHours > 0) {
+          detailParts.push(`${data.chargeHours} hrs`);
+        }
+        if (detailParts.length === 0 && data.chargeEntryCount > 0) {
+          detailParts.push(`${data.chargeEntryCount} entr${data.chargeEntryCount !== 1 ? "ies" : "y"}`);
+        }
+        const chargeDetail = detailParts.join(", ");
 
         let adjustmentDetail = "";
         if (data.adjustmentEntryCount > 0) {
           adjustmentDetail = `${data.adjustmentEntryCount} adjustment${data.adjustmentEntryCount !== 1 ? "s" : ""}`;
+        }
+
+        let interestPenaltyDetail = "";
+        if (data.interestPenaltyEntryCount > 0) {
+          interestPenaltyDetail = `${data.interestPenaltyEntryCount} entr${data.interestPenaltyEntryCount !== 1 ? "ies" : "y"}`;
         }
 
         const paymentDetail = [...new Set(data.paymentDetails)].join(", ");
@@ -620,23 +615,31 @@ export function registerLedgerEaRoutes(app: Express) {
           adjustments: adjustmentsAmount,
           adjustmentDetail,
           interestPenalties: interestPenaltiesAmount,
-          interestPenaltyDetail: "",
+          interestPenaltyDetail,
           paymentsCredited: paymentsCreditedAmount,
           paymentDetail,
           unpaidStatementAmount,
           statementBalance,
           incomingBalance,
         };
+      };
+
+      const monthColumns = periods.map(period => {
+        const data = monthDataMap.get(getKey(period.month, period.year))!;
+        return buildColumn(data, period);
       });
 
+      const currentData = monthDataMap.get(currentKey)!;
+      const currentColumn = buildColumn(currentData, currentPeriod);
+
       const overallIncomingBalance = monthColumns.length > 0 ? monthColumns[0].incomingBalance : "0.00";
-      const currentBalance = fromCents(runningBalanceCents);
 
       res.json({
         currencyCode,
         incomingBalance: overallIncomingBalance,
-        currentBalance,
+        currentBalance: currentColumn.statementBalance,
         months: monthColumns,
+        current: currentColumn,
       });
     } catch (error) {
       console.error("Failed to fetch account summary:", error);

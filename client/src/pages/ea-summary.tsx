@@ -25,6 +25,7 @@ interface AccountSummaryData {
   incomingBalance: string;
   currentBalance: string;
   months: MonthColumn[];
+  current: MonthColumn;
 }
 
 const SHORT_MONTH_NAMES = [
@@ -106,7 +107,7 @@ function EASummaryContent() {
   }
 
   const months = data.months;
-  const lastMonth = months[months.length - 1];
+  const current = data.current;
   const formatAmount = createAmountFormatter(data.currencyCode);
 
   return (
@@ -145,7 +146,7 @@ function EASummaryContent() {
                 const isBottomRow = row.key === "statementBalance";
 
                 if (isDetail) {
-                  const lastDetail = row.detailField ? (lastMonth[row.detailField] as string) : "";
+                  const currentDetail = row.detailField ? (current[row.detailField] as string) : "";
                   return (
                     <tr key={row.key} className="border-b border-border/30">
                       <td className="py-1 px-4 sticky left-0 bg-background text-xs text-muted-foreground italic">
@@ -161,7 +162,7 @@ function EASummaryContent() {
                         );
                       })}
                       <td className="py-1 px-4 text-right text-xs text-muted-foreground italic">
-                        {lastDetail}
+                        {currentDetail}
                       </td>
                     </tr>
                   );
@@ -173,8 +174,8 @@ function EASummaryContent() {
 
                 const currentCellValue = row.key === "statementBalance"
                   ? formatAmount(data.currentBalance)
-                  : row.amountField && lastMonth
-                    ? formatAmount(lastMonth[row.amountField] as string)
+                  : row.amountField && current
+                    ? formatAmount(current[row.amountField] as string)
                     : "";
 
                 return (
