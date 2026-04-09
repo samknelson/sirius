@@ -220,15 +220,15 @@ function PaymentEditContent() {
               year: sa.year,
               amount: sa.amount,
             }));
-          } else if (isPrimary && payment.statementMonth) {
+          } else if (isPrimary && payment.statementMonth != null && payment.statementYear != null) {
             statementSelections = [{
               month: payment.statementMonth,
-              year: payment.statementYear ?? 0,
+              year: payment.statementYear,
             }];
-          } else if (pData?.statementMonth) {
+          } else if (pData?.statementMonth != null && pData?.statementYear != null) {
             statementSelections = [{
               month: pData.statementMonth,
-              year: pData.statementYear ?? 0,
+              year: pData.statementYear,
             }];
           }
 
@@ -249,10 +249,10 @@ function PaymentEditContent() {
             year: sa.year,
             amount: sa.amount,
           }));
-        } else if (payment.statementMonth) {
+        } else if (payment.statementMonth != null && payment.statementYear != null) {
           statementSelections = [{
             month: payment.statementMonth,
-            year: payment.statementYear ?? 0,
+            year: payment.statementYear,
           }];
         }
 
