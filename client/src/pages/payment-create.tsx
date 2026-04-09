@@ -350,63 +350,63 @@ function PaymentCreateContent() {
       <CardContent>
         <Form {...form}>
           <form onSubmit={onCreateSubmit} className="space-y-6">
-            <FormField
-              control={form.control}
-              name="paymentType"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Payment Type</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value || ""}>
+            <div className="grid grid-cols-3 gap-4">
+              <FormField
+                control={form.control}
+                name="paymentType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Payment Type</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-payment-type">
+                          <SelectValue placeholder="Select payment type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {paymentTypes.map((type) => (
+                          <SelectItem key={type.id} value={type.id}>
+                            {type.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="amount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Amount</FormLabel>
                     <FormControl>
-                      <SelectTrigger data-testid="select-payment-type">
-                        <SelectValue placeholder="Select payment type" />
-                      </SelectTrigger>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        data-testid="input-amount"
+                        {...field}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          if (participantBoxes.length === 1) {
+                            updateParticipantBox(0, {
+                              ...participantBoxes[0],
+                              amount: e.target.value,
+                            });
+                          }
+                        }}
+                      />
                     </FormControl>
-                    <SelectContent>
-                      {paymentTypes.map((type) => (
-                        <SelectItem key={type.id} value={type.id}>
-                          {type.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-            <FormField
-              control={form.control}
-              name="amount"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Amount</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="0.00"
-                      data-testid="input-amount"
-                      {...field}
-                      onChange={(e) => {
-                        field.onChange(e);
-                        if (participantBoxes.length === 1) {
-                          updateParticipantBox(0, {
-                            ...participantBoxes[0],
-                            amount: e.target.value,
-                          });
-                        }
-                      }}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {category === "financial" ? (
-              <>
+              {category === "financial" ? (
                 <FormField
                   control={form.control}
                   name="status"
@@ -431,7 +431,64 @@ function PaymentCreateContent() {
                     </FormItem>
                   )}
                 />
+              ) : (
+                <div className="flex items-end">
+                  <div className="p-3 bg-muted rounded-md w-full">
+                    <p className="text-sm text-muted-foreground">
+                      Status: <span className="font-medium text-foreground">Cleared</span>
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
 
+            {category === "financial" ? (
+              <>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Check/Transaction #</label>
+                    <Input
+                      value={checkTransactionNumber}
+                      onChange={(e) => setCheckTransactionNumber(e.target.value)}
+                      placeholder="Check or transaction number"
+                      data-testid="input-check-number"
+                    />
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="dateReceived"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Date Received</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="date"
+                            value={field.value ? new Date(field.value).toISOString().split("T")[0] : ""}
+                            onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="dateCleared"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Date Cleared</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="date"
+                            value={field.value ? new Date(field.value).toISOString().split("T")[0] : ""}
+                            onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Merchant</label>
                   <Input
@@ -441,34 +498,19 @@ function PaymentCreateContent() {
                     data-testid="input-merchant"
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Check/Transaction Number</label>
-                  <Input
-                    value={checkTransactionNumber}
-                    onChange={(e) => setCheckTransactionNumber(e.target.value)}
-                    placeholder="Check or transaction number"
-                    data-testid="input-check-number"
-                  />
-                </div>
               </>
             ) : (
               <>
-                <div className="p-3 bg-muted rounded-md">
-                  <p className="text-sm text-muted-foreground">
-                    Status: <span className="font-medium text-foreground">Cleared</span> (adjustments are always cleared)
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Adjustment User</label>
-                  <Input
-                    value={adjustmentUser}
-                    onChange={(e) => setAdjustmentUser(e.target.value)}
-                    placeholder="User making adjustment"
-                    data-testid="input-adjustment-user"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Adjustment User</label>
+                    <Input
+                      value={adjustmentUser}
+                      onChange={(e) => setAdjustmentUser(e.target.value)}
+                      placeholder="User making adjustment"
+                      data-testid="input-adjustment-user"
+                    />
+                  </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Date Entered</label>
                     <Input
@@ -488,44 +530,45 @@ function PaymentCreateContent() {
                     />
                   </div>
                 </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div />
+                  <FormField
+                    control={form.control}
+                    name="dateReceived"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Date Received</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="date"
+                            value={field.value ? new Date(field.value).toISOString().split("T")[0] : ""}
+                            onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="dateCleared"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Date Cleared</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="date"
+                            value={field.value ? new Date(field.value).toISOString().split("T")[0] : ""}
+                            onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </>
             )}
-
-            <FormField
-              control={form.control}
-              name="dateReceived"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Date Received</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="date"
-                      value={field.value ? new Date(field.value).toISOString().split("T")[0] : ""}
-                      onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="dateCleared"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Date Cleared</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="date"
-                      value={field.value ? new Date(field.value).toISOString().split("T")[0] : ""}
-                      onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
             <FormField
               control={form.control}
