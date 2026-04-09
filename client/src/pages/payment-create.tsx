@@ -141,7 +141,7 @@ function PaymentCreateContent() {
         description: "The payment has been created successfully.",
       });
       showLedgerNotifications(data?.ledgerNotifications as LedgerNotification[] | undefined);
-      const paymentId = (data as any)?.id;
+      const paymentId = (data as Record<string, unknown>)?.id;
       if (paymentId) {
         setLocation(`/ledger/payment/${paymentId}`);
       } else {

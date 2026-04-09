@@ -48,6 +48,34 @@ interface LedgerNotification {
 
 type PaymentCategory = "financial" | "adjustment";
 
+interface StatementAllocationEntry {
+  month: number;
+  year: number;
+  amount?: string;
+}
+
+interface ParticipantStatementData {
+  statementMonth?: number;
+  statementYear?: number;
+  statementAllocations?: StatementAllocationEntry[];
+}
+
+interface PaymentDetails {
+  merchant?: string;
+  checkTransactionNumber?: string;
+  adjustmentUser?: string;
+  dateEntered?: string;
+  effectiveDate?: string;
+  statementAllocations?: StatementAllocationEntry[];
+  participantStatementAllocations?: Record<string, ParticipantStatementData>;
+  [key: string]: unknown;
+}
+
+interface PaymentUpdateResponse {
+  id: string;
+  [key: string]: unknown;
+}
+
 function formatCurrency(amount: string | number): string {
   const num = typeof amount === "string" ? parseFloat(amount) : amount;
   return new Intl.NumberFormat("en-US", {
@@ -136,7 +164,7 @@ function PaymentEditContent() {
       amount: payment.amount,
       paymentType: payment.paymentType,
       ledgerEaId: payment.ledgerEaId,
-      details: payment.details as any,
+      details: payment.details as PaymentDetails,
       dateReceived: payment.dateReceived ? new Date(payment.dateReceived) : undefined,
       dateCleared: payment.dateCleared ? new Date(payment.dateCleared) : undefined,
       memo: payment.memo,
@@ -149,7 +177,7 @@ function PaymentEditContent() {
 
   useEffect(() => {
     if (payment) {
-      const details = payment.details as any;
+      const details = payment.details as PaymentDetails | null;
       if (details) {
         setMerchant(details.merchant || "");
         setCheckTransactionNumber(details.checkTransactionNumber || "");
@@ -162,10 +190,9 @@ function PaymentEditContent() {
 
   useEffect(() => {
     if (existingAllocations && payment && !boxesLoaded) {
-      const details = payment.details as any;
+      const details = payment.details as PaymentDetails | null;
       const participantStmtData = details?.participantStatementAllocations || {};
       const stmtAllocations = details?.statementAllocations;
-      const p = payment as any;
 
       if (existingAllocations.length > 0) {
         const primaryEaId = payment.ledgerEaId;
@@ -182,26 +209,26 @@ function PaymentEditContent() {
           const manualYear = "";
 
           if (pData?.statementAllocations) {
-            statementSelections = pData.statementAllocations.map((sa: any) => ({
+            statementSelections = pData.statementAllocations.map((sa: StatementAllocationEntry) => ({
               month: sa.month,
               year: sa.year,
               amount: sa.amount,
             }));
           } else if (isPrimary && stmtAllocations) {
-            statementSelections = stmtAllocations.map((sa: any) => ({
+            statementSelections = stmtAllocations.map((sa: StatementAllocationEntry) => ({
               month: sa.month,
               year: sa.year,
               amount: sa.amount,
             }));
-          } else if (isPrimary && p.statementMonth) {
+          } else if (isPrimary && payment.statementMonth) {
             statementSelections = [{
-              month: p.statementMonth,
-              year: p.statementYear,
+              month: payment.statementMonth,
+              year: payment.statementYear ?? 0,
             }];
           } else if (pData?.statementMonth) {
             statementSelections = [{
               month: pData.statementMonth,
-              year: pData.statementYear,
+              year: pData.statementYear ?? 0,
             }];
           }
 
@@ -217,15 +244,15 @@ function PaymentEditContent() {
       } else {
         let statementSelections: StatementSelection[] = [];
         if (stmtAllocations) {
-          statementSelections = stmtAllocations.map((sa: any) => ({
+          statementSelections = stmtAllocations.map((sa: StatementAllocationEntry) => ({
             month: sa.month,
             year: sa.year,
             amount: sa.amount,
           }));
-        } else if (p.statementMonth) {
+        } else if (payment.statementMonth) {
           statementSelections = [{
-            month: p.statementMonth,
-            year: p.statementYear,
+            month: payment.statementMonth,
+            year: payment.statementYear ?? 0,
           }];
         }
 
@@ -243,7 +270,7 @@ function PaymentEditContent() {
 
   useEffect(() => {
     if (payment && category === "adjustment") {
-      const details = payment.details as any || {};
+      const details = (payment.details as PaymentDetails) || {};
       if (!details.adjustmentUser && !adjustmentUser) {
         setAdjustmentUser(getEffectiveUserName());
       }
@@ -299,7 +326,7 @@ function PaymentEditContent() {
     mutationFn: async (data: Record<string, unknown>) => {
       return await apiRequest("PUT", `/api/ledger/payments/${id}`, data);
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: PaymentUpdateResponse & { ledgerNotifications?: LedgerNotification[] }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/ledger/payments", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/ledger/payments/ea", payment?.ledgerEaId] });
       queryClient.invalidateQueries({ queryKey: [`/api/ledger/payments/${id}/transactions`] });
@@ -310,7 +337,7 @@ function PaymentEditContent() {
       showLedgerNotifications(data?.ledgerNotifications);
       setLocation(`/ledger/payment/${id}`);
     },
-    onError: (error: any) => {
+    onError: (error: Error & { error?: string }) => {
       const errorMessage = error?.error || error?.message || "Failed to update payment. Please try again.";
       toast({
         title: "Error",
@@ -382,8 +409,8 @@ function PaymentEditContent() {
       return;
     }
 
-    const existingDetails = (data.details || {}) as Record<string, any>;
-    const details: any = { ...existingDetails };
+    const existingDetails = (data.details || {}) as PaymentDetails;
+    const details: PaymentDetails = { ...existingDetails };
 
     if (category === "financial") {
       if (merchant) {
@@ -433,7 +460,7 @@ function PaymentEditContent() {
     delete details.participantStatementAllocations;
 
     if (participantBoxes.length > 1) {
-      const participantStatements: Record<string, unknown> = {};
+      const participantStatements: Record<string, ParticipantStatementData> = {};
       for (const box of participantBoxes) {
         const stmtInfo = getStatementInfoFromBox(box);
         if (stmtInfo.month || stmtInfo.stmtAllocations) {
