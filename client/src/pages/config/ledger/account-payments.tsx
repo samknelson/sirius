@@ -23,6 +23,7 @@ import { z } from "zod";
 import { stringify } from "csv-stringify/browser/esm/sync";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/contexts/AuthContext";
+import { StatementPicker, type StatementSelection } from "@/components/ledger/StatementPicker";
 
 type PaymentCategory = "financial" | "adjustment";
 
@@ -81,6 +82,7 @@ function AccountPaymentsContent() {
   const [effectiveDate, setEffectiveDate] = useState("");
   const [statementMonth, setStatementMonth] = useState<string>("");
   const [statementYear, setStatementYear] = useState<string>("");
+  const [statementSelections, setStatementSelections] = useState<StatementSelection[]>([]);
   const [allocations, setAllocations] = useState<AllocationRow[]>([]);
 
   // Pagination state
@@ -190,6 +192,7 @@ function AccountPaymentsContent() {
     setEffectiveDate("");
     setStatementMonth("");
     setStatementYear("");
+    setStatementSelections([]);
     setAllocations([]);
     form.reset({
       status: "draft",
@@ -311,13 +314,32 @@ function AccountPaymentsContent() {
 
     const primaryEaId = isMultiple ? filteredAllocations[0].ledgerEaId : selectedEaId;
 
+    let finalStatementMonth: number | undefined;
+    let finalStatementYear: number | undefined;
+    let statementAllocationsForDetails: StatementSelection[] | undefined;
+
+    if (statementSelections.length > 0) {
+      finalStatementMonth = statementSelections[0].month;
+      finalStatementYear = statementSelections[0].year;
+      if (statementSelections.length > 1) {
+        statementAllocationsForDetails = statementSelections;
+      }
+    } else if (statementMonth) {
+      finalStatementMonth = parseInt(statementMonth, 10);
+      finalStatementYear = statementYear ? parseInt(statementYear, 10) : undefined;
+    }
+
+    if (statementAllocationsForDetails) {
+      details.statementAllocations = statementAllocationsForDetails;
+    }
+
     const submissionData: Record<string, unknown> = {
       ...data,
       ledgerEaId: primaryEaId,
       details: Object.keys(details).length > 0 ? details : null,
       status: category === "adjustment" ? "cleared" : data.status,
-      statementMonth: statementMonth ? parseInt(statementMonth, 10) : undefined,
-      statementYear: statementYear ? parseInt(statementYear, 10) : undefined,
+      statementMonth: finalStatementMonth,
+      statementYear: finalStatementYear,
       allocations: filteredAllocations.length > 0 ? filteredAllocations : undefined,
     };
 
@@ -922,34 +944,17 @@ function AccountPaymentsContent() {
                       </>
                     )}
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Statement Month</label>
-                        <Select value={statementMonth} onValueChange={setStatementMonth}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Month (optional)" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {MONTH_NAMES.map((name, idx) => (
-                              <SelectItem key={idx + 1} value={String(idx + 1)}>
-                                {name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Statement Year</label>
-                        <Input
-                          type="number"
-                          min="2000"
-                          max="2099"
-                          placeholder="Year (optional)"
-                          value={statementYear}
-                          onChange={(e) => setStatementYear(e.target.value)}
-                        />
-                      </div>
-                    </div>
+                    <StatementPicker
+                      eaId={selectedEaId && selectedEaId !== "__multiple__" ? selectedEaId : null}
+                      currencyCode="USD"
+                      paymentAmount={form.watch("amount") || "0"}
+                      selections={statementSelections}
+                      onSelectionsChange={setStatementSelections}
+                      manualMonth={statementMonth}
+                      manualYear={statementYear}
+                      onManualMonthChange={setStatementMonth}
+                      onManualYearChange={setStatementYear}
+                    />
 
                     <FormField
                       control={form.control}

@@ -22,6 +22,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { z } from "zod";
 import { stringify } from "csv-stringify/browser/esm/sync";
 import { formatAmount } from "@shared/currency";
+import { StatementPicker, type StatementSelection } from "@/components/ledger/StatementPicker";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -67,6 +68,7 @@ function EAPaymentsContent() {
   const [effectiveDate, setEffectiveDate] = useState("");
   const [statementMonth, setStatementMonth] = useState<string>("");
   const [statementYear, setStatementYear] = useState<string>("");
+  const [statementSelections, setStatementSelections] = useState<StatementSelection[]>([]);
   const [allocations, setAllocations] = useState<AllocationRow[]>([]);
   const { toast } = useToast();
   
@@ -174,6 +176,7 @@ function EAPaymentsContent() {
       setEffectiveDate("");
       setStatementMonth("");
       setStatementYear("");
+      setStatementSelections([]);
       setAllocations([]);
       form.reset({
         status: "draft",
@@ -257,12 +260,26 @@ function EAPaymentsContent() {
       }
     }
 
+    let finalStatementMonth: number | undefined;
+    let finalStatementYear: number | undefined;
+
+    if (statementSelections.length > 0) {
+      finalStatementMonth = statementSelections[0].month;
+      finalStatementYear = statementSelections[0].year;
+      if (statementSelections.length > 1) {
+        details.statementAllocations = statementSelections;
+      }
+    } else if (statementMonth) {
+      finalStatementMonth = parseInt(statementMonth, 10);
+      finalStatementYear = statementYear ? parseInt(statementYear, 10) : undefined;
+    }
+
     const submissionData: Record<string, unknown> = {
       ...data,
       details: Object.keys(details).length > 0 ? details : null,
       status: category === "adjustment" ? "cleared" : data.status,
-      statementMonth: statementMonth ? parseInt(statementMonth, 10) : undefined,
-      statementYear: statementYear ? parseInt(statementYear, 10) : undefined,
+      statementMonth: finalStatementMonth,
+      statementYear: finalStatementYear,
       allocations: filteredAllocations.length > 0 ? filteredAllocations : undefined,
     };
     
@@ -736,36 +753,17 @@ function EAPaymentsContent() {
                     </>
                   )}
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm font-medium leading-none">Statement Month</label>
-                      <Select value={statementMonth} onValueChange={setStatementMonth}>
-                        <SelectTrigger className="mt-2" data-testid="select-statement-month">
-                          <SelectValue placeholder="Select month" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {MONTH_NAMES.map((name, idx) => (
-                            <SelectItem key={idx + 1} value={String(idx + 1)}>
-                              {name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium leading-none">Statement Year</label>
-                      <Input
-                        type="number"
-                        min="2000"
-                        max="2099"
-                        placeholder="e.g. 2026"
-                        className="mt-2"
-                        data-testid="input-statement-year"
-                        value={statementYear}
-                        onChange={(e) => setStatementYear(e.target.value)}
-                      />
-                    </div>
-                  </div>
+                  <StatementPicker
+                    eaId={id || null}
+                    currencyCode={currencyCode}
+                    paymentAmount={form.watch("amount") || "0"}
+                    selections={statementSelections}
+                    onSelectionsChange={setStatementSelections}
+                    manualMonth={statementMonth}
+                    manualYear={statementYear}
+                    onManualMonthChange={setStatementMonth}
+                    onManualYearChange={setStatementYear}
+                  />
 
                   <div>
                     <div className="flex items-center justify-between">
