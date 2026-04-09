@@ -91,7 +91,34 @@ export function StatementPicker({
     return (
       <div className="space-y-2">
         <label className="text-sm font-medium">Statement Period</label>
-        <p className="text-sm text-muted-foreground">Select a participant first to see available statements.</p>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Month</label>
+            <Select value={manualMonth} onValueChange={onManualMonthChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Month (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                {MONTH_NAMES.map((name, idx) => (
+                  <SelectItem key={idx + 1} value={String(idx + 1)}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Year</label>
+            <Input
+              type="number"
+              min="2000"
+              max="2099"
+              placeholder="Year (optional)"
+              value={manualYear}
+              onChange={(e) => onManualYearChange(e.target.value)}
+            />
+          </div>
+        </div>
       </div>
     );
   }

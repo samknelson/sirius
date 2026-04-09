@@ -263,12 +263,41 @@ function EAPaymentsContent() {
     let finalStatementMonth: number | undefined;
     let finalStatementYear: number | undefined;
 
-    if (statementSelections.length > 0) {
+    if (statementSelections.length > 1) {
+      const validSelections = statementSelections.filter(
+        (s) => s.amount && parseFloat(s.amount) > 0
+      );
+      if (validSelections.length === 0) {
+        toast({
+          title: "Statement allocation required",
+          description: "Please enter an amount for each selected statement period.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const stmtTotal = validSelections.reduce(
+        (sum, s) => sum + (parseFloat(s.amount || "0") || 0),
+        0
+      );
+      const paymentAmount = parseFloat(data.amount) || 0;
+      if (Math.abs(paymentAmount - stmtTotal) > 0.01) {
+        toast({
+          title: "Statement allocation mismatch",
+          description: "Statement allocation amounts must equal the payment amount.",
+          variant: "destructive",
+        });
+        return;
+      }
+      finalStatementMonth = validSelections[0].month;
+      finalStatementYear = validSelections[0].year;
+      details.statementAllocations = validSelections.map((s) => ({
+        month: s.month,
+        year: s.year,
+        amount: String(parseFloat(s.amount || "0").toFixed(2)),
+      }));
+    } else if (statementSelections.length === 1) {
       finalStatementMonth = statementSelections[0].month;
       finalStatementYear = statementSelections[0].year;
-      if (statementSelections.length > 1) {
-        details.statementAllocations = statementSelections;
-      }
     } else if (statementMonth) {
       finalStatementMonth = parseInt(statementMonth, 10);
       finalStatementYear = statementYear ? parseInt(statementYear, 10) : undefined;
