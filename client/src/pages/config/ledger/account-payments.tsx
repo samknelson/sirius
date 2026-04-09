@@ -189,7 +189,7 @@ function AccountPaymentsContent() {
     setAdjustmentUser("");
     setDateEntered("");
     setEffectiveDate("");
-    setParticipantBoxes([{ ...EMPTY_PARTICIPANT_BOX }]);
+    setParticipantBoxes([{ ...EMPTY_PARTICIPANT_BOX, amount: "0.00" }]);
     form.reset({
       status: "draft",
       allocated: false,
@@ -368,9 +368,10 @@ function AccountPaymentsContent() {
     const primaryEaId = primaryBox.eaId;
     const primaryStmt = getStatementInfoFromBox(primaryBox);
 
-    const allocations = participantBoxes.length > 1
-      ? participantBoxes.map((b) => ({ ledgerEaId: b.eaId, amount: b.amount }))
-      : undefined;
+    const allocations = participantBoxes.map((b) => ({
+      ledgerEaId: b.eaId,
+      amount: b.amount,
+    }));
 
     if (participantBoxes.length > 1) {
       const participantStatements: Record<string, unknown> = {};
@@ -905,56 +906,6 @@ function AccountPaymentsContent() {
                       </>
                     )}
 
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium">Participant Allocation</label>
-                        {participantBoxes.length > 1 && (() => {
-                          const totalAllocated = participantBoxes.reduce(
-                            (sum, b) => sum + (parseFloat(b.amount) || 0),
-                            0
-                          );
-                          const paymentAmount = parseFloat(form.watch("amount")) || 0;
-                          const diff = paymentAmount - totalAllocated;
-                          return (
-                            <span className={`text-xs ${Math.abs(diff) > 0.01 ? "text-destructive font-medium" : "text-muted-foreground"}`}>
-                              {Math.abs(diff) < 0.01
-                                ? "Fully allocated"
-                                : `${diff > 0 ? "Under" : "Over"} by ${Math.abs(diff).toFixed(2)}`}
-                            </span>
-                          );
-                        })()}
-                      </div>
-
-                      {participantBoxes.map((box, idx) => (
-                        <ParticipantAllocationBox
-                          key={idx}
-                          state={box}
-                          onChange={(updated) => updateParticipantBox(idx, updated)}
-                          onRemove={participantBoxes.length > 1 ? () => removeParticipantBox(idx) : undefined}
-                          eaOptions={accountEAs}
-                          currencyCode={accountCurrencyCode}
-                          index={idx}
-                          usedEaIds={participantBoxes
-                            .filter((_, i) => i !== idx)
-                            .map((b) => b.eaId)
-                            .filter(Boolean)}
-                        />
-                      ))}
-
-                      {accountEAs.length > 1 && participantBoxes.length < accountEAs.length && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={addParticipantBox}
-                          className="w-full"
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add Another Participant
-                        </Button>
-                      )}
-                    </div>
-
                     <FormField
                       control={form.control}
                       name="dateReceived"
@@ -1008,6 +959,56 @@ function AccountPaymentsContent() {
                         </FormItem>
                       )}
                     />
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium">Participant Allocation</label>
+                        {participantBoxes.length > 1 && (() => {
+                          const totalAllocated = participantBoxes.reduce(
+                            (sum, b) => sum + (parseFloat(b.amount) || 0),
+                            0
+                          );
+                          const paymentAmount = parseFloat(form.watch("amount")) || 0;
+                          const diff = paymentAmount - totalAllocated;
+                          return (
+                            <span className={`text-xs ${Math.abs(diff) > 0.01 ? "text-destructive font-medium" : "text-muted-foreground"}`}>
+                              {Math.abs(diff) < 0.01
+                                ? "Fully allocated"
+                                : `${diff > 0 ? "Under" : "Over"} by ${Math.abs(diff).toFixed(2)}`}
+                            </span>
+                          );
+                        })()}
+                      </div>
+
+                      {participantBoxes.map((box, idx) => (
+                        <ParticipantAllocationBox
+                          key={idx}
+                          state={box}
+                          onChange={(updated) => updateParticipantBox(idx, updated)}
+                          onRemove={participantBoxes.length > 1 ? () => removeParticipantBox(idx) : undefined}
+                          eaOptions={accountEAs}
+                          currencyCode={accountCurrencyCode}
+                          index={idx}
+                          usedEaIds={participantBoxes
+                            .filter((_, i) => i !== idx)
+                            .map((b) => b.eaId)
+                            .filter(Boolean)}
+                        />
+                      ))}
+
+                      {accountEAs.length > 1 && participantBoxes.length < accountEAs.length && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={addParticipantBox}
+                          className="w-full"
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Another Participant
+                        </Button>
+                      )}
+                    </div>
 
                     <div className="flex justify-end gap-2 pt-4">
                       <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); resetCreateForm(); }}>
