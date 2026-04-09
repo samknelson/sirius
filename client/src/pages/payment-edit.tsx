@@ -730,6 +730,25 @@ function PaymentEditContent() {
               )}
             />
 
+            <FormField
+              control={form.control}
+              name="allocated"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      data-testid="checkbox-allocated"
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel>Allocated</FormLabel>
+                  </div>
+                </FormItem>
+              )}
+            />
+
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium">Participant Allocation</label>
@@ -779,25 +798,6 @@ function PaymentEditContent() {
                 </Button>
               )}
             </div>
-
-            <FormField
-              control={form.control}
-              name="allocated"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0">
-                  <FormControl>
-                    <Checkbox
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                      data-testid="checkbox-allocated"
-                    />
-                  </FormControl>
-                  <div className="space-y-1 leading-none">
-                    <FormLabel>Allocated</FormLabel>
-                  </div>
-                </FormItem>
-              )}
-            />
 
             <div className="flex gap-2">
               <Button
