@@ -56,7 +56,7 @@ export function StatementPicker({
   const [multiMode, setMultiMode] = useState(false);
   const prevEaIdRef = useRef<string | null>(eaId);
 
-  const { data: invoices, isLoading, isError, error } = useQuery<InvoiceSummary[]>({
+  const { data: invoices, isLoading, isError } = useQuery<InvoiceSummary[]>({
     queryKey: ["/api/ledger/ea", eaId, "invoices"],
     queryFn: async () => {
       return await apiRequest("GET", `/api/ledger/ea/${eaId}/invoices`);
