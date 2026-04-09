@@ -334,7 +334,7 @@ export function StatementPicker({
                       {MONTH_NAMES[inv.month - 1]} {inv.year}
                     </td>
                     <td className="p-2 text-right tabular-nums">
-                      {formatAmount(parseFloat(inv.invoiceBalance), currencyCode)}
+                      {formatAmount(parseFloat(inv.totalAmount), currencyCode)}
                     </td>
                     <td className="p-2 text-right tabular-nums">
                       <span
