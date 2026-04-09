@@ -55,12 +55,9 @@ interface RowDef {
   type: RowType;
   amountField?: keyof MonthColumn;
   detailField?: keyof MonthColumn;
-  incomingValue?: "incomingBalance";
-  currentValue?: "currentBalance";
 }
 
 const ROW_DEFS: RowDef[] = [
-  { key: "incomingBalance", label: "Incoming Balance", type: "summary", amountField: "incomingBalance", incomingValue: "incomingBalance" },
   { key: "charges", label: "Charges", type: "amount", amountField: "charges" },
   { key: "chargeDetail", label: "", type: "detail", detailField: "chargeDetail" },
   { key: "adjustments", label: "Adjustments", type: "amount", amountField: "adjustments" },
@@ -69,8 +66,8 @@ const ROW_DEFS: RowDef[] = [
   { key: "interestPenaltyDetail", label: "", type: "detail", detailField: "interestPenaltyDetail" },
   { key: "paymentsCredited", label: "Payments Credited", type: "amount", amountField: "paymentsCredited" },
   { key: "paymentDetail", label: "", type: "detail", detailField: "paymentDetail" },
-  { key: "unpaidStatementAmount", label: "Unpaid Amount", type: "summary", amountField: "unpaidStatementAmount" },
-  { key: "statementBalance", label: "Statement Balance", type: "summary", amountField: "statementBalance", currentValue: "currentBalance" },
+  { key: "unpaidStatementAmount", label: "Unpaid Statement Amount", type: "summary", amountField: "unpaidStatementAmount" },
+  { key: "statementBalance", label: "Statement Balance", type: "summary", amountField: "statementBalance" },
 ];
 
 function EASummaryContent() {
@@ -109,6 +106,7 @@ function EASummaryContent() {
   }
 
   const months = data.months;
+  const lastMonth = months[months.length - 1];
   const formatAmount = createAmountFormatter(data.currencyCode);
 
   return (
@@ -121,7 +119,7 @@ function EASummaryContent() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="text-left py-3 px-4 font-medium text-muted-foreground sticky left-0 bg-muted/50 min-w-[180px]">
+                <th className="text-left py-3 px-4 font-medium text-muted-foreground sticky left-0 bg-muted/50 min-w-[200px]">
                 </th>
                 <th className="text-right py-3 px-4 font-medium text-muted-foreground min-w-[120px]">
                   Incoming
@@ -145,9 +143,9 @@ function EASummaryContent() {
                 const isDetail = row.type === "detail";
                 const isTopBorder = row.key === "unpaidStatementAmount";
                 const isBottomRow = row.key === "statementBalance";
-                const isFirstRow = row.key === "incomingBalance";
 
                 if (isDetail) {
+                  const lastDetail = row.detailField ? (lastMonth[row.detailField] as string) : "";
                   return (
                     <tr key={row.key} className="border-b border-border/30">
                       <td className="py-1 px-4 sticky left-0 bg-background text-xs text-muted-foreground italic">
@@ -162,24 +160,36 @@ function EASummaryContent() {
                           </td>
                         );
                       })}
-                      <td className="py-1 px-4"></td>
+                      <td className="py-1 px-4 text-right text-xs text-muted-foreground italic">
+                        {lastDetail}
+                      </td>
                     </tr>
                   );
                 }
+
+                const incomingCellValue = row.key === "statementBalance"
+                  ? formatAmount(data.incomingBalance)
+                  : "";
+
+                const currentCellValue = row.key === "statementBalance"
+                  ? formatAmount(data.currentBalance)
+                  : row.amountField && lastMonth
+                    ? formatAmount(lastMonth[row.amountField] as string)
+                    : "";
 
                 return (
                   <tr
                     key={row.key}
                     className={`
                       ${isTopBorder ? "border-t-2 border-border" : "border-b border-border/50"}
-                      ${isBottomRow || isFirstRow ? "bg-muted/30" : ""}
+                      ${isBottomRow ? "bg-muted/30" : ""}
                     `}
                   >
-                    <td className={`py-2.5 px-4 sticky left-0 ${isBottomRow || isFirstRow ? "bg-muted/30" : "bg-background"} ${isSummary ? "font-semibold" : ""}`}>
+                    <td className={`py-2.5 px-4 sticky left-0 ${isBottomRow ? "bg-muted/30" : "bg-background"} ${isSummary ? "font-semibold" : ""}`}>
                       {row.label}
                     </td>
                     <td className={`py-2.5 px-4 text-right ${isSummary ? "font-semibold" : ""}`}>
-                      {row.incomingValue ? formatAmount(data[row.incomingValue]) : ""}
+                      {incomingCellValue}
                     </td>
                     {months.map((m) => {
                       const value = row.amountField ? (m[row.amountField] as string) : "0.00";
@@ -194,7 +204,7 @@ function EASummaryContent() {
                       );
                     })}
                     <td className={`py-2.5 px-4 text-right ${isSummary ? "font-semibold" : ""}`}>
-                      {row.currentValue ? formatAmount(data[row.currentValue]) : ""}
+                      {currentCellValue}
                     </td>
                   </tr>
                 );
