@@ -264,19 +264,19 @@ function EAPaymentsContent() {
     let finalStatementYear: number | undefined;
 
     if (statementSelections.length > 1) {
-      const validSelections = statementSelections.filter(
-        (s) => s.amount && parseFloat(s.amount) > 0
+      const missingAmounts = statementSelections.some(
+        (s) => !s.amount || isNaN(parseFloat(s.amount)) || parseFloat(s.amount) <= 0
       );
-      if (validSelections.length === 0) {
+      if (missingAmounts) {
         toast({
           title: "Statement allocation required",
-          description: "Please enter an amount for each selected statement period.",
+          description: "Please enter a valid amount for every selected statement period.",
           variant: "destructive",
         });
         return;
       }
-      const stmtTotal = validSelections.reduce(
-        (sum, s) => sum + (parseFloat(s.amount || "0") || 0),
+      const stmtTotal = statementSelections.reduce(
+        (sum, s) => sum + parseFloat(s.amount || "0"),
         0
       );
       const paymentAmount = parseFloat(data.amount) || 0;
@@ -288,12 +288,12 @@ function EAPaymentsContent() {
         });
         return;
       }
-      finalStatementMonth = validSelections[0].month;
-      finalStatementYear = validSelections[0].year;
-      details.statementAllocations = validSelections.map((s) => ({
+      finalStatementMonth = statementSelections[0].month;
+      finalStatementYear = statementSelections[0].year;
+      details.statementAllocations = statementSelections.map((s) => ({
         month: s.month,
         year: s.year,
-        amount: String(parseFloat(s.amount || "0").toFixed(2)),
+        amount: String(parseFloat(s.amount!).toFixed(2)),
       }));
     } else if (statementSelections.length === 1) {
       finalStatementMonth = statementSelections[0].month;

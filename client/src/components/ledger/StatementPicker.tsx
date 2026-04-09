@@ -359,8 +359,12 @@ export function StatementPicker({
                             type="number"
                             step="0.01"
                             min="0"
-                            placeholder="0.00"
-                            className="h-7 w-28 text-right text-sm"
+                            placeholder="Amount required"
+                            className={`h-7 w-28 text-right text-sm ${
+                              sel && (!sel.amount || parseFloat(sel.amount) <= 0)
+                                ? "border-red-400 focus-visible:ring-red-400"
+                                : ""
+                            }`}
                             value={sel?.amount || ""}
                             onChange={(e) =>
                               updateAmount(inv.month, inv.year, e.target.value)
