@@ -266,19 +266,16 @@ function AccountPaymentsContent() {
   };
 
   const onCreateSubmit = form.handleSubmit((data) => {
-    const filledBoxes = participantBoxes.filter((b) => b.eaId);
-
-    if (filledBoxes.length === 0) {
-      toast({
-        title: "Participant required",
-        description: "Please select at least one participant for this payment.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    for (let i = 0; i < filledBoxes.length; i++) {
-      const box = filledBoxes[i];
+    for (let i = 0; i < participantBoxes.length; i++) {
+      const box = participantBoxes[i];
+      if (!box.eaId) {
+        toast({
+          title: "Participant required",
+          description: `Please select a participant for box ${i + 1}.`,
+          variant: "destructive",
+        });
+        return;
+      }
       const amt = parseFloat(box.amount) || 0;
       if (amt <= 0) {
         toast({
@@ -316,20 +313,18 @@ function AccountPaymentsContent() {
       }
     }
 
-    if (filledBoxes.length > 1) {
-      const totalAllocated = filledBoxes.reduce(
-        (sum, b) => sum + (parseFloat(b.amount) || 0),
-        0
-      );
-      const paymentAmount = parseFloat(data.amount) || 0;
-      if (Math.abs(paymentAmount - totalAllocated) > 0.01) {
-        toast({
-          title: "Allocation mismatch",
-          description: "Participant allocation amounts must equal the payment amount.",
-          variant: "destructive",
-        });
-        return;
-      }
+    const paymentAmount = parseFloat(data.amount) || 0;
+    const totalAllocated = participantBoxes.reduce(
+      (sum, b) => sum + (parseFloat(b.amount) || 0),
+      0
+    );
+    if (Math.abs(paymentAmount - totalAllocated) > 0.01) {
+      toast({
+        title: "Allocation mismatch",
+        description: "Participant allocation amounts must equal the payment amount.",
+        variant: "destructive",
+      });
+      return;
     }
 
     const existingDetails = (data.details || {}) as Record<string, unknown>;
@@ -369,17 +364,17 @@ function AccountPaymentsContent() {
       delete details.checkTransactionNumber;
     }
 
-    const primaryBox = filledBoxes[0];
+    const primaryBox = participantBoxes[0];
     const primaryEaId = primaryBox.eaId;
     const primaryStmt = getStatementInfoFromBox(primaryBox);
 
-    const allocations = filledBoxes.length > 1
-      ? filledBoxes.map((b) => ({ ledgerEaId: b.eaId, amount: b.amount }))
+    const allocations = participantBoxes.length > 1
+      ? participantBoxes.map((b) => ({ ledgerEaId: b.eaId, amount: b.amount }))
       : undefined;
 
-    if (filledBoxes.length > 1) {
+    if (participantBoxes.length > 1) {
       const participantStatements: Record<string, unknown> = {};
-      for (const box of filledBoxes) {
+      for (const box of participantBoxes) {
         const stmtInfo = getStatementInfoFromBox(box);
         if (stmtInfo.month || stmtInfo.stmtAllocations) {
           participantStatements[box.eaId] = {
