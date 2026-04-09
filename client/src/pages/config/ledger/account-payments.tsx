@@ -14,7 +14,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import type { LedgerPaymentWithEntity, LedgerPaymentType } from "@shared/schema";
 import { insertLedgerPaymentSchema } from "@shared/schema";
-import { Download, ArrowUpDown, Filter, X, Plus, Trash2 } from "lucide-react";
+import { Download, ArrowUpDown, Filter, X, Plus } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
@@ -23,13 +23,17 @@ import { z } from "zod";
 import { stringify } from "csv-stringify/browser/esm/sync";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/contexts/AuthContext";
-import { StatementPicker, type StatementSelection } from "@/components/ledger/StatementPicker";
+import { type StatementSelection } from "@/components/ledger/StatementPicker";
+import { ParticipantAllocationBox, type ParticipantBoxState } from "@/components/ledger/ParticipantAllocationBox";
 
 type PaymentCategory = "financial" | "adjustment";
 
-type AllocationRow = {
-  ledgerEaId: string;
-  amount: string;
+const EMPTY_PARTICIPANT_BOX: ParticipantBoxState = {
+  eaId: "",
+  amount: "",
+  statementSelections: [],
+  manualMonth: "",
+  manualYear: "",
 };
 
 interface AccountParticipant {
@@ -39,11 +43,6 @@ interface AccountParticipant {
   entityName: string | null;
   totalBalance: number;
 }
-
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
 
 type EAListItem = {
   id: string;
@@ -74,16 +73,12 @@ function AccountPaymentsContent() {
   const { user } = useAuth();
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedEaId, setSelectedEaId] = useState<string>("");
   const [merchant, setMerchant] = useState("");
   const [checkTransactionNumber, setCheckTransactionNumber] = useState("");
   const [adjustmentUser, setAdjustmentUser] = useState("");
   const [dateEntered, setDateEntered] = useState("");
   const [effectiveDate, setEffectiveDate] = useState("");
-  const [statementMonth, setStatementMonth] = useState<string>("");
-  const [statementYear, setStatementYear] = useState<string>("");
-  const [statementSelections, setStatementSelections] = useState<StatementSelection[]>([]);
-  const [allocations, setAllocations] = useState<AllocationRow[]>([]);
+  const [participantBoxes, setParticipantBoxes] = useState<ParticipantBoxState[]>([{ ...EMPTY_PARTICIPANT_BOX }]);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -189,16 +184,12 @@ function AccountPaymentsContent() {
   }, [dialogOpen, category, user]);
 
   const resetCreateForm = () => {
-    setSelectedEaId("");
     setMerchant("");
     setCheckTransactionNumber("");
     setAdjustmentUser("");
     setDateEntered("");
     setEffectiveDate("");
-    setStatementMonth("");
-    setStatementYear("");
-    setStatementSelections([]);
-    setAllocations([]);
+    setParticipantBoxes([{ ...EMPTY_PARTICIPANT_BOX }]);
     form.reset({
       status: "draft",
       allocated: false,
@@ -235,14 +226,110 @@ function AccountPaymentsContent() {
     },
   });
 
+  const updateParticipantBox = (index: number, updated: ParticipantBoxState) => {
+    setParticipantBoxes((prev) => prev.map((b, i) => (i === index ? updated : b)));
+  };
+
+  const removeParticipantBox = (index: number) => {
+    setParticipantBoxes((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const addParticipantBox = () => {
+    setParticipantBoxes((prev) => [...prev, { ...EMPTY_PARTICIPANT_BOX }]);
+  };
+
+  const getStatementInfoFromBox = (box: ParticipantBoxState) => {
+    let month: number | undefined;
+    let year: number | undefined;
+    let stmtAllocations: StatementSelection[] | undefined;
+
+    if (box.statementSelections.length > 1) {
+      const sorted = [...box.statementSelections].sort(
+        (a, b) => a.year - b.year || a.month - b.month
+      );
+      month = sorted[0].month;
+      year = sorted[0].year;
+      stmtAllocations = sorted.map((s) => ({
+        month: s.month,
+        year: s.year,
+        amount: s.amount ? String(parseFloat(s.amount).toFixed(2)) : undefined,
+      }));
+    } else if (box.statementSelections.length === 1) {
+      month = box.statementSelections[0].month;
+      year = box.statementSelections[0].year;
+    } else if (box.manualMonth) {
+      month = parseInt(box.manualMonth, 10);
+      year = box.manualYear ? parseInt(box.manualYear, 10) : undefined;
+    }
+
+    return { month, year, stmtAllocations };
+  };
+
   const onCreateSubmit = form.handleSubmit((data) => {
-    if (!selectedEaId) {
+    const filledBoxes = participantBoxes.filter((b) => b.eaId);
+
+    if (filledBoxes.length === 0) {
       toast({
         title: "Participant required",
-        description: "Please select a participant for this payment.",
+        description: "Please select at least one participant for this payment.",
         variant: "destructive",
       });
       return;
+    }
+
+    for (let i = 0; i < filledBoxes.length; i++) {
+      const box = filledBoxes[i];
+      const amt = parseFloat(box.amount) || 0;
+      if (amt <= 0) {
+        toast({
+          title: "Amount required",
+          description: `Please enter a valid amount for participant ${i + 1}.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (box.statementSelections.length > 1) {
+        const missingAmounts = box.statementSelections.some(
+          (s) => !s.amount || isNaN(parseFloat(s.amount)) || parseFloat(s.amount) <= 0
+        );
+        if (missingAmounts) {
+          toast({
+            title: "Statement allocation required",
+            description: `Please enter a valid amount for every selected statement period (participant ${i + 1}).`,
+            variant: "destructive",
+          });
+          return;
+        }
+        const stmtTotal = box.statementSelections.reduce(
+          (sum, s) => sum + parseFloat(s.amount || "0"),
+          0
+        );
+        if (Math.abs(amt - stmtTotal) > 0.01) {
+          toast({
+            title: "Statement allocation mismatch",
+            description: `Statement amounts must equal the allocation amount for participant ${i + 1}.`,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+    }
+
+    if (filledBoxes.length > 1) {
+      const totalAllocated = filledBoxes.reduce(
+        (sum, b) => sum + (parseFloat(b.amount) || 0),
+        0
+      );
+      const paymentAmount = parseFloat(data.amount) || 0;
+      if (Math.abs(paymentAmount - totalAllocated) > 0.01) {
+        toast({
+          title: "Allocation mismatch",
+          description: "Participant allocation amounts must equal the payment amount.",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     const existingDetails = (data.details || {}) as Record<string, unknown>;
@@ -282,92 +369,33 @@ function AccountPaymentsContent() {
       delete details.checkTransactionNumber;
     }
 
-    const filteredAllocations = allocations.filter(a => a.ledgerEaId && a.amount);
-    const isMultiple = selectedEaId === "__multiple__";
+    const primaryBox = filledBoxes[0];
+    const primaryEaId = primaryBox.eaId;
+    const primaryStmt = getStatementInfoFromBox(primaryBox);
 
-    if (isMultiple) {
-      if (filteredAllocations.length === 0) {
-        toast({
-          title: "No allocations",
-          description: "Please add at least one allocation when using multiple participants.",
-          variant: "destructive",
-        });
-        return;
-      }
-      const total = filteredAllocations.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
-      const paymentAmount = parseFloat(data.amount) || 0;
-      if (Math.abs(paymentAmount - total) > 0.01) {
-        toast({
-          title: "Allocation mismatch",
-          description: "Allocation amounts must equal the payment amount.",
-          variant: "destructive",
-        });
-        return;
-      }
-    } else if (filteredAllocations.length > 0) {
-      const total = filteredAllocations.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
-      const paymentAmount = parseFloat(data.amount) || 0;
-      if (Math.abs(paymentAmount - total) > 0.01) {
-        toast({
-          title: "Allocation mismatch",
-          description: "Allocation amounts must equal the payment amount.",
-          variant: "destructive",
-        });
-        return;
-      }
-    }
+    const allocations = filledBoxes.length > 1
+      ? filledBoxes.map((b) => ({ ledgerEaId: b.eaId, amount: b.amount }))
+      : undefined;
 
-    const primaryEaId = isMultiple ? filteredAllocations[0].ledgerEaId : selectedEaId;
-
-    let finalStatementMonth: number | undefined;
-    let finalStatementYear: number | undefined;
-    let statementAllocationsForDetails: StatementSelection[] | undefined;
-
-    if (statementSelections.length > 1) {
-      const missingAmounts = statementSelections.some(
-        (s) => !s.amount || isNaN(parseFloat(s.amount)) || parseFloat(s.amount) <= 0
-      );
-      if (missingAmounts) {
-        toast({
-          title: "Statement allocation required",
-          description: "Please enter a valid amount for every selected statement period.",
-          variant: "destructive",
-        });
-        return;
+    if (filledBoxes.length > 1) {
+      const participantStatements: Record<string, unknown> = {};
+      for (const box of filledBoxes) {
+        const stmtInfo = getStatementInfoFromBox(box);
+        if (stmtInfo.month || stmtInfo.stmtAllocations) {
+          participantStatements[box.eaId] = {
+            statementMonth: stmtInfo.month,
+            statementYear: stmtInfo.year,
+            ...(stmtInfo.stmtAllocations
+              ? { statementAllocations: stmtInfo.stmtAllocations }
+              : {}),
+          };
+        }
       }
-      const stmtTotal = statementSelections.reduce(
-        (sum, s) => sum + parseFloat(s.amount || "0"),
-        0
-      );
-      const paymentAmount = parseFloat(data.amount) || 0;
-      if (Math.abs(paymentAmount - stmtTotal) > 0.01) {
-        toast({
-          title: "Statement allocation mismatch",
-          description: "Statement allocation amounts must equal the payment amount.",
-          variant: "destructive",
-        });
-        return;
+      if (Object.keys(participantStatements).length > 0) {
+        details.participantStatementAllocations = participantStatements;
       }
-      const sorted = [...statementSelections].sort(
-        (a, b) => a.year - b.year || a.month - b.month
-      );
-      finalStatementMonth = sorted[0].month;
-      finalStatementYear = sorted[0].year;
-      statementAllocationsForDetails = sorted.map((s) => ({
-        month: s.month,
-        year: s.year,
-        amount: String(parseFloat(s.amount!).toFixed(2)),
-      }));
-    } else if (statementSelections.length === 1) {
-      finalStatementMonth = statementSelections[0].month;
-      finalStatementYear = statementSelections[0].year;
-    } else if (statementMonth) {
-      finalStatementMonth = parseInt(statementMonth, 10);
-      finalStatementYear = statementYear ? parseInt(statementYear, 10) : undefined;
-    }
-
-    if (statementAllocationsForDetails) {
-      details.statementAllocations = statementAllocationsForDetails;
+    } else if (primaryStmt.stmtAllocations) {
+      details.statementAllocations = primaryStmt.stmtAllocations;
     }
 
     const submissionData: Record<string, unknown> = {
@@ -375,9 +403,9 @@ function AccountPaymentsContent() {
       ledgerEaId: primaryEaId,
       details: Object.keys(details).length > 0 ? details : null,
       status: category === "adjustment" ? "cleared" : data.status,
-      statementMonth: finalStatementMonth,
-      statementYear: finalStatementYear,
-      allocations: filteredAllocations.length > 0 ? filteredAllocations : undefined,
+      statementMonth: primaryStmt.month,
+      statementYear: primaryStmt.year,
+      allocations,
     };
 
     createPaymentMutation.mutate(submissionData);
@@ -748,114 +776,6 @@ function AccountPaymentsContent() {
                 </DialogHeader>
                 <Form {...form}>
                   <form onSubmit={onCreateSubmit} className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Participant</label>
-                      <Select value={selectedEaId} onValueChange={(val) => {
-                        setSelectedEaId(val);
-                        if (val === "__multiple__") {
-                          form.setValue("ledgerEaId", "");
-                          if (allocations.length === 0) {
-                            setAllocations([{ ledgerEaId: "", amount: "" }]);
-                          }
-                        } else {
-                          form.setValue("ledgerEaId", val);
-                          setAllocations([]);
-                        }
-                      }}>
-                        <SelectTrigger data-testid="select-participant">
-                          <SelectValue placeholder="Select a participant..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {accountEAs.map((ea) => (
-                            <SelectItem key={ea.id} value={ea.id}>
-                              {ea.entityName || ea.entityId} ({ea.entityType})
-                            </SelectItem>
-                          ))}
-                          {accountEAs.length > 1 && (
-                            <SelectItem value="__multiple__">Multiple participants...</SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
-                      {selectedEaId === "__multiple__" && (
-                        <div className="space-y-2 pl-4 border-l-2 border-muted mt-2">
-                          <div className="flex items-center justify-between">
-                            <p className="text-xs text-muted-foreground">
-                              Split this payment across multiple participant accounts. Totals must equal the payment amount.
-                            </p>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setAllocations([...allocations, { ledgerEaId: "", amount: "" }])}
-                            >
-                              <Plus className="h-3 w-3 mr-1" />
-                              Add
-                            </Button>
-                          </div>
-                          {allocations.map((alloc, idx) => (
-                            <div key={idx} className="flex gap-2 items-end">
-                              <div className="flex-1 space-y-1">
-                                <label className="text-xs text-muted-foreground">Account</label>
-                                <Select
-                                  value={alloc.ledgerEaId}
-                                  onValueChange={(val) => {
-                                    const updated = [...allocations];
-                                    updated[idx] = { ...updated[idx], ledgerEaId: val };
-                                    setAllocations(updated);
-                                  }}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select account..." />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {accountEAs.map((ea) => (
-                                      <SelectItem key={ea.id} value={ea.id}>
-                                        {ea.entityName || ea.entityId} ({ea.entityType})
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="w-32 space-y-1">
-                                <label className="text-xs text-muted-foreground">Amount</label>
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  placeholder="0.00"
-                                  value={alloc.amount}
-                                  onChange={(e) => {
-                                    const updated = [...allocations];
-                                    updated[idx] = { ...updated[idx], amount: e.target.value };
-                                    setAllocations(updated);
-                                  }}
-                                />
-                              </div>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setAllocations(allocations.filter((_, i) => i !== idx))}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          ))}
-                          {allocations.length > 0 && (() => {
-                            const total = allocations.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
-                            const paymentAmount = parseFloat(form.getValues("amount")) || 0;
-                            const diff = paymentAmount - total;
-                            return (
-                              <p className={`text-xs ${Math.abs(diff) > 0.01 ? "text-destructive" : "text-muted-foreground"}`}>
-                                Allocated: {total.toFixed(2)} / {paymentAmount.toFixed(2)}
-                                {Math.abs(diff) > 0.01 && ` (${diff > 0 ? "under" : "over"} by ${Math.abs(diff).toFixed(2)})`}
-                              </p>
-                            );
-                          })()}
-                        </div>
-                      )}
-                    </div>
-
                     <FormField
                       control={form.control}
                       name="paymentType"
@@ -895,6 +815,15 @@ function AccountPaymentsContent() {
                               placeholder="0.00"
                               data-testid="input-amount"
                               {...field}
+                              onChange={(e) => {
+                                field.onChange(e);
+                                if (participantBoxes.length === 1) {
+                                  updateParticipantBox(0, {
+                                    ...participantBoxes[0],
+                                    amount: e.target.value,
+                                  });
+                                }
+                              }}
                             />
                           </FormControl>
                           <FormMessage />
@@ -981,17 +910,55 @@ function AccountPaymentsContent() {
                       </>
                     )}
 
-                    <StatementPicker
-                      eaId={selectedEaId && selectedEaId !== "__multiple__" ? selectedEaId : null}
-                      currencyCode={accountCurrencyCode}
-                      paymentAmount={form.watch("amount") || "0"}
-                      selections={statementSelections}
-                      onSelectionsChange={setStatementSelections}
-                      manualMonth={statementMonth}
-                      manualYear={statementYear}
-                      onManualMonthChange={setStatementMonth}
-                      onManualYearChange={setStatementYear}
-                    />
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium">Participant Allocation</label>
+                        {participantBoxes.length > 1 && (() => {
+                          const totalAllocated = participantBoxes.reduce(
+                            (sum, b) => sum + (parseFloat(b.amount) || 0),
+                            0
+                          );
+                          const paymentAmount = parseFloat(form.watch("amount")) || 0;
+                          const diff = paymentAmount - totalAllocated;
+                          return (
+                            <span className={`text-xs ${Math.abs(diff) > 0.01 ? "text-destructive font-medium" : "text-muted-foreground"}`}>
+                              {Math.abs(diff) < 0.01
+                                ? "Fully allocated"
+                                : `${diff > 0 ? "Under" : "Over"} by ${Math.abs(diff).toFixed(2)}`}
+                            </span>
+                          );
+                        })()}
+                      </div>
+
+                      {participantBoxes.map((box, idx) => (
+                        <ParticipantAllocationBox
+                          key={idx}
+                          state={box}
+                          onChange={(updated) => updateParticipantBox(idx, updated)}
+                          onRemove={participantBoxes.length > 1 ? () => removeParticipantBox(idx) : undefined}
+                          eaOptions={accountEAs}
+                          currencyCode={accountCurrencyCode}
+                          index={idx}
+                          usedEaIds={participantBoxes
+                            .filter((_, i) => i !== idx)
+                            .map((b) => b.eaId)
+                            .filter(Boolean)}
+                        />
+                      ))}
+
+                      {accountEAs.length > 1 && participantBoxes.length < accountEAs.length && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={addParticipantBox}
+                          className="w-full"
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Another Participant
+                        </Button>
+                      )}
+                    </div>
 
                     <FormField
                       control={form.control}
@@ -1047,12 +1014,14 @@ function AccountPaymentsContent() {
                       )}
                     />
 
-
                     <div className="flex justify-end gap-2 pt-4">
                       <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); resetCreateForm(); }}>
                         Cancel
                       </Button>
-                      <Button type="submit" disabled={createPaymentMutation.isPending || !selectedEaId}>
+                      <Button
+                        type="submit"
+                        disabled={createPaymentMutation.isPending || !participantBoxes.some((b) => b.eaId)}
+                      >
                         {createPaymentMutation.isPending ? "Creating..." : "Create Payment"}
                       </Button>
                     </div>
