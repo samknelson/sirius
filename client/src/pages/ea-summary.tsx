@@ -59,13 +59,13 @@ interface RowDef {
 
 const ROW_DEFS: RowDef[] = [
   { key: "charges", label: "Charges", type: "amount", amountField: "charges" },
-  { key: "chargeDetail", label: "", type: "detail", detailField: "chargeDetail" },
+  { key: "chargeDetail", label: "Charge Detail", type: "detail", detailField: "chargeDetail" },
   { key: "adjustments", label: "Adjustments", type: "amount", amountField: "adjustments" },
-  { key: "adjustmentDetail", label: "", type: "detail", detailField: "adjustmentDetail" },
+  { key: "adjustmentDetail", label: "Adjustment Detail", type: "detail", detailField: "adjustmentDetail" },
   { key: "interestPenalties", label: "Interest & Penalties", type: "amount", amountField: "interestPenalties" },
-  { key: "interestPenaltyDetail", label: "", type: "detail", detailField: "interestPenaltyDetail" },
+  { key: "interestPenaltyDetail", label: "I&P Detail", type: "detail", detailField: "interestPenaltyDetail" },
   { key: "paymentsCredited", label: "Payments Credited", type: "amount", amountField: "paymentsCredited" },
-  { key: "paymentDetail", label: "", type: "detail", detailField: "paymentDetail" },
+  { key: "paymentDetail", label: "Payment Detail", type: "detail", detailField: "paymentDetail" },
   { key: "unpaidStatementAmount", label: "Unpaid Statement Amount", type: "summary", amountField: "unpaidStatementAmount" },
   { key: "statementBalance", label: "Statement Balance", type: "summary", amountField: "statementBalance" },
 ];
