@@ -58,7 +58,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
 
     const paymentAmount = parseFloat(paymentContext.amount);
     const allocatedAmount = -paymentAmount;
-    const transactionDate = paymentContext.dateCleared || new Date();
+    const transactionDate = paymentContext.dateReceived || paymentContext.dateCleared || new Date();
     
     const description = `${currencyLabel} Payment: ${paymentTypeName}`;
 
