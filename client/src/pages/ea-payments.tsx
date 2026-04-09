@@ -3,97 +3,35 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { insertLedgerPaymentSchema, type LedgerPayment, type LedgerPaymentType } from "@shared/schema";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, DollarSign, Download, ArrowUpDown, Filter, X, ChevronDown, Trash2 } from "lucide-react";
+import { type LedgerPayment, type LedgerPaymentType } from "@shared/schema";
+import { Plus, DollarSign, Download, ArrowUpDown, Filter, X, ChevronDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import type { z } from "zod";
 import { stringify } from "csv-stringify/browser/esm/sync";
 import { formatAmount } from "@shared/currency";
-import { StatementPicker, type StatementSelection } from "@/components/ledger/StatementPicker";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
 
-type AllocationRow = {
-  ledgerEaId: string;
-  amount: string;
-};
-
-type EAListItem = {
-  id: string;
-  accountId: string;
-  entityType: string;
-  entityId: string;
-  entityName: string | null;
-  data: unknown;
-};
-
 const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
 
 type SortField = "amount" | "dateCreated" | "dateReceived" | "dateCleared";
 type SortDirection = "asc" | "desc";
-type PaymentCategory = "financial" | "adjustment";
-
-interface LedgerNotification {
-  type: "created" | "updated" | "deleted";
-  amount: string;
-  description: string;
-}
-
 function EAPaymentsContent() {
   const { id } = useParams<{ id: string }>();
   const { currencyCode, ea } = useEALayout();
-  const { user, hasPermission } = useAuth();
+  const { hasPermission } = useAuth();
   const isStaff = hasPermission('staff');
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [merchant, setMerchant] = useState("");
-  const [checkTransactionNumber, setCheckTransactionNumber] = useState("");
-  const [adjustmentUser, setAdjustmentUser] = useState("");
-  const [dateEntered, setDateEntered] = useState("");
-  const [effectiveDate, setEffectiveDate] = useState("");
-  const [statementMonth, setStatementMonth] = useState<string>("");
-  const [statementYear, setStatementYear] = useState<string>("");
-  const [statementSelections, setStatementSelections] = useState<StatementSelection[]>([]);
-  const [allocations, setAllocations] = useState<AllocationRow[]>([]);
   const { toast } = useToast();
-  
-  const getTodayString = () => new Date().toISOString().split('T')[0];
-  const getEffectiveUserName = () => {
-    if (!user) return "";
-    const parts = [user.firstName, user.lastName].filter(Boolean);
-    return parts.join(" ") || user.email || "";
-  };
-  
-  const showLedgerNotifications = (notifications: LedgerNotification[] | undefined) => {
-    if (!notifications || notifications.length === 0) return;
-    
-    for (const notification of notifications) {
-      const typeLabel = notification.type === "created" ? "Ledger Entry Created" :
-                        notification.type === "updated" ? "Ledger Entry Updated" :
-                        "Ledger Entry Deleted";
-      
-      toast({
-        title: typeLabel,
-        description: `${formatAmount(parseFloat(notification.amount), currencyCode)} - ${notification.description}`,
-      });
-    }
-  };
-  
+
   // Filter state
   const [showFilters, setShowFilters] = useState(false);
   const [filterPaymentType, setFilterPaymentType] = useState<string>("all");
@@ -120,203 +58,6 @@ function EAPaymentsContent() {
     queryKey: ["/api/ledger/payment-types"],
   });
 
-  const accountId = ea?.accountId;
-  const { data: allEAs = [] } = useQuery<EAListItem[]>({
-    queryKey: ["/api/ledger/ea", { accountId }],
-    queryFn: async () => {
-      return await apiRequest("GET", `/api/ledger/ea?accountId=${accountId}`);
-    },
-    enabled: isStaff && dialogOpen && !!accountId,
-  });
-
-  const form = useForm<z.infer<typeof insertLedgerPaymentSchema>>({
-    resolver: zodResolver(insertLedgerPaymentSchema),
-    defaultValues: {
-      status: "draft",
-      allocated: false,
-      amount: "0.00",
-      paymentType: paymentTypes[0]?.id || "",
-      ledgerEaId: id,
-      details: null,
-      dateReceived: null,
-      dateCleared: null,
-      memo: null,
-    },
-  });
-
-  const watchedPaymentType = form.watch("paymentType");
-  const selectedPaymentType = paymentTypes.find(pt => pt.id === watchedPaymentType);
-  const category: PaymentCategory = (selectedPaymentType?.category as PaymentCategory) || "financial";
-
-  useEffect(() => {
-    if (dialogOpen && category === "adjustment") {
-      if (!adjustmentUser) {
-        setAdjustmentUser(getEffectiveUserName());
-      }
-      if (!dateEntered) {
-        setDateEntered(getTodayString());
-      }
-      if (!effectiveDate) {
-        setEffectiveDate(getTodayString());
-      }
-    }
-  }, [dialogOpen, category, user]);
-
-  const createPaymentMutation = useMutation({
-    mutationFn: async (data: Record<string, unknown>) => {
-      return await apiRequest("POST", "/api/ledger/payments", data);
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/ledger/payments/ea", id] });
-      setDialogOpen(false);
-      setMerchant("");
-      setCheckTransactionNumber("");
-      setAdjustmentUser("");
-      setDateEntered("");
-      setEffectiveDate("");
-      setStatementMonth("");
-      setStatementYear("");
-      setStatementSelections([]);
-      setAllocations([]);
-      form.reset({
-        status: "draft",
-        allocated: false,
-        amount: "0.00",
-        paymentType: paymentTypes[0]?.id || "",
-        ledgerEaId: id,
-        details: null,
-        dateReceived: null,
-        dateCleared: null,
-        memo: null,
-      });
-      toast({
-        title: "Payment created",
-        description: "The payment has been created successfully.",
-      });
-      showLedgerNotifications(data?.ledgerNotifications);
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to create payment. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const onSubmit = form.handleSubmit((data) => {
-    const existingDetails = (data.details || {}) as Record<string, any>;
-    const details: any = { ...existingDetails };
-    
-    if (category === "financial") {
-      if (merchant) {
-        details.merchant = merchant;
-      } else {
-        delete details.merchant;
-      }
-      
-      if (checkTransactionNumber) {
-        details.checkTransactionNumber = checkTransactionNumber;
-      } else {
-        delete details.checkTransactionNumber;
-      }
-      delete details.adjustmentUser;
-      delete details.dateEntered;
-      delete details.effectiveDate;
-    } else {
-      if (adjustmentUser) {
-        details.adjustmentUser = adjustmentUser;
-      } else {
-        delete details.adjustmentUser;
-      }
-      
-      if (dateEntered) {
-        details.dateEntered = dateEntered;
-      } else {
-        delete details.dateEntered;
-      }
-      
-      if (effectiveDate) {
-        details.effectiveDate = effectiveDate;
-      } else {
-        delete details.effectiveDate;
-      }
-      delete details.merchant;
-      delete details.checkTransactionNumber;
-    }
-    
-    const filteredAllocations = allocations.filter(a => a.ledgerEaId && a.amount);
-
-    if (filteredAllocations.length > 0) {
-      const total = filteredAllocations.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
-      const paymentAmount = parseFloat(data.amount) || 0;
-      if (Math.abs(paymentAmount - total) > 0.01) {
-        toast({
-          title: "Allocation mismatch",
-          description: "Allocation amounts must equal the payment amount.",
-          variant: "destructive",
-        });
-        return;
-      }
-    }
-
-    let finalStatementMonth: number | undefined;
-    let finalStatementYear: number | undefined;
-
-    if (statementSelections.length > 1) {
-      const missingAmounts = statementSelections.some(
-        (s) => !s.amount || isNaN(parseFloat(s.amount)) || parseFloat(s.amount) <= 0
-      );
-      if (missingAmounts) {
-        toast({
-          title: "Statement allocation required",
-          description: "Please enter a valid amount for every selected statement period.",
-          variant: "destructive",
-        });
-        return;
-      }
-      const stmtTotal = statementSelections.reduce(
-        (sum, s) => sum + parseFloat(s.amount || "0"),
-        0
-      );
-      const paymentAmount = parseFloat(data.amount) || 0;
-      if (Math.abs(paymentAmount - stmtTotal) > 0.01) {
-        toast({
-          title: "Statement allocation mismatch",
-          description: "Statement allocation amounts must equal the payment amount.",
-          variant: "destructive",
-        });
-        return;
-      }
-      const sorted = [...statementSelections].sort(
-        (a, b) => a.year - b.year || a.month - b.month
-      );
-      finalStatementMonth = sorted[0].month;
-      finalStatementYear = sorted[0].year;
-      details.statementAllocations = sorted.map((s) => ({
-        month: s.month,
-        year: s.year,
-        amount: String(parseFloat(s.amount!).toFixed(2)),
-      }));
-    } else if (statementSelections.length === 1) {
-      finalStatementMonth = statementSelections[0].month;
-      finalStatementYear = statementSelections[0].year;
-    } else if (statementMonth) {
-      finalStatementMonth = parseInt(statementMonth, 10);
-      finalStatementYear = statementYear ? parseInt(statementYear, 10) : undefined;
-    }
-
-    const submissionData: Record<string, unknown> = {
-      ...data,
-      details: Object.keys(details).length > 0 ? details : null,
-      status: category === "adjustment" ? "cleared" : data.status,
-      statementMonth: finalStatementMonth,
-      statementYear: finalStatementYear,
-      allocations: filteredAllocations.length > 0 ? filteredAllocations : undefined,
-    };
-    
-    createPaymentMutation.mutate(submissionData);
-  });
 
   const getStatusBadgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
@@ -570,9 +311,8 @@ function EAPaymentsContent() {
     }
   };
 
-  const openDialogWithPaymentType = (paymentTypeId: string) => {
-    form.setValue("paymentType", paymentTypeId);
-    setDialogOpen(true);
+  const openCreatePage = (paymentTypeId: string) => {
+    window.open(`/ea/${id}/payments/new/${paymentTypeId}`, "_blank");
   };
 
   return (
@@ -625,7 +365,7 @@ function EAPaymentsContent() {
                     .map((type) => (
                     <DropdownMenuItem
                       key={type.id}
-                      onClick={() => openDialogWithPaymentType(type.id)}
+                      onClick={() => openCreatePage(type.id)}
                       data-testid={`menu-item-${type.id}`}
                     >
                       {type.name}
@@ -634,282 +374,6 @@ function EAPaymentsContent() {
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Add {selectedPaymentType?.name || "Payment"}</DialogTitle>
-                <DialogDescription>
-                  Create a new {selectedPaymentType?.name?.toLowerCase() || "payment"} record for this account entry
-                </DialogDescription>
-              </DialogHeader>
-              <Form {...form}>
-                <form onSubmit={onSubmit} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="amount"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Amount</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="0.00"
-                            data-testid="input-amount"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {category === "financial" ? (
-                    <>
-                      <FormField
-                        control={form.control}
-                        name="status"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Status</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                              <FormControl>
-                                <SelectTrigger data-testid="select-payment-status">
-                                  <SelectValue placeholder="Select status" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {paymentStatuses.map((status) => (
-                                  <SelectItem key={status} value={status} data-testid={`option-${status}`}>
-                                    {status.charAt(0).toUpperCase() + status.slice(1)}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="dateReceived"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Date Received</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="date"
-                                data-testid="input-date-received"
-                                value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
-                                onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <div>
-                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                          Merchant
-                        </label>
-                        <Input
-                          placeholder="Enter merchant name..."
-                          data-testid="input-merchant"
-                          value={merchant}
-                          onChange={(e) => setMerchant(e.target.value)}
-                          className="mt-2"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                          Check or Transaction Number
-                        </label>
-                        <Input
-                          placeholder="Enter check or transaction number..."
-                          data-testid="input-check-transaction-number"
-                          value={checkTransactionNumber}
-                          onChange={(e) => setCheckTransactionNumber(e.target.value)}
-                          className="mt-2"
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="p-3 bg-muted rounded-md">
-                        <p className="text-sm text-muted-foreground">
-                          Status: <span className="font-medium text-foreground">Cleared</span> (adjustments are always cleared)
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                          User Executing Adjustment
-                        </label>
-                        <Input
-                          placeholder="Enter user name..."
-                          data-testid="input-adjustment-user"
-                          value={adjustmentUser}
-                          onChange={(e) => setAdjustmentUser(e.target.value)}
-                          className="mt-2"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                          Date Entered
-                        </label>
-                        <Input
-                          type="date"
-                          data-testid="input-date-entered"
-                          value={dateEntered}
-                          onChange={(e) => setDateEntered(e.target.value)}
-                          className="mt-2"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                          Effective Date
-                        </label>
-                        <Input
-                          type="date"
-                          data-testid="input-effective-date"
-                          value={effectiveDate}
-                          onChange={(e) => setEffectiveDate(e.target.value)}
-                          className="mt-2"
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  <StatementPicker
-                    eaId={id || null}
-                    currencyCode={currencyCode}
-                    paymentAmount={form.watch("amount") || "0"}
-                    selections={statementSelections}
-                    onSelectionsChange={setStatementSelections}
-                    manualMonth={statementMonth}
-                    manualYear={statementYear}
-                    onManualMonthChange={setStatementMonth}
-                    onManualYearChange={setStatementYear}
-                  />
-
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <label className="text-sm font-medium leading-none">Payment Allocations</label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setAllocations([...allocations, { ledgerEaId: "", amount: "" }])}
-                        data-testid="button-add-allocation"
-                      >
-                        <Plus className="h-3 w-3 mr-1" />
-                        Add
-                      </Button>
-                    </div>
-                    {allocations.length > 0 && (
-                      <div className="mt-2 space-y-2">
-                        {allocations.map((alloc, idx) => (
-                          <div key={idx} className="flex gap-2 items-start">
-                            <Select
-                              value={alloc.ledgerEaId}
-                              onValueChange={(val) => {
-                                const updated = [...allocations];
-                                updated[idx] = { ...updated[idx], ledgerEaId: val };
-                                setAllocations(updated);
-                              }}
-                            >
-                              <SelectTrigger className="flex-1" data-testid={`select-allocation-ea-${idx}`}>
-                                <SelectValue placeholder="Select EA" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {allEAs.map((ea) => (
-                                  <SelectItem key={ea.id} value={ea.id}>
-                                    {ea.entityName || ea.entityId} ({ea.entityType})
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              placeholder="Amount"
-                              className="w-28"
-                              data-testid={`input-allocation-amount-${idx}`}
-                              value={alloc.amount}
-                              onChange={(e) => {
-                                const updated = [...allocations];
-                                updated[idx] = { ...updated[idx], amount: e.target.value };
-                                setAllocations(updated);
-                              }}
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setAllocations(allocations.filter((_, i) => i !== idx))}
-                              data-testid={`button-remove-allocation-${idx}`}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ))}
-                        {allocations.length > 0 && (() => {
-                          const total = allocations.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
-                          const paymentAmount = parseFloat(form.getValues("amount")) || 0;
-                          const diff = paymentAmount - total;
-                          return (
-                            <p className={`text-xs mt-1 ${Math.abs(diff) > 0.01 ? "text-destructive" : "text-muted-foreground"}`}>
-                              Allocated: {formatAmount(total, currencyCode)} / {formatAmount(paymentAmount, currencyCode)}
-                              {Math.abs(diff) > 0.01 && ` (${diff > 0 ? "under" : "over"} by ${formatAmount(Math.abs(diff), currencyCode)})`}
-                            </p>
-                          );
-                        })()}
-                      </div>
-                    )}
-                  </div>
-
-                  <FormField
-                    control={form.control}
-                    name="memo"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Memo</FormLabel>
-                        <FormControl>
-                          <Textarea
-                            placeholder="Add notes or description for this payment..."
-                            data-testid="input-memo"
-                            value={field.value || ''}
-                            onChange={field.onChange}
-                            rows={3}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <DialogFooter>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setDialogOpen(false)}
-                      data-testid="button-cancel"
-                    >
-                      Cancel
-                    </Button>
-                    <Button type="submit" disabled={createPaymentMutation.isPending} data-testid="button-submit">
-                      {createPaymentMutation.isPending ? "Creating..." : "Create Payment"}
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </Form>
-            </DialogContent>
-          </Dialog>
           </div>
         </div>
       </CardHeader>
