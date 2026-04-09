@@ -36,11 +36,15 @@ const SHORT_MONTH_NAMES = [
 function createAmountFormatter(currencyCode: string) {
   return (amount: string): string => {
     const num = parseFloat(amount);
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currencyCode,
-      minimumFractionDigits: 2,
-    }).format(num);
+    try {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: currencyCode,
+        minimumFractionDigits: 2,
+      }).format(num);
+    } catch {
+      return `${currencyCode} ${num.toFixed(2)}`;
+    }
   };
 }
 
