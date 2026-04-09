@@ -120,10 +120,10 @@ export const workerTabTree: HierarchicalTab[] = [
     id: 'comm', label: 'Comm', hrefTemplate: '/workers/{id}/comm/history', permission: 'staff',
     children: [
       { id: 'comm-history', label: 'History', hrefTemplate: '/workers/{id}/comm/history', permission: 'staff' },
-      { id: 'send-sms', label: 'Send SMS', hrefTemplate: '/workers/{id}/comm/send-sms', permission: 'workers.comm' },
-      { id: 'send-email', label: 'Send Email', hrefTemplate: '/workers/{id}/comm/send-email', permission: 'workers.comm' },
-      { id: 'send-postal', label: 'Send Postal', hrefTemplate: '/workers/{id}/comm/send-postal', permission: 'workers.comm' },
-      { id: 'send-inapp', label: 'Send In-App', hrefTemplate: '/workers/{id}/comm/send-inapp', permission: 'workers.comm' },
+      { id: 'send-sms', label: 'Send SMS', hrefTemplate: '/workers/{id}/comm/send-sms', permission: 'staff' },
+      { id: 'send-email', label: 'Send Email', hrefTemplate: '/workers/{id}/comm/send-email', permission: 'staff' },
+      { id: 'send-postal', label: 'Send Postal', hrefTemplate: '/workers/{id}/comm/send-postal', permission: 'staff' },
+      { id: 'send-inapp', label: 'Send In-App', hrefTemplate: '/workers/{id}/comm/send-inapp', permission: 'staff' },
     ]
   },
   { 
