@@ -1,11 +1,13 @@
 import { useMemo } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Home } from "lucide-react";
+import { Home, User, Building2, AlertCircle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { Role } from "@shared/schema";
 import { getAllPlugins } from "@/plugins/registry";
 import { PluginConfig } from "@/plugins/types";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 export default function Dashboard() {
   const { user, permissions, components } = useAuth();
@@ -51,6 +53,8 @@ export default function Dashboard() {
     enabled: policiesNeeded.length > 0 && !!user,
   });
   
+  const staffPolicyGranted = policyResults["staff"]?.allowed === true || permissions.includes("admin") || permissions.includes("staff");
+
   // Check for linked employers (for employer role users without staff access)
   const { data: myEmployers = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ["/api/my-employers"],
