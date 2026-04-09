@@ -362,6 +362,9 @@ export function registerLedgerEaRoutes(app: Express) {
 
       if (!await checkEaAccessInline(req, res, ea, 'ledger.ea.view')) return;
 
+      const account = await storage.ledger.accounts.get(ea.accountId);
+      const currencyCode = account?.currencyCode || "USD";
+
       const client = getClient();
 
       const entries = await client.select({
@@ -441,7 +444,6 @@ export function registerLedgerEaRoutes(app: Express) {
         chargeWorkerIds: Set<string>;
         adjustments: bigint;
         adjustmentEntryCount: number;
-        adjustmentWorkerIds: Set<string>;
         interestPenalties: bigint;
         paymentsCredited: bigint;
         paymentDetails: string[];
@@ -451,24 +453,34 @@ export function registerLedgerEaRoutes(app: Express) {
       const monthDataMap = new Map<string, MonthData>();
       const getKey = (month: number, year: number) => `${year}-${month}`;
 
+      const initMonthData = (): MonthData => ({
+        charges: BigInt(0),
+        chargeEntryCount: 0,
+        chargeWorkerIds: new Set(),
+        adjustments: BigInt(0),
+        adjustmentEntryCount: 0,
+        interestPenalties: BigInt(0),
+        paymentsCredited: BigInt(0),
+        paymentDetails: [],
+        allEntriesSum: BigInt(0),
+      });
+
       for (const period of periods) {
-        monthDataMap.set(getKey(period.month, period.year), {
-          charges: BigInt(0),
-          chargeEntryCount: 0,
-          chargeWorkerIds: new Set(),
-          adjustments: BigInt(0),
-          adjustmentEntryCount: 0,
-          adjustmentWorkerIds: new Set(),
-          interestPenalties: BigInt(0),
-          paymentsCredited: BigInt(0),
-          paymentDetails: [],
-          allEntriesSum: BigInt(0),
-        });
+        monthDataMap.set(getKey(period.month, period.year), initMonthData());
       }
+
+      const getOrCreateMonth = (month: number, year: number): MonthData => {
+        const key = getKey(month, year);
+        let data = monthDataMap.get(key);
+        if (!data) {
+          data = initMonthData();
+          monthDataMap.set(key, data);
+        }
+        return data;
+      };
 
       let preIncomingCents = BigInt(0);
       const firstPeriod = periods[0];
-      const firstPeriodKey = firstPeriod ? getKey(firstPeriod.month, firstPeriod.year) : null;
 
       const paymentMap = new Map<string, typeof payments[0]>();
       for (const p of payments) {
@@ -480,52 +492,59 @@ export function registerLedgerEaRoutes(app: Express) {
         const d = new Date(entry.date);
         const em = d.getMonth() + 1;
         const ey = d.getFullYear();
-        const key = getKey(em, ey);
+        const dateKey = getKey(em, ey);
         const amountCents = toCents(entry.amount);
 
-        const data = monthDataMap.get(key);
-        if (data) {
-          data.allEntriesSum += amountCents;
+        const dateData = monthDataMap.get(dateKey);
+        if (dateData) {
+          dateData.allEntriesSum += amountCents;
+        } else if (firstPeriod && (ey < firstPeriod.year || (ey === firstPeriod.year && em < firstPeriod.month))) {
+          preIncomingCents += amountCents;
+        }
 
-          if (entry.chargePlugin === "payment-simple-allocation") {
-            const payment = entry.referenceId ? paymentMap.get(entry.referenceId) : undefined;
-            const pt = payment ? paymentTypeMap.get(payment.paymentType) : undefined;
-            const category = pt?.category || "financial";
+        if (entry.chargePlugin === "payment-simple-allocation") {
+          const payment = entry.referenceId ? paymentMap.get(entry.referenceId) : undefined;
+          const pt = payment ? paymentTypeMap.get(payment.paymentType) : undefined;
+          const category = pt?.category || "financial";
 
-            if (category === "adjustment") {
-              data.adjustments += amountCents;
-              data.adjustmentEntryCount++;
-            } else {
-              data.paymentsCredited += amountCents;
+          const stmtMonth = payment?.statementMonth ?? em;
+          const stmtYear = payment?.statementYear ?? ey;
+          const stmtData = getOrCreateMonth(stmtMonth, stmtYear);
 
-              if (payment) {
-                const details = (payment.details || {}) as Record<string, unknown>;
-                const checkNum = (details.checkTransactionNumber as string) || null;
-                const dateReceived = payment.dateReceived
-                  ? new Date(payment.dateReceived).toLocaleDateString("en-US", { month: "numeric", day: "numeric" })
-                  : null;
-                let detailStr = "";
-                if (checkNum) {
-                  detailStr = `CK # ${checkNum}`;
-                  if (dateReceived) detailStr += ` Rec'd ${dateReceived}`;
-                } else if (dateReceived) {
-                  detailStr = `Rec'd ${dateReceived}`;
-                }
-                if (detailStr) data.paymentDetails.push(detailStr);
-              }
-            }
-          } else if (entry.chargePlugin === "interest" || entry.chargePlugin === "penalty") {
-            data.interestPenalties += amountCents;
+          if (category === "adjustment") {
+            stmtData.adjustments += amountCents;
+            stmtData.adjustmentEntryCount++;
           } else {
-            data.charges += amountCents;
-            data.chargeEntryCount++;
-            if (entry.referenceId) {
-              data.chargeWorkerIds.add(entry.referenceId);
+            stmtData.paymentsCredited += amountCents;
+
+            if (payment) {
+              const details = (payment.details || {}) as Record<string, unknown>;
+              const checkNum = (details.checkTransactionNumber as string) || null;
+              const dateReceived = payment.dateReceived
+                ? new Date(payment.dateReceived).toLocaleDateString("en-US", { month: "numeric", day: "numeric" })
+                : null;
+              let detailStr = "";
+              if (checkNum) {
+                detailStr = `CK # ${checkNum}`;
+                if (dateReceived) detailStr += ` Rec'd ${dateReceived}`;
+              } else if (dateReceived) {
+                detailStr = `Rec'd ${dateReceived}`;
+              }
+              if (detailStr) stmtData.paymentDetails.push(detailStr);
             }
           }
+        } else if (entry.chargePlugin === "interest" || entry.chargePlugin === "penalty") {
+          if (dateData) {
+            dateData.interestPenalties += amountCents;
+          }
         } else {
-          if (firstPeriodKey && (ey < firstPeriod.year || (ey === firstPeriod.year && em < firstPeriod.month))) {
-            preIncomingCents += amountCents;
+          const positiveAmount = amountCents > BigInt(0) ? amountCents : BigInt(0);
+          if (dateData && positiveAmount > BigInt(0)) {
+            dateData.charges += positiveAmount;
+            dateData.chargeEntryCount++;
+            if (entry.referenceId) {
+              dateData.chargeWorkerIds.add(entry.referenceId);
+            }
           }
         }
       }
@@ -580,9 +599,12 @@ export function registerLedgerEaRoutes(app: Express) {
       });
 
       const overallIncomingBalance = monthColumns.length > 0 ? monthColumns[0].incomingBalance : "0.00";
+      const currentBalance = fromCents(runningBalanceCents);
 
       res.json({
+        currencyCode,
         incomingBalance: overallIncomingBalance,
+        currentBalance,
         months: monthColumns,
       });
     } catch (error) {
