@@ -1,5 +1,5 @@
-import { createNoopValidator } from './utils/validation';
-import { getClient } from './transaction-context';
+import { createNoopValidator } from '../utils/validation';
+import { getClient } from '../transaction-context';
 import { 
   dispatchJobs, 
   dispatches,
@@ -9,7 +9,7 @@ import {
   type InsertDispatchJob
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, SQL, inArray } from "drizzle-orm";
-import { type StorageLoggingConfig } from "./middleware/logging";
+import { type StorageLoggingConfig } from "../middleware/logging";
 
 /**
  * Stub validator - add validation logic here when needed

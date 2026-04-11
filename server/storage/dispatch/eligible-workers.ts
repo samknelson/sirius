@@ -1,16 +1,16 @@
-import { createNoopValidator } from './utils/validation';
-import { getClient } from './transaction-context';
-import type { db } from './db';
+import { createNoopValidator } from '../utils/validation';
+import { getClient } from '../transaction-context';
+import type { db } from '../db';
 import { workers, contacts, workerDispatchEligDenorm, dispatches, workerDispatchStatus, type EligibilityPluginConfig, type JobTypeData } from "@shared/schema";
 import { sql, eq, and, exists, notExists, or, ilike, inArray } from "drizzle-orm";
-import { logger } from "../logger";
+import { logger } from "../../logger";
 import { 
   dispatchEligPluginRegistry, 
   type EligibilityCondition, 
   type EligibilityQueryContext 
-} from "../services/dispatch-elig-plugin-registry";
-import { createDispatchJobStorage } from "./dispatch-jobs";
-import { createUnifiedOptionsStorage, type OptionsTypeName } from "./unified-options";
+} from "../../services/dispatch-elig-plugin-registry";
+import { createDispatchJobStorage } from "./jobs";
+import { createUnifiedOptionsStorage, type OptionsTypeName } from "../unified-options";
 
 /**
  * Stub validator - add validation logic here when needed

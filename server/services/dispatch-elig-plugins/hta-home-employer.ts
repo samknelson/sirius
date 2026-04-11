@@ -1,7 +1,7 @@
 import { logger } from "../../logger";
 import { createWorkerDispatchEligDenormStorage } from "../../storage/worker-dispatch-elig-denorm";
 import { createVariableStorage } from "../../storage/variables";
-import { createDispatchJobStorage } from "../../storage/dispatch-jobs";
+import { createDispatchJobStorage } from "../../storage/dispatch/jobs";
 import { createEmployerCompanyStorage } from "../../storage/companies";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../dispatch-elig-plugin-registry";
 import { EventType } from "../event-bus";
