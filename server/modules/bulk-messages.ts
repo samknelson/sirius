@@ -12,6 +12,16 @@ import { requireComponent } from "./components";
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
+async function getMediumRecord(storage: IStorage, medium: string, bulkId: string): Promise<unknown> {
+  switch (medium) {
+    case 'email': return storage.bulkMessagesEmail.getByBulkId(bulkId);
+    case 'sms': return storage.bulkMessagesSms.getByBulkId(bulkId);
+    case 'postal': return storage.bulkMessagesPostal.getByBulkId(bulkId);
+    case 'inapp': return storage.bulkMessagesInapp.getByBulkId(bulkId);
+    default: return null;
+  }
+}
+
 export function registerBulkMessageRoutes(
   app: Express,
   requireAuth: RequireAuth,
@@ -39,21 +49,7 @@ export function registerBulkMessageRoutes(
       if (!item) {
         return res.status(404).json({ message: "Bulk message not found" });
       }
-      let mediumRecord: unknown = null;
-      switch (item.medium) {
-        case 'email':
-          mediumRecord = await storage.bulkMessagesEmail.getByBulkId(item.id);
-          break;
-        case 'sms':
-          mediumRecord = await storage.bulkMessagesSms.getByBulkId(item.id);
-          break;
-        case 'postal':
-          mediumRecord = await storage.bulkMessagesPostal.getByBulkId(item.id);
-          break;
-        case 'inapp':
-          mediumRecord = await storage.bulkMessagesInapp.getByBulkId(item.id);
-          break;
-      }
+      const mediumRecord = await getMediumRecord(storage, item.medium, item.id);
       res.json({ ...item, mediumRecord: mediumRecord || null });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to fetch bulk message";
@@ -77,6 +73,10 @@ export function registerBulkMessageRoutes(
 
   app.patch("/api/bulk-messages/:id", requireAuth, requireAccess('staff.bulk'), bulkComponent, async (req, res) => {
     try {
+      const existing = await storage.bulkMessages.getById(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "Bulk message not found" });
+      }
       const body = { ...req.body };
       if (typeof body.sendDate === 'string') {
         body.sendDate = body.sendDate ? new Date(body.sendDate) : null;
@@ -84,6 +84,18 @@ export function registerBulkMessageRoutes(
       const parsed = insertBulkMessageSchema.partial().safeParse(body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Validation failed", errors: parsed.error.issues });
+      }
+      if (parsed.data.medium && parsed.data.medium !== existing.medium) {
+        const oldMediumRecord = await getMediumRecord(storage, existing.medium, existing.id);
+        if (oldMediumRecord && typeof oldMediumRecord === 'object' && 'id' in oldMediumRecord) {
+          const oldId = (oldMediumRecord as { id: string }).id;
+          switch (existing.medium) {
+            case 'email': await storage.bulkMessagesEmail.delete(oldId); break;
+            case 'sms': await storage.bulkMessagesSms.delete(oldId); break;
+            case 'postal': await storage.bulkMessagesPostal.delete(oldId); break;
+            case 'inapp': await storage.bulkMessagesInapp.delete(oldId); break;
+          }
+        }
       }
       const item = await storage.bulkMessages.update(req.params.id, parsed.data);
       if (!item) {

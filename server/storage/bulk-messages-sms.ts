@@ -97,7 +97,7 @@ export const bulkMessagesSmsLoggingConfig: StorageLoggingConfig<BulkMessagesSmsS
     delete: {
       enabled: true,
       getEntityId: (args) => args[0],
-      getHostEntityId: (args, result, beforeState) => beforeState?.record?.bulkId || args[0],
+      getHostEntityId: (_args, _result, beforeState) => beforeState?.record?.bulkId,
       getDescription: async () => `Deleted bulk SMS message content`,
       before: async (args, storage) => {
         const record = await storage.getById(args[0]);
