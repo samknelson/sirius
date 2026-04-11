@@ -503,6 +503,13 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "site-specific"
   },
   {
+    id: "bulk",
+    name: "Bulk Messaging",
+    description: "Bulk messaging functionality",
+    enabledByDefault: false,
+    category: "core"
+  },
+  {
     id: "system.sftp.client",
     name: "SFTP Client",
     description: "SFTP client for secure file transfers",
