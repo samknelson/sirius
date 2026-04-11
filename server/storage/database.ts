@@ -56,11 +56,11 @@ import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./
 import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnitLoggingConfig } from "./bargaining-units";
 import { type SftpClientDestinationStorage, createSftpClientDestinationStorage, sftpClientDestinationLoggingConfig } from "./sftp-client-destinations";
 import { type TrustProviderEdiStorage, createTrustProviderEdiStorage, trustProviderEdiLoggingConfig } from "./trust-provider-edi";
-import { type BulkMessageStorage, createBulkMessageStorage, bulkMessageLoggingConfig } from "./bulk-messages";
-import { type BulkMessagesEmailStorage, createBulkMessagesEmailStorage, bulkMessagesEmailLoggingConfig } from "./bulk-messages-email";
-import { type BulkMessagesSmsStorage, createBulkMessagesSmsStorage, bulkMessagesSmsLoggingConfig } from "./bulk-messages-sms";
-import { type BulkMessagesPostalStorage, createBulkMessagesPostalStorage, bulkMessagesPostalLoggingConfig } from "./bulk-messages-postal";
-import { type BulkMessagesInappStorage, createBulkMessagesInappStorage, bulkMessagesInappLoggingConfig } from "./bulk-messages-inapp";
+import { type BulkMessageStorage, createBulkMessageStorage, bulkMessageLoggingConfig } from "./bulk/messages";
+import { type BulkMessagesEmailStorage, createBulkMessagesEmailStorage, bulkMessagesEmailLoggingConfig } from "./bulk/messages/email";
+import { type BulkMessagesSmsStorage, createBulkMessagesSmsStorage, bulkMessagesSmsLoggingConfig } from "./bulk/messages/sms";
+import { type BulkMessagesPostalStorage, createBulkMessagesPostalStorage, bulkMessagesPostalLoggingConfig } from "./bulk/messages/postal";
+import { type BulkMessagesInappStorage, createBulkMessagesInappStorage, bulkMessagesInappLoggingConfig } from "./bulk/messages/inapp";
 import { type EmployerPolicyHistoryStorage, createEmployerPolicyHistoryStorage, employerPolicyHistoryLoggingConfig } from "./employer-policy-history";
 import { type WmbScanQueueStorage, createWmbScanQueueStorage } from "./wmb-scan-queue";
 import { type CardcheckDefinitionStorage, createCardcheckDefinitionStorage, cardcheckDefinitionLoggingConfig } from "./cardcheck-definitions";

@@ -1,8 +1,8 @@
-import { createNoopValidator } from './utils/validation';
-import { getClient } from './transaction-context';
-import { bulkMessagesSms, type BulkMessagesSms, type InsertBulkMessagesSms } from "../../shared/schema/bulk/schema";
+import { createNoopValidator } from '../../utils/validation';
+import { getClient } from '../../transaction-context';
+import { bulkMessagesSms, type BulkMessagesSms, type InsertBulkMessagesSms } from "../../../../shared/schema/bulk/schema";
 import { eq } from "drizzle-orm";
-import type { StorageLoggingConfig } from "./middleware/logging";
+import type { StorageLoggingConfig } from "../../middleware/logging";
 
 export const validate = createNoopValidator<InsertBulkMessagesSms, BulkMessagesSms>();
 
