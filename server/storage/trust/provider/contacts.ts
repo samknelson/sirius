@@ -1,9 +1,9 @@
-import { createNoopValidator } from './utils/validation';
-import { getClient } from './transaction-context';
+import { createNoopValidator } from '../../utils/validation';
+import { getClient } from '../../transaction-context';
 import { trustProviderContacts, contacts, optionsEmployerContactType, trustProviders, type TrustProviderContact, type InsertTrustProviderContact, type Contact, type InsertContact, type TrustProvider } from "@shared/schema";
 import { eq, and, or, ilike } from "drizzle-orm";
-import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
-import type { ContactsStorage } from "./contacts";
+import { withStorageLogging, type StorageLoggingConfig } from "../../middleware/logging";
+import type { ContactsStorage } from "../../contacts";
 
 /**
  * Stub validator - add validation logic here when needed

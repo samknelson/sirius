@@ -1,8 +1,8 @@
-import { createNoopValidator } from './utils/validation';
-import { getClient } from './transaction-context';
-import { trustProviderEdi, type TrustProviderEdi, type InsertTrustProviderEdi } from "../../shared/schema/trust/provider-edi-schema";
+import { createNoopValidator } from '../../utils/validation';
+import { getClient } from '../../transaction-context';
+import { trustProviderEdi, type TrustProviderEdi, type InsertTrustProviderEdi } from "../../../../shared/schema/trust/provider-edi-schema";
 import { eq } from "drizzle-orm";
-import type { StorageLoggingConfig } from "./middleware/logging";
+import type { StorageLoggingConfig } from "../../middleware/logging";
 
 export const validate = createNoopValidator<InsertTrustProviderEdi, TrustProviderEdi>();
 

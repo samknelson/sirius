@@ -1,8 +1,8 @@
-import { createNoopValidator } from './utils/validation';
-import { getClient } from './transaction-context';
+import { createNoopValidator } from '../utils/validation';
+import { getClient } from '../transaction-context';
 import { trustProviders, InsertTrustProvider, TrustProvider } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
+import { withStorageLogging, type StorageLoggingConfig } from "../middleware/logging";
 
 /**
  * Stub validator - add validation logic here when needed
