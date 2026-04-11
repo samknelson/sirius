@@ -512,7 +512,7 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/bulk/schema.ts",
-      tables: ["bulk_messages"]
+      tables: ["bulk_messages", "bulk_messages_email", "bulk_messages_sms", "bulk_messages_postal", "bulk_messages_inapp"]
     }
   },
   {
