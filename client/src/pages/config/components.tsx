@@ -96,6 +96,15 @@ export default function ComponentsConfigPage() {
       setIsCheckingSchema(true);
       try {
         const response = await fetch(`/api/components/${componentId}/schema-info`);
+        if (!response.ok) {
+          toast({
+            title: "Schema Check Failed",
+            description: "Unable to retrieve schema information for this component.",
+            variant: "destructive",
+          });
+          setIsCheckingSchema(false);
+          return;
+        }
         const schemaInfo: SchemaInfo = await response.json();
         
         if (!enabled && schemaInfo.tablesExist.some(exists => exists)) {
