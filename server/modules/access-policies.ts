@@ -250,7 +250,7 @@ export function registerAccessPolicyRoutes(app: Express) {
         worker_hours: 'staff',
         user: 'admin',
         ws_client: 'admin',
-        bulk_message: 'staff.bulk',
+        bulk_message: 'bulk.edit',
       };
       const basePolicy = entityPolicyMap[entityType] || 'authenticated';
       const baseAccessResult = await checkAccess(basePolicy, context.user, resolvedEntityId);

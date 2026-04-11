@@ -489,10 +489,10 @@ export const trustProviderEdiTabTree: HierarchicalTab[] = [
 ];
 
 export const bulkMessageTabTree: HierarchicalTab[] = [
-  { id: 'details', label: 'Details', hrefTemplate: '/bulk/{id}', permission: 'staff.bulk', component: 'bulk' },
-  { id: 'edit', label: 'Edit', hrefTemplate: '/bulk/{id}/edit', permission: 'staff.bulk', component: 'bulk' },
-  { id: 'message', label: 'Message', hrefTemplate: '/bulk/{id}/message', permission: 'staff.bulk', component: 'bulk' },
-  { id: 'logs', label: 'Logs', hrefTemplate: '/bulk/{id}/logs', permission: 'staff.bulk', component: 'bulk' },
+  { id: 'details', label: 'Details', hrefTemplate: '/bulk/{id}', policyId: 'bulk.edit' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/bulk/{id}/edit', policyId: 'bulk.edit' },
+  { id: 'message', label: 'Message', hrefTemplate: '/bulk/{id}/message', policyId: 'bulk.edit' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/bulk/{id}/logs', policyId: 'bulk.edit' },
 ];
 
 /**

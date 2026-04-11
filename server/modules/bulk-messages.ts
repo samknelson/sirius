@@ -7,8 +7,6 @@ import {
   insertBulkMessagesPostalSchema,
   insertBulkMessagesInappSchema,
 } from "../../shared/schema/bulk/schema";
-import { requireComponent } from "./components";
-
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
@@ -28,9 +26,8 @@ export function registerBulkMessageRoutes(
   requireAccess: RequireAccess,
   storage: IStorage
 ) {
-  const bulkComponent = requireComponent("bulk");
 
-  app.get("/api/bulk-messages", requireAuth, requireAccess('staff.bulk'), bulkComponent, async (req, res) => {
+  app.get("/api/bulk-messages", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
     try {
       const status = req.query.status as string | undefined;
       const medium = req.query.medium as string | undefined;
@@ -43,7 +40,7 @@ export function registerBulkMessageRoutes(
     }
   });
 
-  app.get("/api/bulk-messages/:id", requireAuth, requireAccess('staff.bulk'), bulkComponent, async (req, res) => {
+  app.get("/api/bulk-messages/:id", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
     try {
       const item = await storage.bulkMessages.getById(req.params.id);
       if (!item) {
@@ -57,7 +54,7 @@ export function registerBulkMessageRoutes(
     }
   });
 
-  app.post("/api/bulk-messages", requireAuth, requireAccess('staff.bulk'), bulkComponent, async (req, res) => {
+  app.post("/api/bulk-messages", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
     try {
       const parsed = insertBulkMessageSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -71,7 +68,7 @@ export function registerBulkMessageRoutes(
     }
   });
 
-  app.patch("/api/bulk-messages/:id", requireAuth, requireAccess('staff.bulk'), bulkComponent, async (req, res) => {
+  app.patch("/api/bulk-messages/:id", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
     try {
       const existing = await storage.bulkMessages.getById(req.params.id);
       if (!existing) {
@@ -108,7 +105,7 @@ export function registerBulkMessageRoutes(
     }
   });
 
-  app.delete("/api/bulk-messages/:id", requireAuth, requireAccess('staff.bulk'), bulkComponent, async (req, res) => {
+  app.delete("/api/bulk-messages/:id", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
     try {
       const deleted = await storage.bulkMessages.delete(req.params.id);
       if (!deleted) {
@@ -121,7 +118,7 @@ export function registerBulkMessageRoutes(
     }
   });
 
-  app.get("/api/bulk-messages/:id/message", requireAuth, requireAccess('staff.bulk'), bulkComponent, async (req, res) => {
+  app.get("/api/bulk-messages/:id/message", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
     try {
       const bulk = await storage.bulkMessages.getById(req.params.id);
       if (!bulk) {
@@ -151,7 +148,7 @@ export function registerBulkMessageRoutes(
     }
   });
 
-  app.put("/api/bulk-messages/:id/message", requireAuth, requireAccess('staff.bulk'), bulkComponent, async (req, res) => {
+  app.put("/api/bulk-messages/:id/message", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
     try {
       const bulk = await storage.bulkMessages.getById(req.params.id);
       if (!bulk) {
@@ -223,7 +220,7 @@ export function registerBulkMessageRoutes(
     }
   });
 
-  app.get("/api/bulk-messages/:id/logs", requireAuth, requireAccess('staff.bulk'), bulkComponent, async (req, res) => {
+  app.get("/api/bulk-messages/:id/logs", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
     try {
       const bulk = await storage.bulkMessages.getById(req.params.id);
       if (!bulk) {

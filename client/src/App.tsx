@@ -1633,7 +1633,7 @@ function Router() {
       </Route>
 
       <Route path="/bulk/list">
-        <ProtectedRoute permission="staff.bulk" component="bulk">
+        <ProtectedRoute policy="bulk.edit">
           <AuthenticatedLayout>
             <BulkMessagesPage />
           </AuthenticatedLayout>
@@ -1641,7 +1641,7 @@ function Router() {
       </Route>
 
       <Route path="/bulk/:id/edit">
-        <ProtectedRoute permission="staff.bulk" component="bulk">
+        <ProtectedRoute policy="bulk.edit">
           <AuthenticatedLayout>
             <BulkMessageEditPage />
           </AuthenticatedLayout>
@@ -1649,7 +1649,7 @@ function Router() {
       </Route>
 
       <Route path="/bulk/:id/message">
-        <ProtectedRoute permission="staff.bulk" component="bulk">
+        <ProtectedRoute policy="bulk.edit">
           <AuthenticatedLayout>
             <BulkMessageMessagePage />
           </AuthenticatedLayout>
@@ -1657,7 +1657,7 @@ function Router() {
       </Route>
 
       <Route path="/bulk/:id/logs">
-        <ProtectedRoute permission="staff.bulk" component="bulk">
+        <ProtectedRoute policy="bulk.edit">
           <AuthenticatedLayout>
             <BulkMessageLogsPage />
           </AuthenticatedLayout>
@@ -1665,7 +1665,7 @@ function Router() {
       </Route>
 
       <Route path="/bulk/:id">
-        <ProtectedRoute permission="staff.bulk" component="bulk">
+        <ProtectedRoute policy="bulk.edit">
           <AuthenticatedLayout>
             <BulkMessageDetailsPage />
           </AuthenticatedLayout>
