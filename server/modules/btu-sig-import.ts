@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { objectStorageService } from "../services/objectStorage";
-import { createBtuWorkerImportStorage } from "../storage/sitespecific/btu/btu-worker-import";
+import { createBtuWorkerImportStorage } from "../storage/sitespecific/btu/worker-import";
 import { insertFileSchema } from "@shared/schema";
 import multer from "multer";
 import AdmZip from "adm-zip";

@@ -1,7 +1,7 @@
 import { FeedWizard, FeedField, FeedConfig, FeedData, ValidationError, ProcessResults, ProcessError, RowResult } from '../feed.js';
 import { WizardStatus, WizardStep, createStandardStatuses, LaunchArgument } from '../base.js';
 import { storage } from '../../storage/index.js';
-import { createBtuWorkerImportStorage, TerminatedWorkerInfo } from '../../storage/sitespecific/btu/btu-worker-import.js';
+import { createBtuWorkerImportStorage, TerminatedWorkerInfo } from '../../storage/sitespecific/btu/worker-import.js';
 import { parse as parseCSV } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
 import { objectStorageService } from '../../services/objectStorage.js';
