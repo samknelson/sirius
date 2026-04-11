@@ -1,13 +1,13 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { bulkMessages, type BulkMessage, type InsertBulkMessage } from "../../shared/schema/bulk/schema";
-import { eq, and, type SQL } from "drizzle-orm";
+import { eq, and, ilike, type SQL } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 
 export const validate = createNoopValidator<InsertBulkMessage, BulkMessage>();
 
 export interface BulkMessageStorage {
-  getAll(filters?: { status?: string; medium?: string }): Promise<BulkMessage[]>;
+  getAll(filters?: { status?: string; medium?: string; name?: string }): Promise<BulkMessage[]>;
   getById(id: string): Promise<BulkMessage | undefined>;
   create(data: InsertBulkMessage): Promise<BulkMessage>;
   update(id: string, data: Partial<InsertBulkMessage>): Promise<BulkMessage | undefined>;
@@ -16,7 +16,7 @@ export interface BulkMessageStorage {
 
 export function createBulkMessageStorage(): BulkMessageStorage {
   const storage: BulkMessageStorage = {
-    async getAll(filters?: { status?: string; medium?: string }): Promise<BulkMessage[]> {
+    async getAll(filters?: { status?: string; medium?: string; name?: string }): Promise<BulkMessage[]> {
       const client = getClient();
       const conditions: SQL[] = [];
       if (filters?.status) {
@@ -24,6 +24,9 @@ export function createBulkMessageStorage(): BulkMessageStorage {
       }
       if (filters?.medium) {
         conditions.push(eq(bulkMessages.medium, filters.medium as "sms" | "email" | "inapp" | "postal"));
+      }
+      if (filters?.name) {
+        conditions.push(ilike(bulkMessages.name, `%${filters.name}%`));
       }
       if (conditions.length > 0) {
         return await client.select().from(bulkMessages).where(and(...conditions));

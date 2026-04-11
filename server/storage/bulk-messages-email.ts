@@ -7,6 +7,7 @@ import type { StorageLoggingConfig } from "./middleware/logging";
 export const validate = createNoopValidator<InsertBulkMessagesEmail, BulkMessagesEmail>();
 
 export interface BulkMessagesEmailStorage {
+  getById(id: string): Promise<BulkMessagesEmail | undefined>;
   getByBulkId(bulkId: string): Promise<BulkMessagesEmail | undefined>;
   create(data: InsertBulkMessagesEmail): Promise<BulkMessagesEmail>;
   update(id: string, data: Partial<InsertBulkMessagesEmail>): Promise<BulkMessagesEmail | undefined>;
@@ -15,6 +16,15 @@ export interface BulkMessagesEmailStorage {
 
 export function createBulkMessagesEmailStorage(): BulkMessagesEmailStorage {
   const storage: BulkMessagesEmailStorage = {
+    async getById(id: string): Promise<BulkMessagesEmail | undefined> {
+      const client = getClient();
+      const [row] = await client
+        .select()
+        .from(bulkMessagesEmail)
+        .where(eq(bulkMessagesEmail.id, id));
+      return row || undefined;
+    },
+
     async getByBulkId(bulkId: string): Promise<BulkMessagesEmail | undefined> {
       const client = getClient();
       const [row] = await client
@@ -92,10 +102,14 @@ export const bulkMessagesEmailLoggingConfig: StorageLoggingConfig<BulkMessagesEm
     delete: {
       enabled: true,
       getEntityId: (args) => args[0],
-      getHostEntityId: (args) => args[0],
+      getHostEntityId: (args, result, beforeState) => beforeState?.record?.bulkId || args[0],
       getDescription: async () => `Deleted bulk email message content`,
-      after: async (args, result) => {
-        return { deleted: result };
+      before: async (args, storage) => {
+        const record = await storage.getById(args[0]);
+        return { record };
+      },
+      after: async (args, result, _storage, beforeState) => {
+        return { deleted: result, metadata: { bulkId: beforeState?.record?.bulkId } };
       }
     },
   }

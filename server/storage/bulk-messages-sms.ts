@@ -7,6 +7,7 @@ import type { StorageLoggingConfig } from "./middleware/logging";
 export const validate = createNoopValidator<InsertBulkMessagesSms, BulkMessagesSms>();
 
 export interface BulkMessagesSmsStorage {
+  getById(id: string): Promise<BulkMessagesSms | undefined>;
   getByBulkId(bulkId: string): Promise<BulkMessagesSms | undefined>;
   create(data: InsertBulkMessagesSms): Promise<BulkMessagesSms>;
   update(id: string, data: Partial<InsertBulkMessagesSms>): Promise<BulkMessagesSms | undefined>;
@@ -15,6 +16,15 @@ export interface BulkMessagesSmsStorage {
 
 export function createBulkMessagesSmsStorage(): BulkMessagesSmsStorage {
   const storage: BulkMessagesSmsStorage = {
+    async getById(id: string): Promise<BulkMessagesSms | undefined> {
+      const client = getClient();
+      const [row] = await client
+        .select()
+        .from(bulkMessagesSms)
+        .where(eq(bulkMessagesSms.id, id));
+      return row || undefined;
+    },
+
     async getByBulkId(bulkId: string): Promise<BulkMessagesSms | undefined> {
       const client = getClient();
       const [row] = await client
@@ -87,10 +97,14 @@ export const bulkMessagesSmsLoggingConfig: StorageLoggingConfig<BulkMessagesSmsS
     delete: {
       enabled: true,
       getEntityId: (args) => args[0],
-      getHostEntityId: (args) => args[0],
+      getHostEntityId: (args, result, beforeState) => beforeState?.record?.bulkId || args[0],
       getDescription: async () => `Deleted bulk SMS message content`,
-      after: async (args, result) => {
-        return { deleted: result };
+      before: async (args, storage) => {
+        const record = await storage.getById(args[0]);
+        return { record };
+      },
+      after: async (args, result, _storage, beforeState) => {
+        return { deleted: result, metadata: { bulkId: beforeState?.record?.bulkId } };
       }
     },
   }

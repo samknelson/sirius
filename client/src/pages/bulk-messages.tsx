@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Eye, Megaphone, Plus, Loader2 } from "lucide-react";
+import { Eye, Megaphone, Plus, Loader2, Search } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -33,6 +33,7 @@ export default function BulkMessagesPage() {
   const [isAdding, setIsAdding] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterMedium, setFilterMedium] = useState<string>("all");
+  const [filterName, setFilterName] = useState<string>("");
   const [formData, setFormData] = useState({
     name: "",
     medium: "email" as "email" | "sms" | "postal" | "inapp",
@@ -41,10 +42,11 @@ export default function BulkMessagesPage() {
   const queryParams = new URLSearchParams();
   if (filterStatus !== "all") queryParams.set("status", filterStatus);
   if (filterMedium !== "all") queryParams.set("medium", filterMedium);
+  if (filterName.trim()) queryParams.set("name", filterName.trim());
   const queryString = queryParams.toString();
 
   const { data: messages, isLoading } = useQuery<BulkMessage[]>({
-    queryKey: ["/api/bulk-messages", { status: filterStatus, medium: filterMedium }],
+    queryKey: ["/api/bulk-messages", { status: filterStatus, medium: filterMedium, name: filterName }],
     queryFn: async () => {
       const url = queryString ? `/api/bulk-messages?${queryString}` : "/api/bulk-messages";
       const response = await fetch(url, { credentials: "include" });
@@ -89,6 +91,20 @@ export default function BulkMessagesPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-4 mb-6">
+        <div className="flex items-center gap-2">
+          <Label htmlFor="filter-name" className="text-sm whitespace-nowrap">Name:</Label>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              id="filter-name"
+              value={filterName}
+              onChange={(e) => setFilterName(e.target.value)}
+              placeholder="Search by name..."
+              className="w-[200px] pl-8"
+              data-testid="input-filter-name"
+            />
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           <Label htmlFor="filter-status" className="text-sm whitespace-nowrap">Status:</Label>
           <Select value={filterStatus} onValueChange={setFilterStatus}>

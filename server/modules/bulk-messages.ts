@@ -24,7 +24,8 @@ export function registerBulkMessageRoutes(
     try {
       const status = req.query.status as string | undefined;
       const medium = req.query.medium as string | undefined;
-      const items = await storage.bulkMessages.getAll({ status, medium });
+      const name = req.query.name as string | undefined;
+      const items = await storage.bulkMessages.getAll({ status, medium, name });
       res.json(items);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to fetch bulk messages";
@@ -38,7 +39,22 @@ export function registerBulkMessageRoutes(
       if (!item) {
         return res.status(404).json({ message: "Bulk message not found" });
       }
-      res.json(item);
+      let mediumRecord: unknown = null;
+      switch (item.medium) {
+        case 'email':
+          mediumRecord = await storage.bulkMessagesEmail.getByBulkId(item.id);
+          break;
+        case 'sms':
+          mediumRecord = await storage.bulkMessagesSms.getByBulkId(item.id);
+          break;
+        case 'postal':
+          mediumRecord = await storage.bulkMessagesPostal.getByBulkId(item.id);
+          break;
+        case 'inapp':
+          mediumRecord = await storage.bulkMessagesInapp.getByBulkId(item.id);
+          break;
+      }
+      res.json({ ...item, mediumRecord: mediumRecord || null });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to fetch bulk message";
       res.status(500).json({ message });
@@ -191,6 +207,27 @@ export function registerBulkMessageRoutes(
       res.json({ medium: bulk.medium, record: result });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to save medium message";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.get("/api/bulk-messages/:id/logs", requireAuth, requireAccess('staff.bulk'), bulkComponent, async (req, res) => {
+    try {
+      const bulk = await storage.bulkMessages.getById(req.params.id);
+      if (!bulk) {
+        return res.status(404).json({ message: "Bulk message not found" });
+      }
+      const { module, operation, startDate, endDate } = req.query;
+      const logs = await storage.logs.getLogsByHostEntityIds({
+        hostEntityIds: [bulk.id],
+        module: typeof module === 'string' ? module : undefined,
+        operation: typeof operation === 'string' ? operation : undefined,
+        startDate: typeof startDate === 'string' ? startDate : undefined,
+        endDate: typeof endDate === 'string' ? endDate : undefined,
+      });
+      res.json(logs);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to fetch bulk message logs";
       res.status(500).json({ message });
     }
   });

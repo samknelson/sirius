@@ -17,6 +17,25 @@ interface MediumResponse {
   record: Record<string, unknown> | null;
 }
 
+function formatJsonForEdit(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return "";
+  }
+}
+
+function parseJsonField(value: string): unknown {
+  if (!value.trim()) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
 function EmailForm({ record, onSave, isPending }: { record: Record<string, unknown> | null; onSave: (data: Record<string, unknown>) => void; isPending: boolean }) {
   const [form, setForm] = useState({
     fromAddress: "",
@@ -25,6 +44,7 @@ function EmailForm({ record, onSave, isPending }: { record: Record<string, unkno
     subject: "",
     bodyText: "",
     bodyHtml: "",
+    data: "",
   });
 
   useEffect(() => {
@@ -36,6 +56,7 @@ function EmailForm({ record, onSave, isPending }: { record: Record<string, unkno
         subject: (record.subject as string) || "",
         bodyText: (record.bodyText as string) || "",
         bodyHtml: (record.bodyHtml as string) || "",
+        data: formatJsonForEdit(record.data),
       });
     }
   }, [record]);
@@ -70,8 +91,12 @@ function EmailForm({ record, onSave, isPending }: { record: Record<string, unkno
         <Label htmlFor="bodyHtml">Body (HTML)</Label>
         <Textarea id="bodyHtml" value={form.bodyHtml} onChange={(e) => setForm((p) => ({ ...p, bodyHtml: e.target.value }))} rows={6} className="font-mono text-sm" placeholder="<html>...</html>" data-testid="textarea-email-body-html" />
       </div>
+      <div className="space-y-2">
+        <Label htmlFor="emailData">Data (JSON)</Label>
+        <Textarea id="emailData" value={form.data} onChange={(e) => setForm((p) => ({ ...p, data: e.target.value }))} rows={4} className="font-mono text-sm" placeholder='{"key": "value"}' data-testid="textarea-email-data" />
+      </div>
       <div className="flex justify-end pt-2">
-        <Button onClick={() => onSave(form)} disabled={isPending} data-testid="button-save-email-message">
+        <Button onClick={() => onSave({ ...form, data: parseJsonField(form.data) })} disabled={isPending} data-testid="button-save-email-message">
           {isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
           Save Email Content
         </Button>
@@ -82,10 +107,12 @@ function EmailForm({ record, onSave, isPending }: { record: Record<string, unkno
 
 function SmsForm({ record, onSave, isPending }: { record: Record<string, unknown> | null; onSave: (data: Record<string, unknown>) => void; isPending: boolean }) {
   const [body, setBody] = useState("");
+  const [dataField, setDataField] = useState("");
 
   useEffect(() => {
     if (record) {
       setBody((record.body as string) || "");
+      setDataField(formatJsonForEdit(record.data));
     }
   }, [record]);
 
@@ -98,8 +125,12 @@ function SmsForm({ record, onSave, isPending }: { record: Record<string, unknown
           <span className="text-xs text-muted-foreground">{body.length} characters</span>
         </div>
       </div>
+      <div className="space-y-2">
+        <Label htmlFor="smsData">Data (JSON)</Label>
+        <Textarea id="smsData" value={dataField} onChange={(e) => setDataField(e.target.value)} rows={4} className="font-mono text-sm" placeholder='{"key": "value"}' data-testid="textarea-sms-data" />
+      </div>
       <div className="flex justify-end pt-2">
-        <Button onClick={() => onSave({ body })} disabled={isPending} data-testid="button-save-sms-message">
+        <Button onClick={() => onSave({ body, data: parseJsonField(dataField) })} disabled={isPending} data-testid="button-save-sms-message">
           {isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
           Save SMS Content
         </Button>
@@ -123,6 +154,7 @@ function PostalForm({ record, onSave, isPending }: { record: Record<string, unkn
     color: false,
     doubleSided: false,
     mailType: "usps_first_class",
+    data: "",
   });
 
   useEffect(() => {
@@ -141,6 +173,7 @@ function PostalForm({ record, onSave, isPending }: { record: Record<string, unkn
         color: (record.color as boolean) || false,
         doubleSided: (record.doubleSided as boolean) || false,
         mailType: (record.mailType as string) || "usps_first_class",
+        data: formatJsonForEdit(record.data),
       });
     }
   }, [record]);
@@ -215,8 +248,12 @@ function PostalForm({ record, onSave, isPending }: { record: Record<string, unkn
           </Select>
         </div>
       </div>
+      <div className="space-y-2">
+        <Label htmlFor="postalData">Data (JSON)</Label>
+        <Textarea id="postalData" value={form.data} onChange={(e) => setForm((p) => ({ ...p, data: e.target.value }))} rows={4} className="font-mono text-sm" placeholder='{"key": "value"}' data-testid="textarea-postal-data" />
+      </div>
       <div className="flex justify-end pt-2">
-        <Button onClick={() => onSave(form)} disabled={isPending} data-testid="button-save-postal-message">
+        <Button onClick={() => onSave({ ...form, data: parseJsonField(form.data) })} disabled={isPending} data-testid="button-save-postal-message">
           {isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
           Save Postal Content
         </Button>
@@ -231,6 +268,7 @@ function InappForm({ record, onSave, isPending }: { record: Record<string, unkno
     body: "",
     linkUrl: "",
     linkLabel: "",
+    data: "",
   });
 
   useEffect(() => {
@@ -240,6 +278,7 @@ function InappForm({ record, onSave, isPending }: { record: Record<string, unkno
         body: (record.body as string) || "",
         linkUrl: (record.linkUrl as string) || "",
         linkLabel: (record.linkLabel as string) || "",
+        data: formatJsonForEdit(record.data),
       });
     }
   }, [record]);
@@ -266,8 +305,12 @@ function InappForm({ record, onSave, isPending }: { record: Record<string, unkno
           <Input id="inappLinkLabel" value={form.linkLabel} onChange={(e) => setForm((p) => ({ ...p, linkLabel: e.target.value }))} maxLength={50} placeholder="Click here" data-testid="input-inapp-link-label" />
         </div>
       </div>
+      <div className="space-y-2">
+        <Label htmlFor="inappData">Data (JSON)</Label>
+        <Textarea id="inappData" value={form.data} onChange={(e) => setForm((p) => ({ ...p, data: e.target.value }))} rows={4} className="font-mono text-sm" placeholder='{"key": "value"}' data-testid="textarea-inapp-data" />
+      </div>
       <div className="flex justify-end pt-2">
-        <Button onClick={() => onSave(form)} disabled={isPending} data-testid="button-save-inapp-message">
+        <Button onClick={() => onSave({ ...form, data: parseJsonField(form.data) })} disabled={isPending} data-testid="button-save-inapp-message">
           {isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
           Save In-App Content
         </Button>
