@@ -83,9 +83,9 @@ import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDi
 import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./worker-skills";
 import { type WorkerCertificationStorage, createWorkerCertificationStorage, workerCertificationLoggingConfig } from "./worker-certifications";
 import { type WorkerRatingStorage, createWorkerRatingStorage, workerRatingLoggingConfig } from "./worker-ratings";
-import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfig } from "./edls-sheets";
-import { type EdlsCrewsStorage, createEdlsCrewsStorage, edlsCrewsLoggingConfig } from "./edls-crews";
-import { type EdlsAssignmentsStorage, createEdlsAssignmentsStorage, edlsAssignmentsLoggingConfig } from "./edls-assignments";
+import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfig } from "./edls/sheets";
+import { type EdlsCrewsStorage, createEdlsCrewsStorage, edlsCrewsLoggingConfig } from "./edls/crews";
+import { type EdlsAssignmentsStorage, createEdlsAssignmentsStorage, edlsAssignmentsLoggingConfig } from "./edls/assignments";
 import { type AuthIdentitiesStorage, createAuthIdentitiesStorage } from "./auth-identities";
 import { type WorkerDispatchEligDenormStorage, createWorkerDispatchEligDenormStorage } from "./worker-dispatch-elig-denorm";
 import { type RawSqlStorage, createRawSqlStorage } from "./raw-sql";

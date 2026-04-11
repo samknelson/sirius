@@ -1,7 +1,7 @@
 import { 
   createAsyncStorageValidator,
   type ValidationError
-} from './utils/validation';
+} from '../utils/validation';
 import { 
   edlsCrews,
   edlsAssignments,
@@ -12,8 +12,8 @@ import {
 } from "@shared/schema";
 import { eq, sql, asc } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { StorageLoggingConfig } from "./middleware/logging";
-import { getClient, runInTransaction } from "./transaction-context";
+import { StorageLoggingConfig } from "../middleware/logging";
+import { getClient, runInTransaction } from "../transaction-context";
 
 export const validate = createAsyncStorageValidator<InsertEdlsCrew, EdlsCrew, {}>(
   async (data, existing) => {

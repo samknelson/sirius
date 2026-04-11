@@ -1,7 +1,7 @@
 import { 
   createAsyncStorageValidator,
   type ValidationError
-} from './utils/validation';
+} from '../utils/validation';
 import { 
   edlsAssignments,
   edlsCrews,
@@ -12,10 +12,10 @@ import {
   type InsertEdlsAssignment
 } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
-import { StorageLoggingConfig } from "./middleware/logging";
-import { getClient, runInTransaction } from "./transaction-context";
-import { createUnifiedOptionsStorage } from "./unified-options";
-import { createEdlsCrewsStorage } from "./edls-crews";
+import { StorageLoggingConfig } from "../middleware/logging";
+import { getClient, runInTransaction } from "../transaction-context";
+import { createUnifiedOptionsStorage } from "../unified-options";
+import { createEdlsCrewsStorage } from "./crews";
 
 export const validate = createAsyncStorageValidator<InsertEdlsAssignment, EdlsAssignment, {}>(
   async (data, existing) => {
