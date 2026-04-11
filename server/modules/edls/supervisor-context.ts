@@ -1,5 +1,5 @@
-import { storage } from "../storage";
-import { checkAccess } from "../services/access-policy-evaluator";
+import { storage } from "../../storage";
+import { checkAccess } from "../../services/access-policy-evaluator";
 
 export interface SupervisorOption {
   id: string;

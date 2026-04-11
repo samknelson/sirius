@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { storage } from "../storage";
+import { storage } from "../../storage";
 import { insertTrustBenefitSchema, type InsertTrustBenefit } from "@shared/schema";
 
 export function registerTrustBenefitsRoutes(

@@ -1,9 +1,9 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { storage } from "../storage";
+import { storage } from "../../../storage";
 import { insertContactSchema, type InsertContact } from "@shared/schema";
-import { requireAccess } from "../services/access-policy-evaluator";
+import { requireAccess } from "../../../services/access-policy-evaluator";
 import { z } from "zod";
-import { storageLogger } from "../logger";
+import { storageLogger } from "../../../logger";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;

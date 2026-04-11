@@ -1,11 +1,11 @@
 import type { Express } from "express";
-import { storage } from "../storage";
+import { storage } from "../../storage";
 import { insertEdlsSheetsSchema, insertEdlsCrewsSchema, updateAssignmentExtraSchema, type InsertEdlsCrew } from "@shared/schema";
-import { requireAccess } from "../services/access-policy-evaluator";
-import { requireComponent } from "./components";
+import { requireAccess } from "../../services/access-policy-evaluator";
+import { requireComponent } from "../components";
 import { z } from "zod";
-import { getSupervisorContext, validateSupervisorForSave, getEdlsSettings } from "./edls-supervisor-context";
-import { getEffectiveUser } from "./masquerade";
+import { getSupervisorContext, validateSupervisorForSave, getEdlsSettings } from "./supervisor-context";
+import { getEffectiveUser } from "../masquerade";
 
 const crewInputSchema = insertEdlsCrewsSchema.omit({ sheetId: true });
 

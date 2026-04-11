@@ -1,8 +1,8 @@
 import type { Express } from "express";
 import { insertEdlsTaskSchema } from "@shared/schema";
-import { requireAccess } from "../services/access-policy-evaluator";
-import { requireComponent } from "./components";
-import { getOptionsType } from "./options-registry";
+import { requireAccess } from "../../services/access-policy-evaluator";
+import { requireComponent } from "../components";
+import { getOptionsType } from "../options-registry";
 
 export function registerEdlsTasksRoutes(
   app: Express,

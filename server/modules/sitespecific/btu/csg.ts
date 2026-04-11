@@ -1,12 +1,12 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { requireAccess } from "../services/access-policy-evaluator";
-import { requireComponent } from "./components";
-import { storage } from "../storage";
-import type { InsertBtuCsgRecord } from "../storage/sitespecific/btu/csg";
-import type { InsertBtuEmployerMap } from "../storage/sitespecific/btu/employer-map";
-import { insertBtuEmployerMapSchema } from "../../shared/schema/sitespecific/btu/schema";
+import { requireAccess } from "../../../services/access-policy-evaluator";
+import { requireComponent } from "../../components";
+import { storage } from "../../../storage";
+import type { InsertBtuCsgRecord } from "../../../storage/sitespecific/btu/csg";
+import type { InsertBtuEmployerMap } from "../../../storage/sitespecific/btu/employer-map";
+import { insertBtuEmployerMapSchema } from "../../../../shared/schema/sitespecific/btu/schema";
 import { z } from "zod";
-import { getEffectiveUser } from "./masquerade";
+import { getEffectiveUser } from "../../masquerade";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;

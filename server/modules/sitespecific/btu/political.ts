@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { requireComponent } from "./components";
-import { storage } from "../storage";
-import { lookupRepresentatives, CivicApiError, type CivicLookupResult } from "../services/google-civics";
+import { requireComponent } from "../../components";
+import { storage } from "../../../storage";
+import { lookupRepresentatives, CivicApiError, type CivicLookupResult } from "../../../services/google-civics";
 import { z } from "zod";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;

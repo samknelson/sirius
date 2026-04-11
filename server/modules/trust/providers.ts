@@ -1,7 +1,7 @@
 import type { Express } from "express";
-import { storage } from "../storage";
+import { storage } from "../../storage";
 import { insertTrustProviderSchema, type InsertTrustProvider } from "@shared/schema";
-import { requireComponent } from "./components";
+import { requireComponent } from "../components";
 
 export function registerTrustProvidersRoutes(
   app: Express,

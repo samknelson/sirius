@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
-import { IStorage } from "../storage";
-import { insertTrustProviderEdiSchema } from "../../shared/schema/trust/provider-edi-schema";
-import { requireComponent } from "./components";
+import { IStorage } from "../../../storage";
+import { insertTrustProviderEdiSchema } from "../../../../shared/schema/trust/provider-edi-schema";
+import { requireComponent } from "../../components";
 
 type RequireAccess = (policy: any) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;

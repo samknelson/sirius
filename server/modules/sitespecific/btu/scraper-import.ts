@@ -1,10 +1,10 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { storage } from "../storage";
-import { objectStorageService } from "../services/objectStorage";
+import { storage } from "../../../storage";
+import { objectStorageService } from "../../../services/objectStorage";
 import { insertFileSchema } from "@shared/schema";
-import { logger } from "../logger";
-import { sendInapp } from "../services/inapp-sender";
-import { sendEmail } from "../services/email-sender";
+import { logger } from "../../../logger";
+import { sendInapp } from "../../../services/inapp-sender";
+import { sendEmail } from "../../../services/email-sender";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { PDFDocument } from "pdf-lib";
 

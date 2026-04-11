@@ -1,12 +1,12 @@
 import type { Express, Request, Response } from "express";
-import { IStorage } from "../storage";
+import { IStorage } from "../../storage";
 import {
   insertBulkMessageSchema,
   insertBulkMessagesEmailSchema,
   insertBulkMessagesSmsSchema,
   insertBulkMessagesPostalSchema,
   insertBulkMessagesInappSchema,
-} from "../../shared/schema/bulk/schema";
+} from "../../../shared/schema/bulk/schema";
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 

@@ -1,8 +1,8 @@
 import type { Express } from "express";
-import { storage } from "../storage";
+import { storage } from "../../storage";
 import { insertDispatchSchema, dispatchStatusEnum } from "@shared/schema";
-import { requireAccess, buildContext, getAccessStorage } from "../services/access-policy-evaluator";
-import { requireComponent } from "./components";
+import { requireAccess, buildContext, getAccessStorage } from "../../services/access-policy-evaluator";
+import { requireComponent } from "../components";
 
 export function registerDispatchesRoutes(
   app: Express,
