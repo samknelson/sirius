@@ -35,6 +35,7 @@ import {
   QrCode,
   FileSpreadsheet,
   Landmark,
+  Megaphone,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -87,6 +88,11 @@ export default function Header() {
   // staff permission is what grants access to these sections.
   const { data: staffPolicy } = useQuery<PolicyAccessResponse>({
     queryKey: ["/api/access/policies/staff"],
+    staleTime: 30000,
+  });
+
+  const { data: bulkEditPolicy } = useQuery<PolicyAccessResponse>({
+    queryKey: ["/api/access/policies/bulk.edit"],
     staleTime: 30000,
   });
 
@@ -664,6 +670,19 @@ export default function Header() {
                     >
                       <Calendar className="h-4 w-4 mr-2" />
                       Events
+                    </Button>
+                  </Link>
+                )}
+
+                {bulkEditPolicy?.access?.granted && (
+                  <Link href="/bulk/list" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location.startsWith("/bulk") ? "default" : "ghost"}
+                      className="w-full justify-start"
+                      data-testid="mobile-nav-bulk-messages"
+                    >
+                      <Megaphone className="h-4 w-4 mr-2" />
+                      Bulk Messages
                     </Button>
                   </Link>
                 )}
@@ -1343,6 +1362,19 @@ export default function Header() {
                 >
                   <Calendar className="h-4 w-4 mr-2" />
                   Events
+                </Button>
+              </Link>
+            )}
+
+            {bulkEditPolicy?.access?.granted && (
+              <Link href="/bulk/list">
+                <Button
+                  variant={location.startsWith("/bulk") ? "default" : "ghost"}
+                  size="sm"
+                  data-testid="nav-bulk-messages"
+                >
+                  <Megaphone className="h-4 w-4 mr-2" />
+                  Bulk Messages
                 </Button>
               </Link>
             )}
