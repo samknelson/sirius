@@ -1,7 +1,7 @@
 import { FeedWizard, FeedField, FeedConfig, FeedData, ValidationError, ProcessResults, ProcessError, RowResult } from '../feed.js';
 import { WizardStatus, WizardStep, createStandardStatuses, LaunchArgument } from '../base.js';
 import { storage } from '../../storage/index.js';
-import { createBtuWorkerImportStorage } from '../../storage/btu-worker-import.js';
+import { createBtuWorkerImportStorage } from '../../storage/sitespecific/btu/btu-worker-import.js';
 import { createCardcheckStorage, SignedCardcheckWithDetails } from '../../storage/cardchecks.js';
 import { createBargainingUnitStorage, type BargainingUnitData } from '../../storage/bargaining-units.js';
 import { executeChargePlugins, TriggerType, DuesImportSavedContext } from '../../charge-plugins/index.js';

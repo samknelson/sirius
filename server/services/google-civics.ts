@@ -1,5 +1,5 @@
 import { lookupDistricts, type CensusDistrictInfo } from "./census-geocoder";
-import type { BtuPoliticalStorage } from "../storage/sitespecific-btu-political";
+import type { BtuPoliticalStorage } from "../storage/sitespecific/btu/sitespecific-btu-political";
 
 export interface CivicOfficial {
   name: string;

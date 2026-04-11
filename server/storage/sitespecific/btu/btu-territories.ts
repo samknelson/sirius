@@ -1,11 +1,11 @@
-import { getClient } from './transaction-context';
+import { getClient } from '../../transaction-context';
 import { eq } from "drizzle-orm";
-import { tableExists as tableExistsUtil } from "./utils";
+import { tableExists as tableExistsUtil } from "../../utils";
 import { 
   btuTerritories,
   type BtuTerritory, 
   type InsertBtuTerritory 
-} from "../../shared/schema/sitespecific/btu/schema";
+} from "../../../../shared/schema/sitespecific/btu/schema";
 import { getTableName } from "drizzle-orm";
 
 export type { BtuTerritory, InsertBtuTerritory };

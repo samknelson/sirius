@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
-import { createBtuWorkerImportStorage } from "../storage/btu-worker-import";
+import { createBtuWorkerImportStorage } from "../storage/sitespecific/btu/btu-worker-import";
 import { logger } from "../logger";
 import multer from "multer";
 
