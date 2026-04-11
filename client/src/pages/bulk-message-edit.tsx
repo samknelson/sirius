@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -22,9 +21,7 @@ function BulkMessageEditContent() {
     medium: "email" as string,
     status: "draft" as string,
     sendDate: "",
-    dataJson: "",
   });
-  const [dataError, setDataError] = useState<string | null>(null);
 
   useEffect(() => {
     if (bulkMessage) {
@@ -35,7 +32,6 @@ function BulkMessageEditContent() {
         sendDate: bulkMessage.sendDate
           ? new Date(bulkMessage.sendDate).toISOString().slice(0, 16)
           : "",
-        dataJson: bulkMessage.data ? JSON.stringify(bulkMessage.data, null, 2) : "",
       });
     }
   }, [bulkMessage]);
@@ -48,11 +44,6 @@ function BulkMessageEditContent() {
         status: data.status,
       };
       payload.sendDate = data.sendDate ? new Date(data.sendDate).toISOString() : null;
-      if (data.dataJson.trim()) {
-        payload.data = JSON.parse(data.dataJson);
-      } else {
-        payload.data = null;
-      }
       return apiRequest("PATCH", `/api/bulk-messages/${bulkMessage.id}`, payload);
     },
     onSuccess: () => {
@@ -66,28 +57,10 @@ function BulkMessageEditContent() {
     },
   });
 
-  const handleDataChange = (value: string) => {
-    setFormData((prev) => ({ ...prev, dataJson: value }));
-    if (value.trim()) {
-      try {
-        JSON.parse(value);
-        setDataError(null);
-      } catch {
-        setDataError("Invalid JSON");
-      }
-    } else {
-      setDataError(null);
-    }
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name) {
       toast({ title: "Validation error", description: "Name is required.", variant: "destructive" });
-      return;
-    }
-    if (dataError) {
-      toast({ title: "Validation error", description: "Data field contains invalid JSON.", variant: "destructive" });
       return;
     }
     updateMutation.mutate(formData);
@@ -154,21 +127,6 @@ function BulkMessageEditContent() {
                 onChange={(e) => setFormData((prev) => ({ ...prev, sendDate: e.target.value }))}
                 data-testid="input-bulk-edit-send-date"
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="data">Data (JSON)</Label>
-              <Textarea
-                id="data"
-                value={formData.dataJson}
-                onChange={(e) => handleDataChange(e.target.value)}
-                placeholder='{"key": "value"}'
-                rows={6}
-                className="font-mono text-sm"
-                data-testid="textarea-bulk-edit-data"
-              />
-              {dataError && (
-                <p className="text-sm text-destructive" data-testid="text-bulk-data-error">{dataError}</p>
-              )}
             </div>
             <div className="flex gap-3 pt-4">
               <Button
