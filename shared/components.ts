@@ -507,7 +507,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Bulk Messaging",
     description: "Bulk messaging functionality",
     enabledByDefault: false,
-    category: "core"
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/bulk/schema.ts",
+      tables: ["bulk_messages"]
+    }
   },
   {
     id: "system.sftp.client",
