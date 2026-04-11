@@ -422,3 +422,11 @@ export function useTrustProviderEdiTabAccess(ediId: string | undefined, enabled 
     enabled 
   });
 }
+
+export function useBulkMessageTabAccess(bulkMessageId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'bulk_message', 
+    entityId: bulkMessageId, 
+    enabled 
+  });
+}

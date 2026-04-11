@@ -296,6 +296,11 @@ const EdlsSheetAssignmentsPage = lazy(() => import("@/pages/edls/sheet-assignmen
 const EdlsSheetManagePage = lazy(() => import("@/pages/edls/sheet-manage"));
 const EdlsSheetEditPage = lazy(() => import("@/pages/edls/sheet-edit"));
 const EdlsSheetLogsPage = lazy(() => import("@/pages/edls/sheet-logs"));
+const BulkMessagesPage = lazy(() => import("@/pages/bulk-messages"));
+const BulkMessageDetailsPage = lazy(() => import("@/pages/bulk-message-details"));
+const BulkMessageEditPage = lazy(() => import("@/pages/bulk-message-edit"));
+const BulkMessageMessagePage = lazy(() => import("@/pages/bulk-message-message"));
+const BulkMessageLogsPage = lazy(() => import("@/pages/bulk-message-logs"));
 
 // Loading fallback component
 function PageLoader() {
@@ -1623,6 +1628,46 @@ function Router() {
         <ProtectedRoute permission="admin" component="trust.providers.edi">
           <AuthenticatedLayout>
             <TrustProviderEdiDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/list">
+        <ProtectedRoute permission="staff.bulk" component="bulk">
+          <AuthenticatedLayout>
+            <BulkMessagesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/:id/edit">
+        <ProtectedRoute permission="staff.bulk" component="bulk">
+          <AuthenticatedLayout>
+            <BulkMessageEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/:id/message">
+        <ProtectedRoute permission="staff.bulk" component="bulk">
+          <AuthenticatedLayout>
+            <BulkMessageMessagePage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/:id/logs">
+        <ProtectedRoute permission="staff.bulk" component="bulk">
+          <AuthenticatedLayout>
+            <BulkMessageLogsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/:id">
+        <ProtectedRoute permission="staff.bulk" component="bulk">
+          <AuthenticatedLayout>
+            <BulkMessageDetailsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

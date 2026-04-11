@@ -56,6 +56,11 @@ import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./
 import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnitLoggingConfig } from "./bargaining-units";
 import { type SftpClientDestinationStorage, createSftpClientDestinationStorage, sftpClientDestinationLoggingConfig } from "./sftp-client-destinations";
 import { type TrustProviderEdiStorage, createTrustProviderEdiStorage, trustProviderEdiLoggingConfig } from "./trust-provider-edi";
+import { type BulkMessageStorage, createBulkMessageStorage, bulkMessageLoggingConfig } from "./bulk-messages";
+import { type BulkMessagesEmailStorage, createBulkMessagesEmailStorage, bulkMessagesEmailLoggingConfig } from "./bulk-messages-email";
+import { type BulkMessagesSmsStorage, createBulkMessagesSmsStorage, bulkMessagesSmsLoggingConfig } from "./bulk-messages-sms";
+import { type BulkMessagesPostalStorage, createBulkMessagesPostalStorage, bulkMessagesPostalLoggingConfig } from "./bulk-messages-postal";
+import { type BulkMessagesInappStorage, createBulkMessagesInappStorage, bulkMessagesInappLoggingConfig } from "./bulk-messages-inapp";
 import { type EmployerPolicyHistoryStorage, createEmployerPolicyHistoryStorage, employerPolicyHistoryLoggingConfig } from "./employer-policy-history";
 import { type WmbScanQueueStorage, createWmbScanQueueStorage } from "./wmb-scan-queue";
 import { type CardcheckDefinitionStorage, createCardcheckDefinitionStorage, cardcheckDefinitionLoggingConfig } from "./cardcheck-definitions";
@@ -159,6 +164,11 @@ export interface IStorage {
   employerCompanies: EmployerCompanyStorage;
   sftpClientDestinations: SftpClientDestinationStorage;
   trustProviderEdi: TrustProviderEdiStorage;
+  bulkMessages: BulkMessageStorage;
+  bulkMessagesEmail: BulkMessagesEmailStorage;
+  bulkMessagesSms: BulkMessagesSmsStorage;
+  bulkMessagesPostal: BulkMessagesPostalStorage;
+  bulkMessagesInapp: BulkMessagesInappStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -227,6 +237,11 @@ export class DatabaseStorage implements IStorage {
   employerCompanies: EmployerCompanyStorage;
   sftpClientDestinations: SftpClientDestinationStorage;
   trustProviderEdi: TrustProviderEdiStorage;
+  bulkMessages: BulkMessageStorage;
+  bulkMessagesEmail: BulkMessagesEmailStorage;
+  bulkMessagesSms: BulkMessagesSmsStorage;
+  bulkMessagesPostal: BulkMessagesPostalStorage;
+  bulkMessagesInapp: BulkMessagesInappStorage;
 
   constructor() {
     this.variables = withStorageLogging(
@@ -399,6 +414,26 @@ export class DatabaseStorage implements IStorage {
     this.trustProviderEdi = withStorageLogging(
       createTrustProviderEdiStorage(),
       trustProviderEdiLoggingConfig
+    );
+    this.bulkMessages = withStorageLogging(
+      createBulkMessageStorage(),
+      bulkMessageLoggingConfig
+    );
+    this.bulkMessagesEmail = withStorageLogging(
+      createBulkMessagesEmailStorage(),
+      bulkMessagesEmailLoggingConfig
+    );
+    this.bulkMessagesSms = withStorageLogging(
+      createBulkMessagesSmsStorage(),
+      bulkMessagesSmsLoggingConfig
+    );
+    this.bulkMessagesPostal = withStorageLogging(
+      createBulkMessagesPostalStorage(),
+      bulkMessagesPostalLoggingConfig
+    );
+    this.bulkMessagesInapp = withStorageLogging(
+      createBulkMessagesInappStorage(),
+      bulkMessagesInappLoggingConfig
     );
   }
 }

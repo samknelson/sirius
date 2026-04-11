@@ -65,7 +65,8 @@ export type TabEntityType =
   | 'user'
   | 'ws_client'
   | 'sftp_client_destination'
-  | 'trust_provider_edi';
+  | 'trust_provider_edi'
+  | 'bulk_message';
 
 /**
  * Tab check request for batch access evaluation
@@ -487,6 +488,13 @@ export const trustProviderEdiTabTree: HierarchicalTab[] = [
   { id: 'logs', label: 'Logs', hrefTemplate: '/trust/provider-edi/{id}/logs', permission: 'admin', component: 'trust.providers.edi' },
 ];
 
+export const bulkMessageTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/bulk/{id}', permission: 'staff.bulk', component: 'bulk' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/bulk/{id}/edit', permission: 'staff.bulk', component: 'bulk' },
+  { id: 'message', label: 'Message', hrefTemplate: '/bulk/{id}/message', permission: 'staff.bulk', component: 'bulk' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/bulk/{id}/logs', permission: 'staff.bulk', component: 'bulk' },
+];
+
 /**
  * Entity tab trees by type
  */
@@ -514,6 +522,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   ws_client: wsClientTabTree,
   sftp_client_destination: sftpClientDestinationTabTree,
   trust_provider_edi: trustProviderEdiTabTree,
+  bulk_message: bulkMessageTabTree,
 };
 
 /**
