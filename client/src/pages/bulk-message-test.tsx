@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Send, CheckCircle2, XCircle, Loader2, User, Mail, Phone, MapPin, Bell } from "lucide-react";
+import { Search, Send, CheckCircle2, XCircle, Loader2, User, Mail, Phone, MapPin, Bell, AlertTriangle } from "lucide-react";
 
 interface ContactSearchResult {
   id: string;
@@ -16,11 +16,27 @@ interface ContactSearchResult {
   email: string | null;
   given: string | null;
   family: string | null;
+  primaryPhone: string | null;
+  primaryAddress: string | null;
+}
+
+interface ResolvedAddress {
+  medium: string;
+  address: string | null;
+  error?: string;
 }
 
 interface DeliverTestResult {
   success: boolean;
   commId?: string;
+  comm?: {
+    id: string;
+    medium: string;
+    contactId: string;
+    status: string;
+    sent: string;
+    data: unknown;
+  };
   error?: string;
   errorCode?: string;
   resolvedAddress?: string;
@@ -50,7 +66,13 @@ function BulkMessageTestContent() {
   const { data: searchResults = [], isFetching: isSearching } = useQuery<ContactSearchResult[]>({
     queryKey: ["/api/contacts/search", searchQuery],
     queryFn: () => apiRequest("GET", `/api/contacts/search?q=${encodeURIComponent(searchQuery)}`),
-    enabled: searchQuery.trim().length >= 2,
+    enabled: searchQuery.trim().length >= 2 && !selectedContact,
+  });
+
+  const { data: resolvedAddr, isFetching: isResolving } = useQuery<ResolvedAddress>({
+    queryKey: ["/api/bulk-messages", bulkMessage.id, "resolve-address", selectedContact?.id],
+    queryFn: () => apiRequest("POST", `/api/bulk-messages/${bulkMessage.id}/resolve-address`, { contactId: selectedContact!.id }),
+    enabled: !!selectedContact,
   });
 
   const deliverMutation = useMutation({
@@ -80,6 +102,18 @@ function BulkMessageTestContent() {
   });
 
   const MediumIcon = mediumIcons[bulkMessage.medium] || Mail;
+
+  const handleSelectContact = (contact: ContactSearchResult) => {
+    setSelectedContact(contact);
+    setSearchQuery(contact.displayName || "");
+    setLastResult(null);
+  };
+
+  const handleClearContact = () => {
+    setSelectedContact(null);
+    setSearchQuery("");
+    setLastResult(null);
+  };
 
   return (
     <div className="space-y-6">
@@ -112,8 +146,10 @@ function BulkMessageTestContent() {
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
-                  if (selectedContact) setSelectedContact(null);
-                  setLastResult(null);
+                  if (selectedContact) {
+                    setSelectedContact(null);
+                    setLastResult(null);
+                  }
                 }}
                 data-testid="input-contact-search"
               />
@@ -132,19 +168,32 @@ function BulkMessageTestContent() {
                 <button
                   key={contact.id}
                   className="w-full text-left px-4 py-3 hover:bg-accent transition-colors border-b last:border-b-0 flex items-center gap-3"
-                  onClick={() => {
-                    setSelectedContact(contact);
-                    setSearchQuery(contact.displayName || "");
-                    setLastResult(null);
-                  }}
+                  onClick={() => handleSelectContact(contact)}
                   data-testid={`button-select-contact-${contact.id}`}
                 >
                   <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{contact.displayName}</p>
-                    {contact.email && (
-                      <p className="text-xs text-muted-foreground truncate">{contact.email}</p>
-                    )}
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                      {contact.email && (
+                        <span className="flex items-center gap-1">
+                          <Mail className="h-3 w-3" />
+                          {contact.email}
+                        </span>
+                      )}
+                      {contact.primaryPhone && (
+                        <span className="flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          {contact.primaryPhone}
+                        </span>
+                      )}
+                      {contact.primaryAddress && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />
+                          {contact.primaryAddress}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </button>
               ))}
@@ -152,7 +201,7 @@ function BulkMessageTestContent() {
           )}
 
           {selectedContact && (
-            <div className="border rounded-md p-4 bg-accent/30" data-testid="selected-contact-info">
+            <div className="border rounded-md p-4 bg-accent/30 space-y-3" data-testid="selected-contact-info">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -160,23 +209,47 @@ function BulkMessageTestContent() {
                   </div>
                   <div>
                     <p className="text-sm font-medium">{selectedContact.displayName}</p>
-                    {selectedContact.email && (
-                      <p className="text-xs text-muted-foreground">{selectedContact.email}</p>
-                    )}
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                      {selectedContact.email && (
+                        <span className="flex items-center gap-1">
+                          <Mail className="h-3 w-3" />
+                          {selectedContact.email}
+                        </span>
+                      )}
+                      {selectedContact.primaryPhone && (
+                        <span className="flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          {selectedContact.primaryPhone}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => {
-                    setSelectedContact(null);
-                    setSearchQuery("");
-                    setLastResult(null);
-                  }}
+                  onClick={handleClearContact}
                   data-testid="button-clear-contact"
                 >
                   Clear
                 </Button>
+              </div>
+
+              <div className="border-t pt-3" data-testid="resolved-address-preview">
+                <div className="flex items-center gap-2 text-sm">
+                  <MediumIcon className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium">Resolved {mediumLabels[bulkMessage.medium] || bulkMessage.medium}:</span>
+                  {isResolving ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  ) : resolvedAddr?.address ? (
+                    <span className="text-foreground" data-testid="text-preview-address">{resolvedAddr.address}</span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-destructive">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      {resolvedAddr?.error || "No address available"}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -187,7 +260,7 @@ function BulkMessageTestContent() {
                 deliverMutation.mutate(selectedContact.id);
               }
             }}
-            disabled={!selectedContact || deliverMutation.isPending}
+            disabled={!selectedContact || deliverMutation.isPending || (resolvedAddr && !resolvedAddr.address)}
             className="w-full"
             data-testid="button-send-test"
           >
@@ -229,14 +302,40 @@ function BulkMessageTestContent() {
 
               {lastResult.resolvedAddress && (
                 <div className="flex items-start gap-2">
-                  <span className="text-sm font-medium whitespace-nowrap">Resolved Address:</span>
+                  <span className="text-sm font-medium whitespace-nowrap">Sent to:</span>
                   <span className="text-sm text-muted-foreground" data-testid="text-resolved-address">
                     {lastResult.resolvedAddress}
                   </span>
                 </div>
               )}
 
-              {lastResult.commId && (
+              {lastResult.comm && (
+                <div className="bg-muted/50 rounded-md p-3 space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Comm Record</p>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">ID:</span>{" "}
+                      <code className="text-xs bg-muted px-1 rounded" data-testid="text-comm-id">{lastResult.comm.id}</code>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Status:</span>{" "}
+                      <Badge variant="outline" className="text-xs" data-testid="badge-comm-status">{lastResult.comm.status}</Badge>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Medium:</span>{" "}
+                      <span>{lastResult.comm.medium}</span>
+                    </div>
+                    {lastResult.comm.sent && (
+                      <div>
+                        <span className="text-muted-foreground">Sent:</span>{" "}
+                        <span>{new Date(lastResult.comm.sent).toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {!lastResult.comm && lastResult.commId && (
                 <div className="flex items-start gap-2">
                   <span className="text-sm font-medium whitespace-nowrap">Comm ID:</span>
                   <code className="text-xs bg-muted px-2 py-1 rounded" data-testid="text-comm-id">

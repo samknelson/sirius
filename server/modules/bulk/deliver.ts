@@ -1,10 +1,10 @@
 import type { IStorage } from "../../storage";
-import { sendEmail, type SendEmailResult } from "../../services/email-sender";
-import { sendSms, type SendSmsResult } from "../../services/sms-sender";
-import { sendPostal, type SendPostalResult } from "../../services/postal-sender";
-import { sendInapp, type SendInappResult } from "../../services/inapp-sender";
-import type { PostalAddress } from "../../services/providers/postal";
+import type { Comm } from "../../../shared/schema";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
+import { resolveEmailAddress, deliverEmail } from "./deliver-email";
+import { resolvePhoneNumber, deliverSms } from "./deliver-sms";
+import { resolvePostalAddress, deliverPostal } from "./deliver-postal";
+import { resolveUserId, deliverInapp } from "./deliver-inapp";
 
 export interface DeliverContactRequest {
   messageId: string;
@@ -15,6 +15,7 @@ export interface DeliverContactRequest {
 export interface DeliverContactResult {
   success: boolean;
   commId?: string;
+  comm?: Comm;
   error?: string;
   errorCode?: string;
   resolvedAddress?: string;
@@ -25,112 +26,46 @@ export interface DeliverParticipantResult extends DeliverContactResult {
   alreadySent: boolean;
 }
 
-async function resolveEmailAddress(storage: IStorage, contactId: string): Promise<{ address: string; name?: string } | null> {
-  const contact = await storage.contacts.getContact(contactId);
-  if (!contact?.email) return null;
-  return { address: contact.email, name: contact.displayName || undefined };
+export interface ResolvedAddress {
+  medium: string;
+  address: string | null;
+  error?: string;
 }
 
-async function resolvePhoneNumber(storage: IStorage, contactId: string): Promise<string | null> {
-  const phones = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(contactId);
-  const primary = phones.find(p => p.isPrimary && p.isActive);
-  const active = phones.find(p => p.isActive);
-  const phone = primary || active || phones[0];
-  return phone?.number || null;
-}
+export async function resolveAddress(
+  storage: IStorage,
+  messageId: string,
+  contactId: string
+): Promise<ResolvedAddress> {
+  const bulkMessage = await storage.bulkMessages.getById(messageId);
+  if (!bulkMessage) {
+    return { medium: "unknown", address: null, error: "Bulk message not found" };
+  }
 
-async function resolvePostalAddress(storage: IStorage, contactId: string): Promise<PostalAddress | null> {
-  const addresses = await storage.contacts.addresses.getContactPostalByContact(contactId);
-  const primary = addresses.find(a => a.isPrimary && a.isActive);
-  const active = addresses.find(a => a.isActive);
-  const addr = primary || active || addresses[0];
-  if (!addr) return null;
-  return {
-    name: addr.friendlyName || undefined,
-    addressLine1: addr.street,
-    city: addr.city,
-    state: addr.state,
-    zip: addr.postalCode,
-    country: addr.country || "US",
-  };
-}
+  const medium = bulkMessage.medium;
 
-async function resolveUserId(storage: IStorage, contactId: string): Promise<string | null> {
-  const contact = await storage.contacts.getContact(contactId);
-  if (!contact?.email) return null;
-  const user = await storage.users.getUserByEmail(contact.email);
-  return user?.id || null;
-}
-
-function deliverEmail(
-  contactId: string,
-  resolved: { address: string; name?: string },
-  emailContent: { subject: string | null; bodyText: string | null; bodyHtml: string | null; fromAddress: string | null; fromName: string | null; replyTo: string | null },
-  userId?: string,
-): Promise<SendEmailResult> {
-  return sendEmail({
-    contactId,
-    toEmail: resolved.address,
-    toName: resolved.name,
-    subject: emailContent.subject || "(no subject)",
-    bodyText: emailContent.bodyText || undefined,
-    bodyHtml: emailContent.bodyHtml || undefined,
-    fromEmail: emailContent.fromAddress || undefined,
-    fromName: emailContent.fromName || undefined,
-    replyTo: emailContent.replyTo || undefined,
-    userId,
-  });
-}
-
-function deliverSms(
-  contactId: string,
-  phone: string,
-  smsContent: { body: string | null },
-  userId?: string,
-): Promise<SendSmsResult> {
-  return sendSms({
-    contactId,
-    toPhoneNumber: phone,
-    message: smsContent.body || "",
-    userId,
-  });
-}
-
-function deliverPostal(
-  contactId: string,
-  toAddress: PostalAddress,
-  postalContent: {
-    fromName: string | null; fromCompany: string | null; fromAddressLine1: string | null;
-    fromAddressLine2: string | null; fromCity: string | null; fromState: string | null;
-    fromZip: string | null; fromCountry: string | null; description: string | null;
-    fileUrl: string | null; templateId: string | null; mergeVariables: unknown;
-    mailType: string; color: boolean; doubleSided: boolean;
-  },
-  userId?: string,
-): Promise<SendPostalResult> {
-  const fromAddress: PostalAddress | undefined = postalContent.fromAddressLine1 ? {
-    name: postalContent.fromName || undefined,
-    company: postalContent.fromCompany || undefined,
-    addressLine1: postalContent.fromAddressLine1,
-    addressLine2: postalContent.fromAddressLine2 || undefined,
-    city: postalContent.fromCity || "",
-    state: postalContent.fromState || "",
-    zip: postalContent.fromZip || "",
-    country: postalContent.fromCountry || "US",
-  } : undefined;
-  return sendPostal({
-    contactId,
-    toAddress,
-    fromAddress,
-    description: postalContent.description || undefined,
-    file: postalContent.fileUrl || undefined,
-    templateId: postalContent.templateId || undefined,
-    mergeVariables: (postalContent.mergeVariables as Record<string, string>) || undefined,
-    mailType: postalContent.mailType === "usps_standard" ? "usps_standard" : "usps_first_class",
-    color: postalContent.color || undefined,
-    doubleSided: postalContent.doubleSided || undefined,
-    userId,
-  });
+  switch (medium) {
+    case "email": {
+      const resolved = await resolveEmailAddress(storage, contactId);
+      return { medium, address: resolved?.address || null, error: resolved ? undefined : "Contact has no email address" };
+    }
+    case "sms": {
+      const phone = await resolvePhoneNumber(storage, contactId);
+      return { medium, address: phone, error: phone ? undefined : "Contact has no phone number" };
+    }
+    case "postal": {
+      const addr = await resolvePostalAddress(storage, contactId);
+      if (!addr) return { medium, address: null, error: "Contact has no postal address" };
+      const addrStr = [addr.addressLine1, addr.city, addr.state, addr.zip].join(", ");
+      return { medium, address: addrStr };
+    }
+    case "inapp": {
+      const userId = await resolveUserId(storage, contactId);
+      return { medium, address: userId ? `user:${userId}` : null, error: userId ? undefined : "Contact has no linked user account" };
+    }
+    default:
+      return { medium, address: null, error: `Unsupported medium: ${medium}` };
+  }
 }
 
 export async function deliverToContact(
@@ -144,96 +79,17 @@ export async function deliverToContact(
     return { success: false, error: "Bulk message not found", errorCode: "NOT_FOUND" };
   }
 
-  const medium = bulkMessage.medium;
-
-  switch (medium) {
-    case "email": {
-      const emailContent = await storage.bulkMessagesEmail.getByBulkId(messageId);
-      if (!emailContent) {
-        return { success: false, error: "No email content configured for this message", errorCode: "NO_CONTENT" };
-      }
-      const resolved = await resolveEmailAddress(storage, contactId);
-      if (!resolved) {
-        return { success: false, error: "Contact has no email address", errorCode: "NO_ADDRESS" };
-      }
-      const result = await deliverEmail(contactId, resolved, emailContent, userId);
-      return {
-        success: result.success,
-        commId: result.comm?.id,
-        error: result.error,
-        errorCode: result.errorCode,
-        resolvedAddress: resolved.address,
-      };
-    }
-
-    case "sms": {
-      const smsContent = await storage.bulkMessagesSms.getByBulkId(messageId);
-      if (!smsContent) {
-        return { success: false, error: "No SMS content configured for this message", errorCode: "NO_CONTENT" };
-      }
-      const phone = await resolvePhoneNumber(storage, contactId);
-      if (!phone) {
-        return { success: false, error: "Contact has no phone number", errorCode: "NO_ADDRESS" };
-      }
-      const result = await deliverSms(contactId, phone, smsContent, userId);
-      return {
-        success: result.success,
-        commId: result.comm?.id,
-        error: result.error,
-        errorCode: result.errorCode,
-        resolvedAddress: phone,
-      };
-    }
-
-    case "postal": {
-      const postalContent = await storage.bulkMessagesPostal.getByBulkId(messageId);
-      if (!postalContent) {
-        return { success: false, error: "No postal content configured for this message", errorCode: "NO_CONTENT" };
-      }
-      const addr = await resolvePostalAddress(storage, contactId);
-      if (!addr) {
-        return { success: false, error: "Contact has no postal address", errorCode: "NO_ADDRESS" };
-      }
-      const result = await deliverPostal(contactId, addr, postalContent, userId);
-      const addrStr = [addr.addressLine1, addr.city, addr.state, addr.zip].join(", ");
-      return {
-        success: result.success,
-        commId: result.comm?.id,
-        error: result.error,
-        errorCode: result.errorCode,
-        resolvedAddress: addrStr,
-      };
-    }
-
-    case "inapp": {
-      const inappContent = await storage.bulkMessagesInapp.getByBulkId(messageId);
-      if (!inappContent) {
-        return { success: false, error: "No in-app content configured for this message", errorCode: "NO_CONTENT" };
-      }
-      const targetUserId = await resolveUserId(storage, contactId);
-      if (!targetUserId) {
-        return { success: false, error: "Contact does not have a linked user account (required for in-app messages)", errorCode: "NO_USER" };
-      }
-      const result = await sendInapp({
-        contactId,
-        userId: targetUserId,
-        title: inappContent.title || "",
-        body: inappContent.body || "",
-        linkUrl: inappContent.linkUrl || undefined,
-        linkLabel: inappContent.linkLabel || undefined,
-        initiatedBy: userId || "bulk-test",
-      });
-      return {
-        success: result.success,
-        commId: result.comm?.id,
-        error: result.error,
-        errorCode: result.errorCode,
-        resolvedAddress: `user:${targetUserId}`,
-      };
-    }
-
+  switch (bulkMessage.medium) {
+    case "email":
+      return deliverEmail(storage, messageId, contactId, userId);
+    case "sms":
+      return deliverSms(storage, messageId, contactId, userId);
+    case "postal":
+      return deliverPostal(storage, messageId, contactId, userId);
+    case "inapp":
+      return deliverInapp(storage, messageId, contactId, userId);
     default:
-      return { success: false, error: `Unsupported medium: ${medium}`, errorCode: "UNSUPPORTED_MEDIUM" };
+      return { success: false, error: `Unsupported medium: ${bulkMessage.medium}`, errorCode: "UNSUPPORTED_MEDIUM" };
   }
 }
 

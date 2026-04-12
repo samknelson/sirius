@@ -8,11 +8,11 @@ import {
   insertBulkMessagesInappSchema,
   bulkParticipants,
 } from "../../../shared/schema/bulk/schema";
-import { contacts, workers, comm } from "../../../shared/schema";
+import { contacts, workers, comm, phoneNumbers, contactPostal } from "../../../shared/schema";
 import { eq, or, ilike, sql } from "drizzle-orm";
 import { getClient } from "../../storage/transaction-context";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
-import { deliverToContact, deliverToParticipant } from "./deliver";
+import { deliverToContact, deliverToParticipant, resolveAddress } from "./deliver";
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
@@ -337,6 +337,29 @@ export function registerBulkMessageRoutes(
       }
       const db = getClient();
       const term = `%${q}%`;
+
+      const phoneSub = db
+        .selectDistinctOn([phoneNumbers.contactId], {
+          contactId: phoneNumbers.contactId,
+          number: phoneNumbers.number,
+        })
+        .from(phoneNumbers)
+        .where(eq(phoneNumbers.isActive, true))
+        .orderBy(phoneNumbers.contactId, sql`${phoneNumbers.isPrimary} DESC`)
+        .as("primary_phone");
+
+      const addrSub = db
+        .selectDistinctOn([contactPostal.contactId], {
+          contactId: contactPostal.contactId,
+          street: contactPostal.street,
+          city: contactPostal.city,
+          state: contactPostal.state,
+        })
+        .from(contactPostal)
+        .where(eq(contactPostal.isActive, true))
+        .orderBy(contactPostal.contactId, sql`${contactPostal.isPrimary} DESC`)
+        .as("primary_addr");
+
       const rows = await db
         .select({
           id: contacts.id,
@@ -344,8 +367,12 @@ export function registerBulkMessageRoutes(
           email: contacts.email,
           given: contacts.given,
           family: contacts.family,
+          primaryPhone: phoneSub.number,
+          primaryAddress: sql<string>`CASE WHEN ${addrSub.street} IS NOT NULL THEN ${addrSub.street} || ', ' || ${addrSub.city} || ', ' || ${addrSub.state} ELSE NULL END`.as("primaryAddress"),
         })
         .from(contacts)
+        .leftJoin(phoneSub, eq(phoneSub.contactId, contacts.id))
+        .leftJoin(addrSub, eq(addrSub.contactId, contacts.id))
         .where(
           or(
             ilike(contacts.displayName, term),
@@ -358,6 +385,24 @@ export function registerBulkMessageRoutes(
       res.json(rows);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to search contacts";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.post("/api/bulk-messages/:id/resolve-address", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+    try {
+      const bulk = await storage.bulkMessages.getById(req.params.id);
+      if (!bulk) {
+        return res.status(404).json({ message: "Bulk message not found" });
+      }
+      const { contactId } = req.body;
+      if (!contactId || typeof contactId !== "string") {
+        return res.status(400).json({ message: "contactId is required" });
+      }
+      const result = await resolveAddress(storage, req.params.id, contactId);
+      res.json(result);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to resolve address";
       res.status(500).json({ message });
     }
   });
