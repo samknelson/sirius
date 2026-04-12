@@ -9,7 +9,7 @@ import {
   bulkParticipants,
 } from "../../../shared/schema/bulk/schema";
 import { contacts, workers, comm, phoneNumbers, contactPostal } from "../../../shared/schema";
-import { eq, or, ilike, sql } from "drizzle-orm";
+import { eq, or, ilike, sql, inArray, and } from "drizzle-orm";
 import { getClient } from "../../storage/transaction-context";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
 import { deliverToContact, deliverToParticipant, resolveAddress } from "./deliver";
@@ -347,28 +347,6 @@ export function registerBulkMessageRoutes(
       const db = getClient();
       const term = `%${q}%`;
 
-      const phoneSub = db
-        .selectDistinctOn([phoneNumbers.contactId], {
-          contactId: phoneNumbers.contactId,
-          number: phoneNumbers.number,
-        })
-        .from(phoneNumbers)
-        .where(eq(phoneNumbers.isActive, true))
-        .orderBy(phoneNumbers.contactId, sql`${phoneNumbers.isPrimary} DESC`)
-        .as("primary_phone");
-
-      const addrSub = db
-        .selectDistinctOn([contactPostal.contactId], {
-          contactId: contactPostal.contactId,
-          street: contactPostal.street,
-          city: contactPostal.city,
-          state: contactPostal.state,
-        })
-        .from(contactPostal)
-        .where(eq(contactPostal.isActive, true))
-        .orderBy(contactPostal.contactId, sql`${contactPostal.isPrimary} DESC`)
-        .as("primary_addr");
-
       const rows = await db
         .select({
           id: contacts.id,
@@ -376,12 +354,8 @@ export function registerBulkMessageRoutes(
           email: contacts.email,
           given: contacts.given,
           family: contacts.family,
-          primaryPhone: phoneSub.number,
-          primaryAddress: sql<string>`CASE WHEN ${addrSub.street} IS NOT NULL THEN ${addrSub.street} || ', ' || ${addrSub.city} || ', ' || ${addrSub.state} ELSE NULL END`.as("primaryAddress"),
         })
         .from(contacts)
-        .leftJoin(phoneSub, eq(phoneSub.contactId, contacts.id))
-        .leftJoin(addrSub, eq(addrSub.contactId, contacts.id))
         .where(
           or(
             ilike(contacts.displayName, term),
@@ -391,7 +365,53 @@ export function registerBulkMessageRoutes(
           )
         )
         .limit(20);
-      res.json(rows);
+
+      const contactIds = rows.map(r => r.id);
+      if (contactIds.length === 0) {
+        return res.json([]);
+      }
+
+      const phones = await db
+        .select({
+          contactId: phoneNumbers.contactId,
+          number: phoneNumbers.number,
+          isPrimary: phoneNumbers.isPrimary,
+        })
+        .from(phoneNumbers)
+        .where(and(inArray(phoneNumbers.contactId, contactIds), eq(phoneNumbers.isActive, true)));
+
+      const addrs = await db
+        .select({
+          contactId: contactPostal.contactId,
+          street: contactPostal.street,
+          city: contactPostal.city,
+          state: contactPostal.state,
+          isPrimary: contactPostal.isPrimary,
+        })
+        .from(contactPostal)
+        .where(and(inArray(contactPostal.contactId, contactIds), eq(contactPostal.isActive, true)));
+
+      const phoneMap = new Map<string, string>();
+      for (const p of phones) {
+        if (!phoneMap.has(p.contactId) || p.isPrimary) {
+          phoneMap.set(p.contactId, p.number);
+        }
+      }
+
+      const addrMap = new Map<string, string>();
+      for (const a of addrs) {
+        if (!addrMap.has(a.contactId) || a.isPrimary) {
+          addrMap.set(a.contactId, [a.street, a.city, a.state].filter(Boolean).join(", "));
+        }
+      }
+
+      const enriched = rows.map(r => ({
+        ...r,
+        primaryPhone: phoneMap.get(r.id) || null,
+        primaryAddress: addrMap.get(r.id) || null,
+      }));
+
+      res.json(enriched);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to search contacts";
       res.status(500).json({ message });
