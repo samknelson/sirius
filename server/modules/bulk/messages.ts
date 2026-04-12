@@ -13,6 +13,7 @@ import { eq, or, ilike, sql, inArray, and } from "drizzle-orm";
 import { getClient } from "../../storage/transaction-context";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
 import { deliverToContact, deliverToParticipant, resolveAddress } from "./deliver";
+import { storageLogger } from "../../logger";
 import { resolveContactLinks, resolveContactLinksForMany } from "../contact-links";
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
@@ -464,11 +465,13 @@ export function registerBulkMessageRoutes(
   });
 
   app.post("/api/bulk-messages/:id/deliver-test", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+    let medium: string | null = null;
     try {
       const bulk = await storage.bulkMessages.getById(req.params.id);
       if (!bulk) {
         return res.status(404).json({ message: "Bulk message not found" });
       }
+      medium = bulk.medium;
       const { contactId } = req.body;
       if (!contactId || typeof contactId !== "string") {
         return res.status(400).json({ message: "contactId is required" });
@@ -479,9 +482,35 @@ export function registerBulkMessageRoutes(
         contactId,
         userId: user?.id,
       });
+
+      const logLevel = result.success ? "info" : "warn";
+      const logMessage = result.success ? "Bulk test send completed" : "Bulk test send returned failure";
+      storageLogger.log(logLevel, logMessage, {
+        module: "bulk",
+        operation: "test_send",
+        host_entity_id: req.params.id,
+        comm_id: result.commId || null,
+        contact_id: contactId,
+        medium,
+        success: result.success,
+        error: result.error || null,
+      });
+
       res.json(result);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to deliver test message";
+
+      storageLogger.error("Bulk test send failed", {
+        module: "bulk",
+        operation: "test_send",
+        host_entity_id: req.params.id,
+        comm_id: null,
+        contact_id: req.body?.contactId ?? null,
+        medium,
+        success: false,
+        error: message,
+      });
+
       res.status(500).json({ message });
     }
   });
