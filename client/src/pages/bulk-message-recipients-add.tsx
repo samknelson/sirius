@@ -92,10 +92,7 @@ function BulkMessageRecipientsAddContent() {
 
   const { data: existingParticipants = [] } = useQuery<BulkParticipant[]>({
     queryKey: ["/api/bulk-messages", bulkMessage.id, "participants"],
-    queryFn: async () => {
-      const res = await apiRequest("GET", `/api/bulk-messages/${bulkMessage.id}/participants`);
-      return res.json();
-    },
+    queryFn: () => apiRequest("GET", `/api/bulk-messages/${bulkMessage.id}/participants`),
   });
 
   const disabledIds = useMemo(() => {

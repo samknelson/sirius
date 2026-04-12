@@ -6,7 +6,11 @@ import {
   insertBulkMessagesSmsSchema,
   insertBulkMessagesPostalSchema,
   insertBulkMessagesInappSchema,
+  bulkParticipants,
 } from "../../../shared/schema/bulk/schema";
+import { contacts, workers, comm } from "../../../shared/schema";
+import { eq } from "drizzle-orm";
+import { getClient } from "../../storage/transaction-context";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
@@ -250,8 +254,35 @@ export function registerBulkMessageRoutes(
       if (!bulk) {
         return res.status(404).json({ message: "Bulk message not found" });
       }
-      const participants = await rawParticipantStorage.getByMessageId(req.params.id);
-      res.json(participants);
+      const db = getClient();
+      const workerSub = db
+        .selectDistinctOn([workers.contactId], {
+          contactId: workers.contactId,
+          id: workers.id,
+          siriusId: workers.siriusId,
+        })
+        .from(workers)
+        .as("w");
+      const rows = await db
+        .select({
+          id: bulkParticipants.id,
+          messageId: bulkParticipants.messageId,
+          contactId: bulkParticipants.contactId,
+          commId: bulkParticipants.commId,
+          data: bulkParticipants.data,
+          contactDisplayName: contacts.displayName,
+          contactGiven: contacts.given,
+          contactFamily: contacts.family,
+          workerId: workerSub.id,
+          workerSiriusId: workerSub.siriusId,
+          commStatus: comm.status,
+        })
+        .from(bulkParticipants)
+        .innerJoin(contacts, eq(bulkParticipants.contactId, contacts.id))
+        .leftJoin(workerSub, eq(workerSub.contactId, contacts.id))
+        .leftJoin(comm, eq(bulkParticipants.commId, comm.id))
+        .where(eq(bulkParticipants.messageId, req.params.id));
+      res.json(rows);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to fetch participants";
       res.status(500).json({ message });
