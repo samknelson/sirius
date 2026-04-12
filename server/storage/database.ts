@@ -61,6 +61,7 @@ import { type BulkMessagesEmailStorage, createBulkMessagesEmailStorage, bulkMess
 import { type BulkMessagesSmsStorage, createBulkMessagesSmsStorage, bulkMessagesSmsLoggingConfig } from "./bulk/messages/sms";
 import { type BulkMessagesPostalStorage, createBulkMessagesPostalStorage, bulkMessagesPostalLoggingConfig } from "./bulk/messages/postal";
 import { type BulkMessagesInappStorage, createBulkMessagesInappStorage, bulkMessagesInappLoggingConfig } from "./bulk/messages/inapp";
+import { type BulkParticipantStorage, createBulkParticipantStorage, bulkParticipantLoggingConfig } from "./bulk/participants";
 import { type EmployerPolicyHistoryStorage, createEmployerPolicyHistoryStorage, employerPolicyHistoryLoggingConfig } from "./employer-policy-history";
 import { type WmbScanQueueStorage, createWmbScanQueueStorage } from "./wmb-scan-queue";
 import { type CardcheckDefinitionStorage, createCardcheckDefinitionStorage, cardcheckDefinitionLoggingConfig } from "./cardcheck-definitions";
@@ -169,6 +170,7 @@ export interface IStorage {
   bulkMessagesSms: BulkMessagesSmsStorage;
   bulkMessagesPostal: BulkMessagesPostalStorage;
   bulkMessagesInapp: BulkMessagesInappStorage;
+  bulkParticipants: BulkParticipantStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -242,6 +244,7 @@ export class DatabaseStorage implements IStorage {
   bulkMessagesSms: BulkMessagesSmsStorage;
   bulkMessagesPostal: BulkMessagesPostalStorage;
   bulkMessagesInapp: BulkMessagesInappStorage;
+  bulkParticipants: BulkParticipantStorage;
 
   constructor() {
     this.variables = withStorageLogging(
@@ -434,6 +437,10 @@ export class DatabaseStorage implements IStorage {
     this.bulkMessagesInapp = withStorageLogging(
       createBulkMessagesInappStorage(),
       bulkMessagesInappLoggingConfig
+    );
+    this.bulkParticipants = withStorageLogging(
+      createBulkParticipantStorage(),
+      bulkParticipantLoggingConfig
     );
   }
 }

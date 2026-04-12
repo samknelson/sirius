@@ -2,6 +2,7 @@ import { pgTable, varchar, text, timestamp, jsonb, boolean, pgEnum } from "drizz
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { contacts, comm } from "../../schema";
 
 export const bulkMediumEnum = pgEnum("bulk_medium", ["sms", "email", "inapp", "postal"]);
 
@@ -100,3 +101,18 @@ export const insertBulkMessagesInappSchema = createInsertSchema(bulkMessagesInap
 
 export type BulkMessagesInapp = typeof bulkMessagesInapp.$inferSelect;
 export type InsertBulkMessagesInapp = z.infer<typeof insertBulkMessagesInappSchema>;
+
+export const bulkParticipants = pgTable("bulk_participants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  messageId: varchar("message_id").notNull().references(() => bulkMessages.id, { onDelete: "cascade" }),
+  contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: "cascade" }),
+  commId: varchar("comm_id").references(() => comm.id, { onDelete: "set null" }),
+  data: jsonb("data"),
+});
+
+export const insertBulkParticipantSchema = createInsertSchema(bulkParticipants).omit({
+  id: true,
+});
+
+export type BulkParticipant = typeof bulkParticipants.$inferSelect;
+export type InsertBulkParticipant = z.infer<typeof insertBulkParticipantSchema>;
