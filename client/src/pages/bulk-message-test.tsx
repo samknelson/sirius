@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { BulkMessageLayout, useBulkMessageLayout } from "@/components/layouts/BulkMessageLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Send, CheckCircle2, XCircle, Loader2, User, Mail, Phone, MapPin, Bell, AlertTriangle } from "lucide-react";
+import { Link } from "wouter";
+import { Search, Send, CheckCircle2, XCircle, Loader2, User, Mail, Phone, MapPin, Bell, AlertTriangle, ExternalLink } from "lucide-react";
 
 interface ContactSearchResult {
   id: string;
@@ -60,13 +61,21 @@ function BulkMessageTestContent() {
   const { bulkMessage } = useBulkMessageLayout();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedContact, setSelectedContact] = useState<ContactSearchResult | null>(null);
   const [lastResult, setLastResult] = useState<DeliverTestResult | null>(null);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const { data: searchResults = [], isFetching: isSearching } = useQuery<ContactSearchResult[]>({
-    queryKey: ["/api/contacts/search", searchQuery],
-    queryFn: () => apiRequest("GET", `/api/contacts/search?q=${encodeURIComponent(searchQuery)}`),
-    enabled: searchQuery.trim().length >= 2 && !selectedContact,
+    queryKey: ["/api/contacts/search", debouncedQuery],
+    queryFn: () => apiRequest("GET", `/api/contacts/search?q=${encodeURIComponent(debouncedQuery)}`),
+    enabled: debouncedQuery.trim().length >= 2 && !selectedContact,
   });
 
   const { data: resolvedAddr, isFetching: isResolving } = useQuery<ResolvedAddress>({
@@ -159,7 +168,7 @@ function BulkMessageTestContent() {
             </div>
           </div>
 
-          {searchQuery.trim().length >= 2 && !selectedContact && (
+          {debouncedQuery.trim().length >= 2 && !selectedContact && (
             <div className="border rounded-md max-h-60 overflow-y-auto" data-testid="list-contact-search-results">
               {searchResults.length === 0 && !isSearching && (
                 <p className="p-4 text-sm text-muted-foreground text-center">No contacts found</p>
@@ -311,7 +320,15 @@ function BulkMessageTestContent() {
 
               {lastResult.comm && (
                 <div className="bg-muted/50 rounded-md p-3 space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Comm Record</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Comm Record</p>
+                    <Link href={`/comm/${lastResult.comm.id}`}>
+                      <Button variant="ghost" size="sm" className="h-6 gap-1 text-xs" data-testid="link-comm-record">
+                        <ExternalLink className="h-3 w-3" />
+                        View Record
+                      </Button>
+                    </Link>
+                  </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
                       <span className="text-muted-foreground">ID:</span>{" "}
@@ -336,11 +353,17 @@ function BulkMessageTestContent() {
               )}
 
               {!lastResult.comm && lastResult.commId && (
-                <div className="flex items-start gap-2">
+                <div className="flex items-center gap-2">
                   <span className="text-sm font-medium whitespace-nowrap">Comm ID:</span>
                   <code className="text-xs bg-muted px-2 py-1 rounded" data-testid="text-comm-id">
                     {lastResult.commId}
                   </code>
+                  <Link href={`/comm/${lastResult.commId}`}>
+                    <Button variant="ghost" size="sm" className="h-6 gap-1 text-xs" data-testid="link-comm-record-fallback">
+                      <ExternalLink className="h-3 w-3" />
+                      View
+                    </Button>
+                  </Link>
                 </div>
               )}
 

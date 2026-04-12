@@ -16,6 +16,15 @@ import { deliverToContact, deliverToParticipant, resolveAddress } from "./delive
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
+interface AuthenticatedUser {
+  id: string;
+  email?: string;
+}
+
+function getRequestUser(req: Request): AuthenticatedUser | undefined {
+  return (req as Request & { user?: AuthenticatedUser }).user;
+}
+
 async function getMediumRecord(storage: IStorage, medium: string, bulkId: string): Promise<unknown> {
   switch (medium) {
     case 'email': return storage.bulkMessagesEmail.getByBulkId(bulkId);
@@ -417,7 +426,7 @@ export function registerBulkMessageRoutes(
       if (!contactId || typeof contactId !== "string") {
         return res.status(400).json({ message: "contactId is required" });
       }
-      const user = (req as any).user;
+      const user = getRequestUser(req);
       const result = await deliverToContact(storage, {
         messageId: req.params.id,
         contactId,
@@ -436,7 +445,7 @@ export function registerBulkMessageRoutes(
       if (!bulk) {
         return res.status(404).json({ message: "Bulk message not found" });
       }
-      const user = (req as any).user;
+      const user = getRequestUser(req);
       const result = await deliverToParticipant(
         storage,
         req.params.id,
