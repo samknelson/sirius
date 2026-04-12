@@ -303,6 +303,7 @@ const BulkMessageMessagePage = lazy(() => import("@/pages/bulk-message-message")
 const BulkMessageLogsPage = lazy(() => import("@/pages/bulk-message-logs"));
 const BulkMessageRecipientsListPage = lazy(() => import("@/pages/bulk-message-recipients-list"));
 const BulkMessageRecipientsAddPage = lazy(() => import("@/pages/bulk-message-recipients-add"));
+const BulkMessageDeliverPage = lazy(() => import("@/pages/bulk-message-deliver"));
 const BulkMessageTestPage = lazy(() => import("@/pages/bulk-message-test"));
 
 // Loading fallback component
@@ -1671,6 +1672,14 @@ function Router() {
         <ProtectedRoute policy="bulk.edit">
           <AuthenticatedLayout>
             <BulkMessageRecipientsAddPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/:id/deliver">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <BulkMessageDeliverPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
