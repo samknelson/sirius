@@ -8,7 +8,7 @@ import type {
   EmailRecipient
 } from './index';
 import type { ConnectionTestResult } from '../base';
-import { logger } from '../../../logger';
+import { logger } from '../..co/../logger';
 
 const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
