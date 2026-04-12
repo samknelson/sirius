@@ -1,4 +1,4 @@
-import { ReactNode, createContext, useContext } from "react";
+import { ReactNode, createContext, useContext, useMemo } from "react";
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ChevronRight, Megaphone } from "lucide-react";
@@ -49,7 +49,13 @@ export function BulkMessageLayout({ activeTab, children }: BulkMessageLayoutProp
     enabled: !!id,
   });
 
-  const { tabs: mainTabs } = useBulkMessageTabAccess(id);
+  const { tabs: mainTabs, getActiveRoot } = useBulkMessageTabAccess(id);
+
+  const activeRoot = useMemo(() => {
+    return getActiveRoot(activeTab);
+  }, [activeTab, getActiveRoot]);
+
+  const subTabs = activeRoot?.children;
 
   usePageTitle(bulkMessage?.name || "Bulk Message");
 
@@ -121,7 +127,7 @@ export function BulkMessageLayout({ activeTab, children }: BulkMessageLayoutProp
       <div className="border-b border-border mb-6">
         <nav className="flex gap-6" data-testid="nav-bulk-message-tabs">
           {mainTabs.map((tab) => {
-            const isActive = tab.id === activeTab;
+            const isActive = tab.id === activeTab || tab.id === activeRoot?.id;
             return (
               <Link
                 key={tab.id}
@@ -139,6 +145,35 @@ export function BulkMessageLayout({ activeTab, children }: BulkMessageLayoutProp
           })}
         </nav>
       </div>
+
+      {subTabs && subTabs.length > 0 && (
+        <div className="bg-muted/30 border-b border-border rounded-md mb-6">
+          <div className="flex flex-wrap items-center gap-2 py-2 px-4">
+            {subTabs.map((tab) => (
+              tab.id === activeTab ? (
+                <Button
+                  key={tab.id}
+                  variant="secondary"
+                  size="sm"
+                  data-testid={`button-bulk-${tab.id}`}
+                >
+                  {tab.label}
+                </Button>
+              ) : (
+                <Link key={tab.id} href={tab.href}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    data-testid={`button-bulk-${tab.id}`}
+                  >
+                    {tab.label}
+                  </Button>
+                </Link>
+              )
+            ))}
+          </div>
+        </div>
+      )}
 
       <BulkMessageLayoutContext.Provider value={{ bulkMessage }}>
         {children}
