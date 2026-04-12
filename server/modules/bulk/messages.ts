@@ -13,6 +13,7 @@ import { eq, or, ilike, sql, inArray, and } from "drizzle-orm";
 import { getClient } from "../../storage/transaction-context";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
 import { deliverToContact, deliverToParticipant, resolveAddress } from "./deliver";
+import { resolveContactLinks, resolveContactLinksForMany } from "../contact-links";
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
@@ -412,15 +413,34 @@ export function registerBulkMessageRoutes(
         }
       }
 
+      let linkMap = new Map<string, { url: string; label: string } | null>();
+      try {
+        const resolved = await resolveContactLinksForMany(contactIds);
+        for (const [cid, result] of resolved) {
+          linkMap.set(cid, result.mainLink ? { url: result.mainLink.url, label: result.mainLink.label } : null);
+        }
+      } catch (_e) {}
+
       const enriched = rows.map(r => ({
         ...r,
         primaryPhone: phoneMap.get(r.id) || null,
         primaryAddress: addrMap.get(r.id) || null,
+        mainLink: linkMap.get(r.id) || null,
       }));
 
       res.json(enriched);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to search contacts";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.get("/api/contacts/:id/links", requireAuth, async (req, res) => {
+    try {
+      const result = await resolveContactLinks(req.params.id);
+      res.json(result);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to resolve contact links";
       res.status(500).json({ message });
     }
   });

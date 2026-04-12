@@ -11,6 +11,11 @@ import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { Search, Send, CheckCircle2, XCircle, Loader2, User, Mail, Phone, MapPin, Bell, AlertTriangle, ExternalLink } from "lucide-react";
 
+interface ContactMainLink {
+  url: string;
+  label: string;
+}
+
 interface ContactSearchResult {
   id: string;
   displayName: string;
@@ -19,6 +24,7 @@ interface ContactSearchResult {
   family: string | null;
   primaryPhone: string | null;
   primaryAddress: string | null;
+  mainLink: ContactMainLink | null;
 }
 
 interface ResolvedAddress {
@@ -176,15 +182,28 @@ function BulkMessageTestContent() {
                 <p className="p-4 text-sm text-muted-foreground text-center">No contacts found</p>
               )}
               {searchResults.map((contact) => (
-                <button
+                <div
                   key={contact.id}
-                  className="w-full text-left px-4 py-3 hover:bg-accent transition-colors border-b last:border-b-0 flex items-center gap-3"
+                  className="w-full text-left px-4 py-3 hover:bg-accent transition-colors border-b last:border-b-0 flex items-center gap-3 cursor-pointer"
                   onClick={() => handleSelectContact(contact)}
                   data-testid={`button-select-contact-${contact.id}`}
                 >
                   <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{contact.displayName}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium truncate">{contact.displayName}</span>
+                      {contact.mainLink && (
+                        <Link
+                          href={contact.mainLink.url}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Badge variant="outline" className="text-xs shrink-0 hover:bg-primary/10 cursor-pointer" data-testid={`link-contact-${contact.id}`}>
+                            {contact.mainLink.label}
+                            <ExternalLink className="h-2.5 w-2.5 ml-1" />
+                          </Badge>
+                        </Link>
+                      )}
+                    </div>
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                       {contact.email && (
                         <span className="flex items-center gap-1">
@@ -206,7 +225,7 @@ function BulkMessageTestContent() {
                       )}
                     </div>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           )}
@@ -219,7 +238,17 @@ function BulkMessageTestContent() {
                     <User className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium">{selectedContact.displayName}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">{selectedContact.displayName}</p>
+                      {selectedContact.mainLink && (
+                        <Link href={selectedContact.mainLink.url}>
+                          <Badge variant="outline" className="text-xs hover:bg-primary/10 cursor-pointer" data-testid="link-selected-contact">
+                            {selectedContact.mainLink.label}
+                            <ExternalLink className="h-2.5 w-2.5 ml-1" />
+                          </Badge>
+                        </Link>
+                      )}
+                    </div>
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                       {selectedContact.email && (
                         <span className="flex items-center gap-1">
