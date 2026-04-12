@@ -366,30 +366,37 @@ export function registerBulkMessageRoutes(
         )
         .limit(20);
 
-      const contactIds = rows.map(r => r.id);
+      const contactIds = rows.map(r => r.id).filter(Boolean);
       if (contactIds.length === 0) {
-        return res.json([]);
+        return res.json(rows.map(r => ({ ...r, primaryPhone: null, primaryAddress: null })));
       }
 
-      const phones = await db
-        .select({
-          contactId: phoneNumbers.contactId,
-          number: phoneNumbers.number,
-          isPrimary: phoneNumbers.isPrimary,
-        })
-        .from(phoneNumbers)
-        .where(and(inArray(phoneNumbers.contactId, contactIds), eq(phoneNumbers.isActive, true)));
+      let phones: { contactId: string; number: string; isPrimary: boolean }[] = [];
+      let addrs: { contactId: string; street: string; city: string; state: string; isPrimary: boolean }[] = [];
 
-      const addrs = await db
-        .select({
-          contactId: contactPostal.contactId,
-          street: contactPostal.street,
-          city: contactPostal.city,
-          state: contactPostal.state,
-          isPrimary: contactPostal.isPrimary,
-        })
-        .from(contactPostal)
-        .where(and(inArray(contactPostal.contactId, contactIds), eq(contactPostal.isActive, true)));
+      try {
+        phones = await db
+          .select({
+            contactId: phoneNumbers.contactId,
+            number: phoneNumbers.number,
+            isPrimary: phoneNumbers.isPrimary,
+          })
+          .from(phoneNumbers)
+          .where(and(inArray(phoneNumbers.contactId, contactIds), eq(phoneNumbers.isActive, true)));
+      } catch (_e) {}
+
+      try {
+        addrs = await db
+          .select({
+            contactId: contactPostal.contactId,
+            street: contactPostal.street,
+            city: contactPostal.city,
+            state: contactPostal.state,
+            isPrimary: contactPostal.isPrimary,
+          })
+          .from(contactPostal)
+          .where(and(inArray(contactPostal.contactId, contactIds), eq(contactPostal.isActive, true)));
+      } catch (_e) {}
 
       const phoneMap = new Map<string, string>();
       for (const p of phones) {

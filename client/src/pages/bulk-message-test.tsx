@@ -76,6 +76,8 @@ function BulkMessageTestContent() {
     queryKey: ["/api/contacts/search", debouncedQuery],
     queryFn: () => apiRequest("GET", `/api/contacts/search?q=${encodeURIComponent(debouncedQuery)}`),
     enabled: debouncedQuery.trim().length >= 2 && !selectedContact,
+    staleTime: 30_000,
+    retry: 1,
   });
 
   const { data: resolvedAddr, isFetching: isResolving } = useQuery<ResolvedAddress>({
