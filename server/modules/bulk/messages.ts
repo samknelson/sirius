@@ -12,7 +12,7 @@ import { contacts, workers, comm } from "../../../shared/schema";
 import { eq, or, ilike, sql } from "drizzle-orm";
 import { getClient } from "../../storage/transaction-context";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
-import { deliverToContact } from "./deliver";
+import { deliverToContact, deliverToParticipant } from "./deliver";
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
@@ -350,6 +350,8 @@ export function registerBulkMessageRoutes(
           or(
             ilike(contacts.displayName, term),
             ilike(contacts.email, term),
+            ilike(contacts.given, term),
+            ilike(contacts.family, term),
           )
         )
         .limit(20);
@@ -370,15 +372,38 @@ export function registerBulkMessageRoutes(
       if (!contactId || typeof contactId !== "string") {
         return res.status(400).json({ message: "contactId is required" });
       }
-      const userId = (req as any).user?.id;
+      const user = (req as any).user;
       const result = await deliverToContact(storage, {
         messageId: req.params.id,
         contactId,
-        userId,
+        userId: user?.id,
       });
       res.json(result);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to deliver test message";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.post("/api/bulk-messages/:id/deliver-participant/:participantId", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+    try {
+      const bulk = await storage.bulkMessages.getById(req.params.id);
+      if (!bulk) {
+        return res.status(404).json({ message: "Bulk message not found" });
+      }
+      const user = (req as any).user;
+      const result = await deliverToParticipant(
+        storage,
+        req.params.id,
+        req.params.participantId,
+        user?.id,
+      );
+      if (result.alreadySent) {
+        return res.status(409).json(result);
+      }
+      res.json(result);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to deliver to participant";
       res.status(500).json({ message });
     }
   });
