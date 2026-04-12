@@ -339,7 +339,7 @@ export function registerBulkMessageRoutes(
     }
   });
 
-  app.get("/api/contacts/search", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+  app.get("/api/contacts/search", requireAuth, requireAccess('staff'), async (req, res) => {
     try {
       const q = (req.query.q as string || "").trim();
       if (q.length < 2) {
