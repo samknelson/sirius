@@ -9,9 +9,10 @@ import {
   bulkParticipants,
 } from "../../../shared/schema/bulk/schema";
 import { contacts, workers, comm } from "../../../shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, or, ilike, sql } from "drizzle-orm";
 import { getClient } from "../../storage/transaction-context";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
+import { deliverToContact } from "./deliver";
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
@@ -324,6 +325,60 @@ export function registerBulkMessageRoutes(
       res.json({ success: true });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to remove participant";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.get("/api/contacts/search", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+    try {
+      const q = (req.query.q as string || "").trim();
+      if (q.length < 2) {
+        return res.json([]);
+      }
+      const db = getClient();
+      const term = `%${q}%`;
+      const rows = await db
+        .select({
+          id: contacts.id,
+          displayName: contacts.displayName,
+          email: contacts.email,
+          given: contacts.given,
+          family: contacts.family,
+        })
+        .from(contacts)
+        .where(
+          or(
+            ilike(contacts.displayName, term),
+            ilike(contacts.email, term),
+          )
+        )
+        .limit(20);
+      res.json(rows);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to search contacts";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.post("/api/bulk-messages/:id/deliver-test", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+    try {
+      const bulk = await storage.bulkMessages.getById(req.params.id);
+      if (!bulk) {
+        return res.status(404).json({ message: "Bulk message not found" });
+      }
+      const { contactId } = req.body;
+      if (!contactId || typeof contactId !== "string") {
+        return res.status(400).json({ message: "contactId is required" });
+      }
+      const userId = (req as any).user?.id;
+      const result = await deliverToContact(storage, {
+        messageId: req.params.id,
+        contactId,
+        userId,
+      });
+      res.json(result);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to deliver test message";
       res.status(500).json({ message });
     }
   });

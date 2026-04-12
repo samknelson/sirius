@@ -499,6 +499,7 @@ export const bulkMessageTabTree: HierarchicalTab[] = [
       { id: 'recipients-add', label: 'Add', hrefTemplate: '/bulk/{id}/recipients/add', policyId: 'bulk.edit' },
     ]
   },
+  { id: 'test', label: 'Test', hrefTemplate: '/bulk/{id}/test', policyId: 'bulk.edit' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/bulk/{id}/logs', policyId: 'bulk.edit' },
 ];
 
