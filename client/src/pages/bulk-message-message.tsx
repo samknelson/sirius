@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { BulkMessageLayout, useBulkMessageLayout } from "@/components/layouts/BulkMessageLayout";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,9 +19,6 @@ interface MediumResponse {
 
 function EmailForm({ record, onSave, isPending }: { record: Record<string, unknown> | null; onSave: (data: Record<string, unknown>) => void; isPending: boolean }) {
   const [form, setForm] = useState({
-    fromAddress: "",
-    fromName: "",
-    replyTo: "",
     subject: "",
     bodyText: "",
     bodyHtml: "",
@@ -30,9 +27,6 @@ function EmailForm({ record, onSave, isPending }: { record: Record<string, unkno
   useEffect(() => {
     if (record) {
       setForm({
-        fromAddress: (record.fromAddress as string) || "",
-        fromName: (record.fromName as string) || "",
-        replyTo: (record.replyTo as string) || "",
         subject: (record.subject as string) || "",
         bodyText: (record.bodyText as string) || "",
         bodyHtml: (record.bodyHtml as string) || "",
@@ -42,25 +36,9 @@ function EmailForm({ record, onSave, isPending }: { record: Record<string, unkno
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="fromAddress">From Address</Label>
-          <Input id="fromAddress" type="email" value={form.fromAddress} onChange={(e) => setForm((p) => ({ ...p, fromAddress: e.target.value }))} placeholder="sender@example.com" data-testid="input-email-from-address" />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="fromName">From Name</Label>
-          <Input id="fromName" value={form.fromName} onChange={(e) => setForm((p) => ({ ...p, fromName: e.target.value }))} placeholder="Sender Name" data-testid="input-email-from-name" />
-        </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="replyTo">Reply To</Label>
-          <Input id="replyTo" type="email" value={form.replyTo} onChange={(e) => setForm((p) => ({ ...p, replyTo: e.target.value }))} placeholder="reply@example.com" data-testid="input-email-reply-to" />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="subject">Subject</Label>
-          <Input id="subject" value={form.subject} onChange={(e) => setForm((p) => ({ ...p, subject: e.target.value }))} placeholder="Email subject" data-testid="input-email-subject" />
-        </div>
+      <div className="space-y-2">
+        <Label htmlFor="subject">Subject</Label>
+        <Input id="subject" value={form.subject} onChange={(e) => setForm((p) => ({ ...p, subject: e.target.value }))} placeholder="Email subject" data-testid="input-email-subject" />
       </div>
       <div className="space-y-2">
         <Label htmlFor="bodyText">Body (Plain Text)</Label>
@@ -110,14 +88,6 @@ function SmsForm({ record, onSave, isPending }: { record: Record<string, unknown
 
 function PostalForm({ record, onSave, isPending }: { record: Record<string, unknown> | null; onSave: (data: Record<string, unknown>) => void; isPending: boolean }) {
   const [form, setForm] = useState({
-    fromName: "",
-    fromCompany: "",
-    fromAddressLine1: "",
-    fromAddressLine2: "",
-    fromCity: "",
-    fromState: "",
-    fromZip: "",
-    fromCountry: "US",
     description: "",
     templateId: "",
     color: false,
@@ -128,14 +98,6 @@ function PostalForm({ record, onSave, isPending }: { record: Record<string, unkn
   useEffect(() => {
     if (record) {
       setForm({
-        fromName: (record.fromName as string) || "",
-        fromCompany: (record.fromCompany as string) || "",
-        fromAddressLine1: (record.fromAddressLine1 as string) || "",
-        fromAddressLine2: (record.fromAddressLine2 as string) || "",
-        fromCity: (record.fromCity as string) || "",
-        fromState: (record.fromState as string) || "",
-        fromZip: (record.fromZip as string) || "",
-        fromCountry: (record.fromCountry as string) || "US",
         description: (record.description as string) || "",
         templateId: (record.templateId as string) || "",
         color: (record.color as boolean) || false,
@@ -147,42 +109,6 @@ function PostalForm({ record, onSave, isPending }: { record: Record<string, unkn
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="postalFromName">From Name</Label>
-          <Input id="postalFromName" value={form.fromName} onChange={(e) => setForm((p) => ({ ...p, fromName: e.target.value }))} data-testid="input-postal-from-name" />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="postalFromCompany">From Company</Label>
-          <Input id="postalFromCompany" value={form.fromCompany} onChange={(e) => setForm((p) => ({ ...p, fromCompany: e.target.value }))} data-testid="input-postal-from-company" />
-        </div>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="postalAddr1">Address Line 1</Label>
-        <Input id="postalAddr1" value={form.fromAddressLine1} onChange={(e) => setForm((p) => ({ ...p, fromAddressLine1: e.target.value }))} data-testid="input-postal-addr1" />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="postalAddr2">Address Line 2</Label>
-        <Input id="postalAddr2" value={form.fromAddressLine2} onChange={(e) => setForm((p) => ({ ...p, fromAddressLine2: e.target.value }))} data-testid="input-postal-addr2" />
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="postalCity">City</Label>
-          <Input id="postalCity" value={form.fromCity} onChange={(e) => setForm((p) => ({ ...p, fromCity: e.target.value }))} data-testid="input-postal-city" />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="postalState">State</Label>
-          <Input id="postalState" value={form.fromState} onChange={(e) => setForm((p) => ({ ...p, fromState: e.target.value }))} data-testid="input-postal-state" />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="postalZip">ZIP</Label>
-          <Input id="postalZip" value={form.fromZip} onChange={(e) => setForm((p) => ({ ...p, fromZip: e.target.value }))} data-testid="input-postal-zip" />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="postalCountry">Country</Label>
-          <Input id="postalCountry" value={form.fromCountry} onChange={(e) => setForm((p) => ({ ...p, fromCountry: e.target.value }))} data-testid="input-postal-country" />
-        </div>
-      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="postalDescription">Description</Label>
