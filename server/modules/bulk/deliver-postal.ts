@@ -7,7 +7,7 @@ export async function resolvePostalAddress(storage: IStorage, contactId: string)
   const addresses = await storage.contacts.addresses.getContactPostalByContact(contactId);
   const primary = addresses.find(a => a.isPrimary && a.isActive);
   const active = addresses.find(a => a.isActive);
-  const addr = primary || active || addresses[0];
+  const addr = primary || active;
   if (!addr) return null;
   return {
     name: addr.friendlyName || undefined,

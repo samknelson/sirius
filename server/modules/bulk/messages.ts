@@ -452,6 +452,9 @@ export function registerBulkMessageRoutes(
         req.params.participantId,
         user?.id,
       );
+      if (result.errorCode === "NOT_FOUND") {
+        return res.status(404).json(result);
+      }
       if (result.alreadySent) {
         return res.status(409).json(result);
       }
