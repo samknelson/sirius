@@ -56,8 +56,8 @@ export async function resolveAddress(
     case "postal": {
       const addr = await resolvePostalAddress(storage, contactId);
       if (!addr) return { medium, address: null, error: "Contact has no postal address" };
-      const addrStr = [addr.addressLine1, addr.city, addr.state, addr.zip].join(", ");
-      return { medium, address: addrStr };
+      const parts = [addr.name, addr.addressLine1, addr.city, addr.state, addr.zip].filter(Boolean);
+      return { medium, address: parts.join(", ") };
     }
     case "inapp": {
       const userId = await resolveUserId(storage, contactId);

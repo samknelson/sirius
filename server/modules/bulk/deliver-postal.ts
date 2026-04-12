@@ -9,8 +9,9 @@ export async function resolvePostalAddress(storage: IStorage, contactId: string)
   const active = addresses.find(a => a.isActive);
   const addr = primary || active;
   if (!addr) return null;
+  const contact = await storage.contacts.getContact(contactId);
   return {
-    name: addr.friendlyName || undefined,
+    name: contact?.displayName || undefined,
     addressLine1: addr.street,
     city: addr.city,
     state: addr.state,
@@ -56,7 +57,7 @@ export async function deliverPostal(
     doubleSided: postalContent.doubleSided || undefined,
     userId,
   });
-  const addrStr = [addr.addressLine1, addr.city, addr.state, addr.zip].join(", ");
+  const addrStr = [addr.name, addr.addressLine1, addr.city, addr.state, addr.zip].filter(Boolean).join(", ");
   return {
     success: result.success,
     commId: result.comm?.id,
