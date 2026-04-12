@@ -92,7 +92,9 @@ export function registerBulkMessageRoutes(
         return res.status(404).json({ message: "Bulk message not found" });
       }
       const body = { ...req.body };
-      if (typeof body.sendDate === 'string') {
+      if (body.sendDate === null) {
+        body.sendDate = null;
+      } else if (typeof body.sendDate === 'string') {
         body.sendDate = body.sendDate ? new Date(body.sendDate) : null;
       }
       const parsed = insertBulkMessageSchema.partial().safeParse(body);
@@ -537,6 +539,44 @@ export function registerBulkMessageRoutes(
       res.json(result);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to deliver to participant";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.get("/api/bulk-messages/:id/delivery-stats", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+    try {
+      const existing = await storage.bulkMessages.getById(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "Bulk message not found" });
+      }
+      const db = getClient();
+      const rows = await db
+        .select({
+          commId: bulkParticipants.commId,
+          commStatus: comm.status,
+        })
+        .from(bulkParticipants)
+        .leftJoin(comm, eq(bulkParticipants.commId, comm.id))
+        .where(eq(bulkParticipants.messageId, req.params.id));
+
+      const total = rows.length;
+      let sent = 0;
+      let pending = 0;
+      const statusBreakdown: Record<string, number> = {};
+
+      for (const row of rows) {
+        if (row.commId) {
+          sent++;
+          const st = row.commStatus || "unknown";
+          statusBreakdown[st] = (statusBreakdown[st] || 0) + 1;
+        } else {
+          pending++;
+        }
+      }
+
+      res.json({ total, sent, pending, statusBreakdown });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to get delivery stats";
       res.status(500).json({ message });
     }
   });
