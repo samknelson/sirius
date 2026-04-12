@@ -7,6 +7,7 @@ import {
   insertBulkMessagesPostalSchema,
   insertBulkMessagesInappSchema,
 } from "../../../shared/schema/bulk/schema";
+import { createBulkParticipantStorage } from "../../storage/bulk/participants";
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
@@ -237,6 +238,61 @@ export function registerBulkMessageRoutes(
       res.json(logs);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to fetch bulk message logs";
+      res.status(500).json({ message });
+    }
+  });
+
+  const rawParticipantStorage = createBulkParticipantStorage();
+
+  app.get("/api/bulk-messages/:id/participants", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+    try {
+      const bulk = await storage.bulkMessages.getById(req.params.id);
+      if (!bulk) {
+        return res.status(404).json({ message: "Bulk message not found" });
+      }
+      const participants = await rawParticipantStorage.getByMessageId(req.params.id);
+      res.json(participants);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to fetch participants";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.post("/api/bulk-messages/:id/participants", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+    try {
+      const bulk = await storage.bulkMessages.getById(req.params.id);
+      if (!bulk) {
+        return res.status(404).json({ message: "Bulk message not found" });
+      }
+      const { contactId } = req.body;
+      if (!contactId || typeof contactId !== 'string') {
+        return res.status(400).json({ message: "contactId is required" });
+      }
+      const existing = await rawParticipantStorage.getByMessageId(req.params.id);
+      if (existing.some(p => p.contactId === contactId)) {
+        return res.status(409).json({ message: "Participant already exists for this message" });
+      }
+      const participant = await rawParticipantStorage.create({
+        messageId: req.params.id,
+        contactId,
+      });
+      res.status(201).json(participant);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to add participant";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.delete("/api/bulk-messages/:id/participants/:participantId", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+    try {
+      const participant = await rawParticipantStorage.getById(req.params.participantId);
+      if (!participant || participant.messageId !== req.params.id) {
+        return res.status(404).json({ message: "Participant not found" });
+      }
+      await rawParticipantStorage.delete(req.params.participantId);
+      res.json({ success: true });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to remove participant";
       res.status(500).json({ message });
     }
   });

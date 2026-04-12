@@ -64,6 +64,10 @@ interface WorkersTableProps {
   filters?: WorkerFilters;
   onFiltersChange?: (filters: WorkerFilters) => void;
   appliedJobTitle?: string;
+  selectable?: boolean;
+  selectedIds?: Set<string>;
+  onSelectionChange?: (selectedIds: Set<string>) => void;
+  disabledIds?: Set<string>;
 }
 
 interface WorkerBenefit {
@@ -189,6 +193,10 @@ export function WorkersTable({
   filters: externalFilters,
   onFiltersChange,
   appliedJobTitle: externalAppliedJobTitle,
+  selectable = false,
+  selectedIds,
+  onSelectionChange,
+  disabledIds,
 }: WorkersTableProps) {
   const isPaginated = onPageChange !== undefined;
   const [internalSortOrder, setInternalSortOrder] = useState<"asc" | "desc">("asc");
@@ -1110,6 +1118,27 @@ export function WorkersTable({
           <table className="w-full">
             <thead className="bg-muted/20">
               <tr>
+                {selectable && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-12">
+                    <Checkbox
+                      checked={
+                        sortedWorkers.length > 0 &&
+                        sortedWorkers.every(w => disabledIds?.has(w.contactId) || selectedIds?.has(w.contactId))
+                      }
+                      onCheckedChange={(checked) => {
+                        if (!onSelectionChange) return;
+                        const next = new Set(selectedIds);
+                        for (const w of sortedWorkers) {
+                          if (disabledIds?.has(w.contactId)) continue;
+                          if (checked) next.add(w.contactId);
+                          else next.delete(w.contactId);
+                        }
+                        onSelectionChange(next);
+                      }}
+                      data-testid="checkbox-select-all"
+                    />
+                  </th>
+                )}
                 <th 
                   className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground transition-colors"
                   onClick={toggleSort}
@@ -1147,8 +1176,27 @@ export function WorkersTable({
               </tr>
             </thead>
             <tbody className="bg-background divide-y divide-border">
-              {sortedWorkers.map((worker, index) => (
-                <tr key={worker.id} className="hover:bg-muted/30 transition-colors" data-testid={`row-worker-${worker.id}`}>
+              {sortedWorkers.map((worker, index) => {
+                const isDisabled = selectable && disabledIds?.has(worker.contactId);
+                const isSelected = selectable && selectedIds?.has(worker.contactId);
+                return (
+                <tr key={worker.id} className={`hover:bg-muted/30 transition-colors ${isDisabled ? 'opacity-50' : ''}`} data-testid={`row-worker-${worker.id}`}>
+                  {selectable && (
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <Checkbox
+                        checked={isDisabled || isSelected}
+                        disabled={!!isDisabled}
+                        onCheckedChange={(checked) => {
+                          if (!onSelectionChange) return;
+                          const next = new Set(selectedIds);
+                          if (checked) next.add(worker.contactId);
+                          else next.delete(worker.contactId);
+                          onSelectionChange(next);
+                        }}
+                        data-testid={`checkbox-select-worker-${worker.id}`}
+                      />
+                    </td>
+                  )}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center space-x-3">
                       <div className={`w-8 h-8 ${avatarColors[index % avatarColors.length]} rounded-full flex items-center justify-center`}>
@@ -1446,7 +1494,8 @@ export function WorkersTable({
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
