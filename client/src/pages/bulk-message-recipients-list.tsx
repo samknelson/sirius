@@ -9,7 +9,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
-import { Search, Trash2, ExternalLink, Users } from "lucide-react";
+import { Search, Trash2, ExternalLink, Users, Download } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,6 +57,26 @@ function BulkMessageRecipientsListContent() {
     );
   }, [participants, search]);
 
+  const handleExportCsv = () => {
+    const rows = filtered.length > 0 ? filtered : participants;
+    const csvContent = [
+      ["Name", "Status", "Worker ID", "Comm ID"].join(","),
+      ...rows.map(p => [
+        `"${(p.contactDisplayName || "").replace(/"/g, '""')}"`,
+        p.commStatus || "",
+        p.workerSiriusId != null ? String(p.workerSiriusId) : "",
+        p.commId || "",
+      ].join(","))
+    ].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${bulkMessage.name.replace(/[^a-zA-Z0-9]/g, "_")}_recipients.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const removeMutation = useMutation({
     mutationFn: async (participantId: string) => {
       await apiRequest("DELETE", `/api/bulk-messages/${bulkMessage.id}/participants/${participantId}`);
@@ -83,6 +103,17 @@ function BulkMessageRecipientsListContent() {
             {participants.length}
           </Badge>
         </div>
+        {participants.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCsv}
+            data-testid="button-export-csv"
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Export CSV
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         <div className="mb-4">
