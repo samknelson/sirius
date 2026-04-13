@@ -12,7 +12,7 @@ import {
   bulkMessages,
   bulkCampaigns,
 } from "../../../shared/schema/bulk/schema";
-import { contacts, workers, phoneNumbers, contactPostal, comm, users } from "../../../shared/schema";
+import { contacts, phoneNumbers, contactPostal, comm, users } from "../../../shared/schema";
 import { eq, and, inArray, sql, ilike, or, type SQL } from "drizzle-orm";
 import { getClient, runInTransaction } from "../../storage/transaction-context";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
@@ -345,38 +345,8 @@ export function registerBulkCampaignRoutes(
       if (parsed.data.contactIds && parsed.data.contactIds.length > 0) {
         contactIds = parsed.data.contactIds;
       } else if (parsed.data.audienceType === "worker") {
-        const db = getClient();
         const filters = (parsed.data.filters || {}) as Record<string, unknown>;
-        const conditions: SQL[] = [];
-
-        if (filters.workStatusId && typeof filters.workStatusId === "string") {
-          conditions.push(eq(workers.denormWsId, filters.workStatusId));
-        }
-        if (filters.homeEmployerId && typeof filters.homeEmployerId === "string") {
-          conditions.push(eq(workers.denormHomeEmployerId, filters.homeEmployerId));
-        }
-        if (filters.bargainingUnitId && typeof filters.bargainingUnitId === "string") {
-          conditions.push(eq(workers.bargainingUnitId, filters.bargainingUnitId));
-        }
-        if (filters.employerId && typeof filters.employerId === "string") {
-          conditions.push(sql`${workers.denormEmployerIds} @> ARRAY[${filters.employerId}]::varchar[]`);
-        }
-        if (filters.memberStatusIds && Array.isArray(filters.memberStatusIds) && filters.memberStatusIds.length > 0) {
-          conditions.push(sql`${workers.denormMsIds} && ARRAY[${sql.join(filters.memberStatusIds.map((id: string) => sql`${id}`), sql`, `)}]::varchar[]`);
-        }
-        if (filters.search && typeof filters.search === "string") {
-          const searchTerm = `%${filters.search}%`;
-          conditions.push(
-            sql`EXISTS (SELECT 1 FROM contacts c WHERE c.id = ${workers.contactId} AND (c.display_name ILIKE ${searchTerm} OR c.email ILIKE ${searchTerm}))`
-          );
-        }
-
-        let query = db.select({ contactId: workers.contactId }).from(workers);
-        if (conditions.length > 0) {
-          query = query.where(and(...conditions)) as typeof query;
-        }
-        const rows = await query;
-        contactIds = rows.map(r => r.contactId).filter(Boolean) as string[];
+        contactIds = await storage.workers.getWorkerContactIdsByFilters(filters);
       } else if (parsed.data.audienceType === "employer_contact") {
         const db = getClient();
         const { employerContacts } = await import("../../../shared/schema");

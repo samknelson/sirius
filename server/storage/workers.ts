@@ -583,6 +583,22 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       };
     },
 
+    async getWorkerContactIdsByFilters(filters: Record<string, unknown>): Promise<string[]> {
+      const { rows } = await _searchWorkers({
+        search: typeof filters.search === "string" ? filters.search : undefined,
+        employerId: typeof filters.employerId === "string" ? filters.employerId : undefined,
+        employerTypeId: typeof filters.employerTypeId === "string" ? filters.employerTypeId : undefined,
+        bargainingUnitId: typeof filters.bargainingUnitId === "string" ? filters.bargainingUnitId : undefined,
+        contactStatus: typeof filters.contactStatus === "string" ? filters.contactStatus as InternalSearchParams["contactStatus"] : undefined,
+        hasMultipleEmployers: filters.hasMultipleEmployers === true,
+        jobTitle: typeof filters.jobTitle === "string" ? filters.jobTitle : undefined,
+        memberStatusId: typeof filters.memberStatusId === "string" ? filters.memberStatusId : undefined,
+        representativeId: typeof filters.representativeId === "string" ? filters.representativeId : undefined,
+        benefitId: typeof filters.benefitId === "string" ? filters.benefitId : undefined,
+      });
+      return rows.map(r => r.contactId).filter(Boolean) as string[];
+    },
+
     async getWorkersWithDetails(): Promise<WorkerWithDetails[]> {
       const { rows } = await _searchWorkers({});
       return rows;
