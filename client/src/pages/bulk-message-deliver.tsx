@@ -24,25 +24,24 @@ import {
 
 interface DeliveryStats {
   total: number;
-  sent: number;
   pending: number;
-  statusBreakdown: Record<string, number>;
+  sendFailed: number;
+  seeComm: number;
+  commBreakdown: Record<string, number>;
 }
 
-const statusIcons: Record<string, typeof CheckCircle> = {
+const commIcons: Record<string, typeof CheckCircle> = {
   sent: Send,
   delivered: CheckCircle,
   failed: XCircle,
   sending: Loader2,
-  unknown: AlertCircle,
 };
 
-const statusColors: Record<string, string> = {
+const commColors: Record<string, string> = {
   sent: "text-blue-500",
   delivered: "text-green-500",
   failed: "text-red-500",
   sending: "text-yellow-500",
-  unknown: "text-muted-foreground",
 };
 
 function DeliveryStatsCard({ messageId }: { messageId: string }) {
@@ -62,7 +61,8 @@ function DeliveryStatsCard({ messageId }: { messageId: string }) {
 
   if (!stats) return null;
 
-  const breakdownEntries = Object.entries(stats.statusBreakdown).sort(
+  const processed = stats.seeComm + stats.sendFailed;
+  const commEntries = Object.entries(stats.commBreakdown).sort(
     ([a], [b]) => a.localeCompare(b)
   );
 
@@ -75,18 +75,22 @@ function DeliveryStatsCard({ messageId }: { messageId: string }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-4 gap-4">
           <div className="text-center" data-testid="stat-total">
             <p className="text-2xl font-bold">{stats.total}</p>
-            <p className="text-xs text-muted-foreground">Total Recipients</p>
-          </div>
-          <div className="text-center" data-testid="stat-sent">
-            <p className="text-2xl font-bold text-blue-500">{stats.sent}</p>
-            <p className="text-xs text-muted-foreground">Sent</p>
+            <p className="text-xs text-muted-foreground">Total</p>
           </div>
           <div className="text-center" data-testid="stat-pending">
             <p className="text-2xl font-bold text-muted-foreground">{stats.pending}</p>
             <p className="text-xs text-muted-foreground">Pending</p>
+          </div>
+          <div className="text-center" data-testid="stat-see-comm">
+            <p className="text-2xl font-bold text-blue-500">{stats.seeComm}</p>
+            <p className="text-xs text-muted-foreground">Delivered</p>
+          </div>
+          <div className="text-center" data-testid="stat-send-failed">
+            <p className="text-2xl font-bold text-red-500">{stats.sendFailed}</p>
+            <p className="text-xs text-muted-foreground">Send Failed</p>
           </div>
         </div>
 
@@ -94,25 +98,25 @@ function DeliveryStatsCard({ messageId }: { messageId: string }) {
           <div className="w-full bg-muted rounded-full h-2" data-testid="progress-bar">
             <div
               className="bg-primary rounded-full h-2 transition-all"
-              style={{ width: `${Math.round((stats.sent / stats.total) * 100)}%` }}
+              style={{ width: `${Math.round((processed / stats.total) * 100)}%` }}
             />
           </div>
         )}
 
-        {breakdownEntries.length > 0 && (
+        {commEntries.length > 0 && (
           <>
             <Separator />
             <div className="space-y-2">
-              <p className="text-sm font-medium">Status Breakdown</p>
+              <p className="text-sm font-medium">Comm Status Breakdown</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {breakdownEntries.map(([status, count]) => {
-                  const Icon = statusIcons[status] || AlertCircle;
-                  const color = statusColors[status] || "text-muted-foreground";
+                {commEntries.map(([status, count]) => {
+                  const Icon = commIcons[status] || AlertCircle;
+                  const color = commColors[status] || "text-muted-foreground";
                   return (
                     <div
                       key={status}
                       className="flex items-center gap-2 text-sm"
-                      data-testid={`stat-breakdown-${status}`}
+                      data-testid={`stat-comm-${status}`}
                     >
                       <Icon className={`h-3.5 w-3.5 ${color}`} />
                       <span className="capitalize">{status}</span>

@@ -15,3 +15,4 @@ export type { RetentionPolicy, LogCleanupSettings } from './jobs/logCleanup';
 export { memberStatusScanHandler } from './jobs/memberStatusScan';
 export { dispatchEbaCleanupHandler } from './jobs/dispatchEbaCleanup';
 export { dispatchJobPollHandler } from './jobs/dispatchJobPoll';
+export { bulkDeliverHandler } from './jobs/bulkDeliver';

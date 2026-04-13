@@ -102,11 +102,15 @@ export const insertBulkMessagesInappSchema = createInsertSchema(bulkMessagesInap
 export type BulkMessagesInapp = typeof bulkMessagesInapp.$inferSelect;
 export type InsertBulkMessagesInapp = z.infer<typeof insertBulkMessagesInappSchema>;
 
+export const bulkParticipantStatusEnum = pgEnum("bulk_participant_status", ["pending", "send_failed", "see_comm"]);
+
 export const bulkParticipants = pgTable("bulk_participants", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   messageId: varchar("message_id").notNull().references(() => bulkMessages.id, { onDelete: "cascade" }),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: "cascade" }),
   commId: varchar("comm_id").references(() => comm.id, { onDelete: "set null" }),
+  status: bulkParticipantStatusEnum("status").notNull().default("pending"),
+  message: text("message"),
   data: jsonb("data"),
 });
 

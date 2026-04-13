@@ -76,6 +76,12 @@ const DEFAULT_CRON_JOBS: DefaultCronJob[] = [
     schedule: '*/5 * * * *', // Every 5 minutes
     isEnabled: true,
   },
+  {
+    name: 'bulk-deliver',
+    description: 'Delivers queued bulk messages to pending participants in batches',
+    schedule: '*/5 * * * *', // Every 5 minutes
+    isEnabled: false, // Disabled by default - enable and configure batch sizes first
+  },
 ];
 
 export async function bootstrapCronJobs(): Promise<void> {

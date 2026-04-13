@@ -1,7 +1,7 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { bulkParticipants, type BulkParticipant, type InsertBulkParticipant } from "../../../shared/schema/bulk/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import type { StorageLoggingConfig } from "../middleware/logging";
 
 export const validate = createNoopValidator<InsertBulkParticipant, BulkParticipant>();
@@ -9,6 +9,7 @@ export const validate = createNoopValidator<InsertBulkParticipant, BulkParticipa
 export interface BulkParticipantStorage {
   getById(id: string): Promise<BulkParticipant | undefined>;
   getByMessageId(messageId: string): Promise<BulkParticipant[]>;
+  getPendingByMessageId(messageId: string, limit: number): Promise<BulkParticipant[]>;
   create(data: InsertBulkParticipant): Promise<BulkParticipant>;
   update(id: string, data: Partial<InsertBulkParticipant>): Promise<BulkParticipant | undefined>;
   delete(id: string): Promise<boolean>;
@@ -31,6 +32,18 @@ export function createBulkParticipantStorage(): BulkParticipantStorage {
         .select()
         .from(bulkParticipants)
         .where(eq(bulkParticipants.messageId, messageId));
+    },
+
+    async getPendingByMessageId(messageId: string, limit: number): Promise<BulkParticipant[]> {
+      const client = getClient();
+      return await client
+        .select()
+        .from(bulkParticipants)
+        .where(and(
+          eq(bulkParticipants.messageId, messageId),
+          eq(bulkParticipants.status, "pending"),
+        ))
+        .limit(limit);
     },
 
     async create(data: InsertBulkParticipant): Promise<BulkParticipant> {

@@ -552,6 +552,7 @@ export function registerBulkMessageRoutes(
       const db = getClient();
       const rows = await db
         .select({
+          participantStatus: bulkParticipants.status,
           commId: bulkParticipants.commId,
           commStatus: comm.status,
         })
@@ -560,21 +561,29 @@ export function registerBulkMessageRoutes(
         .where(eq(bulkParticipants.messageId, req.params.id));
 
       const total = rows.length;
-      let sent = 0;
       let pending = 0;
-      const statusBreakdown: Record<string, number> = {};
+      let sendFailed = 0;
+      let seeComm = 0;
+      const commBreakdown: Record<string, number> = {};
 
       for (const row of rows) {
-        if (row.commId) {
-          sent++;
-          const st = row.commStatus || "unknown";
-          statusBreakdown[st] = (statusBreakdown[st] || 0) + 1;
-        } else {
-          pending++;
+        switch (row.participantStatus) {
+          case "pending":
+            pending++;
+            break;
+          case "send_failed":
+            sendFailed++;
+            break;
+          case "see_comm":
+            seeComm++;
+            if (row.commStatus) {
+              commBreakdown[row.commStatus] = (commBreakdown[row.commStatus] || 0) + 1;
+            }
+            break;
         }
       }
 
-      res.json({ total, sent, pending, statusBreakdown });
+      res.json({ total, pending, sendFailed, seeComm, commBreakdown });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to get delivery stats";
       res.status(500).json({ message });

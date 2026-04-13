@@ -106,8 +106,8 @@ export async function deliverToParticipant(
     return { participantId, alreadySent: false, success: false, error: "Participant not found", errorCode: "NOT_FOUND" };
   }
 
-  if (participant.commId) {
-    return { participantId, alreadySent: true, success: false, error: "Message already sent to this participant", errorCode: "ALREADY_SENT" };
+  if (participant.status !== "pending") {
+    return { participantId, alreadySent: true, success: false, error: "Participant already processed", errorCode: "ALREADY_SENT" };
   }
 
   const result = await deliverToContact(storage, {
@@ -116,8 +116,16 @@ export async function deliverToParticipant(
     userId,
   });
 
-  if (result.success && result.commId) {
-    await rawParticipantStorage.update(participantId, { commId: result.commId });
+  if (result.commId) {
+    await rawParticipantStorage.update(participantId, {
+      commId: result.commId,
+      status: "see_comm",
+    });
+  } else if (!result.success) {
+    await rawParticipantStorage.update(participantId, {
+      status: "send_failed",
+      message: result.error || "Unknown delivery error",
+    });
   }
 
   return {
