@@ -36,6 +36,7 @@ import {
   User,
   ExternalLink,
   RefreshCw,
+  Filter,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -73,11 +74,6 @@ interface CampaignError {
   errorMessage: string;
 }
 
-interface TokenInfo {
-  token: string;
-  description: string;
-  example: string;
-}
 
 interface CampaignParticipant {
   id: string;
@@ -143,9 +139,6 @@ const mediumLabels: Record<string, string> = {
 };
 
 function OverviewTab({ campaign, onRefresh }: { campaign: CampaignDetail; onRefresh: () => void }) {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-
   const { data: stats } = useQuery<CampaignStats>({
     queryKey: ["/api/bulk-campaigns", campaign.id, "stats"],
   });
@@ -153,31 +146,6 @@ function OverviewTab({ campaign, onRefresh }: { campaign: CampaignDetail; onRefr
   const { data: readiness } = useQuery<ReadinessData>({
     queryKey: ["/api/bulk-campaigns", campaign.id, "readiness"],
     enabled: campaign.status === "draft",
-  });
-
-  const queueMutation = useMutation({
-    mutationFn: (scheduledAt?: string) =>
-      apiRequest("POST", `/api/bulk-campaigns/${campaign.id}/queue`, scheduledAt ? { scheduledAt } : {}),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/bulk-campaigns"] });
-      onRefresh();
-      toast({ title: "Campaign queued", description: "The campaign has been queued for delivery." });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to queue campaign", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const abortMutation = useMutation({
-    mutationFn: () => apiRequest("POST", `/api/bulk-campaigns/${campaign.id}/abort`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/bulk-campaigns"] });
-      onRefresh();
-      toast({ title: "Campaign aborted" });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to abort", description: error.message, variant: "destructive" });
-    },
   });
 
   return (
@@ -332,68 +300,6 @@ function OverviewTab({ campaign, onRefresh }: { campaign: CampaignDetail; onRefr
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Actions</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-3">
-          {campaign.status === "draft" && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button data-testid="button-queue-campaign">
-                  <Play className="h-4 w-4 mr-2" />
-                  Queue for Delivery
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Queue Campaign</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will queue all channel messages for delivery. The campaign will begin sending when the next delivery cycle runs.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={() => queueMutation.mutate(undefined)}
-                    data-testid="button-confirm-queue"
-                  >
-                    {queueMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Queue Now"}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
-          {(campaign.status === "queued" || campaign.status === "processing") && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" data-testid="button-abort-campaign">
-                  <Square className="h-4 w-4 mr-2" />
-                  Abort Campaign
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Abort Campaign</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will stop the campaign. Messages already sent cannot be recalled.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={() => abortMutation.mutate()}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                    data-testid="button-confirm-abort"
-                  >
-                    {abortMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Abort"}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -402,10 +308,6 @@ function ChannelsTab({ campaign }: { campaign: CampaignDetail }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeChannel, setActiveChannel] = useState<string>(campaign.channels?.[0] || "email");
-
-  const { data: tokens } = useQuery<TokenInfo[]>({
-    queryKey: ["/api/bulk-campaigns/tokens/available"],
-  });
 
   const saveMutation = useMutation({
     mutationFn: ({ medium, data }: { medium: string; data: Record<string, unknown> }) =>
@@ -424,33 +326,6 @@ function ChannelsTab({ campaign }: { campaign: CampaignDetail }) {
 
   return (
     <div className="space-y-4">
-      {tokens && tokens.length > 0 && (
-        <Card>
-          <CardHeader className="py-3">
-            <CardTitle className="text-sm">Available Tokens</CardTitle>
-          </CardHeader>
-          <CardContent className="py-2">
-            <div className="flex flex-wrap gap-2">
-              {tokens.map((t) => (
-                <Badge
-                  key={t.token}
-                  variant="outline"
-                  className="cursor-pointer hover:bg-primary/10 text-xs"
-                  title={`${t.description} — e.g. ${t.example}`}
-                  onClick={() => navigator.clipboard.writeText(t.token).then(() =>
-                    toast({ title: "Copied", description: `${t.token} copied to clipboard` })
-                  )}
-                  data-testid={`token-badge-${t.token}`}
-                >
-                  {t.token}
-                </Badge>
-              ))}
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">Click a token to copy it. Tokens are replaced with recipient data at delivery time.</p>
-          </CardContent>
-        </Card>
-      )}
-
       <Tabs value={activeChannel} onValueChange={setActiveChannel}>
         <TabsList className="w-full justify-start">
           {campaign.channels?.map((ch) => {
@@ -713,10 +588,23 @@ function InappChannelForm({ record, onSave, isPending, disabled }: {
   );
 }
 
+const participantStatusLabels: Record<string, string> = {
+  pending: "Pending",
+  see_comm: "Sent",
+  send_failed: "Failed",
+};
+
+const participantStatusVariants: Record<string, "default" | "secondary" | "destructive"> = {
+  pending: "secondary",
+  see_comm: "default",
+  send_failed: "destructive",
+};
+
 function AudienceTab({ campaign }: { campaign: CampaignDetail }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [channelFilter, setChannelFilter] = useState<string>("all");
 
   const { data: participants = [], isLoading: participantsLoading } = useQuery<CampaignParticipant[]>({
     queryKey: ["/api/bulk-campaigns", campaign.id, "participants"],
@@ -741,7 +629,18 @@ function AudienceTab({ campaign }: { campaign: CampaignDetail }) {
     },
   });
 
+  const channelSummary = useMemo(() => {
+    const summary: Record<string, number> = {};
+    const uniqueContacts = new Set<string>();
+    for (const p of participants) {
+      uniqueContacts.add(p.contactId);
+      summary[p.medium] = (summary[p.medium] || 0) + 1;
+    }
+    return { totalContacts: uniqueContacts.size, channels: summary };
+  }, [participants]);
+
   const filtered = participants.filter((p: CampaignParticipant) => {
+    if (channelFilter !== "all" && p.medium !== channelFilter) return false;
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return p.contactDisplayName?.toLowerCase().includes(q);
@@ -788,6 +687,34 @@ function AudienceTab({ campaign }: { campaign: CampaignDetail }) {
         </Card>
       )}
 
+      {participants.length > 0 && (
+        <Card data-testid="card-audience-summary">
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm">Audience Summary</CardTitle>
+          </CardHeader>
+          <CardContent className="py-2">
+            <div className="flex flex-wrap gap-4 items-center">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium" data-testid="text-total-contacts">{channelSummary.totalContacts} unique contacts</span>
+              </div>
+              <span className="text-muted-foreground">·</span>
+              {Object.entries(channelSummary.channels).map(([medium, count]) => {
+                const Icon = mediumIcons[medium] || Mail;
+                return (
+                  <div key={medium} className="flex items-center gap-1.5">
+                    <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-sm" data-testid={`text-channel-count-${medium}`}>
+                      {count} {mediumLabels[medium] || medium}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card data-testid="card-campaign-participants">
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <div className="flex items-center gap-3">
@@ -796,8 +723,8 @@ function AudienceTab({ campaign }: { campaign: CampaignDetail }) {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="mb-4">
-            <div className="relative max-w-sm">
+          <div className="mb-4 flex flex-wrap gap-3 items-center">
+            <div className="relative max-w-sm flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Filter recipients..."
@@ -807,6 +734,20 @@ function AudienceTab({ campaign }: { campaign: CampaignDetail }) {
                 data-testid="input-filter-campaign-recipients"
               />
             </div>
+            {campaign.channels && campaign.channels.length > 1 && (
+              <Select value={channelFilter} onValueChange={setChannelFilter}>
+                <SelectTrigger className="w-[160px]" data-testid="select-audience-channel-filter">
+                  <Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Channels</SelectItem>
+                  {campaign.channels.map((ch) => (
+                    <SelectItem key={ch} value={ch}>{mediumLabels[ch] || ch}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           {participantsLoading ? (
@@ -842,8 +783,12 @@ function AudienceTab({ campaign }: { campaign: CampaignDetail }) {
                           </Badge>
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant={p.status === "send_failed" ? "destructive" : "secondary"} className="text-xs">
-                            {p.status || "pending"}
+                          <Badge
+                            variant={participantStatusVariants[p.status] || "secondary"}
+                            className="text-xs"
+                            data-testid={`badge-status-${p.id}`}
+                          >
+                            {participantStatusLabels[p.status] || p.status || "Pending"}
                           </Badge>
                         </td>
                       </tr>
@@ -851,8 +796,10 @@ function AudienceTab({ campaign }: { campaign: CampaignDetail }) {
                   })}
                 </tbody>
               </table>
-              {filtered.length === 0 && search.trim() && (
-                <p className="py-8 text-center text-sm text-muted-foreground">No recipients match "{search}".</p>
+              {filtered.length === 0 && (search.trim() || channelFilter !== "all") && (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  No recipients match the current filters.
+                </p>
               )}
             </div>
           )}
@@ -1115,6 +1062,121 @@ function TestSendTab({ campaign }: { campaign: CampaignDetail }) {
   );
 }
 
+function CampaignHeader({ campaign, onRefresh }: { campaign: CampaignDetail; onRefresh: () => void }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const queueMutation = useMutation({
+    mutationFn: (scheduledAt?: string) =>
+      apiRequest("POST", `/api/bulk-campaigns/${campaign.id}/queue`, scheduledAt ? { scheduledAt } : {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bulk-campaigns"] });
+      onRefresh();
+      toast({ title: "Campaign queued", description: "The campaign has been queued for delivery." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to queue campaign", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const abortMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/bulk-campaigns/${campaign.id}/abort`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bulk-campaigns"] });
+      onRefresh();
+      toast({ title: "Campaign aborted" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to abort", description: error.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <div className="flex items-start justify-between gap-4 mb-6">
+      <div className="flex items-center gap-3">
+        <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
+          <Megaphone className="h-6 w-6 text-primary" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold" data-testid="heading-campaign-name">{campaign.name}</h1>
+          <div className="flex items-center gap-2 mt-1">
+            <Badge variant={statusVariants[campaign.status]} data-testid="badge-campaign-status-header">
+              {campaign.status}
+            </Badge>
+            {campaign.channels?.map((ch) => {
+              const Icon = mediumIcons[ch] || Mail;
+              return (
+                <Badge key={ch} variant="outline" className="gap-1 text-xs">
+                  <Icon className="h-3 w-3" />
+                  {mediumLabels[ch] || ch}
+                </Badge>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-2 shrink-0">
+        {campaign.status === "draft" && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button data-testid="button-queue-campaign">
+                <Play className="h-4 w-4 mr-2" />
+                Queue for Delivery
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Queue Campaign</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will queue all channel messages for delivery. The campaign will begin sending when the next delivery cycle runs.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => queueMutation.mutate(undefined)}
+                  data-testid="button-confirm-queue"
+                >
+                  {queueMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Queue Now"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+        {(campaign.status === "queued" || campaign.status === "processing") && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" data-testid="button-abort-campaign">
+                <Square className="h-4 w-4 mr-2" />
+                Abort Campaign
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Abort Campaign</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will stop the campaign. Messages already sent cannot be recalled.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => abortMutation.mutate()}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  data-testid="button-confirm-abort"
+                >
+                  {abortMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Abort"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function CampaignDetailPage() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
@@ -1169,28 +1231,7 @@ export default function CampaignDetailPage() {
         </Button>
       </Link>
 
-      <div className="flex items-center gap-3 mb-6">
-        <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
-          <Megaphone className="h-6 w-6 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="heading-campaign-name">{campaign.name}</h1>
-          <div className="flex items-center gap-2 mt-1">
-            <Badge variant={statusVariants[campaign.status]} data-testid="badge-campaign-status-header">
-              {campaign.status}
-            </Badge>
-            {campaign.channels?.map((ch) => {
-              const Icon = mediumIcons[ch] || Mail;
-              return (
-                <Badge key={ch} variant="outline" className="gap-1 text-xs">
-                  <Icon className="h-3 w-3" />
-                  {mediumLabels[ch] || ch}
-                </Badge>
-              );
-            })}
-          </div>
-        </div>
-      </div>
+      <CampaignHeader campaign={campaign} onRefresh={handleRefresh} />
 
       <Tabs defaultValue={new URLSearchParams(window.location.search).get("tab") || "overview"} className="space-y-6">
         <TabsList data-testid="tabs-campaign-detail">

@@ -1,4 +1,5 @@
 import type { IStorage } from "../storage/database";
+import { BULK_TOKEN_DICTIONARY, getTokenDictionary } from "../../shared/bulk-token-dictionary";
 
 export interface TokenContext {
   contactId: string;
@@ -9,27 +10,13 @@ export interface TokenContext {
   phone?: string | null;
 }
 
-const SUPPORTED_TOKENS = [
-  { pattern: /\[FirstName\]/gi, key: "firstName" },
-  { pattern: /\[LastName\]/gi, key: "lastName" },
-  { pattern: /\[DisplayName\]/gi, key: "displayName" },
-  { pattern: /\[Email\]/gi, key: "email" },
-  { pattern: /\[Phone\]/gi, key: "phone" },
-] as const;
-
-export function getAvailableTokens(): Array<{ token: string; description: string }> {
-  return [
-    { token: "[FirstName]", description: "Contact's first name" },
-    { token: "[LastName]", description: "Contact's last name" },
-    { token: "[DisplayName]", description: "Contact's display name" },
-    { token: "[Email]", description: "Contact's email address" },
-    { token: "[Phone]", description: "Contact's primary phone number" },
-  ];
+export function getAvailableTokens() {
+  return getTokenDictionary();
 }
 
 export function replaceTokens(content: string, context: TokenContext): string {
   let result = content;
-  for (const tokenDef of SUPPORTED_TOKENS) {
+  for (const tokenDef of BULK_TOKEN_DICTIONARY) {
     const value = context[tokenDef.key as keyof TokenContext] as string | null | undefined;
     result = result.replace(tokenDef.pattern, value || "");
   }
@@ -49,7 +36,7 @@ export async function resolveTokenContext(
   const phones = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(contactId);
   const primary = phones.find(p => p.isPrimary && p.isActive);
   const active = phones.find(p => p.isActive);
-  phone = (primary || active)?.number || null;
+  phone = (primary || active)?.phoneNumber || null;
 
   return {
     contactId,

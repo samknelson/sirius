@@ -682,19 +682,6 @@ export default function Header() {
                 )}
 
                 {bulkComponentEnabled && bulkEditPolicy?.access?.granted && (
-                  <Link href="/bulk/list" onClick={() => setMobileMenuOpen(false)}>
-                    <Button
-                      variant={location.startsWith("/bulk") ? "default" : "ghost"}
-                      className="w-full justify-start"
-                      data-testid="mobile-nav-bulk-messages"
-                    >
-                      <Megaphone className="h-4 w-4 mr-2" />
-                      Bulk Messages
-                    </Button>
-                  </Link>
-                )}
-
-                {bulkComponentEnabled && bulkEditPolicy?.access?.granted && (
                   <Link href="/campaigns" onClick={() => setMobileMenuOpen(false)}>
                     <Button
                       variant={location.startsWith("/campaigns") ? "default" : "ghost"}
@@ -1382,19 +1369,6 @@ export default function Header() {
                 >
                   <Calendar className="h-4 w-4 mr-2" />
                   Events
-                </Button>
-              </Link>
-            )}
-
-            {bulkComponentEnabled && bulkEditPolicy?.access?.granted && (
-              <Link href="/bulk/list">
-                <Button
-                  variant={location.startsWith("/bulk") ? "default" : "ghost"}
-                  size="sm"
-                  data-testid="nav-bulk-messages"
-                >
-                  <Megaphone className="h-4 w-4 mr-2" />
-                  Bulk Messages
                 </Button>
               </Link>
             )}

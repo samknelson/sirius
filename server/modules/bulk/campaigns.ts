@@ -823,9 +823,19 @@ export function registerBulkCampaignRoutes(
 
       const db = getClient();
       const campaignMessages = await storage.bulkCampaigns.getMessagesByCampaignId(campaign.id);
-      const targetMsg = medium ? campaignMessages.find(m => m.medium === medium) : campaignMessages[0];
-      if (!targetMsg) {
+
+      const targetMessages = medium
+        ? campaignMessages.filter(m => m.medium === medium)
+        : campaignMessages;
+
+      if (targetMessages.length === 0) {
         return res.json([]);
+      }
+
+      const messageIds = targetMessages.map(m => m.id);
+      const messageIdToMedium: Record<string, string> = {};
+      for (const m of targetMessages) {
+        messageIdToMedium[m.id] = m.medium;
       }
 
       const rows = await db
@@ -842,9 +852,14 @@ export function registerBulkCampaignRoutes(
         })
         .from(bulkParticipants)
         .innerJoin(contacts, eq(bulkParticipants.contactId, contacts.id))
-        .where(eq(bulkParticipants.messageId, targetMsg.id));
+        .where(inArray(bulkParticipants.messageId, messageIds));
 
-      res.json(rows);
+      const enriched = rows.map(r => ({
+        ...r,
+        medium: messageIdToMedium[r.messageId] || "unknown",
+      }));
+
+      res.json(enriched);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to get participants";
       res.status(500).json({ message });
