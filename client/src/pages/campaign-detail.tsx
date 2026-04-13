@@ -93,10 +93,18 @@ interface ImportResult {
   channelCount: number;
 }
 
+interface TestSendChannelResult {
+  medium: string;
+  success: boolean;
+  error?: string;
+  commId?: string;
+}
+
 interface TestSendResult {
   success: boolean;
   error?: string;
   medium?: string;
+  channels?: TestSendChannelResult[];
 }
 
 interface SearchContact {
@@ -939,8 +947,16 @@ function TestSendTab({ campaign }: { campaign: CampaignDetail }) {
       setLastResult(result);
       if (result.success) {
         toast({ title: "Test sent successfully" });
+      } else if (result.channels) {
+        const succeeded = result.channels.filter(c => c.success).length;
+        const failed = result.channels.filter(c => !c.success).length;
+        if (succeeded > 0) {
+          toast({ title: `Test partially sent`, description: `${succeeded} channel(s) sent, ${failed} failed. See results below.` });
+        } else {
+          toast({ title: "Test send failed", description: "All channels failed. See results below.", variant: "destructive" });
+        }
       } else {
-        toast({ title: "Test send had issues", description: result.error || "Check results below", variant: "destructive" });
+        toast({ title: "Test send failed", description: result.error || "Check results below", variant: "destructive" });
       }
     },
     onError: (error: Error) => {
@@ -1055,16 +1071,42 @@ function TestSendTab({ campaign }: { campaign: CampaignDetail }) {
         <Card data-testid="card-campaign-test-result">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              {lastResult.success ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <XCircle className="h-5 w-5 text-destructive" />}
+              {lastResult.success ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <AlertTriangle className="h-5 w-5 text-yellow-600" />}
               Test Result
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <Badge variant={lastResult.success ? "default" : "destructive"}>
-              {lastResult.success ? "Success" : "Failed"}
-            </Badge>
-            {lastResult.error && (
-              <p className="text-sm text-destructive mt-2">{lastResult.error}</p>
+          <CardContent className="space-y-3">
+            {lastResult.channels && lastResult.channels.length > 0 ? (
+              lastResult.channels.map((ch) => {
+                const Icon = mediumIcons[ch.medium] || Mail;
+                return (
+                  <div key={ch.medium} className="flex items-start gap-3 p-3 rounded-lg border" data-testid={`test-result-${ch.medium}`}>
+                    <Icon className="h-4 w-4 mt-0.5 text-muted-foreground" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{mediumLabels[ch.medium] || ch.medium}</span>
+                        {ch.success ? (
+                          <Badge variant="default" className="text-xs gap-1"><CheckCircle2 className="h-3 w-3" />Sent</Badge>
+                        ) : (
+                          <Badge variant="destructive" className="text-xs gap-1"><XCircle className="h-3 w-3" />Failed</Badge>
+                        )}
+                      </div>
+                      {ch.error && (
+                        <p className="text-xs text-muted-foreground mt-1">{ch.error}</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <>
+                <Badge variant={lastResult.success ? "default" : "destructive"}>
+                  {lastResult.success ? "Success" : "Failed"}
+                </Badge>
+                {lastResult.error && (
+                  <p className="text-sm text-destructive mt-2">{lastResult.error}</p>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
