@@ -313,7 +313,7 @@ function OverviewTab({ campaign, onRefresh }: { campaign: CampaignDetail; onRefr
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                   <AlertDialogAction
-                    onClick={() => queueMutation.mutate()}
+                    onClick={() => queueMutation.mutate(undefined)}
                     data-testid="button-confirm-queue"
                   >
                     {queueMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Queue Now"}

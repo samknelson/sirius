@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,11 +33,8 @@ import {
   Bell,
   Send,
   CheckCircle2,
-  XCircle,
   AlertTriangle,
   ChevronDown,
-  Search,
-  User,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -130,30 +127,32 @@ function insertAtCursor(ref: React.RefObject<HTMLTextAreaElement | HTMLInputElem
   });
 }
 
+interface TestSendResult {
+  success: boolean;
+  error?: string;
+}
+
+interface AdminUser {
+  id: string;
+  contactId?: string;
+  displayName?: string;
+  email?: string;
+}
+
 function TestSendButton({ campaignId, medium, label }: { campaignId: string; medium: string; label: string }) {
   const { toast } = useToast();
-  const [contactSearch, setContactSearch] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [selectedContact, setSelectedContact] = useState<any>(null);
-  const [showSearch, setShowSearch] = useState(false);
 
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQuery(contactSearch), 300);
-    return () => clearTimeout(timer);
-  }, [contactSearch]);
-
-  const { data: searchResults = [], isFetching } = useQuery<any[]>({
-    queryKey: ["/api/contacts/search", debouncedQuery],
-    queryFn: () => apiRequest("GET", `/api/contacts/search?q=${encodeURIComponent(debouncedQuery)}`),
-    enabled: debouncedQuery.trim().length >= 2 && !selectedContact,
+  const { data: adminUser } = useQuery<AdminUser>({
+    queryKey: ["/api/auth/user"],
+    staleTime: 60000,
   });
 
   const testMutation = useMutation({
-    mutationFn: (contactId: string) =>
-      apiRequest("POST", `/api/bulk-campaigns/${campaignId}/test-send`, { contactId, medium }),
-    onSuccess: (result: any) => {
+    mutationFn: () =>
+      apiRequest("POST", `/api/bulk-campaigns/${campaignId}/test-send`, { medium }) as Promise<TestSendResult>,
+    onSuccess: (result: TestSendResult) => {
       if (result.success) {
-        toast({ title: `${label} test sent`, description: "Test message delivered successfully." });
+        toast({ title: `${label} test sent`, description: "Test message sent to your contact info." });
       } else {
         toast({ title: `${label} test failed`, description: result.error || "Unknown error", variant: "destructive" });
       }
@@ -163,72 +162,21 @@ function TestSendButton({ campaignId, medium, label }: { campaignId: string; med
     },
   });
 
-  if (!showSearch) {
-    return (
-      <Button variant="outline" size="sm" onClick={() => setShowSearch(true)} data-testid={`button-test-send-${medium}`}>
-        <Send className="h-3 w-3 mr-1" />
-        Send Test
-      </Button>
-    );
-  }
-
   return (
-    <div className="border rounded-lg p-3 space-y-2 bg-muted/30" data-testid={`test-send-panel-${medium}`}>
-      <div className="flex items-center justify-between">
-        <Label className="text-xs font-medium">Send test {label}</Label>
-        <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => { setShowSearch(false); setSelectedContact(null); setContactSearch(""); }}>
-          Close
-        </Button>
-      </div>
-      {!selectedContact ? (
-        <>
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search contact..."
-              className="pl-7 h-8 text-sm"
-              value={contactSearch}
-              onChange={(e) => setContactSearch(e.target.value)}
-              data-testid={`input-test-contact-${medium}`}
-            />
-          </div>
-          {debouncedQuery.trim().length >= 2 && (
-            <div className="border rounded max-h-32 overflow-y-auto">
-              {searchResults.length === 0 && !isFetching && (
-                <p className="p-2 text-xs text-muted-foreground text-center">No contacts found</p>
-              )}
-              {searchResults.map((c: any) => (
-                <div
-                  key={c.id}
-                  className="px-2 py-1.5 text-xs hover:bg-accent cursor-pointer flex items-center gap-2"
-                  onClick={() => { setSelectedContact(c); setContactSearch(c.displayName); }}
-                >
-                  <User className="h-3 w-3" />
-                  {c.displayName}
-                </div>
-              ))}
-            </div>
-          )}
-        </>
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => testMutation.mutate()}
+      disabled={testMutation.isPending}
+      data-testid={`button-test-send-${medium}`}
+    >
+      {testMutation.isPending ? (
+        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
       ) : (
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="text-xs">{selectedContact.displayName}</Badge>
-          <Button
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => testMutation.mutate(selectedContact.id)}
-            disabled={testMutation.isPending}
-            data-testid={`button-confirm-test-${medium}`}
-          >
-            {testMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3 mr-1" />}
-            Send
-          </Button>
-          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setSelectedContact(null); setContactSearch(""); }}>
-            Change
-          </Button>
-        </div>
+        <Send className="h-3 w-3 mr-1" />
       )}
-    </div>
+      Send Test{adminUser?.email ? ` to ${adminUser.email}` : ""}
+    </Button>
   );
 }
 
@@ -338,10 +286,18 @@ function SmsTab({ campaignId, smsState, setSmsState }: {
   );
 }
 
+interface PostalState {
+  description: string;
+  templateId: string;
+  color: boolean;
+  doubleSided: boolean;
+  mailType: string;
+}
+
 function PostalTab({ campaignId, postalState, setPostalState }: {
   campaignId: string | null;
-  postalState: { description: string; templateId: string; color: boolean; doubleSided: boolean; mailType: string };
-  setPostalState: (s: any) => void;
+  postalState: PostalState;
+  setPostalState: (s: PostalState) => void;
 }) {
   const descRef = useRef<HTMLTextAreaElement>(null);
 
@@ -409,13 +365,23 @@ function PostalTab({ campaignId, postalState, setPostalState }: {
   );
 }
 
+interface InappState {
+  title: string;
+  body: string;
+  linkUrl: string;
+  linkLabel: string;
+  mirrorEmail: boolean;
+}
+
 function InternalLogTab({ campaignId, inappState, setInappState, emailState }: {
   campaignId: string | null;
-  inappState: { title: string; body: string; linkUrl: string; linkLabel: string; mirrorEmail: boolean };
-  setInappState: (s: any) => void;
+  inappState: InappState;
+  setInappState: (s: InappState) => void;
   emailState: { subject: string; bodyHtml: string };
 }) {
+  const titleRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const [lastFocused, setLastFocused] = useState<"title" | "body">("body");
 
   useEffect(() => {
     if (inappState.mirrorEmail) {
@@ -428,8 +394,12 @@ function InternalLogTab({ campaignId, inappState, setInappState, emailState }: {
   }, [inappState.mirrorEmail, emailState.subject, emailState.bodyHtml]);
 
   const handleInsertToken = useCallback((token: string) => {
-    insertAtCursor(bodyRef, token, inappState.body, (v) => setInappState({ ...inappState, body: v }));
-  }, [inappState, setInappState]);
+    if (lastFocused === "title") {
+      insertAtCursor(titleRef, token, inappState.title, (v) => setInappState({ ...inappState, title: v }));
+    } else {
+      insertAtCursor(bodyRef, token, inappState.body, (v) => setInappState({ ...inappState, body: v }));
+    }
+  }, [inappState, setInappState, lastFocused]);
 
   return (
     <div className="space-y-4">
@@ -450,8 +420,10 @@ function InternalLogTab({ campaignId, inappState, setInappState, emailState }: {
       <div className="space-y-2">
         <Label>Title</Label>
         <Input
+          ref={titleRef}
           value={inappState.title}
           onChange={(e) => setInappState({ ...inappState, title: e.target.value })}
+          onFocus={() => setLastFocused("title")}
           maxLength={100}
           placeholder="Notification title"
           disabled={inappState.mirrorEmail}
@@ -465,6 +437,7 @@ function InternalLogTab({ campaignId, inappState, setInappState, emailState }: {
           ref={bodyRef}
           value={inappState.body}
           onChange={(e) => setInappState({ ...inappState, body: e.target.value })}
+          onFocus={() => setLastFocused("body")}
           rows={4}
           maxLength={500}
           placeholder="Summary or custom note..."
@@ -560,64 +533,70 @@ export function CampaignComposerModal({ open, onClose, audienceType, audienceFil
     }
   };
 
+  async function saveChannelContent(campaignId: string): Promise<void> {
+    const savePromises: Promise<unknown>[] = [];
+    if (activeChannels.email) {
+      savePromises.push(
+        apiRequest("PUT", `/api/bulk-campaigns/${campaignId}/messages/email`, {
+          subject: emailState.subject,
+          bodyHtml: emailState.bodyHtml,
+          bodyText: emailState.bodyHtml.replace(/<[^>]*>/g, ""),
+        })
+      );
+    }
+    if (activeChannels.sms) {
+      savePromises.push(
+        apiRequest("PUT", `/api/bulk-campaigns/${campaignId}/messages/sms`, { body: smsState.body })
+      );
+    }
+    if (activeChannels.postal) {
+      savePromises.push(
+        apiRequest("PUT", `/api/bulk-campaigns/${campaignId}/messages/postal`, postalState)
+      );
+    }
+    if (activeChannels.inapp) {
+      savePromises.push(
+        apiRequest("PUT", `/api/bulk-campaigns/${campaignId}/messages/inapp`, {
+          title: inappState.title,
+          body: inappState.body,
+          linkUrl: inappState.linkUrl,
+          linkLabel: inappState.linkLabel,
+        })
+      );
+    }
+    await Promise.all(savePromises);
+  }
+
   const createAndSaveMutation = useMutation({
     mutationFn: async () => {
-      const campaign = await apiRequest("POST", "/api/bulk-campaigns", {
-        name: campaignName.trim(),
-        audienceType,
-        channels: enabledChannels,
-        audienceFilters,
-      });
+      let campaignId = createdCampaignId;
 
-      const campaignId = campaign.id;
+      if (!campaignId) {
+        const campaign = await apiRequest("POST", "/api/bulk-campaigns", {
+          name: campaignName.trim(),
+          audienceType,
+          channels: enabledChannels,
+          audienceFilters,
+        }) as { id: string };
+        campaignId = campaign.id;
 
-      const savePromises: Promise<any>[] = [];
-      if (activeChannels.email) {
-        savePromises.push(
-          apiRequest("PUT", `/api/bulk-campaigns/${campaignId}/messages/email`, {
-            subject: emailState.subject,
-            bodyHtml: emailState.bodyHtml,
-            bodyText: emailState.bodyHtml.replace(/<[^>]*>/g, ""),
-          })
-        );
-      }
-      if (activeChannels.sms) {
-        savePromises.push(
-          apiRequest("PUT", `/api/bulk-campaigns/${campaignId}/messages/sms`, { body: smsState.body })
-        );
-      }
-      if (activeChannels.postal) {
-        savePromises.push(
-          apiRequest("PUT", `/api/bulk-campaigns/${campaignId}/messages/postal`, postalState)
-        );
-      }
-      if (activeChannels.inapp) {
-        savePromises.push(
-          apiRequest("PUT", `/api/bulk-campaigns/${campaignId}/messages/inapp`, {
-            title: inappState.title,
-            body: inappState.body,
-            linkUrl: inappState.linkUrl,
-            linkLabel: inappState.linkLabel,
-          })
-        );
+        await apiRequest("POST", `/api/bulk-campaigns/${campaignId}/import-audience`, {
+          audienceType,
+          filters: audienceFilters,
+        });
       }
 
-      await Promise.all(savePromises);
+      await saveChannelContent(campaignId);
 
-      await apiRequest("POST", `/api/bulk-campaigns/${campaignId}/import-audience`, {
-        audienceType,
-        filters: audienceFilters,
-      });
-
-      return campaign;
+      return { id: campaignId };
     },
-    onSuccess: (campaign) => {
+    onSuccess: (campaign: { id: string }) => {
       setCreatedCampaignId(campaign.id);
       setStep("review");
-      toast({ title: "Campaign created", description: "Review readiness and confirm to queue." });
+      toast({ title: createdCampaignId ? "Campaign updated" : "Campaign created", description: "Review readiness and confirm to queue." });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to create campaign", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to save campaign", description: error.message, variant: "destructive" });
     },
   });
 
