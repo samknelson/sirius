@@ -687,6 +687,19 @@ export default function Header() {
                   </Link>
                 )}
 
+                {bulkEditPolicy?.access?.granted && (
+                  <Link href="/campaigns" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location.startsWith("/campaigns") ? "default" : "ghost"}
+                      className="w-full justify-start"
+                      data-testid="mobile-nav-campaigns"
+                    >
+                      <Megaphone className="h-4 w-4 mr-2" />
+                      Campaigns
+                    </Button>
+                  </Link>
+                )}
+
                 {ledgerStaffPolicy?.access?.granted && (
                   <Link href="/ledger/accounts" onClick={() => setMobileMenuOpen(false)}>
                     <Button
@@ -1375,6 +1388,19 @@ export default function Header() {
                 >
                   <Megaphone className="h-4 w-4 mr-2" />
                   Bulk Messages
+                </Button>
+              </Link>
+            )}
+
+            {bulkEditPolicy?.access?.granted && (
+              <Link href="/campaigns">
+                <Button
+                  variant={location.startsWith("/campaigns") ? "default" : "ghost"}
+                  size="sm"
+                  data-testid="nav-campaigns"
+                >
+                  <Megaphone className="h-4 w-4 mr-2" />
+                  Campaigns
                 </Button>
               </Link>
             )}

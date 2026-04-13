@@ -305,6 +305,9 @@ const BulkMessageRecipientsListPage = lazy(() => import("@/pages/bulk-message-re
 const BulkMessageRecipientsAddPage = lazy(() => import("@/pages/bulk-message-recipients-add"));
 const BulkMessageDeliverPage = lazy(() => import("@/pages/bulk-message-deliver"));
 const BulkMessageTestPage = lazy(() => import("@/pages/bulk-message-test"));
+const CampaignsPage = lazy(() => import("@/pages/campaigns"));
+const CampaignCreatePage = lazy(() => import("@/pages/campaign-create"));
+const CampaignDetailPage = lazy(() => import("@/pages/campaign-detail"));
 
 // Loading fallback component
 function PageLoader() {
@@ -1632,6 +1635,30 @@ function Router() {
         <ProtectedRoute permission="admin" component="trust.providers.edi">
           <AuthenticatedLayout>
             <TrustProviderEdiDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/campaigns/new">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <CampaignCreatePage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/campaigns/:id">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <CampaignDetailPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/campaigns">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <CampaignsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

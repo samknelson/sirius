@@ -20,9 +20,12 @@ import {
   Truck, 
   HardHat, 
   Users,
+  Megaphone,
   type LucideIcon 
 } from "lucide-react";
 import type { Employer, Contact, EmployerContact, EmployerContactType } from "@shared/schema";
+
+type PolicyAccessResponse = { access: { granted: boolean } };
 
 const iconMap: Record<string, LucideIcon> = {
   User,
@@ -82,6 +85,11 @@ export default function AllEmployerContacts() {
     queryKey: ["/api/options/employer-contact-type"],
   });
 
+  const { data: bulkEditPolicy } = useQuery<PolicyAccessResponse>({
+    queryKey: ["/api/access/policies/bulk.edit"],
+    staleTime: 30000,
+  });
+
   const handleClearFilters = () => {
     setEmployerFilter("all");
     setContactNameFilter("");
@@ -99,6 +107,14 @@ export default function AllEmployerContacts() {
             View and manage all employer contact relationships
           </p>
         </div>
+        {bulkEditPolicy?.access?.granted && (
+          <Link href="/campaigns/new?audienceType=employer_contact">
+            <Button size="sm" variant="outline" data-testid="button-new-campaign-employer-contacts">
+              <Megaphone className="h-4 w-4 mr-2" />
+              New Campaign
+            </Button>
+          </Link>
+        )}
       </div>
 
       <Card>

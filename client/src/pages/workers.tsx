@@ -1,10 +1,12 @@
 import { useState, useCallback } from "react";
-import { Users } from "lucide-react";
+import { Users, Megaphone } from "lucide-react";
 import { WorkersTable, WorkerFilters } from "@/components/workers/workers-table";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
+
+type PolicyAccessResponse = { access: { granted: boolean } };
 
 interface PaginatedWorkersResponse {
   data: any[];
@@ -57,6 +59,11 @@ export default function Workers() {
     });
   }, []);
 
+  const { data: bulkEditPolicy } = useQuery<PolicyAccessResponse>({
+    queryKey: ["/api/access/policies/bulk.edit"],
+    staleTime: 30000,
+  });
+
   const { data: paginatedData, isLoading } = useQuery<PaginatedWorkersResponse>({
     queryKey: ["/api/workers/with-details/paginated", { 
       page, 
@@ -91,9 +98,19 @@ export default function Workers() {
         title="Workers" 
         icon={<Users className="text-primary-foreground" size={16} />}
         actions={
-          <span className="text-sm text-muted-foreground" data-testid="text-worker-count">
-            {total.toLocaleString()} Workers
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground" data-testid="text-worker-count">
+              {total.toLocaleString()} Workers
+            </span>
+            {bulkEditPolicy?.access?.granted && (
+              <Link href="/campaigns/new?audienceType=worker">
+                <Button size="sm" variant="outline" data-testid="button-new-campaign-workers">
+                  <Megaphone className="h-4 w-4 mr-2" />
+                  New Campaign
+                </Button>
+              </Link>
+            )}
+          </div>
         }
       />
 
