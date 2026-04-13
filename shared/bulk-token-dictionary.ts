@@ -44,7 +44,11 @@ export const BULK_TOKEN_DICTIONARY: TokenDefinition[] = [
   },
 ];
 
-export function getTokenDictionary(): Array<{ token: string; description: string; example: string }> {
+export function getTokenDictionary(): Array<{
+  token: string;
+  description: string;
+  example: string;
+}> {
   return BULK_TOKEN_DICTIONARY.map(({ token, description, example }) => ({
     token,
     description,
