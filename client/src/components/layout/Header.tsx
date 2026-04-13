@@ -75,6 +75,7 @@ export default function Header() {
 
   // Type for policy access check response
   type PolicyAccessResponse = { access: { granted: boolean } };
+  interface ComponentConfig { componentId: string; enabled: boolean; }
 
   // Check staff policy for Accounts navigation (ledger component also required)
   const { data: ledgerStaffPolicy } = useQuery<PolicyAccessResponse>({
@@ -95,6 +96,12 @@ export default function Header() {
     queryKey: ["/api/access/policies/bulk.edit"],
     staleTime: 30000,
   });
+
+  const { data: headerComponentConfigs = [] } = useQuery<ComponentConfig[]>({
+    queryKey: ["/api/components/config"],
+    staleTime: 60000,
+  });
+  const bulkComponentEnabled = headerComponentConfigs.find(c => c.componentId === "bulk")?.enabled ?? false;
 
   // Get employers associated with the current user's contact
   const { employers: myEmployers, hasSingleEmployer, hasMultipleEmployers } = useMyEmployers();
@@ -674,7 +681,7 @@ export default function Header() {
                   </Link>
                 )}
 
-                {bulkEditPolicy?.access?.granted && (
+                {bulkComponentEnabled && bulkEditPolicy?.access?.granted && (
                   <Link href="/bulk/list" onClick={() => setMobileMenuOpen(false)}>
                     <Button
                       variant={location.startsWith("/bulk") ? "default" : "ghost"}
@@ -687,7 +694,7 @@ export default function Header() {
                   </Link>
                 )}
 
-                {bulkEditPolicy?.access?.granted && (
+                {bulkComponentEnabled && bulkEditPolicy?.access?.granted && (
                   <Link href="/campaigns" onClick={() => setMobileMenuOpen(false)}>
                     <Button
                       variant={location.startsWith("/campaigns") ? "default" : "ghost"}
@@ -1379,7 +1386,7 @@ export default function Header() {
               </Link>
             )}
 
-            {bulkEditPolicy?.access?.granted && (
+            {bulkComponentEnabled && bulkEditPolicy?.access?.granted && (
               <Link href="/bulk/list">
                 <Button
                   variant={location.startsWith("/bulk") ? "default" : "ghost"}
@@ -1392,7 +1399,7 @@ export default function Header() {
               </Link>
             )}
 
-            {bulkEditPolicy?.access?.granted && (
+            {bulkComponentEnabled && bulkEditPolicy?.access?.granted && (
               <Link href="/campaigns">
                 <Button
                   variant={location.startsWith("/campaigns") ? "default" : "ghost"}

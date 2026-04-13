@@ -300,10 +300,16 @@ function PostalTab({ campaignId, postalState, setPostalState }: {
   setPostalState: (s: PostalState) => void;
 }) {
   const descRef = useRef<HTMLTextAreaElement>(null);
+  const templateRef = useRef<HTMLInputElement>(null);
+  const [lastFocused, setLastFocused] = useState<"description" | "template">("description");
 
   const handleInsertToken = useCallback((token: string) => {
-    insertAtCursor(descRef, token, postalState.description, (v) => setPostalState({ ...postalState, description: v }));
-  }, [postalState, setPostalState]);
+    if (lastFocused === "template") {
+      insertAtCursor(templateRef, token, postalState.templateId, (v) => setPostalState({ ...postalState, templateId: v }));
+    } else {
+      insertAtCursor(descRef, token, postalState.description, (v) => setPostalState({ ...postalState, description: v }));
+    }
+  }, [postalState, setPostalState, lastFocused]);
 
   return (
     <div className="space-y-4">
@@ -318,6 +324,7 @@ function PostalTab({ campaignId, postalState, setPostalState }: {
             ref={descRef}
             value={postalState.description}
             onChange={(e) => setPostalState({ ...postalState, description: e.target.value })}
+            onFocus={() => setLastFocused("description")}
             rows={3}
             placeholder="Postal mail description..."
             data-testid="textarea-composer-postal-description"
@@ -326,8 +333,10 @@ function PostalTab({ campaignId, postalState, setPostalState }: {
         <div className="space-y-2">
           <Label>Template ID / PDF Reference</Label>
           <Input
+            ref={templateRef}
             value={postalState.templateId}
             onChange={(e) => setPostalState({ ...postalState, templateId: e.target.value })}
+            onFocus={() => setLastFocused("template")}
             placeholder="e.g. tmpl_abc123 or PDF filename"
             data-testid="input-composer-postal-template"
           />
@@ -381,7 +390,9 @@ function InternalLogTab({ campaignId, inappState, setInappState, emailState }: {
 }) {
   const titleRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
-  const [lastFocused, setLastFocused] = useState<"title" | "body">("body");
+  const linkUrlRef = useRef<HTMLInputElement>(null);
+  const linkLabelRef = useRef<HTMLInputElement>(null);
+  const [lastFocused, setLastFocused] = useState<"title" | "body" | "linkUrl" | "linkLabel">("body");
 
   useEffect(() => {
     if (inappState.mirrorEmail) {
@@ -396,6 +407,10 @@ function InternalLogTab({ campaignId, inappState, setInappState, emailState }: {
   const handleInsertToken = useCallback((token: string) => {
     if (lastFocused === "title") {
       insertAtCursor(titleRef, token, inappState.title, (v) => setInappState({ ...inappState, title: v }));
+    } else if (lastFocused === "linkUrl") {
+      insertAtCursor(linkUrlRef, token, inappState.linkUrl, (v) => setInappState({ ...inappState, linkUrl: v }));
+    } else if (lastFocused === "linkLabel") {
+      insertAtCursor(linkLabelRef, token, inappState.linkLabel, (v) => setInappState({ ...inappState, linkLabel: v }));
     } else {
       insertAtCursor(bodyRef, token, inappState.body, (v) => setInappState({ ...inappState, body: v }));
     }
@@ -450,8 +465,10 @@ function InternalLogTab({ campaignId, inappState, setInappState, emailState }: {
         <div className="space-y-2">
           <Label>Link URL</Label>
           <Input
+            ref={linkUrlRef}
             value={inappState.linkUrl}
             onChange={(e) => setInappState({ ...inappState, linkUrl: e.target.value })}
+            onFocus={() => setLastFocused("linkUrl")}
             maxLength={2048}
             placeholder="https://..."
             data-testid="input-composer-inapp-link-url"
@@ -460,8 +477,10 @@ function InternalLogTab({ campaignId, inappState, setInappState, emailState }: {
         <div className="space-y-2">
           <Label>Link Label</Label>
           <Input
+            ref={linkLabelRef}
             value={inappState.linkLabel}
             onChange={(e) => setInappState({ ...inappState, linkLabel: e.target.value })}
+            onFocus={() => setLastFocused("linkLabel")}
             maxLength={50}
             placeholder="Click here"
             data-testid="input-composer-inapp-link-label"

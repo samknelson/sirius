@@ -28,6 +28,11 @@ import { CampaignComposerModal } from "@/components/bulk/CampaignComposerModal";
 
 type PolicyAccessResponse = { access: { granted: boolean } };
 
+interface ComponentConfig {
+  componentId: string;
+  enabled: boolean;
+}
+
 const iconMap: Record<string, LucideIcon> = {
   User,
   Phone,
@@ -92,6 +97,12 @@ export default function AllEmployerContacts() {
     staleTime: 30000,
   });
 
+  const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
+    queryKey: ["/api/components/config"],
+    staleTime: 60000,
+  });
+  const bulkEnabled = componentConfigs.find(c => c.componentId === "bulk")?.enabled ?? false;
+
   const handleClearFilters = () => {
     setEmployerFilter("all");
     setContactNameFilter("");
@@ -109,7 +120,7 @@ export default function AllEmployerContacts() {
             View and manage all employer contact relationships
           </p>
         </div>
-        {bulkEditPolicy?.access?.granted && (
+        {bulkEnabled && bulkEditPolicy?.access?.granted && (
           <Button
             size="sm"
             variant="outline"

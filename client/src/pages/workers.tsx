@@ -9,6 +9,11 @@ import { CampaignComposerModal } from "@/components/bulk/CampaignComposerModal";
 
 type PolicyAccessResponse = { access: { granted: boolean } };
 
+interface ComponentConfig {
+  componentId: string;
+  enabled: boolean;
+}
+
 interface PaginatedWorkersResponse {
   data: any[];
   total: number;
@@ -65,6 +70,12 @@ export default function Workers() {
     queryKey: ["/api/access/policies/bulk.edit"],
     staleTime: 30000,
   });
+
+  const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
+    queryKey: ["/api/components/config"],
+    staleTime: 60000,
+  });
+  const bulkEnabled = componentConfigs.find(c => c.componentId === "bulk")?.enabled ?? false;
 
   const { data: paginatedData, isLoading } = useQuery<PaginatedWorkersResponse>({
     queryKey: ["/api/workers/with-details/paginated", { 
@@ -127,7 +138,7 @@ export default function Workers() {
             <span className="text-sm text-muted-foreground" data-testid="text-worker-count">
               {total.toLocaleString()} Workers
             </span>
-            {bulkEditPolicy?.access?.granted && (
+            {bulkEnabled && bulkEditPolicy?.access?.granted && (
               <Button
                 size="sm"
                 variant="outline"

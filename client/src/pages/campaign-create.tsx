@@ -67,7 +67,7 @@ export default function CampaignCreatePage() {
         channels: data.channels,
         audienceFilters: {},
       }),
-    onSuccess: (result: any) => {
+    onSuccess: (result: { id: string }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/bulk-campaigns"] });
       toast({ title: "Campaign created", description: `"${name}" has been created.` });
       setLocation(`/campaigns/${result.id}`);

@@ -79,6 +79,38 @@ interface TokenInfo {
   example: string;
 }
 
+interface CampaignParticipant {
+  id: string;
+  contactId: string;
+  contactDisplayName: string;
+  medium: string;
+  status: string;
+}
+
+interface ImportResult {
+  totalCreated: number;
+  totalSkipped: number;
+  channelCount: number;
+}
+
+interface TestSendResult {
+  success: boolean;
+  error?: string;
+  medium?: string;
+}
+
+interface SearchContact {
+  id: string;
+  displayName: string;
+  email?: string;
+  phone?: string;
+}
+
+interface TestSendPayload {
+  contactId: string;
+  medium?: string;
+}
+
 const statusVariants: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   draft: "secondary",
   queued: "outline",
@@ -676,7 +708,7 @@ function AudienceTab({ campaign }: { campaign: CampaignDetail }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
 
-  const { data: participants = [], isLoading: participantsLoading } = useQuery<any[]>({
+  const { data: participants = [], isLoading: participantsLoading } = useQuery<CampaignParticipant[]>({
     queryKey: ["/api/bulk-campaigns", campaign.id, "participants"],
   });
 
@@ -686,7 +718,7 @@ function AudienceTab({ campaign }: { campaign: CampaignDetail }) {
         audienceType: campaign.audienceType,
         filters: campaign.audienceFilters || {},
       }),
-    onSuccess: (result: any) => {
+    onSuccess: (result: ImportResult) => {
       queryClient.invalidateQueries({ queryKey: ["/api/bulk-campaigns", campaign.id, "participants"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bulk-campaigns", campaign.id, "readiness"] });
       toast({
@@ -699,7 +731,7 @@ function AudienceTab({ campaign }: { campaign: CampaignDetail }) {
     },
   });
 
-  const filtered = participants.filter((p: any) => {
+  const filtered = participants.filter((p: CampaignParticipant) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return p.contactDisplayName?.toLowerCase().includes(q);
@@ -788,7 +820,7 @@ function AudienceTab({ campaign }: { campaign: CampaignDetail }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {filtered.map((p: any) => {
+                  {filtered.map((p: CampaignParticipant) => {
                     const Icon = mediumIcons[p.medium] || Mail;
                     return (
                       <tr key={p.id} className="hover:bg-muted/30 transition-colors" data-testid={`row-campaign-participant-${p.id}`}>
@@ -883,16 +915,16 @@ function TestSendTab({ campaign }: { campaign: CampaignDetail }) {
   const { toast } = useToast();
   const [contactSearch, setContactSearch] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [selectedContact, setSelectedContact] = useState<any>(null);
+  const [selectedContact, setSelectedContact] = useState<SearchContact | null>(null);
   const [selectedMedium, setSelectedMedium] = useState<string>("all");
-  const [lastResult, setLastResult] = useState<any>(null);
+  const [lastResult, setLastResult] = useState<TestSendResult | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(contactSearch), 300);
     return () => clearTimeout(timer);
   }, [contactSearch]);
 
-  const { data: searchResults = [], isFetching: isSearching } = useQuery<any[]>({
+  const { data: searchResults = [], isFetching: isSearching } = useQuery<SearchContact[]>({
     queryKey: ["/api/contacts/search", debouncedQuery],
     queryFn: () => apiRequest("GET", `/api/contacts/search?q=${encodeURIComponent(debouncedQuery)}`),
     enabled: debouncedQuery.trim().length >= 2 && !selectedContact,
@@ -901,7 +933,7 @@ function TestSendTab({ campaign }: { campaign: CampaignDetail }) {
   const testMutation = useMutation({
     mutationFn: (data: { contactId: string; medium?: string }) =>
       apiRequest("POST", `/api/bulk-campaigns/${campaign.id}/test-send`, data),
-    onSuccess: (result: any) => {
+    onSuccess: (result: TestSendResult) => {
       setLastResult(result);
       if (result.success) {
         toast({ title: "Test sent successfully" });
@@ -947,7 +979,7 @@ function TestSendTab({ campaign }: { campaign: CampaignDetail }) {
               {searchResults.length === 0 && !isSearching && (
                 <p className="p-4 text-sm text-muted-foreground text-center">No contacts found</p>
               )}
-              {searchResults.map((c: any) => (
+              {searchResults.map((c: SearchContact) => (
                 <div
                   key={c.id}
                   className="px-4 py-3 hover:bg-accent transition-colors cursor-pointer border-b last:border-b-0 flex items-center gap-3"
@@ -999,7 +1031,7 @@ function TestSendTab({ campaign }: { campaign: CampaignDetail }) {
           <Button
             onClick={() => {
               if (selectedContact) {
-                const payload: any = { contactId: selectedContact.id };
+                const payload: TestSendPayload = { contactId: selectedContact.id };
                 if (selectedMedium !== "all") payload.medium = selectedMedium;
                 testMutation.mutate(payload);
               }
