@@ -20,7 +20,7 @@ export function createBulkMessageStorage(): BulkMessageStorage {
       const client = getClient();
       const conditions: SQL[] = [];
       if (filters?.status) {
-        conditions.push(eq(bulkMessages.status, filters.status as "draft" | "queued" | "sent"));
+        conditions.push(eq(bulkMessages.status, filters.status as "draft" | "queued" | "processing" | "sent" | "completed" | "failed" | "aborted"));
       }
       if (filters?.medium) {
         conditions.push(eq(bulkMessages.medium, filters.medium as "sms" | "email" | "inapp" | "postal"));

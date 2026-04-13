@@ -14,7 +14,7 @@ import {
 } from "../../../shared/schema/bulk/schema";
 import { contacts, workers, phoneNumbers, contactPostal, comm, users } from "../../../shared/schema";
 import { eq, and, inArray, sql, ilike, or, type SQL } from "drizzle-orm";
-import { getClient } from "../../storage/transaction-context";
+import { getClient, runInTransaction } from "../../storage/transaction-context";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
 import { deliverToContact } from "./deliver";
 import { storageLogger } from "../../logger";
@@ -167,8 +167,7 @@ export function registerBulkCampaignRoutes(
         return res.status(400).json({ message: "Validation failed", errors: parsed.error.issues });
       }
 
-      const db = getClient();
-      const campaign = await db.transaction(async () => {
+      const campaign = await runInTransaction(async () => {
         const created = await storage.bulkCampaigns.create(parsed.data);
         const createdMessages = [];
         for (const channel of validChannels) {

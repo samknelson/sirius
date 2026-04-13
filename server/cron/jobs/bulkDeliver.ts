@@ -111,8 +111,9 @@ async function processCampaigns(context: CronJobContext, settings: BulkDeliverSe
       }
 
       if (!stillHasPending) {
+        const messageStatus = campaignHadFailures ? "completed" : "sent";
         for (const msg of campaignMessages) {
-          await storage.bulkMessages.update(msg.id, { status: "sent" });
+          await storage.bulkMessages.update(msg.id, { status: messageStatus });
         }
 
         await storage.bulkCampaigns.update(campaign.id, { status: "completed" });
@@ -123,6 +124,7 @@ async function processCampaigns(context: CronJobContext, settings: BulkDeliverSe
           operation: "delivery_complete",
           host_entity_id: campaign.id,
           campaign_name: campaign.name,
+          had_failures: campaignHadFailures,
         });
       } else {
         await storage.bulkCampaigns.update(campaign.id, { status: "queued" });
