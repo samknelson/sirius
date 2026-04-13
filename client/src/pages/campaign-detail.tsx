@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -99,7 +99,7 @@ const mediumLabels: Record<string, string> = {
   email: "Email",
   sms: "SMS",
   postal: "Postal",
-  inapp: "In-App",
+  inapp: "Internal Log",
 };
 
 function OverviewTab({ campaign, onRefresh }: { campaign: CampaignDetail; onRefresh: () => void }) {
@@ -1116,7 +1116,7 @@ export default function CampaignDetailPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-6">
+      <Tabs defaultValue={new URLSearchParams(window.location.search).get("tab") || "overview"} className="space-y-6">
         <TabsList data-testid="tabs-campaign-detail">
           <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
           <TabsTrigger value="channels" data-testid="tab-channels">Channels</TabsTrigger>

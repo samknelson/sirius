@@ -24,6 +24,7 @@ import {
   type LucideIcon 
 } from "lucide-react";
 import type { Employer, Contact, EmployerContact, EmployerContactType } from "@shared/schema";
+import { CampaignComposerModal } from "@/components/bulk/CampaignComposerModal";
 
 type PolicyAccessResponse = { access: { granted: boolean } };
 
@@ -56,6 +57,7 @@ export default function AllEmployerContacts() {
   const [contactNameFilter, setContactNameFilter] = useState<string>("");
   const [contactTypeFilter, setContactTypeFilter] = useState<string>("all");
   const [debouncedContactName, setDebouncedContactName] = useState<string>("");
+  const [composerOpen, setComposerOpen] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -108,12 +110,15 @@ export default function AllEmployerContacts() {
           </p>
         </div>
         {bulkEditPolicy?.access?.granted && (
-          <Link href="/campaigns/new?audienceType=employer_contact">
-            <Button size="sm" variant="outline" data-testid="button-new-campaign-employer-contacts">
-              <Megaphone className="h-4 w-4 mr-2" />
-              New Campaign
-            </Button>
-          </Link>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setComposerOpen(true)}
+            data-testid="button-bulk-message-employer-contacts"
+          >
+            <Megaphone className="h-4 w-4 mr-2" />
+            Bulk Message
+          </Button>
         )}
       </div>
 
@@ -279,6 +284,20 @@ export default function AllEmployerContacts() {
           )}
         </CardContent>
       </Card>
+
+      {composerOpen && (
+        <CampaignComposerModal
+          open={composerOpen}
+          onClose={() => setComposerOpen(false)}
+          audienceType="employer_contact"
+          audienceFilters={filters}
+          audienceLabel={
+            Object.keys(filters).length > 0
+              ? `${Object.keys(filters).length} filter${Object.keys(filters).length !== 1 ? "s" : ""} applied`
+              : `${employerContacts?.length ?? 0} contacts (no filters)`
+          }
+        />
+      )}
     </div>
   );
 }
