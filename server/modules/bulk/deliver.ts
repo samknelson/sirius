@@ -141,13 +141,14 @@ export async function deliverToParticipant(
     userId,
   });
 
-  if (result.commId) {
+  if (result.success && result.commId) {
     await rawParticipantStorage.update(participantId, {
       commId: result.commId,
       status: "see_comm",
     });
   } else if (!result.success) {
     await rawParticipantStorage.update(participantId, {
+      commId: result.commId || undefined,
       status: "send_failed",
       message: result.error || "Unknown delivery error",
     });
