@@ -622,6 +622,9 @@ export function CampaignComposerModal({ open, onClose, audienceType, audienceFil
   const queueMutation = useMutation({
     mutationFn: async () => {
       if (!createdCampaignId) throw new Error("No campaign to queue");
+      if (scheduleMode === "later" && (!scheduledDate || !scheduledTime)) {
+        throw new Error("Please select both a date and time for scheduled delivery.");
+      }
       let scheduledAt: string | undefined;
       if (scheduleMode === "later" && scheduledDate && scheduledTime) {
         const formatter = new Intl.DateTimeFormat("en-US", {
@@ -640,6 +643,9 @@ export function CampaignComposerModal({ open, onClose, audienceType, audienceFil
         const targetMs = offsetDate.getTime();
         const tzOffsetMs = targetMs - localMs;
         const corrected = new Date(tempDate.getTime() + tzOffsetMs);
+        if (corrected.getTime() <= Date.now()) {
+          throw new Error("Scheduled time must be in the future.");
+        }
         scheduledAt = corrected.toISOString();
       }
       return apiRequest("POST", `/api/bulk-campaigns/${createdCampaignId}/queue`, scheduledAt ? { scheduledAt, timezone } : {});

@@ -228,7 +228,7 @@ export default function CampaignsPage() {
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <Link href={campaign.status === "failed" ? `/campaigns/${campaign.id}?tab=errors` : `/campaigns/${campaign.id}`}>
                         <Badge
                           variant={statusVariants[campaign.status] || "secondary"}
@@ -239,7 +239,7 @@ export default function CampaignsPage() {
                         </Badge>
                       </Link>
                     </TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
                         <Link href={`/campaigns/${campaign.id}`}>
                           <Button variant="ghost" size="sm" data-testid={`button-view-campaign-${campaign.id}`}>
