@@ -2,6 +2,7 @@ import { z } from "zod";
 import { storage } from "../../storage";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
 import { deliverToParticipant } from "../../modules/bulk/deliver";
+import { storageLogger } from "../../logger";
 import type { CronJobHandler, CronJobContext, CronJobResult, CronJobSettingsField } from "../registry";
 
 const settingsSchema = z.object({
@@ -29,8 +30,122 @@ const MEDIUM_BATCH_KEY: Record<string, keyof BulkDeliverSettings> = {
 
 const rawParticipantStorage = createBulkParticipantStorage();
 
+async function processCampaigns(context: CronJobContext, settings: BulkDeliverSettings): Promise<{
+  campaignsProcessed: number;
+  campaignsCompleted: number;
+  campaignsFailed: number;
+  totalProcessed: number;
+  totalSeeComm: number;
+  totalSendFailed: number;
+}> {
+  const now = new Date();
+  let campaignsProcessed = 0;
+  let campaignsCompleted = 0;
+  let campaignsFailed = 0;
+  let totalProcessed = 0;
+  let totalSeeComm = 0;
+  let totalSendFailed = 0;
+
+  const queuedCampaigns = await storage.bulkCampaigns.getAll({ status: "queued" });
+  const eligibleCampaigns = queuedCampaigns.filter(c => {
+    if (!c.scheduledAt) return true;
+    return new Date(c.scheduledAt) <= now;
+  });
+
+  if (context.mode === 'test') {
+    return {
+      campaignsProcessed: eligibleCampaigns.length,
+      campaignsCompleted: 0,
+      campaignsFailed: 0,
+      totalProcessed: 0,
+      totalSeeComm: 0,
+      totalSendFailed: 0,
+    };
+  }
+
+  for (const campaign of eligibleCampaigns) {
+    campaignsProcessed++;
+
+    try {
+      await storage.bulkCampaigns.update(campaign.id, { status: "processing" });
+
+      const campaignMessages = await storage.bulkCampaigns.getMessagesByCampaignId(campaign.id);
+
+      let campaignHasPending = false;
+      let campaignHadFailures = false;
+
+      for (const msg of campaignMessages) {
+        const batchKey = MEDIUM_BATCH_KEY[msg.medium];
+        const batchSize = batchKey ? settings[batchKey] : 25;
+        const pendingParticipants = await rawParticipantStorage.getPendingByMessageId(msg.id, batchSize);
+
+        if (pendingParticipants.length > 0) {
+          campaignHasPending = true;
+        }
+
+        for (const participant of pendingParticipants) {
+          try {
+            const result = await deliverToParticipant(storage, msg.id, participant.id);
+            totalProcessed++;
+            if (result.commId) {
+              totalSeeComm++;
+            } else {
+              totalSendFailed++;
+              campaignHadFailures = true;
+            }
+          } catch {
+            totalSendFailed++;
+            totalProcessed++;
+            campaignHadFailures = true;
+          }
+        }
+      }
+
+      let stillHasPending = false;
+      for (const msg of campaignMessages) {
+        const remaining = await rawParticipantStorage.getPendingByMessageId(msg.id, 1);
+        if (remaining.length > 0) {
+          stillHasPending = true;
+          break;
+        }
+      }
+
+      if (!stillHasPending) {
+        for (const msg of campaignMessages) {
+          await storage.bulkMessages.update(msg.id, { status: "sent" });
+        }
+
+        await storage.bulkCampaigns.update(campaign.id, { status: "completed" });
+        campaignsCompleted++;
+
+        storageLogger.info("Campaign delivery completed", {
+          module: "bulk_campaign",
+          operation: "delivery_complete",
+          host_entity_id: campaign.id,
+          campaign_name: campaign.name,
+        });
+      } else {
+        await storage.bulkCampaigns.update(campaign.id, { status: "queued" });
+      }
+    } catch (error) {
+      campaignsFailed++;
+      await storage.bulkCampaigns.update(campaign.id, { status: "failed" });
+
+      storageLogger.error("Campaign delivery failed", {
+        module: "bulk_campaign",
+        operation: "delivery_error",
+        host_entity_id: campaign.id,
+        campaign_name: campaign.name,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return { campaignsProcessed, campaignsCompleted, campaignsFailed, totalProcessed, totalSeeComm, totalSendFailed };
+}
+
 export const bulkDeliverHandler: CronJobHandler = {
-  description: 'Delivers queued bulk messages to pending participants in batches',
+  description: 'Delivers queued bulk messages and campaigns to pending participants in batches',
   requiresComponent: 'bulk',
 
   settingsSchema,
@@ -81,10 +196,15 @@ export const bulkDeliverHandler: CronJobHandler = {
     const queuedMessages = await storage.bulkMessages.getAll({ status: "queued" });
 
     const now = new Date();
-    const eligibleMessages = queuedMessages.filter((msg) => {
+    const standaloneMessages = queuedMessages.filter(msg => !msg.campaignId);
+    const eligibleMessages = standaloneMessages.filter((msg) => {
       if (!msg.sendDate) return true;
       return new Date(msg.sendDate) <= now;
     });
+
+    let totalSeeComm = 0;
+    let totalSendFailed = 0;
+    let totalProcessed = 0;
 
     if (context.mode === 'test') {
       let totalPending = 0;
@@ -104,21 +224,18 @@ export const bulkDeliverHandler: CronJobHandler = {
         });
       }
 
+      const campaignResult = await processCampaigns(context, settings);
+
       return {
-        message: `Would process ${totalPending} participants across ${eligibleMessages.length} queued messages (${queuedMessages.length - eligibleMessages.length} skipped for future send date)`,
+        message: `Would process ${totalPending} participants across ${eligibleMessages.length} standalone messages and ${campaignResult.campaignsProcessed} campaigns`,
         metadata: {
-          queuedMessages: queuedMessages.length,
-          eligibleMessages: eligibleMessages.length,
-          skippedFuture: queuedMessages.length - eligibleMessages.length,
+          standaloneMessages: eligibleMessages.length,
+          campaignsEligible: campaignResult.campaignsProcessed,
           totalPending,
           messages: messageSummaries,
         },
       };
     }
-
-    let totalSeeComm = 0;
-    let totalSendFailed = 0;
-    let totalProcessed = 0;
 
     for (const msg of eligibleMessages) {
       const batchKey = MEDIUM_BATCH_KEY[msg.medium];
@@ -141,15 +258,22 @@ export const bulkDeliverHandler: CronJobHandler = {
       }
     }
 
+    const campaignResult = await processCampaigns(context, settings);
+
+    const grandTotalProcessed = totalProcessed + campaignResult.totalProcessed;
+    const grandTotalSeeComm = totalSeeComm + campaignResult.totalSeeComm;
+    const grandTotalSendFailed = totalSendFailed + campaignResult.totalSendFailed;
+
     return {
-      message: `Processed ${totalProcessed} participants across ${eligibleMessages.length} messages: ${totalSeeComm} see_comm, ${totalSendFailed} send_failed`,
+      message: `Processed ${grandTotalProcessed} participants: ${grandTotalSeeComm} see_comm, ${grandTotalSendFailed} send_failed (${eligibleMessages.length} standalone + ${campaignResult.campaignsProcessed} campaigns, ${campaignResult.campaignsCompleted} completed)`,
       metadata: {
-        queuedMessages: queuedMessages.length,
-        eligibleMessages: eligibleMessages.length,
-        skippedFuture: queuedMessages.length - eligibleMessages.length,
-        totalProcessed,
-        totalSeeComm,
-        totalSendFailed,
+        standaloneMessages: eligibleMessages.length,
+        campaignsProcessed: campaignResult.campaignsProcessed,
+        campaignsCompleted: campaignResult.campaignsCompleted,
+        campaignsFailed: campaignResult.campaignsFailed,
+        totalProcessed: grandTotalProcessed,
+        totalSeeComm: grandTotalSeeComm,
+        totalSendFailed: grandTotalSendFailed,
       },
     };
   },

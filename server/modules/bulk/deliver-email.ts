@@ -1,6 +1,7 @@
 import type { IStorage } from "../../storage";
 import { sendEmail, type SendEmailResult } from "../../services/email-sender";
 import type { DeliverContactResult } from "./deliver";
+import { resolveAndReplace } from "../../services/bulk-tokenization";
 
 export async function resolveEmailAddress(storage: IStorage, contactId: string): Promise<{ address: string; name?: string } | null> {
   const contact = await storage.contacts.getContact(contactId);
@@ -22,13 +23,24 @@ export async function deliverEmail(
   if (!resolved) {
     return { success: false, error: "Contact has no email address", errorCode: "NO_ADDRESS" };
   }
+
+  let subject = emailContent.subject || "(no subject)";
+  let bodyText = emailContent.bodyText || undefined;
+  let bodyHtml = emailContent.bodyHtml || undefined;
+
+  try {
+    subject = await resolveAndReplace(storage, contactId, subject);
+    if (bodyText) bodyText = await resolveAndReplace(storage, contactId, bodyText);
+    if (bodyHtml) bodyHtml = await resolveAndReplace(storage, contactId, bodyHtml);
+  } catch (_e) {}
+
   const result: SendEmailResult = await sendEmail({
     contactId,
     toEmail: resolved.address,
     toName: resolved.name,
-    subject: emailContent.subject || "(no subject)",
-    bodyText: emailContent.bodyText || undefined,
-    bodyHtml: emailContent.bodyHtml || undefined,
+    subject,
+    bodyText,
+    bodyHtml,
     fromEmail: emailContent.fromAddress || undefined,
     fromName: emailContent.fromName || undefined,
     replyTo: emailContent.replyTo || undefined,

@@ -5,6 +5,7 @@ import { resolveEmailAddress, deliverEmail } from "./deliver-email";
 import { resolvePhoneNumber, deliverSms } from "./deliver-sms";
 import { resolvePostalAddress, deliverPostal } from "./deliver-postal";
 import { resolveUserId, deliverInapp } from "./deliver-inapp";
+import { storageLogger } from "../../logger";
 
 export interface DeliverContactRequest {
   messageId: string;
@@ -95,6 +96,32 @@ export async function deliverToContact(
 
 const rawParticipantStorage = createBulkParticipantStorage();
 
+function logParticipantDelivery(
+  result: DeliverContactResult,
+  medium: string,
+  messageId: string,
+  contactId: string,
+  participantId: string,
+) {
+  try {
+    const level = result.success ? "info" : "warn";
+    const description = result.success
+      ? `Bulk ${medium} delivered to contact`
+      : `Bulk ${medium} delivery failed: ${result.error || "unknown error"}`;
+    storageLogger.log(level, description, {
+      module: "bulk_delivery",
+      operation: result.success ? "deliver_success" : "deliver_fail",
+      entity_id: contactId,
+      host_entity_id: messageId,
+      comm_id: result.commId || null,
+      participant_id: participantId,
+      medium,
+      success: result.success,
+      error: result.error || null,
+    });
+  } catch (_e) {}
+}
+
 export async function deliverToParticipant(
   storage: IStorage,
   messageId: string,
@@ -127,6 +154,9 @@ export async function deliverToParticipant(
       message: result.error || "Unknown delivery error",
     });
   }
+
+  const bulkMessage = await storage.bulkMessages.getById(messageId);
+  logParticipantDelivery(result, bulkMessage?.medium || "unknown", messageId, participant.contactId, participantId);
 
   return {
     ...result,

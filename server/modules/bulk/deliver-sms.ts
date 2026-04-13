@@ -1,6 +1,7 @@
 import type { IStorage } from "../../storage";
 import { sendSms, type SendSmsResult } from "../../services/sms-sender";
 import type { DeliverContactResult } from "./deliver";
+import { resolveAndReplace } from "../../services/bulk-tokenization";
 
 export async function resolvePhoneNumber(storage: IStorage, contactId: string): Promise<string | null> {
   const phones = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(contactId);
@@ -24,10 +25,16 @@ export async function deliverSms(
   if (!phone) {
     return { success: false, error: "Contact has no phone number", errorCode: "NO_ADDRESS" };
   }
+
+  let body = smsContent.body || "";
+  try {
+    body = await resolveAndReplace(storage, contactId, body);
+  } catch (_e) {}
+
   const result: SendSmsResult = await sendSms({
     contactId,
     toPhoneNumber: phone,
-    message: smsContent.body || "",
+    message: body,
     userId,
   });
   return {
