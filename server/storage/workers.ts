@@ -596,7 +596,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         representativeId: typeof filters.representativeId === "string" ? filters.representativeId : undefined,
         benefitId: typeof filters.benefitId === "string" ? filters.benefitId : undefined,
       });
-      return rows.map(r => r.contactId).filter(Boolean) as string[];
+      return rows.map(r => r.contact_id).filter(Boolean) as string[];
     },
 
     async getWorkersWithDetails(): Promise<WorkerWithDetails[]> {
