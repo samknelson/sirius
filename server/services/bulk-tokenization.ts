@@ -46,12 +46,10 @@ export async function resolveTokenContext(
   }
 
   let phone: string | null = null;
-  try {
-    const phones = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(contactId);
-    const primary = phones.find(p => p.isPrimary && p.isActive);
-    const active = phones.find(p => p.isActive);
-    phone = (primary || active)?.number || null;
-  } catch (_e) {}
+  const phones = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(contactId);
+  const primary = phones.find(p => p.isPrimary && p.isActive);
+  const active = phones.find(p => p.isActive);
+  phone = (primary || active)?.number || null;
 
   return {
     contactId,

@@ -13,7 +13,7 @@ import {
   bulkCampaigns,
 } from "../../../shared/schema/bulk/schema";
 import { contacts, workers, phoneNumbers, contactPostal, comm, users } from "../../../shared/schema";
-import { eq, and, inArray, sql, ilike, or } from "drizzle-orm";
+import { eq, and, inArray, sql, ilike, or, type SQL } from "drizzle-orm";
 import { getClient } from "../../storage/transaction-context";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
 import { deliverToContact } from "./deliver";
@@ -347,16 +347,58 @@ export function registerBulkCampaignRoutes(
         contactIds = parsed.data.contactIds;
       } else if (parsed.data.audienceType === "worker") {
         const db = getClient();
-        const rows = await db
-          .select({ contactId: workers.contactId })
-          .from(workers);
+        const filters = (parsed.data.filters || {}) as Record<string, unknown>;
+        const conditions: SQL[] = [];
+
+        if (filters.workStatusId && typeof filters.workStatusId === "string") {
+          conditions.push(eq(workers.denormWsId, filters.workStatusId));
+        }
+        if (filters.homeEmployerId && typeof filters.homeEmployerId === "string") {
+          conditions.push(eq(workers.denormHomeEmployerId, filters.homeEmployerId));
+        }
+        if (filters.bargainingUnitId && typeof filters.bargainingUnitId === "string") {
+          conditions.push(eq(workers.bargainingUnitId, filters.bargainingUnitId));
+        }
+        if (filters.employerId && typeof filters.employerId === "string") {
+          conditions.push(sql`${workers.denormEmployerIds} @> ARRAY[${filters.employerId}]::varchar[]`);
+        }
+        if (filters.memberStatusIds && Array.isArray(filters.memberStatusIds) && filters.memberStatusIds.length > 0) {
+          conditions.push(sql`${workers.denormMsIds} && ARRAY[${sql.join(filters.memberStatusIds.map((id: string) => sql`${id}`), sql`, `)}]::varchar[]`);
+        }
+        if (filters.search && typeof filters.search === "string") {
+          const searchTerm = `%${filters.search}%`;
+          conditions.push(
+            sql`EXISTS (SELECT 1 FROM contacts c WHERE c.id = ${workers.contactId} AND (c.display_name ILIKE ${searchTerm} OR c.email ILIKE ${searchTerm}))`
+          );
+        }
+
+        let query = db.select({ contactId: workers.contactId }).from(workers);
+        if (conditions.length > 0) {
+          query = query.where(and(...conditions)) as typeof query;
+        }
+        const rows = await query;
         contactIds = rows.map(r => r.contactId).filter(Boolean) as string[];
       } else if (parsed.data.audienceType === "employer_contact") {
         const db = getClient();
         const { employerContacts } = await import("../../../shared/schema");
-        const rows = await db
-          .select({ contactId: employerContacts.contactId })
-          .from(employerContacts);
+        const filters = (parsed.data.filters || {}) as Record<string, unknown>;
+        const conditions: SQL[] = [];
+
+        if (filters.employerId && typeof filters.employerId === "string") {
+          conditions.push(eq(employerContacts.employerId, filters.employerId));
+        }
+        if (filters.contactTypeId && typeof filters.contactTypeId === "string") {
+          conditions.push(eq(employerContacts.contactTypeId, filters.contactTypeId));
+        }
+        if (filters.employerIds && Array.isArray(filters.employerIds) && filters.employerIds.length > 0) {
+          conditions.push(inArray(employerContacts.employerId, filters.employerIds as string[]));
+        }
+
+        let query = db.select({ contactId: employerContacts.contactId }).from(employerContacts);
+        if (conditions.length > 0) {
+          query = query.where(and(...conditions)) as typeof query;
+        }
+        const rows = await query;
         contactIds = rows.map(r => r.contactId).filter(Boolean) as string[];
       }
 
@@ -617,25 +659,22 @@ export function registerBulkCampaignRoutes(
       }
 
       const { medium, contactId } = req.body;
-      if (!medium || !VALID_CHANNELS.includes(medium)) {
-        return res.status(400).json({ message: "Valid medium is required (email, sms, postal, inapp)" });
+      if (medium && !VALID_CHANNELS.includes(medium)) {
+        return res.status(400).json({ message: "Invalid medium. Must be one of: email, sms, postal, inapp" });
       }
 
       const targetContactId = contactId || null;
       let resolvedContactId = targetContactId;
 
       if (!resolvedContactId && user.email) {
-        const userRecord = await storage.users.getUserByEmail(user.email);
-        if (userRecord) {
-          const db = getClient();
-          const [contact] = await db
-            .select({ id: contacts.id })
-            .from(contacts)
-            .where(eq(contacts.email, user.email))
-            .limit(1);
-          if (contact) {
-            resolvedContactId = contact.id;
-          }
+        const db = getClient();
+        const [contact] = await db
+          .select({ id: contacts.id })
+          .from(contacts)
+          .where(eq(contacts.email, user.email))
+          .limit(1);
+        if (contact) {
+          resolvedContactId = contact.id;
         }
       }
 
@@ -644,29 +683,47 @@ export function registerBulkCampaignRoutes(
       }
 
       const campaignMessages = await storage.bulkCampaigns.getMessagesByCampaignId(campaign.id);
-      const msg = campaignMessages.find(m => m.medium === medium);
-      if (!msg) {
-        return res.status(404).json({ message: `No ${medium} channel configured for this campaign` });
+      const messagesToSend = medium
+        ? campaignMessages.filter(m => m.medium === medium)
+        : campaignMessages;
+
+      if (messagesToSend.length === 0) {
+        return res.status(404).json({ message: medium ? `No ${medium} channel configured for this campaign` : "No channels configured for this campaign" });
       }
 
-      const result = await deliverToContact(storage, {
-        messageId: msg.id,
-        contactId: resolvedContactId,
-        userId: user.id,
-      });
+      const results: Array<{ medium: string; success: boolean; commId?: string; error?: string }> = [];
+      for (const msg of messagesToSend) {
+        const result = await deliverToContact(storage, {
+          messageId: msg.id,
+          contactId: resolvedContactId,
+          userId: user.id,
+        });
 
-      storageLogger.log(result.success ? "info" : "warn", result.success ? "Campaign test send completed" : "Campaign test send failed", {
-        module: "bulk_campaign",
-        operation: "test_send",
-        host_entity_id: campaign.id,
-        comm_id: result.commId || null,
-        contact_id: resolvedContactId,
-        medium,
-        success: result.success,
-        error: result.error || null,
-      });
+        storageLogger.log(result.success ? "info" : "warn", result.success ? "Campaign test send completed" : "Campaign test send failed", {
+          module: "bulk_campaign",
+          operation: "test_send",
+          host_entity_id: campaign.id,
+          comm_id: result.commId || null,
+          contact_id: resolvedContactId,
+          medium: msg.medium,
+          success: result.success,
+          error: result.error || null,
+        });
 
-      res.json(result);
+        results.push({
+          medium: msg.medium,
+          success: result.success,
+          commId: result.commId,
+          error: result.error,
+        });
+      }
+
+      if (results.length === 1) {
+        res.json(results[0]);
+      } else {
+        const allSuccess = results.every(r => r.success);
+        res.json({ success: allSuccess, channels: results });
+      }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to send test message";
       res.status(500).json({ message });

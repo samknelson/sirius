@@ -103,23 +103,21 @@ function logParticipantDelivery(
   contactId: string,
   participantId: string,
 ) {
-  try {
-    const level = result.success ? "info" : "warn";
-    const description = result.success
-      ? `Bulk ${medium} delivered to contact`
-      : `Bulk ${medium} delivery failed: ${result.error || "unknown error"}`;
-    storageLogger.log(level, description, {
-      module: "bulk_delivery",
-      operation: result.success ? "deliver_success" : "deliver_fail",
-      entity_id: contactId,
-      host_entity_id: messageId,
-      comm_id: result.commId || null,
-      participant_id: participantId,
-      medium,
-      success: result.success,
-      error: result.error || null,
-    });
-  } catch (_e) {}
+  const level = result.success ? "info" : "warn";
+  const description = result.success
+    ? `Bulk ${medium} delivered to contact`
+    : `Bulk ${medium} delivery failed: ${result.error || "unknown error"}`;
+  storageLogger.log(level, description, {
+    module: "bulk_delivery",
+    operation: result.success ? "deliver_success" : "deliver_fail",
+    entity_id: contactId,
+    host_entity_id: messageId,
+    comm_id: result.commId || null,
+    participant_id: participantId,
+    medium,
+    success: result.success,
+    error: result.error || null,
+  });
 }
 
 export async function deliverToParticipant(

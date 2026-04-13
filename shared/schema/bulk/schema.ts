@@ -6,7 +6,7 @@ import { contacts, comm, users } from "../../schema";
 
 export const bulkMediumEnum = pgEnum("bulk_medium", ["sms", "email", "inapp", "postal"]);
 
-export const bulkMessageStatusEnum = pgEnum("bulk_message_status", ["draft", "queued", "sent"]);
+export const bulkMessageStatusEnum = pgEnum("bulk_message_status", ["draft", "queued", "processing", "sent", "completed", "failed", "aborted"]);
 
 export const bulkCampaignStatusEnum = pgEnum("bulk_campaign_status", [
   "draft",
