@@ -159,7 +159,7 @@ export default function CampaignCreatePage() {
                         ? "border-primary bg-primary/5"
                         : "border-border hover:border-primary/30"
                     }`}
-                    onClick={() => toggleChannel(channel.id)}
+                    onClick={(e) => { if ((e.target as HTMLElement).closest('[role="switch"]')) return; toggleChannel(channel.id); }}
                     data-testid={`channel-option-${channel.id}`}
                   >
                     <Checkbox

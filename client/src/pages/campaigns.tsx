@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import {
@@ -72,6 +72,7 @@ const mediumLabels: Record<string, string> = {
 
 export default function CampaignsPage() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   usePageTitle("Campaigns");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterName, setFilterName] = useState<string>("");
@@ -185,6 +186,7 @@ export default function CampaignsPage() {
                   <TableRow
                     key={campaign.id}
                     className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => navigate(`/campaigns/${campaign.id}`)}
                     data-testid={`row-campaign-${campaign.id}`}
                   >
                     <TableCell className="font-medium">

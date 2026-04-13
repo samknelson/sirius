@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -710,7 +710,7 @@ export function CampaignComposerModal({ open, onClose, audienceType, audienceFil
                         onClick={() => toggleChannel(ch)}
                         data-testid={`toggle-channel-${ch}`}
                       >
-                        <Switch checked={isActive} onCheckedChange={() => toggleChannel(ch)} />
+                        <Switch checked={isActive} onClick={(e) => e.stopPropagation()} onCheckedChange={() => toggleChannel(ch)} />
                         <Icon className="h-4 w-4" />
                         <span className="text-sm font-medium">{mediumLabels[ch]}</span>
                       </div>
