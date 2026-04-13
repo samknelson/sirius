@@ -267,7 +267,9 @@ function OverviewTab({ campaign, onRefresh }: { campaign: CampaignDetail; onRefr
                       <Icon className="h-4 w-4 text-muted-foreground" />
                       <span className="font-medium w-16">{mediumLabels[medium] || medium}</span>
                       <div className="flex gap-2 flex-wrap">
-                        {Object.entries(statuses).map(([status, count]) => (
+                        {Object.entries(statuses)
+                          .filter(([, value]) => typeof value === "number")
+                          .map(([status, count]) => (
                           <Badge key={status} variant="outline" className="text-xs">
                             {status}: {count}
                           </Badge>
