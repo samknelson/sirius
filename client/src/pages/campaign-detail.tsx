@@ -610,6 +610,11 @@ function AudienceTab({ campaign }: { campaign: CampaignDetail }) {
     queryKey: ["/api/bulk-campaigns", campaign.id, "participants"],
   });
 
+  const { data: readiness } = useQuery<ReadinessData>({
+    queryKey: ["/api/bulk-campaigns", campaign.id, "readiness"],
+    enabled: participants.length > 0,
+  });
+
   const importMutation = useMutation({
     mutationFn: () =>
       apiRequest("POST", `/api/bulk-campaigns/${campaign.id}/import-audience`, {
@@ -693,7 +698,7 @@ function AudienceTab({ campaign }: { campaign: CampaignDetail }) {
             <CardTitle className="text-sm">Audience Summary</CardTitle>
           </CardHeader>
           <CardContent className="py-2">
-            <div className="flex flex-wrap gap-4 items-center">
+            <div className="flex flex-wrap gap-4 items-center mb-3">
               <div className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium" data-testid="text-total-contacts">{channelSummary.totalContacts} unique contacts</span>
@@ -711,6 +716,30 @@ function AudienceTab({ campaign }: { campaign: CampaignDetail }) {
                 );
               })}
             </div>
+            {readiness && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {Object.entries(readiness.channels).map(([medium, info]) => {
+                  const Icon = mediumIcons[medium] || Mail;
+                  const allReady = info.missing === 0 && info.total > 0;
+                  return (
+                    <div key={medium} className="flex items-center gap-2 p-2.5 rounded-lg border" data-testid={`readiness-audience-${medium}`}>
+                      <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium">{mediumLabels[medium] || medium}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {info.ready}/{info.total} ready
+                        </p>
+                      </div>
+                      {allReady ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
+                      ) : info.total > 0 ? (
+                        <AlertTriangle className="h-3.5 w-3.5 text-yellow-600 shrink-0" />
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
