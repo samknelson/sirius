@@ -8,7 +8,7 @@ export async function resolvePhoneNumber(storage: IStorage, contactId: string): 
   const primary = phones.find(p => p.isPrimary && p.isActive);
   const active = phones.find(p => p.isActive);
   const phone = primary || active;
-  return phone?.number || null;
+  return phone?.phoneNumber || null;
 }
 
 export async function deliverSms(
