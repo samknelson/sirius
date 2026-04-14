@@ -226,19 +226,28 @@ function EAPaymentCreateContent() {
       if (effectiveDate) details.effectiveDate = effectiveDate;
     }
 
-    const stmtInfo = getStatementInfo();
-    if (stmtInfo.stmtAllocations) {
-      details.statementAllocations = stmtInfo.stmtAllocations;
+    const proposedAllocation: Array<{ eaId: string; amount: string; statementYmd: string }> = [];
+    if (statementSelections.length > 1) {
+      for (const sel of statementSelections) {
+        const ymd = `${sel.year}-${String(sel.month).padStart(2, "0")}-01`;
+        proposedAllocation.push({
+          eaId: eaId,
+          amount: sel.amount ? String(parseFloat(sel.amount).toFixed(2)) : data.amount,
+          statementYmd: ymd,
+        });
+      }
+    } else {
+      const stmtInfo = getStatementInfo();
+      const ymd = stmtInfo.month && stmtInfo.year
+        ? `${stmtInfo.year}-${String(stmtInfo.month).padStart(2, "0")}-01`
+        : "";
+      proposedAllocation.push({
+        eaId: eaId,
+        amount: data.amount,
+        statementYmd: ymd,
+      });
     }
-
-    const ymd = stmtInfo.month && stmtInfo.year
-      ? `${stmtInfo.year}-${String(stmtInfo.month).padStart(2, "0")}-01`
-      : "";
-    details.proposedAllocation = [{
-      eaId: eaId,
-      amount: data.amount,
-      statementYmd: ymd,
-    }];
+    details.proposedAllocation = proposedAllocation;
 
     const submissionData: Record<string, unknown> = {
       ...data,
