@@ -40,6 +40,16 @@ function validateProposedAllocation(
       return { valid: false, error: "Each allocation must have a valid amount" };
     }
     const ymd = typeof item.statementYmd === "string" ? item.statementYmd : "";
+    if (ymd && !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+      return { valid: false, error: "statementYmd must be in YYYY-MM-DD format" };
+    }
+    if (ymd) {
+      const [y, m, d] = ymd.split("-").map(Number);
+      const parsed = new Date(y, m - 1, d);
+      if (parsed.getFullYear() !== y || parsed.getMonth() !== m - 1 || parsed.getDate() !== d) {
+        return { valid: false, error: `Invalid calendar date: ${ymd}` };
+      }
+    }
     const compositeKey = `${item.eaId}:${ymd}`;
     if (seenKeys.has(compositeKey)) {
       return { valid: false, error: "Duplicate EA + statement date combination" };

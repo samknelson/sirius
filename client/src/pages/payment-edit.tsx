@@ -196,36 +196,38 @@ function PaymentEditContent() {
 
       if (proposedAllocation && proposedAllocation.length > 0) {
         const primaryEaId = payment.ledgerEaId;
-        const sorted = [...proposedAllocation].sort((a, b) => {
+        const grouped = new Map<string, { eaId: string; totalAmount: number; selections: StatementSelection[] }>();
+        for (const alloc of proposedAllocation) {
+          const existing = grouped.get(alloc.eaId);
+          const sel: StatementSelection | null = (() => {
+            if (!alloc.statementYmd) return null;
+            const [y, m] = alloc.statementYmd.split("-").map(Number);
+            if (!y || !m) return null;
+            return { month: m, year: y, amount: alloc.amount };
+          })();
+          if (existing) {
+            existing.totalAmount += parseFloat(alloc.amount);
+            if (sel) existing.selections.push(sel);
+          } else {
+            grouped.set(alloc.eaId, {
+              eaId: alloc.eaId,
+              totalAmount: parseFloat(alloc.amount),
+              selections: sel ? [sel] : [],
+            });
+          }
+        }
+        const sortedGroups = Array.from(grouped.values()).sort((a, b) => {
           if (a.eaId === primaryEaId && b.eaId !== primaryEaId) return -1;
           if (b.eaId === primaryEaId && a.eaId !== primaryEaId) return 1;
           return 0;
         });
-        const boxes: ParticipantBoxState[] = sorted.map((alloc) => {
-          const pData = participantStmtData[alloc.eaId];
-          let statementSelections: StatementSelection[] = [];
-
-          if (pData?.statementAllocations) {
-            statementSelections = pData.statementAllocations.map((sa: StatementAllocationEntry) => ({
-              month: sa.month,
-              year: sa.year,
-              amount: sa.amount,
-            }));
-          } else if (alloc.statementYmd) {
-            const [y, m] = alloc.statementYmd.split("-").map(Number);
-            if (y && m) {
-              statementSelections = [{ month: m, year: y }];
-            }
-          }
-
-          return {
-            eaId: alloc.eaId,
-            amount: alloc.amount,
-            statementSelections,
-            manualMonth: "",
-            manualYear: "",
-          };
-        });
+        const boxes: ParticipantBoxState[] = sortedGroups.map((group) => ({
+          eaId: group.eaId,
+          amount: group.totalAmount.toFixed(2),
+          statementSelections: group.selections,
+          manualMonth: "",
+          manualYear: "",
+        }));
         setParticipantBoxes(boxes);
       } else {
         let statementSelections: StatementSelection[] = [];
