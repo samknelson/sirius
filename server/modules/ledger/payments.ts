@@ -124,26 +124,18 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<Ledg
 
       try {
         const allExistingEntries = await storage.ledger.entries.getByReference("payment", payment.id);
-        const currentAllocationKeys = new Set(
-          proposedAllocation.map(a => `${payment.id}:${a.eaId}`)
+        const currentAllocationKeySuffixes = new Set(
+          proposedAllocation.map(a => {
+            const ymdSuffix = a.statementYmd ? `:${a.statementYmd}` : "";
+            return `${payment.id}:${a.eaId}${ymdSuffix}`;
+          })
         );
         for (const entry of allExistingEntries) {
           if (entry.chargePlugin === "payment-simple-allocation" && entry.chargePluginKey) {
-            const keyParts = entry.chargePluginKey.split(":");
-            if (keyParts.length >= 3) {
-              const keySuffix = keyParts.slice(-2).join(":");
-              if (!currentAllocationKeys.has(keySuffix)) {
-                await storage.ledger.entries.delete(entry.id);
-                logger.info("Deleted stale allocation ledger entry for removed EA", {
-                  service: "ledger-payments",
-                  paymentId: payment.id,
-                  deletedEntryId: entry.id,
-                  chargePluginKey: entry.chargePluginKey,
-                });
-              }
-            } else {
+            const keyAfterConfig = entry.chargePluginKey.replace(/^[^:]+:/, "");
+            if (!currentAllocationKeySuffixes.has(keyAfterConfig)) {
               await storage.ledger.entries.delete(entry.id);
-              logger.info("Deleted legacy single-EA ledger entry replaced by allocations", {
+              logger.info("Deleted stale allocation ledger entry", {
                 service: "ledger-payments",
                 paymentId: payment.id,
                 deletedEntryId: entry.id,

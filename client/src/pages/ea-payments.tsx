@@ -91,8 +91,9 @@ function EAPaymentsContent() {
 
     if (filterMerchant) {
       result = result.filter(p => {
-        const details = p.details as any;
-        return details?.merchant?.toLowerCase().includes(filterMerchant.toLowerCase());
+        const details = p.details as Record<string, unknown> | null;
+        const merchant = details?.merchant;
+        return typeof merchant === "string" && merchant.toLowerCase().includes(filterMerchant.toLowerCase());
       });
     }
 
@@ -250,16 +251,15 @@ function EAPaymentsContent() {
 
     const csvData = filteredAndSortedPayments.map(payment => {
       const paymentType = paymentTypes.find(t => t.id === payment.paymentType);
-      const details = payment.details as any;
-      
-      const p = payment as any;
+      const details = payment.details as Record<string, unknown> | null;
       return {
         Amount: formatAmount(parseFloat(payment.amount), currencyCode),
         "Payment Type": paymentType?.name || "",
         Status: payment.status,
         "Statement Period": (() => {
-          const det = payment.details as any;
-          const pa = det?.proposedAllocation as Array<{ eaId: string; statementYmd: string }> | undefined;
+          const pa = Array.isArray(details?.proposedAllocation)
+            ? (details.proposedAllocation as Array<{ eaId: string; statementYmd: string }>)
+            : undefined;
           if (pa && pa.length > 0) {
             const ymd = pa[0].statementYmd;
             if (ymd) {
@@ -269,8 +269,8 @@ function EAPaymentsContent() {
           }
           return "";
         })(),
-        Merchant: details?.merchant || "",
-        "Check/Transaction Number": details?.checkTransactionNumber || "",
+        Merchant: (typeof details?.merchant === "string" ? details.merchant : "") || "",
+        "Check/Transaction Number": (typeof details?.checkTransactionNumber === "string" ? details.checkTransactionNumber : "") || "",
         "Date Created": payment.dateCreated ? new Date(payment.dateCreated).toLocaleDateString() : "",
         "Date Received": payment.dateReceived ? new Date(payment.dateReceived).toLocaleDateString() : "",
         "Date Cleared": payment.dateCleared ? new Date(payment.dateCleared).toLocaleDateString() : "",
@@ -612,7 +612,7 @@ function EAPaymentsContent() {
               <TableBody>
                 {filteredAndSortedPayments.map((payment) => {
                   const paymentType = paymentTypes.find(t => t.id === payment.paymentType);
-                  const details = payment.details as any;
+                  const details = payment.details as Record<string, unknown> | null;
                   return (
                     <TableRow key={payment.id} data-testid={`row-payment-${payment.id}`}>
                       <TableCell className="font-mono" data-testid={`text-amount-${payment.id}`}>
@@ -628,7 +628,9 @@ function EAPaymentsContent() {
                       </TableCell>
                       <TableCell data-testid={`text-statement-${payment.id}`}>
                         {(() => {
-                          const pa = details?.proposedAllocation as Array<{ eaId: string; statementYmd: string }> | undefined;
+                          const pa = Array.isArray(details?.proposedAllocation)
+                            ? (details.proposedAllocation as Array<{ eaId: string; statementYmd: string }>)
+                            : undefined;
                           if (pa && pa.length > 0) {
                             const ymd = pa[0].statementYmd;
                             if (ymd) {
@@ -640,7 +642,7 @@ function EAPaymentsContent() {
                         })()}
                       </TableCell>
                       <TableCell data-testid={`text-merchant-${payment.id}`}>
-                        {details?.merchant || "-"}
+                        {(typeof details?.merchant === "string" ? details.merchant : null) || "-"}
                       </TableCell>
                       <TableCell data-testid={`text-date-created-${payment.id}`}>
                         {payment.dateCreated ? new Date(payment.dateCreated).toLocaleDateString() : "-"}
