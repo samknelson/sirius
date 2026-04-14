@@ -118,6 +118,7 @@ const EAPayments = lazy(() => import("@/pages/ea-payments"));
 const EATransactions = lazy(() => import("@/pages/ea-transactions"));
 const PaymentView = lazy(() => import("@/pages/payment-view"));
 const PaymentEdit = lazy(() => import("@/pages/payment-edit"));
+const PaymentLogs = lazy(() => import("@/pages/payment-logs"));
 const PaymentCreate = lazy(() => import("@/pages/payment-create"));
 const EAPaymentCreate = lazy(() => import("@/pages/ea-payment-create"));
 const EASummary = lazy(() => import("@/pages/ea-summary"));
@@ -966,6 +967,14 @@ function Router() {
         <ProtectedRoute policy="staff" component="ledger">
           <AuthenticatedLayout>
             <PaymentEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ledger/payment/:id/logs">
+        <ProtectedRoute policy="staff" component="ledger">
+          <AuthenticatedLayout>
+            <PaymentLogs />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

@@ -341,6 +341,7 @@ export const ledgerAccountTabTree: HierarchicalTab[] = [
 export const ledgerPaymentTabTree: HierarchicalTab[] = [
   { id: 'view', label: 'View', hrefTemplate: '/ledger/payment/{id}', policyId: 'staff', component: 'ledger' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/ledger/payment/{id}/edit', policyId: 'staff', component: 'ledger' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/ledger/payment/{id}/logs', policyId: 'staff', component: 'ledger' },
 ];
 
 /**

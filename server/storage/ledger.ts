@@ -1565,43 +1565,33 @@ export const ledgerPaymentLoggingConfig: StorageLoggingConfig<LedgerPaymentStora
       enabled: true,
       getEntityId: (args, result) => formatPaymentForLog(result),
       getHostEntityId: async (args, result) => {
-        if (result?.ledgerEaId) {
-          return await getWorkerIdFromEaId(result.ledgerEaId);
-        }
-        return undefined;
+        return result?.id;
       },
       after: async (args, result, storage) => {
-        return result; // Capture created payment
+        return result;
       }
     },
     update: {
       enabled: true,
       getEntityId: (args, result, beforeState) => formatPaymentForLog(result || beforeState),
       getHostEntityId: async (args, result, beforeState) => {
-        const eaId = result?.ledgerEaId || beforeState?.ledgerEaId;
-        if (eaId) {
-          return await getWorkerIdFromEaId(eaId);
-        }
-        return undefined;
+        return result?.id || beforeState?.id || args[0];
       },
       before: async (args, storage) => {
-        return await storage.get(args[0]); // Current state
+        return await storage.get(args[0]);
       },
       after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
+        return result;
       }
     },
     delete: {
       enabled: true,
       getEntityId: (args, result, beforeState) => formatPaymentForLog(beforeState),
       getHostEntityId: async (args, result, beforeState) => {
-        if (beforeState?.ledgerEaId) {
-          return await getWorkerIdFromEaId(beforeState.ledgerEaId);
-        }
-        return undefined;
+        return beforeState?.id || args[0];
       },
       before: async (args, storage) => {
-        return await storage.get(args[0]); // Capture what's being deleted
+        return await storage.get(args[0]);
       }
     }
   }
