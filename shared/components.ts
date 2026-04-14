@@ -111,7 +111,7 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/ledger/payment-batch/schema.ts",
-      tables: ["ledger_payment_batches"]
+      tables: ["ledger_payment_batches", "ledger_payment_batch_assignments"]
     }
   },
   {
