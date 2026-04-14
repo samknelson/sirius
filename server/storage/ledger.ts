@@ -1218,11 +1218,7 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
             paymentStatementYear: payInfo?.statementYear ?? null,
           };
 
-          if (payInfo?.category === 'adjustment') {
-            if (payInfo.statementMonth === month && payInfo.statementYear === year) {
-              adjustments.push(sectionEntry);
-            }
-          } else {
+          if (payInfo?.category !== 'adjustment') {
             const entryDate = entry.date ? new Date(entry.date) : null;
             const entryInPeriod = entryDate &&
               entryDate.getMonth() + 1 === month &&
@@ -1233,18 +1229,34 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
             }
           }
         } else {
-          charges.push({ ...entry, paymentTypeCategory: null, paymentStatementMonth: null, paymentStatementYear: null });
+          const amt = parseFloat(entry.amount);
+          if (amt > 0) {
+            charges.push({ ...entry, paymentTypeCategory: null, paymentStatementMonth: null, paymentStatementYear: null });
+          }
         }
       }
 
-      const appliedEntryIds = new Set<string>();
+      const sectionedEntryIds = new Set<string>();
       for (const entry of allDetailedEntries) {
         if (entry.referenceType === 'payment' && entry.referenceId) {
           const payInfo = paymentInfoMap.get(entry.referenceId);
-          if (payInfo && payInfo.category !== 'adjustment' &&
+          if (!payInfo) continue;
+
+          if (payInfo.category === 'adjustment' &&
               payInfo.statementMonth === month && payInfo.statementYear === year) {
-            if (!appliedEntryIds.has(entry.id)) {
-              appliedEntryIds.add(entry.id);
+            if (!sectionedEntryIds.has(entry.id)) {
+              sectionedEntryIds.add(entry.id);
+              adjustments.push({
+                ...entry,
+                paymentTypeCategory: payInfo.category,
+                paymentStatementMonth: payInfo.statementMonth,
+                paymentStatementYear: payInfo.statementYear,
+              });
+            }
+          } else if (payInfo.category !== 'adjustment' &&
+              payInfo.statementMonth === month && payInfo.statementYear === year) {
+            if (!sectionedEntryIds.has(entry.id)) {
+              sectionedEntryIds.add(entry.id);
               paymentsApplied.push({
                 ...entry,
                 paymentTypeCategory: payInfo.category,
