@@ -187,9 +187,11 @@ function SectionDetailModal({ state, onClose, eaId }: { state: SectionModalState
           <div className="space-y-4">
             {renderEntryTable(details.sections.paymentsApplied.entries, details.sections.paymentsApplied.subtotal, "Payments Applied")}
             <p className="text-xs text-muted-foreground leading-relaxed">
-              These payments are shown for informational and reconciliation purposes. Payments are applied
+              These payments are shown on this invoice for informational and reconciliation purposes. Payments are applied
               to your account as of the date they are received, and you will see them included in that statement
-              period's balance in the "Payments Received" section of that statement.
+              period's balance in the "Payments Received" section of that statement. Also, please note: per the funds
+              collections policies, payments are always credited to the oldest outstanding balance when calculating
+              interest &amp; penalties.
             </p>
           </div>
         )}
