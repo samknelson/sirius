@@ -1556,7 +1556,7 @@ function formatPaymentForLog(payment: LedgerPayment | undefined): string {
  * Logging configuration for ledger payment storage operations
  * 
  * Logs all payment mutations with full argument capture and change tracking.
- * Links to worker entity when the payment's EA is associated with a worker.
+ * Links to the payment entity via host_entity_id for per-payment log viewing.
  */
 export const ledgerPaymentLoggingConfig: StorageLoggingConfig<LedgerPaymentStorage> = {
   module: 'ledger.payments',
