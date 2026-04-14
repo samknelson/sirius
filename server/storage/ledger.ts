@@ -880,8 +880,9 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
     async create(insertEntry: InsertLedger): Promise<Ledger> {
       validate.validateOrThrow(insertEntry);
       const client = getClient();
+      const effectiveYmd = insertEntry.statementYmd || new Date().toISOString().split('T')[0];
       const [entry] = await client.insert(ledger)
-        .values({ ...insertEntry, date: sqlRaw`now()` } as any)
+        .values({ ...insertEntry, date: sqlRaw`now()`, statementYmd: effectiveYmd } as any)
         .returning();
       return entry;
     },
