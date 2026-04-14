@@ -187,7 +187,10 @@ function PaymentEditContent() {
   useEffect(() => {
     if (payment && !boxesLoaded) {
       const details = payment.details as PaymentDetails | null;
-      const proposedAllocation = (details as any)?.proposedAllocation as Array<{ eaId: string; amount: string; statementYmd: string }> | undefined;
+      const detailsRecord = details as Record<string, unknown> | null;
+      const proposedAllocation = (detailsRecord?.proposedAllocation && Array.isArray(detailsRecord.proposedAllocation))
+        ? (detailsRecord.proposedAllocation as Array<{ eaId: string; amount: string; statementYmd: string }>)
+        : undefined;
       const participantStmtData = details?.participantStatementAllocations || {};
       const stmtAllocations = details?.statementAllocations;
 

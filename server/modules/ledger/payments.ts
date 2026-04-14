@@ -28,7 +28,7 @@ function validateProposedAllocation(
     return { valid: false, error: "proposedAllocation must be an array" };
   }
   const allocations: ProposedAllocationEntry[] = [];
-  const seenEaIds = new Set<string>();
+  const seenKeys = new Set<string>();
   for (const item of raw) {
     if (!item || typeof item !== "object") {
       return { valid: false, error: "Each allocation must be an object" };
@@ -39,14 +39,16 @@ function validateProposedAllocation(
     if (typeof item.amount !== "string" || isNaN(parseFloat(item.amount))) {
       return { valid: false, error: "Each allocation must have a valid amount" };
     }
-    if (seenEaIds.has(item.eaId)) {
-      return { valid: false, error: "Duplicate EA allocations are not allowed" };
+    const ymd = typeof item.statementYmd === "string" ? item.statementYmd : "";
+    const compositeKey = `${item.eaId}:${ymd}`;
+    if (seenKeys.has(compositeKey)) {
+      return { valid: false, error: "Duplicate EA + statement date combination" };
     }
-    seenEaIds.add(item.eaId);
+    seenKeys.add(compositeKey);
     allocations.push({
       eaId: item.eaId,
       amount: item.amount,
-      statementYmd: typeof item.statementYmd === "string" ? item.statementYmd : "",
+      statementYmd: ymd,
     });
   }
   const allocationTotal = allocations.reduce((sum, a) => sum + parseFloat(a.amount), 0);

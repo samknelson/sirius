@@ -884,14 +884,14 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       }
       const client = getClient();
       const [entry] = await client.insert(ledger)
-        .values({ ...insertEntry, date: sqlRaw`now()` } as any)
+        .values({ ...insertEntry, date: sqlRaw`now()` } as typeof ledger.$inferInsert)
         .returning();
       return entry;
     },
 
     async update(id: string, entryUpdate: Partial<InsertLedger>): Promise<Ledger | undefined> {
       validate.validateOrThrow(id);
-      const { date, ...safeUpdate } = entryUpdate as any;
+      const { date: _date, ...safeUpdate } = entryUpdate as Partial<InsertLedger> & { date?: unknown };
       const client = getClient();
       const [entry] = await client.update(ledger)
         .set(safeUpdate)
