@@ -879,10 +879,12 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
 
     async create(insertEntry: InsertLedger): Promise<Ledger> {
       validate.validateOrThrow(insertEntry);
+      if (!insertEntry.statementYmd) {
+        throw new Error("statementYmd is required when creating a ledger entry");
+      }
       const client = getClient();
-      const effectiveYmd = insertEntry.statementYmd || new Date().toISOString().split('T')[0];
       const [entry] = await client.insert(ledger)
-        .values({ ...insertEntry, date: sqlRaw`now()`, statementYmd: effectiveYmd } as any)
+        .values({ ...insertEntry, date: sqlRaw`now()` } as any)
         .returning();
       return entry;
     },

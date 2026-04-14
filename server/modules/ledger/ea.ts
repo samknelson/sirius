@@ -518,13 +518,9 @@ export function registerLedgerEaRoutes(app: Express) {
           const pt = payment ? paymentTypeMap.get(payment.paymentType) : undefined;
           const category = pt?.category || "financial";
 
-          const entryYmd = entry.statementYmd;
-          let stmtMonth = em;
-          let stmtYear = ey;
-          if (entryYmd) {
-            const [y, m] = entryYmd.split("-").map(Number);
-            if (y && m) { stmtYear = y; stmtMonth = m; }
-          }
+          const [y, m] = entry.statementYmd.split("-").map(Number);
+          const stmtMonth = (y && m) ? m : em;
+          const stmtYear = (y && m) ? y : ey;
           const stmtData = getVisibleMonth(stmtMonth, stmtYear);
 
           if (stmtData) {
