@@ -1,7 +1,7 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { db } from './db';
-import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledgerPaymentAllocations, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
+import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
 import type { 
   LedgerAccount, 
   InsertLedgerAccount,
@@ -11,8 +11,6 @@ import type {
   InsertLedgerEa,
   LedgerPayment,
   InsertLedgerPayment,
-  LedgerPaymentAllocation,
-  InsertLedgerPaymentAllocation,
   LedgerPaymentWithEntity,
   Ledger,
   InsertLedger
@@ -62,13 +60,6 @@ export interface LedgerPaymentStorage {
   create(payment: InsertLedgerPayment): Promise<LedgerPayment>;
   update(id: string, payment: Partial<InsertLedgerPayment>): Promise<LedgerPayment | undefined>;
   delete(id: string): Promise<boolean>;
-}
-
-export interface LedgerPaymentAllocationStorage {
-  getByPaymentId(paymentId: string): Promise<LedgerPaymentAllocation[]>;
-  create(allocation: InsertLedgerPaymentAllocation): Promise<LedgerPaymentAllocation>;
-  deleteByPaymentId(paymentId: string): Promise<number>;
-  replaceForPayment(paymentId: string, allocations: Omit<InsertLedgerPaymentAllocation, 'paymentId'>[]): Promise<LedgerPaymentAllocation[]>;
 }
 
 export type TransactionFilter = 
@@ -175,7 +166,6 @@ export interface LedgerStorage {
   stripePaymentMethods: StripePaymentMethodStorage;
   ea: LedgerEaStorage;
   payments: LedgerPaymentStorage;
-  paymentAllocations: LedgerPaymentAllocationStorage;
   entries: LedgerEntryStorage;
   invoices: LedgerInvoiceStorage;
 }
@@ -684,50 +674,6 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
   };
 }
 
-export function createLedgerPaymentAllocationStorage(): LedgerPaymentAllocationStorage {
-  return {
-    async getByPaymentId(paymentId: string): Promise<LedgerPaymentAllocation[]> {
-      const client = getClient();
-      return await client.select().from(ledgerPaymentAllocations)
-        .where(eq(ledgerPaymentAllocations.paymentId, paymentId));
-    },
-
-    async create(allocation: InsertLedgerPaymentAllocation): Promise<LedgerPaymentAllocation> {
-      const client = getClient();
-      const [result] = await client.insert(ledgerPaymentAllocations)
-        .values(allocation as any)
-        .returning();
-      return result;
-    },
-
-    async deleteByPaymentId(paymentId: string): Promise<number> {
-      const client = getClient();
-      const result = await client.delete(ledgerPaymentAllocations)
-        .where(eq(ledgerPaymentAllocations.paymentId, paymentId));
-      return result.rowCount || 0;
-    },
-
-    async replaceForPayment(paymentId: string, allocations: Omit<InsertLedgerPaymentAllocation, 'paymentId'>[]): Promise<LedgerPaymentAllocation[]> {
-      const client = getClient();
-      await client.delete(ledgerPaymentAllocations)
-        .where(eq(ledgerPaymentAllocations.paymentId, paymentId));
-
-      if (allocations.length === 0) return [];
-
-      const rows = allocations.map(a => ({
-        paymentId,
-        ledgerEaId: a.ledgerEaId,
-        amount: a.amount,
-      }));
-
-      const results = await client.insert(ledgerPaymentAllocations)
-        .values(rows as any)
-        .returning();
-      return results;
-    },
-  };
-}
-
 export function createLedgerEntryStorage(): LedgerEntryStorage {
   return {
     async getAll(): Promise<Ledger[]> {
@@ -935,16 +881,17 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       validate.validateOrThrow(insertEntry);
       const client = getClient();
       const [entry] = await client.insert(ledger)
-        .values(insertEntry as any)
+        .values({ ...insertEntry, date: sqlRaw`now()` } as any)
         .returning();
       return entry;
     },
 
     async update(id: string, entryUpdate: Partial<InsertLedger>): Promise<Ledger | undefined> {
       validate.validateOrThrow(id);
+      const { date, ...safeUpdate } = entryUpdate as any;
       const client = getClient();
       const [entry] = await client.update(ledger)
-        .set(entryUpdate as any)
+        .set(safeUpdate)
         .where(eq(ledger.id, id))
         .returning();
       return entry || undefined;
@@ -1037,7 +984,7 @@ function fromCents(cents: bigint): string {
   return dollars.toFixed(2);
 }
 
-type PaymentInfo = { category: string; statementMonth: number | null; statementYear: number | null };
+type PaymentInfo = { category: string };
 
 interface SectionSubtotals {
   chargesCents: bigint;
@@ -1048,7 +995,7 @@ interface SectionSubtotals {
 
 function classifyEntriesForPeriod(
   monthEntryIds: Set<string>,
-  allEntries: { id: string; amount: string; date: Date | null; referenceType: string | null; referenceId: string | null }[],
+  allEntries: { id: string; amount: string; date: Date | null; statementYmd: string | null; referenceType: string | null; referenceId: string | null }[],
   paymentInfoMap: Map<string, PaymentInfo>,
   month: number,
   year: number,
@@ -1064,10 +1011,11 @@ function classifyEntriesForPeriod(
     if (entry.referenceType === 'payment' && entry.referenceId) {
       const payInfo = paymentInfoMap.get(entry.referenceId);
       if (payInfo?.category !== 'adjustment') {
-        const entryDate = entry.date ? new Date(entry.date) : null;
-        const entryInPeriod = entryDate &&
-          entryDate.getMonth() + 1 === month &&
-          entryDate.getFullYear() === year;
+        const stmtYmd = entry.statementYmd;
+        const stmtDate = stmtYmd ? new Date(stmtYmd) : null;
+        const entryInPeriod = stmtDate &&
+          stmtDate.getMonth() + 1 === month &&
+          stmtDate.getFullYear() === year;
         if (entryInPeriod) {
           paymentsReceivedCents += toCents(entry.amount);
         }
@@ -1086,14 +1034,19 @@ function classifyEntriesForPeriod(
       const payInfo = paymentInfoMap.get(entry.referenceId);
       if (!payInfo) continue;
 
+      const stmtYmd = entry.statementYmd;
+      const stmtDate = stmtYmd ? new Date(stmtYmd) : null;
+      const stmtMonth = stmtDate ? stmtDate.getMonth() + 1 : null;
+      const stmtYear = stmtDate ? stmtDate.getFullYear() : null;
+
       if (payInfo.category === 'adjustment' &&
-          payInfo.statementMonth === month && payInfo.statementYear === year) {
+          stmtMonth === month && stmtYear === year) {
         if (!sectionedIds.has(entry.id)) {
           sectionedIds.add(entry.id);
           adjustmentsCents += toCents(entry.amount);
         }
       } else if (payInfo.category !== 'adjustment' &&
-          payInfo.statementMonth === month && payInfo.statementYear === year) {
+          stmtMonth === month && stmtYear === year) {
         if (!sectionedIds.has(entry.id)) {
           sectionedIds.add(entry.id);
           paymentsAppliedCents += toCents(entry.amount);
@@ -1105,8 +1058,7 @@ function classifyEntriesForPeriod(
   return { chargesCents, adjustmentsCents, paymentsReceivedCents, paymentsAppliedCents };
 }
 
-// Build invoices with running balances for an EA
-type SimpleLedgerEntry = { id: string; amount: string; date: Date | null };
+type SimpleLedgerEntry = { id: string; amount: string; date: Date | null; statementYmd: string | null };
 type ExtendedSimpleLedgerEntry = SimpleLedgerEntry & { referenceType: string | null; referenceId: string | null };
 interface InvoiceBucket {
   month: number;
@@ -1118,12 +1070,13 @@ interface InvoiceBucket {
 function buildInvoicesForEa(entries: SimpleLedgerEntry[]): Map<string, InvoiceBucket> {
   const invoiceMap = new Map<string, InvoiceBucket>();
   
-  // Sort entries by date (nulls last), then by id for deterministic ordering
   const sortedEntries = [...entries].sort((a, b) => {
-    if (!a.date && !b.date) return a.id.localeCompare(b.id);
-    if (!a.date) return 1;
-    if (!b.date) return -1;
-    const dateCompare = a.date.getTime() - b.date.getTime();
+    const aYmd = a.statementYmd || (a.date ? new Date(a.date).toISOString().split('T')[0] : null);
+    const bYmd = b.statementYmd || (b.date ? new Date(b.date).toISOString().split('T')[0] : null);
+    if (!aYmd && !bYmd) return a.id.localeCompare(b.id);
+    if (!aYmd) return 1;
+    if (!bYmd) return -1;
+    const dateCompare = aYmd.localeCompare(bYmd);
     if (dateCompare !== 0) return dateCompare;
     return a.id.localeCompare(b.id);
   });
@@ -1131,15 +1084,14 @@ function buildInvoicesForEa(entries: SimpleLedgerEntry[]): Map<string, InvoiceBu
   let runningBalanceCents = BigInt(0);
 
   for (const entry of sortedEntries) {
-    // Skip null-dated entries (can't be assigned to a month)
-    if (!entry.date) continue;
+    const ymd = entry.statementYmd || (entry.date ? new Date(entry.date).toISOString().split('T')[0] : null);
+    if (!ymd) continue;
 
-    const date = new Date(entry.date);
-    const month = date.getMonth() + 1; // 1-12
-    const year = date.getFullYear();
+    const d = new Date(ymd);
+    const month = d.getMonth() + 1;
+    const year = d.getFullYear();
     const key = `${year}-${month}`;
 
-    // Create bucket if it doesn't exist
     if (!invoiceMap.has(key)) {
       invoiceMap.set(key, {
         month,
@@ -1149,11 +1101,9 @@ function buildInvoicesForEa(entries: SimpleLedgerEntry[]): Map<string, InvoiceBu
       });
     }
 
-    // Add entry to bucket
     const bucket = invoiceMap.get(key)!;
     bucket.entries.push(entry);
 
-    // Update running balance
     runningBalanceCents += toCents(entry.amount);
   }
 
@@ -1168,6 +1118,7 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         id: ledger.id,
         amount: ledger.amount,
         date: ledger.date,
+        statementYmd: ledger.statementYmd,
         referenceType: ledger.referenceType,
         referenceId: ledger.referenceId,
       })
@@ -1193,8 +1144,6 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
           .select({
             paymentId: ledgerPayments.id,
             category: optionsLedgerPaymentType.category,
-            statementMonth: ledgerPayments.statementMonth,
-            statementYear: ledgerPayments.statementYear,
           })
           .from(ledgerPayments)
           .innerJoin(optionsLedgerPaymentType, eq(ledgerPayments.paymentType, optionsLedgerPaymentType.id))
@@ -1203,8 +1152,6 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         for (const row of paymentRows) {
           paymentInfoMap.set(row.paymentId, {
             category: row.category ?? 'financial',
-            statementMonth: row.statementMonth,
-            statementYear: row.statementYear,
           });
         }
       }
@@ -1261,6 +1208,7 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         id: ledger.id,
         amount: ledger.amount,
         date: ledger.date,
+        statementYmd: ledger.statementYmd,
       })
       .from(ledger)
       .where(eq(ledger.eaId, eaId))
@@ -1288,15 +1236,13 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         .filter(e => e.referenceType === 'payment' && e.referenceId)
         .map(e => e.referenceId!);
 
-      let paymentInfoMap = new Map<string, { category: string; statementMonth: number | null; statementYear: number | null }>();
+      let paymentInfoMap = new Map<string, PaymentInfo>();
       if (allPaymentIds.length > 0) {
         const uniquePaymentIds = [...new Set(allPaymentIds)];
         const paymentRows = await client
           .select({
             paymentId: ledgerPayments.id,
             category: optionsLedgerPaymentType.category,
-            statementMonth: ledgerPayments.statementMonth,
-            statementYear: ledgerPayments.statementYear,
           })
           .from(ledgerPayments)
           .innerJoin(optionsLedgerPaymentType, eq(ledgerPayments.paymentType, optionsLedgerPaymentType.id))
@@ -1305,8 +1251,6 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         for (const row of paymentRows) {
           paymentInfoMap.set(row.paymentId, {
             category: row.category ?? 'financial',
-            statementMonth: row.statementMonth,
-            statementYear: row.statementYear,
           });
         }
       }
@@ -1319,18 +1263,19 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
       for (const entry of monthEntries) {
         if (entry.referenceType === 'payment' && entry.referenceId) {
           const payInfo = paymentInfoMap.get(entry.referenceId);
+          const stmtYmd = entry.statementYmd;
+          const stmtDate = stmtYmd ? new Date(stmtYmd) : null;
           const sectionEntry: InvoiceSectionEntry = {
             ...entry,
             paymentTypeCategory: payInfo?.category ?? 'financial',
-            paymentStatementMonth: payInfo?.statementMonth ?? null,
-            paymentStatementYear: payInfo?.statementYear ?? null,
+            paymentStatementMonth: stmtDate ? stmtDate.getMonth() + 1 : null,
+            paymentStatementYear: stmtDate ? stmtDate.getFullYear() : null,
           };
 
           if (payInfo?.category !== 'adjustment') {
-            const entryDate = entry.date ? new Date(entry.date) : null;
-            const entryInPeriod = entryDate &&
-              entryDate.getMonth() + 1 === month &&
-              entryDate.getFullYear() === year;
+            const entryInPeriod = stmtDate &&
+              stmtDate.getMonth() + 1 === month &&
+              stmtDate.getFullYear() === year;
 
             if (entryInPeriod) {
               paymentsReceived.push(sectionEntry);
@@ -1350,26 +1295,31 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
           const payInfo = paymentInfoMap.get(entry.referenceId);
           if (!payInfo) continue;
 
+          const stmtYmd = entry.statementYmd;
+          const stmtDate = stmtYmd ? new Date(stmtYmd) : null;
+          const stmtMonth = stmtDate ? stmtDate.getMonth() + 1 : null;
+          const stmtYear = stmtDate ? stmtDate.getFullYear() : null;
+
           if (payInfo.category === 'adjustment' &&
-              payInfo.statementMonth === month && payInfo.statementYear === year) {
+              stmtMonth === month && stmtYear === year) {
             if (!sectionedEntryIds.has(entry.id)) {
               sectionedEntryIds.add(entry.id);
               adjustments.push({
                 ...entry,
                 paymentTypeCategory: payInfo.category,
-                paymentStatementMonth: payInfo.statementMonth,
-                paymentStatementYear: payInfo.statementYear,
+                paymentStatementMonth: stmtMonth,
+                paymentStatementYear: stmtYear,
               });
             }
           } else if (payInfo.category !== 'adjustment' &&
-              payInfo.statementMonth === month && payInfo.statementYear === year) {
+              stmtMonth === month && stmtYear === year) {
             if (!sectionedEntryIds.has(entry.id)) {
               sectionedEntryIds.add(entry.id);
               paymentsApplied.push({
                 ...entry,
                 paymentTypeCategory: payInfo.category,
-                paymentStatementMonth: payInfo.statementMonth,
-                paymentStatementYear: payInfo.statementYear,
+                paymentStatementMonth: stmtMonth,
+                paymentStatementYear: stmtYear,
               });
             }
           }
@@ -1431,8 +1381,6 @@ export function createLedgerStorage(
     ? withStorageLogging(createLedgerPaymentStorage(), paymentLoggingConfig)
     : createLedgerPaymentStorage();
 
-  const paymentAllocationStorage = createLedgerPaymentAllocationStorage();
-
   const entryStorage = entryLoggingConfig
     ? withStorageLogging(createLedgerEntryStorage(), entryLoggingConfig)
     : createLedgerEntryStorage();
@@ -1444,7 +1392,6 @@ export function createLedgerStorage(
     stripePaymentMethods: stripePaymentMethodStorage,
     ea: eaStorage,
     payments: paymentStorage,
-    paymentAllocations: paymentAllocationStorage,
     entries: entryStorage,
     invoices: invoiceStorage
   };
@@ -1529,18 +1476,6 @@ export const stripePaymentMethodLoggingConfig: StorageLoggingConfig<StripePaymen
     }
   }
 };
-
-/**
- * Helper to resolve worker ID from an EA
- */
-async function getWorkerIdFromEaId(eaId: string): Promise<string | undefined> {
-  const eaStorage = createLedgerEaStorage();
-  const ea = await eaStorage.get(eaId);
-  if (ea && ea.entityType === 'worker') {
-    return ea.entityId;
-  }
-  return undefined;
-}
 
 /**
  * Helper to format a payment for logging display

@@ -10,7 +10,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertLedgerPaymentSchema, type LedgerPayment, type LedgerPaymentType, type LedgerPaymentAllocation } from "@shared/schema";
+import { insertLedgerPaymentSchema, type LedgerPayment, type LedgerPaymentType } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -149,10 +149,6 @@ function PaymentEditContent() {
     enabled: !!accountId,
   });
 
-  const { data: existingAllocations } = useQuery<LedgerPaymentAllocation[]>({
-    queryKey: [`/api/ledger/payments/${id}/allocations`],
-    enabled: !!id,
-  });
 
   const currencyCode = paymentTypes.find(pt => pt.id === payment?.paymentType)?.currencyCode || "USD";
 
@@ -189,24 +185,22 @@ function PaymentEditContent() {
   }, [payment]);
 
   useEffect(() => {
-    if (existingAllocations && payment && !boxesLoaded) {
+    if (payment && !boxesLoaded) {
       const details = payment.details as PaymentDetails | null;
+      const proposedAllocation = (details as any)?.proposedAllocation as Array<{ eaId: string; amount: string; statementYmd: string }> | undefined;
       const participantStmtData = details?.participantStatementAllocations || {};
       const stmtAllocations = details?.statementAllocations;
 
-      if (existingAllocations.length > 0) {
+      if (proposedAllocation && proposedAllocation.length > 0) {
         const primaryEaId = payment.ledgerEaId;
-        const sorted = [...existingAllocations].sort((a, b) => {
-          if (a.ledgerEaId === primaryEaId && b.ledgerEaId !== primaryEaId) return -1;
-          if (b.ledgerEaId === primaryEaId && a.ledgerEaId !== primaryEaId) return 1;
+        const sorted = [...proposedAllocation].sort((a, b) => {
+          if (a.eaId === primaryEaId && b.eaId !== primaryEaId) return -1;
+          if (b.eaId === primaryEaId && a.eaId !== primaryEaId) return 1;
           return 0;
         });
         const boxes: ParticipantBoxState[] = sorted.map((alloc) => {
-          const isPrimary = alloc.ledgerEaId === primaryEaId;
-          const pData = participantStmtData[alloc.ledgerEaId];
+          const pData = participantStmtData[alloc.eaId];
           let statementSelections: StatementSelection[] = [];
-          const manualMonth = "";
-          const manualYear = "";
 
           if (pData?.statementAllocations) {
             statementSelections = pData.statementAllocations.map((sa: StatementAllocationEntry) => ({
@@ -214,30 +208,19 @@ function PaymentEditContent() {
               year: sa.year,
               amount: sa.amount,
             }));
-          } else if (isPrimary && stmtAllocations) {
-            statementSelections = stmtAllocations.map((sa: StatementAllocationEntry) => ({
-              month: sa.month,
-              year: sa.year,
-              amount: sa.amount,
-            }));
-          } else if (isPrimary && payment.statementMonth != null && payment.statementYear != null) {
-            statementSelections = [{
-              month: payment.statementMonth,
-              year: payment.statementYear,
-            }];
-          } else if (pData?.statementMonth != null && pData?.statementYear != null) {
-            statementSelections = [{
-              month: pData.statementMonth,
-              year: pData.statementYear,
-            }];
+          } else if (alloc.statementYmd) {
+            const [y, m] = alloc.statementYmd.split("-").map(Number);
+            if (y && m) {
+              statementSelections = [{ month: m, year: y }];
+            }
           }
 
           return {
-            eaId: alloc.ledgerEaId,
+            eaId: alloc.eaId,
             amount: alloc.amount,
             statementSelections,
-            manualMonth,
-            manualYear,
+            manualMonth: "",
+            manualYear: "",
           };
         });
         setParticipantBoxes(boxes);
@@ -249,11 +232,6 @@ function PaymentEditContent() {
             year: sa.year,
             amount: sa.amount,
           }));
-        } else if (payment.statementMonth != null && payment.statementYear != null) {
-          statementSelections = [{
-            month: payment.statementMonth,
-            year: payment.statementYear,
-          }];
         }
 
         setParticipantBoxes([{
@@ -266,7 +244,7 @@ function PaymentEditContent() {
       }
       setBoxesLoaded(true);
     }
-  }, [existingAllocations, payment, boxesLoaded]);
+  }, [payment, boxesLoaded]);
 
   useEffect(() => {
     if (payment && category === "adjustment") {
@@ -449,35 +427,41 @@ function PaymentEditContent() {
     const originalPrimaryEaId = payment?.ledgerEaId;
     const primaryBox = participantBoxes.find(b => b.eaId === originalPrimaryEaId) || participantBoxes[0];
     const primaryEaId = primaryBox.eaId;
-    const primaryStmt = getStatementInfoFromBox(primaryBox);
-
-    const allocations = participantBoxes.map((b) => ({
-      ledgerEaId: b.eaId,
-      amount: b.amount,
-    }));
 
     delete details.statementAllocations;
     delete details.participantStatementAllocations;
+
+    const proposedAllocation = participantBoxes.map((b) => {
+      const stmtInfo = getStatementInfoFromBox(b);
+      const ymd = stmtInfo.month && stmtInfo.year
+        ? `${stmtInfo.year}-${String(stmtInfo.month).padStart(2, "0")}-01`
+        : undefined;
+      return {
+        eaId: b.eaId,
+        amount: b.amount,
+        statementYmd: ymd || "",
+      };
+    });
+    details.proposedAllocation = proposedAllocation;
 
     if (participantBoxes.length > 1) {
       const participantStatements: Record<string, ParticipantStatementData> = {};
       for (const box of participantBoxes) {
         const stmtInfo = getStatementInfoFromBox(box);
-        if (stmtInfo.month || stmtInfo.stmtAllocations) {
+        if (stmtInfo.stmtAllocations) {
           participantStatements[box.eaId] = {
-            statementMonth: stmtInfo.month,
-            statementYear: stmtInfo.year,
-            ...(stmtInfo.stmtAllocations
-              ? { statementAllocations: stmtInfo.stmtAllocations }
-              : {}),
+            statementAllocations: stmtInfo.stmtAllocations,
           };
         }
       }
       if (Object.keys(participantStatements).length > 0) {
         details.participantStatementAllocations = participantStatements;
       }
-    } else if (primaryStmt.stmtAllocations) {
-      details.statementAllocations = primaryStmt.stmtAllocations;
+    } else {
+      const primaryStmt = getStatementInfoFromBox(primaryBox);
+      if (primaryStmt.stmtAllocations) {
+        details.statementAllocations = primaryStmt.stmtAllocations;
+      }
     }
 
     const submissionData: Record<string, unknown> = {
@@ -485,9 +469,6 @@ function PaymentEditContent() {
       ledgerEaId: primaryEaId,
       details: Object.keys(details).length > 0 ? details : null,
       status: category === "adjustment" ? "cleared" : data.status,
-      statementMonth: primaryStmt.month ?? null,
-      statementYear: primaryStmt.year ?? null,
-      allocations,
     };
 
     updatePaymentMutation.mutate(submissionData);

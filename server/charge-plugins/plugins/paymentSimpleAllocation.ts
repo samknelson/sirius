@@ -30,6 +30,7 @@ interface ExpectedEntry {
   description: string;
   memo: string | null;
   transactionDate: Date;
+  statementYmd?: string;
   eaId: string;
   referenceType: string;
   referenceId: string;
@@ -50,7 +51,8 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
     paymentContext: PaymentSavedContext,
     configId: string,
     currencyLabel: string,
-    paymentTypeName: string
+    paymentTypeName: string,
+    statementYmd?: string
   ): ExpectedEntry | null {
     if (paymentContext.status !== "cleared") {
       return null;
@@ -72,6 +74,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
       description,
       memo: paymentContext.memo || null,
       transactionDate,
+      statementYmd: statementYmd || transactionDate.toISOString().split('T')[0],
       eaId: paymentContext.ledgerEaId,
       referenceType: "payment",
       referenceId: paymentContext.paymentId,
@@ -138,7 +141,20 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
       const currency = getCurrency(currencyCode);
       const currencyLabel = currency?.label || currencyCode;
 
-      const expectedEntry = this.computeExpectedEntry(paymentContext, config.id, currencyLabel, paymentTypeName);
+      let resolvedStatementYmd: string | undefined;
+      const payment = await storage.ledger.payments.get(paymentContext.paymentId);
+      if (payment?.details) {
+        const details = payment.details as Record<string, unknown>;
+        const proposedAllocation = details.proposedAllocation as Array<{ eaId: string; amount: string; statementYmd: string }> | undefined;
+        if (proposedAllocation) {
+          const match = proposedAllocation.find(a => a.eaId === paymentContext.ledgerEaId);
+          if (match?.statementYmd) {
+            resolvedStatementYmd = match.statementYmd;
+          }
+        }
+      }
+
+      const expectedEntry = this.computeExpectedEntry(paymentContext, config.id, currencyLabel, paymentTypeName, resolvedStatementYmd);
       
       const notifications: LedgerNotification[] = [];
 
@@ -193,6 +209,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
           description: expectedEntry.description,
           memo: expectedEntry.memo,
           transactionDate: expectedEntry.transactionDate,
+          statementYmd: expectedEntry.statementYmd,
           referenceType: expectedEntry.referenceType,
           referenceId: expectedEntry.referenceId,
           metadata: expectedEntry.metadata,
@@ -261,6 +278,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
         description: expectedEntry.description,
         memo: expectedEntry.memo,
         transactionDate: expectedEntry.transactionDate,
+        statementYmd: expectedEntry.statementYmd,
         referenceType: expectedEntry.referenceType,
         referenceId: expectedEntry.referenceId,
         metadata: expectedEntry.metadata,

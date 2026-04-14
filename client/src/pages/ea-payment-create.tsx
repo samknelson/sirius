@@ -231,13 +231,20 @@ function EAPaymentCreateContent() {
       details.statementAllocations = stmtInfo.stmtAllocations;
     }
 
+    const ymd = stmtInfo.month && stmtInfo.year
+      ? `${stmtInfo.year}-${String(stmtInfo.month).padStart(2, "0")}-01`
+      : "";
+    details.proposedAllocation = [{
+      eaId: eaId,
+      amount: data.amount,
+      statementYmd: ymd,
+    }];
+
     const submissionData: Record<string, unknown> = {
       ...data,
       ledgerEaId: eaId,
       details: Object.keys(details).length > 0 ? details : null,
       status: category === "adjustment" ? "cleared" : data.status,
-      statementMonth: stmtInfo.month ?? null,
-      statementYear: stmtInfo.year ?? null,
     };
 
     createPaymentMutation.mutate(submissionData);

@@ -371,6 +371,7 @@ export function registerLedgerEaRoutes(app: Express) {
         id: ledgerTable.id,
         amount: ledgerTable.amount,
         date: ledgerTable.date,
+        statementYmd: ledgerTable.statementYmd,
         chargePlugin: ledgerTable.chargePlugin,
         referenceType: ledgerTable.referenceType,
         referenceId: ledgerTable.referenceId,
@@ -387,13 +388,11 @@ export function registerLedgerEaRoutes(app: Express) {
           .map(e => e.referenceId!)
       )];
 
-      const paymentMap = new Map<string, { id: string; paymentType: string; statementMonth: number | null; statementYear: number | null; dateReceived: Date | null; details: unknown; }>();
+      const paymentMap = new Map<string, { id: string; paymentType: string; dateReceived: Date | null; details: unknown; }>();
       if (paymentRefIds.length > 0) {
         const paymentRows = await client.select({
           id: ledgerPayments.id,
           paymentType: ledgerPayments.paymentType,
-          statementMonth: ledgerPayments.statementMonth,
-          statementYear: ledgerPayments.statementYear,
           dateReceived: ledgerPayments.dateReceived,
           details: ledgerPayments.details,
         })
@@ -519,8 +518,13 @@ export function registerLedgerEaRoutes(app: Express) {
           const pt = payment ? paymentTypeMap.get(payment.paymentType) : undefined;
           const category = pt?.category || "financial";
 
-          const stmtMonth = payment?.statementMonth ?? em;
-          const stmtYear = payment?.statementYear ?? ey;
+          const entryYmd = entry.statementYmd;
+          let stmtMonth = em;
+          let stmtYear = ey;
+          if (entryYmd) {
+            const [y, m] = entryYmd.split("-").map(Number);
+            if (y && m) { stmtYear = y; stmtMonth = m; }
+          }
           const stmtData = getVisibleMonth(stmtMonth, stmtYear);
 
           if (stmtData) {

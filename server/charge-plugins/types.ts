@@ -73,12 +73,13 @@ export interface LedgerTransaction {
   chargePluginKey: string;
   chargePluginConfigId: string;
   accountId: string;
-  entityType: string; // "employer", "worker", "trust_provider"
+  entityType: string;
   entityId: string;
-  amount: string; // Numeric string, e.g., "15.50"
+  amount: string;
   description: string;
   memo?: string | null;
   transactionDate: Date;
+  statementYmd?: string;
   referenceType?: string;
   referenceId?: string;
   metadata?: Record<string, any>;

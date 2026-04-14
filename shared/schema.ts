@@ -610,15 +610,6 @@ export const ledgerPayments = pgTable("ledger_payments", {
   dateReceived: timestamp("date_received"),
   dateCleared: timestamp("date_cleared"),
   memo: text("memo"),
-  statementMonth: integer("statement_month"),
-  statementYear: integer("statement_year"),
-});
-
-export const ledgerPaymentAllocations = pgTable("ledger_payment_allocations", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  paymentId: varchar("payment_id").notNull().references(() => ledgerPayments.id, { onDelete: 'cascade' }),
-  ledgerEaId: varchar("ledger_ea_id").notNull().references(() => ledgerEa.id),
-  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
 });
 
 export const ledgerEa = pgTable("ledger_ea", {
@@ -643,6 +634,7 @@ export const ledger = pgTable("ledger", {
   date: timestamp("date"),
   memo: text("memo"),
   data: jsonb("data"),
+  statementYmd: date("statement_ymd"),
 }, (table) => ({
   uniqueChargePluginKey: unique().on(table.chargePlugin, table.chargePluginKey),
 }));
@@ -992,10 +984,6 @@ export const insertLedgerPaymentSchema = createInsertSchema(ledgerPayments).omit
   dateCreated: true,
 });
 
-export const insertLedgerPaymentAllocationSchema = createInsertSchema(ledgerPaymentAllocations).omit({
-  id: true,
-});
-
 export const insertLedgerEaSchema = createInsertSchema(ledgerEa).omit({
   id: true,
 });
@@ -1005,6 +993,7 @@ export type SelectLedgerEa = typeof ledgerEa.$inferSelect;
 
 export const insertLedgerSchema = createInsertSchema(ledger).omit({
   id: true,
+  date: true,
 });
 
 export type InsertLedger = z.infer<typeof insertLedgerSchema>;
@@ -1210,9 +1199,6 @@ export type LedgerAccount = typeof ledgerAccounts.$inferSelect;
 
 export type InsertLedgerPayment = z.infer<typeof insertLedgerPaymentSchema>;
 export type LedgerPayment = typeof ledgerPayments.$inferSelect;
-
-export type InsertLedgerPaymentAllocation = z.infer<typeof insertLedgerPaymentAllocationSchema>;
-export type LedgerPaymentAllocation = typeof ledgerPaymentAllocations.$inferSelect;
 
 export type LedgerPaymentWithEntity = LedgerPayment & {
   entityType: string;

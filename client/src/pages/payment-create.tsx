@@ -297,35 +297,41 @@ function PaymentCreateContent() {
 
     const primaryBox = participantBoxes[0];
     const primaryEaId = primaryBox.eaId;
-    const primaryStmt = getStatementInfoFromBox(primaryBox);
-
-    const allocations = participantBoxes.map((b) => ({
-      ledgerEaId: b.eaId,
-      amount: b.amount,
-    }));
 
     delete details.statementAllocations;
     delete details.participantStatementAllocations;
+
+    const proposedAllocation = participantBoxes.map((b) => {
+      const stmtInfo = getStatementInfoFromBox(b);
+      const ymd = stmtInfo.month && stmtInfo.year
+        ? `${stmtInfo.year}-${String(stmtInfo.month).padStart(2, "0")}-01`
+        : undefined;
+      return {
+        eaId: b.eaId,
+        amount: b.amount,
+        statementYmd: ymd || "",
+      };
+    });
+    details.proposedAllocation = proposedAllocation;
 
     if (participantBoxes.length > 1) {
       const participantStatements: Record<string, unknown> = {};
       for (const box of participantBoxes) {
         const stmtInfo = getStatementInfoFromBox(box);
-        if (stmtInfo.month || stmtInfo.stmtAllocations) {
+        if (stmtInfo.stmtAllocations) {
           participantStatements[box.eaId] = {
-            statementMonth: stmtInfo.month,
-            statementYear: stmtInfo.year,
-            ...(stmtInfo.stmtAllocations
-              ? { statementAllocations: stmtInfo.stmtAllocations }
-              : {}),
+            statementAllocations: stmtInfo.stmtAllocations,
           };
         }
       }
       if (Object.keys(participantStatements).length > 0) {
         details.participantStatementAllocations = participantStatements;
       }
-    } else if (primaryStmt.stmtAllocations) {
-      details.statementAllocations = primaryStmt.stmtAllocations;
+    } else {
+      const primaryStmt = getStatementInfoFromBox(primaryBox);
+      if (primaryStmt.stmtAllocations) {
+        details.statementAllocations = primaryStmt.stmtAllocations;
+      }
     }
 
     const submissionData: Record<string, unknown> = {
@@ -333,9 +339,6 @@ function PaymentCreateContent() {
       ledgerEaId: primaryEaId,
       details: Object.keys(details).length > 0 ? details : null,
       status: category === "adjustment" ? "cleared" : data.status,
-      statementMonth: primaryStmt.month,
-      statementYear: primaryStmt.year,
-      allocations,
     };
 
     createPaymentMutation.mutate(submissionData);

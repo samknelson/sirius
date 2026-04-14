@@ -166,7 +166,6 @@ async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<v
         transaction.accountId
       );
 
-      // Create ledger entry
       await storage.ledger.entries.create({
         chargePlugin: transaction.chargePlugin,
         chargePluginKey: transaction.chargePluginKey,
@@ -175,7 +174,7 @@ async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<v
         eaId: ea.id,
         referenceType: transaction.referenceType || "charge_plugin",
         referenceId: transaction.referenceId,
-        date: transaction.transactionDate,
+        statementYmd: transaction.statementYmd || transaction.transactionDate.toISOString().split('T')[0],
         memo: transaction.memo !== undefined ? transaction.memo : transaction.description,
         data: transaction.metadata,
       });

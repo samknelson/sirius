@@ -257,8 +257,18 @@ function EAPaymentsContent() {
         Amount: formatAmount(parseFloat(payment.amount), currencyCode),
         "Payment Type": paymentType?.name || "",
         Status: payment.status,
-        "Statement Month": p.statementMonth && p.statementYear
-          ? `${MONTH_NAMES[p.statementMonth - 1]} ${p.statementYear}` : "",
+        "Statement Period": (() => {
+          const det = payment.details as any;
+          const pa = det?.proposedAllocation as Array<{ eaId: string; statementYmd: string }> | undefined;
+          if (pa && pa.length > 0) {
+            const ymd = pa[0].statementYmd;
+            if (ymd) {
+              const [y, m] = ymd.split("-").map(Number);
+              if (y && m && m >= 1 && m <= 12) return `${MONTH_NAMES[m - 1]} ${y}`;
+            }
+          }
+          return "";
+        })(),
         Merchant: details?.merchant || "",
         "Check/Transaction Number": details?.checkTransactionNumber || "",
         "Date Created": payment.dateCreated ? new Date(payment.dateCreated).toLocaleDateString() : "",
@@ -275,7 +285,7 @@ function EAPaymentsContent() {
         "Amount",
         "Payment Type",
         "Status",
-        "Statement Month",
+        "Statement Period",
         "Merchant",
         "Check/Transaction Number",
         "Date Created",
@@ -617,9 +627,17 @@ function EAPaymentsContent() {
                         </Badge>
                       </TableCell>
                       <TableCell data-testid={`text-statement-${payment.id}`}>
-                        {payment.statementMonth && payment.statementYear
-                          ? `${MONTH_NAMES[payment.statementMonth - 1]} ${payment.statementYear}`
-                          : "-"}
+                        {(() => {
+                          const pa = details?.proposedAllocation as Array<{ eaId: string; statementYmd: string }> | undefined;
+                          if (pa && pa.length > 0) {
+                            const ymd = pa[0].statementYmd;
+                            if (ymd) {
+                              const [y, m] = ymd.split("-").map(Number);
+                              if (y && m && m >= 1 && m <= 12) return `${MONTH_NAMES[m - 1]} ${y}`;
+                            }
+                          }
+                          return "-";
+                        })()}
                       </TableCell>
                       <TableCell data-testid={`text-merchant-${payment.id}`}>
                         {details?.merchant || "-"}

@@ -1,15 +1,61 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../../storage";
 import { createUnifiedOptionsStorage } from "../../storage/unified-options";
-import { insertLedgerPaymentSchema, LedgerPayment, type LedgerPaymentAllocation } from "@shared/schema";
+import { insertLedgerPaymentSchema, type LedgerPayment } from "@shared/schema";
 import { requireAccess, checkAccessInline } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { executeChargePlugins, TriggerType, PaymentSavedContext, LedgerNotification } from "../../charge-plugins";
 import { logger } from "../../logger";
 import { eventBus, EventType } from "../../services/event-bus";
-import { z } from "zod";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
+
+interface ProposedAllocationEntry {
+  eaId: string;
+  amount: string;
+  statementYmd: string;
+}
+
+function validateProposedAllocation(
+  details: Record<string, unknown> | null | undefined,
+  paymentAmount: string
+): { valid: boolean; error?: string; allocations?: ProposedAllocationEntry[] } {
+  if (!details || !details.proposedAllocation) {
+    return { valid: true };
+  }
+  const raw = details.proposedAllocation;
+  if (!Array.isArray(raw)) {
+    return { valid: false, error: "proposedAllocation must be an array" };
+  }
+  const allocations: ProposedAllocationEntry[] = [];
+  const seenEaIds = new Set<string>();
+  for (const item of raw) {
+    if (!item || typeof item !== "object") {
+      return { valid: false, error: "Each allocation must be an object" };
+    }
+    if (typeof item.eaId !== "string" || !item.eaId) {
+      return { valid: false, error: "Each allocation must have a valid eaId" };
+    }
+    if (typeof item.amount !== "string" || isNaN(parseFloat(item.amount))) {
+      return { valid: false, error: "Each allocation must have a valid amount" };
+    }
+    if (seenEaIds.has(item.eaId)) {
+      return { valid: false, error: "Duplicate EA allocations are not allowed" };
+    }
+    seenEaIds.add(item.eaId);
+    allocations.push({
+      eaId: item.eaId,
+      amount: item.amount,
+      statementYmd: typeof item.statementYmd === "string" ? item.statementYmd : "",
+    });
+  }
+  const allocationTotal = allocations.reduce((sum, a) => sum + parseFloat(a.amount), 0);
+  const payAmt = parseFloat(paymentAmount);
+  if (Math.abs(payAmt - allocationTotal) > 0.01) {
+    return { valid: false, error: "Allocation amounts must equal the payment amount" };
+  }
+  return { valid: true, allocations };
+}
 
 // Helper to check EA access inline after fetching the EA
 async function checkPaymentEaAccessInline(req: Request, res: Response, ea: { entityType: string; entityId: string }, policyId: string): Promise<boolean> {
@@ -21,30 +67,31 @@ async function checkPaymentEaAccessInline(req: Request, res: Response, ea: { ent
   return true;
 }
 
-async function triggerPaymentChargePlugins(payment: LedgerPayment, allocations?: LedgerPaymentAllocation[]): Promise<LedgerNotification[]> {
+async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<LedgerNotification[]> {
   try {
     const allNotifications: LedgerNotification[] = [];
+    const details = (payment.details || {}) as Record<string, unknown>;
+    const proposedAllocation = details.proposedAllocation as Array<{ eaId: string; amount: string; statementYmd: string }> | undefined;
 
-    if (allocations && allocations.length > 0) {
-      const currentEaIds = new Set(allocations.map(a => a.ledgerEaId));
+    if (proposedAllocation && proposedAllocation.length > 0) {
+      const currentEaIds = new Set(proposedAllocation.map(a => a.eaId));
 
-      for (const allocation of allocations) {
-        const ea = await storage.ledger.ea.get(allocation.ledgerEaId);
+      for (const alloc of proposedAllocation) {
+        const ea = await storage.ledger.ea.get(alloc.eaId);
         if (!ea) {
           logger.warn("Cannot trigger charge plugins - allocation EA not found", {
             service: "ledger-payments",
             paymentId: payment.id,
-            allocationId: allocation.id,
-            ledgerEaId: allocation.ledgerEaId,
+            ledgerEaId: alloc.eaId,
           });
           continue;
         }
 
         const payload = {
           paymentId: payment.id,
-          amount: allocation.amount,
+          amount: alloc.amount,
           status: payment.status,
-          ledgerEaId: allocation.ledgerEaId,
+          ledgerEaId: alloc.eaId,
           accountId: ea.accountId,
           entityType: ea.entityType,
           entityId: ea.entityId,
@@ -52,14 +99,14 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment, allocations?:
           dateCleared: payment.dateCleared,
           memo: payment.memo,
           paymentTypeId: payment.paymentType,
-          allocationId: allocation.id,
+          allocationId: alloc.eaId,
         };
 
         eventBus.emit(EventType.PAYMENT_SAVED, payload).catch(err => {
           logger.error("Failed to emit PAYMENT_SAVED event for allocation", {
             service: "ledger-payments",
             paymentId: payment.id,
-            allocationId: allocation.id,
+            ledgerEaId: alloc.eaId,
             error: err instanceof Error ? err.message : String(err),
           });
         });
@@ -76,7 +123,7 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment, allocations?:
       try {
         const allExistingEntries = await storage.ledger.entries.getByReference("payment", payment.id);
         const currentAllocationKeys = new Set(
-          allocations.map(a => `${payment.id}:${a.ledgerEaId}`)
+          proposedAllocation.map(a => `${payment.id}:${a.eaId}`)
         );
         for (const entry of allExistingEntries) {
           if (entry.chargePlugin === "payment-simple-allocation" && entry.chargePluginKey) {
@@ -274,38 +321,10 @@ export function registerLedgerPaymentRoutes(app: Express) {
     }
   });
 
-  const allocationSchema = z.array(z.object({
-    ledgerEaId: z.string().uuid(),
-    amount: z.string(),
-  }));
-
-  // GET /api/ledger/payments/:id/allocations - Get allocations for a payment
-  app.get("/api/ledger/payments/:id/allocations", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
-    try {
-      const { id } = req.params;
-      const payment = await storage.ledger.payments.get(id);
-      if (!payment) {
-        res.status(404).json({ message: "Payment not found" });
-        return;
-      }
-      const ea = await storage.ledger.ea.get(payment.ledgerEaId);
-      if (!ea) {
-        res.status(404).json({ message: "EA entry not found" });
-        return;
-      }
-      if (!await checkPaymentEaAccessInline(req, res, ea, 'ledger.ea.view')) return;
-
-      const allocations = await storage.ledger.paymentAllocations.getByPaymentId(id);
-      res.json(allocations);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch payment allocations" });
-    }
-  });
-
   // POST /api/ledger/payments - Create a new payment (staff only)
   app.post("/api/ledger/payments", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
-      const { allocations: rawAllocations, ...rawBody } = req.body;
+      const rawBody = req.body;
 
       const processedBody = {
         ...rawBody,
@@ -315,20 +334,13 @@ export function registerLedgerPaymentRoutes(app: Express) {
       
       const validatedData = insertLedgerPaymentSchema.parse(processedBody);
 
-      let validatedAllocations: { ledgerEaId: string; amount: string }[] | undefined;
-      if (rawAllocations && Array.isArray(rawAllocations) && rawAllocations.length > 0) {
-        validatedAllocations = allocationSchema.parse(rawAllocations);
-        const eaIds = validatedAllocations.map(a => a.ledgerEaId);
-        if (new Set(eaIds).size !== eaIds.length) {
-          res.status(400).json({ message: "Duplicate EA allocations are not allowed" });
-          return;
-        }
-        const allocationTotal = validatedAllocations.reduce((sum, a) => sum + parseFloat(a.amount), 0);
-        const paymentAmount = parseFloat(validatedData.amount);
-        if (Math.abs(paymentAmount - allocationTotal) > 0.01) {
-          res.status(400).json({ message: "Allocation amounts must equal the payment amount" });
-          return;
-        }
+      const allocValidation = validateProposedAllocation(
+        validatedData.details as Record<string, unknown> | null,
+        validatedData.amount
+      );
+      if (!allocValidation.valid) {
+        res.status(400).json({ message: allocValidation.error });
+        return;
       }
       
       const ea = await storage.ledger.ea.get(validatedData.ledgerEaId);
@@ -338,20 +350,11 @@ export function registerLedgerPaymentRoutes(app: Express) {
       }
       
       const payment = await storage.ledger.payments.create(validatedData);
-
-      let savedAllocations: LedgerPaymentAllocation[] | undefined;
-      if (validatedAllocations && validatedAllocations.length > 0) {
-        savedAllocations = await storage.ledger.paymentAllocations.replaceForPayment(
-          payment.id,
-          validatedAllocations
-        );
-      }
       
-      const notifications = await triggerPaymentChargePlugins(payment, savedAllocations);
+      const notifications = await triggerPaymentChargePlugins(payment);
       
       res.status(201).json({
         ...payment,
-        allocations: savedAllocations || [],
         ledgerNotifications: notifications,
       });
     } catch (error) {
@@ -381,7 +384,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
         return;
       }
       
-      const { allocations: rawAllocations, ...rawBody } = req.body;
+      const rawBody = req.body;
 
       const processedBody = {
         ...rawBody,
@@ -391,30 +394,14 @@ export function registerLedgerPaymentRoutes(app: Express) {
       
       const validatedData = insertLedgerPaymentSchema.partial().parse(processedBody);
 
-      let validatedAllocationsForUpdate: { ledgerEaId: string; amount: string }[] | undefined;
-      if (rawAllocations !== undefined && Array.isArray(rawAllocations) && rawAllocations.length > 0) {
-        validatedAllocationsForUpdate = allocationSchema.parse(rawAllocations);
-        const eaIds = validatedAllocationsForUpdate.map(a => a.ledgerEaId);
-        if (new Set(eaIds).size !== eaIds.length) {
-          res.status(400).json({ message: "Duplicate EA allocations are not allowed" });
-          return;
-        }
-        const allocationTotal = validatedAllocationsForUpdate.reduce((sum, a) => sum + parseFloat(a.amount), 0);
-        const paymentAmount = parseFloat(validatedData.amount ?? existingPayment.amount);
-        if (Math.abs(paymentAmount - allocationTotal) > 0.01) {
-          res.status(400).json({ message: "Allocation amounts must equal the payment amount" });
-          return;
-        }
-      } else if (rawAllocations === undefined && validatedData.amount) {
-        const existingAllocations = await storage.ledger.paymentAllocations.getByPaymentId(id);
-        if (existingAllocations.length > 0) {
-          const allocationTotal = existingAllocations.reduce((sum, a) => sum + parseFloat(a.amount), 0);
-          const newPaymentAmount = parseFloat(validatedData.amount);
-          if (Math.abs(newPaymentAmount - allocationTotal) > 0.01) {
-            res.status(400).json({ message: "Cannot change payment amount: existing allocations no longer match. Please update allocations." });
-            return;
-          }
-        }
+      const effectiveAmount = validatedData.amount ?? existingPayment.amount;
+      const effectiveDetails = validatedData.details !== undefined
+        ? validatedData.details as Record<string, unknown> | null
+        : existingPayment.details as Record<string, unknown> | null;
+      const allocValidation = validateProposedAllocation(effectiveDetails, effectiveAmount);
+      if (!allocValidation.valid) {
+        res.status(400).json({ message: allocValidation.error });
+        return;
       }
       
       const payment = await storage.ledger.payments.update(id, validatedData);
@@ -423,30 +410,11 @@ export function registerLedgerPaymentRoutes(app: Express) {
         res.status(404).json({ message: "Payment not found" });
         return;
       }
-
-      let savedAllocations: LedgerPaymentAllocation[] | undefined;
-      if (rawAllocations !== undefined) {
-        if (validatedAllocationsForUpdate && validatedAllocationsForUpdate.length > 0) {
-          savedAllocations = await storage.ledger.paymentAllocations.replaceForPayment(
-            id,
-            validatedAllocationsForUpdate
-          );
-        } else {
-          await storage.ledger.paymentAllocations.deleteByPaymentId(id);
-          savedAllocations = [];
-        }
-      } else {
-        const existing = await storage.ledger.paymentAllocations.getByPaymentId(id);
-        if (existing.length > 0) {
-          savedAllocations = existing;
-        }
-      }
       
-      const notifications = await triggerPaymentChargePlugins(payment, savedAllocations);
+      const notifications = await triggerPaymentChargePlugins(payment);
       
       res.json({
         ...payment,
-        allocations: savedAllocations,
         ledgerNotifications: notifications,
       });
     } catch (error) {

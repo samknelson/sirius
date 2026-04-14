@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "wouter";
-import type { LedgerPayment, LedgerPaymentAllocation } from "@shared/schema";
+import type { LedgerPayment } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LedgerTransactionsView } from "@/components/ledger/LedgerTransactionsView";
 import { formatAmount } from "@shared/currency";
@@ -14,6 +14,12 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 
+interface ProposedAllocationEntry {
+  eaId: string;
+  amount: string;
+  statementYmd: string;
+}
+
 function PaymentViewContent() {
   const { id } = useParams<{ id: string }>();
   const { payment: layoutPayment, paymentType } = usePaymentLayout();
@@ -22,19 +28,26 @@ function PaymentViewContent() {
     queryKey: ["/api/ledger/payments", id],
   });
 
-  const { data: allocations = [] } = useQuery<LedgerPaymentAllocation[]>({
-    queryKey: [`/api/ledger/payments/${id}/allocations`],
-    enabled: !!id,
-  });
+  const details = (payment?.details || {}) as Record<string, unknown>;
+  const proposedAllocation = (details.proposedAllocation || []) as ProposedAllocationEntry[];
 
   const { data: allEAs = [] } = useQuery<{ id: string; entityType: string; entityId: string; entityName: string | null }[]>({
     queryKey: ["/api/ledger/ea"],
-    enabled: allocations.length > 0,
+    enabled: proposedAllocation.length > 0,
   });
 
   const eaNameMap = new Map(allEAs.map(ea => [ea.id, ea.entityName || ea.entityId]));
   
   const currencyCode = paymentType?.currencyCode || 'USD';
+
+  const formatYmd = (ymd: string) => {
+    if (!ymd) return "";
+    const [y, m] = ymd.split("-").map(Number);
+    if (y && m && m >= 1 && m <= 12) {
+      return `${MONTH_NAMES[m - 1]} ${y}`;
+    }
+    return ymd;
+  };
 
   const getStatusBadgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
@@ -116,29 +129,17 @@ function PaymentViewContent() {
               </p>
             </div>
 
-            {payment.details && (payment.details as any).merchant && (
+            {details.merchant && (
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Merchant</label>
-                <p className="mt-1" data-testid="text-merchant">{(payment.details as any).merchant}</p>
+                <p className="mt-1" data-testid="text-merchant">{details.merchant as string}</p>
               </div>
             )}
 
-            {payment.details && (payment.details as any).checkTransactionNumber && (
+            {details.checkTransactionNumber && (
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Check or Transaction Number</label>
-                <p className="mt-1" data-testid="text-check-transaction-number">{(payment.details as any).checkTransactionNumber}</p>
-              </div>
-            )}
-
-            {(payment.statementMonth || payment.statementYear) && (
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Statement Period</label>
-                <p className="mt-1" data-testid="text-statement-period">
-                  {payment.statementMonth
-                    ? MONTH_NAMES[payment.statementMonth - 1]
-                    : ""}{" "}
-                  {payment.statementYear || ""}
-                </p>
+                <p className="mt-1" data-testid="text-check-transaction-number">{details.checkTransactionNumber as string}</p>
               </div>
             )}
           </div>
@@ -174,7 +175,7 @@ function PaymentViewContent() {
             </div>
           )}
 
-          {allocations.length > 0 && (
+          {proposedAllocation.length > 0 && (
             <div>
               <label className="text-sm font-medium text-muted-foreground">Payment Allocations</label>
               <div className="mt-2 rounded-md border">
@@ -183,14 +184,18 @@ function PaymentViewContent() {
                     <TableRow>
                       <TableHead>Entity Account</TableHead>
                       <TableHead>Amount</TableHead>
+                      <TableHead>Statement Period</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {allocations.map((alloc) => (
-                      <TableRow key={alloc.id}>
-                        <TableCell className="text-sm">{eaNameMap.get(alloc.ledgerEaId) || alloc.ledgerEaId}</TableCell>
+                    {proposedAllocation.map((alloc, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell className="text-sm">{eaNameMap.get(alloc.eaId) || alloc.eaId}</TableCell>
                         <TableCell className="font-mono">
                           {formatAmount(parseFloat(alloc.amount), currencyCode)}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {formatYmd(alloc.statementYmd)}
                         </TableCell>
                       </TableRow>
                     ))}
