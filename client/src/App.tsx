@@ -113,6 +113,7 @@ const StripePaymentMethodsPage = lazy(() => import("@/pages/employers/stripe-pay
 const EmployerLedgerAccountsWrapper = lazy(() => import("@/pages/employer-ledger-accounts-wrapper"));
 const EAView = lazy(() => import("@/pages/ea-view"));
 const EAInvoices = lazy(() => import("@/pages/ea-invoices"));
+const EAInvoiceView = lazy(() => import("@/pages/ea-invoice-view"));
 const EAPayments = lazy(() => import("@/pages/ea-payments"));
 const EATransactions = lazy(() => import("@/pages/ea-transactions"));
 const PaymentView = lazy(() => import("@/pages/payment-view"));
@@ -901,6 +902,14 @@ function Router() {
         <ProtectedRoute policy="ledger.ea.view" component="ledger">
           <AuthenticatedLayout>
             <EAView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ea/:id/invoices/:month/:year">
+        <ProtectedRoute policy="ledger.ea.view" component="ledger">
+          <AuthenticatedLayout>
+            <EAInvoiceView />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

@@ -118,8 +118,25 @@ export interface InvoiceSummary {
   outgoingBalance: string;
 }
 
+export interface InvoiceSectionEntry extends LedgerEntryWithDetails {
+  paymentTypeCategory?: string | null;
+  paymentStatementMonth?: number | null;
+  paymentStatementYear?: number | null;
+}
+
+export interface InvoiceSection {
+  entries: InvoiceSectionEntry[];
+  subtotal: string;
+}
+
 export interface InvoiceDetails extends InvoiceSummary {
   entries: LedgerEntryWithDetails[];
+  sections: {
+    charges: InvoiceSection;
+    adjustments: InvoiceSection;
+    paymentsReceived: InvoiceSection;
+    paymentsApplied: InvoiceSection;
+  };
   invoiceHeader?: string | null;
   invoiceFooter?: string | null;
 }
@@ -1122,19 +1139,16 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
 
     async getDetails(eaId: string, month: number, year: number): Promise<InvoiceDetails | undefined> {
       const client = getClient();
-      // Get EA to fetch accountId
       const ea = await client.select().from(ledgerEa).where(eq(ledgerEa.id, eaId)).limit(1);
       if (ea.length === 0) {
         return undefined;
       }
 
-      // Get account to fetch invoice header/footer
       const account = await client.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, ea[0].accountId)).limit(1);
       const accountData = (account.length > 0 && account[0]?.data) 
         ? account[0].data as { invoiceHeader?: string; invoiceFooter?: string } 
         : null;
 
-      // Get all ledger entries for this EA (need all for running balance)
       const simpleEntries = await client.select({
         id: ledger.id,
         amount: ledger.amount,
@@ -1148,7 +1162,6 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         return undefined;
       }
 
-      // Build invoices with running balances
       const invoiceMap = buildInvoicesForEa(simpleEntries);
       const key = `${year}-${month}`;
       const bucket = invoiceMap.get(key);
@@ -1157,13 +1170,94 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         return undefined;
       }
 
-      // Get detailed entries for this month
       const entryStorage = createLedgerEntryStorage();
       const allDetailedEntries = await entryStorage.getTransactions({ eaId });
       
-      // Filter to specific month/year and match the entry IDs
       const entryIds = new Set(bucket.entries.map(e => e.id));
       const monthEntries = allDetailedEntries.filter(entry => entryIds.has(entry.id));
+
+      const allPaymentIds = allDetailedEntries
+        .filter(e => e.referenceType === 'payment' && e.referenceId)
+        .map(e => e.referenceId!);
+
+      let paymentInfoMap = new Map<string, { category: string; statementMonth: number | null; statementYear: number | null }>();
+      if (allPaymentIds.length > 0) {
+        const uniquePaymentIds = [...new Set(allPaymentIds)];
+        const paymentRows = await client
+          .select({
+            paymentId: ledgerPayments.id,
+            category: optionsLedgerPaymentType.category,
+            statementMonth: ledgerPayments.statementMonth,
+            statementYear: ledgerPayments.statementYear,
+          })
+          .from(ledgerPayments)
+          .innerJoin(optionsLedgerPaymentType, eq(ledgerPayments.paymentType, optionsLedgerPaymentType.id))
+          .where(inArray(ledgerPayments.id, uniquePaymentIds));
+
+        for (const row of paymentRows) {
+          paymentInfoMap.set(row.paymentId, {
+            category: row.category ?? 'financial',
+            statementMonth: row.statementMonth,
+            statementYear: row.statementYear,
+          });
+        }
+      }
+
+      const charges: InvoiceSectionEntry[] = [];
+      const adjustments: InvoiceSectionEntry[] = [];
+      const paymentsReceived: InvoiceSectionEntry[] = [];
+      const paymentsApplied: InvoiceSectionEntry[] = [];
+
+      for (const entry of monthEntries) {
+        if (entry.referenceType === 'payment' && entry.referenceId) {
+          const payInfo = paymentInfoMap.get(entry.referenceId);
+          const sectionEntry: InvoiceSectionEntry = {
+            ...entry,
+            paymentTypeCategory: payInfo?.category ?? 'financial',
+            paymentStatementMonth: payInfo?.statementMonth ?? null,
+            paymentStatementYear: payInfo?.statementYear ?? null,
+          };
+
+          if (payInfo?.category === 'adjustment') {
+            if (payInfo.statementMonth === month && payInfo.statementYear === year) {
+              adjustments.push(sectionEntry);
+            }
+          } else {
+            const entryDate = entry.date ? new Date(entry.date) : null;
+            const entryInPeriod = entryDate &&
+              entryDate.getMonth() + 1 === month &&
+              entryDate.getFullYear() === year;
+
+            if (entryInPeriod) {
+              paymentsReceived.push(sectionEntry);
+            }
+          }
+        } else {
+          charges.push({ ...entry, paymentTypeCategory: null, paymentStatementMonth: null, paymentStatementYear: null });
+        }
+      }
+
+      const appliedEntryIds = new Set<string>();
+      for (const entry of allDetailedEntries) {
+        if (entry.referenceType === 'payment' && entry.referenceId) {
+          const payInfo = paymentInfoMap.get(entry.referenceId);
+          if (payInfo && payInfo.category !== 'adjustment' &&
+              payInfo.statementMonth === month && payInfo.statementYear === year) {
+            if (!appliedEntryIds.has(entry.id)) {
+              appliedEntryIds.add(entry.id);
+              paymentsApplied.push({
+                ...entry,
+                paymentTypeCategory: payInfo.category,
+                paymentStatementMonth: payInfo.statementMonth,
+                paymentStatementYear: payInfo.statementYear,
+              });
+            }
+          }
+        }
+      }
+
+      const calcSubtotal = (entries: InvoiceSectionEntry[]) =>
+        fromCents(entries.reduce((sum, e) => sum + toCents(e.amount), BigInt(0)));
 
       const invoiceBalanceCents = bucket.entries.reduce(
         (sum, e) => sum + toCents(e.amount),
@@ -1180,6 +1274,12 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         invoiceBalance: fromCents(invoiceBalanceCents),
         outgoingBalance: fromCents(outgoingBalanceCents),
         entries: monthEntries,
+        sections: {
+          charges: { entries: charges, subtotal: calcSubtotal(charges) },
+          adjustments: { entries: adjustments, subtotal: calcSubtotal(adjustments) },
+          paymentsReceived: { entries: paymentsReceived, subtotal: calcSubtotal(paymentsReceived) },
+          paymentsApplied: { entries: paymentsApplied, subtotal: calcSubtotal(paymentsApplied) },
+        },
         invoiceHeader: accountData?.invoiceHeader ?? null,
         invoiceFooter: accountData?.invoiceFooter ?? null,
       };

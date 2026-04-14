@@ -123,3 +123,52 @@
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+@media print {
+  header,
+  footer,
+  nav,
+  [data-testid="breadcrumb"],
+  [data-testid="nav-tabs"],
+  .print-hidden {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 12pt;
+  }
+
+  .statement-page {
+    padding: 0 !important;
+  }
+
+  .statement-section {
+    break-inside: avoid;
+    border: 1px solid #ddd !important;
+    box-shadow: none !important;
+  }
+
+  .statement-section-content {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    visibility: visible !important;
+  }
+
+  .statement-title {
+    text-align: center;
+    margin-bottom: 1rem;
+  }
+
+  .container {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  @page {
+    margin: 1.5cm;
+  }
+}
