@@ -116,6 +116,10 @@ export interface InvoiceSummary {
   incomingBalance: string;
   invoiceBalance: string;
   outgoingBalance: string;
+  chargesSubtotal: string;
+  adjustmentsSubtotal: string;
+  paymentsReceivedSubtotal: string;
+  paymentsAppliedSubtotal: string;
 }
 
 export interface InvoiceSectionEntry extends LedgerEntryWithDetails {
@@ -1033,8 +1037,77 @@ function fromCents(cents: bigint): string {
   return dollars.toFixed(2);
 }
 
+type PaymentInfo = { category: string; statementMonth: number | null; statementYear: number | null };
+
+interface SectionSubtotals {
+  chargesCents: bigint;
+  adjustmentsCents: bigint;
+  paymentsReceivedCents: bigint;
+  paymentsAppliedCents: bigint;
+}
+
+function classifyEntriesForPeriod(
+  monthEntryIds: Set<string>,
+  allEntries: { id: string; amount: string; date: Date | null; referenceType: string | null; referenceId: string | null }[],
+  paymentInfoMap: Map<string, PaymentInfo>,
+  month: number,
+  year: number,
+): SectionSubtotals {
+  let chargesCents = BigInt(0);
+  let adjustmentsCents = BigInt(0);
+  let paymentsReceivedCents = BigInt(0);
+  let paymentsAppliedCents = BigInt(0);
+
+  for (const entry of allEntries) {
+    if (!monthEntryIds.has(entry.id)) continue;
+
+    if (entry.referenceType === 'payment' && entry.referenceId) {
+      const payInfo = paymentInfoMap.get(entry.referenceId);
+      if (payInfo?.category !== 'adjustment') {
+        const entryDate = entry.date ? new Date(entry.date) : null;
+        const entryInPeriod = entryDate &&
+          entryDate.getMonth() + 1 === month &&
+          entryDate.getFullYear() === year;
+        if (entryInPeriod) {
+          paymentsReceivedCents += toCents(entry.amount);
+        }
+      }
+    } else {
+      const amt = parseFloat(entry.amount);
+      if (amt > 0) {
+        chargesCents += toCents(entry.amount);
+      }
+    }
+  }
+
+  const sectionedIds = new Set<string>();
+  for (const entry of allEntries) {
+    if (entry.referenceType === 'payment' && entry.referenceId) {
+      const payInfo = paymentInfoMap.get(entry.referenceId);
+      if (!payInfo) continue;
+
+      if (payInfo.category === 'adjustment' &&
+          payInfo.statementMonth === month && payInfo.statementYear === year) {
+        if (!sectionedIds.has(entry.id)) {
+          sectionedIds.add(entry.id);
+          adjustmentsCents += toCents(entry.amount);
+        }
+      } else if (payInfo.category !== 'adjustment' &&
+          payInfo.statementMonth === month && payInfo.statementYear === year) {
+        if (!sectionedIds.has(entry.id)) {
+          sectionedIds.add(entry.id);
+          paymentsAppliedCents += toCents(entry.amount);
+        }
+      }
+    }
+  }
+
+  return { chargesCents, adjustmentsCents, paymentsReceivedCents, paymentsAppliedCents };
+}
+
 // Build invoices with running balances for an EA
 type SimpleLedgerEntry = { id: string; amount: string; date: Date | null };
+type ExtendedSimpleLedgerEntry = SimpleLedgerEntry & { referenceType: string | null; referenceId: string | null };
 interface InvoiceBucket {
   month: number;
   year: number;
@@ -1091,11 +1164,12 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
   return {
     async listForEa(eaId: string): Promise<InvoiceSummary[]> {
       const client = getClient();
-      // Get all ledger entries for this EA
       const entries = await client.select({
         id: ledger.id,
         amount: ledger.amount,
         date: ledger.date,
+        referenceType: ledger.referenceType,
+        referenceId: ledger.referenceId,
       })
       .from(ledger)
       .where(eq(ledger.eaId, eaId))
@@ -1105,10 +1179,36 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         return [];
       }
 
-      // Build invoices with running balances
       const invoiceMap = buildInvoicesForEa(entries);
 
-      // Convert to summaries
+      const allPaymentIds = [...new Set(
+        entries
+          .filter(e => e.referenceType === 'payment' && e.referenceId)
+          .map(e => e.referenceId!)
+      )];
+
+      const paymentInfoMap = new Map<string, PaymentInfo>();
+      if (allPaymentIds.length > 0) {
+        const paymentRows = await client
+          .select({
+            paymentId: ledgerPayments.id,
+            category: optionsLedgerPaymentType.category,
+            statementMonth: ledgerPayments.statementMonth,
+            statementYear: ledgerPayments.statementYear,
+          })
+          .from(ledgerPayments)
+          .innerJoin(optionsLedgerPaymentType, eq(ledgerPayments.paymentType, optionsLedgerPaymentType.id))
+          .where(inArray(ledgerPayments.id, allPaymentIds));
+
+        for (const row of paymentRows) {
+          paymentInfoMap.set(row.paymentId, {
+            category: row.category ?? 'financial',
+            statementMonth: row.statementMonth,
+            statementYear: row.statementYear,
+          });
+        }
+      }
+
       const summaries: InvoiceSummary[] = [];
       for (const bucket of Array.from(invoiceMap.values())) {
         const invoiceBalanceCents = bucket.entries.reduce(
@@ -1117,6 +1217,11 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         );
         const outgoingBalanceCents = bucket.incomingBalanceCents + invoiceBalanceCents;
 
+        const monthEntryIds = new Set(bucket.entries.map(e => e.id));
+        const sectionTotals = classifyEntriesForPeriod(
+          monthEntryIds, entries, paymentInfoMap, bucket.month, bucket.year
+        );
+
         summaries.push({
           month: bucket.month,
           year: bucket.year,
@@ -1124,11 +1229,14 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
           entryCount: bucket.entries.length,
           incomingBalance: fromCents(bucket.incomingBalanceCents),
           invoiceBalance: fromCents(invoiceBalanceCents),
-          outgoingBalance: fromCents(outgoingBalanceCents)
+          outgoingBalance: fromCents(outgoingBalanceCents),
+          chargesSubtotal: fromCents(sectionTotals.chargesCents),
+          adjustmentsSubtotal: fromCents(sectionTotals.adjustmentsCents),
+          paymentsReceivedSubtotal: fromCents(sectionTotals.paymentsReceivedCents),
+          paymentsAppliedSubtotal: fromCents(sectionTotals.paymentsAppliedCents),
         });
       }
 
-      // Sort by year desc, month desc (most recent first)
       summaries.sort((a, b) => {
         if (a.year !== b.year) return b.year - a.year;
         return b.month - a.month;
