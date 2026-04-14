@@ -142,20 +142,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
       const currency = getCurrency(currencyCode);
       const currencyLabel = currency?.label || currencyCode;
 
-      let resolvedStatementYmd: string | undefined;
-      const payment = await storage.ledger.payments.get(paymentContext.paymentId);
-      if (payment?.details) {
-        const paymentDetails = payment.details as Record<string, unknown>;
-        const proposedAllocation = Array.isArray(paymentDetails.proposedAllocation)
-          ? (paymentDetails.proposedAllocation as Array<{ eaId: string; amount: string; statementYmd: string }>)
-          : undefined;
-        if (proposedAllocation) {
-          const match = proposedAllocation.find(a => a.eaId === paymentContext.ledgerEaId);
-          if (match?.statementYmd) {
-            resolvedStatementYmd = match.statementYmd;
-          }
-        }
-      }
+      const resolvedStatementYmd = paymentContext.allocationStatementYmd || undefined;
 
       const expectedEntry = this.computeExpectedEntry(paymentContext, config.id, currencyLabel, paymentTypeName, resolvedStatementYmd);
 

@@ -89,6 +89,7 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<Ledg
           continue;
         }
 
+        const allocIdentity = `${alloc.eaId}:${alloc.statementYmd || ""}`;
         const payload = {
           paymentId: payment.id,
           amount: alloc.amount,
@@ -101,7 +102,8 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<Ledg
           dateCleared: payment.dateCleared,
           memo: payment.memo,
           paymentTypeId: payment.paymentType,
-          allocationId: alloc.eaId,
+          allocationId: allocIdentity,
+          allocationStatementYmd: alloc.statementYmd,
         };
 
         eventBus.emit(EventType.PAYMENT_SAVED, payload).catch(err => {

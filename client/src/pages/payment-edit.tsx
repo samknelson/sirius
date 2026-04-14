@@ -434,38 +434,30 @@ function PaymentEditContent() {
     delete details.statementAllocations;
     delete details.participantStatementAllocations;
 
-    const proposedAllocation = participantBoxes.map((b) => {
-      const stmtInfo = getStatementInfoFromBox(b);
-      const ymd = stmtInfo.month && stmtInfo.year
-        ? `${stmtInfo.year}-${String(stmtInfo.month).padStart(2, "0")}-01`
-        : undefined;
-      return {
-        eaId: b.eaId,
-        amount: b.amount,
-        statementYmd: ymd || "",
-      };
-    });
-    details.proposedAllocation = proposedAllocation;
-
-    if (participantBoxes.length > 1) {
-      const participantStatements: Record<string, ParticipantStatementData> = {};
-      for (const box of participantBoxes) {
-        const stmtInfo = getStatementInfoFromBox(box);
-        if (stmtInfo.stmtAllocations) {
-          participantStatements[box.eaId] = {
-            statementAllocations: stmtInfo.stmtAllocations,
-          };
+    const proposedAllocation: Array<{ eaId: string; amount: string; statementYmd: string }> = [];
+    for (const b of participantBoxes) {
+      if (b.statementSelections.length > 1) {
+        for (const sel of b.statementSelections) {
+          const ymd = `${sel.year}-${String(sel.month).padStart(2, "0")}-01`;
+          proposedAllocation.push({
+            eaId: b.eaId,
+            amount: sel.amount ? String(parseFloat(sel.amount).toFixed(2)) : b.amount,
+            statementYmd: ymd,
+          });
         }
-      }
-      if (Object.keys(participantStatements).length > 0) {
-        details.participantStatementAllocations = participantStatements;
-      }
-    } else {
-      const primaryStmt = getStatementInfoFromBox(primaryBox);
-      if (primaryStmt.stmtAllocations) {
-        details.statementAllocations = primaryStmt.stmtAllocations;
+      } else {
+        const stmtInfo = getStatementInfoFromBox(b);
+        const ymd = stmtInfo.month && stmtInfo.year
+          ? `${stmtInfo.year}-${String(stmtInfo.month).padStart(2, "0")}-01`
+          : "";
+        proposedAllocation.push({
+          eaId: b.eaId,
+          amount: b.amount,
+          statementYmd: ymd,
+        });
       }
     }
+    details.proposedAllocation = proposedAllocation;
 
     const submissionData: Record<string, unknown> = {
       ...data,
