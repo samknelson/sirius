@@ -21,6 +21,24 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 
+function formatStatementPeriods(details: Record<string, unknown> | null, fallback: string = ""): string {
+  const pa = Array.isArray(details?.proposedAllocation)
+    ? (details.proposedAllocation as Array<{ eaId: string; statementYmd: string }>)
+    : undefined;
+  if (!pa || pa.length === 0) return fallback;
+  const uniquePeriods = new Set<string>();
+  for (const alloc of pa) {
+    if (alloc.statementYmd) {
+      const [y, m] = alloc.statementYmd.split("-").map(Number);
+      if (y && m && m >= 1 && m <= 12) {
+        uniquePeriods.add(`${MONTH_NAMES[m - 1]} ${y}`);
+      }
+    }
+  }
+  if (uniquePeriods.size === 0) return fallback;
+  return Array.from(uniquePeriods).join(", ");
+}
+
 const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
 
 type SortField = "amount" | "dateCreated" | "dateReceived" | "dateCleared";
@@ -256,19 +274,7 @@ function EAPaymentsContent() {
         Amount: formatAmount(parseFloat(payment.amount), currencyCode),
         "Payment Type": paymentType?.name || "",
         Status: payment.status,
-        "Statement Period": (() => {
-          const pa = Array.isArray(details?.proposedAllocation)
-            ? (details.proposedAllocation as Array<{ eaId: string; statementYmd: string }>)
-            : undefined;
-          if (pa && pa.length > 0) {
-            const ymd = pa[0].statementYmd;
-            if (ymd) {
-              const [y, m] = ymd.split("-").map(Number);
-              if (y && m && m >= 1 && m <= 12) return `${MONTH_NAMES[m - 1]} ${y}`;
-            }
-          }
-          return "";
-        })(),
+        "Statement Period": formatStatementPeriods(details),
         Merchant: (typeof details?.merchant === "string" ? details.merchant : "") || "",
         "Check/Transaction Number": (typeof details?.checkTransactionNumber === "string" ? details.checkTransactionNumber : "") || "",
         "Date Created": payment.dateCreated ? new Date(payment.dateCreated).toLocaleDateString() : "",
@@ -627,19 +633,7 @@ function EAPaymentsContent() {
                         </Badge>
                       </TableCell>
                       <TableCell data-testid={`text-statement-${payment.id}`}>
-                        {(() => {
-                          const pa = Array.isArray(details?.proposedAllocation)
-                            ? (details.proposedAllocation as Array<{ eaId: string; statementYmd: string }>)
-                            : undefined;
-                          if (pa && pa.length > 0) {
-                            const ymd = pa[0].statementYmd;
-                            if (ymd) {
-                              const [y, m] = ymd.split("-").map(Number);
-                              if (y && m && m >= 1 && m <= 12) return `${MONTH_NAMES[m - 1]} ${y}`;
-                            }
-                          }
-                          return "-";
-                        })()}
+                        {formatStatementPeriods(details, "-")}
                       </TableCell>
                       <TableCell data-testid={`text-merchant-${payment.id}`}>
                         {(typeof details?.merchant === "string" ? details.merchant : null) || "-"}
