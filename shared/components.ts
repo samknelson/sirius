@@ -106,7 +106,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Payment Batches",
     description: "Batch creation and management of payments",
     enabledByDefault: false,
-    category: "ledger"
+    category: "ledger",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/ledger/payment-batch/schema.ts",
+      tables: ["ledger_payment_batches"]
+    }
   },
   {
     id: "cardcheck",
