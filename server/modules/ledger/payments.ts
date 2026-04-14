@@ -354,6 +354,16 @@ export function registerLedgerPaymentRoutes(app: Express) {
         res.status(404).json({ message: "EA entry not found" });
         return;
       }
+
+      if (allocValidation.allocations) {
+        for (const alloc of allocValidation.allocations) {
+          const allocEa = await storage.ledger.ea.get(alloc.eaId);
+          if (!allocEa) {
+            res.status(400).json({ message: `Allocation references non-existent EA: ${alloc.eaId}` });
+            return;
+          }
+        }
+      }
       
       const payment = await storage.ledger.payments.create(validatedData);
       
@@ -408,6 +418,16 @@ export function registerLedgerPaymentRoutes(app: Express) {
       if (!allocValidation.valid) {
         res.status(400).json({ message: allocValidation.error });
         return;
+      }
+
+      if (allocValidation.allocations) {
+        for (const alloc of allocValidation.allocations) {
+          const allocEa = await storage.ledger.ea.get(alloc.eaId);
+          if (!allocEa) {
+            res.status(400).json({ message: `Allocation references non-existent EA: ${alloc.eaId}` });
+            return;
+          }
+        }
       }
       
       const payment = await storage.ledger.payments.update(id, validatedData);
