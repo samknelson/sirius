@@ -2,6 +2,8 @@ import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { logger } from "../logger";
 import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
+import { ledgerPaymentBatches } from "@shared/schema/ledger/payment-batch/schema";
+import type { LedgerPaymentBatch, InsertLedgerPaymentBatch } from "@shared/schema/ledger/payment-batch/schema";
 import type { 
   LedgerAccount, 
   InsertLedgerAccount,
@@ -146,6 +148,15 @@ export interface LedgerAccountStorage {
   getParticipants(accountId: string, limit: number, offset: number): Promise<{ data: AccountParticipant[]; total: number }>;
 }
 
+export interface LedgerPaymentBatchStorage {
+  getAll(): Promise<LedgerPaymentBatch[]>;
+  getByAccountId(accountId: string): Promise<LedgerPaymentBatch[]>;
+  get(id: string): Promise<LedgerPaymentBatch | undefined>;
+  create(batch: InsertLedgerPaymentBatch): Promise<LedgerPaymentBatch>;
+  update(id: string, batch: Partial<InsertLedgerPaymentBatch>): Promise<LedgerPaymentBatch | undefined>;
+  delete(id: string): Promise<boolean>;
+}
+
 export interface LedgerStorage {
   accounts: LedgerAccountStorage;
   stripePaymentMethods: StripePaymentMethodStorage;
@@ -153,6 +164,7 @@ export interface LedgerStorage {
   payments: LedgerPaymentStorage;
   entries: LedgerEntryStorage;
   invoices: LedgerInvoiceStorage;
+  paymentBatches: LedgerPaymentBatchStorage;
 }
 
 export function createLedgerAccountStorage(): LedgerAccountStorage {
@@ -1362,12 +1374,57 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
   };
 }
 
+export function createLedgerPaymentBatchStorage(): LedgerPaymentBatchStorage {
+  return {
+    async getAll(): Promise<LedgerPaymentBatch[]> {
+      const client = getClient();
+      return await client.select().from(ledgerPaymentBatches).orderBy(desc(ledgerPaymentBatches.name));
+    },
+
+    async getByAccountId(accountId: string): Promise<LedgerPaymentBatch[]> {
+      const client = getClient();
+      return await client.select().from(ledgerPaymentBatches)
+        .where(eq(ledgerPaymentBatches.accountId, accountId))
+        .orderBy(desc(ledgerPaymentBatches.name));
+    },
+
+    async get(id: string): Promise<LedgerPaymentBatch | undefined> {
+      const client = getClient();
+      const [batch] = await client.select().from(ledgerPaymentBatches).where(eq(ledgerPaymentBatches.id, id));
+      return batch || undefined;
+    },
+
+    async create(insertBatch: InsertLedgerPaymentBatch): Promise<LedgerPaymentBatch> {
+      validate.validateOrThrow(insertBatch);
+      const client = getClient();
+      const [batch] = await client.insert(ledgerPaymentBatches).values(insertBatch).returning();
+      return batch;
+    },
+
+    async update(id: string, batchUpdate: Partial<InsertLedgerPaymentBatch>): Promise<LedgerPaymentBatch | undefined> {
+      const client = getClient();
+      const [batch] = await client.update(ledgerPaymentBatches)
+        .set(batchUpdate)
+        .where(eq(ledgerPaymentBatches.id, id))
+        .returning();
+      return batch || undefined;
+    },
+
+    async delete(id: string): Promise<boolean> {
+      const client = getClient();
+      const result = await client.delete(ledgerPaymentBatches).where(eq(ledgerPaymentBatches.id, id));
+      return result.rowCount ? result.rowCount > 0 : false;
+    },
+  };
+}
+
 export function createLedgerStorage(
   accountLoggingConfig?: StorageLoggingConfig<LedgerAccountStorage>,
   stripePaymentMethodLoggingConfig?: StorageLoggingConfig<StripePaymentMethodStorage>,
   eaLoggingConfig?: StorageLoggingConfig<LedgerEaStorage>,
   paymentLoggingConfig?: StorageLoggingConfig<LedgerPaymentStorage>,
-  entryLoggingConfig?: StorageLoggingConfig<LedgerEntryStorage>
+  entryLoggingConfig?: StorageLoggingConfig<LedgerEntryStorage>,
+  paymentBatchLoggingConfig?: StorageLoggingConfig<LedgerPaymentBatchStorage>
 ): LedgerStorage {
   // Create nested storage instances with optional logging
   const accountStorage = accountLoggingConfig
@@ -1391,6 +1448,10 @@ export function createLedgerStorage(
     : createLedgerEntryStorage();
 
   const invoiceStorage = createLedgerInvoiceStorage();
+
+  const paymentBatchStorage = paymentBatchLoggingConfig
+    ? withStorageLogging(createLedgerPaymentBatchStorage(), paymentBatchLoggingConfig)
+    : createLedgerPaymentBatchStorage();
   
   return {
     accounts: accountStorage,
@@ -1398,7 +1459,8 @@ export function createLedgerStorage(
     ea: eaStorage,
     payments: paymentStorage,
     entries: entryStorage,
-    invoices: invoiceStorage
+    invoices: invoiceStorage,
+    paymentBatches: paymentBatchStorage,
   };
 }
 
@@ -1510,6 +1572,31 @@ function formatPaymentForLog(payment: LedgerPayment | undefined): string {
  * Logs all payment mutations with full argument capture and change tracking.
  * Links to worker entity when the payment's EA is associated with a worker.
  */
+export const ledgerPaymentBatchLoggingConfig: StorageLoggingConfig<LedgerPaymentBatchStorage> = {
+  module: 'ledger.paymentBatches',
+  methods: {
+    create: {
+      enabled: true,
+      getEntityId: (args, result) => result?.id || args[0]?.name || 'new batch',
+      getHostEntityId: (args, result) => result?.id,
+      after: async (args, result) => result,
+    },
+    update: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      before: async (args, storage) => await storage.get(args[0]),
+      after: async (args, result) => result,
+    },
+    delete: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      before: async (args, storage) => await storage.get(args[0]),
+    },
+  },
+};
+
 export const ledgerPaymentLoggingConfig: StorageLoggingConfig<LedgerPaymentStorage> = {
   module: 'ledger.payments',
   methods: {

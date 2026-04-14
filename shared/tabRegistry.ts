@@ -66,7 +66,8 @@ export type TabEntityType =
   | 'ws_client'
   | 'sftp_client_destination'
   | 'trust_provider_edi'
-  | 'bulk_message';
+  | 'bulk_message'
+  | 'ledger_payment_batch';
 
 /**
  * Tab check request for batch access evaluation
@@ -346,6 +347,7 @@ export const ledgerAccountTabTree: HierarchicalTab[] = [
   { id: 'view', label: 'View', hrefTemplate: '/ledger/accounts/{id}', policyId: 'staff', component: 'ledger' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/ledger/accounts/{id}/edit', policyId: 'staff', component: 'ledger' },
   { id: 'payments', label: 'Payments', hrefTemplate: '/ledger/accounts/{id}/payments', policyId: 'staff', component: 'ledger' },
+  { id: 'batches', label: 'Batches', hrefTemplate: '/ledger/accounts/{id}/batches', policyId: 'staff', component: 'ledger.payment.batch' },
   { id: 'transactions', label: 'Transactions', hrefTemplate: '/ledger/accounts/{id}/transactions', policyId: 'staff', component: 'ledger' },
   { id: 'participants', label: 'Participants', hrefTemplate: '/ledger/accounts/{id}/participants', policyId: 'staff', component: 'ledger' },
   { id: 'settings', label: 'Settings', hrefTemplate: '/ledger/accounts/{id}/settings', policyId: 'staff', component: 'ledger' },
@@ -488,6 +490,13 @@ export const trustProviderEdiTabTree: HierarchicalTab[] = [
   { id: 'logs', label: 'Logs', hrefTemplate: '/trust/provider-edi/{id}/logs', permission: 'admin', component: 'trust.providers.edi' },
 ];
 
+export const ledgerPaymentBatchTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/ledger/payment-batch/{id}', policyId: 'staff', component: 'ledger.payment.batch' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/ledger/payment-batch/{id}/edit', policyId: 'staff', component: 'ledger.payment.batch' },
+  { id: 'payments', label: 'Payments', hrefTemplate: '/ledger/payment-batch/{id}/payments', policyId: 'staff', component: 'ledger.payment.batch' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/ledger/payment-batch/{id}/logs', policyId: 'staff', component: 'ledger.payment.batch' },
+];
+
 export const bulkMessageTabTree: HierarchicalTab[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/bulk/{id}', policyId: 'bulk.edit' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/bulk/{id}/edit', policyId: 'bulk.edit' },
@@ -532,6 +541,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   sftp_client_destination: sftpClientDestinationTabTree,
   trust_provider_edi: trustProviderEdiTabTree,
   bulk_message: bulkMessageTabTree,
+  ledger_payment_batch: ledgerPaymentBatchTabTree,
 };
 
 /**

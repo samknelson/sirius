@@ -252,6 +252,11 @@ const AccountPayments = lazy(() => import("@/pages/config/ledger/account-payment
 const AccountTransactions = lazy(() => import("@/pages/config/ledger/account-transactions"));
 const AccountParticipants = lazy(() => import("@/pages/account-participants"));
 const AccountSettings = lazy(() => import("@/pages/config/ledger/account-settings"));
+const AccountBatches = lazy(() => import("@/pages/config/ledger/account-batches"));
+const PaymentBatchDetailsPage = lazy(() => import("@/pages/ledger/payment-batch-details"));
+const PaymentBatchEditPage = lazy(() => import("@/pages/ledger/payment-batch-edit"));
+const PaymentBatchPaymentsPage = lazy(() => import("@/pages/ledger/payment-batch-payments"));
+const PaymentBatchLogsPage = lazy(() => import("@/pages/ledger/payment-batch-logs"));
 const SiteInformation = lazy(() => import("@/pages/site-information"));
 const TerminologyConfigPage = lazy(() => import("@/pages/config/terminology"));
 const PolicyView = lazy(() => import("@/pages/policy-view"));
@@ -2569,7 +2574,48 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      {/* Payment batch detail pages */}
+      <Route path="/ledger/payment-batch/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="ledger_payment_batch">
+          <AuthenticatedLayout>
+            <PaymentBatchEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ledger/payment-batch/:id/payments">
+        <ProtectedRoute tabId="payments" entityType="ledger_payment_batch">
+          <AuthenticatedLayout>
+            <PaymentBatchPaymentsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ledger/payment-batch/:id/logs">
+        <ProtectedRoute tabId="logs" entityType="ledger_payment_batch">
+          <AuthenticatedLayout>
+            <PaymentBatchLogsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ledger/payment-batch/:id">
+        <ProtectedRoute tabId="details" entityType="ledger_payment_batch">
+          <AuthenticatedLayout>
+            <PaymentBatchDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       {/* Ledger account detail pages */}
+      <Route path="/ledger/accounts/:id/batches">
+        <ProtectedRoute tabId="batches" entityType="ledger_account">
+          <AuthenticatedLayout>
+            <AccountBatches />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/ledger/accounts/:id/payments">
         <ProtectedRoute tabId="payments" entityType="ledger_account">
           <AuthenticatedLayout>

@@ -37,7 +37,7 @@ The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI),
 -   **Bookmarks**: User-specific, entity-agnostic bookmarking functionality.
 -   **Dashboard Plugin System**: Extensible architecture for customizable widgets.
 -   **Components Feature Flag System**: Centralized system for managing application features with dependency and access control.
--   **Ledger System**: Manages financial transactions, accounts, payments, and integrity reports.
+-   **Ledger System**: Manages financial transactions, accounts, payments, and integrity reports. Payment Batches feature (`ledger.payment.batch` component) provides batch grouping of payments with full CRUD, audit logging, and detail pages at `/ledger/payment-batch/:id` (Details/Edit/Payments/Logs tabs). Batches tab on account pages at `/ledger/accounts/:id/batches`. API at `/api/ledger-payment-batches`.
 -   **Wizards**: Flexible workflow state management for multi-step processes.
 -   **File Storage System**: Comprehensive file management with metadata and access control.
 -   **Worker Hours & Employment Views**: Tracks worker hours and employment history.

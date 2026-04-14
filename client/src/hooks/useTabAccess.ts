@@ -430,3 +430,11 @@ export function useBulkMessageTabAccess(bulkMessageId: string | undefined, enabl
     enabled 
   });
 }
+
+export function useLedgerPaymentBatchTabAccess(batchId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'ledger_payment_batch', 
+    entityId: batchId, 
+    enabled 
+  });
+}

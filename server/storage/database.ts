@@ -14,6 +14,7 @@ import {
   ledgerAccountLoggingConfig,
   stripePaymentMethodLoggingConfig,
   ledgerPaymentLoggingConfig,
+  ledgerPaymentBatchLoggingConfig,
 } from "./ledger";
 import {
   type EmployerContactStorage,
@@ -286,6 +287,8 @@ export class DatabaseStorage implements IStorage {
       stripePaymentMethodLoggingConfig,
       undefined,
       ledgerPaymentLoggingConfig,
+      undefined,
+      ledgerPaymentBatchLoggingConfig,
     );
     this.employerContacts = withStorageLogging(
       createEmployerContactStorage(this.contacts),

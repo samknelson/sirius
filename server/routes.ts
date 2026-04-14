@@ -39,6 +39,7 @@ import { registerLedgerStripeRoutes } from "./modules/ledger/stripe";
 import { registerLedgerAccountRoutes } from "./modules/ledger/accounts";
 import { registerLedgerEaRoutes } from "./modules/ledger/ea";
 import { registerLedgerPaymentRoutes } from "./modules/ledger/payments";
+import { registerLedgerPaymentBatchRoutes } from "./modules/ledger/payment-batches";
 import { registerAccessPolicyRoutes } from "./modules/access-policies";
 import { registerLogRoutes } from "./modules/logs";
 import { registerWorkerWshRoutes } from "./modules/worker-wsh";
@@ -325,6 +326,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register ledger/payments routes
   registerLedgerPaymentRoutes(app);
+
+  // Register ledger/payment-batches routes
+  registerLedgerPaymentBatchRoutes(app);
 
   // Register log management routes
   registerLogRoutes(app, requireAuth, requirePermission, requireAccess);
