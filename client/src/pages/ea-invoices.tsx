@@ -204,14 +204,16 @@ function ClickableAmountCell({
   amount,
   onClick,
   testId,
+  className,
 }: {
   amount: string;
   onClick: () => void;
   testId?: string;
+  className?: string;
 }) {
   return (
     <TableCell
-      className={`text-right cursor-pointer hover:bg-muted/50 transition-colors ${amountClass(amount)}`}
+      className={`text-right cursor-pointer hover:bg-muted/50 transition-colors ${amountClass(amount)} ${className || ""}`}
       onClick={onClick}
       data-testid={testId}
     >
@@ -287,7 +289,13 @@ function EAInvoicesContent() {
                   </TableHead>
                   <TableHead className="text-right">Payments Received</TableHead>
                   <TableHead className="text-right">Outgoing Balance</TableHead>
-                  <TableHead className="text-right">Payments Applied</TableHead>
+                  <TableHead className="text-right border-l-2 border-border">Payments Applied</TableHead>
+                  <TableHead className="text-right">
+                    <span className="inline-flex items-center gap-1" title="Invoiced Amount + Payments Applied (positive = underpaid)">
+                      Invoice Balance
+                      <Info className="h-3 w-3 text-muted-foreground" />
+                    </span>
+                  </TableHead>
                   <TableHead>Tools</TableHead>
                 </TableRow>
               </TableHeader>
@@ -331,7 +339,22 @@ function EAInvoicesContent() {
                         amount={invoice.paymentsAppliedSubtotal}
                         onClick={() => setModalState({ invoice, section: "paymentsApplied" })}
                         testId={`cell-applied-${invoice.year}-${invoice.month}`}
+                        className="border-l-2 border-border"
                       />
+                      {(() => {
+                        const invoiceBalance = (
+                          parseFloat(invoicedAmount) + parseFloat(invoice.paymentsAppliedSubtotal)
+                        ).toFixed(2);
+                        const balanceNum = parseFloat(invoiceBalance);
+                        return (
+                          <TableCell
+                            className={`text-right font-medium ${balanceNum > 0.005 ? "text-amber-600 dark:text-amber-400" : balanceNum < -0.005 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}
+                            data-testid={`cell-balance-${invoice.year}-${invoice.month}`}
+                          >
+                            {formatAmount(invoiceBalance)}
+                          </TableCell>
+                        );
+                      })()}
                       <TableCell>
                         <div className="flex gap-1">
                           <Button
