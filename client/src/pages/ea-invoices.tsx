@@ -101,14 +101,6 @@ function SectionDetailModal({ state, onClose, eaId }: { state: SectionModalState
   const periodLabel = `${MONTH_NAMES[invoice.month - 1]} ${invoice.year}`;
 
   function renderEntryTable(entries: InvoiceSectionEntry[], subtotal: string, label?: string) {
-    if (entries.length === 0) {
-      return (
-        <div className="py-4 text-center text-sm text-muted-foreground">
-          No {label?.toLowerCase() || "entries"} for this period.
-        </div>
-      );
-    }
-
     return (
       <div className="rounded-md border">
         <Table>
@@ -121,16 +113,24 @@ function SectionDetailModal({ state, onClose, eaId }: { state: SectionModalState
             </TableRow>
           </TableHeader>
           <TableBody>
-            {entries.map((entry) => (
-              <TableRow key={entry.id}>
-                <TableCell>{formatDate(entry.date)}</TableCell>
-                <TableCell className={`text-right ${amountClass(entry.amount)}`}>
-                  {formatAmount(entry.amount)}
+            {entries.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-4">
+                  No {label?.toLowerCase() || "entries"} for this period.
                 </TableCell>
-                <TableCell>{entry.memo || '-'}</TableCell>
-                <TableCell>{entry.referenceName || '-'}</TableCell>
               </TableRow>
-            ))}
+            ) : (
+              entries.map((entry) => (
+                <TableRow key={entry.id}>
+                  <TableCell>{formatDate(entry.date)}</TableCell>
+                  <TableCell className={`text-right ${amountClass(entry.amount)}`}>
+                    {formatAmount(entry.amount)}
+                  </TableCell>
+                  <TableCell>{entry.memo || '-'}</TableCell>
+                  <TableCell>{entry.referenceName || '-'}</TableCell>
+                </TableRow>
+              ))
+            )}
             <TableRow className="bg-muted/50 font-medium">
               <TableCell colSpan={1}>{label || "Subtotal"}</TableCell>
               <TableCell className={`text-right ${amountClass(subtotal)}`}>
