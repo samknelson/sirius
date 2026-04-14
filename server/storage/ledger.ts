@@ -1566,12 +1566,6 @@ function formatPaymentForLog(payment: LedgerPayment | undefined): string {
   return amount ? `${amount} payment${memo}` : 'payment';
 }
 
-/**
- * Logging configuration for ledger payment storage operations
- * 
- * Logs all payment mutations with full argument capture and change tracking.
- * Links to worker entity when the payment's EA is associated with a worker.
- */
 export const ledgerPaymentBatchLoggingConfig: StorageLoggingConfig<LedgerPaymentBatchStorage> = {
   module: 'ledger.paymentBatches',
   methods: {
