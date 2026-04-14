@@ -102,6 +102,13 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "ledger"
   },
   {
+    id: "ledger.payment.batch",
+    name: "Payment Batches",
+    description: "Batch creation and management of payments",
+    enabledByDefault: false,
+    category: "ledger"
+  },
+  {
     id: "cardcheck",
     name: "Card Check",
     description: "Worker cardcheck functionality",
