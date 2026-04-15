@@ -91,9 +91,8 @@ export async function t631Fetch(action: T631Action): Promise<T631FetchResult> {
     diagnosticsBody = [action, "Echo Text Follows", echoText];
   } else if (action === "sirius_dispatch_group_search") {
     const ts = Math.floor(Date.now() / 1000);
-    const innerPayload = ["sirius_dispatch_group_search", { domain_root: 1, limit: 500, ts }];
-    requestBody = [action, innerPayload];
-    diagnosticsBody = [action, innerPayload];
+    requestBody = [action, { domain_root: 1, limit: 500, ts }];
+    diagnosticsBody = [action, { domain_root: 1, limit: 500, ts }];
   } else {
     requestBody = [action, config.employerId, config.employerToken];
     diagnosticsBody = [action, maskCredential(config.employerId), maskCredential(config.employerToken)];
