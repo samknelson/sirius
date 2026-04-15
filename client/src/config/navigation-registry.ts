@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, 
   CreditCard, Activity, Wallet, Settings, Shield, Key, FileText, 
-  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, School, Layers, type LucideIcon
+  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, School, type LucideIcon
 } from "lucide-react";
 
 export interface NavItem {
@@ -85,7 +85,6 @@ export const configSections: NavSection[] = [
       { path: "/config/options/department", label: "Departments", icon: List, testId: "nav-config-departments", permission: "admin" },
       { path: "/config/options/employer-contact-type", label: "Employer Contact Types", icon: List, testId: "nav-config-employer-contact-types", permission: "admin" },
       { path: "/config/employers/user-settings", label: "Employer User Settings", icon: Settings, testId: "nav-config-users-employer-settings", permission: "admin" },
-      { path: "/dispatch/job_groups", label: "Job Groups", icon: Layers, testId: "nav-dispatch-job-groups", policy: "staff", requiresComponent: "dispatch.job_group" },
     ],
   },
   {

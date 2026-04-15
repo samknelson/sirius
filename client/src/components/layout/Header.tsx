@@ -36,6 +36,7 @@ import {
   FileSpreadsheet,
   Landmark,
   Megaphone,
+  Layers,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -419,12 +420,25 @@ export default function Header() {
                 {hasComponent("dispatch") && staffPolicy?.access?.granted && (
                   <Link href="/dispatch/jobs" onClick={() => setMobileMenuOpen(false)}>
                     <Button
-                      variant={location.startsWith("/dispatch") ? "default" : "ghost"}
+                      variant={location.startsWith("/dispatch/jobs") ? "default" : "ghost"}
                       className="w-full justify-start"
                       data-testid="mobile-nav-dispatch-jobs"
                     >
                       <Briefcase className="h-4 w-4 mr-2" />
                       Dispatch Jobs
+                    </Button>
+                  </Link>
+                )}
+
+                {hasComponent("dispatch.job_group") && staffPolicy?.access?.granted && (
+                  <Link href="/dispatch/job_groups" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location.startsWith("/dispatch/job_group") ? "default" : "ghost"}
+                      className="w-full justify-start"
+                      data-testid="mobile-nav-dispatch-job-groups"
+                    >
+                      <Layers className="h-4 w-4 mr-2" />
+                      Job Groups
                     </Button>
                   </Link>
                 )}
@@ -1287,6 +1301,16 @@ export default function Header() {
                         <div className="flex items-center cursor-pointer" data-testid="menu-dispatch-jobs">
                           <Briefcase className="h-4 w-4 mr-2" />
                           Dispatch Jobs
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasComponent("dispatch.job_group") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/dispatch/job_groups" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-dispatch-job-groups">
+                          <Layers className="h-4 w-4 mr-2" />
+                          Job Groups
                         </div>
                       </Link>
                     </DropdownMenuItem>
