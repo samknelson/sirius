@@ -8,11 +8,11 @@
 -- 4. Removes statement_month and statement_year from ledger_payments
 -- 5. Drops ledger_payment_allocations table
 
--- Step 1: Add statement_ymd column (nullable initially for backfill)
-ALTER TABLE ledger ADD COLUMN IF NOT EXISTS statement_ymd date;
+-- Step 1: Add statement_ymd column as varchar(10) for clean YYYY-MM-DD strings
+ALTER TABLE ledger ADD COLUMN IF NOT EXISTS statement_ymd varchar(10);
 
--- Step 2: Backfill statement_ymd from the entry's creation date
-UPDATE ledger SET statement_ymd = date::date WHERE statement_ymd IS NULL;
+-- Step 2: Backfill statement_ymd from the entry's creation date (cast to text date)
+UPDATE ledger SET statement_ymd = to_char(date, 'YYYY-MM-DD') WHERE statement_ymd IS NULL;
 
 -- Step 3: Make statement_ymd NOT NULL now that all rows are backfilled
 ALTER TABLE ledger ALTER COLUMN statement_ymd SET NOT NULL;

@@ -634,7 +634,7 @@ export const ledger = pgTable("ledger", {
   date: timestamp("date"),
   memo: text("memo"),
   data: jsonb("data"),
-  statementYmd: date("statement_ymd", { mode: "string" }).notNull(),
+  statementYmd: varchar("statement_ymd", { length: 10 }).notNull(),
 }, (table) => ({
   uniqueChargePluginKey: unique().on(table.chargePlugin, table.chargePluginKey),
 }));
