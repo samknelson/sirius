@@ -12,6 +12,7 @@ export interface NavItem {
   permission?: string;
   policy?: string;
   requiresComponent?: string;
+  requiresComponents?: string[];
 }
 
 export interface NavSection {
@@ -182,7 +183,7 @@ export const configSections: NavSection[] = [
     items: [
       { path: "/config/edls/settings", label: "Settings", icon: Settings, testId: "nav-config-edls-settings", permission: "admin", requiresComponent: "edls" },
       { path: "/config/edls/tasks", label: "Tasks", icon: List, testId: "nav-config-edls-tasks", permission: "admin", requiresComponent: "edls" },
-      { path: "/config/edls/t631-fetch", label: "Teamsters 631 Fetch", icon: Zap, testId: "nav-config-edls-t631-fetch", permission: "admin", requiresComponent: "sitespecific.t631.client" },
+      { path: "/config/edls/t631-fetch", label: "Teamsters 631 Fetch", icon: Zap, testId: "nav-config-edls-t631-fetch", permission: "admin", requiresComponents: ["edls", "sitespecific.t631.client"] },
     ],
   },
   {
@@ -210,7 +211,8 @@ export function hasAccessToItem(item: NavItem, context: AccessContext): boolean 
   if (item.permission) {
     const hasPermissionCheck = context.hasPermission(item.permission);
     const hasComponentCheck = !item.requiresComponent || context.isComponentEnabled(item.requiresComponent);
-    return hasPermissionCheck && hasComponentCheck;
+    const hasComponentsCheck = !item.requiresComponents || item.requiresComponents.every(c => context.isComponentEnabled(c));
+    return hasPermissionCheck && hasComponentCheck && hasComponentsCheck;
   }
   return false;
 }

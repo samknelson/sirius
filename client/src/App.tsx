@@ -2078,7 +2078,7 @@ function Router() {
       </Route>
 
       <Route path="/config/edls/t631-fetch">
-        <ProtectedRoute permission="admin" component="sitespecific.t631.client">
+        <ProtectedRoute permission="admin" componentAll={["edls", "sitespecific.t631.client"]}>
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <T631FetchPage />
