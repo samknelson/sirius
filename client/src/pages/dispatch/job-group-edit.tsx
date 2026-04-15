@@ -11,12 +11,14 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Trash2 } from "lucide-react";
+import { useAccessCheck } from "@/hooks/use-access-check";
 
 function EditContent() {
   const { group } = useDispatchJobGroupLayout();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
+  const { canAccess: isAdmin } = useAccessCheck("admin", group.id);
   const [formData, setFormData] = useState({
     name: "",
     startYmd: "",
@@ -157,7 +159,7 @@ function EditContent() {
         </CardContent>
       </Card>
 
-      <Card className="border-destructive" data-testid="card-delete">
+      {isAdmin && <Card className="border-destructive" data-testid="card-delete">
         <CardHeader>
           <CardTitle className="text-destructive">Danger Zone</CardTitle>
         </CardHeader>
@@ -195,7 +197,7 @@ function EditContent() {
             </AlertDialog>
           </div>
         </CardContent>
-      </Card>
+      </Card>}
     </div>
   );
 }
