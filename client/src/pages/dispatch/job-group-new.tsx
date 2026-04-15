@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, ArrowLeft } from "lucide-react";
 import { Link } from "wouter";
+import type { DispatchJobGroup } from "@shared/schema";
 
 export default function DispatchJobGroupNewPage() {
   usePageTitle("New Job Group");
@@ -42,7 +43,7 @@ export default function DispatchJobGroupNewPage() {
     },
     onSuccess: async (response) => {
       queryClient.invalidateQueries({ queryKey: ["/api/dispatch-job-groups"] });
-      const group = response as any;
+      const group = response as DispatchJobGroup;
       toast({ title: "Job group created", description: "The job group has been created." });
       setLocation(`/dispatch/job_group/${group.id}`);
     },
