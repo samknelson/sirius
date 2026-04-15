@@ -93,6 +93,7 @@ import { registerBtuSigImportRoutes } from "./modules/sitespecific/btu/sig-impor
 import { registerBtuScraperImportRoutes } from "./modules/sitespecific/btu/scraper-import";
 import { registerBtuBuildingRepImportRoutes } from "./modules/sitespecific/btu/building-rep-import";
 import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
+import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
 import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
 import { registerWebServiceBundle } from "./modules/webservices";
@@ -1686,6 +1687,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register BTU Political Profile routes
   registerBtuPoliticalRoutes(app, requireAuth, requirePermission);
+
+  // Register T631 Client routes
+  registerT631ClientFetchRoutes(app, requireAuth, requirePermission);
 
   // Register HTA routes
   registerHtaRoutes(app, requireAuth, requirePermission);
