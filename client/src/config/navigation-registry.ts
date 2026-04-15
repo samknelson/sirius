@@ -85,7 +85,7 @@ export const configSections: NavSection[] = [
       { path: "/config/options/department", label: "Departments", icon: List, testId: "nav-config-departments", permission: "admin" },
       { path: "/config/options/employer-contact-type", label: "Employer Contact Types", icon: List, testId: "nav-config-employer-contact-types", permission: "admin" },
       { path: "/config/employers/user-settings", label: "Employer User Settings", icon: Settings, testId: "nav-config-users-employer-settings", permission: "admin" },
-      { path: "/dispatch/job_groups", label: "Job Groups", icon: Layers, testId: "nav-dispatch-job-groups", permission: "staff", requiresComponent: "dispatch.job_group" },
+      { path: "/dispatch/job_groups", label: "Job Groups", icon: Layers, testId: "nav-dispatch-job-groups", policy: "staff", requiresComponent: "dispatch.job_group" },
     ],
   },
   {
@@ -206,14 +206,15 @@ export interface AccessContext {
 }
 
 export function hasAccessToItem(item: NavItem, context: AccessContext): boolean {
+  const hasComponentCheck = !item.requiresComponent || context.isComponentEnabled(item.requiresComponent);
+  const hasComponentsCheck = !item.requiresComponents || item.requiresComponents.every(c => context.isComponentEnabled(c));
+  if (!hasComponentCheck || !hasComponentsCheck) return false;
+
   if (item.policy) {
     return context.policyResults[item.policy]?.allowed ?? false;
   }
   if (item.permission) {
-    const hasPermissionCheck = context.hasPermission(item.permission);
-    const hasComponentCheck = !item.requiresComponent || context.isComponentEnabled(item.requiresComponent);
-    const hasComponentsCheck = !item.requiresComponents || item.requiresComponents.every(c => context.isComponentEnabled(c));
-    return hasPermissionCheck && hasComponentCheck && hasComponentsCheck;
+    return context.hasPermission(item.permission);
   }
   return false;
 }
