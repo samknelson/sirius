@@ -2,10 +2,15 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { chargePluginRegistry, getAllEnabledChargePlugins, isChargePluginEnabled } from "../charge-plugins/registry";
-import { type ChargePluginMetadata } from "../charge-plugins/types";
+import { type ChargePluginMetadata, TriggerType } from "../charge-plugins/types";
+import { executeChargePlugins } from "../charge-plugins/executor";
 import { z } from "zod";
-import { insertChargePluginConfigSchema } from "@shared/schema";
+import { insertChargePluginConfigSchema, trustWmb, workerHours } from "@shared/schema";
 import { requireComponent } from "./components";
+import { wizardRegistry } from "../wizards/index.js";
+import { getClient } from "../storage/transaction-context";
+import { eq, and } from "drizzle-orm";
+import { logger } from "../logger";
 
 /**
  * Register routes for charge plugin configuration management
@@ -192,6 +197,235 @@ export function registerChargePluginRoutes(
     } catch (error) {
       console.error("Failed to delete charge plugin config:", error);
       res.status(500).json({ message: "Failed to delete charge plugin config" });
+    }
+  });
+
+  app.get("/api/charge-plugin-rerun/wizards", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (_req, res) => {
+    try {
+      const [wizardsComplete, wizardsCompleted] = await Promise.all([
+        storage.wizards.list({ status: "complete" }),
+        storage.wizards.list({ status: "completed" }),
+      ]);
+      const seenIds = new Set<string>();
+      const completedWizards = [...wizardsComplete, ...wizardsCompleted].filter((w) => {
+        if (seenIds.has(w.id)) return false;
+        seenIds.add(w.id);
+        return true;
+      });
+
+      const typeMap = new Map<string, string>();
+      for (const wt of wizardRegistry.getAll()) {
+        typeMap.set(wt.name, wt.displayName);
+      }
+
+      const results = await Promise.all(
+        completedWizards.map(async (w) => {
+          const data = w.data as Record<string, unknown> | null;
+          const la = (data?.launchArguments ?? {}) as Record<string, unknown>;
+          const year = la.year as number | undefined;
+          const month = la.month as number | undefined;
+
+          let employerName: string | null = null;
+          if (w.entityId) {
+            try {
+              const employer = await storage.employers.getEmployer(w.entityId);
+              employerName = employer?.name ?? null;
+            } catch {
+              // ignore
+            }
+          }
+
+          const db = getClient();
+          let wmbCount = 0;
+          let hoursCount = 0;
+
+          if (w.entityId && year && month) {
+            const wmbs = await db
+              .select({ id: trustWmb.id })
+              .from(trustWmb)
+              .where(
+                and(
+                  eq(trustWmb.employerId, w.entityId),
+                  eq(trustWmb.year, year),
+                  eq(trustWmb.month, month)
+                )
+              );
+            wmbCount = wmbs.length;
+
+            const hours = await db
+              .select({ id: workerHours.id })
+              .from(workerHours)
+              .where(
+                and(
+                  eq(workerHours.employerId, w.entityId),
+                  eq(workerHours.year, year),
+                  eq(workerHours.month, month)
+                )
+              );
+            hoursCount = hours.length;
+          }
+
+          return {
+            id: w.id,
+            type: w.type,
+            displayName: typeMap.get(w.type) ?? w.type,
+            date: w.date,
+            entityId: w.entityId,
+            employerName,
+            year,
+            month,
+            wmbCount,
+            hoursCount,
+          };
+        })
+      );
+
+      results.sort((a, b) => {
+        const da = a.date ? new Date(a.date).getTime() : 0;
+        const db = b.date ? new Date(b.date).getTime() : 0;
+        return db - da;
+      });
+
+      res.json(results);
+    } catch (error) {
+      logger.error("Failed to fetch wizards for charge plugin rerun", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      res.status(500).json({ message: "Failed to fetch wizards" });
+    }
+  });
+
+  app.post("/api/charge-plugin-rerun/execute", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
+    try {
+      const { wizardId, triggers } = req.body as {
+        wizardId: string;
+        triggers?: string[];
+      };
+
+      if (!wizardId) {
+        return res.status(400).json({ message: "wizardId is required" });
+      }
+
+      const wizard = await storage.wizards.getById(wizardId);
+      if (!wizard) {
+        return res.status(404).json({ message: "Wizard not found" });
+      }
+
+      if (wizard.status !== "complete" && wizard.status !== "completed") {
+        return res.status(400).json({
+          message: `Wizard status is "${wizard.status}" — only completed wizards can be rerun`,
+        });
+      }
+
+      const data = wizard.data as Record<string, unknown> | null;
+      const la = (data?.launchArguments ?? {}) as Record<string, unknown>;
+      const year = la.year as number | undefined;
+      const month = la.month as number | undefined;
+
+      if (!wizard.entityId || !year || !month) {
+        return res.status(400).json({
+          message: "Wizard is missing employer, year, or month information",
+        });
+      }
+
+      const enabledTriggers = new Set(triggers ?? ["wmb_saved", "hours_saved"]);
+
+      const db = getClient();
+      let wmbProcessed = 0;
+      let wmbErrors = 0;
+      let hoursProcessed = 0;
+      let hoursErrors = 0;
+      let totalTransactions = 0;
+
+      if (enabledTriggers.has("wmb_saved")) {
+        const wmbs = await db
+          .select()
+          .from(trustWmb)
+          .where(
+            and(
+              eq(trustWmb.employerId, wizard.entityId),
+              eq(trustWmb.year, year),
+              eq(trustWmb.month, month)
+            )
+          );
+
+        for (const wmb of wmbs) {
+          try {
+            const result = await executeChargePlugins({
+              trigger: TriggerType.WMB_SAVED,
+              wmbId: wmb.id,
+              workerId: wmb.workerId,
+              employerId: wmb.employerId,
+              benefitId: wmb.benefitId,
+              year: wmb.year,
+              month: wmb.month,
+            });
+            totalTransactions += result.totalTransactions.length;
+            wmbProcessed++;
+          } catch (err) {
+            wmbErrors++;
+            logger.error("Charge plugin rerun WMB error", {
+              wmbId: wmb.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+      }
+
+      if (enabledTriggers.has("hours_saved")) {
+        const hours = await db
+          .select()
+          .from(workerHours)
+          .where(
+            and(
+              eq(workerHours.employerId, wizard.entityId),
+              eq(workerHours.year, year),
+              eq(workerHours.month, month)
+            )
+          );
+
+        for (const h of hours) {
+          try {
+            const result = await executeChargePlugins({
+              trigger: TriggerType.HOURS_SAVED,
+              hoursId: h.id,
+              workerId: h.workerId,
+              employerId: h.employerId,
+              year: h.year,
+              month: h.month,
+              day: h.day,
+              hours: h.hours || 0,
+              employmentStatusId: h.employmentStatusId,
+              home: h.home,
+            });
+            totalTransactions += result.totalTransactions.length;
+            hoursProcessed++;
+          } catch (err) {
+            hoursErrors++;
+            logger.error("Charge plugin rerun hours error", {
+              hoursId: h.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+      }
+
+      res.json({
+        wizardId,
+        employerId: wizard.entityId,
+        year,
+        month,
+        wmbProcessed,
+        wmbErrors,
+        hoursProcessed,
+        hoursErrors,
+        totalTransactions,
+      });
+    } catch (error) {
+      logger.error("Charge plugin rerun failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      res.status(500).json({ message: "Rerun failed" });
     }
   });
 }

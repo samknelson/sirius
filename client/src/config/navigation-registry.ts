@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, 
   CreditCard, Activity, Wallet, Settings, Shield, Key, FileText, 
-  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, Truck, Network, type LucideIcon
+  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, Truck, Network, RefreshCw, type LucideIcon
 } from "lucide-react";
 
 export interface NavItem {
@@ -143,6 +143,7 @@ export const configSections: NavSection[] = [
     items: [
       { path: "/config/ledger/payment-types", label: "Payment Types", icon: Wallet, testId: "nav-ledger-payment-types", policy: "staff" },
       { path: "/config/ledger/charge-plugins", label: "Charge Plugins", icon: Zap, testId: "nav-ledger-charge-plugins", permission: "admin" },
+      { path: "/config/ledger/charge-plugin-rerun", label: "Rerun Charges", icon: RefreshCw, testId: "nav-ledger-charge-plugin-rerun", permission: "admin" },
     ],
     subsections: [
       {

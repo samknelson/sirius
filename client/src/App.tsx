@@ -235,6 +235,7 @@ const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-
 const ChargePluginsListPage = lazy(() => import("@/pages/config/ledger/charge-plugins-list"));
 const ChargePluginConfigPage = lazy(() => import("@/pages/config/ledger/charge-plugin-config"));
 const ChargePluginFormPage = lazy(() => import("@/pages/config/ledger/charge-plugin-form"));
+const ChargePluginRerunPage = lazy(() => import("@/pages/config/ledger/charge-plugin-rerun"));
 const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
 const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
 const LedgerAccountView = lazy(() => import("@/pages/config/ledger/account-view"));
@@ -2208,6 +2209,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <LedgerPaymentTypesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/ledger/charge-plugin-rerun">
+        <ProtectedRoute permission="admin" component="ledger">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <ChargePluginRerunPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
