@@ -53,8 +53,9 @@ export function StatementPicker({
   onManualYearChange,
 }: StatementPickerProps) {
   const [useManual, setUseManual] = useState(false);
-  const [multiMode, setMultiMode] = useState(selections.length > 1);
+  const [multiMode, setMultiMode] = useState(false);
   const prevEaIdRef = useRef<string | null>(eaId);
+  const prevSelectionsLenRef = useRef(selections.length);
 
   const { data: invoices, isLoading, isError } = useQuery<InvoiceSummary[]>({
     queryKey: ["/api/ledger/ea", eaId, "invoices"],
@@ -66,14 +67,24 @@ export function StatementPicker({
 
   useEffect(() => {
     if (prevEaIdRef.current !== eaId) {
+      const wasEmpty = !prevEaIdRef.current;
       prevEaIdRef.current = eaId;
-      setUseManual(false);
-      setMultiMode(false);
-      onSelectionsChange([]);
-      onManualMonthChange("");
-      onManualYearChange("");
+      if (!wasEmpty) {
+        setUseManual(false);
+        setMultiMode(false);
+        onSelectionsChange([]);
+        onManualMonthChange("");
+        onManualYearChange("");
+      }
     }
   }, [eaId]);
+
+  useEffect(() => {
+    if (selections.length > 1 && prevSelectionsLenRef.current <= 1) {
+      setMultiMode(true);
+    }
+    prevSelectionsLenRef.current = selections.length;
+  }, [selections.length]);
 
   useEffect(() => {
     if (invoices && invoices.length === 0 && eaId) {
