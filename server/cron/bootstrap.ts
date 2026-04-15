@@ -82,6 +82,12 @@ const DEFAULT_CRON_JOBS: DefaultCronJob[] = [
     schedule: '*/5 * * * *', // Every 5 minutes
     isEnabled: false, // Disabled by default - enable and configure batch sizes first
   },
+  {
+    name: 'sitespecific-t631-dispatch-job-group-fetch',
+    description: 'Fetches dispatch job groups from the T631 server and syncs them into the local database',
+    schedule: '0 8 * * *', // Daily at 8 AM
+    isEnabled: false, // Disabled by default - requires sitespecific.t631.client component
+  },
 ];
 
 export async function bootstrapCronJobs(): Promise<void> {
