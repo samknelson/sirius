@@ -13,10 +13,26 @@ interface T631Config {
   employerToken: string;
 }
 
+interface T631RequestDiagnostics {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body: unknown[];
+}
+
+interface T631ResponseDiagnostics {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+}
+
 interface T631FetchResult {
   success: boolean;
   action: string;
+  request: T631RequestDiagnostics;
+  response?: T631ResponseDiagnostics;
   data?: unknown;
+  rawBody?: string;
   error?: string;
   timestamp: string;
   durationMs: number;
@@ -42,52 +58,81 @@ function getConfig(): T631Config {
   return { url, accountId, accessToken, employerId, employerToken };
 }
 
-const VALID_ACTIONS = ["ping"] as const;
+function maskCredential(value: string): string {
+  if (value.length <= 8) return "****";
+  return value.substring(0, 4) + "****" + value.substring(value.length - 4);
+}
+
+const VALID_ACTIONS = [
+  "sirius_service_ping",
+  "sirius_edls_server_worker_list",
+  "sirius_dispatch_group_search",
+  "sirius_dispatch_facility_dropdown",
+  "sirius_edls_server_tos_list",
+] as const;
+
 type T631Action = typeof VALID_ACTIONS[number];
 
-export async function t631Fetch(action: T631Action, params?: Record<string, unknown>): Promise<T631FetchResult> {
+export async function t631Fetch(action: T631Action): Promise<T631FetchResult> {
   const startTime = Date.now();
   const timestamp = new Date().toISOString();
 
+  const config = getConfig();
+
+  const basicAuth = Buffer.from(`${config.accountId}:${config.accessToken}`).toString("base64");
+
+  const requestBody: unknown[] = [action, config.employerId, config.employerToken];
+
+  const requestDiagnostics: T631RequestDiagnostics = {
+    url: config.url,
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Basic ${maskCredential(basicAuth)}`,
+    },
+    body: [action, maskCredential(config.employerId), maskCredential(config.employerToken)],
+  };
+
   try {
-    const config = getConfig();
-
-    const requestBody: Record<string, unknown> = {
-      action,
-      account_id: config.accountId,
-      access_token: config.accessToken,
-      employer_id: config.employerId,
-      employer_token: config.employerToken,
-      ...params,
-    };
-
     const response = await fetch(config.url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Authorization": `Basic ${basicAuth}`,
       },
       body: JSON.stringify(requestBody),
     });
 
     const durationMs = Date.now() - startTime;
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "Unable to read response body");
-      return {
-        success: false,
-        action,
-        error: `HTTP ${response.status}: ${errorText}`,
-        timestamp,
-        durationMs,
-      };
+    const responseHeaders: Record<string, string> = {};
+    response.headers.forEach((value, key) => {
+      responseHeaders[key] = value;
+    });
+
+    const responseDiagnostics: T631ResponseDiagnostics = {
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+    };
+
+    const rawBody = await response.text().catch(() => "");
+
+    let parsedData: unknown = undefined;
+    try {
+      parsedData = JSON.parse(rawBody);
+    } catch {
+      // not JSON
     }
 
-    const data = await response.json().catch(() => null);
-
     return {
-      success: true,
+      success: response.ok,
       action,
-      data,
+      request: requestDiagnostics,
+      response: responseDiagnostics,
+      data: parsedData,
+      rawBody: parsedData === undefined ? rawBody : undefined,
+      error: !response.ok ? `HTTP ${response.status} ${response.statusText}` : undefined,
       timestamp,
       durationMs,
     };
@@ -96,6 +141,7 @@ export async function t631Fetch(action: T631Action, params?: Record<string, unkn
     return {
       success: false,
       action,
+      request: requestDiagnostics,
       error: error instanceof Error ? error.message : "Unknown error",
       timestamp,
       durationMs,
@@ -105,7 +151,6 @@ export async function t631Fetch(action: T631Action, params?: Record<string, unkn
 
 const fetchRequestSchema = z.object({
   action: z.enum(VALID_ACTIONS),
-  params: z.record(z.unknown()).optional(),
 });
 
 export function registerT631ClientFetchRoutes(
@@ -132,8 +177,8 @@ export function registerT631ClientFetchRoutes(
           });
         }
 
-        const { action, params } = parsed.data;
-        const result = await t631Fetch(action, params);
+        const { action } = parsed.data;
+        const result = await t631Fetch(action);
 
         res.json(result);
       } catch (error) {
