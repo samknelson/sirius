@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -40,9 +40,10 @@ interface RerunWizard {
   hoursCount: number;
 }
 
-interface RerunResult {
+interface RerunWizardResult {
   wizardId: string;
   employerId: string;
+  employerName: string | null;
   year: number;
   month: number;
   wmbProcessed: number;
@@ -50,6 +51,7 @@ interface RerunResult {
   hoursProcessed: number;
   hoursErrors: number;
   totalTransactions: number;
+  error?: string;
 }
 
 const MONTH_NAMES = [
@@ -61,27 +63,46 @@ export default function ChargePluginRerunPage() {
   usePageTitle("Rerun Charge Plugins");
   const { toast } = useToast();
 
-  const [selectedWizardId, setSelectedWizardId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [triggerWmb, setTriggerWmb] = useState(true);
   const [triggerHours, setTriggerHours] = useState(true);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [lastResult, setLastResult] = useState<RerunResult | null>(null);
+  const [lastResults, setLastResults] = useState<RerunWizardResult[]>([]);
 
   const { data: wizards = [], isLoading } = useQuery<RerunWizard[]>({
     queryKey: ["/api/charge-plugin-rerun/wizards"],
   });
 
+  const selectedWizards = useMemo(
+    () => wizards.filter((w) => selectedIds.has(w.id)),
+    [wizards, selectedIds]
+  );
+
+  const totalWmb = useMemo(
+    () => selectedWizards.reduce((sum, w) => sum + w.wmbCount, 0),
+    [selectedWizards]
+  );
+  const totalHours = useMemo(
+    () => selectedWizards.reduce((sum, w) => sum + w.hoursCount, 0),
+    [selectedWizards]
+  );
+
+  const allSelected = wizards.length > 0 && selectedIds.size === wizards.length;
+  const someSelected = selectedIds.size > 0 && selectedIds.size < wizards.length;
+
   const rerunMutation = useMutation({
-    mutationFn: async ({ wizardId, triggers }: { wizardId: string; triggers: string[] }) => {
-      return apiRequest("POST", "/api/charge-plugin-rerun/execute", { wizardId, triggers });
+    mutationFn: async ({ wizardIds, triggers }: { wizardIds: string[]; triggers: string[] }) => {
+      return apiRequest("POST", "/api/charge-plugin-rerun/execute", { wizardIds, triggers });
     },
-    onSuccess: (data: RerunResult) => {
-      setLastResult(data);
-      const hasErrors = data.wmbErrors > 0 || data.hoursErrors > 0;
+    onSuccess: (data: { results: RerunWizardResult[] }) => {
+      setLastResults(data.results);
+      const totalTx = data.results.reduce((s, r) => s + r.totalTransactions, 0);
+      const totalErrors = data.results.reduce((s, r) => s + r.wmbErrors + r.hoursErrors, 0);
+      const failedWizards = data.results.filter((r) => r.error).length;
       toast({
-        title: hasErrors ? "Rerun completed with errors" : "Rerun completed",
-        description: `${data.totalTransactions} ledger entries created/updated. WMB: ${data.wmbProcessed} processed${data.wmbErrors ? `, ${data.wmbErrors} errors` : ""}. Hours: ${data.hoursProcessed} processed${data.hoursErrors ? `, ${data.hoursErrors} errors` : ""}.`,
-        variant: hasErrors ? "destructive" : "default",
+        title: totalErrors > 0 || failedWizards > 0 ? "Rerun completed with issues" : "Rerun completed",
+        description: `${data.results.length} wizard(s) processed. ${totalTx} ledger entries created/updated.${failedWizards > 0 ? ` ${failedWizards} wizard(s) had errors.` : ""}`,
+        variant: totalErrors > 0 || failedWizards > 0 ? "destructive" : "default",
       });
     },
     onError: (error: Error) => {
@@ -93,10 +114,28 @@ export default function ChargePluginRerunPage() {
     },
   });
 
-  const selectedWizard = wizards.find((w) => w.id === selectedWizardId);
+  function toggleWizard(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(wizards.map((w) => w.id)));
+    }
+  }
 
   function handleRunClick() {
-    if (!selectedWizardId) return;
+    if (selectedIds.size === 0) return;
     if (!triggerWmb && !triggerHours) {
       toast({ title: "Select at least one trigger type", variant: "destructive" });
       return;
@@ -105,13 +144,12 @@ export default function ChargePluginRerunPage() {
   }
 
   function handleConfirm() {
-    if (!selectedWizardId) return;
     const triggers: string[] = [];
     if (triggerWmb) triggers.push("wmb_saved");
     if (triggerHours) triggers.push("hours_saved");
     setConfirmOpen(false);
-    setLastResult(null);
-    rerunMutation.mutate({ wizardId: selectedWizardId, triggers });
+    setLastResults([]);
+    rerunMutation.mutate({ wizardIds: Array.from(selectedIds), triggers });
   }
 
   if (isLoading) {
@@ -132,7 +170,7 @@ export default function ChargePluginRerunPage() {
             Rerun Charge Plugins
           </CardTitle>
           <CardDescription>
-            Re-execute charge plugins for a completed wizard. This replays WMB and/or Hours events
+            Re-execute charge plugins for completed wizards. This replays WMB and/or Hours events
             through the charge plugin system, recalculating ledger entries using current rates.
             Existing entries are updated (not duplicated) thanks to the charge plugin key system.
           </CardDescription>
@@ -145,7 +183,13 @@ export default function ChargePluginRerunPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-12"></TableHead>
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                        onCheckedChange={toggleAll}
+                        aria-label="Select all"
+                      />
+                    </TableHead>
                     <TableHead>Wizard</TableHead>
                     <TableHead>Employer</TableHead>
                     <TableHead>Period</TableHead>
@@ -158,16 +202,13 @@ export default function ChargePluginRerunPage() {
                   {wizards.map((w) => (
                     <TableRow
                       key={w.id}
-                      className={`cursor-pointer ${selectedWizardId === w.id ? "bg-muted" : ""}`}
-                      onClick={() => setSelectedWizardId(w.id)}
+                      className={`cursor-pointer ${selectedIds.has(w.id) ? "bg-muted" : ""}`}
+                      onClick={() => toggleWizard(w.id)}
                     >
-                      <TableCell>
-                        <input
-                          type="radio"
-                          name="wizard"
-                          checked={selectedWizardId === w.id}
-                          onChange={() => setSelectedWizardId(w.id)}
-                          className="h-4 w-4"
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={selectedIds.has(w.id)}
+                          onCheckedChange={() => toggleWizard(w.id)}
                         />
                       </TableCell>
                       <TableCell>
@@ -204,18 +245,20 @@ export default function ChargePluginRerunPage() {
         </CardContent>
       </Card>
 
-      {selectedWizard && (
+      {selectedIds.size > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
-              Rerun: {selectedWizard.displayName}
-              {selectedWizard.employerName && ` — ${selectedWizard.employerName}`}
-              {selectedWizard.year && selectedWizard.month && (
-                <span className="text-muted-foreground font-normal ml-2">
-                  ({MONTH_NAMES[selectedWizard.month]} {selectedWizard.year})
-                </span>
-              )}
+              Rerun {selectedIds.size} wizard{selectedIds.size > 1 ? "s" : ""}
             </CardTitle>
+            <CardDescription>
+              {selectedWizards.map((w) => (
+                <span key={w.id} className="inline-block mr-3">
+                  {w.employerName ?? w.displayName}
+                  {w.year && w.month ? ` (${MONTH_NAMES[w.month]} ${w.year})` : ""}
+                </span>
+              ))}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-3">
@@ -227,7 +270,7 @@ export default function ChargePluginRerunPage() {
                   onCheckedChange={(v) => setTriggerWmb(!!v)}
                 />
                 <label htmlFor="trigger-wmb" className="text-sm cursor-pointer">
-                  WMB Saved ({selectedWizard.wmbCount} records)
+                  WMB Saved ({totalWmb} total records)
                 </label>
               </div>
               <div className="flex items-center space-x-2">
@@ -237,7 +280,7 @@ export default function ChargePluginRerunPage() {
                   onCheckedChange={(v) => setTriggerHours(!!v)}
                 />
                 <label htmlFor="trigger-hours" className="text-sm cursor-pointer">
-                  Hours Saved ({selectedWizard.hoursCount} records)
+                  Hours Saved ({totalHours} total records)
                 </label>
               </div>
             </div>
@@ -261,35 +304,56 @@ export default function ChargePluginRerunPage() {
               </Button>
             </div>
 
-            {lastResult && lastResult.wizardId === selectedWizardId && (
-              <div className="mt-4 p-4 border rounded-md bg-muted/50 space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  {lastResult.wmbErrors === 0 && lastResult.hoursErrors === 0 ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  ) : (
-                    <XCircle className="h-4 w-4 text-red-600" />
-                  )}
-                  Rerun Results
-                </div>
-                <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm">
-                  <span className="text-muted-foreground">WMB records processed:</span>
-                  <span>{lastResult.wmbProcessed}</span>
-                  {lastResult.wmbErrors > 0 && (
-                    <>
-                      <span className="text-red-600">WMB errors:</span>
-                      <span className="text-red-600">{lastResult.wmbErrors}</span>
-                    </>
-                  )}
-                  <span className="text-muted-foreground">Hours records processed:</span>
-                  <span>{lastResult.hoursProcessed}</span>
-                  {lastResult.hoursErrors > 0 && (
-                    <>
-                      <span className="text-red-600">Hours errors:</span>
-                      <span className="text-red-600">{lastResult.hoursErrors}</span>
-                    </>
-                  )}
-                  <span className="text-muted-foreground">Ledger entries created/updated:</span>
-                  <span className="font-medium">{lastResult.totalTransactions}</span>
+            {lastResults.length > 0 && (
+              <div className="mt-4 space-y-3">
+                <p className="text-sm font-medium">Results</p>
+                {lastResults.map((r) => {
+                  const hasErrors = r.wmbErrors > 0 || r.hoursErrors > 0 || !!r.error;
+                  return (
+                    <div
+                      key={r.wizardId}
+                      className={`p-4 border rounded-md space-y-2 ${hasErrors ? "bg-red-50 border-red-200" : "bg-muted/50"}`}
+                    >
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        {hasErrors ? (
+                          <XCircle className="h-4 w-4 text-red-600 shrink-0" />
+                        ) : (
+                          <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                        )}
+                        <span>
+                          {r.employerName ?? r.wizardId.slice(0, 8)}
+                          {r.year && r.month ? ` — ${MONTH_NAMES[r.month]} ${r.year}` : ""}
+                        </span>
+                      </div>
+                      {r.error ? (
+                        <p className="text-sm text-red-600">{r.error}</p>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm">
+                          <span className="text-muted-foreground">WMB records processed:</span>
+                          <span>{r.wmbProcessed}</span>
+                          {r.wmbErrors > 0 && (
+                            <>
+                              <span className="text-red-600">WMB errors:</span>
+                              <span className="text-red-600">{r.wmbErrors}</span>
+                            </>
+                          )}
+                          <span className="text-muted-foreground">Hours records processed:</span>
+                          <span>{r.hoursProcessed}</span>
+                          {r.hoursErrors > 0 && (
+                            <>
+                              <span className="text-red-600">Hours errors:</span>
+                              <span className="text-red-600">{r.hoursErrors}</span>
+                            </>
+                          )}
+                          <span className="text-muted-foreground">Ledger entries created/updated:</span>
+                          <span className="font-medium">{r.totalTransactions}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <div className="pt-2 border-t text-sm font-medium">
+                  Total ledger entries: {lastResults.reduce((s, r) => s + r.totalTransactions, 0)}
                 </div>
               </div>
             )}
@@ -304,38 +368,43 @@ export default function ChargePluginRerunPage() {
               <AlertTriangle className="h-5 w-5 text-amber-500" />
               Confirm Charge Plugin Rerun
             </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-2">
-              <p>
-                This will re-execute charge plugins for{" "}
-                <strong>{selectedWizard?.employerName ?? "this employer"}</strong>{" "}
-                {selectedWizard?.year && selectedWizard?.month && (
-                  <>
-                    for{" "}
-                    <strong>
-                      {MONTH_NAMES[selectedWizard.month]} {selectedWizard.year}
-                    </strong>
-                  </>
-                )}
-                .
-              </p>
-              <p>
-                Triggers:{" "}
-                {[
-                  triggerWmb && `WMB (${selectedWizard?.wmbCount} records)`,
-                  triggerHours && `Hours (${selectedWizard?.hoursCount} records)`,
-                ]
-                  .filter(Boolean)
-                  .join(", ")}
-              </p>
-              <p>
-                Existing ledger entries will be updated with recalculated amounts based on current
-                rate configuration. This cannot be undone.
-              </p>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  This will re-execute charge plugins for{" "}
+                  <strong>{selectedIds.size} wizard{selectedIds.size > 1 ? "s" : ""}</strong>:
+                </p>
+                <ul className="list-disc pl-5 space-y-1">
+                  {selectedWizards.map((w) => (
+                    <li key={w.id}>
+                      {w.employerName ?? w.displayName}
+                      {w.year && w.month
+                        ? ` — ${MONTH_NAMES[w.month]} ${w.year}`
+                        : ""}
+                    </li>
+                  ))}
+                </ul>
+                <p>
+                  Triggers:{" "}
+                  {[
+                    triggerWmb && `WMB (${totalWmb} records)`,
+                    triggerHours && `Hours (${totalHours} records)`,
+                  ]
+                    .filter(Boolean)
+                    .join(", ")}
+                </p>
+                <p>
+                  Existing ledger entries will be updated with recalculated amounts based on current
+                  rate configuration. This cannot be undone.
+                </p>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirm}>Confirm Rerun</AlertDialogAction>
+            <AlertDialogAction onClick={handleConfirm}>
+              Confirm Rerun ({selectedIds.size} wizard{selectedIds.size > 1 ? "s" : ""})
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

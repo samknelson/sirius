@@ -297,130 +297,192 @@ export function registerChargePluginRoutes(
 
   app.post("/api/charge-plugin-rerun/execute", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
     try {
-      const { wizardId, triggers } = req.body as {
-        wizardId: string;
+      const { wizardIds, triggers } = req.body as {
+        wizardIds: string[];
         triggers?: string[];
       };
 
-      if (!wizardId) {
-        return res.status(400).json({ message: "wizardId is required" });
-      }
-
-      const wizard = await storage.wizards.getById(wizardId);
-      if (!wizard) {
-        return res.status(404).json({ message: "Wizard not found" });
-      }
-
-      if (wizard.status !== "complete" && wizard.status !== "completed") {
-        return res.status(400).json({
-          message: `Wizard status is "${wizard.status}" — only completed wizards can be rerun`,
-        });
-      }
-
-      const data = wizard.data as Record<string, unknown> | null;
-      const la = (data?.launchArguments ?? {}) as Record<string, unknown>;
-      const year = la.year as number | undefined;
-      const month = la.month as number | undefined;
-
-      if (!wizard.entityId || !year || !month) {
-        return res.status(400).json({
-          message: "Wizard is missing employer, year, or month information",
-        });
+      if (!wizardIds || !Array.isArray(wizardIds) || wizardIds.length === 0) {
+        return res.status(400).json({ message: "wizardIds array is required" });
       }
 
       const enabledTriggers = new Set(triggers ?? ["wmb_saved", "hours_saved"]);
-
       const db = getClient();
-      let wmbProcessed = 0;
-      let wmbErrors = 0;
-      let hoursProcessed = 0;
-      let hoursErrors = 0;
-      let totalTransactions = 0;
 
-      if (enabledTriggers.has("wmb_saved")) {
-        const wmbs = await db
-          .select()
-          .from(trustWmb)
-          .where(
-            and(
-              eq(trustWmb.employerId, wizard.entityId),
-              eq(trustWmb.year, year),
-              eq(trustWmb.month, month)
-            )
-          );
+      const results: Array<{
+        wizardId: string;
+        employerId: string;
+        employerName: string | null;
+        year: number;
+        month: number;
+        wmbProcessed: number;
+        wmbErrors: number;
+        hoursProcessed: number;
+        hoursErrors: number;
+        totalTransactions: number;
+        error?: string;
+      }> = [];
 
-        for (const wmb of wmbs) {
-          try {
-            const result = await executeChargePlugins({
-              trigger: TriggerType.WMB_SAVED,
-              wmbId: wmb.id,
-              workerId: wmb.workerId,
-              employerId: wmb.employerId,
-              benefitId: wmb.benefitId,
-              year: wmb.year,
-              month: wmb.month,
-            });
-            totalTransactions += result.totalTransactions.length;
-            wmbProcessed++;
-          } catch (err) {
-            wmbErrors++;
-            logger.error("Charge plugin rerun WMB error", {
-              wmbId: wmb.id,
-              error: err instanceof Error ? err.message : String(err),
-            });
+      for (const wizardId of wizardIds) {
+        const wizard = await storage.wizards.getById(wizardId);
+        if (!wizard) {
+          results.push({
+            wizardId,
+            employerId: "",
+            employerName: null,
+            year: 0,
+            month: 0,
+            wmbProcessed: 0,
+            wmbErrors: 0,
+            hoursProcessed: 0,
+            hoursErrors: 0,
+            totalTransactions: 0,
+            error: "Wizard not found",
+          });
+          continue;
+        }
+
+        if (wizard.status !== "complete" && wizard.status !== "completed") {
+          results.push({
+            wizardId,
+            employerId: wizard.entityId ?? "",
+            employerName: null,
+            year: 0,
+            month: 0,
+            wmbProcessed: 0,
+            wmbErrors: 0,
+            hoursProcessed: 0,
+            hoursErrors: 0,
+            totalTransactions: 0,
+            error: `Wizard status is "${wizard.status}" — only completed wizards can be rerun`,
+          });
+          continue;
+        }
+
+        const data = wizard.data as Record<string, unknown> | null;
+        const la = (data?.launchArguments ?? {}) as Record<string, unknown>;
+        const year = la.year as number | undefined;
+        const month = la.month as number | undefined;
+
+        if (!wizard.entityId || !year || !month) {
+          results.push({
+            wizardId,
+            employerId: wizard.entityId ?? "",
+            employerName: null,
+            year: year ?? 0,
+            month: month ?? 0,
+            wmbProcessed: 0,
+            wmbErrors: 0,
+            hoursProcessed: 0,
+            hoursErrors: 0,
+            totalTransactions: 0,
+            error: "Wizard is missing employer, year, or month information",
+          });
+          continue;
+        }
+
+        let employerName: string | null = null;
+        try {
+          const employer = await storage.employers.getEmployer(wizard.entityId);
+          employerName = employer?.name ?? null;
+        } catch {
+          // ignore
+        }
+
+        let wmbProcessed = 0;
+        let wmbErrors = 0;
+        let hoursProcessed = 0;
+        let hoursErrors = 0;
+        let totalTransactions = 0;
+
+        if (enabledTriggers.has("wmb_saved")) {
+          const wmbs = await db
+            .select()
+            .from(trustWmb)
+            .where(
+              and(
+                eq(trustWmb.employerId, wizard.entityId),
+                eq(trustWmb.year, year),
+                eq(trustWmb.month, month)
+              )
+            );
+
+          for (const wmb of wmbs) {
+            try {
+              const result = await executeChargePlugins({
+                trigger: TriggerType.WMB_SAVED,
+                wmbId: wmb.id,
+                workerId: wmb.workerId,
+                employerId: wmb.employerId,
+                benefitId: wmb.benefitId,
+                year: wmb.year,
+                month: wmb.month,
+              });
+              totalTransactions += result.totalTransactions.length;
+              wmbProcessed++;
+            } catch (err) {
+              wmbErrors++;
+              logger.error("Charge plugin rerun WMB error", {
+                wmbId: wmb.id,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
           }
         }
-      }
 
-      if (enabledTriggers.has("hours_saved")) {
-        const hours = await db
-          .select()
-          .from(workerHours)
-          .where(
-            and(
-              eq(workerHours.employerId, wizard.entityId),
-              eq(workerHours.year, year),
-              eq(workerHours.month, month)
-            )
-          );
+        if (enabledTriggers.has("hours_saved")) {
+          const hours = await db
+            .select()
+            .from(workerHours)
+            .where(
+              and(
+                eq(workerHours.employerId, wizard.entityId),
+                eq(workerHours.year, year),
+                eq(workerHours.month, month)
+              )
+            );
 
-        for (const h of hours) {
-          try {
-            const result = await executeChargePlugins({
-              trigger: TriggerType.HOURS_SAVED,
-              hoursId: h.id,
-              workerId: h.workerId,
-              employerId: h.employerId,
-              year: h.year,
-              month: h.month,
-              day: h.day,
-              hours: h.hours || 0,
-              employmentStatusId: h.employmentStatusId,
-              home: h.home,
-            });
-            totalTransactions += result.totalTransactions.length;
-            hoursProcessed++;
-          } catch (err) {
-            hoursErrors++;
-            logger.error("Charge plugin rerun hours error", {
-              hoursId: h.id,
-              error: err instanceof Error ? err.message : String(err),
-            });
+          for (const h of hours) {
+            try {
+              const result = await executeChargePlugins({
+                trigger: TriggerType.HOURS_SAVED,
+                hoursId: h.id,
+                workerId: h.workerId,
+                employerId: h.employerId,
+                year: h.year,
+                month: h.month,
+                day: h.day,
+                hours: h.hours || 0,
+                employmentStatusId: h.employmentStatusId,
+                home: h.home,
+              });
+              totalTransactions += result.totalTransactions.length;
+              hoursProcessed++;
+            } catch (err) {
+              hoursErrors++;
+              logger.error("Charge plugin rerun hours error", {
+                hoursId: h.id,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
           }
         }
+
+        results.push({
+          wizardId,
+          employerId: wizard.entityId,
+          employerName,
+          year,
+          month,
+          wmbProcessed,
+          wmbErrors,
+          hoursProcessed,
+          hoursErrors,
+          totalTransactions,
+        });
       }
 
-      res.json({
-        wizardId,
-        employerId: wizard.entityId,
-        year,
-        month,
-        wmbProcessed,
-        wmbErrors,
-        hoursProcessed,
-        hoursErrors,
-        totalTransactions,
-      });
+      res.json({ results });
     } catch (error) {
       logger.error("Charge plugin rerun failed", {
         error: error instanceof Error ? error.message : String(error),
