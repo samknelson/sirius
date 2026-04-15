@@ -323,11 +323,10 @@ export function StatementPicker({
                     }`}
                     onClick={() => handleRowClick(inv)}
                   >
-                    <td className="p-2">
+                    <td className="p-2" onClick={(e) => e.stopPropagation()}>
                       <Checkbox
                         checked={selected}
                         onCheckedChange={() => handleRowClick(inv)}
-                        onClick={(e) => e.stopPropagation()}
                       />
                     </td>
                     <td className="p-2">
