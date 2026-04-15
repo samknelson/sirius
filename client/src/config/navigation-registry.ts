@@ -85,6 +85,7 @@ export const configSections: NavSection[] = [
       { path: "/config/options/department", label: "Departments", icon: List, testId: "nav-config-departments", permission: "admin" },
       { path: "/config/options/employer-contact-type", label: "Employer Contact Types", icon: List, testId: "nav-config-employer-contact-types", permission: "admin" },
       { path: "/config/employers/user-settings", label: "Employer User Settings", icon: Settings, testId: "nav-config-users-employer-settings", permission: "admin" },
+      { path: "/dispatch/job_groups", label: "Job Groups", icon: Layers, testId: "nav-dispatch-job-groups", permission: "staff", requiresComponent: "dispatch.job_group" },
     ],
   },
   {
@@ -136,7 +137,6 @@ export const configSections: NavSection[] = [
       { path: "/config/dispatch/plugins", label: "Eligibility Plugins", icon: Puzzle, testId: "nav-config-dispatch-plugins", permission: "admin", requiresComponent: "dispatch" },
       { path: "/config/dispatch/dnc", label: "Do Not Call", icon: Phone, testId: "nav-config-dispatch-dnc", permission: "admin", requiresComponent: "dispatch.dnc" },
       { path: "/config/dispatch/eba", label: "EBA", icon: Calendar, testId: "nav-config-dispatch-eba", permission: "admin", requiresComponent: "dispatch.eba" },
-      { path: "/dispatch/job_groups", label: "Job Groups", icon: Layers, testId: "nav-dispatch-job-groups", permission: "staff", requiresComponent: "dispatch.job_group" },
       { path: "/config/sitespecific/hta/home-employment-statuses", label: "Home Employment Statuses", icon: Building2, testId: "nav-config-hta-home-employment-statuses", permission: "staff", requiresComponent: "sitespecific.hta" },
     ],
   },
