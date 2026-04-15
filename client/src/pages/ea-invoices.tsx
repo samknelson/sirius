@@ -46,7 +46,7 @@ interface InvoiceDetails {
   };
 }
 
-type SectionKey = "invoicedAmount" | "paymentsReceived" | "paymentsApplied";
+type SectionKey = "invoicedAmount" | "paymentsApplied";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -55,7 +55,6 @@ const MONTH_NAMES = [
 
 const SECTION_EXPLAINERS: Record<SectionKey, string> = {
   invoicedAmount: "Charges and adjustments for this statement period.",
-  paymentsReceived: "Payment transactions recorded during this statement period. These reflect when payments were received, not which statement they are allocated against.",
   paymentsApplied: "Payments allocated against this statement period. These may have been received in a different period.",
 };
 
@@ -181,15 +180,11 @@ function SectionDetailModal({ state, onClose, eaId }: { state: SectionModalState
               </div>
             </div>
           </div>
-        ) : section === "paymentsReceived" ? (
-          renderEntryTable(details.sections.paymentsReceived.entries, details.sections.paymentsReceived.subtotal, "Payments Received")
         ) : (
           <div className="space-y-4">
             {renderEntryTable(details.sections.paymentsApplied.entries, details.sections.paymentsApplied.subtotal, "Payments Applied")}
             <p className="text-xs text-muted-foreground leading-relaxed">
-              These payments are shown on this invoice for informational and reconciliation purposes. Payments are applied
-              to your account as of the date they are received, and you will see them included in that statement
-              period's balance in the "Payments Received" section of that statement. Also, please note: per the funds
+              These payments are shown on this invoice for informational and reconciliation purposes. Per the funds
               collections policies, payments are always credited to the oldest outstanding balance when calculating
               interest &amp; penalties.
             </p>
@@ -287,7 +282,6 @@ function EAInvoicesContent() {
                       <Info className="h-3 w-3 text-muted-foreground" />
                     </span>
                   </TableHead>
-                  <TableHead className="text-right">Payments Received</TableHead>
                   <TableHead className="text-right">Outgoing Balance</TableHead>
                   <TableHead className="text-right border-l-2 border-border">Payments Applied</TableHead>
                   <TableHead className="text-right">
@@ -323,11 +317,6 @@ function EAInvoicesContent() {
                         amount={invoicedAmount}
                         onClick={() => setModalState({ invoice, section: "invoicedAmount" })}
                         testId={`cell-invoiced-${invoice.year}-${invoice.month}`}
-                      />
-                      <ClickableAmountCell
-                        amount={invoice.paymentsReceivedSubtotal}
-                        onClick={() => setModalState({ invoice, section: "paymentsReceived" })}
-                        testId={`cell-received-${invoice.year}-${invoice.month}`}
                       />
                       <TableCell
                         className={`text-right ${amountClass(invoice.outgoingBalance)}`}

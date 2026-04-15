@@ -266,12 +266,6 @@ function EAInvoiceViewContent() {
         </CardContent>
       </Card>
 
-      <StatementSection
-        title="Payments Received"
-        explainer="Payment transactions recorded during this statement period. These reflect when payments were received, not which statement they are allocated against."
-        section={invoiceDetails.sections.paymentsReceived}
-      />
-
       <Card className="border-2 border-primary/20 statement-section">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
@@ -329,9 +323,7 @@ function EAInvoiceViewContent() {
             </div>
 
             <p className="text-xs text-muted-foreground leading-relaxed">
-              These payments are shown on this invoice for informational and reconciliation purposes. Payments are applied
-              to your account as of the date they are received, and you will see them included in that statement
-              period's balance in the "Payments Received" section of that statement. Also, please note: per the funds
+              These payments are shown on this invoice for informational and reconciliation purposes. Per the funds
               collections policies, payments are always credited to the oldest outstanding balance when calculating
               interest &amp; penalties.
             </p>
