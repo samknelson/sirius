@@ -1,4 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import { randomBytes } from "crypto";
 import { requireComponent } from "../../../components";
 import { z } from "zod";
 
@@ -84,7 +85,11 @@ export async function t631Fetch(action: T631Action): Promise<T631FetchResult> {
   let requestBody: unknown[];
   let diagnosticsBody: unknown[];
 
-  if (action === "sirius_dispatch_group_search") {
+  if (action === "sirius_service_ping") {
+    const echoText = randomBytes(6).toString("hex");
+    requestBody = [action, "Echo Text Follows", echoText];
+    diagnosticsBody = [action, "Echo Text Follows", echoText];
+  } else if (action === "sirius_dispatch_group_search") {
     const ts = Math.floor(Date.now() / 1000);
     const innerPayload = ["sirius_dispatch_group_search", { domain_root: 1, limit: 500, ts }];
     requestBody = [action, innerPayload];
