@@ -334,7 +334,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
 
       const processedBody = {
         ...rawBody,
-        dateReceived: rawBody.dateReceived ? new Date(rawBody.dateReceived) : undefined,
+        dateReceived: new Date(rawBody.dateReceived),
         dateCleared: rawBody.dateCleared ? new Date(rawBody.dateCleared) : undefined,
       };
       

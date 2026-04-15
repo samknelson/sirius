@@ -607,7 +607,7 @@ export const ledgerPayments = pgTable("ledger_payments", {
   ledgerEaId: varchar("ledger_ea_id").notNull().references(() => ledgerEa.id),
   details: jsonb("details"),
   dateCreated: timestamp("date_created").default(sql`now()`).notNull(),
-  dateReceived: timestamp("date_received"),
+  dateReceived: timestamp("date_received").notNull(),
   dateCleared: timestamp("date_cleared"),
   memo: text("memo"),
 });

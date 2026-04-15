@@ -161,7 +161,7 @@ function PaymentEditContent() {
       paymentType: payment.paymentType,
       ledgerEaId: payment.ledgerEaId,
       details: payment.details as PaymentDetails,
-      dateReceived: payment.dateReceived ? new Date(payment.dateReceived) : undefined,
+      dateReceived: new Date(payment.dateReceived),
       dateCleared: payment.dateCleared ? new Date(payment.dateCleared) : undefined,
       memo: payment.memo,
     } : undefined,
