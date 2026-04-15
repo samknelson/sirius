@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Loader2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 
 function EditContent() {
   const { group } = useDispatchJobGroupLayout();
@@ -57,8 +58,20 @@ function EditContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/dispatch-job-groups", group.id] });
       toast({ title: "Job group updated", description: "The job group has been updated." });
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({ title: "Failed to update", description: error?.message || "An error occurred", variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => apiRequest("DELETE", `/api/dispatch-job-groups/${group.id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dispatch-job-groups"] });
+      toast({ title: "Job group deleted", description: `"${group.name}" has been deleted.` });
+      setLocation("/dispatch/job_groups");
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to delete", description: error?.message || "An error occurred", variant: "destructive" });
     },
   });
 
@@ -141,6 +154,46 @@ function EditContent() {
               </Button>
             </div>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card className="border-destructive" data-testid="card-delete">
+        <CardHeader>
+          <CardTitle className="text-destructive">Danger Zone</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Delete this job group</p>
+              <p className="text-sm text-muted-foreground">This action cannot be undone.</p>
+            </div>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={deleteMutation.isPending} data-testid="button-delete">
+                  {deleteMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                  Delete
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Job Group</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to delete "{group.name}"? This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => deleteMutation.mutate()}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    data-testid="button-confirm-delete"
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </CardContent>
       </Card>
     </div>
