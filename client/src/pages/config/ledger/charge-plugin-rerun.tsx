@@ -51,6 +51,7 @@ interface RerunWizardResult {
   hoursProcessed: number;
   hoursErrors: number;
   totalTransactions: number;
+  entriesDeleted: number;
   error?: string;
 }
 
@@ -345,7 +346,9 @@ export default function ChargePluginRerunPage() {
                               <span className="text-red-600">{r.hoursErrors}</span>
                             </>
                           )}
-                          <span className="text-muted-foreground">Ledger entries created/updated:</span>
+                          <span className="text-muted-foreground">Old entries cleared:</span>
+                          <span>{r.entriesDeleted}</span>
+                          <span className="text-muted-foreground">New entries created:</span>
                           <span className="font-medium">{r.totalTransactions}</span>
                         </div>
                       )}

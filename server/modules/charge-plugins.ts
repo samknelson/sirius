@@ -5,11 +5,11 @@ import { chargePluginRegistry, getAllEnabledChargePlugins, isChargePluginEnabled
 import { type ChargePluginMetadata, TriggerType } from "../charge-plugins/types";
 import { executeChargePlugins } from "../charge-plugins/executor";
 import { z } from "zod";
-import { insertChargePluginConfigSchema, trustWmb, workerHours } from "@shared/schema";
+import { insertChargePluginConfigSchema, trustWmb, workerHours, ledger } from "@shared/schema";
 import { requireComponent } from "./components";
 import { wizardRegistry } from "../wizards/index.js";
 import { getClient } from "../storage/transaction-context";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "../logger";
 
 /**
@@ -394,6 +394,7 @@ export function registerChargePluginRoutes(
         let hoursProcessed = 0;
         let hoursErrors = 0;
         let totalTransactions = 0;
+        let entriesDeleted = 0;
 
         if (enabledTriggers.has("wmb_saved")) {
           const wmbs = await db
@@ -406,6 +407,24 @@ export function registerChargePluginRoutes(
                 eq(trustWmb.month, month)
               )
             );
+
+          if (wmbs.length > 0) {
+            const wmbIds = wmbs.map((w) => w.id);
+            const deleted = await db
+              .delete(ledger)
+              .where(
+                and(
+                  eq(ledger.referenceType, "wmb"),
+                  inArray(ledger.referenceId, wmbIds)
+                )
+              );
+            entriesDeleted += deleted.rowCount ?? 0;
+            logger.info("Deleted existing WMB ledger entries before rerun", {
+              wizardId,
+              count: deleted.rowCount ?? 0,
+              wmbCount: wmbs.length,
+            });
+          }
 
           for (const wmb of wmbs) {
             try {
@@ -441,6 +460,24 @@ export function registerChargePluginRoutes(
                 eq(workerHours.month, month)
               )
             );
+
+          if (hours.length > 0) {
+            const hoursIds = hours.map((h) => h.id);
+            const deletedHours = await db
+              .delete(ledger)
+              .where(
+                and(
+                  inArray(ledger.referenceType, ["hours", "hour"]),
+                  inArray(ledger.referenceId, hoursIds)
+                )
+              );
+            entriesDeleted += deletedHours.rowCount ?? 0;
+            logger.info("Deleted existing hours ledger entries before rerun", {
+              wizardId,
+              count: deletedHours.rowCount ?? 0,
+              hoursCount: hours.length,
+            });
+          }
 
           for (const h of hours) {
             try {
@@ -479,6 +516,7 @@ export function registerChargePluginRoutes(
           hoursProcessed,
           hoursErrors,
           totalTransactions,
+          entriesDeleted,
         });
       }
 
