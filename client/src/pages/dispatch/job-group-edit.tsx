@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -23,7 +22,6 @@ function EditContent() {
     name: "",
     startYmd: "",
     endYmd: "",
-    data: "",
   });
 
   useEffect(() => {
@@ -32,27 +30,17 @@ function EditContent() {
         name: group.name,
         startYmd: group.startYmd,
         endYmd: group.endYmd,
-        data: group.data ? JSON.stringify(group.data, null, 2) : "",
       });
     }
   }, [group]);
 
   const updateMutation = useMutation({
     mutationFn: (data: typeof formData) => {
-      const payload: Record<string, unknown> = {
+      const payload = {
         name: data.name,
         startYmd: data.startYmd,
         endYmd: data.endYmd,
       };
-      if (data.data.trim()) {
-        try {
-          payload.data = JSON.parse(data.data);
-        } catch {
-          throw new Error("Data must be valid JSON");
-        }
-      } else {
-        payload.data = null;
-      }
       return apiRequest("PUT", `/api/dispatch-job-groups/${group.id}`, payload);
     },
     onSuccess: () => {
@@ -124,18 +112,6 @@ function EditContent() {
                   data-testid="input-edit-end-ymd"
                 />
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="data">Data (JSON)</Label>
-              <Textarea
-                id="data"
-                value={formData.data}
-                onChange={(e) => setFormData((prev) => ({ ...prev, data: e.target.value }))}
-                placeholder='{"key": "value"}'
-                rows={6}
-                className="font-mono text-sm"
-                data-testid="input-edit-data"
-              />
             </div>
             <div className="flex gap-3 pt-4">
               <Button

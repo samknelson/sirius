@@ -27,19 +27,6 @@ function DetailsContent() {
           </dl>
         </CardContent>
       </Card>
-
-      {group.data != null && (
-        <Card data-testid="card-data">
-          <CardHeader>
-            <CardTitle>Data</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <pre className="text-sm bg-muted p-4 rounded-md overflow-auto max-h-96" data-testid="text-detail-data">
-              {JSON.stringify(group.data as Record<string, unknown>, null, 2)}
-            </pre>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
