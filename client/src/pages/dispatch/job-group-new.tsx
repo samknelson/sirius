@@ -47,7 +47,7 @@ export default function DispatchJobGroupNewPage() {
       toast({ title: "Job group created", description: "The job group has been created." });
       setLocation(`/dispatch/job_group/${group.id}`);
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({ title: "Failed to create", description: error?.message || "An error occurred", variant: "destructive" });
     },
   });
