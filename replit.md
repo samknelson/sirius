@@ -47,7 +47,7 @@ The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI),
 -   **System Mode**: Application-wide environment mode setting.
 -   **Staff Alert Configuration & Sending System**: Reusable system for configuring and dispatching multi-media alerts.
 -   **Terminology Framework**: Provides site-specific terminology customization.
--   **Dispatch System**: Manages dispatch jobs, types, listings, and detail pages. Features a plugin system to filter eligible workers based on configurable criteria using denormalized eligibility data.
+-   **Dispatch System**: Manages dispatch jobs, types, listings, and detail pages. Features a plugin system to filter eligible workers based on configurable criteria using denormalized eligibility data. **Dispatch Job Groups** (`dispatch.job_group` component): Groups dispatch jobs with date ranges (`start_ymd`/`end_ymd`), optional JSON data, and full CRUD. Schema in `shared/schema/dispatch/job-group-schema.ts`, storage in `server/storage/dispatch/job-groups.ts`, API at `/api/dispatch-job-groups`. Frontend pages at `/dispatch/job_groups` (list), `/dispatch/job_group/new` (create), `/dispatch/job_group/:id` (detail with Details/Edit/Logs tabs). Layout uses `DispatchJobGroupLayout` + `useDispatchJobGroupLayout` hook. Staff-only access.
 -   **Worker Bans**: Tracks worker restrictions and dynamically calculates active status.
 -   **Worker Member Status History**: Tracks worker member statuses per industry over time, with `denormMsIds` on workers for quick lookup.
 -   **HTA Union/Apprentice Import**: Site-specific feed wizard for importing worker data from spreadsheets, including SSN, names, work status, employer, and contact info, with validation and inactivity scans.

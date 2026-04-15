@@ -225,6 +225,11 @@ const DispatchJobNewPage = lazy(() => import("@/pages/dispatch/job-new"));
 const DispatchJobRunPage = lazy(() => import("@/pages/dispatch/job-run"));
 const DispatchJobRunSettingsPage = lazy(() => import("@/pages/dispatch/job-run-settings"));
 const DispatchJobRunBatchPage = lazy(() => import("@/pages/dispatch/job-run-batch"));
+const DispatchJobGroupListPage = lazy(() => import("@/pages/dispatch/job-group-list"));
+const DispatchJobGroupDetailsPage = lazy(() => import("@/pages/dispatch/job-group-details"));
+const DispatchJobGroupEditPage = lazy(() => import("@/pages/dispatch/job-group-edit"));
+const DispatchJobGroupLogsPage = lazy(() => import("@/pages/dispatch/job-group-logs"));
+const DispatchJobGroupNewPage = lazy(() => import("@/pages/dispatch/job-group-new"));
 const DispatchDetailsPage = lazy(() => import("@/pages/dispatch/dispatch-details"));
 const DispatchEditPage = lazy(() => import("@/pages/dispatch/dispatch-edit"));
 const DispatchManagePage = lazy(() => import("@/pages/dispatch/dispatch-manage"));
@@ -2291,6 +2296,46 @@ function Router() {
         <ProtectedRoute tabId="eligible-workers-check" entityType="dispatch_job">
           <AuthenticatedLayout>
             <DispatchJobEligibleWorkersCheckPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job_groups">
+        <ProtectedRoute policy="staff" component="dispatch.job_group">
+          <AuthenticatedLayout>
+            <DispatchJobGroupListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job_group/new">
+        <ProtectedRoute policy="staff" component="dispatch.job_group">
+          <AuthenticatedLayout>
+            <DispatchJobGroupNewPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job_group/:id">
+        <ProtectedRoute tabId="details" entityType="dispatch_job_group">
+          <AuthenticatedLayout>
+            <DispatchJobGroupDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job_group/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="dispatch_job_group">
+          <AuthenticatedLayout>
+            <DispatchJobGroupEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job_group/:id/logs">
+        <ProtectedRoute tabId="logs" entityType="dispatch_job_group">
+          <AuthenticatedLayout>
+            <DispatchJobGroupLogsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

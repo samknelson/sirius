@@ -431,6 +431,14 @@ export function useBulkMessageTabAccess(bulkMessageId: string | undefined, enabl
   });
 }
 
+export function useDispatchJobGroupTabAccess(groupId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'dispatch_job_group', 
+    entityId: groupId, 
+    enabled 
+  });
+}
+
 export function useLedgerPaymentBatchTabAccess(batchId: string | undefined, enabled = true) {
   return useTabAccess({ 
     entityType: 'ledger_payment_batch', 

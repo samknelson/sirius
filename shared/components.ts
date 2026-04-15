@@ -475,6 +475,19 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "dispatch",
   },
   {
+    id: "dispatch.job_group",
+    name: "Dispatch Job Groups",
+    description: "Grouping of dispatch jobs",
+    enabledByDefault: false,
+    category: "dispatch",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/dispatch/job-group-schema.ts",
+      tables: ["dispatch_job_group"]
+    }
+  },
+  {
     id: "debug",
     name: "Debug",
     description: "Debug tools and developer utilities",

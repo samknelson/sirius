@@ -1,0 +1,156 @@
+import { useState, useEffect } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { DispatchJobGroupLayout, useDispatchJobGroupLayout } from "@/components/layouts/DispatchJobGroupLayout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+import { Loader2 } from "lucide-react";
+
+function EditContent() {
+  const { group } = useDispatchJobGroupLayout();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
+  const [formData, setFormData] = useState({
+    name: "",
+    startYmd: "",
+    endYmd: "",
+    data: "",
+  });
+
+  useEffect(() => {
+    if (group) {
+      setFormData({
+        name: group.name,
+        startYmd: group.startYmd,
+        endYmd: group.endYmd,
+        data: group.data ? JSON.stringify(group.data, null, 2) : "",
+      });
+    }
+  }, [group]);
+
+  const updateMutation = useMutation({
+    mutationFn: (data: typeof formData) => {
+      const payload: Record<string, unknown> = {
+        name: data.name,
+        startYmd: data.startYmd,
+        endYmd: data.endYmd,
+      };
+      if (data.data.trim()) {
+        try {
+          payload.data = JSON.parse(data.data);
+        } catch {
+          throw new Error("Data must be valid JSON");
+        }
+      } else {
+        payload.data = null;
+      }
+      return apiRequest("PUT", `/api/dispatch-job-groups/${group.id}`, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dispatch-job-groups"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dispatch-job-groups", group.id] });
+      toast({ title: "Job group updated", description: "The job group has been updated." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to update", description: error?.message || "An error occurred", variant: "destructive" });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name || !formData.startYmd || !formData.endYmd) {
+      toast({ title: "Validation error", description: "Name, start date, and end date are required.", variant: "destructive" });
+      return;
+    }
+    updateMutation.mutate(formData);
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card data-testid="card-edit">
+        <CardHeader>
+          <CardTitle>Edit Job Group</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Name</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                data-testid="input-edit-name"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="startYmd">Start Date</Label>
+                <Input
+                  id="startYmd"
+                  type="date"
+                  value={formData.startYmd}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, startYmd: e.target.value }))}
+                  data-testid="input-edit-start-ymd"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="endYmd">End Date</Label>
+                <Input
+                  id="endYmd"
+                  type="date"
+                  value={formData.endYmd}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, endYmd: e.target.value }))}
+                  data-testid="input-edit-end-ymd"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="data">Data (JSON)</Label>
+              <Textarea
+                id="data"
+                value={formData.data}
+                onChange={(e) => setFormData((prev) => ({ ...prev, data: e.target.value }))}
+                placeholder='{"key": "value"}'
+                rows={6}
+                className="font-mono text-sm"
+                data-testid="input-edit-data"
+              />
+            </div>
+            <div className="flex gap-3 pt-4">
+              <Button
+                type="submit"
+                disabled={updateMutation.isPending || !formData.name}
+                data-testid="button-save"
+              >
+                {updateMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Save Changes
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setLocation(`/dispatch/job_group/${group.id}`)}
+                data-testid="button-cancel-edit"
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function DispatchJobGroupEditPage() {
+  return (
+    <DispatchJobGroupLayout activeTab="edit">
+      <EditContent />
+    </DispatchJobGroupLayout>
+  );
+}

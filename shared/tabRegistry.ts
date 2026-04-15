@@ -57,6 +57,7 @@ export type TabEntityType =
   | 'dispatch'
   | 'dispatch_job'
   | 'dispatch_job_type'
+  | 'dispatch_job_group'
   | 'edls_sheet'
   | 'ledger_account'
   | 'ledger_payment'
@@ -329,6 +330,12 @@ export const dispatchJobTypeTabTree: HierarchicalTab[] = [
   { id: 'delete', label: 'Delete', hrefTemplate: '/config/dispatch-job-type/{id}/delete', permission: 'staff', component: 'dispatch' },
 ];
 
+export const dispatchJobGroupTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/dispatch/job_group/{id}', permission: 'staff', component: 'dispatch.job_group' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/dispatch/job_group/{id}/edit', permission: 'staff', component: 'dispatch.job_group' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/dispatch/job_group/{id}/logs', permission: 'staff', component: 'dispatch.job_group' },
+];
+
 /**
  * EDLS sheet entity tab tree
  */
@@ -531,6 +538,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   dispatch: dispatchTabTree,
   dispatch_job: dispatchJobTabTree,
   dispatch_job_type: dispatchJobTypeTabTree,
+  dispatch_job_group: dispatchJobGroupTabTree,
   edls_sheet: edlsSheetTabTree,
   ledger_account: ledgerAccountTabTree,
   ledger_payment: ledgerPaymentTabTree,
