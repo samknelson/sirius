@@ -81,7 +81,18 @@ export async function t631Fetch(action: T631Action): Promise<T631FetchResult> {
 
   const basicAuth = Buffer.from(`${config.accountId}:${config.accessToken}`).toString("base64");
 
-  const requestBody: unknown[] = [action, config.employerId, config.employerToken];
+  let requestBody: unknown[];
+  let diagnosticsBody: unknown[];
+
+  if (action === "sirius_dispatch_group_search") {
+    const ts = Math.floor(Date.now() / 1000);
+    const innerPayload = ["sirius_dispatch_group_search", { domain_root: 1, limit: 500, ts }];
+    requestBody = [action, innerPayload];
+    diagnosticsBody = [action, innerPayload];
+  } else {
+    requestBody = [action, config.employerId, config.employerToken];
+    diagnosticsBody = [action, maskCredential(config.employerId), maskCredential(config.employerToken)];
+  }
 
   const requestDiagnostics: T631RequestDiagnostics = {
     url: config.url,
@@ -90,7 +101,7 @@ export async function t631Fetch(action: T631Action): Promise<T631FetchResult> {
       "Content-Type": "application/json",
       "Authorization": `Basic ${maskCredential(basicAuth)}`,
     },
-    body: [action, maskCredential(config.employerId), maskCredential(config.employerToken)],
+    body: diagnosticsBody,
   };
 
   try {
