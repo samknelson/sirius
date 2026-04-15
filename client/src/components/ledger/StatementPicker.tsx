@@ -53,7 +53,7 @@ export function StatementPicker({
   onManualYearChange,
 }: StatementPickerProps) {
   const [useManual, setUseManual] = useState(false);
-  const [multiMode, setMultiMode] = useState(false);
+  const [multiMode, setMultiMode] = useState(selections.length > 1);
   const prevEaIdRef = useRef<string | null>(eaId);
 
   const { data: invoices, isLoading, isError } = useQuery<InvoiceSummary[]>({
