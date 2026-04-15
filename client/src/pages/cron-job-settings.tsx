@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Play, Loader2, CheckCircle2, XCircle, Save, Info } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Play, Loader2, CheckCircle2, XCircle, Save, HelpCircle } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CronJobLayout, useCronJobLayout } from "@/components/layouts/CronJobLayout";
@@ -332,11 +333,37 @@ function CronJobSettingsContent() {
           <Separator />
 
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="schedule" className="font-medium">Schedule</Label>
-              <p className="text-sm text-muted-foreground mb-2">
-                Cron expression defining when this job should run
-              </p>
+            <div className="flex items-start justify-between">
+              <div>
+                <Label htmlFor="schedule" className="font-medium">Schedule</Label>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Cron expression defining when this job should run
+                </p>
+              </div>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Cron expression format help" data-testid="button-cron-help">
+                    <HelpCircle className="h-4 w-4" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Cron Expression Format</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <p className="text-sm font-mono">* * * * * (or * * * * * *)</p>
+                    <p className="text-sm">
+                      Minute (0-59), Hour (0-23), Day of Month (1-31), Month (1-12), Day of Week (0-7)
+                    </p>
+                    <div className="text-sm space-y-2">
+                      <p className="font-medium">Examples:</p>
+                      <p><code className="bg-muted px-1 rounded">0 2 * * *</code> - Daily at 2:00 AM</p>
+                      <p><code className="bg-muted px-1 rounded">*/15 * * * *</code> - Every 15 minutes</p>
+                      <p><code className="bg-muted px-1 rounded">0 0 * * 0</code> - Weekly on Sunday at midnight</p>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
             <div className="space-y-3">
               <div className="flex gap-2">
@@ -374,23 +401,6 @@ function CronJobSettingsContent() {
                   <AlertDescription>{scheduleError}</AlertDescription>
                 </Alert>
               )}
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  <div className="space-y-1">
-                    <p className="font-medium">Cron Expression Format:</p>
-                    <p className="text-xs font-mono">* * * * * (or * * * * * *)</p>
-                    <p className="text-xs">
-                      Minute (0-59), Hour (0-23), Day of Month (1-31), Month (1-12), Day of Week (0-7)
-                    </p>
-                    <div className="text-xs mt-2 space-y-1">
-                      <p><code className="bg-muted px-1 rounded">0 2 * * *</code> - Daily at 2:00 AM</p>
-                      <p><code className="bg-muted px-1 rounded">*/15 * * * *</code> - Every 15 minutes</p>
-                      <p><code className="bg-muted px-1 rounded">0 0 * * 0</code> - Weekly on Sunday at midnight</p>
-                    </div>
-                  </div>
-                </AlertDescription>
-              </Alert>
             </div>
           </div>
 
