@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../../storage";
 import { createUnifiedOptionsStorage } from "../../storage/unified-options";
-import { insertLedgerPaymentSchema, type LedgerPayment } from "@shared/schema";
+import { insertLedgerPaymentSchema, type LedgerPayment, type LedgerPaymentWithEntity, type AllocatedEntity } from "@shared/schema";
 import { requireAccess, checkAccessInline } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { executeChargePlugins, TriggerType, PaymentSavedContext, LedgerNotification } from "../../charge-plugins";
@@ -9,6 +9,71 @@ import { logger } from "../../logger";
 import { eventBus, EventType } from "../../services/event-bus";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
+
+async function enrichWithAllocatedEntities(
+  payments: LedgerPaymentWithEntity[]
+): Promise<LedgerPaymentWithEntity[]> {
+  const allEaIds = new Set<string>();
+  for (const payment of payments) {
+    const details = payment.details as Record<string, unknown> | null;
+    const pa = Array.isArray(details?.proposedAllocation)
+      ? (details.proposedAllocation as Array<{ eaId: string }>)
+      : [];
+    for (const alloc of pa) {
+      if (alloc.eaId) allEaIds.add(alloc.eaId);
+    }
+  }
+
+  if (allEaIds.size === 0) {
+    return payments.map(p => ({ ...p, allocatedEntities: [] }));
+  }
+
+  const eaMap = new Map<string, { entityType: string; entityId: string }>();
+  const entityEmployerIds = new Set<string>();
+
+  for (const eaId of allEaIds) {
+    const ea = await storage.ledger.ea.get(eaId);
+    if (ea) {
+      eaMap.set(eaId, { entityType: ea.entityType, entityId: ea.entityId });
+      if (ea.entityType === "employer") {
+        entityEmployerIds.add(ea.entityId);
+      }
+    }
+  }
+
+  const employerNames = new Map<string, string>();
+  for (const empId of entityEmployerIds) {
+    const emp = await storage.employers.getEmployer(empId);
+    if (emp) employerNames.set(empId, emp.name);
+  }
+
+  return payments.map(payment => {
+    const details = payment.details as Record<string, unknown> | null;
+    const pa = Array.isArray(details?.proposedAllocation)
+      ? (details.proposedAllocation as Array<{ eaId: string }>)
+      : [];
+
+    const seenEaIds = new Set<string>();
+    const allocatedEntities: AllocatedEntity[] = [];
+    for (const alloc of pa) {
+      if (!alloc.eaId || seenEaIds.has(alloc.eaId)) continue;
+      seenEaIds.add(alloc.eaId);
+      const ea = eaMap.get(alloc.eaId);
+      if (ea) {
+        allocatedEntities.push({
+          eaId: alloc.eaId,
+          entityType: ea.entityType,
+          entityId: ea.entityId,
+          entityName: ea.entityType === "employer"
+            ? employerNames.get(ea.entityId) || null
+            : null,
+        });
+      }
+    }
+
+    return { ...payment, allocatedEntities };
+  });
+}
 
 interface ProposedAllocationEntry {
   eaId: string;
@@ -258,10 +323,12 @@ export function registerLedgerPaymentRoutes(app: Express) {
 
       if (limit !== undefined && offset !== undefined) {
         const result = await storage.ledger.payments.getByAccountIdWithEntityPaginated(accountId, limit, offset);
+        result.data = await enrichWithAllocatedEntities(result.data);
         res.json(result);
       } else {
         const payments = await storage.ledger.payments.getByAccountIdWithEntity(accountId);
-        res.json(payments);
+        const enriched = await enrichWithAllocatedEntities(payments);
+        res.json(enriched);
       }
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch payments" });

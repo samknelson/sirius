@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
-import type { LedgerPaymentWithEntity, LedgerPaymentType } from "@shared/schema";
+import type { LedgerPaymentWithEntity, LedgerPaymentType, AllocatedEntity } from "@shared/schema";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Download, ArrowUpDown, Filter, X, Plus } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -17,6 +18,25 @@ import { stringify } from "csv-stringify/browser/esm/sync";
 
 const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
 const ITEMS_PER_PAGE = 100;
+
+function getAllocatedEntities(payment: LedgerPaymentWithEntity): AllocatedEntity[] {
+  if (payment.allocatedEntities && payment.allocatedEntities.length > 0) {
+    return payment.allocatedEntities;
+  }
+  return [{
+    eaId: payment.ledgerEaId,
+    entityType: payment.entityType,
+    entityId: payment.entityId,
+    entityName: payment.entityName,
+  }];
+}
+
+function getEntityDisplayName(payment: LedgerPaymentWithEntity): string {
+  const entities = getAllocatedEntities(payment);
+  if (entities.length === 0) return "-";
+  if (entities.length === 1) return entities[0].entityName || "-";
+  return "Multiple";
+}
 
 type SortField = "amount" | "dateCreated" | "dateReceived" | "dateCleared" | "entityName";
 type SortDirection = "asc" | "desc";
@@ -86,12 +106,18 @@ function AccountPaymentsContent() {
     }
 
     if (filterEntityType !== "all") {
-      result = result.filter(p => p.entityType === filterEntityType);
+      result = result.filter(p => {
+        const entities = getAllocatedEntities(p);
+        return entities.some(e => e.entityType === filterEntityType);
+      });
     }
 
     if (filterEntityName) {
       result = result.filter(p => {
-        return p.entityName?.toLowerCase().includes(filterEntityName.toLowerCase());
+        const entities = getAllocatedEntities(p);
+        return entities.some(e =>
+          e.entityName?.toLowerCase().includes(filterEntityName.toLowerCase())
+        );
       });
     }
 
@@ -156,8 +182,8 @@ function AccountPaymentsContent() {
         aValue = parseFloat(a.amount);
         bValue = parseFloat(b.amount);
       } else if (sortField === "entityName") {
-        aValue = a.entityName || "";
-        bValue = b.entityName || "";
+        aValue = getEntityDisplayName(a);
+        bValue = getEntityDisplayName(b);
       } else if (sortField === "dateCreated") {
         aValue = a.dateCreated ? new Date(a.dateCreated).getTime() : null;
         bValue = b.dateCreated ? new Date(b.dateCreated).getTime() : null;
@@ -280,10 +306,15 @@ function AccountPaymentsContent() {
   const offset = (currentPage - 1) * ITEMS_PER_PAGE;
   const paginatedPayments = filteredAndSortedPayments.slice(offset, offset + ITEMS_PER_PAGE);
 
-  // Get unique entity types
   const entityTypes = useMemo(() => {
     if (!payments) return [];
-    const types = new Set(payments.map(p => p.entityType));
+    const types = new Set<string>();
+    for (const p of payments) {
+      const entities = getAllocatedEntities(p);
+      for (const e of entities) {
+        types.add(e.entityType);
+      }
+    }
     return Array.from(types).sort();
   }, [payments]);
 
@@ -321,12 +352,16 @@ function AccountPaymentsContent() {
       const paymentType = paymentTypes.find(t => t.id === payment.paymentType);
       const details = payment.details as any;
       
+      const entities = getAllocatedEntities(payment);
+      const entityNames = entities
+        .map(e => e.entityName || e.entityId)
+        .join("; ");
+      
       return {
         Amount: parseFloat(payment.amount).toFixed(2),
         "Payment Type": paymentType?.name || "",
         Status: payment.status,
-        "Entity Type": payment.entityType,
-        "Entity Name": payment.entityName || "",
+        "Entity": entityNames,
         Merchant: details?.merchant || "",
         "Check/Transaction Number": details?.checkTransactionNumber || "",
         "Date Created": payment.dateCreated ? new Date(payment.dateCreated).toLocaleDateString() : "",
@@ -343,8 +378,7 @@ function AccountPaymentsContent() {
         "Amount",
         "Payment Type",
         "Status",
-        "Entity Type",
-        "Entity Name",
+        "Entity",
         "Merchant",
         "Check/Transaction Number",
         "Date Created",
@@ -640,7 +674,7 @@ function AccountPaymentsContent() {
                     </div>
                   </TableHead>
                   <TableHead>Merchant</TableHead>
-                  <TableHead>Links</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -651,10 +685,39 @@ function AccountPaymentsContent() {
                   return (
                     <TableRow key={payment.id}>
                       <TableCell>
-                        <div className="space-y-1">
-                          <div className="text-sm font-medium">{payment.entityName || "-"}</div>
-                          <div className="text-xs text-muted-foreground capitalize">{payment.entityType}</div>
-                        </div>
+                        {(() => {
+                          const entities = getAllocatedEntities(payment);
+                          if (entities.length === 0) return <span className="text-sm">-</span>;
+                          if (entities.length === 1) {
+                            return (
+                              <div className="space-y-1">
+                                <div className="text-sm font-medium">{entities[0].entityName || "-"}</div>
+                                <div className="text-xs text-muted-foreground capitalize">{entities[0].entityType}</div>
+                              </div>
+                            );
+                          }
+                          return (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="text-sm font-medium text-primary cursor-default underline decoration-dotted">
+                                    Multiple ({entities.length})
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-xs">
+                                  <ul className="space-y-1">
+                                    {entities.map((e) => (
+                                      <li key={e.eaId} className="text-sm">
+                                        {e.entityName || e.entityId}
+                                        <span className="text-xs text-muted-foreground ml-1 capitalize">({e.entityType})</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>{paymentType?.name || "-"}</TableCell>
                       <TableCell>
@@ -681,25 +744,11 @@ function AccountPaymentsContent() {
                         {details?.merchant || "-"}
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          {payment.entityType === 'employer' && payment.entityId && (
-                            <Button variant="link" size="sm" className="h-auto p-0 text-xs" asChild data-testid={`link-entity-${payment.id}`}>
-                              <Link href={`/employers/${payment.entityId}`}>
-                                Entity
-                              </Link>
-                            </Button>
-                          )}
-                          <Button variant="link" size="sm" className="h-auto p-0 text-xs" asChild data-testid={`link-ea-${payment.id}`}>
-                            <Link href={`/ea/${payment.ledgerEaId}/payments`}>
-                              EA
-                            </Link>
-                          </Button>
-                          <Button variant="link" size="sm" className="h-auto p-0 text-xs" asChild data-testid={`link-payment-${payment.id}`}>
-                            <Link href={`/ledger/payment/${payment.id}`}>
-                              Payment
-                            </Link>
-                          </Button>
-                        </div>
+                        <Button variant="link" size="sm" className="h-auto p-0 text-xs" asChild data-testid={`link-payment-${payment.id}`}>
+                          <Link href={`/ledger/payment/${payment.id}`}>
+                            View
+                          </Link>
+                        </Button>
                       </TableCell>
                     </TableRow>
                   );

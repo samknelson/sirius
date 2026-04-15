@@ -1200,10 +1200,18 @@ export type LedgerAccount = typeof ledgerAccounts.$inferSelect;
 export type InsertLedgerPayment = z.infer<typeof insertLedgerPaymentSchema>;
 export type LedgerPayment = typeof ledgerPayments.$inferSelect;
 
+export type AllocatedEntity = {
+  eaId: string;
+  entityType: string;
+  entityId: string;
+  entityName: string | null;
+};
+
 export type LedgerPaymentWithEntity = LedgerPayment & {
   entityType: string;
   entityId: string;
   entityName: string | null;
+  allocatedEntities: AllocatedEntity[];
 };
 
 export type InsertWizard = z.infer<typeof insertWizardSchema>;
