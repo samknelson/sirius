@@ -53,9 +53,8 @@ export function StatementPicker({
   onManualYearChange,
 }: StatementPickerProps) {
   const [useManual, setUseManual] = useState(false);
-  const [multiMode, setMultiMode] = useState(false);
+  const [multiMode, setMultiMode] = useState(selections.length > 1);
   const prevEaIdRef = useRef<string | null>(eaId);
-  const prevSelectionsLenRef = useRef(selections.length);
 
   const { data: invoices, isLoading, isError } = useQuery<InvoiceSummary[]>({
     queryKey: ["/api/ledger/ea", eaId, "invoices"],
@@ -80,10 +79,9 @@ export function StatementPicker({
   }, [eaId]);
 
   useEffect(() => {
-    if (selections.length > 1 && prevSelectionsLenRef.current <= 1) {
+    if (selections.length > 1) {
       setMultiMode(true);
     }
-    prevSelectionsLenRef.current = selections.length;
   }, [selections.length]);
 
   useEffect(() => {
@@ -91,12 +89,6 @@ export function StatementPicker({
       setUseManual(true);
     }
   }, [invoices, eaId]);
-
-  useEffect(() => {
-    if (!multiMode && selections.length > 1) {
-      onSelectionsChange([selections[0]]);
-    }
-  }, [multiMode]);
 
   if (!eaId) {
     return (
@@ -413,7 +405,12 @@ export function StatementPicker({
               <button
                 type="button"
                 className="text-primary underline"
-                onClick={() => setMultiMode(false)}
+                onClick={() => {
+                  setMultiMode(false);
+                  if (selections.length > 1) {
+                    onSelectionsChange([selections[0]]);
+                  }
+                }}
               >
                 single statement
               </button>
