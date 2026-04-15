@@ -25,7 +25,6 @@ function isActive(startYmd: string, endYmd: string): boolean {
 export default function DispatchJobGroupListPage() {
   usePageTitle("Job Groups");
   const [search, setSearch] = useState("");
-  const [activeFilter, setActiveFilter] = useState<string>("all");
   const [page, setPage] = useState(0);
   const limit = 50;
 
@@ -33,10 +32,9 @@ export default function DispatchJobGroupListPage() {
   queryParams.set("page", String(page));
   queryParams.set("limit", String(limit));
   if (search) queryParams.set("search", search);
-  if (activeFilter !== "all") queryParams.set("active", activeFilter);
 
   const { data, isLoading } = useQuery<PaginatedResult>({
-    queryKey: ["/api/dispatch-job-groups", { page, search, active: activeFilter }],
+    queryKey: ["/api/dispatch-job-groups", { page, search }],
     queryFn: async () => {
       const res = await fetch(`/api/dispatch-job-groups?${queryParams.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch");
@@ -61,7 +59,7 @@ export default function DispatchJobGroupListPage() {
         </Link>
       </div>
 
-      <div className="mb-4 flex gap-3 items-center">
+      <div className="mb-4">
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -72,16 +70,6 @@ export default function DispatchJobGroupListPage() {
             data-testid="input-search"
           />
         </div>
-        <Select value={activeFilter} onValueChange={(val) => { setActiveFilter(val); setPage(0); }}>
-          <SelectTrigger className="w-[140px]" data-testid="select-active-filter">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="inactive">Inactive</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       {isLoading ? (

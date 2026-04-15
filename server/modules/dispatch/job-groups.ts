@@ -20,6 +20,7 @@ export function registerDispatchJobGroupsRoutes(
       try {
         const {
           search,
+          active,
           page: pageParam,
           limit: limitParam,
         } = req.query;
@@ -30,6 +31,9 @@ export function registerDispatchJobGroupsRoutes(
         const filters: DispatchJobGroupFilters = {};
         if (search && typeof search === "string") {
           filters.search = search;
+        }
+        if (active && typeof active === "string" && ['active', 'inactive', 'all'].includes(active)) {
+          filters.active = active as 'active' | 'inactive' | 'all';
         }
 
         const result = await storage.dispatchJobGroups.getPaginated(page, limit, filters);

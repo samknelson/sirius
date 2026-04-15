@@ -12,6 +12,7 @@ export const validate = createNoopValidator<InsertDispatchJobGroup, DispatchJobG
 
 export interface DispatchJobGroupFilters {
   search?: string;
+  active?: 'active' | 'inactive' | 'all';
 }
 
 export interface PaginatedDispatchJobGroups {
@@ -36,6 +37,7 @@ export const dispatchJobGroupLoggingConfig: StorageLoggingConfig<DispatchJobGrou
     create: {
       enabled: true,
       getEntityId: (args, result) => result?.id || 'new dispatch job group',
+      getHostEntityId: (args, result) => result?.id,
       getDescription: async (args, result) => {
         const name = result?.name || args[0]?.name || 'Unnamed';
         return `Created Dispatch Job Group "${name}"`;
@@ -48,6 +50,7 @@ export const dispatchJobGroupLoggingConfig: StorageLoggingConfig<DispatchJobGrou
     update: {
       enabled: true,
       getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
       getDescription: async (args, result, beforeState) => {
         const name = result?.name || beforeState?.group?.name || 'Unknown';
         return `Updated Dispatch Job Group "${name}"`;
@@ -65,6 +68,7 @@ export const dispatchJobGroupLoggingConfig: StorageLoggingConfig<DispatchJobGrou
     delete: {
       enabled: true,
       getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
       getDescription: async (args, result, beforeState) => {
         const name = beforeState?.group?.name || 'Unknown';
         return `Deleted Dispatch Job Group "${name}"`;
@@ -90,6 +94,15 @@ export function createDispatchJobGroupStorage(): DispatchJobGroupStorage {
 
       if (filters?.search) {
         conditions.push(ilike(dispatchJobGroups.name, `%${filters.search}%`));
+      }
+
+      if (filters?.active === 'active') {
+        const today = new Date().toISOString().slice(0, 10);
+        conditions.push(sql`${dispatchJobGroups.startYmd} <= ${today}`);
+        conditions.push(sql`${dispatchJobGroups.endYmd} >= ${today}`);
+      } else if (filters?.active === 'inactive') {
+        const today = new Date().toISOString().slice(0, 10);
+        conditions.push(sql`(${dispatchJobGroups.startYmd} > ${today} OR ${dispatchJobGroups.endYmd} < ${today})`);
       }
 
       const hasFilters = conditions.length > 0;
