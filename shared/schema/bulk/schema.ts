@@ -20,7 +20,7 @@ export const bulkMessages = pgTable("bulk_messages", {
 export const insertBulkMessageSchema = createInsertSchema(bulkMessages).omit({
   id: true,
 }).extend({
-  medium: z.array(z.enum(["sms", "email", "inapp", "postal"])).min(1),
+  medium: z.array(z.enum(["sms", "email", "inapp", "postal"])).min(1).transform(arr => [...new Set(arr)]),
 });
 
 export type BulkMessage = typeof bulkMessages.$inferSelect;
