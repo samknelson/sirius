@@ -240,14 +240,16 @@ export function registerChargePluginRoutes(
           let hoursCount = 0;
 
           if (w.entityId && year && month) {
+            const wmbMonth = ((month - 1 + 3) % 12) + 1;
+            const wmbYear = year + Math.floor((month - 1 + 3) / 12);
             const wmbs = await db
               .select({ id: trustWmb.id })
               .from(trustWmb)
               .where(
                 and(
                   eq(trustWmb.employerId, w.entityId),
-                  eq(trustWmb.year, year),
-                  eq(trustWmb.month, month)
+                  eq(trustWmb.year, wmbYear),
+                  eq(trustWmb.month, wmbMonth)
                 )
               );
             wmbCount = wmbs.length;
@@ -397,14 +399,16 @@ export function registerChargePluginRoutes(
         let entriesDeleted = 0;
 
         if (enabledTriggers.has("wmb_saved")) {
+          const wmbMonth = ((month - 1 + 3) % 12) + 1;
+          const wmbYear = year + Math.floor((month - 1 + 3) / 12);
           const wmbs = await db
             .select()
             .from(trustWmb)
             .where(
               and(
                 eq(trustWmb.employerId, wizard.entityId),
-                eq(trustWmb.year, year),
-                eq(trustWmb.month, month)
+                eq(trustWmb.year, wmbYear),
+                eq(trustWmb.month, wmbMonth)
               )
             );
 
