@@ -95,9 +95,22 @@ function BulkMessageRecipientsAddContent() {
     queryFn: () => apiRequest("GET", `/api/bulk-messages/${bulkMessage.id}/participants`),
   });
 
+  const media = Array.isArray(bulkMessage.medium) ? bulkMessage.medium : [bulkMessage.medium];
+  const mediaCount = media.length;
+
   const disabledIds = useMemo(() => {
-    return new Set(existingParticipants.map(p => p.contactId));
-  }, [existingParticipants]);
+    const contactMediaCounts: Record<string, number> = {};
+    for (const p of existingParticipants) {
+      contactMediaCounts[p.contactId] = (contactMediaCounts[p.contactId] || 0) + 1;
+    }
+    const result = new Set<string>();
+    for (const [contactId, count] of Object.entries(contactMediaCounts)) {
+      if (count >= mediaCount) {
+        result.add(contactId);
+      }
+    }
+    return result;
+  }, [existingParticipants, mediaCount]);
 
   const workers = paginatedData?.data ?? [];
   const total = paginatedData?.total ?? 0;
@@ -105,8 +118,8 @@ function BulkMessageRecipientsAddContent() {
 
   const addMutation = useMutation({
     mutationFn: async (contactIds: string[]) => {
-      let added = 0;
-      let skipped = 0;
+      let totalCreated = 0;
+      let totalSkipped = 0;
       const errors: string[] = [];
       for (const contactId of contactIds) {
         try {
@@ -117,9 +130,11 @@ function BulkMessageRecipientsAddContent() {
             credentials: "include",
           });
           if (res.ok) {
-            added++;
+            const body = await res.json().catch(() => ({ created: [], skipped: 0 }));
+            totalCreated += Array.isArray(body.created) ? body.created.length : 1;
+            totalSkipped += body.skipped || 0;
           } else if (res.status === 409) {
-            skipped++;
+            totalSkipped++;
           } else {
             const body = await res.json().catch(() => ({ message: "Unknown error" }));
             errors.push(body.message || `Failed for contact ${contactId}`);
@@ -128,7 +143,7 @@ function BulkMessageRecipientsAddContent() {
           errors.push(`Network error for contact ${contactId}`);
         }
       }
-      return { added, skipped, errors };
+      return { totalCreated, totalSkipped, errors };
     },
     onSuccess: (result) => {
       setSelectedIds(new Set());
@@ -136,13 +151,13 @@ function BulkMessageRecipientsAddContent() {
       if (result.errors.length > 0) {
         toast({
           title: "Partially added",
-          description: `${result.added} added, ${result.errors.length} failed.`,
+          description: `${result.totalCreated} participant(s) added, ${result.errors.length} contact(s) failed.`,
           variant: "destructive",
         });
       } else {
         toast({
           title: "Recipients added",
-          description: `${result.added} recipient${result.added !== 1 ? "s" : ""} added successfully.${result.skipped ? ` ${result.skipped} already existed.` : ""}`,
+          description: `${result.totalCreated} participant${result.totalCreated !== 1 ? "s" : ""} added successfully.${result.totalSkipped ? ` ${result.totalSkipped} already existed.` : ""}`,
         });
       }
     },

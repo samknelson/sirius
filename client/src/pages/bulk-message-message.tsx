@@ -12,9 +12,9 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Save, Mail, MessageSquare, MapPin, Bell } from "lucide-react";
 
-interface MediumResponse {
-  medium: string;
-  record: Record<string, unknown> | null;
+interface MultiMediumResponse {
+  media: string[];
+  records: Record<string, Record<string, unknown> | null>;
 }
 
 function EmailForm({ record, onSave, isPending }: { record: Record<string, unknown> | null; onSave: (data: Record<string, unknown>) => void; isPending: boolean }) {
@@ -216,12 +216,27 @@ const mediumLabels: Record<string, string> = {
   inapp: "In-App",
 };
 
+const FORM_COMPONENTS: Record<string, typeof EmailForm> = {
+  email: EmailForm,
+  sms: SmsForm,
+  postal: PostalForm,
+  inapp: InappForm,
+};
+
 function BulkMessageMessageContent() {
   const { bulkMessage } = useBulkMessageLayout();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const media = Array.isArray(bulkMessage.medium) ? bulkMessage.medium : [bulkMessage.medium];
+  const [activeMedium, setActiveMedium] = useState(media[0]);
 
-  const { data: mediumData, isLoading } = useQuery<MediumResponse>({
+  useEffect(() => {
+    if (!media.includes(activeMedium)) {
+      setActiveMedium(media[0]);
+    }
+  }, [media, activeMedium]);
+
+  const { data: allData, isLoading } = useQuery<MultiMediumResponse>({
     queryKey: ["/api/bulk-messages", bulkMessage.id, "message"],
     queryFn: async () => {
       const response = await fetch(`/api/bulk-messages/${bulkMessage.id}/message`, { credentials: "include" });
@@ -232,19 +247,16 @@ function BulkMessageMessageContent() {
 
   const saveMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => {
-      return apiRequest("PUT", `/api/bulk-messages/${bulkMessage.id}/message`, data);
+      return apiRequest("PUT", `/api/bulk-messages/${bulkMessage.id}/message?medium=${activeMedium}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bulk-messages", bulkMessage.id, "message"] });
-      toast({ title: "Message content saved", description: "The message content has been saved successfully." });
+      toast({ title: "Message content saved", description: `${mediumLabels[activeMedium] || activeMedium} content saved successfully.` });
     },
     onError: (error: Error) => {
       toast({ title: "Failed to save", description: error.message || "An error occurred", variant: "destructive" });
     },
   });
-
-  const MediumIcon = mediumIcons[bulkMessage.medium] || Mail;
-  const mediumLabel = mediumLabels[bulkMessage.medium] || bulkMessage.medium;
 
   if (isLoading) {
     return (
@@ -254,31 +266,52 @@ function BulkMessageMessageContent() {
     );
   }
 
-  const record = mediumData?.record || null;
+  const records = allData?.records || {};
+  const record = records[activeMedium] || null;
+  const ActiveIcon = mediumIcons[activeMedium] || Mail;
+  const FormComponent = FORM_COMPONENTS[activeMedium];
 
   return (
-    <Card data-testid="card-bulk-message-content">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <MediumIcon className="h-5 w-5" />
-          {mediumLabel} Message Content
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {bulkMessage.medium === "email" && (
-          <EmailForm record={record} onSave={(data) => saveMutation.mutate(data)} isPending={saveMutation.isPending} />
-        )}
-        {bulkMessage.medium === "sms" && (
-          <SmsForm record={record} onSave={(data) => saveMutation.mutate(data)} isPending={saveMutation.isPending} />
-        )}
-        {bulkMessage.medium === "postal" && (
-          <PostalForm record={record} onSave={(data) => saveMutation.mutate(data)} isPending={saveMutation.isPending} />
-        )}
-        {bulkMessage.medium === "inapp" && (
-          <InappForm record={record} onSave={(data) => saveMutation.mutate(data)} isPending={saveMutation.isPending} />
-        )}
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      {media.length > 1 && (
+        <div className="flex gap-2 border-b pb-2" data-testid="nav-medium-tabs">
+          {media.map((m) => {
+            const Icon = mediumIcons[m] || Mail;
+            const isActive = m === activeMedium;
+            return (
+              <Button
+                key={m}
+                variant={isActive ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setActiveMedium(m)}
+                data-testid={`tab-medium-${m}`}
+              >
+                <Icon className="h-4 w-4 mr-1.5" />
+                {mediumLabels[m] || m}
+              </Button>
+            );
+          })}
+        </div>
+      )}
+
+      <Card data-testid="card-bulk-message-content">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ActiveIcon className="h-5 w-5" />
+            {mediumLabels[activeMedium] || activeMedium} Message Content
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {FormComponent && (
+            <FormComponent
+              record={record}
+              onSave={(data) => saveMutation.mutate(data)}
+              isPending={saveMutation.isPending}
+            />
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

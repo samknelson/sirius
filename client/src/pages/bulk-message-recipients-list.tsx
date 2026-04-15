@@ -22,10 +22,18 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+const mediumLabels: Record<string, string> = {
+  email: "Email",
+  sms: "SMS",
+  postal: "Postal",
+  inapp: "In-App",
+};
+
 interface EnrichedParticipant {
   id: string;
   messageId: string;
   contactId: string;
+  medium: string;
   commId: string | null;
   data: unknown;
   contactDisplayName: string;
@@ -53,16 +61,18 @@ function BulkMessageRecipientsListContent() {
       p.contactDisplayName?.toLowerCase().includes(q) ||
       p.contactGiven?.toLowerCase().includes(q) ||
       p.contactFamily?.toLowerCase().includes(q) ||
-      p.commStatus?.toLowerCase().includes(q)
+      p.commStatus?.toLowerCase().includes(q) ||
+      p.medium?.toLowerCase().includes(q)
     );
   }, [participants, search]);
 
   const handleExportCsv = () => {
     const rows = filtered.length > 0 ? filtered : participants;
     const csvContent = [
-      ["Name", "Status", "Worker ID", "Comm ID"].join(","),
+      ["Name", "Medium", "Status", "Worker ID", "Comm ID"].join(","),
       ...rows.map(p => [
         `"${(p.contactDisplayName || "").replace(/"/g, '""')}"`,
+        mediumLabels[p.medium] || p.medium || "",
         p.commStatus || "",
         p.workerSiriusId != null ? String(p.workerSiriusId) : "",
         p.commId || "",
@@ -153,6 +163,9 @@ function BulkMessageRecipientsListContent() {
                       Name
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Medium
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Status
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -170,6 +183,11 @@ function BulkMessageRecipientsListContent() {
                         <span className="text-sm font-medium" data-testid={`text-participant-name-${p.id}`}>
                           {p.contactDisplayName}
                         </span>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <Badge variant="outline" className="text-xs" data-testid={`badge-medium-${p.id}`}>
+                          {mediumLabels[p.medium] || p.medium}
+                        </Badge>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         {p.commStatus ? (
@@ -225,7 +243,7 @@ function BulkMessageRecipientsListContent() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Remove Recipient</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Are you sure you want to remove {p.contactDisplayName} from this bulk message?
+                                Are you sure you want to remove {p.contactDisplayName} ({mediumLabels[p.medium] || p.medium}) from this bulk message?
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>

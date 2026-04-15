@@ -12,7 +12,7 @@ import { contacts, workers, comm, phoneNumbers, contactPostal } from "../../../s
 import { eq, or, ilike, sql, inArray, and } from "drizzle-orm";
 import { getClient } from "../../storage/transaction-context";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
-import { deliverToContact, deliverToParticipant, resolveAddress } from "./deliver";
+import { deliverToContact, deliverToParticipant, resolveAddressForMedium } from "./deliver";
 import { storageLogger } from "../../logger";
 import { resolveContactLinks, resolveContactLinksForMany } from "../contact-links";
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
@@ -37,12 +37,26 @@ async function getMediumRecord(storage: IStorage, medium: string, bulkId: string
   }
 }
 
+async function deleteMediumRecord(storage: IStorage, medium: string, bulkId: string): Promise<void> {
+  const record = await getMediumRecord(storage, medium, bulkId);
+  if (record && typeof record === 'object' && 'id' in record) {
+    const id = (record as { id: string }).id;
+    switch (medium) {
+      case 'email': await storage.bulkMessagesEmail.delete(id); break;
+      case 'sms': await storage.bulkMessagesSms.delete(id); break;
+      case 'postal': await storage.bulkMessagesPostal.delete(id); break;
+      case 'inapp': await storage.bulkMessagesInapp.delete(id); break;
+    }
+  }
+}
+
 export function registerBulkMessageRoutes(
   app: Express,
   requireAuth: RequireAuth,
   requireAccess: RequireAccess,
   storage: IStorage
 ) {
+  const rawParticipantStorage = createBulkParticipantStorage();
 
   app.get("/api/bulk-messages", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
     try {
@@ -63,8 +77,11 @@ export function registerBulkMessageRoutes(
       if (!item) {
         return res.status(404).json({ message: "Bulk message not found" });
       }
-      const mediumRecord = await getMediumRecord(storage, item.medium, item.id);
-      res.json({ ...item, mediumRecord: mediumRecord || null });
+      const mediumRecords: Record<string, unknown> = {};
+      for (const m of item.medium) {
+        mediumRecords[m] = await getMediumRecord(storage, m, item.id) || null;
+      }
+      res.json({ ...item, mediumRecords });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to fetch bulk message";
       res.status(500).json({ message });
@@ -101,15 +118,13 @@ export function registerBulkMessageRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: "Validation failed", errors: parsed.error.issues });
       }
-      if (parsed.data.medium && parsed.data.medium !== existing.medium) {
-        const oldMediumRecord = await getMediumRecord(storage, existing.medium, existing.id);
-        if (oldMediumRecord && typeof oldMediumRecord === 'object' && 'id' in oldMediumRecord) {
-          const oldId = (oldMediumRecord as { id: string }).id;
-          switch (existing.medium) {
-            case 'email': await storage.bulkMessagesEmail.delete(oldId); break;
-            case 'sms': await storage.bulkMessagesSms.delete(oldId); break;
-            case 'postal': await storage.bulkMessagesPostal.delete(oldId); break;
-            case 'inapp': await storage.bulkMessagesInapp.delete(oldId); break;
+      if (parsed.data.medium) {
+        const oldMedia = new Set(existing.medium);
+        const newMedia = new Set(parsed.data.medium);
+        for (const m of oldMedia) {
+          if (!newMedia.has(m)) {
+            await deleteMediumRecord(storage, m, existing.id);
+            await rawParticipantStorage.deleteByMessageAndMedium(existing.id, m);
           }
         }
       }
@@ -144,23 +159,20 @@ export function registerBulkMessageRoutes(
         return res.status(404).json({ message: "Bulk message not found" });
       }
 
-      let mediumRecord: unknown = null;
-      switch (bulk.medium) {
-        case 'email':
-          mediumRecord = await storage.bulkMessagesEmail.getByBulkId(bulk.id);
-          break;
-        case 'sms':
-          mediumRecord = await storage.bulkMessagesSms.getByBulkId(bulk.id);
-          break;
-        case 'postal':
-          mediumRecord = await storage.bulkMessagesPostal.getByBulkId(bulk.id);
-          break;
-        case 'inapp':
-          mediumRecord = await storage.bulkMessagesInapp.getByBulkId(bulk.id);
-          break;
+      const medium = req.query.medium as string | undefined;
+      if (medium) {
+        if (!bulk.medium.includes(medium)) {
+          return res.status(400).json({ message: `Medium "${medium}" is not selected for this message` });
+        }
+        const record = await getMediumRecord(storage, medium, bulk.id);
+        return res.json({ medium, record: record || null });
       }
 
-      res.json({ medium: bulk.medium, record: mediumRecord || null });
+      const records: Record<string, unknown> = {};
+      for (const m of bulk.medium) {
+        records[m] = await getMediumRecord(storage, m, bulk.id) || null;
+      }
+      res.json({ media: bulk.medium, records });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to fetch medium message";
       res.status(500).json({ message });
@@ -174,10 +186,15 @@ export function registerBulkMessageRoutes(
         return res.status(404).json({ message: "Bulk message not found" });
       }
 
-      const { bulkId: _stripped, ...messageBody } = req.body;
+      const medium = req.query.medium as string || req.body.medium;
+      if (!medium || !bulk.medium.includes(medium)) {
+        return res.status(400).json({ message: `Medium "${medium}" is not selected for this message` });
+      }
+
+      const { bulkId: _stripped, medium: _mediumStripped, ...messageBody } = req.body;
       let result: unknown = null;
 
-      switch (bulk.medium) {
+      switch (medium) {
         case 'email': {
           const existing = await storage.bulkMessagesEmail.getByBulkId(bulk.id);
           if (existing) {
@@ -232,7 +249,7 @@ export function registerBulkMessageRoutes(
         }
       }
 
-      res.json({ medium: bulk.medium, record: result });
+      res.json({ medium, record: result });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to save medium message";
       res.status(500).json({ message });
@@ -260,8 +277,6 @@ export function registerBulkMessageRoutes(
     }
   });
 
-  const rawParticipantStorage = createBulkParticipantStorage();
-
   app.get("/api/bulk-messages/:id/participants", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
     try {
       const bulk = await storage.bulkMessages.getById(req.params.id);
@@ -282,6 +297,7 @@ export function registerBulkMessageRoutes(
           id: bulkParticipants.id,
           messageId: bulkParticipants.messageId,
           contactId: bulkParticipants.contactId,
+          medium: bulkParticipants.medium,
           commId: bulkParticipants.commId,
           data: bulkParticipants.data,
           contactDisplayName: contacts.displayName,
@@ -314,14 +330,29 @@ export function registerBulkMessageRoutes(
         return res.status(400).json({ message: "contactId is required" });
       }
       const existing = await rawParticipantStorage.getByMessageId(req.params.id);
-      if (existing.some(p => p.contactId === contactId)) {
-        return res.status(409).json({ message: "Participant already exists for this message" });
+      const existingSet = new Set(existing.map(p => `${p.contactId}:${p.medium}`));
+
+      const created: unknown[] = [];
+      let skipped = 0;
+      for (const m of bulk.medium) {
+        const key = `${contactId}:${m}`;
+        if (existingSet.has(key)) {
+          skipped++;
+          continue;
+        }
+        const participant = await rawParticipantStorage.create({
+          messageId: req.params.id,
+          contactId,
+          medium: m,
+        });
+        created.push(participant);
       }
-      const participant = await rawParticipantStorage.create({
-        messageId: req.params.id,
-        contactId,
-      });
-      res.status(201).json(participant);
+
+      if (created.length === 0 && skipped > 0) {
+        return res.status(409).json({ message: "Participant already exists for all media" });
+      }
+
+      res.status(201).json({ created, skipped });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to add participant";
       res.status(500).json({ message });
@@ -454,11 +485,15 @@ export function registerBulkMessageRoutes(
       if (!bulk) {
         return res.status(404).json({ message: "Bulk message not found" });
       }
-      const { contactId } = req.body;
+      const { contactId, medium } = req.body;
       if (!contactId || typeof contactId !== "string") {
         return res.status(400).json({ message: "contactId is required" });
       }
-      const result = await resolveAddress(storage, req.params.id, contactId);
+      const targetMedium = medium || bulk.medium[0];
+      if (!bulk.medium.includes(targetMedium)) {
+        return res.status(400).json({ message: `Medium "${targetMedium}" is not selected for this message` });
+      }
+      const result = await resolveAddressForMedium(storage, targetMedium, contactId);
       res.json(result);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to resolve address";
@@ -473,15 +508,19 @@ export function registerBulkMessageRoutes(
       if (!bulk) {
         return res.status(404).json({ message: "Bulk message not found" });
       }
-      medium = bulk.medium;
       const { contactId } = req.body;
+      medium = req.body.medium || bulk.medium[0];
       if (!contactId || typeof contactId !== "string") {
         return res.status(400).json({ message: "contactId is required" });
+      }
+      if (!bulk.medium.includes(medium!)) {
+        return res.status(400).json({ message: `Medium "${medium}" is not selected for this message` });
       }
       const user = getRequestUser(req);
       const result = await deliverToContact(storage, {
         messageId: req.params.id,
         contactId,
+        medium: medium!,
         userId: user?.id,
       });
 
@@ -553,6 +592,7 @@ export function registerBulkMessageRoutes(
       const rows = await db
         .select({
           participantStatus: bulkParticipants.status,
+          medium: bulkParticipants.medium,
           commId: bulkParticipants.commId,
           commStatus: comm.status,
         })
@@ -565,17 +605,27 @@ export function registerBulkMessageRoutes(
       let sendFailed = 0;
       let seeComm = 0;
       const commBreakdown: Record<string, number> = {};
+      const byMedium: Record<string, { total: number; pending: number; sendFailed: number; seeComm: number }> = {};
 
       for (const row of rows) {
+        const m = row.medium;
+        if (!byMedium[m]) {
+          byMedium[m] = { total: 0, pending: 0, sendFailed: 0, seeComm: 0 };
+        }
+        byMedium[m].total++;
+
         switch (row.participantStatus) {
           case "pending":
             pending++;
+            byMedium[m].pending++;
             break;
           case "send_failed":
             sendFailed++;
+            byMedium[m].sendFailed++;
             break;
           case "see_comm":
             seeComm++;
+            byMedium[m].seeComm++;
             if (row.commStatus) {
               commBreakdown[row.commStatus] = (commBreakdown[row.commStatus] || 0) + 1;
             }
@@ -583,7 +633,7 @@ export function registerBulkMessageRoutes(
         }
       }
 
-      res.json({ total, pending, sendFailed, seeComm, commBreakdown });
+      res.json({ total, pending, sendFailed, seeComm, commBreakdown, byMedium });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to get delivery stats";
       res.status(500).json({ message });

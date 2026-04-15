@@ -7,9 +7,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2 } from "lucide-react";
+
+const mediumLabels: Record<string, string> = {
+  email: "Email",
+  sms: "SMS",
+  postal: "Postal",
+  inapp: "In-App",
+};
+
+const ALL_MEDIA = ["email", "sms", "postal", "inapp"] as const;
 
 function BulkMessageEditContent() {
   const { bulkMessage } = useBulkMessageLayout();
@@ -18,16 +28,17 @@ function BulkMessageEditContent() {
   const [, setLocation] = useLocation();
   const [formData, setFormData] = useState({
     name: "",
-    medium: "email" as string,
+    medium: [] as string[],
     status: "draft" as string,
     sendDate: "",
   });
 
   useEffect(() => {
     if (bulkMessage) {
+      const media = Array.isArray(bulkMessage.medium) ? bulkMessage.medium : [bulkMessage.medium];
       setFormData({
         name: bulkMessage.name,
-        medium: bulkMessage.medium,
+        medium: media,
         status: bulkMessage.status,
         sendDate: bulkMessage.sendDate
           ? new Date(bulkMessage.sendDate).toISOString().slice(0, 16)
@@ -63,7 +74,19 @@ function BulkMessageEditContent() {
       toast({ title: "Validation error", description: "Name is required.", variant: "destructive" });
       return;
     }
+    if (formData.medium.length === 0) {
+      toast({ title: "Validation error", description: "At least one medium is required.", variant: "destructive" });
+      return;
+    }
     updateMutation.mutate(formData);
+  };
+
+  const toggleMedium = (m: string) => {
+    setFormData((prev) => {
+      const has = prev.medium.includes(m);
+      const next = has ? prev.medium.filter((x) => x !== m) : [...prev.medium, m];
+      return { ...prev, medium: next };
+    });
   };
 
   return (
@@ -85,21 +108,19 @@ function BulkMessageEditContent() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="medium">Medium</Label>
-                <Select
-                  value={formData.medium}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, medium: value }))}
-                >
-                  <SelectTrigger data-testid="select-bulk-edit-medium">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="email">Email</SelectItem>
-                    <SelectItem value="sms">SMS</SelectItem>
-                    <SelectItem value="postal">Postal</SelectItem>
-                    <SelectItem value="inapp">In-App</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Media</Label>
+                <div className="flex flex-wrap gap-4 pt-1">
+                  {ALL_MEDIA.map((m) => (
+                    <label key={m} className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={formData.medium.includes(m)}
+                        onCheckedChange={() => toggleMedium(m)}
+                        data-testid={`checkbox-edit-medium-${m}`}
+                      />
+                      <span className="text-sm">{mediumLabels[m]}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="status">Status</Label>
@@ -131,7 +152,7 @@ function BulkMessageEditContent() {
             <div className="flex gap-3 pt-4">
               <Button
                 type="submit"
-                disabled={updateMutation.isPending || !formData.name}
+                disabled={updateMutation.isPending || !formData.name || formData.medium.length === 0}
                 data-testid="button-bulk-save"
               >
                 {updateMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}

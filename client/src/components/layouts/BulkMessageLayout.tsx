@@ -117,9 +117,11 @@ export function BulkMessageLayout({ activeTab, children }: BulkMessageLayoutProp
             <Badge variant={statusVariants[bulkMessage.status] || "secondary"} data-testid="badge-bulk-status">
               {bulkMessage.status}
             </Badge>
-            <Badge variant="outline" data-testid="badge-bulk-medium">
-              {mediumLabels[bulkMessage.medium] || bulkMessage.medium}
-            </Badge>
+            {(Array.isArray(bulkMessage.medium) ? bulkMessage.medium : [bulkMessage.medium]).map((m) => (
+              <Badge key={m} variant="outline" data-testid={`badge-bulk-medium-${m}`}>
+                {mediumLabels[m] || m}
+              </Badge>
+            ))}
           </div>
         </div>
       </div>

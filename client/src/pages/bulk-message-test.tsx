@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -63,13 +64,28 @@ const mediumLabels: Record<string, string> = {
   inapp: "In-App (User Account)",
 };
 
+const mediumShortLabels: Record<string, string> = {
+  email: "Email",
+  sms: "SMS",
+  postal: "Postal",
+  inapp: "In-App",
+};
+
 function BulkMessageTestContent() {
   const { bulkMessage } = useBulkMessageLayout();
   const { toast } = useToast();
+  const media = Array.isArray(bulkMessage.medium) ? bulkMessage.medium : [bulkMessage.medium];
+  const [selectedMedium, setSelectedMedium] = useState(media[0]);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedContact, setSelectedContact] = useState<ContactSearchResult | null>(null);
   const [lastResult, setLastResult] = useState<DeliverTestResult | null>(null);
+
+  useEffect(() => {
+    if (!media.includes(selectedMedium)) {
+      setSelectedMedium(media[0]);
+    }
+  }, [media, selectedMedium]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -87,14 +103,20 @@ function BulkMessageTestContent() {
   });
 
   const { data: resolvedAddr, isFetching: isResolving } = useQuery<ResolvedAddress>({
-    queryKey: ["/api/bulk-messages", bulkMessage.id, "resolve-address", selectedContact?.id],
-    queryFn: () => apiRequest("POST", `/api/bulk-messages/${bulkMessage.id}/resolve-address`, { contactId: selectedContact!.id }),
+    queryKey: ["/api/bulk-messages", bulkMessage.id, "resolve-address", selectedContact?.id, selectedMedium],
+    queryFn: () => apiRequest("POST", `/api/bulk-messages/${bulkMessage.id}/resolve-address`, {
+      contactId: selectedContact!.id,
+      medium: selectedMedium,
+    }),
     enabled: !!selectedContact,
   });
 
   const deliverMutation = useMutation({
     mutationFn: async (contactId: string) => {
-      return apiRequest("POST", `/api/bulk-messages/${bulkMessage.id}/deliver-test`, { contactId }) as Promise<DeliverTestResult>;
+      return apiRequest("POST", `/api/bulk-messages/${bulkMessage.id}/deliver-test`, {
+        contactId,
+        medium: selectedMedium,
+      }) as Promise<DeliverTestResult>;
     },
     onSuccess: (result) => {
       setLastResult(result);
@@ -118,7 +140,7 @@ function BulkMessageTestContent() {
     },
   });
 
-  const MediumIcon = mediumIcons[bulkMessage.medium] || Mail;
+  const MediumIcon = mediumIcons[selectedMedium] || Mail;
 
   const handleSelectContact = (contact: ContactSearchResult) => {
     setSelectedContact(contact);
@@ -142,14 +164,31 @@ function BulkMessageTestContent() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="bg-muted/50 rounded-lg p-4 flex items-center gap-3">
-            <MediumIcon className="h-5 w-5 text-muted-foreground" />
-            <div>
-              <p className="text-sm font-medium">Medium: {mediumLabels[bulkMessage.medium] || bulkMessage.medium}</p>
-              <p className="text-xs text-muted-foreground">
-                Select a contact below to send a test delivery of this bulk message.
-              </p>
+          <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+            <div className="flex items-center gap-3">
+              <MediumIcon className="h-5 w-5 text-muted-foreground" />
+              <div className="flex-1">
+                <p className="text-sm font-medium">Test Medium</p>
+                <p className="text-xs text-muted-foreground">
+                  Select a medium and contact below to send a test delivery.
+                </p>
+              </div>
             </div>
+            {media.length > 1 && (
+              <Select value={selectedMedium} onValueChange={(v) => { setSelectedMedium(v); setLastResult(null); }}>
+                <SelectTrigger className="w-48" data-testid="select-test-medium">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {media.map((m) => (
+                    <SelectItem key={m} value={m}>{mediumShortLabels[m] || m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {media.length === 1 && (
+              <Badge variant="outline">{mediumLabels[media[0]] || media[0]}</Badge>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -278,7 +317,7 @@ function BulkMessageTestContent() {
               <div className="border-t pt-3" data-testid="resolved-address-preview">
                 <div className="flex items-center gap-2 text-sm">
                   <MediumIcon className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium">Resolved {mediumLabels[bulkMessage.medium] || bulkMessage.medium}:</span>
+                  <span className="font-medium">Resolved {mediumLabels[selectedMedium] || selectedMedium}:</span>
                   {isResolving ? (
                     <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                   ) : resolvedAddr?.address ? (
