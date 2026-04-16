@@ -5,7 +5,7 @@ import {
   type DispatchJobGroup,
   type InsertDispatchJobGroup
 } from "@shared/schema";
-import { eq, desc, sql, SQL, and, ilike } from "drizzle-orm";
+import { eq, desc, asc, sql, SQL, and, ilike } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
 
 export const validate = createNoopValidator<InsertDispatchJobGroup, DispatchJobGroup>();
@@ -13,6 +13,9 @@ export const validate = createNoopValidator<InsertDispatchJobGroup, DispatchJobG
 export interface DispatchJobGroupFilters {
   search?: string;
   active?: 'active' | 'inactive' | 'all';
+  date?: string;
+  sort?: 'name' | 'startYmd';
+  sortDir?: 'asc' | 'desc';
 }
 
 export interface PaginatedDispatchJobGroups {
@@ -98,6 +101,11 @@ export function createDispatchJobGroupStorage(): DispatchJobGroupStorage {
         conditions.push(ilike(dispatchJobGroups.name, `%${filters.search}%`));
       }
 
+      if (filters?.date) {
+        conditions.push(sql`(${dispatchJobGroups.startYmd} IS NULL OR ${dispatchJobGroups.startYmd} <= ${filters.date})`);
+        conditions.push(sql`(${dispatchJobGroups.endYmd} IS NULL OR ${dispatchJobGroups.endYmd} >= ${filters.date})`);
+      }
+
       if (filters?.active === 'active') {
         const today = new Date().toISOString().slice(0, 10);
         conditions.push(sql`${dispatchJobGroups.startYmd} <= ${today}`);
@@ -106,6 +114,9 @@ export function createDispatchJobGroupStorage(): DispatchJobGroupStorage {
         const today = new Date().toISOString().slice(0, 10);
         conditions.push(sql`(${dispatchJobGroups.startYmd} > ${today} OR ${dispatchJobGroups.endYmd} < ${today})`);
       }
+
+      const sortCol = filters?.sort === 'startYmd' ? dispatchJobGroups.startYmd : dispatchJobGroups.name;
+      const orderFn = filters?.sortDir === 'desc' ? desc : asc;
 
       const hasFilters = conditions.length > 0;
       const whereClause = hasFilters ? and(...conditions) : undefined;
@@ -125,8 +136,8 @@ export function createDispatchJobGroupStorage(): DispatchJobGroupStorage {
         .from(dispatchJobGroups);
 
       const data = hasFilters
-        ? await baseQuery.where(whereClause!).orderBy(desc(dispatchJobGroups.startYmd)).limit(limit).offset(page * limit)
-        : await baseQuery.orderBy(desc(dispatchJobGroups.startYmd)).limit(limit).offset(page * limit);
+        ? await baseQuery.where(whereClause!).orderBy(orderFn(sortCol)).limit(limit).offset(page * limit)
+        : await baseQuery.orderBy(orderFn(sortCol)).limit(limit).offset(page * limit);
 
       return { data, total, page, limit };
     },

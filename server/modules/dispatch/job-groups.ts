@@ -21,6 +21,9 @@ export function registerDispatchJobGroupsRoutes(
         const {
           search,
           active,
+          date,
+          sort,
+          sortDir,
           page: pageParam,
           limit: limitParam,
         } = req.query;
@@ -32,8 +35,17 @@ export function registerDispatchJobGroupsRoutes(
         if (search && typeof search === "string") {
           filters.search = search;
         }
+        if (date && typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+          filters.date = date;
+        }
         if (active && typeof active === "string" && ['active', 'inactive', 'all'].includes(active)) {
           filters.active = active as 'active' | 'inactive' | 'all';
+        }
+        if (sort && typeof sort === "string" && ['name', 'startYmd'].includes(sort)) {
+          filters.sort = sort as 'name' | 'startYmd';
+        }
+        if (sortDir && typeof sortDir === "string" && ['asc', 'desc'].includes(sortDir)) {
+          filters.sortDir = sortDir as 'asc' | 'desc';
         }
 
         const result = await storage.dispatchJobGroups.getPaginated(page, limit, filters);

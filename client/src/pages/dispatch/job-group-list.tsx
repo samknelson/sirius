@@ -2,12 +2,12 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { usePageTitle } from "@/contexts/PageTitleContext";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Search, Plus, Layers } from "lucide-react";
+import { Loader2, Search, Plus, Layers, ArrowUp, ArrowDown, X } from "lucide-react";
 import type { DispatchJobGroup } from "@shared/schema";
 
 interface PaginatedResult {
@@ -22,21 +22,30 @@ function isActive(startYmd: string, endYmd: string): boolean {
   return startYmd <= today && endYmd >= today;
 }
 
+type SortField = "name" | "startYmd";
+type SortDir = "asc" | "desc";
+
 export default function DispatchJobGroupListPage() {
   usePageTitle("Job Groups");
   const [search, setSearch] = useState("");
+  const [dateFilter, setDateFilter] = useState("");
   const [activeFilter, setActiveFilter] = useState<string>("all");
+  const [sort, setSort] = useState<SortField>("name");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [page, setPage] = useState(0);
   const limit = 50;
 
   const queryParams = new URLSearchParams();
   queryParams.set("page", String(page));
   queryParams.set("limit", String(limit));
+  queryParams.set("sort", sort);
+  queryParams.set("sortDir", sortDir);
   if (search) queryParams.set("search", search);
+  if (dateFilter) queryParams.set("date", dateFilter);
   if (activeFilter !== "all") queryParams.set("active", activeFilter);
 
   const { data, isLoading } = useQuery<PaginatedResult>({
-    queryKey: ["/api/dispatch-job-groups", { page, search, active: activeFilter }],
+    queryKey: ["/api/dispatch-job-groups", { page, search, date: dateFilter, active: activeFilter, sort, sortDir }],
     queryFn: async () => {
       const res = await fetch(`/api/dispatch-job-groups?${queryParams.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch");
@@ -45,6 +54,23 @@ export default function DispatchJobGroupListPage() {
   });
 
   const totalPages = data ? Math.ceil(data.total / limit) : 0;
+
+  function handleSort(field: SortField) {
+    if (sort === field) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSort(field);
+      setSortDir("asc");
+    }
+    setPage(0);
+  }
+
+  function SortIcon({ field }: { field: SortField }) {
+    if (sort !== field) return null;
+    return sortDir === "asc"
+      ? <ArrowUp className="inline h-3 w-3 ml-1" />
+      : <ArrowDown className="inline h-3 w-3 ml-1" />;
+  }
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
@@ -61,7 +87,7 @@ export default function DispatchJobGroupListPage() {
         </Link>
       </div>
 
-      <div className="mb-4 flex gap-3 items-center">
+      <div className="mb-4 flex flex-wrap gap-3 items-center">
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -71,6 +97,24 @@ export default function DispatchJobGroupListPage() {
             className="pl-9"
             data-testid="input-search"
           />
+        </div>
+        <div className="relative">
+          <Input
+            type="date"
+            value={dateFilter}
+            onChange={(e) => { setDateFilter(e.target.value); setPage(0); }}
+            className="w-[180px]"
+            data-testid="input-date-filter"
+          />
+          {dateFilter && (
+            <button
+              onClick={() => { setDateFilter(""); setPage(0); }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              data-testid="button-clear-date"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
         <Select value={activeFilter} onValueChange={(val) => { setActiveFilter(val); setPage(0); }}>
           <SelectTrigger className="w-[140px]" data-testid="select-active-filter">
@@ -101,8 +145,20 @@ export default function DispatchJobGroupListPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b bg-muted/50">
-                    <th className="text-left p-3 font-medium text-sm">Name</th>
-                    <th className="text-left p-3 font-medium text-sm">Start Date</th>
+                    <th
+                      className="text-left p-3 font-medium text-sm cursor-pointer select-none hover:text-primary"
+                      onClick={() => handleSort("name")}
+                      data-testid="sort-name"
+                    >
+                      Name<SortIcon field="name" />
+                    </th>
+                    <th
+                      className="text-left p-3 font-medium text-sm cursor-pointer select-none hover:text-primary"
+                      onClick={() => handleSort("startYmd")}
+                      data-testid="sort-start-ymd"
+                    >
+                      Start Date<SortIcon field="startYmd" />
+                    </th>
                     <th className="text-left p-3 font-medium text-sm">End Date</th>
                     <th className="text-left p-3 font-medium text-sm">Status</th>
                   </tr>
