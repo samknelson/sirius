@@ -1,11 +1,13 @@
 import type { Express } from "express";
 import { storage } from "../../storage";
-import { insertEdlsSheetsSchema, insertEdlsCrewsSchema, updateAssignmentExtraSchema, type InsertEdlsCrew } from "@shared/schema";
+import { insertEdlsSheetsSchema, insertEdlsCrewsSchema, updateAssignmentExtraSchema, dispatchJobGroups, type InsertEdlsCrew } from "@shared/schema";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { z } from "zod";
+import { and, or, lte, gte, isNull } from "drizzle-orm";
 import { getSupervisorContext, validateSupervisorForSave, getEdlsSettings } from "./supervisor-context";
 import { getEffectiveUser } from "../masquerade";
+import { getClient } from "../../storage/transaction-context";
 
 const crewInputSchema = insertEdlsCrewsSchema.omit({ sheetId: true });
 
@@ -124,6 +126,31 @@ export function registerEdlsSheetsRoutes(
     }
   });
 
+  app.get("/api/edls/job-group-options", requireAuth, edlsComponent, requireAccess('edls.any'), async (req, res) => {
+    try {
+      const { date } = req.query;
+      if (!date || typeof date !== 'string') {
+        res.status(400).json({ message: "date query parameter is required (YYYY-MM-DD)" });
+        return;
+      }
+      const client = getClient();
+      const results = await client
+        .select({ id: dispatchJobGroups.id, name: dispatchJobGroups.name })
+        .from(dispatchJobGroups)
+        .where(
+          and(
+            or(isNull(dispatchJobGroups.startYmd), lte(dispatchJobGroups.startYmd, date)),
+            or(isNull(dispatchJobGroups.endYmd), gte(dispatchJobGroups.endYmd, date))
+          )
+        )
+        .orderBy(dispatchJobGroups.name);
+      res.json(results);
+    } catch (error) {
+      console.error("Failed to fetch job group options:", error);
+      res.status(500).json({ message: "Failed to fetch job group options" });
+    }
+  });
+
   app.get("/api/edls/supervisor-context", requireAuth, edlsComponent, async (req, res) => {
     try {
       const user = (req as any).user;
@@ -194,6 +221,7 @@ export function registerEdlsSheetsRoutes(
         employerId: edlsSettings.employer,
         supervisor: supervisorValidation.supervisorId,
         assignee: sheetData.assignee || supervisorValidation.supervisorId,
+        jobGroupId: sheetData.jobGroupId || null,
       };
       
       const crewsTotalWorkerCount = crews.reduce((sum, crew) => sum + crew.workerCount, 0);
@@ -269,6 +297,7 @@ export function registerEdlsSheetsRoutes(
       const sheetData = {
         ...parsedSheetData,
         employerId: edlsSettings.employer,
+        jobGroupId: parsedSheetData.jobGroupId !== undefined ? (parsedSheetData.jobGroupId || null) : undefined,
       };
       
       if (!sheetData.departmentId) {

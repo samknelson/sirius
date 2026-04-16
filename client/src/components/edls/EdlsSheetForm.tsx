@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +43,11 @@ interface TaskOption {
   departmentId: string;
 }
 
+interface JobGroupOption {
+  id: string;
+  name: string;
+}
+
 export interface SheetFormData {
   title: string;
   ymd: string;
@@ -50,6 +55,7 @@ export interface SheetFormData {
   workerCount: number;
   supervisor: string;
   assignee: string;
+  jobGroupId: string;
   crews: CrewInput[];
 }
 
@@ -102,6 +108,7 @@ export function EdlsSheetForm({
         workerCount: initialData.sheet.workerCount,
         supervisor: initialData.sheet.supervisor || "",
         assignee: initialData.sheet.assignee || "",
+        jobGroupId: initialData.sheet.jobGroupId || "",
         crews: initialData.crews.map((c) => ({
           id: c.id,
           title: c.title,
@@ -121,9 +128,30 @@ export function EdlsSheetForm({
       workerCount: 0,
       supervisor: "",
       assignee: "",
+      jobGroupId: "",
       crews: [],
     };
   });
+
+  const { data: jobGroupOptions = [], isLoading: jobGroupsLoading } = useQuery<JobGroupOption[]>({
+    queryKey: ["/api/edls/job-group-options", formData.ymd],
+    queryFn: async () => {
+      if (!formData.ymd) return [];
+      const response = await fetch(`/api/edls/job-group-options?date=${formData.ymd}`);
+      if (!response.ok) throw new Error("Failed to fetch job group options");
+      return response.json();
+    },
+    enabled: !!formData.ymd,
+  });
+
+  useEffect(() => {
+    if (formData.jobGroupId && !jobGroupsLoading) {
+      const stillValid = jobGroupOptions.some(g => g.id === formData.jobGroupId);
+      if (!stillValid) {
+        setFormData(prev => ({ ...prev, jobGroupId: "" }));
+      }
+    }
+  }, [jobGroupOptions, jobGroupsLoading]);
 
   const effectiveSupervisor = supervisorContext?.enforcedSupervisorId || formData.supervisor;
   const canChangeSupervisor = supervisorContext?.canManage ?? true;
@@ -203,6 +231,7 @@ export function EdlsSheetForm({
     onSubmit({
       ...formData,
       supervisor: effectiveSupervisor,
+      jobGroupId: formData.jobGroupId || "",
     });
   };
 
@@ -364,6 +393,31 @@ export function EdlsSheetForm({
                     {assignee.firstName || assignee.lastName
                       ? `${assignee.firstName || ""} ${assignee.lastName || ""}`.trim()
                       : assignee.email}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="jobGroup">Job Group</Label>
+          {jobGroupsLoading ? (
+            <Skeleton className="h-10 w-full" />
+          ) : (
+            <Select
+              value={formData.jobGroupId || "__none__"}
+              onValueChange={(value) =>
+                setFormData({ ...formData, jobGroupId: value === "__none__" ? "" : value })
+              }
+            >
+              <SelectTrigger data-testid="select-job-group">
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None</SelectItem>
+                {jobGroupOptions.map((group) => (
+                  <SelectItem key={group.id} value={group.id}>
+                    {group.name}
                   </SelectItem>
                 ))}
               </SelectContent>
