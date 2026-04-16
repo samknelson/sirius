@@ -1,6 +1,6 @@
 import { storage } from "../../../../storage";
 import { logger } from "../../../../logger";
-import type { I'm InsertDispatchJobGroup } from "@shared/schema";
+import type { InsertDispatchJobGroup } from "@shared/schema";
 
 interface T631GroupRecord {
   nid: string;
