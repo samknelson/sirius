@@ -653,6 +653,12 @@ function AccountPaymentsContent() {
                       <ArrowUpDown className="h-3 w-3" />
                     </div>
                   </TableHead>
+                  <TableHead className="cursor-pointer text-right" onClick={() => handleSort("amount")}>
+                    <div className="flex items-center justify-end gap-1">
+                      Amount
+                      <ArrowUpDown className="h-3 w-3" />
+                    </div>
+                  </TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="cursor-pointer" onClick={() => handleSort("dateCreated")}>
@@ -718,6 +724,9 @@ function AccountPaymentsContent() {
                             </TooltipProvider>
                           );
                         })()}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums font-medium">
+                        {parseFloat(payment.amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </TableCell>
                       <TableCell>{paymentType?.name || "-"}</TableCell>
                       <TableCell>
