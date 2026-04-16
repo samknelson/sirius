@@ -1,6 +1,7 @@
 import { EALayout } from "@/components/layouts/EALayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2, Download } from "lucide-react";
 import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 
@@ -52,28 +53,55 @@ function isZero(amount: string): boolean {
   return parseFloat(amount) === 0;
 }
 
-type RowType = "amount" | "detail" | "summary";
-
-interface RowDef {
+interface ColDef {
   key: string;
   label: string;
-  type: RowType;
-  amountField?: keyof MonthColumn;
-  detailField?: keyof MonthColumn;
+  field: keyof MonthColumn;
+  isSummary?: boolean;
 }
 
-const ROW_DEFS: RowDef[] = [
-  { key: "charges", label: "Charges", type: "amount", amountField: "charges" },
-  { key: "chargeDetail", label: "Charge Detail", type: "detail", detailField: "chargeDetail" },
-  { key: "adjustments", label: "Adjustments", type: "amount", amountField: "adjustments" },
-  { key: "adjustmentDetail", label: "Adjustment Detail", type: "detail", detailField: "adjustmentDetail" },
-  { key: "interestPenalties", label: "Interest & Penalties", type: "amount", amountField: "interestPenalties" },
-  { key: "interestPenaltyDetail", label: "I&P Detail", type: "detail", detailField: "interestPenaltyDetail" },
-  { key: "paymentsCredited", label: "Payments Credited", type: "amount", amountField: "paymentsCredited" },
-  { key: "paymentDetail", label: "Payment Detail", type: "detail", detailField: "paymentDetail" },
-  { key: "unpaidStatementAmount", label: "Unpaid Statement Amount", type: "summary", amountField: "unpaidStatementAmount" },
-  { key: "statementBalance", label: "Statement Balance", type: "summary", amountField: "statementBalance" },
+const COL_DEFS: ColDef[] = [
+  { key: "charges", label: "Charges", field: "charges" },
+  { key: "adjustments", label: "Adjustments", field: "adjustments" },
+  { key: "interestPenalties", label: "Interest & Penalties", field: "interestPenalties" },
+  { key: "paymentsCredited", label: "Payments Credited", field: "paymentsCredited" },
+  { key: "unpaidStatementAmount", label: "Unpaid Statement", field: "unpaidStatementAmount", isSummary: true },
+  { key: "statementBalance", label: "Statement Balance", field: "statementBalance", isSummary: true },
 ];
+
+function exportCsv(data: AccountSummaryData) {
+  const months = data.months;
+  const headers = ["Period", ...COL_DEFS.map((c) => c.label)];
+  const rows: string[][] = [];
+
+  rows.push(["Incoming", ...COL_DEFS.map((c) =>
+    c.key === "statementBalance" ? data.incomingBalance : ""
+  )]);
+
+  for (const m of months) {
+    rows.push([
+      `${SHORT_MONTH_NAMES[m.month]} ${m.year}`,
+      ...COL_DEFS.map((c) => m[c.field] as string),
+    ]);
+  }
+
+  rows.push(["Current", ...COL_DEFS.map((c) =>
+    c.key === "statementBalance" ? data.currentBalance : (data.current[c.field] as string)
+  )]);
+
+  const csvContent = [
+    headers.join(","),
+    ...rows.map((r) => r.map((v) => `"${v}"`).join(",")),
+  ].join("\n");
+
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "account-summary.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 function EASummaryContent() {
   const { id } = useParams<{ id: string }>();
@@ -116,104 +144,80 @@ function EASummaryContent() {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Account Summary</CardTitle>
+        <Button variant="outline" size="sm" onClick={() => exportCsv(data)}>
+          <Download className="h-4 w-4 mr-2" />
+          Export CSV
+        </Button>
       </CardHeader>
       <CardContent className="p-0">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="text-left py-3 px-4 font-medium text-muted-foreground sticky left-0 bg-muted/50 min-w-[200px]">
+                <th className="text-left py-3 px-4 font-medium text-muted-foreground sticky left-0 bg-muted/50 min-w-[140px]">
+                  Period
                 </th>
-                <th className="text-right py-3 px-4 font-medium text-muted-foreground min-w-[120px]">
-                  Incoming
-                </th>
-                {months.map((m) => (
+                {COL_DEFS.map((col) => (
                   <th
-                    key={`${m.year}-${m.month}`}
+                    key={col.key}
                     className="text-right py-3 px-4 font-medium text-muted-foreground min-w-[130px]"
                   >
-                    {SHORT_MONTH_NAMES[m.month]} {m.year}
+                    {col.label}
                   </th>
                 ))}
-                <th className="text-right py-3 px-4 font-medium text-muted-foreground min-w-[120px]">
-                  Current
-                </th>
               </tr>
             </thead>
             <tbody>
-              {ROW_DEFS.map((row) => {
-                const isSummary = row.type === "summary";
-                const isDetail = row.type === "detail";
-                const isTopBorder = row.key === "unpaidStatementAmount";
-                const isBottomRow = row.key === "statementBalance";
+              <tr className="border-b border-border/50">
+                <td className="py-2.5 px-4 sticky left-0 bg-background font-medium">
+                  Incoming
+                </td>
+                {COL_DEFS.map((col) => (
+                  <td key={col.key} className="py-2.5 px-4 text-right">
+                    {col.key === "statementBalance"
+                      ? <span className="font-semibold">{formatAmount(data.incomingBalance)}</span>
+                      : ""}
+                  </td>
+                ))}
+              </tr>
 
-                if (isDetail) {
-                  const currentDetail = row.detailField ? (current[row.detailField] as string) : "";
+              {months.map((m) => (
+                <tr key={`${m.year}-${m.month}`} className="border-b border-border/50">
+                  <td className="py-2.5 px-4 sticky left-0 bg-background font-medium">
+                    {SHORT_MONTH_NAMES[m.month]} {m.year}
+                  </td>
+                  {COL_DEFS.map((col) => {
+                    const value = m[col.field] as string;
+                    const zero = isZero(value);
+                    return (
+                      <td
+                        key={col.key}
+                        className={`py-2.5 px-4 text-right ${col.isSummary ? "font-semibold" : ""} ${zero && !col.isSummary ? "text-muted-foreground" : ""}`}
+                      >
+                        {formatAmount(value)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+
+              <tr className="border-t-2 border-border bg-muted/30">
+                <td className="py-2.5 px-4 sticky left-0 bg-muted/30 font-semibold">
+                  Current
+                </td>
+                {COL_DEFS.map((col) => {
+                  const value = col.key === "statementBalance"
+                    ? data.currentBalance
+                    : (current[col.field] as string);
                   return (
-                    <tr key={row.key} className="border-b border-border/30">
-                      <td className="py-1 px-4 sticky left-0 bg-background text-xs text-muted-foreground italic">
-                        {row.label}
-                      </td>
-                      <td className="py-1 px-4"></td>
-                      {months.map((m) => {
-                        const detail = row.detailField ? (m[row.detailField] as string) : "";
-                        return (
-                          <td key={`${m.year}-${m.month}`} className="py-1 px-4 text-right text-xs text-muted-foreground italic">
-                            {detail}
-                          </td>
-                        );
-                      })}
-                      <td className="py-1 px-4 text-right text-xs text-muted-foreground italic">
-                        {currentDetail}
-                      </td>
-                    </tr>
+                    <td key={col.key} className="py-2.5 px-4 text-right font-semibold">
+                      {formatAmount(value)}
+                    </td>
                   );
-                }
-
-                const incomingCellValue = row.key === "statementBalance"
-                  ? formatAmount(data.incomingBalance)
-                  : "";
-
-                const currentCellValue = row.key === "statementBalance"
-                  ? formatAmount(data.currentBalance)
-                  : row.amountField && current
-                    ? formatAmount(current[row.amountField] as string)
-                    : "";
-
-                return (
-                  <tr
-                    key={row.key}
-                    className={`
-                      ${isTopBorder ? "border-t-2 border-border" : "border-b border-border/50"}
-                      ${isBottomRow ? "bg-muted/30" : ""}
-                    `}
-                  >
-                    <td className={`py-2.5 px-4 sticky left-0 ${isBottomRow ? "bg-muted/30" : "bg-background"} ${isSummary ? "font-semibold" : ""}`}>
-                      {row.label}
-                    </td>
-                    <td className={`py-2.5 px-4 text-right ${isSummary ? "font-semibold" : ""}`}>
-                      {incomingCellValue}
-                    </td>
-                    {months.map((m) => {
-                      const value = row.amountField ? (m[row.amountField] as string) : "0.00";
-                      const zero = isZero(value);
-                      return (
-                        <td
-                          key={`${m.year}-${m.month}`}
-                          className={`py-2.5 px-4 text-right ${isSummary ? "font-semibold" : ""} ${zero && !isSummary ? "text-muted-foreground" : ""}`}
-                        >
-                          {formatAmount(value)}
-                        </td>
-                      );
-                    })}
-                    <td className={`py-2.5 px-4 text-right ${isSummary ? "font-semibold" : ""}`}>
-                      {currentCellValue}
-                    </td>
-                  </tr>
-                );
-              })}
+                })}
+              </tr>
             </tbody>
           </table>
         </div>
