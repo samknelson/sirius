@@ -10,6 +10,7 @@ import {
   employers,
   users,
   optionsDepartment,
+  dispatchJobGroups,
   type EdlsSheet, 
   type InsertEdlsSheet,
   type EdlsCrew,
@@ -30,6 +31,7 @@ export interface EdlsSheetWithRelations extends EdlsSheet {
   department?: { id: string; name: string };
   supervisorUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
   assigneeUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
+  jobGroup?: { id: string; name: string };
   assignedCount?: number;
 }
 
@@ -253,12 +255,17 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
             lastName: assigneeUsers.lastName,
             email: assigneeUsers.email,
           },
+          jobGroup: {
+            id: dispatchJobGroups.id,
+            name: dispatchJobGroups.name,
+          },
         })
         .from(edlsSheets)
         .leftJoin(employers, eq(edlsSheets.employerId, employers.id))
         .leftJoin(optionsDepartment, eq(edlsSheets.departmentId, optionsDepartment.id))
         .leftJoin(supervisorUsers, eq(edlsSheets.supervisor, supervisorUsers.id))
         .leftJoin(assigneeUsers, eq(edlsSheets.assignee, assigneeUsers.id))
+        .leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
         .where(eq(edlsSheets.id, id));
       
       if (!row) return undefined;
@@ -269,6 +276,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         department: row.department || undefined,
         supervisorUser: row.supervisorUser?.id ? row.supervisorUser : undefined,
         assigneeUser: row.assigneeUser?.id ? row.assigneeUser : undefined,
+        jobGroup: row.jobGroup?.id ? row.jobGroup : undefined,
       };
     },
 

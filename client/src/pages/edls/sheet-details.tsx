@@ -1,11 +1,12 @@
 import { formatYmd } from "@shared/utils/date";
-import { Calendar, Users, FileText, Clock, MapPin, Lock, User, Building, ClipboardList } from "lucide-react";
+import { Calendar, Users, FileText, Clock, MapPin, Lock, User, Building, ClipboardList, Layers } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { Link } from "wouter";
 import type { EdlsSheetStatus, EdlsCrew, AssignmentExtra } from "@shared/schema";
 
 interface EdlsCrewWithRelations extends EdlsCrew {
@@ -150,6 +151,17 @@ function EdlsSheetDetailsContent() {
               <p className="text-foreground flex items-center gap-2" data-testid="text-department">
                 <Building className="h-4 w-4 text-muted-foreground" />
                 {(sheet as any).department?.name || "Not assigned"}
+              </p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Job Group</h3>
+              <p className="text-foreground flex items-center gap-2" data-testid="text-job-group">
+                <Layers className="h-4 w-4 text-muted-foreground" />
+                {(sheet as any).jobGroup ? (
+                  <Link href={`/dispatch/job_group/${(sheet as any).jobGroup.id}`} className="text-primary hover:underline">
+                    {(sheet as any).jobGroup.name}
+                  </Link>
+                ) : "None"}
               </p>
             </div>
             <div>
