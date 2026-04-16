@@ -472,11 +472,7 @@ export default function EdlsSheetsPage() {
                       {sheet.department?.name || "—"}
                     </TableCell>
                     <TableCell data-testid={`text-event-${sheet.id}`}>
-                      {sheet.jobGroup ? (
-                        <Link href={`/dispatch/job_group/${sheet.jobGroup.id}`} className="text-primary hover:underline">
-                          {sheet.jobGroup.name}
-                        </Link>
-                      ) : "—"}
+                      {sheet.jobGroup?.name || "—"}
                     </TableCell>
                     <TableCell>
                       <div className="text-sm">
