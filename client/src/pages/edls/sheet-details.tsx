@@ -154,7 +154,7 @@ function EdlsSheetDetailsContent() {
               </p>
             </div>
             <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">Job Group</h3>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Event</h3>
               <p className="text-foreground flex items-center gap-2" data-testid="text-job-group">
                 <Layers className="h-4 w-4 text-muted-foreground" />
                 {(sheet as any).jobGroup ? (

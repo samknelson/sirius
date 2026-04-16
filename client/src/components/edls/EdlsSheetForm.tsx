@@ -400,7 +400,7 @@ export function EdlsSheetForm({
           )}
         </div>
         <div className="space-y-2">
-          <Label htmlFor="jobGroup">Job Group</Label>
+          <Label htmlFor="jobGroup">Event</Label>
           {jobGroupsLoading ? (
             <Skeleton className="h-10 w-full" />
           ) : (

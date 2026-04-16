@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { format, addDays, startOfDay } from "date-fns";
@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { Plus, FileSpreadsheet, Calendar, Users, CalendarDays, Eye, Pencil, Settings, UserCheck } from "lucide-react";
+import { Plus, FileSpreadsheet, Calendar, Users, CalendarDays, Eye, Pencil, Settings, UserCheck, Layers } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { EdlsSheetForm, type SheetFormData } from "@/components/edls/EdlsSheetForm";
@@ -43,7 +43,13 @@ interface EdlsSheetWithRelations extends EdlsSheet {
   department?: { id: string; name: string };
   supervisorUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
   assigneeUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
+  jobGroup?: { id: string; name: string };
   assignedCount?: number;
+}
+
+interface JobGroupOption {
+  id: string;
+  name: string;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -112,6 +118,7 @@ export default function EdlsSheetsPage() {
   const [rangeFromDate, setRangeFromDate] = useState<Date | undefined>(undefined);
   const [rangeToDate, setRangeToDate] = useState<Date | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [eventFilter, setEventFilter] = useState<string>("all");
   
   const dateFilterOptions = useMemo(() => getDateFilterOptions(), []);
   
@@ -137,14 +144,41 @@ export default function EdlsSheetsPage() {
     return { dateFrom: undefined, dateTo: undefined };
   }, [dateFilterType, otherDate, rangeFromDate, rangeToDate, dateFilterOptions]);
   
+  const eventOptionsDate = useMemo(() => {
+    if (dateFrom && dateFrom === dateTo) return dateFrom;
+    if (dateFrom && !dateTo) return dateFrom;
+    if (!dateFrom && dateTo) return dateTo;
+    return undefined;
+  }, [dateFrom, dateTo]);
+
+  const { data: eventOptions = [] } = useQuery<JobGroupOption[]>({
+    queryKey: ["/api/edls/job-group-options", eventOptionsDate],
+    queryFn: async () => {
+      if (!eventOptionsDate) return [];
+      const res = await fetch(`/api/edls/job-group-options?date=${eventOptionsDate}`);
+      if (!res.ok) throw new Error("Failed to fetch event options");
+      return res.json();
+    },
+    enabled: !!eventOptionsDate,
+  });
+
+  useEffect(() => {
+    if (eventFilter !== "all" && !eventOptions.some(o => o.id === eventFilter)) {
+      setEventFilter("all");
+    }
+  }, [eventFilter, eventOptions]);
+
+  const activeEventFilter = eventFilter !== "all" && eventOptions.some(o => o.id === eventFilter) ? eventFilter : "all";
+
   const queryParams = new URLSearchParams();
   if (dateFrom) queryParams.set("dateFrom", dateFrom);
   if (dateTo) queryParams.set("dateTo", dateTo);
   if (statusFilter && statusFilter !== "all") queryParams.set("status", statusFilter);
+  if (activeEventFilter && activeEventFilter !== "all") queryParams.set("jobGroupId", activeEventFilter);
   const queryString = queryParams.toString();
   
   const { data: sheetsData, isLoading } = useQuery<PaginatedEdlsSheets>({
-    queryKey: ["/api/edls/sheets", { dateFrom, dateTo, status: statusFilter }],
+    queryKey: ["/api/edls/sheets", { dateFrom, dateTo, status: statusFilter, jobGroupId: activeEventFilter }],
     queryFn: async () => {
       const url = queryString ? `/api/edls/sheets?${queryString}` : "/api/edls/sheets";
       const res = await fetch(url, { credentials: "include" });
@@ -279,6 +313,30 @@ export default function EdlsSheetsPage() {
               </Select>
             </div>
             
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                <Layers className="h-4 w-4" />
+                Event
+              </label>
+              <Select
+                value={eventFilter}
+                onValueChange={setEventFilter}
+                disabled={!eventOptionsDate || eventOptions.length === 0}
+              >
+                <SelectTrigger className="w-[220px]" data-testid="select-event-filter">
+                  <SelectValue placeholder={!eventOptionsDate ? "Select a date first" : "All Events"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" data-testid="option-event-all">All Events</SelectItem>
+                  {eventOptions.map((option) => (
+                    <SelectItem key={option.id} value={option.id} data-testid={`option-event-${option.id}`}>
+                      {option.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
             {dateFilterType === "other" && (
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-muted-foreground">Select Date</label>
@@ -380,6 +438,7 @@ export default function EdlsSheetsPage() {
                   <TableHead>Title</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Department</TableHead>
+                  <TableHead>Event</TableHead>
                   <TableHead>Supervisor / Assignee</TableHead>
                   <TableHead>Workers</TableHead>
                   <TableHead>Tools</TableHead>
@@ -411,6 +470,13 @@ export default function EdlsSheetsPage() {
                     </TableCell>
                     <TableCell>
                       {sheet.department?.name || "—"}
+                    </TableCell>
+                    <TableCell data-testid={`text-event-${sheet.id}`}>
+                      {sheet.jobGroup ? (
+                        <Link href={`/dispatch/job_group/${sheet.jobGroup.id}`} className="text-primary hover:underline">
+                          {sheet.jobGroup.name}
+                        </Link>
+                      ) : "—"}
                     </TableCell>
                     <TableCell>
                       <div className="text-sm">

@@ -30,7 +30,8 @@ export function registerEdlsSheetsRoutes(
         limit: limitParam,
         dateFrom,
         dateTo,
-        status
+        status,
+        jobGroupId
       } = req.query;
       
       const page = parseInt(pageParam as string) || 0;
@@ -44,6 +45,7 @@ export function registerEdlsSheetsRoutes(
           dateFrom: dateFrom as string | undefined,
           dateTo: dateTo as string | undefined,
           status: status as string | undefined,
+          jobGroupId: jobGroupId as string | undefined,
         }
       );
       res.json(result);

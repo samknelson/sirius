@@ -105,6 +105,7 @@ export interface EdlsSheetsFilterOptions {
   dateFrom?: string;
   dateTo?: string;
   status?: string;
+  jobGroupId?: string;
 }
 
 export interface EdlsSheetsStorage {
@@ -154,6 +155,9 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       } else {
         conditions.push(ne(edlsSheets.status, 'trash'));
       }
+      if (filters?.jobGroupId) {
+        conditions.push(eq(edlsSheets.jobGroupId, filters.jobGroupId));
+      }
       
       const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
       
@@ -198,12 +202,17 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
             email: assigneeUsers.email,
           },
           assignedCount: assignedCountSubquery,
+          jobGroup: {
+            id: dispatchJobGroups.id,
+            name: dispatchJobGroups.name,
+          },
         })
         .from(edlsSheets)
         .leftJoin(employers, eq(edlsSheets.employerId, employers.id))
         .leftJoin(optionsDepartment, eq(edlsSheets.departmentId, optionsDepartment.id))
         .leftJoin(supervisorUsers, eq(edlsSheets.supervisor, supervisorUsers.id))
-        .leftJoin(assigneeUsers, eq(edlsSheets.assignee, assigneeUsers.id));
+        .leftJoin(assigneeUsers, eq(edlsSheets.assignee, assigneeUsers.id))
+        .leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id));
       
       const rows = whereCondition
         ? await baseQuery.where(whereCondition).orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit)
@@ -215,6 +224,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         department: row.department?.id ? row.department : undefined,
         supervisorUser: row.supervisorUser?.id ? row.supervisorUser : undefined,
         assigneeUser: row.assigneeUser?.id ? row.assigneeUser : undefined,
+        jobGroup: row.jobGroup?.id ? row.jobGroup : undefined,
         assignedCount: row.assignedCount ?? 0,
       }));
       
