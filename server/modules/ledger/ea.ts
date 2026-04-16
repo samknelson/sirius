@@ -353,6 +353,7 @@ export function registerLedgerEaRoutes(app: Express) {
       const { id } = req.params;
       const rawMonths = parseInt(req.query.months as string, 10);
       const monthsParam = Math.min(Math.max(isNaN(rawMonths) ? 6 : rawMonths, 1), 36);
+      const groupBy = req.query.groupBy === "statementYmd" ? "statementYmd" : "date";
 
       const ea = await storage.ledger.ea.get(id);
       if (!ea) {
@@ -498,18 +499,35 @@ export function registerLedgerEaRoutes(app: Express) {
         return monthDataMap.get(currentKey) || null;
       };
 
+      const parseBucketFromStmtYmd = (ymd: string, fallbackMonth: number, fallbackYear: number) => {
+        const [sy, sm] = ymd.split("-").map(Number);
+        return (sy && sm) ? { month: sm, year: sy } : { month: fallbackMonth, year: fallbackYear };
+      };
+
       for (const entry of entries) {
         if (!entry.date) continue;
         const d = new Date(entry.date);
         const em = d.getMonth() + 1;
         const ey = d.getFullYear();
-        const dateKey = getKey(em, ey);
         const amountCents = toCents(entry.amount);
 
-        const dateData = monthDataMap.get(dateKey);
-        if (dateData) {
-          dateData.allEntriesSum += amountCents;
-        } else if (firstPeriod && (ey < firstPeriod.year || (ey === firstPeriod.year && em < firstPeriod.month))) {
+        let bucketMonth: number;
+        let bucketYear: number;
+
+        if (groupBy === "statementYmd" && entry.statementYmd) {
+          const parsed = parseBucketFromStmtYmd(entry.statementYmd, em, ey);
+          bucketMonth = parsed.month;
+          bucketYear = parsed.year;
+        } else {
+          bucketMonth = em;
+          bucketYear = ey;
+        }
+
+        const bucketKey = getKey(bucketMonth, bucketYear);
+        const bucketData = monthDataMap.get(bucketKey);
+        if (bucketData) {
+          bucketData.allEntriesSum += amountCents;
+        } else if (firstPeriod && (bucketYear < firstPeriod.year || (bucketYear === firstPeriod.year && bucketMonth < firstPeriod.month))) {
           preIncomingCents += amountCents;
         }
 
@@ -518,17 +536,14 @@ export function registerLedgerEaRoutes(app: Express) {
           const pt = payment ? paymentTypeMap.get(payment.paymentType) : undefined;
           const category = pt?.category || "financial";
 
-          const [y, m] = entry.statementYmd.split("-").map(Number);
-          const stmtMonth = (y && m) ? m : em;
-          const stmtYear = (y && m) ? y : ey;
-          const stmtData = getVisibleMonth(stmtMonth, stmtYear);
+          const catData = getVisibleMonth(bucketMonth, bucketYear);
 
-          if (stmtData) {
+          if (catData) {
             if (category === "adjustment") {
-              stmtData.adjustments += amountCents;
-              stmtData.adjustmentEntryCount++;
+              catData.adjustments += amountCents;
+              catData.adjustmentEntryCount++;
             } else {
-              stmtData.paymentsCredited += amountCents;
+              catData.paymentsCredited += amountCents;
 
               if (payment) {
                 const details = (payment.details || {}) as Record<string, unknown>;
@@ -543,26 +558,28 @@ export function registerLedgerEaRoutes(app: Express) {
                 } else if (dateReceived) {
                   detailStr = `Rec'd ${dateReceived}`;
                 }
-                if (detailStr) stmtData.paymentDetails.push(detailStr);
+                if (detailStr) catData.paymentDetails.push(detailStr);
               }
             }
           }
         } else if (entry.chargePlugin === "interest" || entry.chargePlugin === "penalty") {
-          if (dateData) {
-            dateData.interestPenalties += amountCents;
-            dateData.interestPenaltyEntryCount++;
+          const catData = getVisibleMonth(bucketMonth, bucketYear);
+          if (catData) {
+            catData.interestPenalties += amountCents;
+            catData.interestPenaltyEntryCount++;
           }
         } else {
           const positiveAmount = amountCents > BigInt(0) ? amountCents : BigInt(0);
-          if (dateData && positiveAmount > BigInt(0)) {
-            dateData.charges += positiveAmount;
-            dateData.chargeEntryCount++;
+          const catData = getVisibleMonth(bucketMonth, bucketYear);
+          if (catData && positiveAmount > BigInt(0)) {
+            catData.charges += positiveAmount;
+            catData.chargeEntryCount++;
             if (entry.referenceId) {
-              dateData.chargeWorkerIds.add(entry.referenceId);
+              catData.chargeWorkerIds.add(entry.referenceId);
             }
             const meta = entry.data as Record<string, unknown> | null;
             if (meta && typeof meta.hours === "number") {
-              dateData.chargeHours += meta.hours;
+              catData.chargeHours += meta.hours;
             }
           }
         }
@@ -636,6 +653,7 @@ export function registerLedgerEaRoutes(app: Express) {
 
       res.json({
         currencyCode,
+        groupBy,
         incomingBalance: overallIncomingBalance,
         currentBalance: currentColumn.statementBalance,
         months: monthColumns,

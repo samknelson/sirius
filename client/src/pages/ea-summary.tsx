@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Download } from "lucide-react";
 import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 interface MonthColumn {
   month: number;
@@ -21,8 +22,11 @@ interface MonthColumn {
   incomingBalance: string;
 }
 
+type GroupByMode = "date" | "statementYmd";
+
 interface AccountSummaryData {
   currencyCode: string;
+  groupBy: GroupByMode;
   incomingBalance: string;
   currentBalance: string;
   months: MonthColumn[];
@@ -98,16 +102,18 @@ function exportCsv(data: AccountSummaryData) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "account-summary.csv";
+  const modeLabel = data.groupBy === "statementYmd" ? "by-statement-date" : "by-ledger-date";
+  link.download = `account-summary-${modeLabel}.csv`;
   link.click();
   URL.revokeObjectURL(url);
 }
 
 function EASummaryContent() {
   const { id } = useParams<{ id: string }>();
+  const [groupBy, setGroupBy] = useState<GroupByMode>("statementYmd");
 
   const { data, isLoading } = useQuery<AccountSummaryData>({
-    queryKey: [`/api/ledger/ea/${id}/account-summary`],
+    queryKey: [`/api/ledger/ea/${id}/account-summary?groupBy=${groupBy}`],
   });
 
   if (isLoading) {
@@ -146,10 +152,28 @@ function EASummaryContent() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Account Summary</CardTitle>
-        <Button variant="outline" size="sm" onClick={() => exportCsv(data)}>
-          <Download className="h-4 w-4 mr-2" />
-          Export CSV
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="inline-flex rounded-md border border-input bg-muted/30 p-0.5 text-sm">
+            <button
+              type="button"
+              className={`px-3 py-1 rounded-sm transition-colors ${groupBy === "statementYmd" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => setGroupBy("statementYmd")}
+            >
+              Statement Date
+            </button>
+            <button
+              type="button"
+              className={`px-3 py-1 rounded-sm transition-colors ${groupBy === "date" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => setGroupBy("date")}
+            >
+              Ledger Date
+            </button>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => exportCsv(data)}>
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="p-0">
         <div className="overflow-x-auto">
