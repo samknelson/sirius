@@ -21,6 +21,7 @@ export default function DispatchJobGroupNewPage() {
     name: "",
     startYmd: "",
     endYmd: "",
+    siriusId: "",
   });
 
   const createMutation = useMutation({
@@ -29,6 +30,7 @@ export default function DispatchJobGroupNewPage() {
         name: data.name,
         startYmd: data.startYmd,
         endYmd: data.endYmd,
+        siriusId: data.siriusId || null,
       };
       return apiRequest("POST", "/api/dispatch-job-groups", payload);
     },
@@ -77,6 +79,16 @@ export default function DispatchJobGroupNewPage() {
                 value={formData.name}
                 onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                 data-testid="input-create-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="siriusId">Sirius ID</Label>
+              <Input
+                id="siriusId"
+                value={formData.siriusId}
+                onChange={(e) => setFormData((prev) => ({ ...prev, siriusId: e.target.value }))}
+                placeholder="Optional external identifier"
+                data-testid="input-create-sirius-id"
               />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -26,6 +26,8 @@ export interface DispatchJobGroupStorage {
   getAll(): Promise<DispatchJobGroup[]>;
   getPaginated(page: number, limit: number, filters?: DispatchJobGroupFilters): Promise<PaginatedDispatchJobGroups>;
   get(id: string): Promise<DispatchJobGroup | undefined>;
+  getBySiriusId(siriusId: string): Promise<DispatchJobGroup | undefined>;
+  getByName(name: string): Promise<DispatchJobGroup | undefined>;
   create(group: InsertDispatchJobGroup): Promise<DispatchJobGroup>;
   update(id: string, group: Partial<InsertDispatchJobGroup>): Promise<DispatchJobGroup | undefined>;
   delete(id: string): Promise<boolean>;
@@ -132,6 +134,18 @@ export function createDispatchJobGroupStorage(): DispatchJobGroupStorage {
     async get(id: string): Promise<DispatchJobGroup | undefined> {
       const client = getClient();
       const [group] = await client.select().from(dispatchJobGroups).where(eq(dispatchJobGroups.id, id));
+      return group || undefined;
+    },
+
+    async getBySiriusId(siriusId: string): Promise<DispatchJobGroup | undefined> {
+      const client = getClient();
+      const [group] = await client.select().from(dispatchJobGroups).where(eq(dispatchJobGroups.siriusId, siriusId));
+      return group || undefined;
+    },
+
+    async getByName(name: string): Promise<DispatchJobGroup | undefined> {
+      const client = getClient();
+      const [group] = await client.select().from(dispatchJobGroups).where(ilike(dispatchJobGroups.name, name));
       return group || undefined;
     },
 

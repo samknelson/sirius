@@ -9,6 +9,7 @@ export const dispatchJobGroups = pgTable("dispatch_job_group", {
   startYmd: date("start_ymd").notNull(),
   endYmd: date("end_ymd").notNull(),
   data: jsonb("data"),
+  siriusId: text("sirius_id").unique(),
 });
 
 export const insertDispatchJobGroupSchema = createInsertSchema(dispatchJobGroups).omit({
@@ -16,6 +17,7 @@ export const insertDispatchJobGroupSchema = createInsertSchema(dispatchJobGroups
 }).extend({
   startYmd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD format"),
   endYmd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD format"),
+  siriusId: z.string().nullish(),
 });
 
 export type InsertDispatchJobGroup = z.infer<typeof insertDispatchJobGroupSchema>;

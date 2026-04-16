@@ -17,6 +17,10 @@ function DetailsContent() {
               <dd className="mt-1 text-sm" data-testid="text-detail-name">{group.name}</dd>
             </div>
             <div>
+              <dt className="text-sm font-medium text-muted-foreground">Sirius ID</dt>
+              <dd className="mt-1 text-sm text-muted-foreground" data-testid="text-detail-sirius-id">{group.siriusId || "—"}</dd>
+            </div>
+            <div>
               <dt className="text-sm font-medium text-muted-foreground">Start Date</dt>
               <dd className="mt-1 text-sm" data-testid="text-detail-start-ymd">{group.startYmd}</dd>
             </div>

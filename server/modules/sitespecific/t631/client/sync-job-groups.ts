@@ -1,9 +1,10 @@
 import { storage } from "../../../../storage";
 import { logger } from "../../../../logger";
-import type { DispatchJobGroup, InsertDispatchJobGroup } from "@shared/schema";
+import type { InsertDispatchJobGroup } from "@shared/schema";
 
 interface T631GroupRecord {
   nid: string;
+  uuid?: string;
   title: string;
   field_sirius_datetime?: { und?: Array<{ value: string }> };
   field_sirius_datetime_completed?: { und?: Array<{ value: string }> };
@@ -19,6 +20,7 @@ interface T631GroupSearchResponse {
 interface SyncResult {
   created: number;
   updated: number;
+  unchanged: number;
   skipped: number;
   errors: number;
   details: Array<{ name: string; action: string; error?: string }>;
@@ -31,11 +33,15 @@ function extractYmd(datetimeField: { und?: Array<{ value: string }> } | undefine
   return match ? match[1] : null;
 }
 
-export async function syncT631JobGroups(
+function extractSiriusId(record: T631GroupRecord): string | null {
+  return record.uuid || record.nid || null;
+}
+
+export async function syncJobGroups(
   responseData: T631GroupSearchResponse,
   dryRun: boolean
 ): Promise<SyncResult> {
-  const result: SyncResult = { created: 0, updated: 0, skipped: 0, errors: 0, details: [] };
+  const result: SyncResult = { created: 0, updated: 0, unchanged: 0, skipped: 0, errors: 0, details: [] };
 
   if (!responseData.success || !responseData.data) {
     logger.warn("T631 dispatch group search returned unsuccessful or empty data", {
@@ -53,17 +59,18 @@ export async function syncT631JobGroups(
     return result;
   }
 
-  const existingGroups = await storage.dispatchJobGroups.getAll();
-  const existingByName = new Map<string, DispatchJobGroup>();
-  for (const g of existingGroups) {
-    existingByName.set(g.name.toLowerCase(), g);
-  }
-
   for (const remote of remoteEntries) {
     const name = remote.title;
     if (!name) {
       result.skipped++;
       result.details.push({ name: "(empty title)", action: "skipped", error: "Missing title" });
+      continue;
+    }
+
+    const siriusId = extractSiriusId(remote);
+    if (!siriusId) {
+      result.skipped++;
+      result.details.push({ name, action: "skipped", error: "Missing UUID/nid" });
       continue;
     }
 
@@ -78,11 +85,36 @@ export async function syncT631JobGroups(
 
     const t631Data = { ...remote };
 
-    const existing = existingByName.get(name.toLowerCase());
+    let existing = await storage.dispatchJobGroups.getBySiriusId(siriusId);
+
+    if (!existing) {
+      const byName = await storage.dispatchJobGroups.getByName(name);
+      if (byName && !byName.siriusId) {
+        existing = byName;
+        logger.info(`Linked existing job group "${name}" to siriusId ${siriusId} (name-based fallback)`, {
+          service: "t631-sync-job-groups",
+          groupId: byName.id,
+          siriusId,
+        });
+      }
+    }
 
     try {
       if (existing) {
-        if (dryRun) {
+        const newDataStr = JSON.stringify(t631Data);
+        const existingDataStr = JSON.stringify(existing.data);
+        const needsSiriusId = existing.siriusId !== siriusId;
+        const hasChanges =
+          existing.name !== name ||
+          existing.startYmd !== startYmd ||
+          existing.endYmd !== endYmd ||
+          existingDataStr !== newDataStr ||
+          needsSiriusId;
+
+        if (!hasChanges) {
+          result.unchanged++;
+          result.details.push({ name, action: dryRun ? "would_be_unchanged" : "unchanged" });
+        } else if (dryRun) {
           result.updated++;
           result.details.push({ name, action: "would_update" });
         } else {
@@ -90,6 +122,7 @@ export async function syncT631JobGroups(
             name,
             startYmd,
             endYmd,
+            siriusId,
             data: t631Data as Record<string, unknown>,
           });
           result.updated++;
@@ -104,6 +137,7 @@ export async function syncT631JobGroups(
             name,
             startYmd,
             endYmd,
+            siriusId,
             data: t631Data as Record<string, unknown>,
           };
           await storage.dispatchJobGroups.create(insert);

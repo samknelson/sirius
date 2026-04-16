@@ -22,6 +22,7 @@ function EditContent() {
     name: "",
     startYmd: "",
     endYmd: "",
+    siriusId: "",
   });
 
   useEffect(() => {
@@ -30,6 +31,7 @@ function EditContent() {
         name: group.name,
         startYmd: group.startYmd,
         endYmd: group.endYmd,
+        siriusId: group.siriusId || "",
       });
     }
   }, [group]);
@@ -40,6 +42,7 @@ function EditContent() {
         name: data.name,
         startYmd: data.startYmd,
         endYmd: data.endYmd,
+        siriusId: data.siriusId || null,
       };
       return apiRequest("PUT", `/api/dispatch-job-groups/${group.id}`, payload);
     },
@@ -89,6 +92,16 @@ function EditContent() {
                 value={formData.name}
                 onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                 data-testid="input-edit-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="siriusId">Sirius ID</Label>
+              <Input
+                id="siriusId"
+                value={formData.siriusId}
+                onChange={(e) => setFormData((prev) => ({ ...prev, siriusId: e.target.value }))}
+                placeholder="Optional external identifier"
+                data-testid="input-edit-sirius-id"
               />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -1,6 +1,6 @@
 import type { CronJobHandler, CronJobContext, CronJobResult } from "../registry";
 import { t631Fetch } from "../../modules/sitespecific/t631/client/fetch";
-import { syncT631JobGroups } from "../../modules/sitespecific/t631/client/sync-job-groups";
+import { syncJobGroups } from "../../modules/sitespecific/t631/client/sync-job-groups";
 
 export const t631DispatchJobGroupFetchHandler: CronJobHandler = {
   description: "Fetches dispatch job groups from the T631 server and syncs them into the local database",
@@ -28,19 +28,20 @@ export const t631DispatchJobGroupFetchHandler: CronJobHandler = {
       throw new Error("T631 response missing 'data' field or data is not an object");
     }
 
-    const syncResult = await syncT631JobGroups(
-      responseBody as Parameters<typeof syncT631JobGroups>[0],
+    const syncResult = await syncJobGroups(
+      responseBody as Parameters<typeof syncJobGroups>[0],
       isDryRun
     );
 
     const prefix = isDryRun ? "[TEST] " : "";
-    const message = `${prefix}Synced T631 dispatch job groups: ${syncResult.created} created, ${syncResult.updated} updated, ${syncResult.skipped} skipped, ${syncResult.errors} errors`;
+    const message = `${prefix}Synced T631 dispatch job groups: ${syncResult.created} created, ${syncResult.updated} updated, ${syncResult.unchanged} unchanged, ${syncResult.skipped} skipped, ${syncResult.errors} errors`;
 
     return {
       message,
       metadata: {
         created: syncResult.created,
         updated: syncResult.updated,
+        unchanged: syncResult.unchanged,
         skipped: syncResult.skipped,
         errors: syncResult.errors,
         details: syncResult.details,
