@@ -5,6 +5,7 @@ import { StatementPicker, type StatementSelection } from "@/components/ledger/St
 import { Trash2 } from "lucide-react";
 
 export interface ParticipantBoxState {
+  _id?: number;
   eaId: string;
   amount: string;
   statementSelections: StatementSelection[];

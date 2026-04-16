@@ -66,15 +66,12 @@ export function StatementPicker({
 
   useEffect(() => {
     if (prevEaIdRef.current !== eaId) {
-      const wasEmpty = !prevEaIdRef.current;
       prevEaIdRef.current = eaId;
-      if (!wasEmpty) {
-        setUseManual(false);
-        setMultiMode(false);
-        onSelectionsChange([]);
-        onManualMonthChange("");
-        onManualYearChange("");
-      }
+      setUseManual(false);
+      setMultiMode(false);
+      onSelectionsChange([]);
+      onManualMonthChange("");
+      onManualYearChange("");
     }
   }, [eaId]);
 
@@ -85,7 +82,7 @@ export function StatementPicker({
   }, [selections.length]);
 
   useEffect(() => {
-    if (invoices && invoices.length === 0 && eaId) {
+    if (invoices && invoices.length === 0 && eaId && !useManual) {
       setUseManual(true);
     }
   }, [invoices, eaId]);

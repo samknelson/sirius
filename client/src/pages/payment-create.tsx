@@ -11,7 +11,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertLedgerPaymentSchema, type LedgerPaymentType } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
 import { Plus } from "lucide-react";
@@ -20,13 +20,16 @@ import { ParticipantAllocationBox, type ParticipantBoxState } from "@/components
 
 type PaymentCategory = "financial" | "adjustment";
 
-const EMPTY_PARTICIPANT_BOX: ParticipantBoxState = {
-  eaId: "",
-  amount: "",
-  statementSelections: [],
-  manualMonth: "",
-  manualYear: "",
-};
+function createParticipantBox(id: number): ParticipantBoxState {
+  return {
+    _id: id,
+    eaId: "",
+    amount: "",
+    statementSelections: [],
+    manualMonth: "",
+    manualYear: "",
+  };
+}
 
 type EAListItem = {
   id: string;
@@ -56,8 +59,9 @@ function PaymentCreateContent() {
   const [adjustmentUser, setAdjustmentUser] = useState("");
   const [dateEntered, setDateEntered] = useState("");
   const [effectiveDate, setEffectiveDate] = useState("");
+  const nextBoxId = useRef(1);
   const [participantBoxes, setParticipantBoxes] = useState<ParticipantBoxState[]>([
-    { ...EMPTY_PARTICIPANT_BOX, amount: "0.00" },
+    { ...createParticipantBox(0), amount: "0.00" },
   ]);
 
   const { data: accountData } = useQuery<{ id: string; currencyCode?: string }>({
@@ -166,7 +170,8 @@ function PaymentCreateContent() {
   };
 
   const addParticipantBox = () => {
-    setParticipantBoxes((prev) => [...prev, { ...EMPTY_PARTICIPANT_BOX }]);
+    const id = nextBoxId.current++;
+    setParticipantBoxes((prev) => [...prev, createParticipantBox(id)]);
   };
 
   const getStatementInfoFromBox = (box: ParticipantBoxState) => {
@@ -605,7 +610,7 @@ function PaymentCreateContent() {
 
               {participantBoxes.map((box, idx) => (
                 <ParticipantAllocationBox
-                  key={idx}
+                  key={box._id ?? idx}
                   state={box}
                   onChange={(updated) => updateParticipantBox(idx, updated)}
                   onRemove={participantBoxes.length > 1 ? () => removeParticipantBox(idx) : undefined}
