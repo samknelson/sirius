@@ -1,6 +1,6 @@
 import { storage } from "../../../../storage";
 import { logger } from "../../../../logger";
-import type { InsertDispatchJobGroup } from "@shared/schema";
+import type { I'm InsertDispatchJobGroup } from "@shared/schema";
 
 interface T631GroupRecord {
   nid: string;
@@ -35,6 +35,14 @@ function extractYmd(datetimeField: { und?: Array<{ value: string }> } | undefine
 
 function extractSiriusId(record: T631GroupRecord): string | null {
   return record.uuid || record.nid || null;
+}
+
+function stableStringify(obj: unknown): string {
+  if (obj === null || obj === undefined) return "null";
+  if (typeof obj !== "object") return JSON.stringify(obj);
+  if (Array.isArray(obj)) return "[" + obj.map(stableStringify).join(",") + "]";
+  const sorted = Object.keys(obj as Record<string, unknown>).sort();
+  return "{" + sorted.map(k => JSON.stringify(k) + ":" + stableStringify((obj as Record<string, unknown>)[k])).join(",") + "}";
 }
 
 export async function syncJobGroups(
@@ -101,8 +109,8 @@ export async function syncJobGroups(
 
     try {
       if (existing) {
-        const newDataStr = JSON.stringify(t631Data);
-        const existingDataStr = JSON.stringify(existing.data);
+        const newDataStr = stableStringify(t631Data);
+        const existingDataStr = stableStringify(existing.data);
         const needsSiriusId = existing.siriusId !== siriusId;
         const hasChanges =
           existing.name !== name ||
