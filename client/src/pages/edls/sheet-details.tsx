@@ -6,7 +6,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { Link } from "wouter";
 import type { EdlsSheetStatus, EdlsCrew, AssignmentExtra } from "@shared/schema";
 
 interface EdlsCrewWithRelations extends EdlsCrew {
@@ -157,11 +156,7 @@ function EdlsSheetDetailsContent() {
               <h3 className="text-sm font-medium text-muted-foreground mb-1">Event</h3>
               <p className="text-foreground flex items-center gap-2" data-testid="text-job-group">
                 <Layers className="h-4 w-4 text-muted-foreground" />
-                {(sheet as any).jobGroup ? (
-                  <Link href={`/dispatch/job_group/${(sheet as any).jobGroup.id}`} className="text-primary hover:underline">
-                    {(sheet as any).jobGroup.name}
-                  </Link>
-                ) : "None"}
+                {(sheet as any).jobGroup?.name || "None"}
               </p>
             </div>
             <div>
