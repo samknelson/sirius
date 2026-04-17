@@ -1323,6 +1323,9 @@ function AssignmentsAccessGate() {
     return (
       <Card>
         <CardContent className="py-10 text-center space-y-4">
+          <p className="text-base font-medium" data-testid="text-assignments-denied-heading">
+            Assignments are not available for this sheet.
+          </p>
           <p className="text-sm text-muted-foreground" data-testid="text-assignments-denied">
             {reason}
           </p>
