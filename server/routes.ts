@@ -98,6 +98,7 @@ import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
 import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
+import { registerWorkerEdlsRoutes } from "./modules/edls/workers";
 import { registerWebServiceBundle } from "./modules/webservices";
 import { setupEdlsRoutes, EDLS_BUNDLE_CODE } from "./modules/webservices/edls";
 import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
@@ -1703,6 +1704,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register EDLS routes
   registerEdlsSheetsRoutes(app, requireAuth, requirePermission);
   registerEdlsTasksRoutes(app, requireAuth, requirePermission);
+  registerWorkerEdlsRoutes(app, requireAuth);
 
   // Register Web Service bundles (API access via client credentials)
   registerWebServiceBundle(app, {

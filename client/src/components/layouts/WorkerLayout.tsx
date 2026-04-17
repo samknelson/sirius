@@ -10,6 +10,8 @@ import { BookmarkButton } from "@/components/ui/bookmark-button";
 import { DebugRecordViewer } from "@/components/debug/DebugRecordViewer";
 import { useWorkerTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { Badge } from "@/components/ui/badge";
 
 interface WorkerLayoutContextValue {
   worker: Worker;
@@ -33,6 +35,27 @@ interface WorkerLayoutProps {
   children: ReactNode;
 }
 
+
+function WorkerEdlsBadge({ workerId }: { workerId: string }) {
+  const { hasComponent } = useAuth();
+  const enabled = hasComponent('edls');
+  const { data } = useQuery<{ active: boolean; exists: boolean }>({
+    queryKey: ["/api/workers", workerId, "edls"],
+    enabled,
+    retry: false,
+  });
+
+  if (!enabled || !data) return null;
+
+  return (
+    <Badge
+      variant={data.active ? "default" : "secondary"}
+      data-testid={`badge-edls-status-${workerId}`}
+    >
+      EDLS: {data.active ? "Active" : "Inactive"}
+    </Badge>
+  );
+}
 
 export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
   const { id } = useParams<{ id: string }>();
@@ -191,6 +214,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
                   {contact?.displayName || `Worker ${worker.id.slice(0, 8)}`}
                 </h1>
                 <BookmarkButton entityType="worker" entityId={worker.id} entityName={contact?.displayName || `Worker ${worker.id.slice(0, 8)}`} />
+                <WorkerEdlsBadge workerId={worker.id} />
               </div>
               <div className="flex items-center space-x-4">
                 <DebugRecordViewer record={worker} entityLabel="Worker" />
