@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -6,7 +6,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Link } from "wouter";
+import { ListBulkAction } from "@/components/bulk/list-bulk-action";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { 
   Eye, 
   Search, 
@@ -49,10 +53,13 @@ interface EmployerContactWithDetails extends EmployerContact {
 }
 
 export default function AllEmployerContacts() {
+  const { toast } = useToast();
   const [employerFilter, setEmployerFilter] = useState<string>("all");
   const [contactNameFilter, setContactNameFilter] = useState<string>("");
   const [contactTypeFilter, setContactTypeFilter] = useState<string>("all");
   const [debouncedContactName, setDebouncedContactName] = useState<string>("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isSelectingAll, setIsSelectingAll] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -67,6 +74,13 @@ export default function AllEmployerContacts() {
     ...(debouncedContactName && { contactName: debouncedContactName }),
     ...(contactTypeFilter && contactTypeFilter !== "all" && { contactTypeId: contactTypeFilter }),
   }), [employerFilter, debouncedContactName, contactTypeFilter]);
+
+  // Reset selection whenever the effective filter set changes so users can never
+  // accidentally bulk-message recipients that no longer match their current filters.
+  const filterSignature = useMemo(() => JSON.stringify(filters), [filters]);
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [filterSignature]);
 
   const queryKey = useMemo(() => ["/api/employer-contacts", filters], [filters]);
 
@@ -86,11 +100,65 @@ export default function AllEmployerContacts() {
     setEmployerFilter("all");
     setContactNameFilter("");
     setContactTypeFilter("all");
+    setSelectedIds(new Set());
   };
+
+  const visibleContactIds = useMemo(
+    () => (employerContacts ?? []).map(ec => ec.contact.id).filter((id): id is string => !!id),
+    [employerContacts],
+  );
+
+  const allVisibleSelected = visibleContactIds.length > 0 && visibleContactIds.every(id => selectedIds.has(id));
+  const visibleSelectedCount = visibleContactIds.filter(id => selectedIds.has(id)).length;
+  const totalMatching = employerContacts?.length ?? 0;
+
+  const toggleAllVisible = (checked: boolean) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      for (const id of visibleContactIds) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleOne = (id: string, checked: boolean) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const handleSelectAllMatching = useCallback(async () => {
+    setIsSelectingAll(true);
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== "") params.set(k, String(v));
+      });
+      const res = await apiRequest("GET", `/api/employer-contacts/all-ids?${params.toString()}`);
+      setSelectedIds(new Set(res.contactIds));
+      toast({
+        title: "Selected all matching contacts",
+        description: `${res.total.toLocaleString()} recipient${res.total === 1 ? "" : "s"} selected.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Failed to select all",
+        description: err?.message ?? "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSelectingAll(false);
+    }
+  }, [filters, toast]);
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-gray-100" data-testid="text-page-title">
             Employer Contacts
@@ -99,6 +167,15 @@ export default function AllEmployerContacts() {
             View and manage all employer contact relationships
           </p>
         </div>
+        <ListBulkAction
+          selectedContactIds={Array.from(selectedIds)}
+          totalMatching={totalMatching}
+          visibleSelectedCount={visibleSelectedCount}
+          onSelectAllMatching={handleSelectAllMatching}
+          isSelectingAllMatching={isSelectingAll}
+          sourceLabel="Employer Contacts"
+          testIdPrefix="employer-contacts-bulk-action"
+        />
       </div>
 
       <Card>
@@ -188,7 +265,8 @@ export default function AllEmployerContacts() {
             Results
             {employerContacts && (
               <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
-                ({employerContacts.length} {employerContacts.length === 1 ? 'contact' : 'contacts'})
+                ({employerContacts.length} {employerContacts.length === 1 ? 'contact' : 'contacts'}
+                {selectedIds.size > 0 && `, ${selectedIds.size} selected`})
               </span>
             )}
           </CardTitle>
@@ -206,6 +284,13 @@ export default function AllEmployerContacts() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={allVisibleSelected}
+                        onCheckedChange={(checked) => toggleAllVisible(!!checked)}
+                        data-testid="checkbox-select-all-employer-contacts"
+                      />
+                    </TableHead>
                     <TableHead>Employer</TableHead>
                     <TableHead>Contact Name</TableHead>
                     <TableHead>Email</TableHead>
@@ -214,8 +299,19 @@ export default function AllEmployerContacts() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {employerContacts.map((ec) => (
+                  {employerContacts.map((ec) => {
+                    const cid = ec.contact.id;
+                    const isSelected = !!cid && selectedIds.has(cid);
+                    return (
                     <TableRow key={ec.id} data-testid={`row-employer-contact-${ec.id}`}>
+                      <TableCell>
+                        <Checkbox
+                          checked={isSelected}
+                          disabled={!cid}
+                          onCheckedChange={(checked) => cid && toggleOne(cid, !!checked)}
+                          data-testid={`checkbox-select-employer-contact-${ec.id}`}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">
                         <Link href={`/employers/${ec.employerId}`}>
                           <span className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">
@@ -250,7 +346,7 @@ export default function AllEmployerContacts() {
                         </Link>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  );})}
                 </TableBody>
               </Table>
             </div>

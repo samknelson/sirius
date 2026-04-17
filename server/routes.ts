@@ -487,6 +487,49 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  // GET /api/workers/with-details/all-ids - Return all matching contact IDs for the same filters as the paginated list
+  app.get("/api/workers/with-details/all-ids", requireAuth, requirePermission("staff"), async (req, res) => {
+    try {
+      const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+      const sortOrderParam = req.query.sortOrder as string;
+      const sortOrder = sortOrderParam === 'desc' ? 'desc' : 'asc';
+      const sortByParam = req.query.sortBy as string;
+      const validSortByValues = ['lastName', 'firstName', 'employer'];
+      const sortBy = validSortByValues.includes(sortByParam) ? sortByParam as 'lastName' | 'firstName' | 'employer' : 'lastName';
+
+      const employerId = typeof req.query.employerId === 'string' && req.query.employerId !== 'all' ? req.query.employerId : undefined;
+      const employerTypeId = typeof req.query.employerTypeId === 'string' && req.query.employerTypeId !== 'all' ? req.query.employerTypeId : undefined;
+      const bargainingUnitId = typeof req.query.bargainingUnitId === 'string' && req.query.bargainingUnitId !== 'all' ? req.query.bargainingUnitId : undefined;
+      const benefitId = typeof req.query.benefitId === 'string' && req.query.benefitId !== 'all' ? req.query.benefitId : undefined;
+      const contactStatusParam = req.query.contactStatus as string;
+      const validContactStatuses = ['all', 'has_email', 'missing_email', 'has_phone', 'missing_phone', 'has_address', 'missing_address', 'complete', 'incomplete'];
+      const contactStatus = validContactStatuses.includes(contactStatusParam) ? contactStatusParam as any : 'all';
+      const hasMultipleEmployers = req.query.hasMultipleEmployers === 'true';
+      const jobTitle = typeof req.query.jobTitle === 'string' && req.query.jobTitle.trim() ? req.query.jobTitle.trim() : undefined;
+      const memberStatusId = typeof req.query.memberStatusId === 'string' && req.query.memberStatusId !== 'all' ? req.query.memberStatusId : undefined;
+      const representativeId = typeof req.query.representativeId === 'string' && req.query.representativeId !== 'all' ? req.query.representativeId : undefined;
+
+      const contactIds = await storage.workers.getAllMatchingContactIds({
+        search,
+        sortOrder,
+        sortBy,
+        employerId,
+        employerTypeId,
+        bargainingUnitId,
+        benefitId,
+        contactStatus,
+        hasMultipleEmployers,
+        jobTitle,
+        memberStatusId,
+        representativeId,
+      });
+      res.json({ contactIds, total: contactIds.length });
+    } catch (error) {
+      console.error("Failed to fetch matching worker contact IDs:", error);
+      res.status(500).json({ message: "Failed to fetch matching workers" });
+    }
+  });
+
   // POST /api/workers/latest-dues - Get latest dues payment info for a batch of workers
   app.post("/api/workers/latest-dues", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
