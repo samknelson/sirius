@@ -10,4 +10,5 @@ vite.config.ts.*
 replit.nix
 .cache/
 __replit_disk_meta.json
-.replit
+.drizzle-runtime.json
+.drizzle-runtime-schema.ts
