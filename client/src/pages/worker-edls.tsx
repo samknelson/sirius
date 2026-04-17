@@ -18,8 +18,8 @@ interface WorkerEdlsState {
 
 function WorkerEdlsContent() {
   const { worker } = useWorkerLayout();
-  const { hasComponent } = useAuth();
-  const componentEnabled = hasComponent('edls');
+  const { hasComponent, hasCapability } = useAuth();
+  const componentEnabled = hasComponent('edls') && hasCapability('workerEdls');
   const { canAccess: canEdit } = useAccessCheck('edls.coordinator', worker.id, { enabled: componentEnabled });
   const { toast } = useToast();
 

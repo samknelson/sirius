@@ -220,6 +220,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         },
         permissions: userPermissions.map((p) => p.key),
         components: enabledComponents,
+        capabilities: {
+          workerEdls: await (await import('./modules/edls/capability')).isWorkerEdlsAvailable(),
+        },
         masquerade: session.masqueradeUserId
           ? {
               isMasquerading: true,

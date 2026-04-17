@@ -38,8 +38,8 @@ interface WorkerLayoutProps {
 
 
 function WorkerEdlsBadge({ workerId }: { workerId: string }) {
-  const { hasComponent } = useAuth();
-  if (!hasComponent('edls')) return null;
+  const { hasComponent, hasCapability } = useAuth();
+  if (!hasComponent('edls') || !hasCapability('workerEdls')) return null;
   return <WorkerEdlsBadgeInner workerId={workerId} />;
 }
 
