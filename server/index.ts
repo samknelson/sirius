@@ -9,7 +9,7 @@ import { setupAuth } from "./auth";
 import { initAccessControl, registerEntityLoader } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
-import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler, deleteExpiredHfeHandler, sweepExpiredBanEligHandler, workerBanActiveScanHandler, workerCertificationActiveScanHandler, logCleanupHandler, dispatchEbaCleanupHandler, dispatchJobPollHandler, bulkDeliverHandler, t631DispatchJobGroupFetchHandler } from "./cron";
+import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler, deleteExpiredHfeHandler, sweepExpiredBanEligHandler, workerBanActiveScanHandler, workerCertificationActiveScanHandler, logCleanupHandler, dispatchEbaCleanupHandler, dispatchJobPollHandler, bulkDeliverHandler, t631DispatchJobGroupFetchHandler, t631FacilityFetchHandler } from "./cron";
 import { initDispatchSeniorityReset } from "./services/dispatch-seniority-reset";
 import { memberStatusScanHandler } from "./cron/jobs/memberStatusScan";
 import { loadComponentCache } from "./services/component-cache";
@@ -290,6 +290,7 @@ server.listen({
   registerCronJob('dispatch-job-poll', dispatchJobPollHandler);
   registerCronJob('bulk-deliver', bulkDeliverHandler);
   registerCronJob('sitespecific-t631-dispatch-job-group-fetch', t631DispatchJobGroupFetchHandler);
+  registerCronJob('sitespecific-t631-facility-fetch', t631FacilityFetchHandler);
   logger.info("Cron job handlers registered", { source: "startup" });
 
   // Register flood events
