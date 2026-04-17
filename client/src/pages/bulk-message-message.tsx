@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Save, Mail, MessageSquare, MapPin, Bell, Eye, AlertTriangle } from "lucide-react";
 import { TokenPicker } from "@/components/bulk/TokenPicker";
+import { SlashTokenField } from "@/components/bulk/SlashTokenField";
 import { findUnknownTokenIds, extractTokenIds } from "@shared/bulk-tokens";
 
 type TokenInsertTarget = HTMLInputElement | HTMLTextAreaElement;
@@ -190,15 +191,15 @@ function EmailForm({ record, onSave, isPending, messageId }: FormProps) {
       </div>
       <div className="space-y-2">
         <Label htmlFor="subject">Subject</Label>
-        <Input id="subject" value={form.subject} onFocus={inserter.handleFocus("subject")} onChange={(e) => setForm((p) => ({ ...p, subject: e.target.value }))} placeholder="Email subject" data-testid="input-email-subject" />
+        <SlashTokenField as="input" messageId={messageId} id="subject" value={form.subject} onFocus={inserter.handleFocus("subject")} onChange={(next) => setForm((p) => ({ ...p, subject: next }))} placeholder="Email subject — type / to insert a token" data-testid="input-email-subject" />
       </div>
       <div className="space-y-2">
         <Label htmlFor="bodyText">Body (Plain Text)</Label>
-        <Textarea id="bodyText" value={form.bodyText} onFocus={inserter.handleFocus("bodyText")} onChange={(e) => setForm((p) => ({ ...p, bodyText: e.target.value }))} rows={6} placeholder="Plain text version of the email" data-testid="textarea-email-body-text" />
+        <SlashTokenField as="textarea" messageId={messageId} id="bodyText" value={form.bodyText} onFocus={inserter.handleFocus("bodyText")} onChange={(next) => setForm((p) => ({ ...p, bodyText: next }))} rows={6} placeholder="Plain text version of the email — type / to insert a token" data-testid="textarea-email-body-text" />
       </div>
       <div className="space-y-2">
         <Label htmlFor="bodyHtml">Body (HTML)</Label>
-        <Textarea id="bodyHtml" value={form.bodyHtml} onFocus={inserter.handleFocus("bodyHtml")} onChange={(e) => setForm((p) => ({ ...p, bodyHtml: e.target.value }))} rows={6} className="font-mono text-sm" placeholder="<html>...</html>" data-testid="textarea-email-body-html" />
+        <SlashTokenField as="textarea" messageId={messageId} id="bodyHtml" value={form.bodyHtml} onFocus={inserter.handleFocus("bodyHtml")} onChange={(next) => setForm((p) => ({ ...p, bodyHtml: next }))} rows={6} className="font-mono text-sm" placeholder="<html>... — type / to insert a token" data-testid="textarea-email-body-html" />
       </div>
       <TokenWarnings templates={[form.subject, form.bodyText, form.bodyHtml]} />
       <PreviewPanel messageId={messageId} fields={{ subject: form.subject, bodyText: form.bodyText, bodyHtml: form.bodyHtml }} escapeHtmlFields={["bodyHtml"]} />
@@ -230,7 +231,7 @@ function SmsForm({ record, onSave, isPending, messageId }: FormProps) {
       </div>
       <div className="space-y-2">
         <Label htmlFor="smsBody">Message Body</Label>
-        <Textarea id="smsBody" value={body} onFocus={inserter.handleFocus("body")} onChange={(e) => setBody(e.target.value)} rows={6} placeholder="SMS message content..." data-testid="textarea-sms-body" />
+        <SlashTokenField as="textarea" messageId={messageId} id="smsBody" value={body} onFocus={inserter.handleFocus("body")} onChange={setBody} rows={6} placeholder="SMS message content — type / to insert a token" data-testid="textarea-sms-body" />
         <div className="flex justify-end">
           <span className="text-xs text-muted-foreground">{body.length} characters</span>
         </div>
@@ -278,7 +279,7 @@ function PostalForm({ record, onSave, isPending, messageId }: FormProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="postalDescription">Description</Label>
-          <Textarea id="postalDescription" value={form.description} onFocus={inserter.handleFocus("description")} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} rows={3} data-testid="textarea-postal-description" />
+          <SlashTokenField as="textarea" messageId={messageId} id="postalDescription" value={form.description} onFocus={inserter.handleFocus("description")} onChange={(next) => setForm((p) => ({ ...p, description: next }))} rows={3} placeholder="Type / to insert a token" data-testid="textarea-postal-description" />
         </div>
         <div className="space-y-2">
           <Label htmlFor="postalTemplateId">Template ID</Label>
@@ -349,12 +350,12 @@ function InappForm({ record, onSave, isPending, messageId }: FormProps) {
       </div>
       <div className="space-y-2">
         <Label htmlFor="inappTitle">Title</Label>
-        <Input id="inappTitle" value={form.title} onFocus={inserter.handleFocus("title")} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} maxLength={100} placeholder="Notification title" data-testid="input-inapp-title" />
+        <SlashTokenField as="input" messageId={messageId} id="inappTitle" value={form.title} onFocus={inserter.handleFocus("title")} onChange={(next) => setForm((p) => ({ ...p, title: next }))} maxLength={100} placeholder="Notification title — type / to insert a token" data-testid="input-inapp-title" />
         <div className="flex justify-end"><span className="text-xs text-muted-foreground">{form.title.length} / 100</span></div>
       </div>
       <div className="space-y-2">
         <Label htmlFor="inappBody">Body</Label>
-        <Textarea id="inappBody" value={form.body} onFocus={inserter.handleFocus("body")} onChange={(e) => setForm((p) => ({ ...p, body: e.target.value }))} rows={4} maxLength={500} placeholder="Notification body text" data-testid="textarea-inapp-body" />
+        <SlashTokenField as="textarea" messageId={messageId} id="inappBody" value={form.body} onFocus={inserter.handleFocus("body")} onChange={(next) => setForm((p) => ({ ...p, body: next }))} rows={4} maxLength={500} placeholder="Notification body text — type / to insert a token" data-testid="textarea-inapp-body" />
         <div className="flex justify-end"><span className="text-xs text-muted-foreground">{form.body.length} / 500</span></div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -364,7 +365,7 @@ function InappForm({ record, onSave, isPending, messageId }: FormProps) {
         </div>
         <div className="space-y-2">
           <Label htmlFor="inappLinkLabel">Link Label</Label>
-          <Input id="inappLinkLabel" value={form.linkLabel} onFocus={inserter.handleFocus("linkLabel")} onChange={(e) => setForm((p) => ({ ...p, linkLabel: e.target.value }))} maxLength={50} placeholder="Click here" data-testid="input-inapp-link-label" />
+          <SlashTokenField as="input" messageId={messageId} id="inappLinkLabel" value={form.linkLabel} onFocus={inserter.handleFocus("linkLabel")} onChange={(next) => setForm((p) => ({ ...p, linkLabel: next }))} maxLength={50} placeholder="Click here — type / to insert a token" data-testid="input-inapp-link-label" />
         </div>
       </div>
       <TokenWarnings templates={[form.title, form.body, form.linkLabel]} />
