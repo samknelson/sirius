@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, Search, Plus, Building, ArrowUp, ArrowDown } from "lucide-react";
-import { useAccessCheck } from "@/hooks/use-access-check";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Facility } from "@shared/schema";
 
 interface PaginatedResult {
@@ -20,7 +20,9 @@ type SortDir = "asc" | "desc";
 
 export default function FacilityListPage() {
   usePageTitle("Facilities");
-  const { canAccess: canEdit } = useAccessCheck("facility.edit", undefined);
+  // facility.edit is route-scoped (no entity required); rule is `permission: 'staff'`.
+  const { hasPermission } = useAuth();
+  const canEdit = hasPermission("staff");
   const [search, setSearch] = useState("");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [page, setPage] = useState(0);
