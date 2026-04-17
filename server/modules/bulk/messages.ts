@@ -779,7 +779,7 @@ export function registerBulkMessageRoutes(
       const rendered: Record<string, { output: string; unknownTokens: string[]; missingValues: string[]; tokens: string[] }> = {};
       for (const [field, template] of Object.entries(fields)) {
         if (typeof template !== 'string') continue;
-        const result = renderTemplate(template, ctx, { escapeHtml: escapeHtmlFields.includes(field) });
+        const result = renderTemplate(template, ctx, { escapeHtml: escapeHtmlFields.includes(field), strictUnknown: true });
         rendered[field] = {
           output: result.output,
           unknownTokens: result.unknownTokens,
