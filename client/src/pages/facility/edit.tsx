@@ -1,11 +1,9 @@
-import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { FacilityLayout, useFacilityLayout } from "@/components/layouts/FacilityLayout";
+import { EntityNameManagement } from "@/components/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -21,27 +19,6 @@ function EditContent() {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const { canAccess: isAdmin } = useAccessCheck("admin", facility.id);
-  const [formData, setFormData] = useState({ name: "", siriusId: "" });
-
-  useEffect(() => {
-    setFormData({ name: facility.name, siriusId: facility.siriusId || "" });
-  }, [facility.id, facility.name, facility.siriusId]);
-
-  const updateMutation = useMutation({
-    mutationFn: (data: typeof formData) =>
-      apiRequest("PATCH", `/api/facilities/${facility.id}`, {
-        name: data.name,
-        siriusId: data.siriusId || null,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/facilities"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/facilities", facility.id] });
-      toast({ title: "Facility updated", description: "The facility has been updated." });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to update", description: error?.message || "An error occurred", variant: "destructive" });
-    },
-  });
 
   const deleteMutation = useMutation({
     mutationFn: () => apiRequest("DELETE", `/api/facilities/${facility.id}`),
@@ -55,59 +32,32 @@ function EditContent() {
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.name.trim()) {
-      toast({ title: "Validation error", description: "Name is required.", variant: "destructive" });
-      return;
-    }
-    updateMutation.mutate(formData);
-  };
-
   return (
     <div className="space-y-6">
-      <Card data-testid="card-edit">
-        <CardHeader>
-          <CardTitle>Edit Facility</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
-                data-testid="input-edit-name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="siriusId">Sirius ID</Label>
-              <Input
-                id="siriusId"
-                value={formData.siriusId}
-                onChange={(e) => setFormData((p) => ({ ...p, siriusId: e.target.value }))}
-                placeholder="Optional external identifier"
-                data-testid="input-edit-sirius-id"
-              />
-            </div>
-            <div className="flex gap-3 pt-4">
-              <Button type="submit" disabled={updateMutation.isPending || !formData.name} data-testid="button-save">
-                {updateMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Save Changes
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setLocation(`/facilities/${facility.id}`)}
-                data-testid="button-cancel-edit"
-              >
-                Cancel
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+      <EntityNameManagement
+        config={{
+          entityId: facility.id,
+          displayName: facility.contact.displayName,
+          contactData: {
+            title: facility.contact.title,
+            given: facility.contact.given,
+            middle: facility.contact.middle,
+            family: facility.contact.family,
+            generational: facility.contact.generational,
+            credentials: facility.contact.credentials,
+          },
+          apiEndpoint: `/api/facilities/${facility.id}`,
+          apiMethod: "PATCH",
+          apiPayloadKey: "nameComponents",
+          invalidateQueryKeys: [
+            "/api/facilities",
+            ["/api/facilities", facility.id],
+            "/api/contacts",
+          ],
+          cardTitle: "Facility Name",
+          cardDescription: "Manage the facility's name. This is kept in sync with the linked contact.",
+        }}
+      />
 
       {isAdmin && (
         <Card className="border-destructive" data-testid="card-delete">

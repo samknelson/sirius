@@ -5,14 +5,25 @@ import { requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import type { FacilityFilters } from "../../storage/facility/facilities";
 
+// Note: `siriusId` and `data` are sync-only fields, populated programmatically
+// by backend processes (e.g. T631 sync). They are intentionally NOT part of
+// user-editable create/update payloads.
 const createFacilitySchema = z.object({
   name: z.string().trim().min(1, "Facility name is required"),
-  siriusId: z.string().trim().min(1).nullable().optional(),
+});
+
+const nameComponentsSchema = z.object({
+  title: z.string().optional(),
+  given: z.string().optional(),
+  middle: z.string().optional(),
+  family: z.string().optional(),
+  generational: z.string().optional(),
+  credentials: z.string().optional(),
 });
 
 const updateFacilitySchema = z.object({
   name: z.string().trim().min(1).optional(),
-  siriusId: z.string().trim().min(1).nullable().optional(),
+  nameComponents: nameComponentsSchema.optional(),
   email: z
     .union([z.string().email(), z.literal(""), z.null()])
     .transform((v) => (v === "" ? null : v))
@@ -110,15 +121,23 @@ export function registerFacilityRoutes(
         if (Object.keys(parsed.data).length === 0) {
           return res.status(400).json({ message: "No fields to update" });
         }
-        const { email, ...rest } = parsed.data;
+        const { email, name, nameComponents } = parsed.data;
 
         let facility = await storage.facilities.get(req.params.id);
         if (!facility) {
           return res.status(404).json({ message: "Facility not found" });
         }
 
-        if (Object.keys(rest).length > 0) {
-          facility = await storage.facilities.update(req.params.id, rest);
+        if (nameComponents !== undefined) {
+          facility = await storage.facilities.updateContactNameComponents(
+            req.params.id,
+            nameComponents,
+          );
+          if (!facility) {
+            return res.status(404).json({ message: "Facility not found" });
+          }
+        } else if (name !== undefined) {
+          facility = await storage.facilities.updateContactName(req.params.id, name);
           if (!facility) {
             return res.status(404).json({ message: "Facility not found" });
           }

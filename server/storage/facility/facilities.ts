@@ -5,11 +5,21 @@ import {
   contacts,
   type Facility,
   type Contact,
+  type InsertContact,
   type InsertFacility,
 } from "@shared/schema";
 import { eq, asc, desc, sql, SQL, and, ilike } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
 import type { ContactsStorage } from "../contacts";
+
+export interface FacilityNameComponents {
+  title?: string;
+  given?: string;
+  middle?: string;
+  family?: string;
+  generational?: string;
+  credentials?: string;
+}
 
 export const validate = createNoopValidator<InsertFacility, Facility>();
 
@@ -50,6 +60,8 @@ export interface FacilityStorage {
   create(input: CreateFacilityInput): Promise<Facility>;
   update(id: string, input: UpdateFacilityInput): Promise<Facility | undefined>;
   updateContactEmail(id: string, email: string | null): Promise<Facility | undefined>;
+  updateContactName(id: string, name: string): Promise<Facility | undefined>;
+  updateContactNameComponents(id: string, components: FacilityNameComponents): Promise<Facility | undefined>;
   delete(id: string): Promise<boolean>;
 }
 
@@ -94,6 +106,32 @@ export const facilityLoggingConfig: StorageLoggingConfig<FacilityStorage> = {
       getDescription: async (args, result, beforeState) => {
         const name = result?.name || beforeState?.facility?.name || 'Unknown';
         return `Updated Facility "${name}" email`;
+      },
+      before: async (args, storage) => {
+        const facility = await storage.get(args[0]);
+        return facility ? { facility } : null;
+      },
+    },
+    updateContactName: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      getDescription: async (args, result, beforeState) => {
+        const name = result?.name || beforeState?.facility?.name || 'Unknown';
+        return `Updated Facility "${name}" contact name`;
+      },
+      before: async (args, storage) => {
+        const facility = await storage.get(args[0]);
+        return facility ? { facility } : null;
+      },
+    },
+    updateContactNameComponents: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      getDescription: async (args, result, beforeState) => {
+        const name = result?.name || beforeState?.facility?.name || 'Unknown';
+        return `Updated Facility "${name}" contact name components`;
       },
       before: async (args, storage) => {
         const facility = await storage.get(args[0]);
@@ -185,17 +223,18 @@ export function createFacilityStorage(contactsStorage: ContactsStorage): Facilit
         throw new Error('Facility name is required');
       }
       const client = getClient();
-      const contact = await contactsStorage.createContact({
+      const contactPayload: InsertContact = {
         given: '',
         family: trimmedName,
         displayName: trimmedName,
-      } as any);
+      };
+      const contact = await contactsStorage.createContact(contactPayload);
       const [facility] = await client
         .insert(facilities)
         .values({
           name: trimmedName,
           siriusId: input.siriusId ?? null,
-          data: (input.data ?? null) as any,
+          data: input.data ?? null,
           contactId: contact.id,
         })
         .returning();
@@ -217,7 +256,7 @@ export function createFacilityStorage(contactsStorage: ContactsStorage): Facilit
         updates.siriusId = input.siriusId ?? null;
       }
       if (input.data !== undefined) {
-        updates.data = input.data as any;
+        updates.data = input.data ?? null;
       }
 
       if (Object.keys(updates).length === 0) {
@@ -245,15 +284,60 @@ export function createFacilityStorage(contactsStorage: ContactsStorage): Facilit
       return facility;
     },
 
+    async updateContactName(id: string, name: string): Promise<Facility | undefined> {
+      const trimmed = name.trim();
+      if (!trimmed) throw new Error('Facility name cannot be empty');
+      const facility = await this.get(id);
+      if (!facility) return undefined;
+      // Sync contact name and the facility.name (kept in sync as the canonical label).
+      await contactsStorage.updateName(facility.contactId, trimmed);
+      const client = getClient();
+      const [updated] = await client
+        .update(facilities)
+        .set({ name: trimmed })
+        .where(eq(facilities.id, id))
+        .returning();
+      return updated || undefined;
+    },
+
+    async updateContactNameComponents(
+      id: string,
+      components: FacilityNameComponents,
+    ): Promise<Facility | undefined> {
+      const facility = await this.get(id);
+      if (!facility) return undefined;
+      const updatedContact = await contactsStorage.updateNameComponents(
+        facility.contactId,
+        components,
+      );
+      if (!updatedContact) return undefined;
+      const newName = (updatedContact.displayName || '').trim() || facility.name;
+      if (newName === facility.name) return facility;
+      const client = getClient();
+      const [updated] = await client
+        .update(facilities)
+        .set({ name: newName })
+        .where(eq(facilities.id, id))
+        .returning();
+      return updated || facility;
+    },
+
     async delete(id: string): Promise<boolean> {
       const client = getClient();
       const [existing] = await client.select().from(facilities).where(eq(facilities.id, id));
       if (!existing) return false;
       const result = await client.delete(facilities).where(eq(facilities.id, id)).returning();
       if (result.length > 0 && existing.contactId) {
+        // The contacts row is owned by the facility, so cascade-delete it. If
+        // another entity still references it (e.g. a worker contact), this will
+        // surface as an FK error and we surface that to the caller's logs.
         try {
           await contactsStorage.deleteContact(existing.contactId);
-        } catch {
+        } catch (error) {
+          console.error(
+            `Failed to delete contact ${existing.contactId} for facility ${id}:`,
+            error,
+          );
         }
       }
       return result.length > 0;

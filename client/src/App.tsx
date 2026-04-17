@@ -2349,56 +2349,56 @@ function Router() {
       </Route>
 
       <Route path="/facilities">
-        <ProtectedRoute>
+        <ProtectedRoute component="facility" policy="facility.view">
           <AuthenticatedLayout>
             <FacilityListPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
       <Route path="/facilities/new">
-        <ProtectedRoute>
+        <ProtectedRoute component="facility" policy="facility.edit">
           <AuthenticatedLayout>
             <FacilityNewPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
       <Route path="/facilities/:id">
-        <ProtectedRoute tabId="details" entityType="facility">
+        <ProtectedRoute component="facility" tabId="details" entityType="facility">
           <AuthenticatedLayout>
             <FacilityDetailsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
       <Route path="/facilities/:id/edit">
-        <ProtectedRoute tabId="edit" entityType="facility">
+        <ProtectedRoute component="facility" tabId="edit" entityType="facility">
           <AuthenticatedLayout>
             <FacilityEditPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
       <Route path="/facilities/:id/email">
-        <ProtectedRoute tabId="email" entityType="facility">
+        <ProtectedRoute component="facility" tabId="email" entityType="facility">
           <AuthenticatedLayout>
             <FacilityEmailPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
       <Route path="/facilities/:id/addresses">
-        <ProtectedRoute tabId="addresses" entityType="facility">
+        <ProtectedRoute component="facility" tabId="addresses" entityType="facility">
           <AuthenticatedLayout>
             <FacilityAddressesPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
       <Route path="/facilities/:id/phone-numbers">
-        <ProtectedRoute tabId="phone-numbers" entityType="facility">
+        <ProtectedRoute component="facility" tabId="phone-numbers" entityType="facility">
           <AuthenticatedLayout>
             <FacilityPhoneNumbersPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
       <Route path="/facilities/:id/logs">
-        <ProtectedRoute tabId="logs" entityType="facility">
+        <ProtectedRoute component="facility" tabId="logs" entityType="facility">
           <AuthenticatedLayout>
             <FacilityLogsPage />
           </AuthenticatedLayout>

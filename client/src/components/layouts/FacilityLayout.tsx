@@ -1,4 +1,4 @@
-import { ReactNode, createContext, useContext } from "react";
+import { ReactNode, createContext, useContext, useMemo } from "react";
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ChevronRight, Building, Loader2 } from "lucide-react";
@@ -34,7 +34,9 @@ export function FacilityLayout({ activeTab, children }: FacilityLayoutProps) {
     enabled: !!id,
   });
 
-  const { tabs: mainTabs } = useFacilityTabAccess(id);
+  const { tabs: mainTabs, getActiveRoot } = useFacilityTabAccess(id);
+  const activeRoot = useMemo(() => getActiveRoot(activeTab), [activeTab, getActiveRoot]);
+  const subTabs = activeRoot?.children;
 
   usePageTitle(facility?.name || "Facility Details");
 
@@ -98,10 +100,10 @@ export function FacilityLayout({ activeTab, children }: FacilityLayoutProps) {
         </div>
       </div>
 
-      <div className="border-b border-border mb-6">
+      <div className="border-b border-border mb-2">
         <nav className="flex gap-6 flex-wrap" data-testid="nav-tabs">
           {mainTabs.map((tab) => {
-            const isTabActive = tab.id === activeTab;
+            const isTabActive = tab.id === activeRoot?.id;
             return (
               <Link
                 key={tab.id}
@@ -119,6 +121,31 @@ export function FacilityLayout({ activeTab, children }: FacilityLayoutProps) {
           })}
         </nav>
       </div>
+
+      {subTabs && subTabs.length > 0 && (
+        <div className="border-b border-border mb-6 bg-muted/30 -mx-1 px-1">
+          <nav className="flex gap-4 flex-wrap py-2 pl-2" data-testid="nav-subtabs">
+            {subTabs.map((tab) => {
+              const isSubActive = tab.id === activeTab;
+              return (
+                <Link
+                  key={tab.id}
+                  href={tab.href}
+                  className={`text-sm transition-colors ${
+                    isSubActive
+                      ? "text-primary font-medium"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  data-testid={`subtab-${tab.id}`}
+                >
+                  {tab.label}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+      )}
+      {(!subTabs || subTabs.length === 0) && <div className="mb-6" />}
 
       <FacilityLayoutContext.Provider value={{ facility }}>
         {children}

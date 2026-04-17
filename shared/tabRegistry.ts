@@ -334,9 +334,18 @@ export const dispatchJobTypeTabTree: HierarchicalTab[] = [
 export const facilityTabTree: HierarchicalTab[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/facilities/{id}', policyId: 'facility.view', component: 'facility' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/facilities/{id}/edit', policyId: 'facility.edit', component: 'facility' },
-  { id: 'email', label: 'Email', hrefTemplate: '/facilities/{id}/email', policyId: 'facility.view', component: 'facility' },
-  { id: 'addresses', label: 'Addresses', hrefTemplate: '/facilities/{id}/addresses', policyId: 'facility.view', component: 'facility' },
-  { id: 'phone-numbers', label: 'Phone Numbers', hrefTemplate: '/facilities/{id}/phone-numbers', policyId: 'facility.view', component: 'facility' },
+  {
+    id: 'contact',
+    label: 'Contact',
+    hrefTemplate: '/facilities/{id}/email',
+    policyId: 'facility.view',
+    component: 'facility',
+    children: [
+      { id: 'email', label: 'Email', hrefTemplate: '/facilities/{id}/email', policyId: 'facility.view', component: 'facility' },
+      { id: 'addresses', label: 'Addresses', hrefTemplate: '/facilities/{id}/addresses', policyId: 'facility.view', component: 'facility' },
+      { id: 'phone-numbers', label: 'Phone Numbers', hrefTemplate: '/facilities/{id}/phone-numbers', policyId: 'facility.view', component: 'facility' },
+    ],
+  },
   { id: 'logs', label: 'Logs', hrefTemplate: '/facilities/{id}/logs', policyId: 'facility.view', component: 'facility' },
 ];
 
