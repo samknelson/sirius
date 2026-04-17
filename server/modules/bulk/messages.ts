@@ -685,12 +685,12 @@ export function registerBulkMessageRoutes(
       let sendFailed = 0;
       let seeComm = 0;
       const commBreakdown: Record<string, number> = {};
-      const byMedium: Record<string, { total: number; pending: number; sendFailed: number; seeComm: number }> = {};
+      const byMedium: Record<string, { total: number; pending: number; sendFailed: number; seeComm: number; commBreakdown: Record<string, number> }> = {};
 
       for (const row of rows) {
         const m = row.medium;
         if (!byMedium[m]) {
-          byMedium[m] = { total: 0, pending: 0, sendFailed: 0, seeComm: 0 };
+          byMedium[m] = { total: 0, pending: 0, sendFailed: 0, seeComm: 0, commBreakdown: {} };
         }
         byMedium[m].total++;
 
@@ -708,6 +708,7 @@ export function registerBulkMessageRoutes(
             byMedium[m].seeComm++;
             if (row.commStatus) {
               commBreakdown[row.commStatus] = (commBreakdown[row.commStatus] || 0) + 1;
+              byMedium[m].commBreakdown[row.commStatus] = (byMedium[m].commBreakdown[row.commStatus] || 0) + 1;
             }
             break;
         }

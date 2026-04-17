@@ -42,6 +42,7 @@ interface MediumStats {
   pending: number;
   sendFailed: number;
   seeComm: number;
+  commBreakdown?: Record<string, number>;
 }
 
 interface DeliveryStats {
@@ -162,6 +163,12 @@ function DeliveryStatsCard({ messageId }: { messageId: string }) {
                   const Icon = mediumIcons[medium] || Mail;
                   const label = mediumLabels[medium] || medium;
                   const mProcessed = ms.seeComm + ms.sendFailed;
+                  const mDelivered = ms.commBreakdown?.delivered ?? 0;
+                  const mCommFailed = Object.entries(ms.commBreakdown ?? {})
+                    .filter(([k]) => k !== "delivered")
+                    .reduce((sum, [, v]) => sum + (v as number), 0);
+                  const mFailed = ms.sendFailed + mCommFailed;
+                  const mInFlight = Math.max(0, ms.seeComm - mDelivered - mCommFailed);
                   return (
                     <div
                       key={medium}
@@ -173,10 +180,11 @@ function DeliveryStatsCard({ messageId }: { messageId: string }) {
                         {label}
                         <Badge variant="secondary" className="ml-auto text-xs">{ms.total}</Badge>
                       </div>
-                      <div className="grid grid-cols-3 gap-1 text-xs text-muted-foreground">
+                      <div className="grid grid-cols-4 gap-1 text-xs text-muted-foreground">
                         <span>Pending: {ms.pending}</span>
-                        <span className="text-blue-500">Delivered: {ms.seeComm}</span>
-                        <span className="text-red-500">Failed: {ms.sendFailed}</span>
+                        <span className="text-amber-500">In Flight: {mInFlight}</span>
+                        <span className="text-blue-500">Delivered: {mDelivered}</span>
+                        <span className="text-red-500">Failed: {mFailed}</span>
                       </div>
                       {ms.total > 0 && (
                         <div className="w-full bg-muted rounded-full h-1.5">
