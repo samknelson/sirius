@@ -266,7 +266,7 @@ export default function Header() {
                   </>
                 )}
 
-                {staffPolicy?.access?.granted && (
+                {(workerListPolicy?.access?.granted || bulkEditPolicy?.access?.granted || staffPolicy?.access?.granted) && (
                   <>
                     <div className="border-t border-gray-100 dark:border-gray-800 my-2" />
                     <button
@@ -456,94 +456,6 @@ export default function Header() {
                       Day Labor Sheets
                     </Button>
                   </Link>
-                )}
-
-                {(workerListPolicy?.access?.granted || staffPolicy?.access?.granted) && (
-                  <>
-                    <div className="text-sm font-medium text-muted-foreground px-4 py-2">Workers</div>
-                    <Link href="/workers" onClick={() => setMobileMenuOpen(false)}>
-                      <Button
-                        variant={location === "/workers" ? "default" : "ghost"}
-                        className="w-full justify-start pl-8"
-                        data-testid="mobile-nav-workers-list"
-                      >
-                        <List className="h-4 w-4 mr-2" />
-                        List
-                      </Button>
-                    </Link>
-                    {staffPolicy?.access?.granted && hasComponent("cardcheck") && (
-                      <Link href="/cardcheck-definitions" onClick={() => setMobileMenuOpen(false)}>
-                        <Button
-                          variant={location.startsWith("/cardcheck") ? "default" : "ghost"}
-                          className="w-full justify-start pl-8"
-                          data-testid="mobile-nav-cardcheck-definitions"
-                        >
-                          <ClipboardCheck className="h-4 w-4 mr-2" />
-                          Cardchecks
-                        </Button>
-                      </Link>
-                    )}
-                    {staffPolicy?.access?.granted && hasComponent("bargainingunits") && (
-                      <Link href="/bargaining-units" onClick={() => setMobileMenuOpen(false)}>
-                        <Button
-                          variant={location.startsWith("/bargaining-units") ? "default" : "ghost"}
-                          className="w-full justify-start pl-8"
-                          data-testid="mobile-nav-bargaining-units"
-                        >
-                          <Users className="h-4 w-4 mr-2" />
-                          Bargaining Units
-                        </Button>
-                      </Link>
-                    )}
-                    {staffPolicy?.access?.granted && hasComponent("worker.steward") && (
-                      <Link href="/stewards" onClick={() => setMobileMenuOpen(false)}>
-                        <Button
-                          variant={location === "/stewards" ? "default" : "ghost"}
-                          className="w-full justify-start pl-8"
-                          data-testid="mobile-nav-stewards"
-                        >
-                          <Shield className="h-4 w-4 mr-2" />
-                          {term("steward", { plural: true })}
-                        </Button>
-                      </Link>
-                    )}
-                    {staffPolicy?.access?.granted && hasComponent("sitespecific.btu") && (
-                      <Link href="/sitespecific/btu/csgs" onClick={() => setMobileMenuOpen(false)}>
-                        <Button
-                          variant={location.startsWith("/sitespecific/btu/csg") ? "default" : "ghost"}
-                          className="w-full justify-start pl-8"
-                          data-testid="mobile-nav-class-size-grievances"
-                        >
-                          <FileWarning className="h-4 w-4 mr-2" />
-                          Class Size Grievances
-                        </Button>
-                      </Link>
-                    )}
-                    {staffPolicy?.access?.granted && hasComponent("sitespecific.hta") && (
-                      <Link href="/imports" onClick={() => setMobileMenuOpen(false)}>
-                        <Button
-                          variant={location === "/imports" ? "default" : "ghost"}
-                          className="w-full justify-start pl-8"
-                          data-testid="mobile-nav-worker-import"
-                        >
-                          <FileSpreadsheet className="h-4 w-4 mr-2" />
-                          Worker Import
-                        </Button>
-                      </Link>
-                    )}
-                    {staffPolicy?.access?.granted && hasComponent("sitespecific.hta") && (
-                      <Link href="/inactivity-scan" onClick={() => setMobileMenuOpen(false)}>
-                        <Button
-                          variant={location === "/inactivity-scan" ? "default" : "ghost"}
-                          className="w-full justify-start pl-8"
-                          data-testid="mobile-nav-inactivity-scan"
-                        >
-                          <ScanLine className="h-4 w-4 mr-2" />
-                          Inactivity Scan
-                        </Button>
-                      </Link>
-                    )}
-                  </>
                 )}
 
                 {staffPolicy?.access?.granted && (

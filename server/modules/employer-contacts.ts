@@ -87,8 +87,14 @@ export function registerEmployerContactRoutes(
       
       res.status(201).json(result);
     } catch (error: any) {
+      if (error?.message === "Email is required for employer contacts") {
+        return res.status(400).json({ message: error.message });
+      }
+      if (error?.message === "This contact is already linked to this employer") {
+        return res.status(409).json({ message: error.message });
+      }
       // Handle duplicate email constraint violation
-      if (error.code === '23505' && error.constraint === 'contacts_email_unique') {
+      if (error?.code === '23505' && error?.constraint === 'contacts_email_unique') {
         return res.status(409).json({ message: "A contact with this email already exists. Employers cannot add existing contacts, only create new ones." });
       }
       res.status(500).json({ message: "Failed to create employer contact" });

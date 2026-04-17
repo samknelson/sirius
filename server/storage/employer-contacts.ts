@@ -32,6 +32,7 @@ export const employerContactEmailValidate = createStorageValidator<{ email: stri
 
 export interface EmployerContactStorage {
   create(data: { employerId: string; contactData: InsertContact & { email?: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }>;
+  createOrLink(data: { employerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact; linked?: boolean }>;
   listByEmployer(employerId: string): Promise<Array<EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>>;
   listByContactId(contactId: string): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null } | null }>>;
   getAll(filters?: { employerId?: string; contactName?: string; contactTypeId?: string }): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null } | null }>>;
