@@ -26,10 +26,10 @@ export async function deliverInapp(
     return { success: false, error: "Contact does not have a linked user account (required for in-app messages)", errorCode: "NO_USER" };
   }
   const ctx = await buildRecipientContext(storage, contactId);
-  const renderedTitle = renderTemplate(inappContent.title || "", ctx).output;
-  const renderedBody = renderTemplate(inappContent.body || "", ctx).output;
+  const renderedTitle = renderTemplate(inappContent.title || "", ctx, { strictUnknown: true }).output;
+  const renderedBody = renderTemplate(inappContent.body || "", ctx, { strictUnknown: true }).output;
   const renderedLinkLabel = inappContent.linkLabel
-    ? renderTemplate(inappContent.linkLabel, ctx).output
+    ? renderTemplate(inappContent.linkLabel, ctx, { strictUnknown: true }).output
     : undefined;
   const result: SendInappResult = await sendInapp({
     contactId,

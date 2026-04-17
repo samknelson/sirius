@@ -7,12 +7,14 @@ import type { TokenDefinition } from "@shared/bulk-tokens";
 
 interface TokenPickerProps {
   onInsert: (snippet: string) => void;
+  messageId?: string;
 }
 
-export function TokenPicker({ onInsert }: TokenPickerProps) {
-  const { data } = useQuery<{ tokens: TokenDefinition[] }>({
-    queryKey: ["/api/bulk-tokens"],
-  });
+export function TokenPicker({ onInsert, messageId }: TokenPickerProps) {
+  const queryKey = messageId
+    ? ["/api/bulk-messages", messageId, "tokens"]
+    : ["/api/bulk-tokens"];
+  const { data } = useQuery<{ tokens: TokenDefinition[] }>({ queryKey });
   const tokens = data?.tokens || [];
 
   const groups: Record<string, TokenDefinition[]> = {};
@@ -39,7 +41,9 @@ export function TokenPicker({ onInsert }: TokenPickerProps) {
         <div className="p-3 border-b">
           <p className="text-sm font-medium">Insert a personalization token</p>
           <p className="text-xs text-muted-foreground mt-1">
-            Tokens are replaced with each recipient's data when sent.
+            {messageId
+              ? "Only tokens that apply to this message's recipients are shown."
+              : "Tokens are replaced with each recipient's data when sent."}
           </p>
         </div>
         {scopeOrder.map((scope) => {

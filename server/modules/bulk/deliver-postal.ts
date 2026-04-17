@@ -48,7 +48,7 @@ export async function deliverPostal(
   } : undefined;
   const ctx = await buildRecipientContext(storage, contactId);
   const renderedDescription = postalContent.description
-    ? renderTemplate(postalContent.description, ctx).output
+    ? renderTemplate(postalContent.description, ctx, { strictUnknown: true }).output
     : undefined;
   const baseMerge = (postalContent.mergeVariables as Record<string, string>) || {};
   const tokenMerge: Record<string, string> = {};

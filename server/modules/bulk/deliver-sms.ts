@@ -27,7 +27,7 @@ export async function deliverSms(
     return { success: false, error: "Contact has no phone number", errorCode: "NO_ADDRESS" };
   }
   const ctx = await buildRecipientContext(storage, contactId);
-  const renderedBody = renderTemplate(smsContent.body || "", ctx).output;
+  const renderedBody = renderTemplate(smsContent.body || "", ctx, { strictUnknown: true }).output;
   const result: SendSmsResult = await sendSms({
     contactId,
     toPhoneNumber: phone,

@@ -16,7 +16,8 @@ import { deliverToContact, deliverToParticipant, resolveAddressForMedium } from 
 import { storageLogger } from "../../logger";
 import { resolveContactLinks, resolveContactLinksForMany } from "../contact-links";
 import { TOKEN_REGISTRY, renderTemplate, extractTokenIds, findUnknownTokenIds, buildSampleContext } from "../../../shared/bulk-tokens";
-import { buildRecipientContext } from "./token-context";
+import { buildRecipientContext, detectAudienceScopes } from "./token-context";
+import { bulkParticipants } from "../../../shared/schema/bulk/schema";
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
@@ -724,6 +725,27 @@ export function registerBulkMessageRoutes(
     res.json({ tokens: TOKEN_REGISTRY });
   });
 
+  // Returns the registry filtered to scopes that apply to this
+  // message's actual participants. `contact` and `system` are always
+  // included; `worker`/`employer` only when at least one participant
+  // matches.
+  app.get("/api/bulk-messages/:id/tokens", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+    try {
+      const bulk = await storage.bulkMessages.getById(req.params.id);
+      if (!bulk) {
+        return res.status(404).json({ message: "Bulk message not found" });
+      }
+      const participants = await storage.bulkParticipants.getByMessageId(req.params.id);
+      const contactIds = Array.from(new Set(participants.map((p) => p.contactId).filter(Boolean) as string[]));
+      const scopes = await detectAudienceScopes(contactIds);
+      const tokens = TOKEN_REGISTRY.filter((t) => scopes.has(t.scope));
+      res.json({ tokens, scopes: Array.from(scopes) });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to load tokens";
+      res.status(500).json({ message });
+    }
+  });
+
   app.post("/api/bulk-messages/:id/preview", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
     try {
       const bulk = await storage.bulkMessages.getById(req.params.id);
@@ -734,6 +756,24 @@ export function registerBulkMessageRoutes(
       const fields: Record<string, string> = (body.fields && typeof body.fields === 'object') ? body.fields : {};
       const contactId: string | undefined = typeof body.contactId === 'string' ? body.contactId : undefined;
       const escapeHtmlFields: string[] = Array.isArray(body.escapeHtmlFields) ? body.escapeHtmlFields.filter((s: unknown) => typeof s === 'string') : [];
+
+      // Enforce that any contactId used for preview is actually a
+      // participant of this bulk message — prevents leaking arbitrary
+      // contact PII through the preview endpoint.
+      if (contactId) {
+        const db = getClient();
+        const membership = await db
+          .select({ id: bulkParticipants.id })
+          .from(bulkParticipants)
+          .where(and(
+            eq(bulkParticipants.messageId, req.params.id),
+            eq(bulkParticipants.contactId, contactId),
+          ))
+          .limit(1);
+        if (membership.length === 0) {
+          return res.status(403).json({ message: "Contact is not a participant of this message" });
+        }
+      }
 
       const ctx = contactId ? await buildRecipientContext(storage, contactId) : buildSampleContext();
 

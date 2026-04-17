@@ -77,15 +77,37 @@ interface PreviewResponse {
   rendered: Record<string, { output: string; unknownTokens: string[]; missingValues: string[] }>;
 }
 
+interface ParticipantRow {
+  id: string;
+  contactId: string;
+  contactDisplayName?: string | null;
+  contactGiven?: string | null;
+  contactFamily?: string | null;
+}
+
 function PreviewPanel({ messageId, fields, escapeHtmlFields = [] }: { messageId: string; fields: Record<string, string>; escapeHtmlFields?: string[] }) {
   const [data, setData] = useState<PreviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [contactId, setContactId] = useState<string>("__sample__");
+
+  const { data: participantsData } = useQuery<ParticipantRow[]>({
+    queryKey: ["/api/bulk-messages", messageId, "participants"],
+  });
+  const seen = new Set<string>();
+  const participants = (participantsData || []).filter((p) => {
+    if (!p.contactId || seen.has(p.contactId)) return false;
+    seen.add(p.contactId);
+    return true;
+  });
+
   const run = async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await apiRequest("POST", `/api/bulk-messages/${messageId}/preview`, { fields, escapeHtmlFields });
+      const payload: Record<string, unknown> = { fields, escapeHtmlFields };
+      if (contactId !== "__sample__") payload.contactId = contactId;
+      const result = await apiRequest("POST", `/api/bulk-messages/${messageId}/preview`, payload);
       setData(result as PreviewResponse);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Preview failed");
@@ -95,10 +117,28 @@ function PreviewPanel({ messageId, fields, escapeHtmlFields = [] }: { messageId:
   };
   return (
     <div className="space-y-2">
-      <Button type="button" size="sm" variant="outline" onClick={run} disabled={loading} data-testid="button-render-preview">
-        {loading ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Eye className="h-4 w-4 mr-1.5" />}
-        Preview with sample data
-      </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          className="h-9 rounded-md border bg-background px-2 text-sm"
+          value={contactId}
+          onChange={(e) => setContactId(e.target.value)}
+          data-testid="select-preview-recipient"
+        >
+          <option value="__sample__">Sample data</option>
+          {participants.map((p) => {
+            const label = p.contactDisplayName
+              || `${p.contactGiven || ""} ${p.contactFamily || ""}`.trim()
+              || p.contactId;
+            return (
+              <option key={p.id} value={p.contactId}>{label}</option>
+            );
+          })}
+        </select>
+        <Button type="button" size="sm" variant="outline" onClick={run} disabled={loading} data-testid="button-render-preview">
+          {loading ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Eye className="h-4 w-4 mr-1.5" />}
+          {contactId === "__sample__" ? "Preview with sample data" : "Preview as recipient"}
+        </Button>
+      </div>
       {error && <p className="text-xs text-destructive" data-testid="text-preview-error">{error}</p>}
       {data && (
         <div className="rounded-md border p-3 space-y-3 bg-background" data-testid="panel-preview">
@@ -146,7 +186,7 @@ function EmailForm({ record, onSave, isPending, messageId }: FormProps) {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <TokenPicker onInsert={inserter.insertToken} />
+        <TokenPicker onInsert={inserter.insertToken} messageId={messageId} />
       </div>
       <div className="space-y-2">
         <Label htmlFor="subject">Subject</Label>
@@ -186,7 +226,7 @@ function SmsForm({ record, onSave, isPending, messageId }: FormProps) {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <TokenPicker onInsert={inserter.insertToken} />
+        <TokenPicker onInsert={inserter.insertToken} messageId={messageId} />
       </div>
       <div className="space-y-2">
         <Label htmlFor="smsBody">Message Body</Label>
@@ -233,7 +273,7 @@ function PostalForm({ record, onSave, isPending, messageId }: FormProps) {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <TokenPicker onInsert={inserter.insertToken} />
+        <TokenPicker onInsert={inserter.insertToken} messageId={messageId} />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
@@ -305,7 +345,7 @@ function InappForm({ record, onSave, isPending, messageId }: FormProps) {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <TokenPicker onInsert={inserter.insertToken} />
+        <TokenPicker onInsert={inserter.insertToken} messageId={messageId} />
       </div>
       <div className="space-y-2">
         <Label htmlFor="inappTitle">Title</Label>

@@ -25,12 +25,12 @@ export async function deliverEmail(
     return { success: false, error: "Contact has no email address", errorCode: "NO_ADDRESS" };
   }
   const ctx = await buildRecipientContext(storage, contactId);
-  const renderedSubject = renderTemplate(emailContent.subject || "", ctx).output;
+  const renderedSubject = renderTemplate(emailContent.subject || "", ctx, { strictUnknown: true }).output;
   const renderedText = emailContent.bodyText
-    ? renderTemplate(emailContent.bodyText, ctx).output
+    ? renderTemplate(emailContent.bodyText, ctx, { strictUnknown: true }).output
     : undefined;
   const renderedHtml = emailContent.bodyHtml
-    ? renderTemplate(emailContent.bodyHtml, ctx, { escapeHtml: true }).output
+    ? renderTemplate(emailContent.bodyHtml, ctx, { escapeHtml: true, strictUnknown: true }).output
     : undefined;
   const result: SendEmailResult = await sendEmail({
     contactId,
