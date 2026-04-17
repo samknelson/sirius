@@ -15,6 +15,8 @@ import { createBulkParticipantStorage } from "../../storage/bulk/participants";
 import { deliverToContact, deliverToParticipant, resolveAddressForMedium } from "./deliver";
 import { storageLogger } from "../../logger";
 import { resolveContactLinks, resolveContactLinksForMany } from "../contact-links";
+import { TOKEN_REGISTRY, renderTemplate, extractTokenIds, findUnknownTokenIds, buildSampleContext } from "../../../shared/bulk-tokens";
+import { buildRecipientContext } from "./token-context";
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
@@ -717,4 +719,47 @@ export function registerBulkMessageRoutes(
       res.status(500).json({ message });
     }
   });
+
+  app.get("/api/bulk-tokens", requireAuth, requireAccess('bulk.edit'), (_req, res) => {
+    res.json({ tokens: TOKEN_REGISTRY });
+  });
+
+  app.post("/api/bulk-messages/:id/preview", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+    try {
+      const bulk = await storage.bulkMessages.getById(req.params.id);
+      if (!bulk) {
+        return res.status(404).json({ message: "Bulk message not found" });
+      }
+      const body = req.body ?? {};
+      const fields: Record<string, string> = (body.fields && typeof body.fields === 'object') ? body.fields : {};
+      const contactId: string | undefined = typeof body.contactId === 'string' ? body.contactId : undefined;
+      const escapeHtmlFields: string[] = Array.isArray(body.escapeHtmlFields) ? body.escapeHtmlFields.filter((s: unknown) => typeof s === 'string') : [];
+
+      const ctx = contactId ? await buildRecipientContext(storage, contactId) : buildSampleContext();
+
+      const rendered: Record<string, { output: string; unknownTokens: string[]; missingValues: string[]; tokens: string[] }> = {};
+      for (const [field, template] of Object.entries(fields)) {
+        if (typeof template !== 'string') continue;
+        const result = renderTemplate(template, ctx, { escapeHtml: escapeHtmlFields.includes(field) });
+        rendered[field] = {
+          output: result.output,
+          unknownTokens: result.unknownTokens,
+          missingValues: result.missingValues,
+          tokens: extractTokenIds(template),
+        };
+      }
+
+      res.json({
+        contactId: contactId || null,
+        sample: !contactId,
+        context: ctx,
+        rendered,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to render preview";
+      res.status(500).json({ message });
+    }
+  });
 }
+
+export { extractTokenIds, findUnknownTokenIds };

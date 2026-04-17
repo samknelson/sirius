@@ -1,6 +1,8 @@
 import type { IStorage } from "../../storage";
 import { sendEmail, type SendEmailResult } from "../../services/email-sender";
 import type { DeliverContactResult } from "./deliver";
+import { renderTemplate } from "../../../shared/bulk-tokens";
+import { buildRecipientContext } from "./token-context";
 
 export async function resolveEmailAddress(storage: IStorage, contactId: string): Promise<{ address: string; name?: string } | null> {
   const contact = await storage.contacts.getContact(contactId);
@@ -22,13 +24,21 @@ export async function deliverEmail(
   if (!resolved) {
     return { success: false, error: "Contact has no email address", errorCode: "NO_ADDRESS" };
   }
+  const ctx = await buildRecipientContext(storage, contactId);
+  const renderedSubject = renderTemplate(emailContent.subject || "", ctx).output;
+  const renderedText = emailContent.bodyText
+    ? renderTemplate(emailContent.bodyText, ctx).output
+    : undefined;
+  const renderedHtml = emailContent.bodyHtml
+    ? renderTemplate(emailContent.bodyHtml, ctx, { escapeHtml: true }).output
+    : undefined;
   const result: SendEmailResult = await sendEmail({
     contactId,
     toEmail: resolved.address,
     toName: resolved.name,
-    subject: emailContent.subject || "(no subject)",
-    bodyText: emailContent.bodyText || undefined,
-    bodyHtml: emailContent.bodyHtml || undefined,
+    subject: renderedSubject || "(no subject)",
+    bodyText: renderedText,
+    bodyHtml: renderedHtml,
     fromEmail: emailContent.fromAddress || undefined,
     fromName: emailContent.fromName || undefined,
     replyTo: emailContent.replyTo || undefined,

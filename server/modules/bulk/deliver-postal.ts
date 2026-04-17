@@ -2,6 +2,8 @@ import type { IStorage } from "../../storage";
 import { sendPostal, type SendPostalResult } from "../../services/postal-sender";
 import type { PostalAddress } from "../../services/providers/postal";
 import type { DeliverContactResult } from "./deliver";
+import { renderTemplate, TOKEN_REGISTRY } from "../../../shared/bulk-tokens";
+import { buildRecipientContext } from "./token-context";
 
 export async function resolvePostalAddress(storage: IStorage, contactId: string): Promise<PostalAddress | null> {
   const addresses = await storage.contacts.addresses.getContactPostalByContact(contactId);
@@ -44,14 +46,25 @@ export async function deliverPostal(
     zip: postalContent.fromZip || "",
     country: postalContent.fromCountry || "US",
   } : undefined;
+  const ctx = await buildRecipientContext(storage, contactId);
+  const renderedDescription = postalContent.description
+    ? renderTemplate(postalContent.description, ctx).output
+    : undefined;
+  const baseMerge = (postalContent.mergeVariables as Record<string, string>) || {};
+  const tokenMerge: Record<string, string> = {};
+  for (const def of TOKEN_REGISTRY) {
+    const v = ctx[def.id];
+    tokenMerge[def.id] = v != null && v !== "" ? String(v) : def.defaultValue;
+  }
+  const mergedVariables = { ...tokenMerge, ...baseMerge };
   const result: SendPostalResult = await sendPostal({
     contactId,
     toAddress: addr,
     fromAddress,
-    description: postalContent.description || undefined,
+    description: renderedDescription,
     file: postalContent.fileUrl || undefined,
     templateId: postalContent.templateId || undefined,
-    mergeVariables: (postalContent.mergeVariables as Record<string, string>) || undefined,
+    mergeVariables: mergedVariables,
     mailType: postalContent.mailType === "usps_standard" ? "usps_standard" : "usps_first_class",
     color: postalContent.color || undefined,
     doubleSided: postalContent.doubleSided || undefined,
