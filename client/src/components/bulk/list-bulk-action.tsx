@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -5,8 +6,11 @@ import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -33,6 +37,15 @@ interface ListBulkActionProps {
   testIdPrefix?: string;
 }
 
+type Medium = "email" | "sms" | "inapp" | "postal";
+
+const MEDIUM_OPTIONS: { value: Medium; label: string }[] = [
+  { value: "email", label: "Email" },
+  { value: "sms", label: "SMS" },
+  { value: "inapp", label: "In-app" },
+  { value: "postal", label: "Postal" },
+];
+
 export function ListBulkAction({
   selectedContactIds,
   totalMatching,
@@ -45,6 +58,12 @@ export function ListBulkAction({
 }: ListBulkActionProps) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const [selectedMedia, setSelectedMedia] = useState<Record<Medium, boolean>>({
+    email: true,
+    sms: false,
+    inapp: false,
+    postal: false,
+  });
 
   const { data: componentConfig = [] } = useQuery<ComponentConfig[]>({
     queryKey: ["/api/components/config"],
@@ -53,12 +72,12 @@ export function ListBulkAction({
 
   const bulkEnabled = componentConfig.find(c => c.componentId === "bulk")?.enabled ?? false;
 
-  const createMutation = useMutation<{ bulkMessage: { id: string }; participantsCreated: number; recipientsResolved: number; recipientsMissing: number }, Error, void>({
-    mutationFn: async () => {
+  const createMutation = useMutation<{ bulkMessage: { id: string }; participantsCreated: number; recipientsResolved: number; recipientsMissing: number }, Error, Medium[]>({
+    mutationFn: async (medium) => {
       return apiRequest("POST", "/api/bulk-messages/from-recipients", {
         contactIds: selectedContactIds,
         sourceLabel,
-        medium: ["email"],
+        medium,
       });
     },
     onSuccess: (result) => {
@@ -83,13 +102,17 @@ export function ListBulkAction({
   const noSelection = selectionCount === 0;
   const allMatchingSelected = totalMatching > 0 && selectionCount >= totalMatching;
   const showSelectAll = totalMatching > visibleSelectedCount && !allMatchingSelected;
+  const chosenMedia = MEDIUM_OPTIONS.filter(o => selectedMedia[o.value]).map(o => o.value);
+  const noMedia = chosenMedia.length === 0;
+  const messageDisabled = noSelection || noMedia || createMutation.isPending;
 
   const messageItem = (
     <DropdownMenuItem
-      disabled={noSelection || createMutation.isPending}
-      onClick={() => {
-        if (noSelection) return;
-        createMutation.mutate();
+      disabled={messageDisabled}
+      onSelect={(e) => {
+        e.preventDefault();
+        if (messageDisabled) return;
+        createMutation.mutate(chosenMedia);
       }}
       data-testid={`${testIdPrefix}-message`}
     >
@@ -98,9 +121,15 @@ export function ListBulkAction({
       ) : (
         <MailPlus className="mr-2 h-4 w-4" />
       )}
-      Message{noSelection ? "" : ` (${selectionCount})`}
+      Create draft{noSelection ? "" : ` (${selectionCount})`}
     </DropdownMenuItem>
   );
+
+  const disabledReason = noSelection
+    ? "Select one or more recipients first"
+    : noMedia
+      ? "Choose at least one channel"
+      : null;
 
   return (
     <div className="flex items-center gap-2 flex-wrap" data-testid={`${testIdPrefix}-container`}>
@@ -132,16 +161,29 @@ export function ListBulkAction({
             <ChevronDown className="ml-2 h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {noSelection ? (
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuLabel>Channels</DropdownMenuLabel>
+          {MEDIUM_OPTIONS.map((opt) => (
+            <DropdownMenuCheckboxItem
+              key={opt.value}
+              checked={selectedMedia[opt.value]}
+              onCheckedChange={(checked) =>
+                setSelectedMedia((prev) => ({ ...prev, [opt.value]: !!checked }))
+              }
+              onSelect={(e) => e.preventDefault()}
+              data-testid={`${testIdPrefix}-medium-${opt.value}`}
+            >
+              {opt.label}
+            </DropdownMenuCheckboxItem>
+          ))}
+          <DropdownMenuSeparator />
+          {disabledReason ? (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div data-testid={`${testIdPrefix}-message-disabled-wrapper`}>{messageItem}</div>
                 </TooltipTrigger>
-                <TooltipContent>
-                  Select one or more recipients first
-                </TooltipContent>
+                <TooltipContent>{disabledReason}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           ) : (
