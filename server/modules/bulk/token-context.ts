@@ -33,7 +33,7 @@ async function loadSourceData(storage: IStorage, contactId: string): Promise<Tok
   const workerRows = await db
     .select({
       id: workers.id,
-      jobTitle: workers.jobTitle,
+      jobTitle: workers.denormJobTitle,
       siriusId: workers.siriusId,
       homeEmployerId: workers.denormHomeEmployerId,
       employerIds: workers.denormEmployerIds,
