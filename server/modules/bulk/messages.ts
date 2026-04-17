@@ -17,7 +17,6 @@ import { storageLogger } from "../../logger";
 import { resolveContactLinks, resolveContactLinksForMany } from "../contact-links";
 import { TOKEN_REGISTRY, renderTemplate, extractTokenIds, findUnknownTokenIds, buildSampleContext } from "../../../shared/bulk-tokens";
 import { buildRecipientContext, detectAudienceScopes } from "./token-context";
-import { bulkParticipants } from "../../../shared/schema/bulk/schema";
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 

@@ -65,7 +65,7 @@ function TokenWarnings({ templates }: { templates: Array<string | null | undefin
       {unknown.length > 0 && (
         <div className="flex items-start gap-1.5 text-amber-700 dark:text-amber-400" data-testid="text-token-unknown">
           <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-          <span><span className="font-medium">Unknown tokens:</span> {unknown.map((t) => `{{${t}}}`).join(", ")} — these will be left as-is when sent.</span>
+          <span><span className="font-medium">Unknown tokens:</span> {unknown.map((t) => `{{${t}}}`).join(", ")} — these will be replaced with "[unknown token: ...]" when sent.</span>
         </div>
       )}
     </div>
