@@ -34,8 +34,9 @@ export function registerWorkerEdlsRoutes(app: Express, requireAuth: RequireAuth)
         const workerId = req.params.id;
         const row = await storage.workerEdls.getByWorker(workerId);
         if (!row) {
-          // Default state when no row exists yet
-          res.json({ workerId, active: true, exists: false });
+          // Default state when no row exists yet: inactive, matching the strict
+          // EDLS sheet picker which excludes workers with no worker_edls row.
+          res.json({ workerId, active: false, exists: false });
           return;
         }
         res.json({ ...row, exists: true });
