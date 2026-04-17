@@ -75,6 +75,7 @@ import { registerFloodEventRoutes } from "./modules/flood-events";
 import { registerEventsRoutes } from "./modules/events";
 import { registerDispatchJobsRoutes } from "./modules/dispatch/jobs";
 import { registerDispatchJobGroupsRoutes } from "./modules/dispatch/job-groups";
+import { registerFacilityRoutes } from "./modules/facility/facilities";
 import { registerDispatchesRoutes } from "./modules/dispatch/dispatches";
 import { registerWorkerDispatchStatusRoutes } from "./modules/worker-dispatch-status";
 import { registerWorkerDispatchDncRoutes } from "./modules/worker-dispatch-dnc";
@@ -1653,6 +1654,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register dispatch job groups routes
   registerDispatchJobGroupsRoutes(app, requireAuth, requirePermission);
+  registerFacilityRoutes(app, requireAuth, requirePermission);
 
   // Register dispatches routes
   registerDispatchesRoutes(app, requireAuth, requirePermission);

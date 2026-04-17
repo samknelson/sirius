@@ -63,6 +63,13 @@ export {
 } from "./schema/dispatch/job-group-schema";
 
 export {
+  facilities,
+  insertFacilitySchema,
+  type InsertFacility,
+  type Facility,
+} from "./schema/facility/schema";
+
+export {
   eligibilityPluginConfigSchema,
   jobTypeEligibilitySchema,
   type EligibilityPluginConfig,

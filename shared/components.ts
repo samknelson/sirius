@@ -488,6 +488,19 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "facility",
+    name: "Facilities",
+    description: "Facility records linked to contacts, optionally synced from external systems",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/facility/schema.ts",
+      tables: ["facilities"]
+    }
+  },
+  {
     id: "debug",
     name: "Debug",
     description: "Debug tools and developer utilities",
