@@ -138,7 +138,9 @@ export function registerBulkMessageRoutes(
       const { created, participantsCreated } = await runInTransaction(async () => {
         const draft = await storage.bulkMessages.create(parsed.data);
         let count = 0;
-        for (const cid of validContactIds) {
+        // Iterate the original deduped order so participant insert order matches
+        // the recipient order the caller supplied.
+        for (const cid of uniqueIds) {
           for (const m of draft.medium) {
             await rawParticipantStorage.create({
               messageId: draft.id,
