@@ -109,10 +109,13 @@ export function SlashTokenField(props: SlashTokenFieldProps) {
 
   const isOpen = trigger !== null;
 
-  const queryKey = messageId
-    ? ["/api/bulk-messages", messageId, "tokens"]
-    : ["/api/bulk-tokens"];
-  const { data } = useQuery<{ tokens: TokenDefinition[] }>({ queryKey });
+  // Always show every registered token regardless of recipient list.
+  // Recipient context still controls what each token resolves to at
+  // send time; missing values fall back to the registry default.
+  void messageId;
+  const { data } = useQuery<{ tokens: TokenDefinition[] }>({
+    queryKey: ["/api/bulk-tokens"],
+  });
   const tokens = data?.tokens || [];
 
   const filtered = useMemo<TokenDefinition[]>(() => {

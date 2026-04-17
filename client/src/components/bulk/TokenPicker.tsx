@@ -9,6 +9,7 @@ import type { TokenDefinition } from "@shared/bulk-tokens";
 
 interface TokenPickerProps {
   onInsert: (snippet: string) => void;
+  /** Accepted for backward compatibility but no longer used — every token is always shown. */
   messageId?: string;
 }
 
@@ -35,11 +36,14 @@ function saveRecent(ids: string[]) {
   }
 }
 
-export function TokenPicker({ onInsert, messageId }: TokenPickerProps) {
-  const queryKey = messageId
-    ? ["/api/bulk-messages", messageId, "tokens"]
-    : ["/api/bulk-tokens"];
-  const { data } = useQuery<{ tokens: TokenDefinition[] }>({ queryKey });
+export function TokenPicker({ onInsert }: TokenPickerProps) {
+  // Always show every registered token — authors should be able to
+  // search the full set regardless of who's currently on the
+  // recipient list. Recipient context still controls what each token
+  // resolves to at send time.
+  const { data } = useQuery<{ tokens: TokenDefinition[] }>({
+    queryKey: ["/api/bulk-tokens"],
+  });
   const tokens = data?.tokens || [];
 
   const [open, setOpen] = useState(false);
@@ -129,9 +133,7 @@ export function TokenPicker({ onInsert, messageId }: TokenPickerProps) {
         <div className="p-3 border-b shrink-0">
           <p className="text-sm font-medium">Insert a personalization token</p>
           <p className="text-xs text-muted-foreground mt-1">
-            {messageId
-              ? "Only tokens that apply to this message's recipients are shown."
-              : "Tokens are replaced with each recipient's data when sent."}
+            Tokens are replaced with each recipient's data when sent. Tokens that don't apply to a given recipient fall back to a default.
           </p>
           <div className="relative mt-2">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
