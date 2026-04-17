@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useAccessCheck } from "@/hooks/use-access-check";
 import { useToast } from "@/hooks/use-toast";
 import type { EdlsSheetStatus, EdlsCrew, AssignmentExtra } from "@shared/schema";
 
@@ -1303,10 +1304,45 @@ function EdlsSheetAssignmentsContent() {
   );
 }
 
+function AssignmentsAccessGate() {
+  const { sheet } = useEdlsSheetLayout();
+  const { canAccess, isLoading } = useAccessCheck("edls.sheet.edit", sheet.id);
+
+  if (isLoading) {
+    return <Skeleton className="h-32 w-full" />;
+  }
+
+  if (!canAccess) {
+    const reason =
+      sheet.status === "lock"
+        ? "This sheet is scheduled, so assignments can no longer be changed."
+        : sheet.status === "trash"
+        ? "This sheet has been trashed, so assignments can no longer be changed."
+        : "You don't have permission to change assignments on this sheet.";
+
+    return (
+      <Card>
+        <CardContent className="py-10 text-center space-y-4">
+          <p className="text-sm text-muted-foreground" data-testid="text-assignments-denied">
+            {reason}
+          </p>
+          <Link href={`/edls/sheet/${sheet.id}`}>
+            <Button variant="outline" data-testid="link-back-to-details">
+              Back to Details
+            </Button>
+          </Link>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return <EdlsSheetAssignmentsContent />;
+}
+
 export default function EdlsSheetAssignmentsPage() {
   return (
     <EdlsSheetLayout activeTab="assignments">
-      <EdlsSheetAssignmentsContent />
+      <AssignmentsAccessGate />
     </EdlsSheetLayout>
   );
 }
