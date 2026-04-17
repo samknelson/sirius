@@ -39,9 +39,13 @@ interface WorkerLayoutProps {
 
 function WorkerEdlsBadge({ workerId }: { workerId: string }) {
   const { hasComponent } = useAuth();
-  const componentEnabled = hasComponent('edls');
+  if (!hasComponent('edls')) return null;
+  return <WorkerEdlsBadgeInner workerId={workerId} />;
+}
+
+function WorkerEdlsBadgeInner({ workerId }: { workerId: string }) {
   const { canAccess, isLoading: accessLoading } = useAccessCheck('edls.coordinator', workerId);
-  const enabled = componentEnabled && !accessLoading && canAccess;
+  const enabled = !accessLoading && canAccess;
   const { data } = useQuery<{ active: boolean; exists: boolean }>({
     queryKey: ["/api/workers", workerId, "edls"],
     enabled,

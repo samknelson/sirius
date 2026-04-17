@@ -7,6 +7,7 @@ import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout
 import { useAccessCheck } from "@/hooks/use-access-check";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface WorkerEdlsState {
   workerId: string;
@@ -16,11 +17,14 @@ interface WorkerEdlsState {
 
 function WorkerEdlsContent() {
   const { worker } = useWorkerLayout();
+  const { hasComponent } = useAuth();
+  const componentEnabled = hasComponent('edls');
   const { canAccess: canEdit } = useAccessCheck('edls.coordinator', worker.id);
   const { toast } = useToast();
 
   const { data, isLoading } = useQuery<WorkerEdlsState>({
     queryKey: ["/api/workers", worker.id, "edls"],
+    enabled: componentEnabled,
   });
 
   const setActive = useMutation({
@@ -40,6 +44,19 @@ function WorkerEdlsContent() {
       });
     },
   });
+
+  if (!componentEnabled) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>EDLS</CardTitle>
+          <CardDescription>
+            The EDLS component is not enabled for this site.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
 
   return (
     <Card>
