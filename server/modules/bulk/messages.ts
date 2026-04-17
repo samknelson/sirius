@@ -117,8 +117,13 @@ export function registerBulkMessageRoutes(
         .where(inArray(contacts.id, uniqueIds));
       const validContactIds = new Set(existingContacts.map(c => c.id));
       const missingCount = uniqueIds.length - validContactIds.size;
-      if (validContactIds.size === 0) {
-        return res.status(400).json({ message: "None of the supplied contactIds resolve to real contacts" });
+      if (missingCount > 0) {
+        const unresolvedIds = uniqueIds.filter(id => !validContactIds.has(id));
+        return res.status(400).json({
+          message: `${missingCount} of ${uniqueIds.length} supplied contactIds do not resolve to real contacts`,
+          unresolvedContactIds: unresolvedIds.slice(0, 50),
+          unresolvedCount: missingCount,
+        });
       }
 
       const parsed = insertBulkMessageSchema.safeParse({

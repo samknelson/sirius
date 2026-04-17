@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ListBulkAction } from "@/components/bulk/list-bulk-action";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, serializeQueryKey } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface PaginatedWorkersResponse {
@@ -103,12 +103,10 @@ export default function Workers() {
   const handleSelectAllMatching = useCallback(async () => {
     setIsSelectingAll(true);
     try {
-      const params = new URLSearchParams();
-      Object.entries(filterParams).forEach(([k, v]) => {
-        if (v === undefined || v === null || v === "" || v === false) return;
-        params.set(k, String(v));
-      });
-      const res = await apiRequest("GET", `/api/workers/with-details/all-ids?${params.toString()}`);
+      // Reuse the exact same query-key serialization as the paginated list query
+      // so the all-ids request receives identical query parameters.
+      const url = serializeQueryKey(["/api/workers/with-details/all-ids", filterParams]);
+      const res = await apiRequest("GET", url);
       setSelectedIds(new Set(res.contactIds));
       toast({
         title: "Selected all matching workers",
